@@ -1,3 +1,4 @@
+import "./globals.css";
 export const metadata = {
   title: "기분좋은공간 AI 견적",
   description: "인테리어필름 AI 견적 시스템",
