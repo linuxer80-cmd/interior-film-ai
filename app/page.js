@@ -33,19 +33,37 @@ export default function Home() {
       const extension = image.name.split(".").pop() || "jpg";
       const filePath = `customer/${Date.now()}.${extension}`;
 
-      const { error } = await supabase.storage
+      // 1. Supabase Storage에 사진 저장
+      const { error: uploadError } = await supabase.storage
         .from("work-photos")
         .upload(filePath, image, {
           cacheControl: "3600",
           upsert: false,
         });
 
-      if (error) throw error;
+      if (uploadError) {
+        throw uploadError;
+      }
 
-      setMessage("✅ Supabase에 사진 저장 완료!");
+      // 2. work_photos 테이블에 사진 경로 저장
+      const { error: dbError } = await supabase
+        .from("work_photos")
+        .insert([
+          {
+            storage_path: filePath,
+            photo_type: "customer",
+          },
+        ]);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      setMessage("✅ 사진 저장 + DB 등록 완료!");
+      setImage(null);
     } catch (error) {
       console.error(error);
-      setMessage(`❌ 저장 실패: ${error.message}`);
+      setMessage(`❌ 오류: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -96,7 +114,7 @@ export default function Home() {
 
         <h2 style={{ fontSize: "32px" }}>시공 사진 등록</h2>
 
-        <p style={{ color: "#777", fontSize: "18px", lineHeight: "1.6" }}>
+        <p style={{ color: "#777", fontSize: "18px" }}>
           먼저 사진 1장으로 테스트합니다.
         </p>
 
@@ -148,7 +166,7 @@ export default function Home() {
                 fontWeight: "bold",
               }}
             >
-              {loading ? "사진 저장 중..." : "사진 저장 테스트"}
+              {loading ? "저장 중..." : "사진 저장 테스트"}
             </button>
           </div>
         )}
@@ -168,4 +186,4 @@ export default function Home() {
       </section>
     </main>
   );
-          }
+                }
