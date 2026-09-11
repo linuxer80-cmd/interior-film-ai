@@ -12,6 +12,95 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  async function resizeImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      img.onload = () => {
+        try {
+          let width = img.width;
+          let height = img.height;
+
+          const maxSize = 1600;
+
+          if (width > maxSize || height > maxSize) {
+            if (width >= height) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext("2d");
+
+          if (!ctx) {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("이미지 처리에 실패했습니다."));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              URL.revokeObjectURL(objectUrl);
+
+              if (!blob) {
+                reject(
+                  new Error("AI 분석용 이미지 변환에 실패했습니다.")
+                );
+                return;
+              }
+
+              const resizedFile = new File(
+                [blob],
+                "ai-analysis.jpg",
+                {
+                  type: "image/jpeg",
+                }
+              );
+
+              resolve(resizedFile);
+            },
+            "image/jpeg",
+            0.8
+          );
+        } catch (error) {
+          URL.revokeObjectURL(objectUrl);
+          reject(error);
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("사진을 불러올 수 없습니다."));
+      };
+
+      img.src = objectUrl;
+    });
+  }
+
+  async function readJsonSafely(response) {
+    const text = await response.text();
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(
+        text
+          ? `서버 응답 오류: ${text.slice(0, 200)}`
+          : "서버에서 올바른 응답을 받지 못했습니다."
+      );
+    }
+  }
+
   async function handleSave() {
     if (!image) {
       setMessage("사진을 선택해주세요.");
@@ -23,16 +112,25 @@ export default function AdminPage() {
       return;
     }
 
-    if (!actualCost || Number(actualCost) <= 0) {
+    const costNumber = Number(
+      String(actualCost).replace(/,/g, "")
+    );
+
+    if (!costNumber || costNumber <= 0) {
       setMessage("실제 시공금액을 입력해주세요.");
       return;
     }
 
     setLoading(true);
-    setMessage("사진을 AI가 분석하고 있습니다...");
+    setMessage("AI 분석용 사진을 준비하고 있습니다...");
 
     try {
-      // 1. 사진 AI 분석
+      // 1. AI 분석용 사진 자동 축소
+      const resizedImage = await resizeImage(image);
+
+      // 2. 사진 AI 분석
+      setMessage("사진을 AI가 분석하고 있습니다...");
+
       let aiAnalysis = {
         category: category.trim(),
         sub_category: category.trim(),
@@ -41,24 +139,31 @@ export default function AdminPage() {
       };
 
       const analyzeFormData = new FormData();
-      analyzeFormData.append("image", image);
+      analyzeFormData.append("image", resizedImage);
 
       const analyzeResponse = await fetch("/api/analyze", {
         method: "POST",
         body: analyzeFormData,
       });
 
-      const analyzeResult = await analyzeResponse.json();
+      const analyzeResult =
+        await readJsonSafely(analyzeResponse);
+
+      if (!analyzeResponse.ok) {
+        throw new Error(
+          analyzeResult?.error ||
+            "AI 사진 분석에 실패했습니다."
+        );
+      }
 
       if (
-        analyzeResponse.ok &&
         analyzeResult.success &&
         analyzeResult.analysis
       ) {
         aiAnalysis = analyzeResult.analysis;
       }
 
-      // 2. 검색용 태그 정리
+      // 3. 태그 정리
       let tags = [];
 
       if (Array.isArray(aiAnalysis?.tags)) {
@@ -71,14 +176,17 @@ export default function AdminPage() {
 
       tags = [...new Set(tags)];
 
-      // 3. 임베딩에 사용할 검색 문장 생성
+      // 4. 임베딩 검색용 문장 생성
       const searchText = [
         `시공 부위: ${category.trim()}`,
         `세부 부위: ${
-          aiAnalysis?.sub_category || category.trim()
+          aiAnalysis?.sub_category ||
+          category.trim()
         }`,
         `사진 설명: ${
-          aiAnalysis?.description || memo.trim() || ""
+          aiAnalysis?.description ||
+          memo.trim() ||
+          ""
         }`,
         `특징: ${tags.join(", ")}`,
         material.trim()
@@ -91,21 +199,26 @@ export default function AdminPage() {
         .filter(Boolean)
         .join("\n");
 
-      setMessage("유사사진 검색용 데이터를 만들고 있습니다...");
+      // 5. 임베딩 생성
+      setMessage(
+        "유사 시공사례 검색용 데이터를 만들고 있습니다..."
+      );
 
-      // 4. 검색용 임베딩 생성
-      const embeddingResponse = await fetch("/api/embedding", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: searchText,
-        }),
-      });
+      const embeddingResponse = await fetch(
+        "/api/embedding",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: searchText,
+          }),
+        }
+      );
 
       const embeddingResult =
-        await embeddingResponse.json();
+        await readJsonSafely(embeddingResponse);
 
       if (
         !embeddingResponse.ok ||
@@ -120,9 +233,11 @@ export default function AdminPage() {
 
       const embedding = embeddingResult.embedding;
 
-      setMessage("사진과 시공정보를 저장하고 있습니다...");
+      // 6. 원본 사진 Storage 저장
+      setMessage(
+        "원본 사진과 시공정보를 저장하고 있습니다..."
+      );
 
-      // 5. Storage에 사진 업로드
       const extension =
         image.name.split(".").pop()?.toLowerCase() ||
         "jpg";
@@ -142,11 +257,11 @@ export default function AdminPage() {
         throw uploadError;
       }
 
-      // 현재 개발용 기존 프로젝트 ID
+      // 현재 개발용 프로젝트 ID
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      // 6. 실제 시공정보 저장
+      // 7. 실제 시공금액 저장
       const {
         data: workItemData,
         error: workItemError,
@@ -159,7 +274,7 @@ export default function AdminPage() {
             sub_category:
               aiAnalysis?.sub_category ||
               category.trim(),
-            actual_cost: Number(actualCost),
+            actual_cost: costNumber,
             memo: memo.trim() || null,
           },
         ])
@@ -170,13 +285,13 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      // 7. 사진 URL 생성
+      // 8. 사진 URL 생성
       const { data: publicUrlData } =
         supabase.storage
           .from("work-photos")
           .getPublicUrl(filePath);
 
-      // 8. 사진 + AI 분석 + 임베딩 저장
+      // 9. 사진 + AI 데이터 + 임베딩 저장
       const { error: photoError } =
         await supabase
           .from("work_photos")
@@ -184,25 +299,18 @@ export default function AdminPage() {
             {
               project_id: projectId,
               work_item_id: workItemData.id,
-
               storage_path: filePath,
               photo_url: publicUrlData.publicUrl,
-
               photo_type: "history",
-
               category: category.trim(),
-
               sub_category:
                 aiAnalysis?.sub_category ||
                 category.trim(),
-
               ai_description:
                 aiAnalysis?.description ||
                 memo.trim() ||
                 "",
-
               ai_tags: tags,
-
               embedding: embedding,
             },
           ]);
@@ -274,7 +382,7 @@ export default function AdminPage() {
       >
         과거 시공사진과 실제 시공금액을 등록합니다.
         <br />
-        사진 분석과 유사사례 검색용 데이터도 자동으로 생성합니다.
+        AI 분석용 사진은 자동으로 축소해서 처리합니다.
       </p>
 
       <section
@@ -449,9 +557,6 @@ export default function AdminPage() {
             color: "white",
             fontSize: "20px",
             fontWeight: "bold",
-            cursor: loading
-              ? "default"
-              : "pointer",
             opacity: loading ? 0.7 : 1,
           }}
         >
@@ -476,4 +581,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-}
+           }
