@@ -4,11 +4,14 @@ import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function AdminPage() {
-  const [images, setImages] = useState([]);
+  const [beforeImages, setBeforeImages] = useState([]);
+  const [afterImages, setAfterImages] = useState([]);
+
   const [category, setCategory] = useState("");
   const [actualCost, setActualCost] = useState("");
   const [material, setMaterial] = useState("");
   const [memo, setMemo] = useState("");
+
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -26,15 +29,20 @@ export default function AdminPage() {
 
           if (width > maxSize || height > maxSize) {
             if (width >= height) {
-              height = Math.round((height * maxSize) / width);
+              height = Math.round(
+                (height * maxSize) / width
+              );
               width = maxSize;
             } else {
-              width = Math.round((width * maxSize) / height);
+              width = Math.round(
+                (width * maxSize) / height
+              );
               height = maxSize;
             }
           }
 
           const canvas = document.createElement("canvas");
+
           canvas.width = width;
           canvas.height = height;
 
@@ -42,11 +50,21 @@ export default function AdminPage() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-            reject(new Error("이미지 처리에 실패했습니다."));
+
+            reject(
+              new Error("이미지 처리에 실패했습니다.")
+            );
+
             return;
           }
 
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(
+            img,
+            0,
+            0,
+            width,
+            height
+          );
 
           canvas.toBlob(
             (blob) => {
@@ -54,15 +72,22 @@ export default function AdminPage() {
 
               if (!blob) {
                 reject(
-                  new Error("AI 분석용 이미지 변환에 실패했습니다.")
+                  new Error(
+                    "AI 분석용 이미지 변환에 실패했습니다."
+                  )
                 );
+
                 return;
               }
 
               resolve(
-                new File([blob], "ai-analysis.jpg", {
-                  type: "image/jpeg",
-                })
+                new File(
+                  [blob],
+                  "ai-analysis.jpg",
+                  {
+                    type: "image/jpeg",
+                  }
+                )
               );
             },
             "image/jpeg",
@@ -76,7 +101,10 @@ export default function AdminPage() {
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error("사진을 불러올 수 없습니다."));
+
+        reject(
+          new Error("사진을 불러올 수 없습니다.")
+        );
       };
 
       img.src = objectUrl;
@@ -100,85 +128,247 @@ export default function AdminPage() {
   async function analyzeImage(file) {
     const resizedImage = await resizeImage(file);
 
-    const analyzeFormData = new FormData();
-    analyzeFormData.append("image", resizedImage);
+    const formData = new FormData();
 
-    const analyzeResponse = await fetch("/api/analyze", {
-      method: "POST",
-      body: analyzeFormData,
-    });
+    formData.append(
+      "image",
+      resizedImage
+    );
 
-    const analyzeResult =
-      await readJsonSafely(analyzeResponse);
+    const response = await fetch(
+      "/api/analyze",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
 
-    if (!analyzeResponse.ok) {
+    const result =
+      await readJsonSafely(response);
+
+    if (!response.ok) {
       throw new Error(
-        analyzeResult?.error ||
+        result?.error ||
           "AI 사진 분석에 실패했습니다."
       );
     }
 
-    return analyzeResult.analysis;
+    if (!result?.analysis) {
+      throw new Error(
+        "AI 분석 결과가 없습니다."
+      );
+    }
+
+    return result.analysis;
   }
 
-  async function createEmbedding(searchText) {
-    const embeddingResponse = await fetch(
+  async function createEmbedding(text) {
+    const response = await fetch(
       "/api/embedding",
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
         body: JSON.stringify({
-          text: searchText,
+          text,
         }),
       }
     );
 
-    const embeddingResult =
-      await readJsonSafely(embeddingResponse);
+    const result =
+      await readJsonSafely(response);
 
     if (
-      !embeddingResponse.ok ||
-      !embeddingResult?.embedding
+      !response.ok ||
+      !result?.embedding
     ) {
       throw new Error(
-        embeddingResult?.error ||
+        result?.error ||
           "임베딩 생성에 실패했습니다."
       );
     }
 
-    return embeddingResult.embedding;
+    return result.embedding;
+  }
+
+  async function savePhoto({
+    image,
+    index,
+    total,
+    photoType,
+    workItemId,
+    projectId,
+  }) {
+    const typeLabel =
+      photoType === "before"
+        ? "시공 전"
+        : "시공 후";
+
+    setMessage(
+      `${typeLabel} 사진 ${index + 1}/${total} AI 분석 중...`
+    );
+
+    const aiAnalysis =
+      await analyzeImage(image);
+
+    let tags = Array.isArray(
+      aiAnalysis?.tags
+    )
+      ? [...aiAnalysis.tags]
+      : [];
+
+    if (material.trim()) {
+      tags.push(material.trim());
+    }
+
+    tags.push(
+      photoType === "before"
+        ? "시공전"
+        : "시공후"
+    );
+
+    tags = [...new Set(tags)];
+
+    const searchText = [
+      `시공 부위: ${category.trim()}`,
+      `세부 부위: ${
+        aiAnalysis?.sub_category ||
+        category.trim()
+      }`,
+      `사진 상태: ${
+        photoType === "before"
+          ? "시공 전"
+          : "시공 후"
+      }`,
+      `사진 설명: ${
+        aiAnalysis?.description || ""
+      }`,
+      `특징: ${tags.join(", ")}`,
+      material.trim()
+        ? `사용 자재: ${material.trim()}`
+        : "",
+      memo.trim()
+        ? `시공 메모: ${memo.trim()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    setMessage(
+      `${typeLabel} 사진 ${index + 1}/${total} 검색 데이터 생성 중...`
+    );
+
+    const embedding =
+      await createEmbedding(searchText);
+
+    const extension =
+      image.name
+        .split(".")
+        .pop()
+        ?.toLowerCase() || "jpg";
+
+    const filePath =
+      `history/${workItemId}/${photoType}/${Date.now()}-${index}.${extension}`;
+
+    setMessage(
+      `${typeLabel} 사진 ${index + 1}/${total} 원본 저장 중...`
+    );
+
+    const { error: uploadError } =
+      await supabase.storage
+        .from("work-photos")
+        .upload(filePath, image, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicUrlData } =
+      supabase.storage
+        .from("work-photos")
+        .getPublicUrl(filePath);
+
+    const { error: photoError } =
+      await supabase
+        .from("work_photos")
+        .insert([
+          {
+            project_id: projectId,
+            work_item_id: workItemId,
+            photo_url:
+              publicUrlData.publicUrl,
+            storage_path: filePath,
+            photo_type: photoType,
+            category: category.trim(),
+            sub_category:
+              aiAnalysis?.sub_category ||
+              category.trim(),
+            ai_description:
+              aiAnalysis?.description || "",
+            ai_tags: tags,
+            embedding,
+          },
+        ]);
+
+    if (photoError) {
+      throw photoError;
+    }
   }
 
   async function handleSave() {
-    if (images.length === 0) {
-      setMessage("사진을 1장 이상 선택해주세요.");
+    const totalPhotoCount =
+      beforeImages.length +
+      afterImages.length;
+
+    if (totalPhotoCount === 0) {
+      setMessage(
+        "시공 전 또는 시공 후 사진을 1장 이상 선택해주세요."
+      );
       return;
     }
 
     if (!category.trim()) {
-      setMessage("시공 부위를 입력해주세요.");
+      setMessage(
+        "시공 부위를 입력해주세요."
+      );
       return;
     }
 
     const costNumber = Number(
-      String(actualCost).replace(/,/g, "")
+      String(actualCost).replace(
+        /,/g,
+        ""
+      )
     );
 
-    if (!costNumber || costNumber <= 0) {
-      setMessage("실제 시공금액을 입력해주세요.");
+    if (
+      !costNumber ||
+      costNumber <= 0
+    ) {
+      setMessage(
+        "실제 시공금액을 입력해주세요."
+      );
       return;
     }
 
     setLoading(true);
-    setMessage("시공정보를 먼저 저장하고 있습니다...");
+
+    setMessage(
+      "시공정보를 저장하고 있습니다..."
+    );
 
     try {
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      // 1. work_items는 시공건당 1건만 생성
+      /*
+        하나의 실제 시공건 생성
+      */
       const {
         data: workItemData,
         error: workItemError,
@@ -187,10 +377,14 @@ export default function AdminPage() {
         .insert([
           {
             project_id: projectId,
-            category: category.trim(),
-            sub_category: category.trim(),
-            actual_cost: costNumber,
-            memo: memo.trim() || null,
+            category:
+              category.trim(),
+            sub_category:
+              category.trim(),
+            actual_cost:
+              costNumber,
+            memo:
+              memo.trim() || null,
           },
         ])
         .select("id")
@@ -200,118 +394,53 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      const workItemId = workItemData.id;
+      const workItemId =
+        workItemData.id;
 
-      // 2. 선택한 사진을 한 장씩 처리
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
+      /*
+        시공 전 사진
+      */
+      for (
+        let i = 0;
+        i < beforeImages.length;
+        i++
+      ) {
+        await savePhoto({
+          image: beforeImages[i],
+          index: i,
+          total:
+            beforeImages.length,
+          photoType: "before",
+          workItemId,
+          projectId,
+        });
+      }
 
-        setMessage(
-          `사진 ${i + 1}/${images.length} AI 분석 중...`
-        );
-
-        const aiAnalysis = await analyzeImage(image);
-
-        let tags = [];
-
-        if (Array.isArray(aiAnalysis?.tags)) {
-          tags = [...aiAnalysis.tags];
-        }
-
-        if (material.trim()) {
-          tags.push(material.trim());
-        }
-
-        tags = [...new Set(tags)];
-
-        const searchText = [
-          `시공 부위: ${category.trim()}`,
-          `세부 부위: ${
-            aiAnalysis?.sub_category ||
-            category.trim()
-          }`,
-          `사진 설명: ${
-            aiAnalysis?.description || ""
-          }`,
-          `특징: ${tags.join(", ")}`,
-          material.trim()
-            ? `사용 자재: ${material.trim()}`
-            : "",
-          memo.trim()
-            ? `시공 메모: ${memo.trim()}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
-
-        setMessage(
-          `사진 ${i + 1}/${images.length} 검색 데이터 생성 중...`
-        );
-
-        const embedding =
-          await createEmbedding(searchText);
-
-        const extension =
-          image.name
-            .split(".")
-            .pop()
-            ?.toLowerCase() || "jpg";
-
-        const filePath =
-          `history/${workItemId}/${Date.now()}-${i}.${extension}`;
-
-        setMessage(
-          `사진 ${i + 1}/${images.length} 원본 저장 중...`
-        );
-
-        const { error: uploadError } =
-          await supabase.storage
-            .from("work-photos")
-            .upload(filePath, image, {
-              cacheControl: "3600",
-              upsert: false,
-            });
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const { data: publicUrlData } =
-          supabase.storage
-            .from("work-photos")
-            .getPublicUrl(filePath);
-
-        const { error: photoError } =
-          await supabase
-            .from("work_photos")
-            .insert([
-              {
-                project_id: projectId,
-                work_item_id: workItemId,
-                storage_path: filePath,
-                photo_url: publicUrlData.publicUrl,
-                photo_type: "history",
-                category: category.trim(),
-                sub_category:
-                  aiAnalysis?.sub_category ||
-                  category.trim(),
-                ai_description:
-                  aiAnalysis?.description || "",
-                ai_tags: tags,
-                embedding: embedding,
-              },
-            ]);
-
-        if (photoError) {
-          throw photoError;
-        }
+      /*
+        시공 후 사진
+      */
+      for (
+        let i = 0;
+        i < afterImages.length;
+        i++
+      ) {
+        await savePhoto({
+          image: afterImages[i],
+          index: i,
+          total:
+            afterImages.length,
+          photoType: "after",
+          workItemId,
+          projectId,
+        });
       }
 
       setMessage(
-        `✅ 저장 완료! 사진 ${images.length}장이 같은 시공건으로 연결되었습니다.`
+        `✅ 저장 완료! 시공 전 ${beforeImages.length}장 + 시공 후 ${afterImages.length}장이 같은 시공건으로 연결되었습니다.`
       );
 
-      setImages([]);
+      setBeforeImages([]);
+      setAfterImages([]);
       setCategory("");
       setActualCost("");
       setMaterial("");
@@ -330,23 +459,81 @@ export default function AdminPage() {
     }
   }
 
+  function FileList({
+    files,
+  }) {
+    if (files.length === 0) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          marginTop: "12px",
+          padding: "12px",
+          background:
+            "#f3f4f6",
+          borderRadius: "10px",
+          lineHeight: "1.7",
+        }}
+      >
+        선택한 사진:{" "}
+        {files.length}장
+
+        {files.map(
+          (file, index) => (
+            <div
+              key={`${file.name}-${index}`}
+            >
+              {index + 1}.{" "}
+              {file.name}
+            </div>
+          )
+        )}
+      </div>
+    );
+  }
+
+  const inputStyle = {
+    width: "100%",
+    padding: "15px",
+    fontSize: "17px",
+    border:
+      "1px solid #ccc",
+    borderRadius: "10px",
+    boxSizing: "border-box",
+  };
+
+  const labelStyle = {
+    display: "block",
+    fontWeight: "bold",
+    marginBottom: "10px",
+  };
+
   return (
     <main
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding: "30px 20px 60px",
-        fontFamily: "Arial, sans-serif",
+        padding:
+          "30px 20px 60px",
+        fontFamily:
+          "Arial, sans-serif",
       }}
     >
       <div
         style={{
-          display: "inline-block",
-          background: "#111827",
+          display:
+            "inline-block",
+          background:
+            "#111827",
           color: "white",
-          padding: "8px 14px",
-          borderRadius: "20px",
-          marginBottom: "20px",
+          padding:
+            "8px 14px",
+          borderRadius:
+            "20px",
+          marginBottom:
+            "20px",
         }}
       >
         기분좋은공간
@@ -368,69 +555,139 @@ export default function AdminPage() {
           lineHeight: "1.7",
         }}
       >
-        같은 시공건의 사진을 여러 장 선택할 수 있습니다.
+        시공 전 사진과 시공 후
+        사진을 구분해서 등록합니다.
         <br />
-        모든 사진은 같은 실제 시공금액과 연결됩니다.
+        모든 사진은 같은 실제
+        시공건과 연결됩니다.
       </p>
 
       <section
         style={{
           marginTop: "30px",
           padding: "25px",
-          border: "1px solid #ddd",
-          borderRadius: "20px",
+          border:
+            "1px solid #ddd",
+          borderRadius:
+            "20px",
         }}
       >
-        <div style={{ marginBottom: "25px" }}>
+        {/* 시공 전 */}
+
+        <div
+          style={{
+            marginBottom:
+              "30px",
+            padding: "20px",
+            background:
+              "#f9fafb",
+            borderRadius:
+              "15px",
+          }}
+        >
           <label
+            style={
+              labelStyle
+            }
+          >
+            📷 시공 전 사진
+          </label>
+
+          <p
             style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "10px",
+              color: "#666",
+              fontSize: "14px",
             }}
           >
-            시공 사진 여러 장
-          </label>
+            고객 견적사진과
+            비교할 때 주로
+            사용됩니다.
+          </p>
 
           <input
             type="file"
             accept="image/*"
             multiple
             onChange={(e) =>
-              setImages(
-                Array.from(e.target.files || [])
+              setBeforeImages(
+                Array.from(
+                  e.target
+                    .files || []
+                )
               )
             }
           />
 
-          {images.length > 0 && (
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "12px",
-                background: "#f3f4f6",
-                borderRadius: "10px",
-                lineHeight: "1.7",
-              }}
-            >
-              선택한 사진: {images.length}장
-              <br />
-              {images.map((file, index) => (
-                <div key={`${file.name}-${index}`}>
-                  {index + 1}. {file.name}
-                </div>
-              ))}
-            </div>
-          )}
+          <FileList
+            files={
+              beforeImages
+            }
+          />
         </div>
 
-        <div style={{ marginBottom: "25px" }}>
+        {/* 시공 후 */}
+
+        <div
+          style={{
+            marginBottom:
+              "30px",
+            padding: "20px",
+            background:
+              "#f9fafb",
+            borderRadius:
+              "15px",
+          }}
+        >
           <label
+            style={
+              labelStyle
+            }
+          >
+            ✨ 시공 후 사진
+          </label>
+
+          <p
             style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "8px",
+              color: "#666",
+              fontSize: "14px",
             }}
+          >
+            완성 사례와
+            포트폴리오용으로
+            활용할 수 있습니다.
+          </p>
+
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) =>
+              setAfterImages(
+                Array.from(
+                  e.target
+                    .files || []
+                )
+              )
+            }
+          />
+
+          <FileList
+            files={
+              afterImages
+            }
+          />
+        </div>
+
+        <div
+          style={{
+            marginBottom:
+              "25px",
+          }}
+        >
+          <label
+            style={
+              labelStyle
+            }
           >
             시공 부위
           </label>
@@ -439,27 +696,27 @@ export default function AdminPage() {
             type="text"
             value={category}
             onChange={(e) =>
-              setCategory(e.target.value)
+              setCategory(
+                e.target.value
+              )
             }
-            placeholder="예: 싱크대, 중문, 방화문"
-            style={{
-              width: "100%",
-              padding: "15px",
-              fontSize: "17px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              boxSizing: "border-box",
-            }}
+            placeholder="예: 싱크대, 중문, 방문, 방화문"
+            style={
+              inputStyle
+            }
           />
         </div>
 
-        <div style={{ marginBottom: "25px" }}>
+        <div
+          style={{
+            marginBottom:
+              "25px",
+          }}
+        >
           <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "8px",
-            }}
+            style={
+              labelStyle
+            }
           >
             실제 시공금액
           </label>
@@ -469,27 +726,27 @@ export default function AdminPage() {
             inputMode="numeric"
             value={actualCost}
             onChange={(e) =>
-              setActualCost(e.target.value)
+              setActualCost(
+                e.target.value
+              )
             }
             placeholder="예: 550000"
-            style={{
-              width: "100%",
-              padding: "15px",
-              fontSize: "17px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              boxSizing: "border-box",
-            }}
+            style={
+              inputStyle
+            }
           />
         </div>
 
-        <div style={{ marginBottom: "25px" }}>
+        <div
+          style={{
+            marginBottom:
+              "25px",
+          }}
+        >
           <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "8px",
-            }}
+            style={
+              labelStyle
+            }
           >
             사용 자재
           </label>
@@ -498,27 +755,27 @@ export default function AdminPage() {
             type="text"
             value={material}
             onChange={(e) =>
-              setMaterial(e.target.value)
+              setMaterial(
+                e.target.value
+              )
             }
             placeholder="예: 현대L&C GS115"
-            style={{
-              width: "100%",
-              padding: "15px",
-              fontSize: "17px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              boxSizing: "border-box",
-            }}
+            style={
+              inputStyle
+            }
           />
         </div>
 
-        <div style={{ marginBottom: "25px" }}>
+        <div
+          style={{
+            marginBottom:
+              "25px",
+          }}
+        >
           <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "8px",
-            }}
+            style={
+              labelStyle
+            }
           >
             메모
           </label>
@@ -526,51 +783,60 @@ export default function AdminPage() {
           <textarea
             value={memo}
             onChange={(e) =>
-              setMemo(e.target.value)
+              setMemo(
+                e.target.value
+              )
             }
-            placeholder="예: 싱크대 상하부장 + 냉장고장 전체"
+            placeholder="예: 중문 3연동 전체 필름 시공"
             rows={5}
             style={{
-              width: "100%",
-              padding: "15px",
-              fontSize: "17px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              boxSizing: "border-box",
-              resize: "vertical",
+              ...inputStyle,
+              resize:
+                "vertical",
             }}
           />
         </div>
 
         <button
           type="button"
-          onClick={handleSave}
+          onClick={
+            handleSave
+          }
           disabled={loading}
           style={{
             width: "100%",
             padding: "20px",
             border: "none",
-            borderRadius: "14px",
-            background: "#111827",
+            borderRadius:
+              "14px",
+            background:
+              "#111827",
             color: "white",
             fontSize: "20px",
-            fontWeight: "bold",
-            opacity: loading ? 0.7 : 1,
+            fontWeight:
+              "bold",
+            opacity: loading
+              ? 0.7
+              : 1,
           }}
         >
           {loading
             ? "AI 분석 및 저장 중..."
-            : "과거 시공 데이터 저장"}
+            : "시공 전·후 데이터 저장"}
         </button>
 
         {message && (
           <div
             style={{
-              marginTop: "20px",
+              marginTop:
+                "20px",
               padding: "15px",
-              background: "#f3f4f6",
-              borderRadius: "12px",
-              lineHeight: "1.6",
+              background:
+                "#f3f4f6",
+              borderRadius:
+                "12px",
+              lineHeight:
+                "1.6",
             }}
           >
             {message}
@@ -579,4 +845,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-                }
+    }
