@@ -47,21 +47,9 @@ export default function AdminPage() {
         throw uploadError;
       }
 
-      // 2. projects 테이블에 과거 시공 프로젝트 생성
-      const { data: projectData, error: projectError } =
-        await supabase
-          .from("projects")
-          .insert([
-            {
-              title: `과거 시공 데이터 - ${category}`,
-            },
-          ])
-          .select("id")
-          .single();
-
-      if (projectError) {
-        throw projectError;
-      }
+      // 2. 기존 프로젝트 ID 임시 사용
+      const projectId =
+        "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
       // 3. work_items에 실제 시공금액 저장
       const { data: workItemData, error: workItemError } =
@@ -69,7 +57,7 @@ export default function AdminPage() {
           .from("work_items")
           .insert([
             {
-              project_id: projectData.id,
+              project_id: projectId,
               category: category.trim(),
               sub_category: category.trim(),
               actual_cost: Number(actualCost),
@@ -93,7 +81,7 @@ export default function AdminPage() {
         .from("work_photos")
         .insert([
           {
-            project_id: projectData.id,
+            project_id: projectId,
             work_item_id: workItemData.id,
             storage_path: filePath,
             photo_url: publicUrlData.publicUrl,
@@ -355,4 +343,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-              }
+          }
