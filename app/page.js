@@ -8,6 +8,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState(null);
+  const [estimate, setEstimate] = useState(null);
 
   function handleImage(e) {
     const file = e.target.files?.[0];
@@ -19,7 +20,65 @@ export default function Home() {
 
     setImage(file);
     setAnalysis(null);
+    setEstimate(null);
     setMessage("✅ 사진 1장이 선택되었습니다.");
+  }
+
+  function mapCategory(aiCategory) {
+    const value = (aiCategory || "").trim();
+
+    if (
+      value.includes("방문") ||
+      value.includes("문틀") ||
+      value.includes("중문") ||
+      value.includes("도어") ||
+      value === "문"
+    ) {
+      return "문·문틀";
+    }
+
+    return value;
+  }
+
+  async function getEstimateFromHistory(aiCategory) {
+    const mappedCategory = mapCategory(aiCategory);
+
+    const { data, error } = await supabase
+      .from("work_items")
+      .select("actual_cost, category, difficulty, quantity")
+      .eq("category", mappedCategory)
+      .not("actual_cost", "is", null)
+      .gt("actual_cost", 0);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    const costs = data
+      .map((item) => Number(item.actual_cost))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (costs.length === 0) {
+      return null;
+    }
+
+    const average =
+      costs.reduce((sum, value) => sum + value, 0) / costs.length;
+
+    const min = Math.round(average * 0.9);
+    const max = Math.round(average * 1.1);
+
+    return {
+      category: mappedCategory,
+      average: Math.round(average),
+      min,
+      max,
+      sampleCount: costs.length,
+    };
   }
 
   async function handleUpload() {
@@ -30,9 +89,9 @@ export default function Home() {
 
     setLoading(true);
     setAnalysis(null);
+    setEstimate(null);
 
     try {
-      // 1. Storage에 사진 저장
       setMessage("사진을 저장하고 있습니다...");
 
       const extension = image.name.split(".").pop() || "jpg";
@@ -51,7 +110,6 @@ export default function Home() {
         .from("work-photos")
         .getPublicUrl(filePath);
 
-      // 2. AI 사진 분석
       setMessage("AI가 사진을 분석하고 있습니다...");
 
       const formData = new FormData();
@@ -70,7 +128,12 @@ export default function Home() {
 
       const result = aiData.analysis;
 
-      // 3. work_photos DB에 사진 + AI 결과 저장
+      setMessage("과거 실제 시공금액을 비교하고 있습니다...");
+
+      const estimateResult = await getEstimateFromHistory(
+        result.category
+      );
+
       setMessage("분석 결과를 저장하고 있습니다...");
 
       const { error: dbError } = await supabase
@@ -90,13 +153,19 @@ export default function Home() {
       if (dbError) throw dbError;
 
       setAnalysis(result);
-      setMessage("✅ 사진 저장 + AI 분석 + DB 저장 완료!");
+      setEstimate(estimateResult);
+
+      setMessage("✅ 사진 분석 + 예상견적 계산 완료!");
     } catch (error) {
       console.error(error);
       setMessage(`❌ 오류: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  }
+
+  function formatWon(value) {
+    return new Intl.NumberFormat("ko-KR").format(value) + "원";
   }
 
   return (
@@ -125,123 +194,4 @@ export default function Home() {
         AI 인테리어필름 견적
       </h1>
 
-      <p style={{ fontSize: "20px", color: "#666", lineHeight: "1.8" }}>
-        시공할 곳의 사진을 등록하면
-        <br />
-        과거 시공 데이터를 바탕으로 예상 견적을 분석합니다.
-      </p>
-
-      <section
-        style={{
-          marginTop: "35px",
-          border: "2px dashed #ccc",
-          borderRadius: "24px",
-          padding: "40px 20px",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontSize: "64px" }}>📷</div>
-
-        <h2 style={{ fontSize: "32px" }}>시공 사진 등록</h2>
-
-        <label
-          style={{
-            display: "inline-block",
-            marginTop: "20px",
-            background: "#111827",
-            color: "white",
-            padding: "18px 30px",
-            borderRadius: "14px",
-            fontSize: "20px",
-            fontWeight: "bold",
-          }}
-        >
-          사진 선택하기
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImage}
-            style={{ display: "none" }}
-          />
-        </label>
-
-        {image && (
-          <div style={{ marginTop: "25px" }}>
-            <div
-              style={{
-                padding: "15px",
-                background: "#e8f5e9",
-                borderRadius: "12px",
-              }}
-            >
-              ✓ {image.name}
-            </div>
-
-            <button
-              onClick={handleUpload}
-              disabled={loading}
-              style={{
-                width: "100%",
-                marginTop: "20px",
-                padding: "20px",
-                border: "none",
-                borderRadius: "15px",
-                background: "#111827",
-                color: "white",
-                fontSize: "20px",
-                fontWeight: "bold",
-              }}
-            >
-              {loading ? "처리 중..." : "AI 견적 사진 분석"}
-            </button>
-          </div>
-        )}
-
-        {message && (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "15px",
-              background: "#f3f4f6",
-              borderRadius: "12px",
-            }}
-          >
-            {message}
-          </div>
-        )}
-      </section>
-
-      {analysis && (
-        <section
-          style={{
-            marginTop: "30px",
-            padding: "25px",
-            border: "1px solid #ddd",
-            borderRadius: "20px",
-          }}
-        >
-          <h2>AI 사진 분석 결과</h2>
-
-          <p>
-            <strong>시공 부위:</strong> {analysis.category}
-          </p>
-
-          <p>
-            <strong>세부 부위:</strong> {analysis.sub_category}
-          </p>
-
-          <p>
-            <strong>분석:</strong> {analysis.description}
-          </p>
-
-          <p>
-            <strong>특징:</strong>{" "}
-            {Array.isArray(analysis.tags)
-              ? analysis.tags.join(", ")
-              : ""}
-          </p>
-        </section>
-      )}
-    </main>
-  );
-            }
+      <p style={{ fontSize: "20px", color: "#666", lineHeight: "1.
