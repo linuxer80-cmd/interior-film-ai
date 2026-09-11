@@ -194,4 +194,4 @@ export default function Home() {
         AI 인테리어필름 견적
       </h1>
 
-      <p style={{ fontSize: "20px", color: "#666", lineHeight: "1.
+      <p style={{ fontSize: "20px", color: "#666", lineHeight: "1.8" }}>
