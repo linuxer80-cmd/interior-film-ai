@@ -7,6 +7,7 @@ export default function Home() {
   const [image, setImage] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
 
   function handleImage(e) {
     const file = e.target.files?.[0];
@@ -17,6 +18,7 @@ export default function Home() {
     }
 
     setImage(file);
+    setAnalysis(null);
     setMessage("✅ 사진 1장이 선택되었습니다.");
   }
 
@@ -27,13 +29,15 @@ export default function Home() {
     }
 
     setLoading(true);
-    setMessage("사진을 저장하고 있습니다...");
+    setAnalysis(null);
 
     try {
+      // 1. Storage에 사진 저장
+      setMessage("사진을 저장하고 있습니다...");
+
       const extension = image.name.split(".").pop() || "jpg";
       const filePath = `customer/${Date.now()}.${extension}`;
 
-      // 1. Supabase Storage에 사진 저장
       const { error: uploadError } = await supabase.storage
         .from("work-photos")
         .upload(filePath, image, {
@@ -41,31 +45,52 @@ export default function Home() {
           upsert: false,
         });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
-      // 2. work_photos 테이블에 사진 경로 저장
       const { data: publicUrlData } = supabase.storage
-  .from("work-photos")
-  .getPublicUrl(filePath);
+        .from("work-photos")
+        .getPublicUrl(filePath);
 
-const { error: dbError } = await supabase
-  .from("work_photos")
-  .insert([
-    {
-      storage_path: filePath,
-      photo_url: publicUrlData.publicUrl,
-      photo_type: "customer",
-    },
-  ]);
+      // 2. AI 사진 분석
+      setMessage("AI가 사진을 분석하고 있습니다...");
 
-      if (dbError) {
-        throw dbError;
+      const formData = new FormData();
+      formData.append("image", image);
+
+      const aiResponse = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      const aiData = await aiResponse.json();
+
+      if (!aiResponse.ok) {
+        throw new Error(aiData.error || "AI 분석에 실패했습니다.");
       }
 
-      setMessage("✅ 사진 저장 + DB 등록 완료!");
-      setImage(null);
+      const result = aiData.analysis;
+
+      // 3. work_photos DB에 사진 + AI 결과 저장
+      setMessage("분석 결과를 저장하고 있습니다...");
+
+      const { error: dbError } = await supabase
+        .from("work_photos")
+        .insert([
+          {
+            storage_path: filePath,
+            photo_url: publicUrlData.publicUrl,
+            photo_type: "customer",
+            category: result.category || "기타",
+            sub_category: result.sub_category || "",
+            ai_description: result.description || "",
+            ai_tags: result.tags || [],
+          },
+        ]);
+
+      if (dbError) throw dbError;
+
+      setAnalysis(result);
+      setMessage("✅ 사진 저장 + AI 분석 + DB 저장 완료!");
     } catch (error) {
       console.error(error);
       setMessage(`❌ 오류: ${error.message}`);
@@ -119,10 +144,6 @@ const { error: dbError } = await supabase
 
         <h2 style={{ fontSize: "32px" }}>시공 사진 등록</h2>
 
-        <p style={{ color: "#777", fontSize: "18px" }}>
-          먼저 사진 1장으로 테스트합니다.
-        </p>
-
         <label
           style={{
             display: "inline-block",
@@ -171,7 +192,7 @@ const { error: dbError } = await supabase
                 fontWeight: "bold",
               }}
             >
-              {loading ? "저장 중..." : "사진 저장 테스트"}
+              {loading ? "처리 중..." : "AI 견적 사진 분석"}
             </button>
           </div>
         )}
@@ -189,6 +210,38 @@ const { error: dbError } = await supabase
           </div>
         )}
       </section>
+
+      {analysis && (
+        <section
+          style={{
+            marginTop: "30px",
+            padding: "25px",
+            border: "1px solid #ddd",
+            borderRadius: "20px",
+          }}
+        >
+          <h2>AI 사진 분석 결과</h2>
+
+          <p>
+            <strong>시공 부위:</strong> {analysis.category}
+          </p>
+
+          <p>
+            <strong>세부 부위:</strong> {analysis.sub_category}
+          </p>
+
+          <p>
+            <strong>분석:</strong> {analysis.description}
+          </p>
+
+          <p>
+            <strong>특징:</strong>{" "}
+            {Array.isArray(analysis.tags)
+              ? analysis.tags.join(", ")
+              : ""}
+          </p>
+        </section>
+      )}
     </main>
   );
-                }
+            }
