@@ -29,13 +29,52 @@ export default function AdminPage() {
     }
 
     setLoading(true);
-    setMessage("저장하고 있습니다...");
+    setMessage("사진을 AI가 분석하고 있습니다...");
 
     try {
-      const extension = image.name.split(".").pop() || "jpg";
-      const filePath = `history/${Date.now()}.${extension}`;
+      // --------------------------------
+      // 1. AI 사진 분석
+      // --------------------------------
+      let aiAnalysis = {
+        category: category.trim(),
+        sub_category: category.trim(),
+        description: memo.trim(),
+        tags: [],
+      };
 
-      // 1. Storage에 사진 저장
+      try {
+        const analyzeFormData = new FormData();
+        analyzeFormData.append("image", image);
+
+        const analyzeResponse = await fetch("/api/analyze", {
+          method: "POST",
+          body: analyzeFormData,
+        });
+
+        const analyzeResult = await analyzeResponse.json();
+
+        if (
+          analyzeResponse.ok &&
+          analyzeResult.success &&
+          analyzeResult.analysis
+        ) {
+          aiAnalysis = analyzeResult.analysis;
+        }
+      } catch (aiError) {
+        console.error("AI 분석 오류:", aiError);
+      }
+
+      setMessage("사진과 시공정보를 저장하고 있습니다...");
+
+      // --------------------------------
+      // 2. Storage 사진 업로드
+      // --------------------------------
+      const extension =
+        image.name.split(".").pop()?.toLowerCase() || "jpg";
+
+      const filePath =
+        `history/${Date.now()}.${extension}`;
+
       const { error: uploadError } = await supabase.storage
         .from("work-photos")
         .upload(filePath, image, {
@@ -47,20 +86,31 @@ export default function AdminPage() {
         throw uploadError;
       }
 
-      // 2. 기존 프로젝트 ID 임시 사용
+      // --------------------------------
+      // 3. 기존 프로젝트 ID 임시 사용
+      // --------------------------------
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      // 3. work_items에 실제 시공금액 저장
+      // --------------------------------
+      // 4. work_items 생성
+      // --------------------------------
       const { data: workItemData, error: workItemError } =
         await supabase
           .from("work_items")
           .insert([
             {
               project_id: projectId,
+
+              // 실제 견적 분류는 사람이 입력한 값을 기준으로 사용
               category: category.trim(),
-              sub_category: category.trim(),
+
+              sub_category:
+                aiAnalysis?.sub_category ||
+                category.trim(),
+
               actual_cost: Number(actualCost),
+
               memo: memo.trim() || null,
             },
           ])
@@ -71,25 +121,60 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      // 4. 사진 URL 생성
-      const { data: publicUrlData } = supabase.storage
-        .from("work-photos")
-        .getPublicUrl(filePath);
+      // --------------------------------
+      // 5. 사진 URL 생성
+      // --------------------------------
+      const { data: publicUrlData } =
+        supabase.storage
+          .from("work-photos")
+          .getPublicUrl(filePath);
 
-      // 5. work_photos와 work_items 연결
+      // --------------------------------
+      // 6. AI 태그 만들기
+      // --------------------------------
+      let tags = [];
+
+      if (Array.isArray(aiAnalysis?.tags)) {
+        tags = [...aiAnalysis.tags];
+      }
+
+      if (material.trim()) {
+        tags.push(material.trim());
+      }
+
+      tags = [...new Set(tags)];
+
+      // --------------------------------
+      // 7. work_photos 저장
+      // --------------------------------
       const { error: photoError } = await supabase
         .from("work_photos")
         .insert([
           {
             project_id: projectId,
             work_item_id: workItemData.id,
+
             storage_path: filePath,
             photo_url: publicUrlData.publicUrl,
+
             photo_type: "history",
+
+            // 사람이 입력한 대분류
             category: category.trim(),
-            sub_category: category.trim(),
-            ai_description: memo.trim() || "",
-            ai_tags: material.trim() ? [material.trim()] : [],
+
+            // AI가 분석한 세부분류
+            sub_category:
+              aiAnalysis?.sub_category ||
+              category.trim(),
+
+            // AI 설명
+            ai_description:
+              aiAnalysis?.description ||
+              memo.trim() ||
+              "",
+
+            // AI 특징 + 자재
+            ai_tags: tags,
           },
         ]);
 
@@ -97,7 +182,9 @@ export default function AdminPage() {
         throw photoError;
       }
 
-      setMessage("✅ 과거 시공 데이터 저장 완료!");
+      setMessage(
+        "✅ 저장 완료! 사진 AI 분석 정보도 함께 저장되었습니다."
+      );
 
       setImage(null);
       setCategory("");
@@ -106,7 +193,12 @@ export default function AdminPage() {
       setMemo("");
     } catch (error) {
       console.error(error);
-      setMessage(`❌ 오류: ${error.message}`);
+
+      setMessage(
+        `❌ 오류: ${
+          error?.message || "저장 중 오류가 발생했습니다."
+        }`
+      );
     } finally {
       setLoading(false);
     }
@@ -150,10 +242,9 @@ export default function AdminPage() {
           lineHeight: "1.7",
         }}
       >
-        실제 시공사진과 실제 시공금액을 등록합니다.
+        과거 시공사진과 실제 시공금액을 등록합니다.
         <br />
-        등록된 자료는 AI 유사 시공사례 검색과 견적 계산에
-        사용됩니다.
+        사진은 AI가 자동으로 분석합니다.
       </p>
 
       <section
@@ -211,8 +302,10 @@ export default function AdminPage() {
           <input
             type="text"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="예: 문·문틀"
+            onChange={(e) =>
+              setCategory(e.target.value)
+            }
+            placeholder="예: 중문, 문·문틀, 싱크대"
             style={{
               width: "100%",
               padding: "15px",
@@ -239,8 +332,10 @@ export default function AdminPage() {
             type="number"
             inputMode="numeric"
             value={actualCost}
-            onChange={(e) => setActualCost(e.target.value)}
-            placeholder="예: 180000"
+            onChange={(e) =>
+              setActualCost(e.target.value)
+            }
+            placeholder="예: 300000"
             style={{
               width: "100%",
               padding: "15px",
@@ -266,7 +361,9 @@ export default function AdminPage() {
           <input
             type="text"
             value={material}
-            onChange={(e) => setMaterial(e.target.value)}
+            onChange={(e) =>
+              setMaterial(e.target.value)
+            }
             placeholder="예: 현대L&C GS115"
             style={{
               width: "100%",
@@ -292,8 +389,10 @@ export default function AdminPage() {
 
           <textarea
             value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            placeholder="예: 방문 1짝 + 문틀 포함, 기존 시트지 제거"
+            onChange={(e) =>
+              setMemo(e.target.value)
+            }
+            placeholder="예: 중문 유리 간살 2연동"
             rows={5}
             style={{
               width: "100%",
@@ -320,11 +419,15 @@ export default function AdminPage() {
             color: "white",
             fontSize: "20px",
             fontWeight: "bold",
-            cursor: loading ? "default" : "pointer",
+            cursor: loading
+              ? "default"
+              : "pointer",
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? "저장 중..." : "과거 시공 데이터 저장"}
+          {loading
+            ? "AI 분석 및 저장 중..."
+            : "과거 시공 데이터 저장"}
         </button>
 
         {message && (
@@ -343,4 +446,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-          }
+}
