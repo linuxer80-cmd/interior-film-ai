@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function AdminPage() {
@@ -12,8 +12,75 @@ export default function AdminPage() {
   const [material, setMaterial] = useState("");
   const [memo, setMemo] = useState("");
 
+  const [similarityThreshold, setSimilarityThreshold] =
+    useState(0.65);
+
+  const [settingMessage, setSettingMessage] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [settingLoading, setSettingLoading] = useState(false);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  async function loadSettings() {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("similarity_threshold")
+      .eq("id", 1)
+      .single();
+
+    if (error) {
+      console.error(error);
+      setSettingMessage(
+        "⚠️ 현재 유사도 설정을 불러오지 못했습니다."
+      );
+      return;
+    }
+
+    if (data?.similarity_threshold != null) {
+      setSimilarityThreshold(
+        Number(data.similarity_threshold)
+      );
+    }
+  }
+
+  async function saveSimilaritySetting() {
+    setSettingLoading(true);
+    setSettingMessage("저장 중...");
+
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .update({
+          similarity_threshold: similarityThreshold,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", 1);
+
+      if (error) {
+        throw error;
+      }
+
+      setSettingMessage(
+        `✅ 유사도 기준을 ${Math.round(
+          similarityThreshold * 100
+        )}%로 저장했습니다.`
+      );
+    } catch (error) {
+      console.error(error);
+
+      setSettingMessage(
+        `❌ 오류: ${
+          error?.message ||
+          "유사도 기준 저장에 실패했습니다."
+        }`
+      );
+    } finally {
+      setSettingLoading(false);
+    }
+  }
 
   async function resizeImage(file) {
     return new Promise((resolve, reject) => {
@@ -41,7 +108,8 @@ export default function AdminPage() {
             }
           }
 
-          const canvas = document.createElement("canvas");
+          const canvas =
+            document.createElement("canvas");
 
           canvas.width = width;
           canvas.height = height;
@@ -50,11 +118,9 @@ export default function AdminPage() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-
             reject(
               new Error("이미지 처리에 실패했습니다.")
             );
-
             return;
           }
 
@@ -76,7 +142,6 @@ export default function AdminPage() {
                     "AI 분석용 이미지 변환에 실패했습니다."
                   )
                 );
-
                 return;
               }
 
@@ -101,7 +166,6 @@ export default function AdminPage() {
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-
         reject(
           new Error("사진을 불러올 수 없습니다.")
         );
@@ -130,10 +194,7 @@ export default function AdminPage() {
 
     const formData = new FormData();
 
-    formData.append(
-      "image",
-      resizedImage
-    );
+    formData.append("image", resizedImage);
 
     const response = await fetch(
       "/api/analyze",
@@ -340,16 +401,10 @@ export default function AdminPage() {
     }
 
     const costNumber = Number(
-      String(actualCost).replace(
-        /,/g,
-        ""
-      )
+      String(actualCost).replace(/,/g, "")
     );
 
-    if (
-      !costNumber ||
-      costNumber <= 0
-    ) {
+    if (!costNumber || costNumber <= 0) {
       setMessage(
         "실제 시공금액을 입력해주세요."
       );
@@ -366,9 +421,6 @@ export default function AdminPage() {
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      /*
-        하나의 실제 시공건 생성
-      */
       const {
         data: workItemData,
         error: workItemError,
@@ -377,12 +429,9 @@ export default function AdminPage() {
         .insert([
           {
             project_id: projectId,
-            category:
-              category.trim(),
-            sub_category:
-              category.trim(),
-            actual_cost:
-              costNumber,
+            category: category.trim(),
+            sub_category: category.trim(),
+            actual_cost: costNumber,
             memo:
               memo.trim() || null,
           },
@@ -397,9 +446,6 @@ export default function AdminPage() {
       const workItemId =
         workItemData.id;
 
-      /*
-        시공 전 사진
-      */
       for (
         let i = 0;
         i < beforeImages.length;
@@ -408,17 +454,13 @@ export default function AdminPage() {
         await savePhoto({
           image: beforeImages[i],
           index: i,
-          total:
-            beforeImages.length,
+          total: beforeImages.length,
           photoType: "before",
           workItemId,
           projectId,
         });
       }
 
-      /*
-        시공 후 사진
-      */
       for (
         let i = 0;
         i < afterImages.length;
@@ -427,8 +469,7 @@ export default function AdminPage() {
         await savePhoto({
           image: afterImages[i],
           index: i,
-          total:
-            afterImages.length,
+          total: afterImages.length,
           photoType: "after",
           workItemId,
           projectId,
@@ -459,9 +500,7 @@ export default function AdminPage() {
     }
   }
 
-  function FileList({
-    files,
-  }) {
+  function FileList({ files }) {
     if (files.length === 0) {
       return null;
     }
@@ -471,22 +510,19 @@ export default function AdminPage() {
         style={{
           marginTop: "12px",
           padding: "12px",
-          background:
-            "#f3f4f6",
+          background: "#f3f4f6",
           borderRadius: "10px",
           lineHeight: "1.7",
         }}
       >
-        선택한 사진:{" "}
-        {files.length}장
+        선택한 사진: {files.length}장
 
         {files.map(
           (file, index) => (
             <div
               key={`${file.name}-${index}`}
             >
-              {index + 1}.{" "}
-              {file.name}
+              {index + 1}. {file.name}
             </div>
           )
         )}
@@ -498,8 +534,7 @@ export default function AdminPage() {
     width: "100%",
     padding: "15px",
     fontSize: "17px",
-    border:
-      "1px solid #ccc",
+    border: "1px solid #ccc",
     borderRadius: "10px",
     boxSizing: "border-box",
   };
@@ -515,25 +550,18 @@ export default function AdminPage() {
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding:
-          "30px 20px 60px",
-        fontFamily:
-          "Arial, sans-serif",
+        padding: "30px 20px 60px",
+        fontFamily: "Arial, sans-serif",
       }}
     >
       <div
         style={{
-          display:
-            "inline-block",
-          background:
-            "#111827",
+          display: "inline-block",
+          background: "#111827",
           color: "white",
-          padding:
-            "8px 14px",
-          borderRadius:
-            "20px",
-          marginBottom:
-            "20px",
+          padding: "8px 14px",
+          borderRadius: "20px",
+          marginBottom: "20px",
         }}
       >
         기분좋은공간
@@ -541,6 +569,133 @@ export default function AdminPage() {
 
       <h1
         style={{
+          fontSize: "34px",
+          lineHeight: "1.3",
+        }}
+      >
+        관리자 설정
+      </h1>
+
+      {/* 유사도 설정 */}
+
+      <section
+        style={{
+          marginTop: "25px",
+          padding: "25px",
+          border: "2px solid #111827",
+          borderRadius: "20px",
+        }}
+      >
+        <h2>
+          AI 유사도 기준
+        </h2>
+
+        <p
+          style={{
+            color: "#666",
+            lineHeight: "1.6",
+          }}
+        >
+          이 기준보다 유사도가 낮은 과거
+          시공사례는 견적에서 제외합니다.
+        </p>
+
+        <label style={labelStyle}>
+          최소 유사도
+        </label>
+
+        <select
+          value={similarityThreshold}
+          onChange={(e) =>
+            setSimilarityThreshold(
+              Number(e.target.value)
+            )
+          }
+          style={inputStyle}
+        >
+          <option value={0.5}>
+            50%
+          </option>
+
+          <option value={0.55}>
+            55%
+          </option>
+
+          <option value={0.6}>
+            60%
+          </option>
+
+          <option value={0.65}>
+            65%
+          </option>
+
+          <option value={0.7}>
+            70%
+          </option>
+
+          <option value={0.75}>
+            75%
+          </option>
+        </select>
+
+        <div
+          style={{
+            marginTop: "15px",
+            fontSize: "18px",
+            fontWeight: "bold",
+          }}
+        >
+          현재 선택:{" "}
+          {Math.round(
+            similarityThreshold * 100
+          )}
+          %
+        </div>
+
+        <button
+          type="button"
+          onClick={
+            saveSimilaritySetting
+          }
+          disabled={settingLoading}
+          style={{
+            width: "100%",
+            marginTop: "20px",
+            padding: "17px",
+            border: "none",
+            borderRadius: "12px",
+            background: "#111827",
+            color: "white",
+            fontSize: "18px",
+            fontWeight: "bold",
+            opacity:
+              settingLoading
+                ? 0.7
+                : 1,
+          }}
+        >
+          {settingLoading
+            ? "저장 중..."
+            : "유사도 기준 저장"}
+        </button>
+
+        {settingMessage && (
+          <div
+            style={{
+              marginTop: "15px",
+              padding: "12px",
+              background: "#f3f4f6",
+              borderRadius: "10px",
+            }}
+          >
+            {settingMessage}
+          </div>
+        )}
+      </section>
+
+      <h1
+        style={{
+          marginTop: "45px",
           fontSize: "34px",
           lineHeight: "1.3",
         }}
@@ -555,41 +710,30 @@ export default function AdminPage() {
           lineHeight: "1.7",
         }}
       >
-        시공 전 사진과 시공 후
-        사진을 구분해서 등록합니다.
+        시공 전 사진과 시공 후 사진을
+        구분해서 등록합니다.
         <br />
-        모든 사진은 같은 실제
-        시공건과 연결됩니다.
+        모든 사진은 같은 실제 시공건과
+        연결됩니다.
       </p>
 
       <section
         style={{
           marginTop: "30px",
           padding: "25px",
-          border:
-            "1px solid #ddd",
-          borderRadius:
-            "20px",
+          border: "1px solid #ddd",
+          borderRadius: "20px",
         }}
       >
-        {/* 시공 전 */}
-
         <div
           style={{
-            marginBottom:
-              "30px",
+            marginBottom: "30px",
             padding: "20px",
-            background:
-              "#f9fafb",
-            borderRadius:
-              "15px",
+            background: "#f9fafb",
+            borderRadius: "15px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             📷 시공 전 사진
           </label>
 
@@ -599,8 +743,7 @@ export default function AdminPage() {
               fontSize: "14px",
             }}
           >
-            고객 견적사진과
-            비교할 때 주로
+            고객 견적사진과 비교할 때
             사용됩니다.
           </p>
 
@@ -611,38 +754,26 @@ export default function AdminPage() {
             onChange={(e) =>
               setBeforeImages(
                 Array.from(
-                  e.target
-                    .files || []
+                  e.target.files || []
                 )
               )
             }
           />
 
           <FileList
-            files={
-              beforeImages
-            }
+            files={beforeImages}
           />
         </div>
 
-        {/* 시공 후 */}
-
         <div
           style={{
-            marginBottom:
-              "30px",
+            marginBottom: "30px",
             padding: "20px",
-            background:
-              "#f9fafb",
-            borderRadius:
-              "15px",
+            background: "#f9fafb",
+            borderRadius: "15px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             ✨ 시공 후 사진
           </label>
 
@@ -652,8 +783,7 @@ export default function AdminPage() {
               fontSize: "14px",
             }}
           >
-            완성 사례와
-            포트폴리오용으로
+            완료 사례와 포트폴리오에
             활용할 수 있습니다.
           </p>
 
@@ -664,31 +794,23 @@ export default function AdminPage() {
             onChange={(e) =>
               setAfterImages(
                 Array.from(
-                  e.target
-                    .files || []
+                  e.target.files || []
                 )
               )
             }
           />
 
           <FileList
-            files={
-              afterImages
-            }
+            files={afterImages}
           />
         </div>
 
         <div
           style={{
-            marginBottom:
-              "25px",
+            marginBottom: "25px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             시공 부위
           </label>
 
@@ -701,23 +823,16 @@ export default function AdminPage() {
               )
             }
             placeholder="예: 싱크대, 중문, 방문, 방화문"
-            style={
-              inputStyle
-            }
+            style={inputStyle}
           />
         </div>
 
         <div
           style={{
-            marginBottom:
-              "25px",
+            marginBottom: "25px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             실제 시공금액
           </label>
 
@@ -731,23 +846,16 @@ export default function AdminPage() {
               )
             }
             placeholder="예: 550000"
-            style={
-              inputStyle
-            }
+            style={inputStyle}
           />
         </div>
 
         <div
           style={{
-            marginBottom:
-              "25px",
+            marginBottom: "25px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             사용 자재
           </label>
 
@@ -760,23 +868,16 @@ export default function AdminPage() {
               )
             }
             placeholder="예: 현대L&C GS115"
-            style={
-              inputStyle
-            }
+            style={inputStyle}
           />
         </div>
 
         <div
           style={{
-            marginBottom:
-              "25px",
+            marginBottom: "25px",
           }}
         >
-          <label
-            style={
-              labelStyle
-            }
-          >
+          <label style={labelStyle}>
             메모
           </label>
 
@@ -791,33 +892,26 @@ export default function AdminPage() {
             rows={5}
             style={{
               ...inputStyle,
-              resize:
-                "vertical",
+              resize: "vertical",
             }}
           />
         </div>
 
         <button
           type="button"
-          onClick={
-            handleSave
-          }
+          onClick={handleSave}
           disabled={loading}
           style={{
             width: "100%",
             padding: "20px",
             border: "none",
-            borderRadius:
-              "14px",
-            background:
-              "#111827",
+            borderRadius: "14px",
+            background: "#111827",
             color: "white",
             fontSize: "20px",
-            fontWeight:
-              "bold",
-            opacity: loading
-              ? 0.7
-              : 1,
+            fontWeight: "bold",
+            opacity:
+              loading ? 0.7 : 1,
           }}
         >
           {loading
@@ -828,15 +922,11 @@ export default function AdminPage() {
         {message && (
           <div
             style={{
-              marginTop:
-                "20px",
+              marginTop: "20px",
               padding: "15px",
-              background:
-                "#f3f4f6",
-              borderRadius:
-                "12px",
-              lineHeight:
-                "1.6",
+              background: "#f3f4f6",
+              borderRadius: "12px",
+              lineHeight: "1.6",
             }}
           >
             {message}
@@ -845,4 +935,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-    }
+      }
