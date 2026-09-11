@@ -14,14 +14,7 @@ export default function Home() {
     setPreviews(urls);
   }
 
-  function handleAnalyze() {
-    if (images.length === 0) {
-      alert("먼저 시공 사진을 선택해주세요.");
-      return;
-    }
-
-    alert("사진 분석 기능을 연결할 준비가 완료되었습니다.");
-  }
+ 
 
   return (
     <main
