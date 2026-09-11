@@ -4,7 +4,7 @@ import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function AdminPage() {
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]);
   const [category, setCategory] = useState("");
   const [actualCost, setActualCost] = useState("");
   const [material, setMaterial] = useState("");
@@ -59,15 +59,11 @@ export default function AdminPage() {
                 return;
               }
 
-              const resizedFile = new File(
-                [blob],
-                "ai-analysis.jpg",
-                {
+              resolve(
+                new File([blob], "ai-analysis.jpg", {
                   type: "image/jpeg",
-                }
+                })
               );
-
-              resolve(resizedFile);
             },
             "image/jpeg",
             0.8
@@ -101,9 +97,63 @@ export default function AdminPage() {
     }
   }
 
+  async function analyzeImage(file) {
+    const resizedImage = await resizeImage(file);
+
+    const analyzeFormData = new FormData();
+    analyzeFormData.append("image", resizedImage);
+
+    const analyzeResponse = await fetch("/api/analyze", {
+      method: "POST",
+      body: analyzeFormData,
+    });
+
+    const analyzeResult =
+      await readJsonSafely(analyzeResponse);
+
+    if (!analyzeResponse.ok) {
+      throw new Error(
+        analyzeResult?.error ||
+          "AI 사진 분석에 실패했습니다."
+      );
+    }
+
+    return analyzeResult.analysis;
+  }
+
+  async function createEmbedding(searchText) {
+    const embeddingResponse = await fetch(
+      "/api/embedding",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: searchText,
+        }),
+      }
+    );
+
+    const embeddingResult =
+      await readJsonSafely(embeddingResponse);
+
+    if (
+      !embeddingResponse.ok ||
+      !embeddingResult?.embedding
+    ) {
+      throw new Error(
+        embeddingResult?.error ||
+          "임베딩 생성에 실패했습니다."
+      );
+    }
+
+    return embeddingResult.embedding;
+  }
+
   async function handleSave() {
-    if (!image) {
-      setMessage("사진을 선택해주세요.");
+    if (images.length === 0) {
+      setMessage("사진을 1장 이상 선택해주세요.");
       return;
     }
 
@@ -122,146 +172,13 @@ export default function AdminPage() {
     }
 
     setLoading(true);
-    setMessage("AI 분석용 사진을 준비하고 있습니다...");
+    setMessage("시공정보를 먼저 저장하고 있습니다...");
 
     try {
-      // 1. AI 분석용 사진 자동 축소
-      const resizedImage = await resizeImage(image);
-
-      // 2. 사진 AI 분석
-      setMessage("사진을 AI가 분석하고 있습니다...");
-
-      let aiAnalysis = {
-        category: category.trim(),
-        sub_category: category.trim(),
-        description: memo.trim(),
-        tags: [],
-      };
-
-      const analyzeFormData = new FormData();
-      analyzeFormData.append("image", resizedImage);
-
-      const analyzeResponse = await fetch("/api/analyze", {
-        method: "POST",
-        body: analyzeFormData,
-      });
-
-      const analyzeResult =
-        await readJsonSafely(analyzeResponse);
-
-      if (!analyzeResponse.ok) {
-        throw new Error(
-          analyzeResult?.error ||
-            "AI 사진 분석에 실패했습니다."
-        );
-      }
-
-      if (
-        analyzeResult.success &&
-        analyzeResult.analysis
-      ) {
-        aiAnalysis = analyzeResult.analysis;
-      }
-
-      // 3. 태그 정리
-      let tags = [];
-
-      if (Array.isArray(aiAnalysis?.tags)) {
-        tags = [...aiAnalysis.tags];
-      }
-
-      if (material.trim()) {
-        tags.push(material.trim());
-      }
-
-      tags = [...new Set(tags)];
-
-      // 4. 임베딩 검색용 문장 생성
-      const searchText = [
-        `시공 부위: ${category.trim()}`,
-        `세부 부위: ${
-          aiAnalysis?.sub_category ||
-          category.trim()
-        }`,
-        `사진 설명: ${
-          aiAnalysis?.description ||
-          memo.trim() ||
-          ""
-        }`,
-        `특징: ${tags.join(", ")}`,
-        material.trim()
-          ? `사용 자재: ${material.trim()}`
-          : "",
-        memo.trim()
-          ? `시공 메모: ${memo.trim()}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      // 5. 임베딩 생성
-      setMessage(
-        "유사 시공사례 검색용 데이터를 만들고 있습니다..."
-      );
-
-      const embeddingResponse = await fetch(
-        "/api/embedding",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: searchText,
-          }),
-        }
-      );
-
-      const embeddingResult =
-        await readJsonSafely(embeddingResponse);
-
-      if (
-        !embeddingResponse.ok ||
-        !embeddingResult.success ||
-        !embeddingResult.embedding
-      ) {
-        throw new Error(
-          embeddingResult?.error ||
-            "임베딩 생성에 실패했습니다."
-        );
-      }
-
-      const embedding = embeddingResult.embedding;
-
-      // 6. 원본 사진 Storage 저장
-      setMessage(
-        "원본 사진과 시공정보를 저장하고 있습니다..."
-      );
-
-      const extension =
-        image.name.split(".").pop()?.toLowerCase() ||
-        "jpg";
-
-      const filePath =
-        `history/${Date.now()}.${extension}`;
-
-      const { error: uploadError } =
-        await supabase.storage
-          .from("work-photos")
-          .upload(filePath, image, {
-            cacheControl: "3600",
-            upsert: false,
-          });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      // 현재 개발용 프로젝트 ID
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      // 7. 실제 시공금액 저장
+      // 1. work_items는 시공건당 1건만 생성
       const {
         data: workItemData,
         error: workItemError,
@@ -271,9 +188,7 @@ export default function AdminPage() {
           {
             project_id: projectId,
             category: category.trim(),
-            sub_category:
-              aiAnalysis?.sub_category ||
-              category.trim(),
+            sub_category: category.trim(),
             actual_cost: costNumber,
             memo: memo.trim() || null,
           },
@@ -285,45 +200,118 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      // 8. 사진 URL 생성
-      const { data: publicUrlData } =
-        supabase.storage
-          .from("work-photos")
-          .getPublicUrl(filePath);
+      const workItemId = workItemData.id;
 
-      // 9. 사진 + AI 데이터 + 임베딩 저장
-      const { error: photoError } =
-        await supabase
-          .from("work_photos")
-          .insert([
-            {
-              project_id: projectId,
-              work_item_id: workItemData.id,
-              storage_path: filePath,
-              photo_url: publicUrlData.publicUrl,
-              photo_type: "history",
-              category: category.trim(),
-              sub_category:
-                aiAnalysis?.sub_category ||
-                category.trim(),
-              ai_description:
-                aiAnalysis?.description ||
-                memo.trim() ||
-                "",
-              ai_tags: tags,
-              embedding: embedding,
-            },
-          ]);
+      // 2. 선택한 사진을 한 장씩 처리
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
 
-      if (photoError) {
-        throw photoError;
+        setMessage(
+          `사진 ${i + 1}/${images.length} AI 분석 중...`
+        );
+
+        const aiAnalysis = await analyzeImage(image);
+
+        let tags = [];
+
+        if (Array.isArray(aiAnalysis?.tags)) {
+          tags = [...aiAnalysis.tags];
+        }
+
+        if (material.trim()) {
+          tags.push(material.trim());
+        }
+
+        tags = [...new Set(tags)];
+
+        const searchText = [
+          `시공 부위: ${category.trim()}`,
+          `세부 부위: ${
+            aiAnalysis?.sub_category ||
+            category.trim()
+          }`,
+          `사진 설명: ${
+            aiAnalysis?.description || ""
+          }`,
+          `특징: ${tags.join(", ")}`,
+          material.trim()
+            ? `사용 자재: ${material.trim()}`
+            : "",
+          memo.trim()
+            ? `시공 메모: ${memo.trim()}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        setMessage(
+          `사진 ${i + 1}/${images.length} 검색 데이터 생성 중...`
+        );
+
+        const embedding =
+          await createEmbedding(searchText);
+
+        const extension =
+          image.name
+            .split(".")
+            .pop()
+            ?.toLowerCase() || "jpg";
+
+        const filePath =
+          `history/${workItemId}/${Date.now()}-${i}.${extension}`;
+
+        setMessage(
+          `사진 ${i + 1}/${images.length} 원본 저장 중...`
+        );
+
+        const { error: uploadError } =
+          await supabase.storage
+            .from("work-photos")
+            .upload(filePath, image, {
+              cacheControl: "3600",
+              upsert: false,
+            });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: publicUrlData } =
+          supabase.storage
+            .from("work-photos")
+            .getPublicUrl(filePath);
+
+        const { error: photoError } =
+          await supabase
+            .from("work_photos")
+            .insert([
+              {
+                project_id: projectId,
+                work_item_id: workItemId,
+                storage_path: filePath,
+                photo_url: publicUrlData.publicUrl,
+                photo_type: "history",
+                category: category.trim(),
+                sub_category:
+                  aiAnalysis?.sub_category ||
+                  category.trim(),
+                ai_description:
+                  aiAnalysis?.description || "",
+                ai_tags: tags,
+                embedding: embedding,
+              },
+            ]);
+
+        if (photoError) {
+          throw photoError;
+        }
       }
 
       setMessage(
-        `✅ 저장 완료! AI 분석 + 검색용 임베딩 ${embedding.length}차원까지 저장되었습니다.`
+        `✅ 저장 완료! 사진 ${images.length}장이 같은 시공건으로 연결되었습니다.`
       );
 
-      setImage(null);
+      setImages([]);
       setCategory("");
       setActualCost("");
       setMaterial("");
@@ -380,9 +368,9 @@ export default function AdminPage() {
           lineHeight: "1.7",
         }}
       >
-        과거 시공사진과 실제 시공금액을 등록합니다.
+        같은 시공건의 사진을 여러 장 선택할 수 있습니다.
         <br />
-        AI 분석용 사진은 자동으로 축소해서 처리합니다.
+        모든 사진은 같은 실제 시공금액과 연결됩니다.
       </p>
 
       <section
@@ -401,27 +389,37 @@ export default function AdminPage() {
               marginBottom: "10px",
             }}
           >
-            시공 사진
+            시공 사진 여러 장
           </label>
 
           <input
             type="file"
             accept="image/*"
+            multiple
             onChange={(e) =>
-              setImage(e.target.files?.[0] || null)
+              setImages(
+                Array.from(e.target.files || [])
+              )
             }
           />
 
-          {image && (
+          {images.length > 0 && (
             <div
               style={{
                 marginTop: "12px",
                 padding: "12px",
                 background: "#f3f4f6",
                 borderRadius: "10px",
+                lineHeight: "1.7",
               }}
             >
-              ✓ {image.name}
+              선택한 사진: {images.length}장
+              <br />
+              {images.map((file, index) => (
+                <div key={`${file.name}-${index}`}>
+                  {index + 1}. {file.name}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -443,7 +441,7 @@ export default function AdminPage() {
             onChange={(e) =>
               setCategory(e.target.value)
             }
-            placeholder="예: 방화문, 중문, 문·문틀, 싱크대"
+            placeholder="예: 싱크대, 중문, 방화문"
             style={{
               width: "100%",
               padding: "15px",
@@ -473,7 +471,7 @@ export default function AdminPage() {
             onChange={(e) =>
               setActualCost(e.target.value)
             }
-            placeholder="예: 300000"
+            placeholder="예: 550000"
             style={{
               width: "100%",
               padding: "15px",
@@ -530,7 +528,7 @@ export default function AdminPage() {
             onChange={(e) =>
               setMemo(e.target.value)
             }
-            placeholder="예: 현관 방화문 + 문틀 전체 시공"
+            placeholder="예: 싱크대 상하부장 + 냉장고장 전체"
             rows={5}
             style={{
               width: "100%",
@@ -581,4 +579,4 @@ export default function AdminPage() {
       </section>
     </main>
   );
-           }
+                }
