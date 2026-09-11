@@ -25,15 +25,21 @@ export default function Home() {
 
           if (width > maxSize || height > maxSize) {
             if (width >= height) {
-              height = Math.round((height * maxSize) / width);
+              height = Math.round(
+                (height * maxSize) / width
+              );
               width = maxSize;
             } else {
-              width = Math.round((width * maxSize) / height);
+              width = Math.round(
+                (width * maxSize) / height
+              );
               height = maxSize;
             }
           }
 
-          const canvas = document.createElement("canvas");
+          const canvas =
+            document.createElement("canvas");
+
           canvas.width = width;
           canvas.height = height;
 
@@ -41,11 +47,19 @@ export default function Home() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-            reject(new Error("이미지 처리에 실패했습니다."));
+            reject(
+              new Error("이미지 처리에 실패했습니다.")
+            );
             return;
           }
 
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(
+            img,
+            0,
+            0,
+            width,
+            height
+          );
 
           canvas.toBlob(
             (blob) => {
@@ -53,15 +67,21 @@ export default function Home() {
 
               if (!blob) {
                 reject(
-                  new Error("AI 분석용 이미지 변환에 실패했습니다.")
+                  new Error(
+                    "AI 분석용 이미지 변환에 실패했습니다."
+                  )
                 );
                 return;
               }
 
               resolve(
-                new File([blob], "customer-analysis.jpg", {
-                  type: "image/jpeg",
-                })
+                new File(
+                  [blob],
+                  "customer-analysis.jpg",
+                  {
+                    type: "image/jpeg",
+                  }
+                )
               );
             },
             "image/jpeg",
@@ -75,7 +95,11 @@ export default function Home() {
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error("사진을 불러올 수 없습니다."));
+        reject(
+          new Error(
+            "사진을 불러올 수 없습니다."
+          )
+        );
       };
 
       img.src = objectUrl;
@@ -90,7 +114,10 @@ export default function Home() {
     } catch {
       throw new Error(
         text
-          ? `서버 응답 오류: ${text.slice(0, 200)}`
+          ? `서버 응답 오류: ${text.slice(
+              0,
+              200
+            )}`
           : "서버에서 올바른 응답을 받지 못했습니다."
       );
     }
@@ -103,77 +130,102 @@ export default function Home() {
     }
 
     setLoading(true);
-    setMessage("사진을 준비하고 있습니다...");
+    setMessage(
+      "사진을 준비하고 있습니다..."
+    );
     setAnalysis(null);
     setSimilarItems([]);
     setEstimate(null);
 
     try {
-      // 1. AI 분석용 이미지 축소
-      const resizedImage = await resizeImage(image);
+      const resizedImage =
+        await resizeImage(image);
 
-      // 2. 사진 AI 분석
-      setMessage("AI가 시공 부위를 분석하고 있습니다...");
+      setMessage(
+        "AI가 시공 부위를 분석하고 있습니다..."
+      );
 
-      const analyzeFormData = new FormData();
-      analyzeFormData.append("image", resizedImage);
+      const analyzeFormData =
+        new FormData();
 
-      const analyzeResponse = await fetch("/api/analyze", {
-        method: "POST",
-        body: analyzeFormData,
-      });
+      analyzeFormData.append(
+        "image",
+        resizedImage
+      );
+
+      const analyzeResponse =
+        await fetch("/api/analyze", {
+          method: "POST",
+          body: analyzeFormData,
+        });
 
       const analyzeResult =
-        await readJsonSafely(analyzeResponse);
+        await readJsonSafely(
+          analyzeResponse
+        );
 
       if (!analyzeResponse.ok) {
         throw new Error(
-          analyzeResult?.error || "AI 사진 분석에 실패했습니다."
+          analyzeResult?.error ||
+            "AI 사진 분석에 실패했습니다."
         );
       }
 
       if (!analyzeResult?.analysis) {
-        throw new Error("AI 분석 결과가 없습니다.");
+        throw new Error(
+          "AI 분석 결과가 없습니다."
+        );
       }
 
-      const aiAnalysis = analyzeResult.analysis;
+      const aiAnalysis =
+        analyzeResult.analysis;
 
       setAnalysis(aiAnalysis);
 
-      // 3. 검색용 문장 생성
-      const tags = Array.isArray(aiAnalysis?.tags)
+      const tags = Array.isArray(
+        aiAnalysis?.tags
+      )
         ? aiAnalysis.tags
         : [];
 
       const searchText = [
-        `시공 부위: ${aiAnalysis?.category || ""}`,
-        `세부 부위: ${aiAnalysis?.sub_category || ""}`,
-        `사진 설명: ${aiAnalysis?.description || ""}`,
+        `시공 부위: ${
+          aiAnalysis?.category || ""
+        }`,
+        `세부 부위: ${
+          aiAnalysis?.sub_category || ""
+        }`,
+        `사진 설명: ${
+          aiAnalysis?.description || ""
+        }`,
         `특징: ${tags.join(", ")}`,
       ]
         .filter(Boolean)
         .join("\n");
 
-      // 4. 고객사진 검색용 임베딩 생성
       setMessage(
         "과거 시공사례와 비교할 검색 데이터를 만들고 있습니다..."
       );
 
-      const embeddingResponse = await fetch(
-        "/api/embedding",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: searchText,
-          }),
-        }
-      );
+      const embeddingResponse =
+        await fetch(
+          "/api/embedding",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              text: searchText,
+            }),
+          }
+        );
 
       const embeddingResult =
-        await readJsonSafely(embeddingResponse);
+        await readJsonSafely(
+          embeddingResponse
+        );
 
       if (
         !embeddingResponse.ok ||
@@ -185,14 +237,18 @@ export default function Home() {
         );
       }
 
-      const embedding = embeddingResult.embedding;
+      const embedding =
+        embeddingResult.embedding;
 
-      // 5. 고객 원본 사진 Storage 저장
-      setMessage("고객 사진을 저장하고 있습니다...");
+      setMessage(
+        "고객 사진을 저장하고 있습니다..."
+      );
 
       const extension =
-        image.name.split(".").pop()?.toLowerCase() ||
-        "jpg";
+        image.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() || "jpg";
 
       const filePath =
         `customer/${Date.now()}.${extension}`;
@@ -200,10 +256,14 @@ export default function Home() {
       const { error: uploadError } =
         await supabase.storage
           .from("work-photos")
-          .upload(filePath, image, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+          .upload(
+            filePath,
+            image,
+            {
+              cacheControl: "3600",
+              upsert: false,
+            }
+          );
 
       if (uploadError) {
         throw uploadError;
@@ -214,40 +274,49 @@ export default function Home() {
           .from("work-photos")
           .getPublicUrl(filePath);
 
-      // 6. 고객사진 분석 결과도 DB 저장
-      const { error: customerPhotoError } =
-        await supabase
-          .from("work_photos")
-          .insert([
-            {
-              photo_url: publicUrlData.publicUrl,
-              storage_path: filePath,
-              photo_type: "customer",
-              category: aiAnalysis?.category || null,
-              sub_category:
-                aiAnalysis?.sub_category || null,
-              ai_description:
-                aiAnalysis?.description || "",
-              ai_tags: tags,
-              embedding: embedding,
-            },
-          ]);
+      const {
+        error: customerPhotoError,
+      } = await supabase
+        .from("work_photos")
+        .insert([
+          {
+            photo_url:
+              publicUrlData.publicUrl,
+            storage_path: filePath,
+            photo_type: "customer",
+            category:
+              aiAnalysis?.category ||
+              null,
+            sub_category:
+              aiAnalysis?.sub_category ||
+              null,
+            ai_description:
+              aiAnalysis?.description ||
+              "",
+            ai_tags: tags,
+            embedding: embedding,
+          },
+        ]);
 
       if (customerPhotoError) {
         throw customerPhotoError;
       }
 
-      // 7. 벡터 유사도 검색
       setMessage(
         "가장 비슷한 과거 시공사진을 찾고 있습니다..."
       );
 
-      const { data: matchedPhotos, error: matchError } =
-        await supabase.rpc("match_work_photos", {
+      const {
+        data: matchedPhotos,
+        error: matchError,
+      } = await supabase.rpc(
+        "match_work_photos",
+        {
           query_embedding: embedding,
           match_threshold: 0,
-          match_count: 5,
-        });
+          match_count: 20,
+        }
+      );
 
       if (matchError) {
         throw new Error(
@@ -255,23 +324,59 @@ export default function Home() {
         );
       }
 
-      const historyMatches = (matchedPhotos || []).filter(
-        (item) =>
-          !item.photo_type ||
-          item.photo_type === "history" ||
-          item.photo_type === "before"
-      );
+      const historyMatches =
+        (matchedPhotos || []).filter(
+          (item) =>
+            !item.photo_type ||
+            item.photo_type ===
+              "history" ||
+            item.photo_type === "before"
+        );
 
-      // 8. 연결된 실제 시공금액 가져오기
-      const workItemIds = [
-        ...new Set(
-          historyMatches
-            .map((item) => item.work_item_id)
-            .filter(Boolean)
-        ),
-      ];
+      /*
+        같은 시공건 사진이 여러 장인 경우
+        가장 유사도가 높은 사진 1장만 사용
+      */
+      const bestMatchByWorkItem =
+        new Map();
 
-      if (workItemIds.length === 0) {
+      for (const photo of historyMatches) {
+        if (!photo.work_item_id) {
+          continue;
+        }
+
+        const existing =
+          bestMatchByWorkItem.get(
+            photo.work_item_id
+          );
+
+        if (
+          !existing ||
+          Number(photo.similarity || 0) >
+            Number(
+              existing.similarity || 0
+            )
+        ) {
+          bestMatchByWorkItem.set(
+            photo.work_item_id,
+            photo
+          );
+        }
+      }
+
+      const uniqueMatches =
+        Array.from(
+          bestMatchByWorkItem.values()
+        );
+
+      const workItemIds =
+        uniqueMatches.map(
+          (item) => item.work_item_id
+        );
+
+      if (
+        workItemIds.length === 0
+      ) {
         setSimilarItems([]);
         setEstimate(null);
         setMessage(
@@ -280,48 +385,70 @@ export default function Home() {
         return;
       }
 
-      const { data: workItems, error: workItemsError } =
-        await supabase
-          .from("work_items")
-          .select(
-            "id, category, sub_category, actual_cost, memo"
-          )
-          .in("id", workItemIds)
-          .not("actual_cost", "is", null)
-          .gt("actual_cost", 0);
+      const {
+        data: workItems,
+        error: workItemsError,
+      } = await supabase
+        .from("work_items")
+        .select(
+          "id, category, sub_category, actual_cost, memo"
+        )
+        .in("id", workItemIds)
+        .not(
+          "actual_cost",
+          "is",
+          null
+        )
+        .gt("actual_cost", 0);
 
       if (workItemsError) {
         throw workItemsError;
       }
 
-      const combined = historyMatches
-        .map((photo) => {
-          const workItem = (workItems || []).find(
-            (item) => item.id === photo.work_item_id
+      const combined =
+        uniqueMatches
+          .map((photo) => {
+            const workItem =
+              (
+                workItems || []
+              ).find(
+                (item) =>
+                  item.id ===
+                  photo.work_item_id
+              );
+
+            if (!workItem) {
+              return null;
+            }
+
+            return {
+              ...photo,
+              actual_cost: Number(
+                workItem.actual_cost
+              ),
+              work_category:
+                workItem.category,
+              work_sub_category:
+                workItem.sub_category,
+              memo: workItem.memo,
+            };
+          })
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              Number(
+                b.similarity || 0
+              ) -
+              Number(
+                a.similarity || 0
+              )
           );
-
-          if (!workItem) {
-            return null;
-          }
-
-          return {
-            ...photo,
-            actual_cost: Number(workItem.actual_cost),
-            work_category: workItem.category,
-            work_sub_category: workItem.sub_category,
-            memo: workItem.memo,
-          };
-        })
-        .filter(Boolean);
 
       setSimilarItems(combined);
 
-      // 9. 실제금액 평균을 이용한 견적
-      const costs = combined
-        .map((item) => Number(item.actual_cost))
-        .filter((cost) => cost > 0);
-
-      if (costs.length === 0) {
+      if (
+        combined.length === 0
+      ) {
         setEstimate(null);
         setMessage(
           "⚠️ 유사사진은 찾았지만 실제 시공금액 데이터가 없습니다."
@@ -329,30 +456,111 @@ export default function Home() {
         return;
       }
 
-      const average =
-        costs.reduce((sum, cost) => sum + cost, 0) /
-        costs.length;
+      /*
+        유사도 가중평균 계산
 
-      const minEstimate = Math.round(
-        (average * 0.9) / 1000
-      ) * 1000;
+        예:
+        95% 유사도 → 가중치 0.95
+        80% 유사도 → 가중치 0.80
 
-      const maxEstimate = Math.round(
-        (average * 1.1) / 1000
-      ) * 1000;
+        따라서 더 비슷한 사례가
+        견적에 더 크게 반영됨
+      */
+      let weightedCostTotal = 0;
+      let weightTotal = 0;
+
+      for (const item of combined) {
+        const cost = Number(
+          item.actual_cost
+        );
+
+        const similarity =
+          Math.max(
+            Number(
+              item.similarity || 0
+            ),
+            0.01
+          );
+
+        if (cost > 0) {
+          weightedCostTotal +=
+            cost * similarity;
+
+          weightTotal +=
+            similarity;
+        }
+      }
+
+      if (weightTotal <= 0) {
+        setEstimate(null);
+        setMessage(
+          "⚠️ 견적 계산에 사용할 데이터가 없습니다."
+        );
+        return;
+      }
+
+      const weightedAverage =
+        weightedCostTotal /
+        weightTotal;
+
+      /*
+        현재는 기본 ±10%
+        데이터가 더 많이 쌓이면
+        실제 가격 분산을 이용해
+        범위를 자동 조정할 예정
+      */
+      const minEstimate =
+        Math.round(
+          (weightedAverage * 0.9) /
+            1000
+        ) * 1000;
+
+      const maxEstimate =
+        Math.round(
+          (weightedAverage * 1.1) /
+            1000
+        ) * 1000;
 
       const averageRounded =
-        Math.round(average / 1000) * 1000;
+        Math.round(
+          weightedAverage / 1000
+        ) * 1000;
+
+      /*
+        간단한 신뢰도 표시
+      */
+      const topSimilarity =
+        combined.length > 0
+          ? Number(
+              combined[0]
+                .similarity || 0
+            )
+          : 0;
+
+      let confidence = "낮음";
+
+      if (
+        combined.length >= 5 &&
+        topSimilarity >= 0.85
+      ) {
+        confidence = "높음";
+      } else if (
+        combined.length >= 2 &&
+        topSimilarity >= 0.75
+      ) {
+        confidence = "보통";
+      }
 
       setEstimate({
         average: averageRounded,
         min: minEstimate,
         max: maxEstimate,
-        count: costs.length,
+        count: combined.length,
+        confidence,
       });
 
       setMessage(
-        `✅ 분석 완료! 과거 시공사례 ${costs.length}건을 기준으로 견적을 계산했습니다.`
+        `✅ 분석 완료! 서로 다른 과거 시공사례 ${combined.length}건을 기준으로 견적을 계산했습니다.`
       );
     } catch (error) {
       console.error(error);
@@ -369,7 +577,9 @@ export default function Home() {
   }
 
   function formatWon(value) {
-    return Number(value || 0).toLocaleString("ko-KR");
+    return Number(
+      value || 0
+    ).toLocaleString("ko-KR");
   }
 
   return (
@@ -377,13 +587,16 @@ export default function Home() {
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding: "30px 20px 60px",
-        fontFamily: "Arial, sans-serif",
+        padding:
+          "30px 20px 60px",
+        fontFamily:
+          "Arial, sans-serif",
       }}
     >
       <div
         style={{
-          display: "inline-block",
+          display:
+            "inline-block",
           background: "#111827",
           color: "white",
           padding: "8px 14px",
@@ -410,16 +623,19 @@ export default function Home() {
           lineHeight: "1.7",
         }}
       >
-        시공할 곳의 사진을 올리면 AI가 분석하고
+        시공할 곳의 사진을 올리면
+        AI가 분석하고
         <br />
-        실제 과거 시공사례와 비교해 예상 견적을 계산합니다.
+        실제 과거 시공사례와 비교해
+        예상 견적을 계산합니다.
       </p>
 
       <section
         style={{
           marginTop: "30px",
           padding: "25px",
-          border: "1px solid #ddd",
+          border:
+            "1px solid #ddd",
           borderRadius: "20px",
         }}
       >
@@ -437,7 +653,10 @@ export default function Home() {
           type="file"
           accept="image/*"
           onChange={(e) =>
-            setImage(e.target.files?.[0] || null)
+            setImage(
+              e.target.files?.[0] ||
+                null
+            )
           }
         />
 
@@ -468,7 +687,9 @@ export default function Home() {
             color: "white",
             fontSize: "20px",
             fontWeight: "bold",
-            opacity: loading ? 0.7 : 1,
+            opacity: loading
+              ? 0.7
+              : 1,
           }}
         >
           {loading
@@ -496,19 +717,24 @@ export default function Home() {
           style={{
             marginTop: "25px",
             padding: "25px",
-            border: "1px solid #ddd",
+            border:
+              "1px solid #ddd",
             borderRadius: "20px",
           }}
         >
           <h2>AI 사진 분석</h2>
 
           <p>
-            <strong>시공 부위:</strong>{" "}
+            <strong>
+              시공 부위:
+            </strong>{" "}
             {analysis.category}
           </p>
 
           <p>
-            <strong>세부 부위:</strong>{" "}
+            <strong>
+              세부 부위:
+            </strong>{" "}
             {analysis.sub_category}
           </p>
 
@@ -517,15 +743,24 @@ export default function Home() {
               lineHeight: "1.7",
             }}
           >
-            <strong>사진 분석:</strong>{" "}
+            <strong>
+              사진 분석:
+            </strong>{" "}
             {analysis.description}
           </p>
 
-          {Array.isArray(analysis.tags) &&
-            analysis.tags.length > 0 && (
+          {Array.isArray(
+            analysis.tags
+          ) &&
+            analysis.tags.length >
+              0 && (
               <p>
-                <strong>특징:</strong>{" "}
-                {analysis.tags.join(", ")}
+                <strong>
+                  특징:
+                </strong>{" "}
+                {analysis.tags.join(
+                  ", "
+                )}
               </p>
             )}
         </section>
@@ -536,11 +771,14 @@ export default function Home() {
           style={{
             marginTop: "25px",
             padding: "25px",
-            border: "2px solid #111827",
+            border:
+              "2px solid #111827",
             borderRadius: "20px",
           }}
         >
-          <h2>예상 시공 견적</h2>
+          <h2>
+            예상 시공 견적
+          </h2>
 
           <div
             style={{
@@ -549,20 +787,38 @@ export default function Home() {
               margin: "20px 0",
             }}
           >
-            {formatWon(estimate.min)}원 ~{" "}
-            {formatWon(estimate.max)}원
+            {formatWon(
+              estimate.min
+            )}
+            원 ~{" "}
+            {formatWon(
+              estimate.max
+            )}
+            원
           </div>
 
           <p>
-            과거 유사 시공 평균금액:{" "}
+            유사도 가중 평균금액:{" "}
             <strong>
-              {formatWon(estimate.average)}원
+              {formatWon(
+                estimate.average
+              )}
+              원
             </strong>
           </p>
 
           <p>
-            비교한 실제 시공 데이터:{" "}
-            <strong>{estimate.count}건</strong>
+            비교한 실제 시공건:{" "}
+            <strong>
+              {estimate.count}건
+            </strong>
+          </p>
+
+          <p>
+            현재 견적 신뢰도:{" "}
+            <strong>
+              {estimate.confidence}
+            </strong>
           </p>
 
           <p
@@ -571,67 +827,93 @@ export default function Home() {
               lineHeight: "1.6",
             }}
           >
-            현재 예상금액은 유사한 과거 실제 시공금액을
-            기준으로 계산한 참고 견적입니다.
+            유사도가 높은 실제
+            시공사례일수록 견적에
+            더 크게 반영됩니다.
           </p>
         </section>
       )}
 
-      {similarItems.length > 0 && (
+      {similarItems.length >
+        0 && (
         <section
           style={{
             marginTop: "25px",
           }}
         >
-          <h2>비슷한 과거 시공사례</h2>
+          <h2>
+            비슷한 과거 시공사례
+          </h2>
 
-          {similarItems.map((item, index) => (
-            <div
-              key={item.id || index}
-              style={{
-                padding: "20px",
-                marginTop: "12px",
-                border: "1px solid #ddd",
-                borderRadius: "15px",
-              }}
-            >
-              <strong>
-                유사사례 {index + 1}
-              </strong>
-
-              <p>
-                시공 부위:{" "}
-                {item.work_category ||
-                  item.category ||
-                  "-"}
-              </p>
-
-              {item.work_sub_category && (
-                <p>
-                  세부 부위:{" "}
-                  {item.work_sub_category}
-                </p>
-              )}
-
-              <p>
-                실제 시공금액:{" "}
+          {similarItems.map(
+            (item, index) => (
+              <div
+                key={
+                  item.work_item_id ||
+                  item.id ||
+                  index
+                }
+                style={{
+                  padding: "20px",
+                  marginTop: "12px",
+                  border:
+                    "1px solid #ddd",
+                  borderRadius:
+                    "15px",
+                }}
+              >
                 <strong>
-                  {formatWon(item.actual_cost)}원
+                  유사사례{" "}
+                  {index + 1}
                 </strong>
-              </p>
 
-              {item.memo && (
-                <p>시공 메모: {item.memo}</p>
-              )}
-
-              {typeof item.similarity === "number" && (
                 <p>
-                  유사도:{" "}
-                  {(item.similarity * 100).toFixed(1)}%
+                  시공 부위:{" "}
+                  {item.work_category ||
+                    item.category ||
+                    "-"}
                 </p>
-              )}
-            </div>
-          ))}
+
+                {item.work_sub_category && (
+                  <p>
+                    세부 부위:{" "}
+                    {
+                      item.work_sub_category
+                    }
+                  </p>
+                )}
+
+                <p>
+                  실제 시공금액:{" "}
+                  <strong>
+                    {formatWon(
+                      item.actual_cost
+                    )}
+                    원
+                  </strong>
+                </p>
+
+                {item.memo && (
+                  <p>
+                    시공 메모:{" "}
+                    {item.memo}
+                  </p>
+                )}
+
+                {typeof item.similarity ===
+                  "number" && (
+                  <p>
+                    유사도:{" "}
+                    {(
+                      item.similarity *
+                      100
+                    ).toFixed(1)}
+                    %
+                  </p>
+                )}
+              </div>
+            )
+          )}
         </section>
       )}
     </main>
