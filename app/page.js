@@ -46,14 +46,19 @@ export default function Home() {
       }
 
       // 2. work_photos 테이블에 사진 경로 저장
-      const { error: dbError } = await supabase
-        .from("work_photos")
-        .insert([
-          {
-            storage_path: filePath,
-            photo_type: "customer",
-          },
-        ]);
+      const { data: publicUrlData } = supabase.storage
+  .from("work-photos")
+  .getPublicUrl(filePath);
+
+const { error: dbError } = await supabase
+  .from("work_photos")
+  .insert([
+    {
+      storage_path: filePath,
+      photo_url: publicUrlData.publicUrl,
+      photo_type: "customer",
+    },
+  ]);
 
       if (dbError) {
         throw dbError;
