@@ -32,9 +32,7 @@ export default function AdminPage() {
     setMessage("사진을 AI가 분석하고 있습니다...");
 
     try {
-      // --------------------------------
-      // 1. AI 사진 분석
-      // --------------------------------
+      // 1. 사진 AI 분석
       let aiAnalysis = {
         category: category.trim(),
         sub_category: category.trim(),
@@ -42,96 +40,25 @@ export default function AdminPage() {
         tags: [],
       };
 
-      try {
-        const analyzeFormData = new FormData();
-        analyzeFormData.append("image", image);
+      const analyzeFormData = new FormData();
+      analyzeFormData.append("image", image);
 
-        const analyzeResponse = await fetch("/api/analyze", {
-          method: "POST",
-          body: analyzeFormData,
-        });
+      const analyzeResponse = await fetch("/api/analyze", {
+        method: "POST",
+        body: analyzeFormData,
+      });
 
-        const analyzeResult = await analyzeResponse.json();
+      const analyzeResult = await analyzeResponse.json();
 
-        if (
-          analyzeResponse.ok &&
-          analyzeResult.success &&
-          analyzeResult.analysis
-        ) {
-          aiAnalysis = analyzeResult.analysis;
-        }
-      } catch (aiError) {
-        console.error("AI 분석 오류:", aiError);
+      if (
+        analyzeResponse.ok &&
+        analyzeResult.success &&
+        analyzeResult.analysis
+      ) {
+        aiAnalysis = analyzeResult.analysis;
       }
 
-      setMessage("사진과 시공정보를 저장하고 있습니다...");
-
-      // --------------------------------
-      // 2. Storage 사진 업로드
-      // --------------------------------
-      const extension =
-        image.name.split(".").pop()?.toLowerCase() || "jpg";
-
-      const filePath =
-        `history/${Date.now()}.${extension}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("work-photos")
-        .upload(filePath, image, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      // --------------------------------
-      // 3. 기존 프로젝트 ID 임시 사용
-      // --------------------------------
-      const projectId =
-        "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
-
-      // --------------------------------
-      // 4. work_items 생성
-      // --------------------------------
-      const { data: workItemData, error: workItemError } =
-        await supabase
-          .from("work_items")
-          .insert([
-            {
-              project_id: projectId,
-
-              // 실제 견적 분류는 사람이 입력한 값을 기준으로 사용
-              category: category.trim(),
-
-              sub_category:
-                aiAnalysis?.sub_category ||
-                category.trim(),
-
-              actual_cost: Number(actualCost),
-
-              memo: memo.trim() || null,
-            },
-          ])
-          .select("id")
-          .single();
-
-      if (workItemError) {
-        throw workItemError;
-      }
-
-      // --------------------------------
-      // 5. 사진 URL 생성
-      // --------------------------------
-      const { data: publicUrlData } =
-        supabase.storage
-          .from("work-photos")
-          .getPublicUrl(filePath);
-
-      // --------------------------------
-      // 6. AI 태그 만들기
-      // --------------------------------
+      // 2. 검색용 태그 정리
       let tags = [];
 
       if (Array.isArray(aiAnalysis?.tags)) {
@@ -144,46 +71,148 @@ export default function AdminPage() {
 
       tags = [...new Set(tags)];
 
-      // --------------------------------
-      // 7. work_photos 저장
-      // --------------------------------
-      const { error: photoError } = await supabase
-        .from("work_photos")
+      // 3. 임베딩에 사용할 검색 문장 생성
+      const searchText = [
+        `시공 부위: ${category.trim()}`,
+        `세부 부위: ${
+          aiAnalysis?.sub_category || category.trim()
+        }`,
+        `사진 설명: ${
+          aiAnalysis?.description || memo.trim() || ""
+        }`,
+        `특징: ${tags.join(", ")}`,
+        material.trim()
+          ? `사용 자재: ${material.trim()}`
+          : "",
+        memo.trim()
+          ? `시공 메모: ${memo.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      setMessage("유사사진 검색용 데이터를 만들고 있습니다...");
+
+      // 4. 검색용 임베딩 생성
+      const embeddingResponse = await fetch("/api/embedding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: searchText,
+        }),
+      });
+
+      const embeddingResult =
+        await embeddingResponse.json();
+
+      if (
+        !embeddingResponse.ok ||
+        !embeddingResult.success ||
+        !embeddingResult.embedding
+      ) {
+        throw new Error(
+          embeddingResult?.error ||
+            "임베딩 생성에 실패했습니다."
+        );
+      }
+
+      const embedding = embeddingResult.embedding;
+
+      setMessage("사진과 시공정보를 저장하고 있습니다...");
+
+      // 5. Storage에 사진 업로드
+      const extension =
+        image.name.split(".").pop()?.toLowerCase() ||
+        "jpg";
+
+      const filePath =
+        `history/${Date.now()}.${extension}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from("work-photos")
+          .upload(filePath, image, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // 현재 개발용 기존 프로젝트 ID
+      const projectId =
+        "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
+
+      // 6. 실제 시공정보 저장
+      const {
+        data: workItemData,
+        error: workItemError,
+      } = await supabase
+        .from("work_items")
         .insert([
           {
             project_id: projectId,
-            work_item_id: workItemData.id,
-
-            storage_path: filePath,
-            photo_url: publicUrlData.publicUrl,
-
-            photo_type: "history",
-
-            // 사람이 입력한 대분류
             category: category.trim(),
-
-            // AI가 분석한 세부분류
             sub_category:
               aiAnalysis?.sub_category ||
               category.trim(),
-
-            // AI 설명
-            ai_description:
-              aiAnalysis?.description ||
-              memo.trim() ||
-              "",
-
-            // AI 특징 + 자재
-            ai_tags: tags,
+            actual_cost: Number(actualCost),
+            memo: memo.trim() || null,
           },
-        ]);
+        ])
+        .select("id")
+        .single();
+
+      if (workItemError) {
+        throw workItemError;
+      }
+
+      // 7. 사진 URL 생성
+      const { data: publicUrlData } =
+        supabase.storage
+          .from("work-photos")
+          .getPublicUrl(filePath);
+
+      // 8. 사진 + AI 분석 + 임베딩 저장
+      const { error: photoError } =
+        await supabase
+          .from("work_photos")
+          .insert([
+            {
+              project_id: projectId,
+              work_item_id: workItemData.id,
+
+              storage_path: filePath,
+              photo_url: publicUrlData.publicUrl,
+
+              photo_type: "history",
+
+              category: category.trim(),
+
+              sub_category:
+                aiAnalysis?.sub_category ||
+                category.trim(),
+
+              ai_description:
+                aiAnalysis?.description ||
+                memo.trim() ||
+                "",
+
+              ai_tags: tags,
+
+              embedding: embedding,
+            },
+          ]);
 
       if (photoError) {
         throw photoError;
       }
 
       setMessage(
-        "✅ 저장 완료! 사진 AI 분석 정보도 함께 저장되었습니다."
+        `✅ 저장 완료! AI 분석 + 검색용 임베딩 ${embedding.length}차원까지 저장되었습니다.`
       );
 
       setImage(null);
@@ -196,7 +225,8 @@ export default function AdminPage() {
 
       setMessage(
         `❌ 오류: ${
-          error?.message || "저장 중 오류가 발생했습니다."
+          error?.message ||
+          "저장 중 오류가 발생했습니다."
         }`
       );
     } finally {
@@ -244,7 +274,7 @@ export default function AdminPage() {
       >
         과거 시공사진과 실제 시공금액을 등록합니다.
         <br />
-        사진은 AI가 자동으로 분석합니다.
+        사진 분석과 유사사례 검색용 데이터도 자동으로 생성합니다.
       </p>
 
       <section
@@ -305,7 +335,7 @@ export default function AdminPage() {
             onChange={(e) =>
               setCategory(e.target.value)
             }
-            placeholder="예: 중문, 문·문틀, 싱크대"
+            placeholder="예: 방화문, 중문, 문·문틀, 싱크대"
             style={{
               width: "100%",
               padding: "15px",
@@ -392,7 +422,7 @@ export default function AdminPage() {
             onChange={(e) =>
               setMemo(e.target.value)
             }
-            placeholder="예: 중문 유리 간살 2연동"
+            placeholder="예: 현관 방화문 + 문틀 전체 시공"
             rows={5}
             style={{
               width: "100%",
