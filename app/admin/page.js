@@ -3,6 +3,258 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
+// ============================================================
+// 사진 카드
+// 중요: AdminPage 바깥에 있어야 입력 중 포커스가 풀리지 않습니다.
+// ============================================================
+
+function PhotoCard({
+  photo,
+  editingPhotoId,
+  editPhotoType,
+  setEditPhotoType,
+  editPhotoCategory,
+  setEditPhotoCategory,
+  editPhotoSubCategory,
+  setEditPhotoSubCategory,
+  editPhotoDescription,
+  setEditPhotoDescription,
+  photoEditLoading,
+  startPhotoEdit,
+  cancelPhotoEdit,
+  savePhotoEdit,
+  deletePhoto,
+  setPreviewPhoto,
+  inputStyle,
+  labelStyle,
+}) {
+  const isEditing = editingPhotoId === photo.id;
+
+  const typeLabel =
+    photo.photo_type === "after"
+      ? "시공 후"
+      : photo.photo_type === "before"
+      ? "시공 전"
+      : "기존 사진";
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        marginBottom: "18px",
+        padding: "12px",
+        border: "1px solid #e5e7eb",
+        borderRadius: "14px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "4 / 3",
+          borderRadius: "12px",
+          overflow: "hidden",
+          background: "#f3f4f6",
+        }}
+      >
+        {photo.signedUrl ? (
+          <img
+            src={photo.signedUrl}
+            alt={typeLabel}
+            onClick={() => setPreviewPhoto(photo)}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              cursor: "pointer",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              padding: "20px",
+              textAlign: "center",
+            }}
+          >
+            사진을 불러올 수 없습니다.
+          </div>
+        )}
+
+        <div
+          style={{
+            position: "absolute",
+            top: "8px",
+            left: "8px",
+            background: "rgba(0,0,0,0.7)",
+            color: "white",
+            padding: "5px 8px",
+            borderRadius: "7px",
+            fontSize: "12px",
+          }}
+        >
+          {typeLabel}
+        </div>
+      </div>
+
+      {!isEditing ? (
+        <>
+          <div
+            style={{
+              marginTop: "10px",
+              lineHeight: "1.6",
+            }}
+          >
+            <strong>{photo.category || "-"}</strong>
+
+            <div>{photo.sub_category || ""}</div>
+
+            {photo.ai_description && (
+              <div
+                style={{
+                  marginTop: "6px",
+                  color: "#4b5563",
+                  fontSize: "14px",
+                }}
+              >
+                {photo.ai_description}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => startPhotoEdit(photo)}
+            style={{
+              width: "100%",
+              marginTop: "12px",
+              padding: "12px",
+              borderRadius: "10px",
+              border: "1px solid #2563eb",
+              background: "white",
+              color: "#1d4ed8",
+              fontWeight: "bold",
+            }}
+          >
+            ✏️ 사진정보 수정
+          </button>
+
+          <button
+            type="button"
+            onClick={() => deletePhoto(photo)}
+            style={{
+              width: "100%",
+              marginTop: "7px",
+              padding: "11px",
+              borderRadius: "10px",
+              border: "1px solid #fecaca",
+              background: "white",
+              color: "#b91c1c",
+              fontWeight: "bold",
+            }}
+          >
+            사진 삭제
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            marginTop: "14px",
+            padding: "14px",
+            background: "#f9fafb",
+            borderRadius: "12px",
+          }}
+        >
+          <label style={labelStyle}>사진 구분</label>
+
+          <select
+            value={editPhotoType}
+            onChange={(e) => setEditPhotoType(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="before">시공 전</option>
+            <option value="after">시공 후</option>
+            <option value="history">기존 과거 사진</option>
+          </select>
+
+          <div style={{ height: "12px" }} />
+
+          <label style={labelStyle}>카테고리</label>
+
+          <input
+            type="text"
+            value={editPhotoCategory}
+            onChange={(e) => setEditPhotoCategory(e.target.value)}
+            style={inputStyle}
+          />
+
+          <div style={{ height: "12px" }} />
+
+          <label style={labelStyle}>세부 부위</label>
+
+          <input
+            type="text"
+            value={editPhotoSubCategory}
+            onChange={(e) => setEditPhotoSubCategory(e.target.value)}
+            style={inputStyle}
+          />
+
+          <div style={{ height: "12px" }} />
+
+          <label style={labelStyle}>AI 사진 설명</label>
+
+          <textarea
+            value={editPhotoDescription}
+            onChange={(e) => setEditPhotoDescription(e.target.value)}
+            rows={6}
+            style={{
+              ...inputStyle,
+              resize: "vertical",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => savePhotoEdit(photo)}
+            disabled={photoEditLoading}
+            style={{
+              width: "100%",
+              marginTop: "14px",
+              padding: "14px",
+              border: "none",
+              borderRadius: "10px",
+              background: "#111827",
+              color: "white",
+              fontWeight: "bold",
+              opacity: photoEditLoading ? 0.6 : 1,
+            }}
+          >
+            {photoEditLoading
+              ? "저장 중..."
+              : "✅ 사진정보 저장"}
+          </button>
+
+          <button
+            type="button"
+            onClick={cancelPhotoEdit}
+            disabled={photoEditLoading}
+            style={{
+              width: "100%",
+              marginTop: "7px",
+              padding: "12px",
+              borderRadius: "10px",
+              border: "1px solid #d1d5db",
+              background: "white",
+            }}
+          >
+            취소
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   // ============================================================
   // 신규 시공 데이터 등록
@@ -61,11 +313,6 @@ export default function AdminPage() {
     useState("");
   const [photoEditLoading, setPhotoEditLoading] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-    loadJobs();
-  }, []);
-
   // ============================================================
   // 스타일
   // ============================================================
@@ -78,6 +325,7 @@ export default function AdminPage() {
     borderRadius: "10px",
     boxSizing: "border-box",
     background: "white",
+    color: "#111827",
   };
 
   const labelStyle = {
@@ -92,6 +340,11 @@ export default function AdminPage() {
     borderRadius: "18px",
     background: "white",
   };
+
+  useEffect(() => {
+    loadSettings();
+    loadJobs();
+  }, []);
 
   // ============================================================
   // 유사도 설정
@@ -108,9 +361,7 @@ export default function AdminPage() {
       if (error) throw error;
 
       if (data?.similarity_threshold != null) {
-        setSimilarityThreshold(
-          Number(data.similarity_threshold)
-        );
+        setSimilarityThreshold(Number(data.similarity_threshold));
       }
     } catch (error) {
       console.error(error);
@@ -145,9 +396,7 @@ export default function AdminPage() {
       console.error(error);
 
       setSettingMessage(
-        `❌ 오류: ${
-          error?.message || "설정 저장 실패"
-        }`
+        `❌ 오류: ${error?.message || "설정 저장 실패"}`
       );
     } finally {
       setSettingLoading(false);
@@ -163,24 +412,22 @@ export default function AdminPage() {
     setJobsMessage("");
 
     try {
-      const {
-        data: workItems,
-        error: workItemsError,
-      } = await supabase
-        .from("work_items")
-        .select(
+      const { data: workItems, error: workItemsError } =
+        await supabase
+          .from("work_items")
+          .select(
+            `
+            id,
+            category,
+            sub_category,
+            actual_cost,
+            memo,
+            created_at
           `
-          id,
-          category,
-          sub_category,
-          actual_cost,
-          memo,
-          created_at
-        `
-        )
-        .order("created_at", {
-          ascending: false,
-        });
+          )
+          .order("created_at", {
+            ascending: false,
+          });
 
       if (workItemsError) throw workItemsError;
 
@@ -193,29 +440,27 @@ export default function AdminPage() {
 
       const ids = items.map((item) => item.id);
 
-      const {
-        data: photoData,
-        error: photoError,
-      } = await supabase
-        .from("work_photos")
-        .select(
+      const { data: photoData, error: photoError } =
+        await supabase
+          .from("work_photos")
+          .select(
+            `
+            id,
+            work_item_id,
+            photo_type,
+            category,
+            sub_category,
+            storage_path,
+            photo_url,
+            ai_description,
+            ai_tags,
+            created_at
           `
-          id,
-          work_item_id,
-          photo_type,
-          category,
-          sub_category,
-          storage_path,
-          photo_url,
-          ai_description,
-          ai_tags,
-          created_at
-        `
-        )
-        .in("work_item_id", ids)
-        .order("created_at", {
-          ascending: true,
-        });
+          )
+          .in("work_item_id", ids)
+          .order("created_at", {
+            ascending: true,
+          });
 
       if (photoError) throw photoError;
 
@@ -231,13 +476,9 @@ export default function AdminPage() {
           }
 
           try {
-            const { data, error } =
-              await supabase.storage
-                .from("work-photos")
-                .createSignedUrl(
-                  photo.storage_path,
-                  60 * 60
-                );
+            const { data, error } = await supabase.storage
+              .from("work-photos")
+              .createSignedUrl(photo.storage_path, 60 * 60);
 
             if (error) {
               console.error(error);
@@ -292,8 +533,7 @@ export default function AdminPage() {
 
       setJobsMessage(
         `❌ 불러오기 오류: ${
-          error?.message ||
-          "시공 데이터를 불러오지 못했습니다."
+          error?.message || "시공 데이터를 불러오지 못했습니다."
         }`
       );
     } finally {
@@ -310,14 +550,10 @@ export default function AdminPage() {
 
     setEditCategory(job.category || "");
 
-    setEditSubCategory(
-      job.sub_category || job.category || ""
-    );
+    setEditSubCategory(job.sub_category || job.category || "");
 
     setEditCost(
-      job.actual_cost != null
-        ? String(job.actual_cost)
-        : ""
+      job.actual_cost != null ? String(job.actual_cost) : ""
     );
 
     setEditMemo(job.memo || "");
@@ -353,8 +589,7 @@ export default function AdminPage() {
           category: editCategory.trim(),
 
           sub_category:
-            editSubCategory.trim() ||
-            editCategory.trim(),
+            editSubCategory.trim() || editCategory.trim(),
 
           actual_cost: costNumber,
 
@@ -366,9 +601,7 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setJobsMessage(
-        "✅ 시공 데이터가 수정되었습니다."
-      );
+      setJobsMessage("✅ 시공 데이터가 수정되었습니다.");
 
       cancelEdit();
       await loadJobs();
@@ -384,29 +617,21 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // 사진 정보 수정 시작
+  // 사진 정보 수정
   // ============================================================
 
   function startPhotoEdit(photo) {
     setEditingPhotoId(photo.id);
 
-    setEditPhotoType(
-      photo.photo_type || "before"
-    );
+    setEditPhotoType(photo.photo_type || "before");
 
-    setEditPhotoCategory(
-      photo.category || ""
-    );
+    setEditPhotoCategory(photo.category || "");
 
     setEditPhotoSubCategory(
-      photo.sub_category ||
-        photo.category ||
-        ""
+      photo.sub_category || photo.category || ""
     );
 
-    setEditPhotoDescription(
-      photo.ai_description || ""
-    );
+    setEditPhotoDescription(photo.ai_description || "");
 
     setJobsMessage("");
   }
@@ -419,11 +644,6 @@ export default function AdminPage() {
     setEditPhotoDescription("");
   }
 
-  // ============================================================
-  // 사진 정보 저장
-  // 수정 내용에 맞춰 임베딩도 다시 생성
-  // ============================================================
-
   async function savePhotoEdit(photo) {
     if (!editPhotoCategory.trim()) {
       setJobsMessage(
@@ -433,6 +653,7 @@ export default function AdminPage() {
     }
 
     setPhotoEditLoading(true);
+
     setJobsMessage(
       "사진 정보와 AI 검색 데이터를 수정 중..."
     );
@@ -454,14 +675,10 @@ export default function AdminPage() {
         }
       }
 
-      // 기존 시공전/시공후 태그 제거
       tags = tags.filter(
-        (tag) =>
-          tag !== "시공전" &&
-          tag !== "시공후"
+        (tag) => tag !== "시공전" && tag !== "시공후"
       );
 
-      // 변경된 사진 상태 태그 추가
       if (editPhotoType === "before") {
         tags.push("시공전");
       }
@@ -503,15 +720,13 @@ export default function AdminPage() {
         .update({
           photo_type: editPhotoType,
 
-          category:
-            editPhotoCategory.trim(),
+          category: editPhotoCategory.trim(),
 
           sub_category:
             editPhotoSubCategory.trim() ||
             editPhotoCategory.trim(),
 
-          ai_description:
-            editPhotoDescription.trim(),
+          ai_description: editPhotoDescription.trim(),
 
           ai_tags: tags,
 
@@ -533,8 +748,7 @@ export default function AdminPage() {
 
       setJobsMessage(
         `❌ 사진 수정 오류: ${
-          error?.message ||
-          "사진 정보를 수정하지 못했습니다."
+          error?.message || "사진 정보를 수정하지 못했습니다."
         }`
       );
     } finally {
@@ -562,9 +776,7 @@ export default function AdminPage() {
             .from("work-photos")
             .remove([photo.storage_path]);
 
-        if (storageError) {
-          throw storageError;
-        }
+        if (storageError) throw storageError;
       }
 
       const { error } = await supabase
@@ -574,9 +786,7 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setJobsMessage(
-        "✅ 사진이 삭제되었습니다."
-      );
+      setJobsMessage("✅ 사진이 삭제되었습니다.");
 
       setPreviewPhoto(null);
 
@@ -586,8 +796,7 @@ export default function AdminPage() {
 
       setJobsMessage(
         `❌ 사진 삭제 오류: ${
-          error?.message ||
-          "사진을 삭제하지 못했습니다."
+          error?.message || "사진을 삭제하지 못했습니다."
         }`
       );
     }
@@ -619,9 +828,7 @@ export default function AdminPage() {
             .from("work-photos")
             .remove(photoPaths);
 
-        if (storageError) {
-          throw storageError;
-        }
+        if (storageError) throw storageError;
       }
 
       const { error: photoDeleteError } =
@@ -630,9 +837,7 @@ export default function AdminPage() {
           .delete()
           .eq("work_item_id", job.id);
 
-      if (photoDeleteError) {
-        throw photoDeleteError;
-      }
+      if (photoDeleteError) throw photoDeleteError;
 
       const { error: workItemDeleteError } =
         await supabase
@@ -640,9 +845,7 @@ export default function AdminPage() {
           .delete()
           .eq("id", job.id);
 
-      if (workItemDeleteError) {
-        throw workItemDeleteError;
-      }
+      if (workItemDeleteError) throw workItemDeleteError;
 
       setJobsMessage(
         "✅ 시공건과 연결 사진이 모두 삭제되었습니다."
@@ -654,8 +857,7 @@ export default function AdminPage() {
 
       setJobsMessage(
         `❌ 삭제 오류: ${
-          error?.message ||
-          "시공건을 삭제하지 못했습니다."
+          error?.message || "시공건을 삭제하지 못했습니다."
         }`
       );
     }
@@ -666,9 +868,7 @@ export default function AdminPage() {
   // ============================================================
 
   const filteredJobs = useMemo(() => {
-    const keyword = searchText
-      .trim()
-      .toLowerCase();
+    const keyword = searchText.trim().toLowerCase();
 
     if (!keyword) return jobs;
 
@@ -707,20 +907,17 @@ export default function AdminPage() {
   async function getImageHash(file) {
     const buffer = await file.arrayBuffer();
 
-    const hashBuffer =
-      await crypto.subtle.digest(
-        "SHA-256",
-        buffer
-      );
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      buffer
+    );
 
     const hashArray = Array.from(
       new Uint8Array(hashBuffer)
     );
 
     return hashArray
-      .map((byte) =>
-        byte.toString(16).padStart(2, "0")
-      )
+      .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
   }
 
@@ -731,9 +928,7 @@ export default function AdminPage() {
     const otherHashes = new Set();
 
     for (const file of otherFiles) {
-      otherHashes.add(
-        await getImageHash(file)
-      );
+      otherHashes.add(await getImageHash(file));
     }
 
     const selectedHashes = new Set();
@@ -755,6 +950,12 @@ export default function AdminPage() {
       uniqueFiles.push(file);
     }
 
+    if (duplicateCount > 0) {
+      setMessage(
+        `⚠️ 동일한 사진 ${duplicateCount}장을 발견해서 제외했습니다.`
+      );
+    }
+
     return {
       uniqueFiles,
       duplicateCount,
@@ -768,8 +969,7 @@ export default function AdminPage() {
   async function resizeImage(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      const objectUrl =
-        URL.createObjectURL(file);
+      const objectUrl = URL.createObjectURL(file);
 
       img.onload = () => {
         try {
@@ -777,10 +977,7 @@ export default function AdminPage() {
           let height = img.height;
           const maxSize = 1600;
 
-          if (
-            width > maxSize ||
-            height > maxSize
-          ) {
+          if (width > maxSize || height > maxSize) {
             if (width >= height) {
               height = Math.round(
                 (height * maxSize) / width
@@ -802,16 +999,13 @@ export default function AdminPage() {
           canvas.width = width;
           canvas.height = height;
 
-          const ctx =
-            canvas.getContext("2d");
+          const ctx = canvas.getContext("2d");
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
 
             reject(
-              new Error(
-                "이미지 처리에 실패했습니다."
-              )
+              new Error("이미지 처리에 실패했습니다.")
             );
 
             return;
@@ -862,9 +1056,7 @@ export default function AdminPage() {
         URL.revokeObjectURL(objectUrl);
 
         reject(
-          new Error(
-            "사진을 불러올 수 없습니다."
-          )
+          new Error("사진을 불러올 수 없습니다.")
         );
       };
 
@@ -884,10 +1076,7 @@ export default function AdminPage() {
     } catch {
       throw new Error(
         text
-          ? `서버 응답 오류: ${text.slice(
-              0,
-              200
-            )}`
+          ? `서버 응답 오류: ${text.slice(0, 200)}`
           : "서버 응답 오류"
       );
     }
@@ -898,31 +1087,22 @@ export default function AdminPage() {
   // ============================================================
 
   async function analyzeImage(file) {
-    const resizedImage =
-      await resizeImage(file);
+    const resizedImage = await resizeImage(file);
 
     const formData = new FormData();
 
-    formData.append(
-      "image",
-      resizedImage
-    );
+    formData.append("image", resizedImage);
 
-    const response = await fetch(
-      "/api/analyze",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      body: formData,
+    });
 
-    const result =
-      await readJsonSafely(response);
+    const result = await readJsonSafely(response);
 
     if (!response.ok) {
       throw new Error(
-        result?.error ||
-          "AI 사진 분석 실패"
+        result?.error || "AI 사진 분석 실패"
       );
     }
 
@@ -934,32 +1114,23 @@ export default function AdminPage() {
   // ============================================================
 
   async function createEmbedding(text) {
-    const response = await fetch(
-      "/api/embedding",
-      {
-        method: "POST",
+    const response = await fetch("/api/embedding", {
+      method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
+      headers: {
+        "Content-Type": "application/json",
+      },
 
-        body: JSON.stringify({
-          text,
-        }),
-      }
-    );
+      body: JSON.stringify({
+        text,
+      }),
+    });
 
-    const result =
-      await readJsonSafely(response);
+    const result = await readJsonSafely(response);
 
-    if (
-      !response.ok ||
-      !result?.embedding
-    ) {
+    if (!response.ok || !result?.embedding) {
       throw new Error(
-        result?.error ||
-          "임베딩 생성 실패"
+        result?.error || "임베딩 생성 실패"
       );
     }
 
@@ -989,12 +1160,9 @@ export default function AdminPage() {
       }/${total} AI 분석 중...`
     );
 
-    const aiAnalysis =
-      await analyzeImage(image);
+    const aiAnalysis = await analyzeImage(image);
 
-    let tags = Array.isArray(
-      aiAnalysis?.tags
-    )
+    let tags = Array.isArray(aiAnalysis?.tags)
       ? [...aiAnalysis.tags]
       : [];
 
@@ -1003,9 +1171,7 @@ export default function AdminPage() {
     }
 
     tags.push(
-      photoType === "before"
-        ? "시공전"
-        : "시공후"
+      photoType === "before" ? "시공전" : "시공후"
     );
 
     tags = [...new Set(tags)];
@@ -1034,16 +1200,13 @@ export default function AdminPage() {
       .join("\n");
 
     const embedding =
-      await createEmbedding(
-        searchTextValue
-      );
+      await createEmbedding(searchTextValue);
 
     const extension =
       image.name
         .split(".")
         .pop()
-        ?.toLowerCase() ||
-      "jpg";
+        ?.toLowerCase() || "jpg";
 
     const filePath =
       `history/${workItemId}/${photoType}/${Date.now()}-${index}.${extension}`;
@@ -1051,14 +1214,10 @@ export default function AdminPage() {
     const { error: uploadError } =
       await supabase.storage
         .from("work-photos")
-        .upload(
-          filePath,
-          image,
-          {
-            cacheControl: "3600",
-            upsert: false,
-          }
-        );
+        .upload(filePath, image, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
     if (uploadError) throw uploadError;
 
@@ -1074,8 +1233,7 @@ export default function AdminPage() {
           {
             project_id: projectId,
             work_item_id: workItemId,
-            photo_url:
-              publicUrlData.publicUrl,
+            photo_url: publicUrlData.publicUrl,
             storage_path: filePath,
             photo_type: photoType,
             category: category.trim(),
@@ -1132,8 +1290,7 @@ export default function AdminPage() {
       ...beforeImages,
       ...afterImages,
     ]) {
-      const hash =
-        await getImageHash(file);
+      const hash = await getImageHash(file);
 
       if (hashes.has(hash)) {
         setMessage(
@@ -1172,8 +1329,7 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      const workItemId =
-        workItemData.id;
+      const workItemId = workItemData.id;
 
       for (
         let i = 0;
@@ -1206,7 +1362,7 @@ export default function AdminPage() {
       }
 
       setMessage(
-        `✅ 저장 완료! 시공 전 ${beforeImages.length}장 + 시공 후 ${afterImages.length}장`
+        `✅ 저장 완료! 시공 전 ${beforeImages.length}장 + 시공 후 ${afterImages.length}장이 같은 시공건으로 연결되었습니다.`
       );
 
       setBeforeImages([]);
@@ -1221,9 +1377,7 @@ export default function AdminPage() {
       console.error(error);
 
       setMessage(
-        `❌ 오류: ${
-          error?.message || "저장 실패"
-        }`
+        `❌ 오류: ${error?.message || "저장 실패"}`
       );
     } finally {
       setLoading(false);
@@ -1252,266 +1406,6 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // 사진 카드
-  // ============================================================
-
-  function PhotoCard({ photo }) {
-    const isEditing =
-      editingPhotoId === photo.id;
-
-    const typeLabel =
-      photo.photo_type === "after"
-        ? "시공 후"
-        : photo.photo_type === "before"
-        ? "시공 전"
-        : "기존 사진";
-
-    return (
-      <div
-        style={{
-          width: "100%",
-          marginBottom: "18px",
-          padding: "12px",
-          border: "1px solid #e5e7eb",
-          borderRadius: "14px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            position: "relative",
-            width: "100%",
-            aspectRatio: "4 / 3",
-            borderRadius: "12px",
-            overflow: "hidden",
-            background: "#f3f4f6",
-          }}
-        >
-          {photo.signedUrl ? (
-            <img
-              src={photo.signedUrl}
-              alt={typeLabel}
-              onClick={() =>
-                setPreviewPhoto(photo)
-              }
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            <div>
-              사진을 불러올 수 없습니다.
-            </div>
-          )}
-
-          <div
-            style={{
-              position: "absolute",
-              top: "8px",
-              left: "8px",
-              background: "rgba(0,0,0,0.7)",
-              color: "white",
-              padding: "5px 8px",
-              borderRadius: "7px",
-              fontSize: "12px",
-            }}
-          >
-            {typeLabel}
-          </div>
-        </div>
-
-        {!isEditing ? (
-          <>
-            <div
-              style={{
-                marginTop: "10px",
-                lineHeight: "1.6",
-              }}
-            >
-              <strong>
-                {photo.category || "-"}
-              </strong>
-
-              <div>
-                {photo.sub_category || ""}
-              </div>
-
-              {photo.ai_description && (
-                <div
-                  style={{
-                    marginTop: "6px",
-                    color: "#4b5563",
-                    fontSize: "14px",
-                  }}
-                >
-                  {photo.ai_description}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() =>
-                startPhotoEdit(photo)
-              }
-              style={{
-                width: "100%",
-                marginTop: "12px",
-                padding: "12px",
-                borderRadius: "10px",
-                border: "1px solid #2563eb",
-                background: "white",
-                color: "#1d4ed8",
-                fontWeight: "bold",
-              }}
-            >
-              ✏️ 사진정보 수정
-            </button>
-
-            <button
-              onClick={() =>
-                deletePhoto(photo)
-              }
-              style={{
-                width: "100%",
-                marginTop: "7px",
-                padding: "11px",
-                borderRadius: "10px",
-                border: "1px solid #fecaca",
-                background: "white",
-                color: "#b91c1c",
-                fontWeight: "bold",
-              }}
-            >
-              사진 삭제
-            </button>
-          </>
-        ) : (
-          <div
-            style={{
-              marginTop: "14px",
-              padding: "14px",
-              background: "#f9fafb",
-              borderRadius: "12px",
-            }}
-          >
-            <label style={labelStyle}>
-              사진 구분
-            </label>
-
-            <select
-              value={editPhotoType}
-              onChange={(e) =>
-                setEditPhotoType(
-                  e.target.value
-                )
-              }
-              style={inputStyle}
-            >
-              <option value="before">
-                시공 전
-              </option>
-
-              <option value="after">
-                시공 후
-              </option>
-
-              <option value="history">
-                기존 과거 사진
-              </option>
-            </select>
-
-            <div style={{ height: "12px" }} />
-
-            <label style={labelStyle}>
-              카테고리
-            </label>
-
-            <input
-              value={editPhotoCategory}
-              onChange={(e) =>
-                setEditPhotoCategory(
-                  e.target.value
-                )
-              }
-              style={inputStyle}
-            />
-
-            <div style={{ height: "12px" }} />
-
-            <label style={labelStyle}>
-              세부 부위
-            </label>
-
-            <input
-              value={editPhotoSubCategory}
-              onChange={(e) =>
-                setEditPhotoSubCategory(
-                  e.target.value
-                )
-              }
-              style={inputStyle}
-            />
-
-            <div style={{ height: "12px" }} />
-
-            <label style={labelStyle}>
-              AI 사진 설명
-            </label>
-
-            <textarea
-              value={editPhotoDescription}
-              onChange={(e) =>
-                setEditPhotoDescription(
-                  e.target.value
-                )
-              }
-              rows={5}
-              style={inputStyle}
-            />
-
-            <button
-              onClick={() =>
-                savePhotoEdit(photo)
-              }
-              disabled={photoEditLoading}
-              style={{
-                width: "100%",
-                marginTop: "14px",
-                padding: "14px",
-                border: "none",
-                borderRadius: "10px",
-                background: "#111827",
-                color: "white",
-                fontWeight: "bold",
-              }}
-            >
-              {photoEditLoading
-                ? "저장 중..."
-                : "✅ 사진정보 저장"}
-            </button>
-
-            <button
-              onClick={cancelPhotoEdit}
-              style={{
-                width: "100%",
-                marginTop: "7px",
-                padding: "12px",
-                borderRadius: "10px",
-                border: "1px solid #d1d5db",
-                background: "white",
-              }}
-            >
-              취소
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ============================================================
   // 화면
   // ============================================================
 
@@ -1524,6 +1418,7 @@ export default function AdminPage() {
         fontFamily: "Arial, sans-serif",
         background: "#f9fafb",
         minHeight: "100vh",
+        color: "#111827",
       }}
     >
       <div
@@ -1540,7 +1435,8 @@ export default function AdminPage() {
 
       <h1>관리자 페이지</h1>
 
-      {/* 유사도 */}
+      {/* 유사도 설정 */}
+
       <section style={sectionStyle}>
         <h2>AI 유사도 기준</h2>
 
@@ -1562,6 +1458,7 @@ export default function AdminPage() {
         </select>
 
         <button
+          type="button"
           onClick={saveSimilaritySetting}
           disabled={settingLoading}
           style={{
@@ -1578,12 +1475,11 @@ export default function AdminPage() {
           유사도 기준 저장
         </button>
 
-        {settingMessage && (
-          <p>{settingMessage}</p>
-        )}
+        {settingMessage && <p>{settingMessage}</p>}
       </section>
 
       {/* 신규등록 */}
+
       <h2 style={{ marginTop: "40px" }}>
         과거 시공 데이터 등록
       </h2>
@@ -1608,9 +1504,7 @@ export default function AdminPage() {
                 afterImages
               );
 
-            setBeforeImages(
-              result.uniqueFiles
-            );
+            setBeforeImages(result.uniqueFiles);
           }}
         />
 
@@ -1637,9 +1531,7 @@ export default function AdminPage() {
                 beforeImages
               );
 
-            setAfterImages(
-              result.uniqueFiles
-            );
+            setAfterImages(result.uniqueFiles);
           }}
         />
 
@@ -1648,6 +1540,7 @@ export default function AdminPage() {
         <div style={{ height: "20px" }} />
 
         <input
+          type="text"
           value={category}
           onChange={(e) =>
             setCategory(e.target.value)
@@ -1671,6 +1564,7 @@ export default function AdminPage() {
         <div style={{ height: "12px" }} />
 
         <input
+          type="text"
           value={material}
           onChange={(e) =>
             setMaterial(e.target.value)
@@ -1692,6 +1586,7 @@ export default function AdminPage() {
         />
 
         <button
+          type="button"
           onClick={handleSave}
           disabled={loading}
           style={{
@@ -1715,12 +1610,14 @@ export default function AdminPage() {
       </section>
 
       {/* DB관리 */}
+
       <h2 style={{ marginTop: "45px" }}>
         데이터베이스 관리
       </h2>
 
       <section style={sectionStyle}>
         <input
+          type="text"
           value={searchText}
           onChange={(e) =>
             setSearchText(e.target.value)
@@ -1730,6 +1627,7 @@ export default function AdminPage() {
         />
 
         <button
+          type="button"
           onClick={loadJobs}
           style={{
             width: "100%",
@@ -1749,9 +1647,9 @@ export default function AdminPage() {
           {filteredJobs.length}건
         </p>
 
-        {jobsMessage && (
-          <p>{jobsMessage}</p>
-        )}
+        {jobsLoading && <p>불러오는 중...</p>}
+
+        {jobsMessage && <p>{jobsMessage}</p>}
 
         {filteredJobs.map((job) => (
           <div
@@ -1767,55 +1665,66 @@ export default function AdminPage() {
               <>
                 <h3>시공정보 수정</h3>
 
+                <label style={labelStyle}>
+                  시공 부위
+                </label>
+
                 <input
+                  type="text"
                   value={editCategory}
                   onChange={(e) =>
-                    setEditCategory(
-                      e.target.value
-                    )
+                    setEditCategory(e.target.value)
                   }
                   style={inputStyle}
                 />
 
                 <div style={{ height: "10px" }} />
+
+                <label style={labelStyle}>
+                  세부 부위
+                </label>
 
                 <input
+                  type="text"
                   value={editSubCategory}
                   onChange={(e) =>
-                    setEditSubCategory(
-                      e.target.value
-                    )
+                    setEditSubCategory(e.target.value)
                   }
                   style={inputStyle}
                 />
 
                 <div style={{ height: "10px" }} />
+
+                <label style={labelStyle}>
+                  실제 시공금액
+                </label>
 
                 <input
                   type="number"
                   value={editCost}
                   onChange={(e) =>
-                    setEditCost(
-                      e.target.value
-                    )
+                    setEditCost(e.target.value)
                   }
                   style={inputStyle}
                 />
 
                 <div style={{ height: "10px" }} />
 
+                <label style={labelStyle}>
+                  메모
+                </label>
+
                 <textarea
                   value={editMemo}
                   onChange={(e) =>
-                    setEditMemo(
-                      e.target.value
-                    )
+                    setEditMemo(e.target.value)
                   }
                   rows={4}
                   style={inputStyle}
                 />
 
                 <button
+                  type="button"
                   onClick={() =>
                     saveJobEdit(job.id)
                   }
@@ -1833,11 +1742,15 @@ export default function AdminPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={cancelEdit}
                   style={{
                     width: "100%",
                     marginTop: "7px",
                     padding: "12px",
+                    borderRadius: "10px",
+                    border: "1px solid #d1d5db",
+                    background: "white",
                   }}
                 >
                   취소
@@ -1845,7 +1758,11 @@ export default function AdminPage() {
               </>
             ) : (
               <>
-                <h3>{job.category}</h3>
+                <h3>{job.category || "시공건"}</h3>
+
+                {job.sub_category && (
+                  <p>📌 {job.sub_category}</p>
+                )}
 
                 <p>
                   💰{" "}
@@ -1861,15 +1778,60 @@ export default function AdminPage() {
 
                 {job.beforePhotos?.length > 0 && (
                   <>
-                    <h4>
-                      📷 시공 전
-                    </h4>
+                    <h4>📷 시공 전</h4>
 
                     {job.beforePhotos.map(
                       (photo) => (
                         <PhotoCard
                           key={photo.id}
                           photo={photo}
+                          editingPhotoId={
+                            editingPhotoId
+                          }
+                          editPhotoType={
+                            editPhotoType
+                          }
+                          setEditPhotoType={
+                            setEditPhotoType
+                          }
+                          editPhotoCategory={
+                            editPhotoCategory
+                          }
+                          setEditPhotoCategory={
+                            setEditPhotoCategory
+                          }
+                          editPhotoSubCategory={
+                            editPhotoSubCategory
+                          }
+                          setEditPhotoSubCategory={
+                            setEditPhotoSubCategory
+                          }
+                          editPhotoDescription={
+                            editPhotoDescription
+                          }
+                          setEditPhotoDescription={
+                            setEditPhotoDescription
+                          }
+                          photoEditLoading={
+                            photoEditLoading
+                          }
+                          startPhotoEdit={
+                            startPhotoEdit
+                          }
+                          cancelPhotoEdit={
+                            cancelPhotoEdit
+                          }
+                          savePhotoEdit={
+                            savePhotoEdit
+                          }
+                          deletePhoto={
+                            deletePhoto
+                          }
+                          setPreviewPhoto={
+                            setPreviewPhoto
+                          }
+                          inputStyle={inputStyle}
+                          labelStyle={labelStyle}
                         />
                       )
                     )}
@@ -1878,15 +1840,60 @@ export default function AdminPage() {
 
                 {job.afterPhotos?.length > 0 && (
                   <>
-                    <h4>
-                      ✨ 시공 후
-                    </h4>
+                    <h4>✨ 시공 후</h4>
 
                     {job.afterPhotos.map(
                       (photo) => (
                         <PhotoCard
                           key={photo.id}
                           photo={photo}
+                          editingPhotoId={
+                            editingPhotoId
+                          }
+                          editPhotoType={
+                            editPhotoType
+                          }
+                          setEditPhotoType={
+                            setEditPhotoType
+                          }
+                          editPhotoCategory={
+                            editPhotoCategory
+                          }
+                          setEditPhotoCategory={
+                            setEditPhotoCategory
+                          }
+                          editPhotoSubCategory={
+                            editPhotoSubCategory
+                          }
+                          setEditPhotoSubCategory={
+                            setEditPhotoSubCategory
+                          }
+                          editPhotoDescription={
+                            editPhotoDescription
+                          }
+                          setEditPhotoDescription={
+                            setEditPhotoDescription
+                          }
+                          photoEditLoading={
+                            photoEditLoading
+                          }
+                          startPhotoEdit={
+                            startPhotoEdit
+                          }
+                          cancelPhotoEdit={
+                            cancelPhotoEdit
+                          }
+                          savePhotoEdit={
+                            savePhotoEdit
+                          }
+                          deletePhoto={
+                            deletePhoto
+                          }
+                          setPreviewPhoto={
+                            setPreviewPhoto
+                          }
+                          inputStyle={inputStyle}
+                          labelStyle={labelStyle}
                         />
                       )
                     )}
@@ -1895,15 +1902,60 @@ export default function AdminPage() {
 
                 {job.historyPhotos?.length > 0 && (
                   <>
-                    <h4>
-                      🗂 기존 사진
-                    </h4>
+                    <h4>🗂 기존 사진</h4>
 
                     {job.historyPhotos.map(
                       (photo) => (
                         <PhotoCard
                           key={photo.id}
                           photo={photo}
+                          editingPhotoId={
+                            editingPhotoId
+                          }
+                          editPhotoType={
+                            editPhotoType
+                          }
+                          setEditPhotoType={
+                            setEditPhotoType
+                          }
+                          editPhotoCategory={
+                            editPhotoCategory
+                          }
+                          setEditPhotoCategory={
+                            setEditPhotoCategory
+                          }
+                          editPhotoSubCategory={
+                            editPhotoSubCategory
+                          }
+                          setEditPhotoSubCategory={
+                            setEditPhotoSubCategory
+                          }
+                          editPhotoDescription={
+                            editPhotoDescription
+                          }
+                          setEditPhotoDescription={
+                            setEditPhotoDescription
+                          }
+                          photoEditLoading={
+                            photoEditLoading
+                          }
+                          startPhotoEdit={
+                            startPhotoEdit
+                          }
+                          cancelPhotoEdit={
+                            cancelPhotoEdit
+                          }
+                          savePhotoEdit={
+                            savePhotoEdit
+                          }
+                          deletePhoto={
+                            deletePhoto
+                          }
+                          setPreviewPhoto={
+                            setPreviewPhoto
+                          }
+                          inputStyle={inputStyle}
+                          labelStyle={labelStyle}
                         />
                       )
                     )}
@@ -1911,9 +1963,8 @@ export default function AdminPage() {
                 )}
 
                 <button
-                  onClick={() =>
-                    startEdit(job)
-                  }
+                  type="button"
+                  onClick={() => startEdit(job)}
                   style={{
                     width: "100%",
                     marginTop: "10px",
@@ -1928,9 +1979,8 @@ export default function AdminPage() {
                 </button>
 
                 <button
-                  onClick={() =>
-                    deleteJob(job)
-                  }
+                  type="button"
+                  onClick={() => deleteJob(job)}
                   style={{
                     width: "100%",
                     marginTop: "7px",
@@ -1951,11 +2001,10 @@ export default function AdminPage() {
       </section>
 
       {/* 사진 확대 */}
+
       {previewPhoto && (
         <div
-          onClick={() =>
-            setPreviewPhoto(null)
-          }
+          onClick={() => setPreviewPhoto(null)}
           style={{
             position: "fixed",
             inset: 0,
