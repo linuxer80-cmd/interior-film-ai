@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function AdminPage() {
@@ -20,8 +20,20 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [settingLoading, setSettingLoading] = useState(false);
 
+  // DB 관리
+  const [jobs, setJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsMessage, setJobsMessage] = useState("");
+  const [searchText, setSearchText] = useState("");
+
+  const [editingId, setEditingId] = useState(null);
+  const [editCategory, setEditCategory] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editMemo, setEditMemo] = useState("");
+
   useEffect(() => {
     loadSettings();
+    loadJobs();
   }, []);
 
   async function loadSettings() {
@@ -33,11 +45,9 @@ export default function AdminPage() {
 
     if (error) {
       console.error(error);
-
       setSettingMessage(
         "⚠️ 현재 유사도 설정을 불러오지 못했습니다."
       );
-
       return;
     }
 
@@ -61,9 +71,7 @@ export default function AdminPage() {
         })
         .eq("id", 1);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setSettingMessage(
         `✅ 유사도 기준을 ${Math.round(
@@ -72,7 +80,6 @@ export default function AdminPage() {
       );
     } catch (error) {
       console.error(error);
-
       setSettingMessage(
         `❌ 오류: ${
           error?.message ||
@@ -84,10 +91,225 @@ export default function AdminPage() {
     }
   }
 
-  // ======================================================
-  // 같은 이미지인지 확인하기 위한 SHA-256 해시 생성
-  // 파일명이 달라도 파일 내용이 완전히 같으면 같은 값이 나옵니다.
-  // ======================================================
+  // =========================
+  // DB 시공건 목록
+  // =========================
+
+  async function loadJobs() {
+    setJobsLoading(true);
+    setJobsMessage("");
+
+    try {
+      const { data: workItems, error: workItemsError } =
+        await supabase
+          .from("work_items")
+          .select(
+            "id, category, sub_category, actual_cost, memo, created_at"
+          )
+          .order("created_at", { ascending: false });
+
+      if (workItemsError) {
+        throw workItemsError;
+      }
+
+      const workItemIds = (workItems || []).map(
+        (item) => item.id
+      );
+
+      let photos = [];
+
+      if (workItemIds.length > 0) {
+        const { data: photoData, error: photoError } =
+          await supabase
+            .from("work_photos")
+            .select(
+              "id, work_item_id, photo_type, storage_path"
+            )
+            .in("work_item_id", workItemIds);
+
+        if (photoError) {
+          throw photoError;
+        }
+
+        photos = photoData || [];
+      }
+
+      const combined = (workItems || []).map((item) => {
+        const linkedPhotos = photos.filter(
+          (photo) => photo.work_item_id === item.id
+        );
+
+        return {
+          ...item,
+          photoCount: linkedPhotos.length,
+          beforeCount: linkedPhotos.filter(
+            (photo) => photo.photo_type === "before"
+          ).length,
+          afterCount: linkedPhotos.filter(
+            (photo) => photo.photo_type === "after"
+          ).length,
+        };
+      });
+
+      setJobs(combined);
+    } catch (error) {
+      console.error(error);
+      setJobsMessage(
+        `❌ 불러오기 오류: ${
+          error?.message || "시공 데이터를 불러오지 못했습니다."
+        }`
+      );
+    } finally {
+      setJobsLoading(false);
+    }
+  }
+
+  function startEdit(job) {
+    setEditingId(job.id);
+    setEditCategory(job.category || "");
+    setEditCost(
+      job.actual_cost != null
+        ? String(job.actual_cost)
+        : ""
+    );
+    setEditMemo(job.memo || "");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditCategory("");
+    setEditCost("");
+    setEditMemo("");
+  }
+
+  async function saveJobEdit(jobId) {
+    const costNumber = Number(
+      String(editCost).replace(/,/g, "")
+    );
+
+    if (!editCategory.trim()) {
+      setJobsMessage("⚠️ 시공 부위를 입력해주세요.");
+      return;
+    }
+
+    if (!costNumber || costNumber <= 0) {
+      setJobsMessage(
+        "⚠️ 실제 시공금액을 정확히 입력해주세요."
+      );
+      return;
+    }
+
+    setJobsMessage("수정 중...");
+
+    try {
+      const { error: workItemError } = await supabase
+        .from("work_items")
+        .update({
+          category: editCategory.trim(),
+          sub_category: editCategory.trim(),
+          actual_cost: costNumber,
+          memo: editMemo.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+
+      if (workItemError) {
+        throw workItemError;
+      }
+
+      // 연결된 사진의 category도 같이 맞춤
+      const { error: photoError } = await supabase
+        .from("work_photos")
+        .update({
+          category: editCategory.trim(),
+        })
+        .eq("work_item_id", jobId);
+
+      if (photoError) {
+        throw photoError;
+      }
+
+      setJobsMessage("✅ 시공 데이터가 수정되었습니다.");
+      cancelEdit();
+      await loadJobs();
+    } catch (error) {
+      console.error(error);
+      setJobsMessage(
+        `❌ 수정 오류: ${
+          error?.message || "수정하지 못했습니다."
+        }`
+      );
+    }
+  }
+
+  async function deleteJob(job) {
+    const ok = window.confirm(
+      `${job.category || "이 시공건"}을 삭제하시겠습니까?\n\n연결된 DB 사진 정보도 함께 삭제됩니다.`
+    );
+
+    if (!ok) return;
+
+    setJobsMessage("삭제 중...");
+
+    try {
+      // 먼저 사진 DB 행 삭제
+      const { error: photoDeleteError } = await supabase
+        .from("work_photos")
+        .delete()
+        .eq("work_item_id", job.id);
+
+      if (photoDeleteError) {
+        throw photoDeleteError;
+      }
+
+      // 그 다음 시공건 삭제
+      const { error: workItemDeleteError } = await supabase
+        .from("work_items")
+        .delete()
+        .eq("id", job.id);
+
+      if (workItemDeleteError) {
+        throw workItemDeleteError;
+      }
+
+      setJobsMessage(
+        "✅ 시공 데이터가 삭제되었습니다."
+      );
+
+      await loadJobs();
+    } catch (error) {
+      console.error(error);
+      setJobsMessage(
+        `❌ 삭제 오류: ${
+          error?.message || "삭제하지 못했습니다."
+        }`
+      );
+    }
+  }
+
+  const filteredJobs = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
+
+    if (!keyword) return jobs;
+
+    return jobs.filter((job) => {
+      const text = [
+        job.category,
+        job.sub_category,
+        job.memo,
+        job.actual_cost,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(keyword);
+    });
+  }, [jobs, searchText]);
+
+  // =========================
+  // 이미지 중복 검사
+  // =========================
 
   async function getImageHash(file) {
     const buffer = await file.arrayBuffer();
@@ -108,10 +330,6 @@ export default function AdminPage() {
       .join("");
   }
 
-  // ======================================================
-  // 선택된 사진 안의 중복 + 시공전/시공후 사이 중복 검사
-  // ======================================================
-
   async function removeDuplicateImages(
     newFiles,
     otherFiles = []
@@ -119,13 +337,11 @@ export default function AdminPage() {
     const otherHashes = new Set();
 
     for (const file of otherFiles) {
-      const hash = await getImageHash(file);
-      otherHashes.add(hash);
+      otherHashes.add(await getImageHash(file));
     }
 
     const selectedHashes = new Set();
     const uniqueFiles = [];
-
     let duplicateCount = 0;
 
     for (const file of newFiles) {
@@ -149,39 +365,27 @@ export default function AdminPage() {
     };
   }
 
-  // ======================================================
-  // AI 분석용 이미지 축소
-  // ======================================================
-
   async function resizeImage(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-
-      const objectUrl =
-        URL.createObjectURL(file);
+      const objectUrl = URL.createObjectURL(file);
 
       img.onload = () => {
         try {
           let width = img.width;
           let height = img.height;
-
           const maxSize = 1600;
 
-          if (
-            width > maxSize ||
-            height > maxSize
-          ) {
+          if (width > maxSize || height > maxSize) {
             if (width >= height) {
               height = Math.round(
                 (height * maxSize) / width
               );
-
               width = maxSize;
             } else {
               width = Math.round(
                 (width * maxSize) / height
               );
-
               height = maxSize;
             }
           }
@@ -192,18 +396,13 @@ export default function AdminPage() {
           canvas.width = width;
           canvas.height = height;
 
-          const ctx =
-            canvas.getContext("2d");
+          const ctx = canvas.getContext("2d");
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-
             reject(
-              new Error(
-                "이미지 처리에 실패했습니다."
-              )
+              new Error("이미지 처리에 실패했습니다.")
             );
-
             return;
           }
 
@@ -225,7 +424,6 @@ export default function AdminPage() {
                     "AI 분석용 이미지 변환에 실패했습니다."
                   )
                 );
-
                 return;
               }
 
@@ -233,9 +431,7 @@ export default function AdminPage() {
                 new File(
                   [blob],
                   "ai-analysis.jpg",
-                  {
-                    type: "image/jpeg",
-                  }
+                  { type: "image/jpeg" }
                 )
               );
             },
@@ -244,18 +440,14 @@ export default function AdminPage() {
           );
         } catch (error) {
           URL.revokeObjectURL(objectUrl);
-
           reject(error);
         }
       };
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-
         reject(
-          new Error(
-            "사진을 불러올 수 없습니다."
-          )
+          new Error("사진을 불러올 수 없습니다.")
         );
       };
 
@@ -271,40 +463,24 @@ export default function AdminPage() {
     } catch {
       throw new Error(
         text
-          ? `서버 응답 오류: ${text.slice(
-              0,
-              200
-            )}`
+          ? `서버 응답 오류: ${text.slice(0, 200)}`
           : "서버에서 올바른 응답을 받지 못했습니다."
       );
     }
   }
 
-  // ======================================================
-  // AI 사진 분석
-  // ======================================================
-
   async function analyzeImage(file) {
-    const resizedImage =
-      await resizeImage(file);
+    const resizedImage = await resizeImage(file);
 
     const formData = new FormData();
+    formData.append("image", resizedImage);
 
-    formData.append(
-      "image",
-      resizedImage
-    );
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      body: formData,
+    });
 
-    const response = await fetch(
-      "/api/analyze",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    const result =
-      await readJsonSafely(response);
+    const result = await readJsonSafely(response);
 
     if (!response.ok) {
       throw new Error(
@@ -322,33 +498,18 @@ export default function AdminPage() {
     return result.analysis;
   }
 
-  // ======================================================
-  // 검색용 임베딩 생성
-  // ======================================================
-
   async function createEmbedding(text) {
-    const response = await fetch(
-      "/api/embedding",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
+    const response = await fetch("/api/embedding", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
 
-        body: JSON.stringify({
-          text,
-        }),
-      }
-    );
+    const result = await readJsonSafely(response);
 
-    const result =
-      await readJsonSafely(response);
-
-    if (
-      !response.ok ||
-      !result?.embedding
-    ) {
+    if (!response.ok || !result?.embedding) {
       throw new Error(
         result?.error ||
           "임베딩 생성에 실패했습니다."
@@ -357,10 +518,6 @@ export default function AdminPage() {
 
     return result.embedding;
   }
-
-  // ======================================================
-  // 개별 사진 저장
-  // ======================================================
 
   async function savePhoto({
     image,
@@ -376,17 +533,12 @@ export default function AdminPage() {
         : "시공 후";
 
     setMessage(
-      `${typeLabel} 사진 ${
-        index + 1
-      }/${total} AI 분석 중...`
+      `${typeLabel} 사진 ${index + 1}/${total} AI 분석 중...`
     );
 
-    const aiAnalysis =
-      await analyzeImage(image);
+    const aiAnalysis = await analyzeImage(image);
 
-    let tags = Array.isArray(
-      aiAnalysis?.tags
-    )
+    let tags = Array.isArray(aiAnalysis?.tags)
       ? [...aiAnalysis.tags]
       : [];
 
@@ -402,30 +554,24 @@ export default function AdminPage() {
 
     tags = [...new Set(tags)];
 
-    const searchText = [
+    const searchTextValue = [
       `시공 부위: ${category.trim()}`,
-
       `세부 부위: ${
         aiAnalysis?.sub_category ||
         category.trim()
       }`,
-
       `사진 상태: ${
         photoType === "before"
           ? "시공 전"
           : "시공 후"
       }`,
-
       `사진 설명: ${
         aiAnalysis?.description || ""
       }`,
-
       `특징: ${tags.join(", ")}`,
-
       material.trim()
         ? `사용 자재: ${material.trim()}`
         : "",
-
       memo.trim()
         ? `시공 메모: ${memo.trim()}`
         : "",
@@ -434,13 +580,11 @@ export default function AdminPage() {
       .join("\n");
 
     setMessage(
-      `${typeLabel} 사진 ${
-        index + 1
-      }/${total} 검색 데이터 생성 중...`
+      `${typeLabel} 사진 ${index + 1}/${total} 검색 데이터 생성 중...`
     );
 
     const embedding =
-      await createEmbedding(searchText);
+      await createEmbedding(searchTextValue);
 
     const extension =
       image.name
@@ -452,9 +596,7 @@ export default function AdminPage() {
       `history/${workItemId}/${photoType}/${Date.now()}-${index}.${extension}`;
 
     setMessage(
-      `${typeLabel} 사진 ${
-        index + 1
-      }/${total} 원본 저장 중...`
+      `${typeLabel} 사진 ${index + 1}/${total} 원본 저장 중...`
     );
 
     const { error: uploadError } =
@@ -480,32 +622,18 @@ export default function AdminPage() {
         .insert([
           {
             project_id: projectId,
-
-            work_item_id:
-              workItemId,
-
+            work_item_id: workItemId,
             photo_url:
               publicUrlData.publicUrl,
-
-            storage_path:
-              filePath,
-
-            photo_type:
-              photoType,
-
-            category:
-              category.trim(),
-
+            storage_path: filePath,
+            photo_type: photoType,
+            category: category.trim(),
             sub_category:
               aiAnalysis?.sub_category ||
               category.trim(),
-
             ai_description:
               aiAnalysis?.description || "",
-
-            ai_tags:
-              tags,
-
+            ai_tags: tags,
             embedding,
           },
         ]);
@@ -514,10 +642,6 @@ export default function AdminPage() {
       throw photoError;
     }
   }
-
-  // ======================================================
-  // 시공건 전체 저장
-  // ======================================================
 
   async function handleSave() {
     const totalPhotoCount =
@@ -528,7 +652,6 @@ export default function AdminPage() {
       setMessage(
         "⚠️ 시공 전 또는 시공 후 사진을 1장 이상 선택해주세요."
       );
-
       return;
     }
 
@@ -536,29 +659,19 @@ export default function AdminPage() {
       setMessage(
         "⚠️ 시공 부위를 입력해주세요."
       );
-
       return;
     }
 
     const costNumber = Number(
-      String(actualCost).replace(
-        /,/g,
-        ""
-      )
+      String(actualCost).replace(/,/g, "")
     );
 
-    if (
-      !costNumber ||
-      costNumber <= 0
-    ) {
+    if (!costNumber || costNumber <= 0) {
       setMessage(
         "⚠️ 실제 시공금액을 입력해주세요."
       );
-
       return;
     }
-
-    // 저장 직전에 한 번 더 전체 사진 중복 검사
 
     setMessage(
       "사진 중복 여부를 확인하고 있습니다..."
@@ -570,14 +683,12 @@ export default function AdminPage() {
       ...beforeImages,
       ...afterImages,
     ]) {
-      const hash =
-        await getImageHash(file);
+      const hash = await getImageHash(file);
 
       if (allHashes.has(hash)) {
         setMessage(
-          "❌ 동일한 사진이 중복되어 있습니다. 중복 사진을 제거한 후 다시 저장해주세요."
+          "❌ 동일한 사진이 중복되어 있습니다."
         );
-
         return;
       }
 
@@ -585,7 +696,6 @@ export default function AdminPage() {
     }
 
     setLoading(true);
-
     setMessage(
       "시공정보를 저장하고 있습니다..."
     );
@@ -601,20 +711,11 @@ export default function AdminPage() {
         .from("work_items")
         .insert([
           {
-            project_id:
-              projectId,
-
-            category:
-              category.trim(),
-
-            sub_category:
-              category.trim(),
-
-            actual_cost:
-              costNumber,
-
-            memo:
-              memo.trim() || null,
+            project_id: projectId,
+            category: category.trim(),
+            sub_category: category.trim(),
+            actual_cost: costNumber,
+            memo: memo.trim() || null,
           },
         ])
         .select("id")
@@ -624,8 +725,7 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      const workItemId =
-        workItemData.id;
+      const workItemId = workItemData.id;
 
       for (
         let i = 0;
@@ -633,19 +733,11 @@ export default function AdminPage() {
         i++
       ) {
         await savePhoto({
-          image:
-            beforeImages[i],
-
+          image: beforeImages[i],
           index: i,
-
-          total:
-            beforeImages.length,
-
-          photoType:
-            "before",
-
+          total: beforeImages.length,
+          photoType: "before",
           workItemId,
-
           projectId,
         });
       }
@@ -656,19 +748,11 @@ export default function AdminPage() {
         i++
       ) {
         await savePhoto({
-          image:
-            afterImages[i],
-
+          image: afterImages[i],
           index: i,
-
-          total:
-            afterImages.length,
-
-          photoType:
-            "after",
-
+          total: afterImages.length,
+          photoType: "after",
           workItemId,
-
           projectId,
         });
       }
@@ -683,6 +767,8 @@ export default function AdminPage() {
       setActualCost("");
       setMaterial("");
       setMemo("");
+
+      await loadJobs();
     } catch (error) {
       console.error(error);
 
@@ -714,16 +800,11 @@ export default function AdminPage() {
       >
         선택한 사진: {files.length}장
 
-        {files.map(
-          (file, index) => (
-            <div
-              key={`${file.name}-${index}`}
-            >
-              {index + 1}.{" "}
-              {file.name}
-            </div>
-          )
-        )}
+        {files.map((file, index) => (
+          <div key={`${file.name}-${index}`}>
+            {index + 1}. {file.name}
+          </div>
+        ))}
       </div>
     );
   }
@@ -746,12 +827,10 @@ export default function AdminPage() {
   return (
     <main
       style={{
-        maxWidth: "720px",
+        maxWidth: "760px",
         margin: "0 auto",
-        padding:
-          "30px 20px 60px",
-        fontFamily:
-          "Arial, sans-serif",
+        padding: "30px 20px 60px",
+        fontFamily: "Arial, sans-serif",
       }}
     >
       <div
@@ -767,109 +846,41 @@ export default function AdminPage() {
         기분좋은공간
       </div>
 
-      <h1
-        style={{
-          fontSize: "34px",
-          lineHeight: "1.3",
-        }}
-      >
-        관리자 설정
-      </h1>
-
-      {/* 유사도 설정 */}
+      <h1>관리자 설정</h1>
 
       <section
         style={{
           marginTop: "25px",
           padding: "25px",
-          border:
-            "2px solid #111827",
+          border: "2px solid #111827",
           borderRadius: "20px",
         }}
       >
-        <h2>
-          AI 유사도 기준
-        </h2>
-
-        <p
-          style={{
-            color: "#666",
-            lineHeight: "1.6",
-          }}
-        >
-          이 기준보다 유사도가 낮은
-          과거 시공사례는 견적에서
-          제외합니다.
-        </p>
-
-        <label style={labelStyle}>
-          최소 유사도
-        </label>
+        <h2>AI 유사도 기준</h2>
 
         <select
-          value={
-            similarityThreshold
-          }
+          value={similarityThreshold}
           onChange={(e) =>
             setSimilarityThreshold(
-              Number(
-                e.target.value
-              )
+              Number(e.target.value)
             )
           }
           style={inputStyle}
         >
-          <option value={0.5}>
-            50%
-          </option>
-
-          <option value={0.55}>
-            55%
-          </option>
-
-          <option value={0.6}>
-            60%
-          </option>
-
-          <option value={0.65}>
-            65%
-          </option>
-
-          <option value={0.7}>
-            70%
-          </option>
-
-          <option value={0.75}>
-            75%
-          </option>
+          <option value={0.5}>50%</option>
+          <option value={0.55}>55%</option>
+          <option value={0.6}>60%</option>
+          <option value={0.65}>65%</option>
+          <option value={0.7}>70%</option>
+          <option value={0.75}>75%</option>
         </select>
 
-        <div
-          style={{
-            marginTop: "15px",
-            fontSize: "18px",
-            fontWeight: "bold",
-          }}
-        >
-          현재 선택:{" "}
-          {Math.round(
-            similarityThreshold *
-              100
-          )}
-          %
-        </div>
-
         <button
-          type="button"
-          onClick={
-            saveSimilaritySetting
-          }
-          disabled={
-            settingLoading
-          }
+          onClick={saveSimilaritySetting}
+          disabled={settingLoading}
           style={{
             width: "100%",
-            marginTop: "20px",
+            marginTop: "15px",
             padding: "17px",
             border: "none",
             borderRadius: "12px",
@@ -877,319 +888,147 @@ export default function AdminPage() {
             color: "white",
             fontSize: "18px",
             fontWeight: "bold",
-            opacity:
-              settingLoading
-                ? 0.7
-                : 1,
           }}
         >
-          {settingLoading
-            ? "저장 중..."
-            : "유사도 기준 저장"}
+          유사도 기준 저장
         </button>
 
         {settingMessage && (
-          <div
-            style={{
-              marginTop: "15px",
-              padding: "12px",
-              background:
-                "#f3f4f6",
-              borderRadius: "10px",
-            }}
-          >
-            {settingMessage}
-          </div>
+          <p>{settingMessage}</p>
         )}
       </section>
 
-      <h1
-        style={{
-          marginTop: "45px",
-          fontSize: "34px",
-          lineHeight: "1.3",
-        }}
-      >
+      <h1 style={{ marginTop: "45px" }}>
         과거 시공 데이터 등록
       </h1>
 
-      <p
-        style={{
-          color: "#666",
-          fontSize: "18px",
-          lineHeight: "1.7",
-        }}
-      >
-        시공 전 사진과 시공 후
-        사진을 구분해서 등록합니다.
-        <br />
-        동일한 사진이 중복 선택되면
-        자동으로 제외합니다.
-      </p>
-
       <section
         style={{
-          marginTop: "30px",
           padding: "25px",
           border: "1px solid #ddd",
           borderRadius: "20px",
         }}
       >
-        {/* 시공 전 */}
+        <label style={labelStyle}>
+          📷 시공 전 사진
+        </label>
 
-        <div
-          style={{
-            marginBottom: "30px",
-            padding: "20px",
-            background:
-              "#f9fafb",
-            borderRadius: "15px",
-          }}
-        >
-          <label style={labelStyle}>
-            📷 시공 전 사진
-          </label>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={async (e) => {
+            const files = Array.from(
+              e.target.files || []
+            );
 
-          <p
-            style={{
-              color: "#666",
-              fontSize: "14px",
-            }}
-          >
-            고객 견적사진과 비교할
-            때 사용됩니다.
-          </p>
-
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={async (e) => {
-              const files =
-                Array.from(
-                  e.target.files ||
-                    []
-                );
-
-              setMessage(
-                "사진 중복 여부를 확인하고 있습니다..."
-              );
-
-              const {
-                uniqueFiles,
-                duplicateCount,
-              } =
-                await removeDuplicateImages(
-                  files,
-                  afterImages
-                );
-
-              setBeforeImages(
-                uniqueFiles
-              );
-
-              if (
-                duplicateCount > 0
-              ) {
-                setMessage(
-                  `⚠️ 동일한 사진 ${duplicateCount}장을 발견해서 제외했습니다.`
-                );
-              } else {
-                setMessage(
-                  `✅ 시공 전 사진 ${uniqueFiles.length}장이 선택되었습니다.`
-                );
-              }
-            }}
-          />
-
-          <FileList
-            files={
-              beforeImages
-            }
-          />
-        </div>
-
-        {/* 시공 후 */}
-
-        <div
-          style={{
-            marginBottom: "30px",
-            padding: "20px",
-            background:
-              "#f9fafb",
-            borderRadius: "15px",
-          }}
-        >
-          <label style={labelStyle}>
-            ✨ 시공 후 사진
-          </label>
-
-          <p
-            style={{
-              color: "#666",
-              fontSize: "14px",
-            }}
-          >
-            완료 사례와
-            포트폴리오에 활용할 수
-            있습니다.
-          </p>
-
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={async (e) => {
-              const files =
-                Array.from(
-                  e.target.files ||
-                    []
-                );
-
-              setMessage(
-                "사진 중복 여부를 확인하고 있습니다..."
-              );
-
-              const {
-                uniqueFiles,
-                duplicateCount,
-              } =
-                await removeDuplicateImages(
-                  files,
-                  beforeImages
-                );
-
-              setAfterImages(
-                uniqueFiles
-              );
-
-              if (
-                duplicateCount > 0
-              ) {
-                setMessage(
-                  `⚠️ 동일한 사진 ${duplicateCount}장을 발견해서 제외했습니다.`
-                );
-              } else {
-                setMessage(
-                  `✅ 시공 후 사진 ${uniqueFiles.length}장이 선택되었습니다.`
-                );
-              }
-            }}
-          />
-
-          <FileList
-            files={
+            const {
+              uniqueFiles,
+              duplicateCount,
+            } = await removeDuplicateImages(
+              files,
               afterImages
+            );
+
+            setBeforeImages(uniqueFiles);
+
+            if (duplicateCount > 0) {
+              setMessage(
+                `⚠️ 동일한 사진 ${duplicateCount}장을 제외했습니다.`
+              );
             }
-          />
-        </div>
-
-        {/* 시공 부위 */}
-
-        <div
-          style={{
-            marginBottom: "25px",
           }}
-        >
-          <label style={labelStyle}>
-            시공 부위
-          </label>
+        />
 
-          <input
-            type="text"
-            value={category}
-            onChange={(e) =>
-              setCategory(
-                e.target.value
-              )
+        <FileList files={beforeImages} />
+
+        <div style={{ height: "25px" }} />
+
+        <label style={labelStyle}>
+          ✨ 시공 후 사진
+        </label>
+
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={async (e) => {
+            const files = Array.from(
+              e.target.files || []
+            );
+
+            const {
+              uniqueFiles,
+              duplicateCount,
+            } = await removeDuplicateImages(
+              files,
+              beforeImages
+            );
+
+            setAfterImages(uniqueFiles);
+
+            if (duplicateCount > 0) {
+              setMessage(
+                `⚠️ 동일한 사진 ${duplicateCount}장을 제외했습니다.`
+              );
             }
-            placeholder="예: 싱크대, 중문, 방문, 방화문"
-            style={inputStyle}
-          />
-        </div>
-
-        {/* 실제 시공금액 */}
-
-        <div
-          style={{
-            marginBottom: "25px",
           }}
-        >
-          <label style={labelStyle}>
-            실제 시공금액
-          </label>
+        />
 
-          <input
-            type="number"
-            inputMode="numeric"
-            value={actualCost}
-            onChange={(e) =>
-              setActualCost(
-                e.target.value
-              )
-            }
-            placeholder="예: 550000"
-            style={inputStyle}
-          />
-        </div>
+        <FileList files={afterImages} />
 
-        {/* 자재 */}
+        <div style={{ height: "25px" }} />
 
-        <div
-          style={{
-            marginBottom: "25px",
-          }}
-        >
-          <label style={labelStyle}>
-            사용 자재
-          </label>
+        <input
+          value={category}
+          onChange={(e) =>
+            setCategory(e.target.value)
+          }
+          placeholder="시공 부위"
+          style={inputStyle}
+        />
 
-          <input
-            type="text"
-            value={material}
-            onChange={(e) =>
-              setMaterial(
-                e.target.value
-              )
-            }
-            placeholder="예: 현대L&C GS115"
-            style={inputStyle}
-          />
-        </div>
+        <div style={{ height: "15px" }} />
 
-        {/* 메모 */}
+        <input
+          type="number"
+          value={actualCost}
+          onChange={(e) =>
+            setActualCost(e.target.value)
+          }
+          placeholder="실제 시공금액"
+          style={inputStyle}
+        />
 
-        <div
-          style={{
-            marginBottom: "25px",
-          }}
-        >
-          <label style={labelStyle}>
-            메모
-          </label>
+        <div style={{ height: "15px" }} />
 
-          <textarea
-            value={memo}
-            onChange={(e) =>
-              setMemo(
-                e.target.value
-              )
-            }
-            placeholder="예: 싱크대 상하부장 + 아일랜드 + 냉장고장"
-            rows={5}
-            style={{
-              ...inputStyle,
-              resize: "vertical",
-            }}
-          />
-        </div>
+        <input
+          value={material}
+          onChange={(e) =>
+            setMaterial(e.target.value)
+          }
+          placeholder="사용 자재"
+          style={inputStyle}
+        />
+
+        <div style={{ height: "15px" }} />
+
+        <textarea
+          value={memo}
+          onChange={(e) =>
+            setMemo(e.target.value)
+          }
+          placeholder="메모"
+          rows={4}
+          style={inputStyle}
+        />
 
         <button
-          type="button"
           onClick={handleSave}
           disabled={loading}
           style={{
             width: "100%",
+            marginTop: "20px",
             padding: "20px",
             border: "none",
             borderRadius: "14px",
@@ -1197,10 +1036,6 @@ export default function AdminPage() {
             color: "white",
             fontSize: "20px",
             fontWeight: "bold",
-            opacity:
-              loading
-                ? 0.7
-                : 1,
           }}
         >
           {loading
@@ -1208,21 +1043,199 @@ export default function AdminPage() {
             : "시공 전·후 데이터 저장"}
         </button>
 
-        {message && (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "15px",
-              background:
-                "#f3f4f6",
-              borderRadius: "12px",
-              lineHeight: "1.6",
-            }}
-          >
-            {message}
-          </div>
+        {message && <p>{message}</p>}
+      </section>
+
+      <h1 style={{ marginTop: "50px" }}>
+        데이터베이스 관리
+      </h1>
+
+      <section
+        style={{
+          padding: "25px",
+          border: "1px solid #ddd",
+          borderRadius: "20px",
+        }}
+      >
+        <input
+          value={searchText}
+          onChange={(e) =>
+            setSearchText(e.target.value)
+          }
+          placeholder="싱크대, 중문, 메모 등 검색"
+          style={inputStyle}
+        />
+
+        <button
+          onClick={loadJobs}
+          style={{
+            width: "100%",
+            marginTop: "12px",
+            padding: "14px",
+            borderRadius: "10px",
+            border: "1px solid #ccc",
+            background: "white",
+            fontWeight: "bold",
+          }}
+        >
+          새로고침
+        </button>
+
+        {jobsMessage && (
+          <p>{jobsMessage}</p>
+        )}
+
+        {jobsLoading ? (
+          <p>불러오는 중...</p>
+        ) : (
+          filteredJobs.map((job) => (
+            <div
+              key={job.id}
+              style={{
+                marginTop: "20px",
+                padding: "18px",
+                border: "1px solid #ddd",
+                borderRadius: "14px",
+              }}
+            >
+              {editingId === job.id ? (
+                <>
+                  <input
+                    value={editCategory}
+                    onChange={(e) =>
+                      setEditCategory(
+                        e.target.value
+                      )
+                    }
+                    style={inputStyle}
+                  />
+
+                  <div
+                    style={{ height: "10px" }}
+                  />
+
+                  <input
+                    type="number"
+                    value={editCost}
+                    onChange={(e) =>
+                      setEditCost(
+                        e.target.value
+                      )
+                    }
+                    style={inputStyle}
+                  />
+
+                  <div
+                    style={{ height: "10px" }}
+                  />
+
+                  <textarea
+                    value={editMemo}
+                    onChange={(e) =>
+                      setEditMemo(
+                        e.target.value
+                      )
+                    }
+                    rows={3}
+                    style={inputStyle}
+                  />
+
+                  <button
+                    onClick={() =>
+                      saveJobEdit(job.id)
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: "12px",
+                      padding: "14px",
+                      border: "none",
+                      borderRadius: "10px",
+                      background: "#111827",
+                      color: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    수정 저장
+                  </button>
+
+                  <button
+                    onClick={cancelEdit}
+                    style={{
+                      width: "100%",
+                      marginTop: "8px",
+                      padding: "12px",
+                      borderRadius: "10px",
+                      border: "1px solid #ccc",
+                      background: "white",
+                    }}
+                  >
+                    취소
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h3>
+                    {job.category ||
+                      "시공 부위 없음"}
+                  </h3>
+
+                  <p>
+                    실제 시공금액:{" "}
+                    {Number(
+                      job.actual_cost || 0
+                    ).toLocaleString()}
+                    원
+                  </p>
+
+                  <p>
+                    시공 전 {job.beforeCount}장 ·
+                    시공 후 {job.afterCount}장
+                  </p>
+
+                  {job.memo && (
+                    <p>메모: {job.memo}</p>
+                  )}
+
+                  <button
+                    onClick={() =>
+                      startEdit(job)
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: "10px",
+                      padding: "13px",
+                      borderRadius: "10px",
+                      border: "1px solid #ccc",
+                      background: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    수정
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      deleteJob(job)
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: "8px",
+                      padding: "13px",
+                      borderRadius: "10px",
+                      border: "none",
+                      background: "#b91c1c",
+                      color: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    삭제
+                  </button>
+                </>
+              )}
+            </div>
+          ))
         )}
       </section>
     </main>
   );
-}
+                           }
