@@ -279,21 +279,12 @@ export default function AdminPage() {
   // ============================================================
 
   async function enableNotifications() {
-  if (!("serviceWorker" in navigator)) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     alert("이 브라우저는 푸시 알림을 지원하지 않습니다.");
     return;
   }
 
-  if (!("Notification" in window)) {
-    alert("이 브라우저는 알림 기능을 지원하지 않습니다.");
-    return;
-  }
-
   try {
-    const registration = await navigator.serviceWorker.register("/sw.js");
-
-    await navigator.serviceWorker.ready;
-
     const permission = await Notification.requestPermission();
 
     if (permission !== "granted") {
@@ -302,25 +293,77 @@ export default function AdminPage() {
       return;
     }
 
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+    if (!publicKey) {
+      throw new Error("VAPID 공개키가 설정되지 않았습니다.");
+    }
+
+    const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
+    const base64 = (publicKey + padding)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const rawData = window.atob(base64);
+    const applicationServerKey = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; i++) {
+      applicationServerKey[i] = rawData.charCodeAt(i);
+    }
+
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    }
+
+    const subscriptionJson = subscription.toJSON();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("관리자 로그인 정보를 확인할 수 없습니다.");
+    }
+
+    const { error: saveError } = await supabase
+      .from("push_subscriptions")
+      .upsert(
+        {
+          user_id: user.id,
+          endpoint: subscriptionJson.endpoint,
+          p256dh: subscriptionJson.keys?.p256dh,
+          auth: subscriptionJson.keys?.auth,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "endpoint",
+        }
+      );
+
+    if (saveError) throw saveError;
+
     setNotificationEnabled(true);
 
     await registration.showNotification("기분좋은공간", {
-      body: "신규 상담 알림이 정상적으로 연결되었습니다.",
-      tag: "notification-test",
+      body: "이 휴대폰에 신규 상담 푸시 알림이 등록되었습니다.",
+      tag: "push-registration",
       data: {
         url: "/admin",
       },
     });
   } catch (error) {
-    console.error("알림 설정 오류:", error);
-
+    console.error("푸시 알림 등록 오류:", error);
     setNotificationEnabled(false);
-
-    alert(
-      `알림 설정 오류: ${
-        error?.message || "알 수 없는 오류"
-      }`
-    );
+    alert(`푸시 알림 등록 오류: ${error?.message || "알 수 없는 오류"}`);
   }
   }
 
