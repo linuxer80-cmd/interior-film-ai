@@ -1811,6 +1811,7 @@ export default function AdminPage() {
     }
 
     return result.embedding;
+  }
       // ============================================================
   // 시공사진 저장
   // ============================================================
@@ -5066,4 +5067,3 @@ export default function AdminPage() {
   );
   }
     
-  }
