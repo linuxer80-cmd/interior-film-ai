@@ -5,7 +5,6 @@ import { supabase } from "../../lib/supabase";
 
 // ============================================================
 // 사진 카드
-// 중요: AdminPage 바깥에 있어야 입력 중 포커스가 풀리지 않습니다.
 // ============================================================
 
 function PhotoCard({
@@ -290,14 +289,12 @@ export default function AdminPage() {
   const [jobsMessage, setJobsMessage] = useState("");
   const [searchText, setSearchText] = useState("");
 
-  // 시공건 수정
   const [editingId, setEditingId] = useState(null);
   const [editCategory, setEditCategory] = useState("");
   const [editSubCategory, setEditSubCategory] = useState("");
   const [editCost, setEditCost] = useState("");
   const [editMemo, setEditMemo] = useState("");
 
-  // 사진 크게 보기
   const [previewPhoto, setPreviewPhoto] = useState(null);
 
   // ============================================================
@@ -347,7 +344,7 @@ export default function AdminPage() {
   }, []);
 
   // ============================================================
-  // 유사도 설정
+  // 설정
   // ============================================================
 
   async function loadSettings() {
@@ -415,16 +412,14 @@ export default function AdminPage() {
       const { data: workItems, error: workItemsError } =
         await supabase
           .from("work_items")
-          .select(
-            `
+          .select(`
             id,
             category,
             sub_category,
             actual_cost,
             memo,
             created_at
-          `
-          )
+          `)
           .order("created_at", {
             ascending: false,
           });
@@ -443,8 +438,7 @@ export default function AdminPage() {
       const { data: photoData, error: photoError } =
         await supabase
           .from("work_photos")
-          .select(
-            `
+          .select(`
             id,
             work_item_id,
             photo_type,
@@ -455,8 +449,7 @@ export default function AdminPage() {
             ai_description,
             ai_tags,
             created_at
-          `
-          )
+          `)
           .in("work_item_id", ids)
           .order("created_at", {
             ascending: true,
@@ -542,20 +535,16 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // 시공건 수정
+  // 시공정보 수정
   // ============================================================
 
   function startEdit(job) {
     setEditingId(job.id);
-
     setEditCategory(job.category || "");
-
     setEditSubCategory(job.sub_category || job.category || "");
-
     setEditCost(
       job.actual_cost != null ? String(job.actual_cost) : ""
     );
-
     setEditMemo(job.memo || "");
   }
 
@@ -587,14 +576,10 @@ export default function AdminPage() {
         .from("work_items")
         .update({
           category: editCategory.trim(),
-
           sub_category:
             editSubCategory.trim() || editCategory.trim(),
-
           actual_cost: costNumber,
-
           memo: editMemo.trim() || null,
-
           updated_at: new Date().toISOString(),
         })
         .eq("id", jobId);
@@ -617,22 +602,17 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // 사진 정보 수정
+  // 사진정보 수정
   // ============================================================
 
   function startPhotoEdit(photo) {
     setEditingPhotoId(photo.id);
-
     setEditPhotoType(photo.photo_type || "before");
-
     setEditPhotoCategory(photo.category || "");
-
     setEditPhotoSubCategory(
       photo.sub_category || photo.category || ""
     );
-
     setEditPhotoDescription(photo.ai_description || "");
-
     setJobsMessage("");
   }
 
@@ -691,12 +671,10 @@ export default function AdminPage() {
 
       const searchTextValue = [
         `시공 부위: ${editPhotoCategory.trim()}`,
-
         `세부 부위: ${
           editPhotoSubCategory.trim() ||
           editPhotoCategory.trim()
         }`,
-
         `사진 상태: ${
           editPhotoType === "before"
             ? "시공 전"
@@ -704,32 +682,24 @@ export default function AdminPage() {
             ? "시공 후"
             : "과거 시공 사진"
         }`,
-
         `사진 설명: ${editPhotoDescription.trim()}`,
-
         `특징: ${tags.join(", ")}`,
       ]
         .filter(Boolean)
         .join("\n");
 
-      const embedding =
-        await createEmbedding(searchTextValue);
+      const embedding = await createEmbedding(searchTextValue);
 
       const { error } = await supabase
         .from("work_photos")
         .update({
           photo_type: editPhotoType,
-
           category: editPhotoCategory.trim(),
-
           sub_category:
             editPhotoSubCategory.trim() ||
             editPhotoCategory.trim(),
-
           ai_description: editPhotoDescription.trim(),
-
           ai_tags: tags,
-
           embedding,
         })
         .eq("id", photo.id);
@@ -741,7 +711,6 @@ export default function AdminPage() {
       );
 
       cancelPhotoEdit();
-
       await loadJobs();
     } catch (error) {
       console.error(error);
@@ -757,7 +726,7 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // 사진 삭제
+  // 삭제
   // ============================================================
 
   async function deletePhoto(photo) {
@@ -789,7 +758,6 @@ export default function AdminPage() {
       setJobsMessage("✅ 사진이 삭제되었습니다.");
 
       setPreviewPhoto(null);
-
       await loadJobs();
     } catch (error) {
       console.error(error);
@@ -801,10 +769,6 @@ export default function AdminPage() {
       );
     }
   }
-
-  // ============================================================
-  // 시공건 삭제
-  // ============================================================
 
   async function deleteJob(job) {
     const ok = window.confirm(
@@ -901,7 +865,7 @@ export default function AdminPage() {
   }, [jobs, searchText]);
 
   // ============================================================
-  // 이미지 중복 검사
+  // 중복검사
   // ============================================================
 
   async function getImageHash(file) {
@@ -963,7 +927,7 @@ export default function AdminPage() {
   }
 
   // ============================================================
-  // AI 분석용 이미지 축소
+  // 이미지 축소
   // ============================================================
 
   async function resizeImage(file) {
@@ -982,13 +946,11 @@ export default function AdminPage() {
               height = Math.round(
                 (height * maxSize) / width
               );
-
               width = maxSize;
             } else {
               width = Math.round(
                 (width * maxSize) / height
               );
-
               height = maxSize;
             }
           }
@@ -1003,11 +965,9 @@ export default function AdminPage() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-
             reject(
               new Error("이미지 처리에 실패했습니다.")
             );
-
             return;
           }
 
@@ -1029,7 +989,6 @@ export default function AdminPage() {
                     "이미지 변환에 실패했습니다."
                   )
                 );
-
                 return;
               }
 
@@ -1054,7 +1013,6 @@ export default function AdminPage() {
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-
         reject(
           new Error("사진을 불러올 수 없습니다.")
         );
@@ -1063,10 +1021,6 @@ export default function AdminPage() {
       img.src = objectUrl;
     });
   }
-
-  // ============================================================
-  // JSON 처리
-  // ============================================================
 
   async function readJsonSafely(response) {
     const text = await response.text();
@@ -1084,14 +1038,18 @@ export default function AdminPage() {
 
   // ============================================================
   // AI 사진 분석
+  // 핵심: photoType을 API로 보냄
   // ============================================================
 
-  async function analyzeImage(file) {
+  async function analyzeImage(file, photoType = "before") {
     const resizedImage = await resizeImage(file);
 
     const formData = new FormData();
 
     formData.append("image", resizedImage);
+
+    // 시공 전 / 시공 후 구분
+    formData.append("photoType", photoType);
 
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -1160,7 +1118,13 @@ export default function AdminPage() {
       }/${total} AI 분석 중...`
     );
 
-    const aiAnalysis = await analyzeImage(image);
+    // 핵심
+    // 시공 전이면 before
+    // 시공 후면 after
+    const aiAnalysis = await analyzeImage(
+      image,
+      photoType
+    );
 
     let tags = Array.isArray(aiAnalysis?.tags)
       ? [...aiAnalysis.tags]
@@ -1171,29 +1135,27 @@ export default function AdminPage() {
     }
 
     tags.push(
-      photoType === "before" ? "시공전" : "시공후"
+      photoType === "before"
+        ? "시공전"
+        : "시공후"
     );
 
     tags = [...new Set(tags)];
 
     const searchTextValue = [
       `시공 부위: ${category.trim()}`,
-
       `세부 부위: ${
         aiAnalysis?.sub_category ||
         category.trim()
       }`,
-
       `사진 상태: ${
         photoType === "before"
           ? "시공 전"
           : "시공 후"
       }`,
-
       `사진 설명: ${
         aiAnalysis?.description || ""
       }`,
-
       `특징: ${tags.join(", ")}`,
     ]
       .filter(Boolean)
@@ -1384,10 +1346,6 @@ export default function AdminPage() {
     }
   }
 
-  // ============================================================
-  // 파일 목록
-  // ============================================================
-
   function FileList({ files }) {
     if (!files.length) return null;
 
@@ -1435,8 +1393,6 @@ export default function AdminPage() {
 
       <h1>관리자 페이지</h1>
 
-      {/* 유사도 설정 */}
-
       <section style={sectionStyle}>
         <h2>AI 유사도 기준</h2>
 
@@ -1477,8 +1433,6 @@ export default function AdminPage() {
 
         {settingMessage && <p>{settingMessage}</p>}
       </section>
-
-      {/* 신규등록 */}
 
       <h2 style={{ marginTop: "40px" }}>
         과거 시공 데이터 등록
@@ -1608,8 +1562,6 @@ export default function AdminPage() {
 
         {message && <p>{message}</p>}
       </section>
-
-      {/* DB관리 */}
 
       <h2 style={{ marginTop: "45px" }}>
         데이터베이스 관리
@@ -2000,8 +1952,6 @@ export default function AdminPage() {
         ))}
       </section>
 
-      {/* 사진 확대 */}
-
       {previewPhoto && (
         <div
           onClick={() => setPreviewPhoto(null)}
@@ -2029,4 +1979,4 @@ export default function AdminPage() {
       )}
     </main>
   );
-}
+            }
