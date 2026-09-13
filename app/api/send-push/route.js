@@ -94,4 +94,38 @@ export async function POST(request) {
         );
 
         sent += 1;
-      } catch (pushError
+      } catch (pushError) {
+        console.error(
+          "푸시 발송 실패:",
+          pushError.statusCode,
+          pushError.message
+        );
+
+        if (
+          pushError.statusCode === 404 ||
+          pushError.statusCode === 410
+        ) {
+          await supabase
+            .from("push_subscriptions")
+            .delete()
+            .eq("id", item.id);
+        }
+      }
+    }
+
+    return Response.json({
+      success: true,
+      sent,
+    });
+  } catch (error) {
+    console.error("send-push 오류:", error);
+
+    return Response.json(
+      {
+        success: false,
+        error: error?.message || "푸시 발송 오류",
+      },
+      { status: 500 }
+    );
+  }
+}
