@@ -279,35 +279,49 @@ export default function AdminPage() {
   // ============================================================
 
   async function enableNotifications() {
-    if (!("Notification" in window)) {
-      alert(
-        "현재 브라우저에서는 알림 기능을 지원하지 않습니다."
-      );
+  if (!("serviceWorker" in navigator)) {
+    alert("이 브라우저는 푸시 알림을 지원하지 않습니다.");
+    return;
+  }
+
+  if (!("Notification" in window)) {
+    alert("이 브라우저는 알림 기능을 지원하지 않습니다.");
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+
+    await navigator.serviceWorker.ready;
+
+    const permission = await Notification.requestPermission();
+
+    if (permission !== "granted") {
+      setNotificationEnabled(false);
+      alert("알림 권한을 허용해주세요.");
       return;
     }
 
-    try {
-      const permission =
-        await Notification.requestPermission();
+    setNotificationEnabled(true);
 
-      if (permission === "granted") {
-        setNotificationEnabled(true);
+    await registration.showNotification("기분좋은공간", {
+      body: "신규 상담 알림이 정상적으로 연결되었습니다.",
+      tag: "notification-test",
+      data: {
+        url: "/admin",
+      },
+    });
+  } catch (error) {
+    console.error("알림 설정 오류:", error);
 
-        new Notification("기분좋은공간", {
-          body: "신규 고객 상담 알림이 켜졌습니다.",
-        });
-      } else {
-        setNotificationEnabled(false);
+    setNotificationEnabled(false);
 
-        alert(
-          "알림 권한이 허용되지 않았습니다."
-        );
-      }
-    } catch (error) {
-      console.error(error);
-
-      alert("알림 설정 중 오류가 발생했습니다.");
-    }
+    alert(
+      `알림 설정 오류: ${
+        error?.message || "알 수 없는 오류"
+      }`
+    );
+  }
   }
 
   function handleRealtimeLead(lead) {
