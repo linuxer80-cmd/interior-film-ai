@@ -794,63 +794,53 @@ export default function Home() {
         */
       }
 
-      const {
-        error,
-      } = await supabase
-        .from(
-          "customer_leads"
-        )
-        .insert([
-          {
-            customer_name:
-              customerName.trim(),
+      
 
-            phone:
-              phone.trim(),
+            const response = await fetch("/api/lead", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    customer_name: customerName.trim(),
+    phone: phone.trim(),
+    region: region.trim(),
 
-            region:
-              region.trim(),
+    category:
+      analysis?.category || null,
 
-            category:
-              analysis?.category ||
-              null,
+    sub_category:
+      analysis?.sub_category || null,
 
-            sub_category:
-              analysis?.sub_category ||
-              null,
+    ai_description:
+      analysis?.description || null,
 
-            ai_description:
-              analysis?.description ||
-              null,
+    estimate_min:
+      estimate?.min || null,
 
-            estimate_min:
-              estimate?.min ||
-              null,
+    estimate_max:
+      estimate?.max || null,
 
-            estimate_max:
-              estimate?.max ||
-              null,
+    estimate_average:
+      estimate?.average || null,
 
-            estimate_average:
-              estimate?.average ||
-              null,
+    customer_photo_path:
+      customerPhotoPath,
 
-            customer_photo_path:
-              customerPhotoPath,
+    memo:
+      estimate
+        ? `AI 견적 신뢰도: ${estimate.confidence || ""}`
+        : "AI 분석 후 상담 신청",
+  }),
+});
 
-            status:
-              "신규문의",
+const result = await response.json();
 
-            memo:
-              estimate
-                ? `AI 견적 신뢰도: ${estimate.confidence} / 비교 시공건: ${estimate.count}건`
-                : "AI 분석 후 상담 신청",
-          },
-        ]);
-
-      if (error) {
-        throw error;
-      }
+if (!response.ok || !result.success) {
+  throw new Error(
+    result.error || "상담 신청 저장 오류"
+  );
+}
 
       setLeadComplete(true);
 
