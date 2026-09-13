@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export default function Home() {
@@ -10,6 +10,19 @@ export default function Home() {
   const [analysis, setAnalysis] = useState(null);
   const [similarItems, setSimilarItems] = useState([]);
   const [estimate, setEstimate] = useState(null);
+
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+
+  function selectImage(file) {
+    if (!file) return;
+
+    setImage(file);
+    setMessage("");
+    setAnalysis(null);
+    setSimilarItems([]);
+    setEstimate(null);
+  }
 
   async function resizeImage(file) {
     return new Promise((resolve, reject) => {
@@ -48,13 +61,11 @@ export default function Home() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-
             reject(
               new Error(
                 "이미지 처리에 실패했습니다."
               )
             );
-
             return;
           }
 
@@ -68,9 +79,7 @@ export default function Home() {
 
           canvas.toBlob(
             (blob) => {
-              URL.revokeObjectURL(
-                objectUrl
-              );
+              URL.revokeObjectURL(objectUrl);
 
               if (!blob) {
                 reject(
@@ -78,7 +87,6 @@ export default function Home() {
                     "AI 분석용 이미지 변환에 실패했습니다."
                   )
                 );
-
                 return;
               }
 
@@ -115,9 +123,7 @@ export default function Home() {
     });
   }
 
-  async function readJsonSafely(
-    response
-  ) {
+  async function readJsonSafely(response) {
     const text = await response.text();
 
     try {
@@ -135,9 +141,7 @@ export default function Home() {
   }
 
   function normalizeCategory(value) {
-    const text = String(
-      value || ""
-    )
+    const text = String(value || "")
       .trim()
       .toLowerCase();
 
@@ -211,16 +215,12 @@ export default function Home() {
 
   async function handleAnalyze() {
     if (!image) {
-      setMessage(
-        "사진을 선택해주세요."
-      );
+      setMessage("사진을 선택해주세요.");
       return;
     }
 
     setLoading(true);
-    setMessage(
-      "사진을 준비하고 있습니다..."
-    );
+    setMessage("사진을 준비하고 있습니다...");
     setAnalysis(null);
     setSimilarItems([]);
     setEstimate(null);
@@ -259,9 +259,7 @@ export default function Home() {
         );
       }
 
-      if (
-        !analyzeResult?.analysis
-      ) {
+      if (!analyzeResult?.analysis) {
         throw new Error(
           "AI 분석 결과가 없습니다."
         );
@@ -298,19 +296,16 @@ export default function Home() {
       );
 
       const embeddingResponse =
-        await fetch(
-          "/api/embedding",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              text: searchText,
-            }),
-          }
-        );
+        await fetch("/api/embedding", {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            text: searchText,
+          }),
+        });
 
       const embeddingResult =
         await readJsonSafely(
@@ -336,10 +331,9 @@ export default function Home() {
 
       const extension =
         image.name
-          .split(".")
+          ?.split(".")
           .pop()
-          ?.toLowerCase() ||
-        "jpg";
+          ?.toLowerCase() || "jpg";
 
       const filePath =
         `customer/${Date.now()}.${extension}`;
@@ -347,14 +341,10 @@ export default function Home() {
       const { error: uploadError } =
         await supabase.storage
           .from("work-photos")
-          .upload(
-            filePath,
-            image,
-            {
-              cacheControl: "3600",
-              upsert: false,
-            }
-          );
+          .upload(filePath, image, {
+            cacheControl: "3600",
+            upsert: false,
+          });
 
       if (uploadError) {
         throw uploadError;
@@ -386,7 +376,7 @@ export default function Home() {
               aiAnalysis?.description ||
               "",
             ai_tags: tags,
-            embedding: embedding,
+            embedding,
           },
         ]);
 
@@ -404,8 +394,7 @@ export default function Home() {
       } = await supabase.rpc(
         "match_work_photos",
         {
-          query_embedding:
-            embedding,
+          query_embedding: embedding,
           match_threshold: 0,
           match_count: 30,
         }
@@ -417,11 +406,6 @@ export default function Home() {
         );
       }
 
-      /*
-        1차 필터:
-        history 사진이고
-        유사도 65% 이상인 사진만 사용
-      */
       const candidatePhotos =
         (matchedPhotos || []).filter(
           (item) => {
@@ -441,10 +425,6 @@ export default function Home() {
           }
         );
 
-      /*
-        같은 시공건 사진이 여러 장이면
-        가장 높은 유사도 사진 1장만 사용
-      */
       const bestMatchByWorkItem =
         new Map();
 
@@ -494,9 +474,6 @@ export default function Home() {
         return;
       }
 
-      /*
-        실제 시공건 정보 조회
-      */
       const {
         data: workItems,
         error: workItemsError,
@@ -505,10 +482,7 @@ export default function Home() {
         .select(
           "id, category, sub_category, actual_cost, memo"
         )
-        .in(
-          "id",
-          workItemIds
-        )
+        .in("id", workItemIds)
         .not(
           "actual_cost",
           "is",
@@ -523,30 +497,21 @@ export default function Home() {
         throw workItemsError;
       }
 
-      /*
-        고객 사진의 실제 시공 계열
-      */
       const customerGroup =
         normalizeCategory(
-          `${aiAnalysis?.category || ""} ${
+          `${
+            aiAnalysis?.category || ""
+          } ${
             aiAnalysis?.sub_category ||
             ""
           }`
         );
 
-      /*
-        핵심 수정:
-        work_photos가 아니라
-        실제 work_items의 category 기준으로
-        최종 검증
-      */
       const combined =
         uniqueMatches
           .map((photo) => {
             const workItem =
-              (
-                workItems || []
-              ).find(
+              (workItems || []).find(
                 (item) =>
                   item.id ===
                   photo.work_item_id
@@ -567,10 +532,6 @@ export default function Home() {
                 }`
               );
 
-            /*
-              고객 사진과 실제 시공건 계열이
-              다르면 완전히 제외
-            */
             if (
               workItemGroup !==
               customerGroup
@@ -580,10 +541,9 @@ export default function Home() {
 
             return {
               ...photo,
-              actual_cost:
-                Number(
-                  workItem.actual_cost
-                ),
+              actual_cost: Number(
+                workItem.actual_cost
+              ),
               work_category:
                 workItem.category,
               work_sub_category:
@@ -604,10 +564,6 @@ export default function Home() {
 
       setSimilarItems(combined);
 
-      /*
-        같은 부위의 실제 시공건이
-        하나도 없으면 견적을 만들지 않음
-      */
       if (
         combined.length === 0
       ) {
@@ -620,10 +576,6 @@ export default function Home() {
         return;
       }
 
-      /*
-        유사도 가중평균
-        유사도가 높을수록 영향력 증가
-      */
       let weightedCostTotal = 0;
       let weightTotal = 0;
 
@@ -669,22 +621,19 @@ export default function Home() {
 
       const minEstimate =
         Math.round(
-          (weightedAverage *
-            0.9) /
+          (weightedAverage * 0.9) /
             1000
         ) * 1000;
 
       const maxEstimate =
         Math.round(
-          (weightedAverage *
-            1.1) /
+          (weightedAverage * 1.1) /
             1000
         ) * 1000;
 
       const averageRounded =
         Math.round(
-          weightedAverage /
-            1000
+          weightedAverage / 1000
         ) * 1000;
 
       const topSimilarity =
@@ -739,35 +688,40 @@ export default function Home() {
   function formatWon(value) {
     return Number(
       value || 0
-    ).toLocaleString(
-      "ko-KR"
-    );
+    ).toLocaleString("ko-KR");
   }
+
+  const selectButtonStyle = {
+    flex: 1,
+    minHeight: "70px",
+    padding: "14px 10px",
+    border: "1px solid #d1d5db",
+    borderRadius: "14px",
+    background: "white",
+    color: "#111827",
+    fontSize: "17px",
+    fontWeight: "bold",
+    cursor: "pointer",
+  };
 
   return (
     <main
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding:
-          "30px 20px 60px",
+        padding: "30px 20px 60px",
         fontFamily:
           "Arial, sans-serif",
       }}
     >
       <div
         style={{
-          display:
-            "inline-block",
-          background:
-            "#111827",
+          display: "inline-block",
+          background: "#111827",
           color: "white",
-          padding:
-            "8px 14px",
-          borderRadius:
-            "20px",
-          marginBottom:
-            "20px",
+          padding: "8px 14px",
+          borderRadius: "20px",
+          marginBottom: "20px",
         }}
       >
         기분좋은공간
@@ -803,47 +757,115 @@ export default function Home() {
           padding: "25px",
           border:
             "1px solid #ddd",
-          borderRadius:
-            "20px",
+          borderRadius: "20px",
         }}
       >
-        <label
+        <div
           style={{
             display: "block",
-            fontWeight:
-              "bold",
-            marginBottom:
-              "12px",
+            fontWeight: "bold",
+            fontSize: "18px",
+            marginBottom: "15px",
           }}
         >
           시공할 곳 사진
-        </label>
+        </div>
 
+        {/* 카메라용 숨김 input */}
         <input
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
-          onChange={(e) =>
-            setImage(
-              e.target
-                .files?.[0] ||
-                null
-            )
-          }
+          capture="environment"
+          style={{
+            display: "none",
+          }}
+          onChange={(e) => {
+            selectImage(
+              e.target.files?.[0]
+            );
+
+            e.target.value = "";
+          }}
         />
+
+        {/* 갤러리용 숨김 input */}
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          style={{
+            display: "none",
+          }}
+          onChange={(e) => {
+            selectImage(
+              e.target.files?.[0]
+            );
+
+            e.target.value = "";
+          }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            width: "100%",
+          }}
+        >
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() =>
+              cameraInputRef.current?.click()
+            }
+            style={
+              selectButtonStyle
+            }
+          >
+            📷
+            <br />
+            카메라로 촬영
+          </button>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() =>
+              galleryInputRef.current?.click()
+            }
+            style={
+              selectButtonStyle
+            }
+          >
+            🖼️
+            <br />
+            갤러리에서 선택
+          </button>
+        </div>
 
         {image && (
           <div
             style={{
-              marginTop:
-                "12px",
-              padding: "12px",
+              marginTop: "15px",
+              padding: "14px",
               background:
                 "#f3f4f6",
-              borderRadius:
-                "10px",
+              borderRadius: "10px",
+              lineHeight: "1.5",
+              wordBreak: "break-all",
             }}
           >
-            ✓ {image.name}
+            ✅ 사진 선택 완료
+            <br />
+            <span
+              style={{
+                color: "#666",
+                fontSize: "14px",
+              }}
+            >
+              {image.name}
+            </span>
           </div>
         )}
 
@@ -855,21 +877,18 @@ export default function Home() {
           disabled={loading}
           style={{
             width: "100%",
-            marginTop:
-              "25px",
+            marginTop: "25px",
             padding: "20px",
             border: "none",
-            borderRadius:
-              "14px",
-            background:
-              "#111827",
+            borderRadius: "14px",
+            background: "#111827",
             color: "white",
             fontSize: "20px",
-            fontWeight:
-              "bold",
+            fontWeight: "bold",
             opacity: loading
               ? 0.7
               : 1,
+            cursor: "pointer",
           }}
         >
           {loading
@@ -880,15 +899,12 @@ export default function Home() {
         {message && (
           <div
             style={{
-              marginTop:
-                "20px",
+              marginTop: "20px",
               padding: "15px",
               background:
                 "#f3f4f6",
-              borderRadius:
-                "12px",
-              lineHeight:
-                "1.6",
+              borderRadius: "12px",
+              lineHeight: "1.6",
             }}
           >
             {message}
@@ -899,13 +915,11 @@ export default function Home() {
       {analysis && (
         <section
           style={{
-            marginTop:
-              "25px",
+            marginTop: "25px",
             padding: "25px",
             border:
               "1px solid #ddd",
-            borderRadius:
-              "20px",
+            borderRadius: "20px",
           }}
         >
           <h2>
@@ -930,8 +944,7 @@ export default function Home() {
 
           <p
             style={{
-              lineHeight:
-                "1.7",
+              lineHeight: "1.7",
             }}
           >
             <strong>
@@ -945,8 +958,7 @@ export default function Home() {
           {Array.isArray(
             analysis.tags
           ) &&
-            analysis.tags
-              .length >
+            analysis.tags.length >
               0 && (
               <p>
                 <strong>
@@ -963,13 +975,11 @@ export default function Home() {
       {estimate && (
         <section
           style={{
-            marginTop:
-              "25px",
+            marginTop: "25px",
             padding: "25px",
             border:
               "2px solid #111827",
-            borderRadius:
-              "20px",
+            borderRadius: "20px",
           }}
         >
           <h2>
@@ -978,12 +988,9 @@ export default function Home() {
 
           <div
             style={{
-              fontSize:
-                "29px",
-              fontWeight:
-                "bold",
-              margin:
-                "20px 0",
+              fontSize: "29px",
+              fontWeight: "bold",
+              margin: "20px 0",
             }}
           >
             {formatWon(
@@ -1009,10 +1016,7 @@ export default function Home() {
           <p>
             비교한 실제 시공건:{" "}
             <strong>
-              {
-                estimate.count
-              }
-              건
+              {estimate.count}건
             </strong>
           </p>
 
@@ -1028,14 +1032,12 @@ export default function Home() {
           <p
             style={{
               color: "#666",
-              lineHeight:
-                "1.6",
+              lineHeight: "1.6",
             }}
           >
             실제 시공건의
-            카테고리가 같은
-            경우에만 견적 계산에
-            사용합니다.
+            카테고리가 같은 경우에만
+            견적 계산에 사용합니다.
           </p>
         </section>
       )}
@@ -1044,13 +1046,11 @@ export default function Home() {
         0 && (
         <section
           style={{
-            marginTop:
-              "25px",
+            marginTop: "25px",
           }}
         >
           <h2>
-            비슷한 과거
-            시공사례
+            비슷한 과거 시공사례
           </h2>
 
           {similarItems.map(
@@ -1065,10 +1065,8 @@ export default function Home() {
                   index
                 }
                 style={{
-                  padding:
-                    "20px",
-                  marginTop:
-                    "12px",
+                  padding: "20px",
+                  marginTop: "12px",
                   border:
                     "1px solid #ddd",
                   borderRadius:
