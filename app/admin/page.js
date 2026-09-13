@@ -228,9 +228,7 @@ function PhotoCard({
               opacity: photoEditLoading ? 0.6 : 1,
             }}
           >
-            {photoEditLoading
-              ? "저장 중..."
-              : "✅ 사진정보 저장"}
+            {photoEditLoading ? "저장 중..." : "✅ 사진정보 저장"}
           </button>
 
           <button
@@ -255,10 +253,6 @@ function PhotoCard({
 }
 
 export default function AdminPage() {
-  // ============================================================
-  // 신규 시공 데이터 등록
-  // ============================================================
-
   const [beforeImages, setBeforeImages] = useState([]);
   const [afterImages, setAfterImages] = useState([]);
 
@@ -270,19 +264,9 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ============================================================
-  // AI 유사도 설정
-  // ============================================================
-
-  const [similarityThreshold, setSimilarityThreshold] =
-    useState(0.65);
-
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.65);
   const [settingMessage, setSettingMessage] = useState("");
   const [settingLoading, setSettingLoading] = useState(false);
-
-  // ============================================================
-  // DB 관리
-  // ============================================================
 
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -297,22 +281,12 @@ export default function AdminPage() {
 
   const [previewPhoto, setPreviewPhoto] = useState(null);
 
-  // ============================================================
-  // 사진 정보 수정
-  // ============================================================
-
   const [editingPhotoId, setEditingPhotoId] = useState(null);
   const [editPhotoType, setEditPhotoType] = useState("before");
   const [editPhotoCategory, setEditPhotoCategory] = useState("");
-  const [editPhotoSubCategory, setEditPhotoSubCategory] =
-    useState("");
-  const [editPhotoDescription, setEditPhotoDescription] =
-    useState("");
+  const [editPhotoSubCategory, setEditPhotoSubCategory] = useState("");
+  const [editPhotoDescription, setEditPhotoDescription] = useState("");
   const [photoEditLoading, setPhotoEditLoading] = useState(false);
-
-  // ============================================================
-  // 스타일
-  // ============================================================
 
   const inputStyle = {
     width: "100%",
@@ -343,10 +317,6 @@ export default function AdminPage() {
     loadJobs();
   }, []);
 
-  // ============================================================
-  // 설정
-  // ============================================================
-
   async function loadSettings() {
     try {
       const { data, error } = await supabase
@@ -362,10 +332,7 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error(error);
-
-      setSettingMessage(
-        "⚠️ 현재 유사도 설정을 불러오지 못했습니다."
-      );
+      setSettingMessage("⚠️ 현재 유사도 설정을 불러오지 못했습니다.");
     }
   }
 
@@ -391,38 +358,30 @@ export default function AdminPage() {
       );
     } catch (error) {
       console.error(error);
-
-      setSettingMessage(
-        `❌ 오류: ${error?.message || "설정 저장 실패"}`
-      );
+      setSettingMessage(`❌ 오류: ${error?.message || "설정 저장 실패"}`);
     } finally {
       setSettingLoading(false);
     }
   }
-
-  // ============================================================
-  // DB 불러오기
-  // ============================================================
 
   async function loadJobs() {
     setJobsLoading(true);
     setJobsMessage("");
 
     try {
-      const { data: workItems, error: workItemsError } =
-        await supabase
-          .from("work_items")
-          .select(`
-            id,
-            category,
-            sub_category,
-            actual_cost,
-            memo,
-            created_at
-          `)
-          .order("created_at", {
-            ascending: false,
-          });
+      const { data: workItems, error: workItemsError } = await supabase
+        .from("work_items")
+        .select(`
+          id,
+          category,
+          sub_category,
+          actual_cost,
+          memo,
+          created_at
+        `)
+        .order("created_at", {
+          ascending: false,
+        });
 
       if (workItemsError) throw workItemsError;
 
@@ -435,25 +394,24 @@ export default function AdminPage() {
 
       const ids = items.map((item) => item.id);
 
-      const { data: photoData, error: photoError } =
-        await supabase
-          .from("work_photos")
-          .select(`
-            id,
-            work_item_id,
-            photo_type,
-            category,
-            sub_category,
-            storage_path,
-            photo_url,
-            ai_description,
-            ai_tags,
-            created_at
-          `)
-          .in("work_item_id", ids)
-          .order("created_at", {
-            ascending: true,
-          });
+      const { data: photoData, error: photoError } = await supabase
+        .from("work_photos")
+        .select(`
+          id,
+          work_item_id,
+          photo_type,
+          category,
+          sub_category,
+          storage_path,
+          photo_url,
+          ai_description,
+          ai_tags,
+          created_at
+        `)
+        .in("work_item_id", ids)
+        .order("created_at", {
+          ascending: true,
+        });
 
       if (photoError) throw photoError;
 
@@ -505,15 +463,12 @@ export default function AdminPage() {
         return {
           ...item,
           photos: linkedPhotos,
-
           beforePhotos: linkedPhotos.filter(
             (photo) => photo.photo_type === "before"
           ),
-
           afterPhotos: linkedPhotos.filter(
             (photo) => photo.photo_type === "after"
           ),
-
           historyPhotos: linkedPhotos.filter(
             (photo) => photo.photo_type === "history"
           ),
@@ -534,17 +489,11 @@ export default function AdminPage() {
     }
   }
 
-  // ============================================================
-  // 시공정보 수정
-  // ============================================================
-
   function startEdit(job) {
     setEditingId(job.id);
     setEditCategory(job.category || "");
     setEditSubCategory(job.sub_category || job.category || "");
-    setEditCost(
-      job.actual_cost != null ? String(job.actual_cost) : ""
-    );
+    setEditCost(job.actual_cost != null ? String(job.actual_cost) : "");
     setEditMemo(job.memo || "");
   }
 
@@ -553,9 +502,7 @@ export default function AdminPage() {
   }
 
   async function saveJobEdit(jobId) {
-    const costNumber = Number(
-      String(editCost).replace(/,/g, "")
-    );
+    const costNumber = Number(String(editCost).replace(/,/g, ""));
 
     if (!editCategory.trim()) {
       setJobsMessage("⚠️ 시공 부위를 입력해주세요.");
@@ -563,9 +510,7 @@ export default function AdminPage() {
     }
 
     if (!costNumber || costNumber <= 0) {
-      setJobsMessage(
-        "⚠️ 실제 시공금액을 정확히 입력해주세요."
-      );
+      setJobsMessage("⚠️ 실제 시공금액을 정확히 입력해주세요.");
       return;
     }
 
@@ -576,8 +521,7 @@ export default function AdminPage() {
         .from("work_items")
         .update({
           category: editCategory.trim(),
-          sub_category:
-            editSubCategory.trim() || editCategory.trim(),
+          sub_category: editSubCategory.trim() || editCategory.trim(),
           actual_cost: costNumber,
           memo: editMemo.trim() || null,
           updated_at: new Date().toISOString(),
@@ -594,24 +538,16 @@ export default function AdminPage() {
       console.error(error);
 
       setJobsMessage(
-        `❌ 수정 오류: ${
-          error?.message || "수정하지 못했습니다."
-        }`
+        `❌ 수정 오류: ${error?.message || "수정하지 못했습니다."}`
       );
     }
   }
-
-  // ============================================================
-  // 사진정보 수정
-  // ============================================================
 
   function startPhotoEdit(photo) {
     setEditingPhotoId(photo.id);
     setEditPhotoType(photo.photo_type || "before");
     setEditPhotoCategory(photo.category || "");
-    setEditPhotoSubCategory(
-      photo.sub_category || photo.category || ""
-    );
+    setEditPhotoSubCategory(photo.sub_category || photo.category || "");
     setEditPhotoDescription(photo.ai_description || "");
     setJobsMessage("");
   }
@@ -626,17 +562,13 @@ export default function AdminPage() {
 
   async function savePhotoEdit(photo) {
     if (!editPhotoCategory.trim()) {
-      setJobsMessage(
-        "⚠️ 사진 카테고리를 입력해주세요."
-      );
+      setJobsMessage("⚠️ 사진 카테고리를 입력해주세요.");
       return;
     }
 
     setPhotoEditLoading(true);
 
-    setJobsMessage(
-      "사진 정보와 AI 검색 데이터를 수정 중..."
-    );
+    setJobsMessage("사진 정보와 AI 검색 데이터를 수정 중...");
 
     try {
       let tags = [];
@@ -672,8 +604,7 @@ export default function AdminPage() {
       const searchTextValue = [
         `시공 부위: ${editPhotoCategory.trim()}`,
         `세부 부위: ${
-          editPhotoSubCategory.trim() ||
-          editPhotoCategory.trim()
+          editPhotoSubCategory.trim() || editPhotoCategory.trim()
         }`,
         `사진 상태: ${
           editPhotoType === "before"
@@ -696,8 +627,7 @@ export default function AdminPage() {
           photo_type: editPhotoType,
           category: editPhotoCategory.trim(),
           sub_category:
-            editPhotoSubCategory.trim() ||
-            editPhotoCategory.trim(),
+            editPhotoSubCategory.trim() || editPhotoCategory.trim(),
           ai_description: editPhotoDescription.trim(),
           ai_tags: tags,
           embedding,
@@ -706,9 +636,7 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setJobsMessage(
-        "✅ 사진 정보와 AI 검색 데이터가 수정되었습니다."
-      );
+      setJobsMessage("✅ 사진 정보와 AI 검색 데이터가 수정되었습니다.");
 
       cancelPhotoEdit();
       await loadJobs();
@@ -725,14 +653,8 @@ export default function AdminPage() {
     }
   }
 
-  // ============================================================
-  // 삭제
-  // ============================================================
-
   async function deletePhoto(photo) {
-    const ok = window.confirm(
-      "이 사진을 완전히 삭제하시겠습니까?"
-    );
+    const ok = window.confirm("이 사진을 완전히 삭제하시겠습니까?");
 
     if (!ok) return;
 
@@ -740,10 +662,9 @@ export default function AdminPage() {
 
     try {
       if (photo.storage_path) {
-        const { error: storageError } =
-          await supabase.storage
-            .from("work-photos")
-            .remove([photo.storage_path]);
+        const { error: storageError } = await supabase.storage
+          .from("work-photos")
+          .remove([photo.storage_path]);
 
         if (storageError) throw storageError;
       }
@@ -787,33 +708,28 @@ export default function AdminPage() {
         .filter(Boolean);
 
       if (photoPaths.length > 0) {
-        const { error: storageError } =
-          await supabase.storage
-            .from("work-photos")
-            .remove(photoPaths);
+        const { error: storageError } = await supabase.storage
+          .from("work-photos")
+          .remove(photoPaths);
 
         if (storageError) throw storageError;
       }
 
-      const { error: photoDeleteError } =
-        await supabase
-          .from("work_photos")
-          .delete()
-          .eq("work_item_id", job.id);
+      const { error: photoDeleteError } = await supabase
+        .from("work_photos")
+        .delete()
+        .eq("work_item_id", job.id);
 
       if (photoDeleteError) throw photoDeleteError;
 
-      const { error: workItemDeleteError } =
-        await supabase
-          .from("work_items")
-          .delete()
-          .eq("id", job.id);
+      const { error: workItemDeleteError } = await supabase
+        .from("work_items")
+        .delete()
+        .eq("id", job.id);
 
       if (workItemDeleteError) throw workItemDeleteError;
 
-      setJobsMessage(
-        "✅ 시공건과 연결 사진이 모두 삭제되었습니다."
-      );
+      setJobsMessage("✅ 시공건과 연결 사진이 모두 삭제되었습니다.");
 
       await loadJobs();
     } catch (error) {
@@ -826,10 +742,6 @@ export default function AdminPage() {
       );
     }
   }
-
-  // ============================================================
-  // 검색
-  // ============================================================
 
   const filteredJobs = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -864,31 +776,19 @@ export default function AdminPage() {
     });
   }, [jobs, searchText]);
 
-  // ============================================================
-  // 중복검사
-  // ============================================================
-
   async function getImageHash(file) {
     const buffer = await file.arrayBuffer();
 
-    const hashBuffer = await crypto.subtle.digest(
-      "SHA-256",
-      buffer
-    );
+    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
 
-    const hashArray = Array.from(
-      new Uint8Array(hashBuffer)
-    );
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
 
     return hashArray
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
   }
 
-  async function removeDuplicateImages(
-    newFiles,
-    otherFiles = []
-  ) {
+  async function removeDuplicateImages(newFiles, otherFiles = []) {
     const otherHashes = new Set();
 
     for (const file of otherFiles) {
@@ -902,10 +802,7 @@ export default function AdminPage() {
     for (const file of newFiles) {
       const hash = await getImageHash(file);
 
-      if (
-        selectedHashes.has(hash) ||
-        otherHashes.has(hash)
-      ) {
+      if (selectedHashes.has(hash) || otherHashes.has(hash)) {
         duplicateCount++;
         continue;
       }
@@ -926,10 +823,6 @@ export default function AdminPage() {
     };
   }
 
-  // ============================================================
-  // 이미지 축소
-  // ============================================================
-
   async function resizeImage(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -943,20 +836,15 @@ export default function AdminPage() {
 
           if (width > maxSize || height > maxSize) {
             if (width >= height) {
-              height = Math.round(
-                (height * maxSize) / width
-              );
+              height = Math.round((height * maxSize) / width);
               width = maxSize;
             } else {
-              width = Math.round(
-                (width * maxSize) / height
-              );
+              width = Math.round((width * maxSize) / height);
               height = maxSize;
             }
           }
 
-          const canvas =
-            document.createElement("canvas");
+          const canvas = document.createElement("canvas");
 
           canvas.width = width;
           canvas.height = height;
@@ -965,41 +853,25 @@ export default function AdminPage() {
 
           if (!ctx) {
             URL.revokeObjectURL(objectUrl);
-            reject(
-              new Error("이미지 처리에 실패했습니다.")
-            );
+            reject(new Error("이미지 처리에 실패했습니다."));
             return;
           }
 
-          ctx.drawImage(
-            img,
-            0,
-            0,
-            width,
-            height
-          );
+          ctx.drawImage(img, 0, 0, width, height);
 
           canvas.toBlob(
             (blob) => {
               URL.revokeObjectURL(objectUrl);
 
               if (!blob) {
-                reject(
-                  new Error(
-                    "이미지 변환에 실패했습니다."
-                  )
-                );
+                reject(new Error("이미지 변환에 실패했습니다."));
                 return;
               }
 
               resolve(
-                new File(
-                  [blob],
-                  "ai-analysis.jpg",
-                  {
-                    type: "image/jpeg",
-                  }
-                )
+                new File([blob], "ai-analysis.jpg", {
+                  type: "image/jpeg",
+                })
               );
             },
             "image/jpeg",
@@ -1013,9 +885,7 @@ export default function AdminPage() {
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-        reject(
-          new Error("사진을 불러올 수 없습니다.")
-        );
+        reject(new Error("사진을 불러올 수 없습니다."));
       };
 
       img.src = objectUrl;
@@ -1038,7 +908,7 @@ export default function AdminPage() {
 
   // ============================================================
   // AI 사진 분석
-  // 핵심: photoType을 API로 보냄
+  // before / after 강제 정규화
   // ============================================================
 
   async function analyzeImage(file, photoType = "before") {
@@ -1048,8 +918,10 @@ export default function AdminPage() {
 
     formData.append("image", resizedImage);
 
-    // 시공 전 / 시공 후 구분
-    formData.append("photoType", photoType);
+    const normalizedPhotoType =
+      photoType === "after" ? "after" : "before";
+
+    formData.append("photoType", normalizedPhotoType);
 
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -1059,26 +931,28 @@ export default function AdminPage() {
     const result = await readJsonSafely(response);
 
     if (!response.ok) {
+      throw new Error(result?.error || "AI 사진 분석 실패");
+    }
+
+    if (result?.photoType !== normalizedPhotoType) {
       throw new Error(
-        result?.error || "AI 사진 분석 실패"
+        `사진 구분 전달 오류: 보낸 값=${normalizedPhotoType}, 서버 값=${result?.photoType}`
       );
+    }
+
+    if (!result?.analysis) {
+      throw new Error("AI 분석 결과가 없습니다.");
     }
 
     return result.analysis;
   }
 
-  // ============================================================
-  // 임베딩
-  // ============================================================
-
   async function createEmbedding(text) {
     const response = await fetch("/api/embedding", {
       method: "POST",
-
       headers: {
         "Content-Type": "application/json",
       },
-
       body: JSON.stringify({
         text,
       }),
@@ -1087,17 +961,11 @@ export default function AdminPage() {
     const result = await readJsonSafely(response);
 
     if (!response.ok || !result?.embedding) {
-      throw new Error(
-        result?.error || "임베딩 생성 실패"
-      );
+      throw new Error(result?.error || "임베딩 생성 실패");
     }
 
     return result.embedding;
   }
-
-  // ============================================================
-  // 사진 저장
-  // ============================================================
 
   async function savePhoto({
     image,
@@ -1107,23 +975,21 @@ export default function AdminPage() {
     workItemId,
     projectId,
   }) {
+    const normalizedPhotoType =
+      photoType === "after" ? "after" : "before";
+
     const typeLabel =
-      photoType === "before"
+      normalizedPhotoType === "before"
         ? "시공 전"
         : "시공 후";
 
     setMessage(
-      `${typeLabel} 사진 ${
-        index + 1
-      }/${total} AI 분석 중...`
+      `${typeLabel} 사진 ${index + 1}/${total} AI 분석 중...`
     );
 
-    // 핵심
-    // 시공 전이면 before
-    // 시공 후면 after
     const aiAnalysis = await analyzeImage(
       image,
-      photoType
+      normalizedPhotoType
     );
 
     let tags = Array.isArray(aiAnalysis?.tags)
@@ -1135,7 +1001,7 @@ export default function AdminPage() {
     }
 
     tags.push(
-      photoType === "before"
+      normalizedPhotoType === "before"
         ? "시공전"
         : "시공후"
     );
@@ -1145,93 +1011,72 @@ export default function AdminPage() {
     const searchTextValue = [
       `시공 부위: ${category.trim()}`,
       `세부 부위: ${
-        aiAnalysis?.sub_category ||
-        category.trim()
+        aiAnalysis?.sub_category || category.trim()
       }`,
       `사진 상태: ${
-        photoType === "before"
+        normalizedPhotoType === "before"
           ? "시공 전"
           : "시공 후"
       }`,
-      `사진 설명: ${
-        aiAnalysis?.description || ""
-      }`,
+      `사진 설명: ${aiAnalysis?.description || ""}`,
       `특징: ${tags.join(", ")}`,
     ]
       .filter(Boolean)
       .join("\n");
 
-    const embedding =
-      await createEmbedding(searchTextValue);
+    const embedding = await createEmbedding(searchTextValue);
 
     const extension =
-      image.name
-        .split(".")
-        .pop()
-        ?.toLowerCase() || "jpg";
+      image.name.split(".").pop()?.toLowerCase() || "jpg";
 
     const filePath =
-      `history/${workItemId}/${photoType}/${Date.now()}-${index}.${extension}`;
+      `history/${workItemId}/${normalizedPhotoType}/${Date.now()}-${index}.${extension}`;
 
-    const { error: uploadError } =
-      await supabase.storage
-        .from("work-photos")
-        .upload(filePath, image, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+    const { error: uploadError } = await supabase.storage
+      .from("work-photos")
+      .upload(filePath, image, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
     if (uploadError) throw uploadError;
 
-    const { data: publicUrlData } =
-      supabase.storage
-        .from("work-photos")
-        .getPublicUrl(filePath);
+    const { data: publicUrlData } = supabase.storage
+      .from("work-photos")
+      .getPublicUrl(filePath);
 
-    const { error: photoError } =
-      await supabase
-        .from("work_photos")
-        .insert([
-          {
-            project_id: projectId,
-            work_item_id: workItemId,
-            photo_url: publicUrlData.publicUrl,
-            storage_path: filePath,
-            photo_type: photoType,
-            category: category.trim(),
-            sub_category:
-              aiAnalysis?.sub_category ||
-              category.trim(),
-            ai_description:
-              aiAnalysis?.description || "",
-            ai_tags: tags,
-            embedding,
-          },
-        ]);
+    const { error: photoError } = await supabase
+      .from("work_photos")
+      .insert([
+        {
+          project_id: projectId,
+          work_item_id: workItemId,
+          photo_url: publicUrlData.publicUrl,
+          storage_path: filePath,
+          photo_type: normalizedPhotoType,
+          category: category.trim(),
+          sub_category:
+            aiAnalysis?.sub_category || category.trim(),
+          ai_description: aiAnalysis?.description || "",
+          ai_tags: tags,
+          embedding,
+        },
+      ]);
 
     if (photoError) throw photoError;
   }
 
-  // ============================================================
-  // 신규 등록
-  // ============================================================
-
   async function handleSave() {
     const totalPhotoCount =
-      beforeImages.length +
-      afterImages.length;
+      beforeImages.length + afterImages.length;
 
     if (totalPhotoCount === 0) {
-      setMessage(
-        "⚠️ 사진을 1장 이상 선택해주세요."
-      );
+      setMessage("⚠️ 사진을 1장 이상 선택해주세요.");
       return;
     }
 
     if (!category.trim()) {
-      setMessage(
-        "⚠️ 시공 부위를 입력해주세요."
-      );
+      setMessage("⚠️ 시공 부위를 입력해주세요.");
       return;
     }
 
@@ -1240,9 +1085,7 @@ export default function AdminPage() {
     );
 
     if (!costNumber || costNumber <= 0) {
-      setMessage(
-        "⚠️ 실제 시공금액을 입력해주세요."
-      );
+      setMessage("⚠️ 실제 시공금액을 입력해주세요.");
       return;
     }
 
@@ -1255,9 +1098,7 @@ export default function AdminPage() {
       const hash = await getImageHash(file);
 
       if (hashes.has(hash)) {
-        setMessage(
-          "❌ 동일한 사진이 중복되어 있습니다."
-        );
+        setMessage("❌ 동일한 사진이 중복되어 있습니다.");
         return;
       }
 
@@ -1270,22 +1111,20 @@ export default function AdminPage() {
       const projectId =
         "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
-      const {
-        data: workItemData,
-        error: workItemError,
-      } = await supabase
-        .from("work_items")
-        .insert([
-          {
-            project_id: projectId,
-            category: category.trim(),
-            sub_category: category.trim(),
-            actual_cost: costNumber,
-            memo: memo.trim() || null,
-          },
-        ])
-        .select("id")
-        .single();
+      const { data: workItemData, error: workItemError } =
+        await supabase
+          .from("work_items")
+          .insert([
+            {
+              project_id: projectId,
+              category: category.trim(),
+              sub_category: category.trim(),
+              actual_cost: costNumber,
+              memo: memo.trim() || null,
+            },
+          ])
+          .select("id")
+          .single();
 
       if (workItemError) {
         throw workItemError;
@@ -1293,11 +1132,7 @@ export default function AdminPage() {
 
       const workItemId = workItemData.id;
 
-      for (
-        let i = 0;
-        i < beforeImages.length;
-        i++
-      ) {
+      for (let i = 0; i < beforeImages.length; i++) {
         await savePhoto({
           image: beforeImages[i],
           index: i,
@@ -1308,11 +1143,7 @@ export default function AdminPage() {
         });
       }
 
-      for (
-        let i = 0;
-        i < afterImages.length;
-        i++
-      ) {
+      for (let i = 0; i < afterImages.length; i++) {
         await savePhoto({
           image: afterImages[i],
           index: i,
@@ -1363,10 +1194,6 @@ export default function AdminPage() {
     );
   }
 
-  // ============================================================
-  // 화면
-  // ============================================================
-
   return (
     <main
       style={{
@@ -1399,9 +1226,7 @@ export default function AdminPage() {
         <select
           value={similarityThreshold}
           onChange={(e) =>
-            setSimilarityThreshold(
-              Number(e.target.value)
-            )
+            setSimilarityThreshold(Number(e.target.value))
           }
           style={inputStyle}
         >
@@ -1677,9 +1502,7 @@ export default function AdminPage() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    saveJobEdit(job.id)
-                  }
+                  onClick={() => saveJobEdit(job.id)}
                   style={{
                     width: "100%",
                     marginTop: "12px",
@@ -1732,61 +1555,35 @@ export default function AdminPage() {
                   <>
                     <h4>📷 시공 전</h4>
 
-                    {job.beforePhotos.map(
-                      (photo) => (
-                        <PhotoCard
-                          key={photo.id}
-                          photo={photo}
-                          editingPhotoId={
-                            editingPhotoId
-                          }
-                          editPhotoType={
-                            editPhotoType
-                          }
-                          setEditPhotoType={
-                            setEditPhotoType
-                          }
-                          editPhotoCategory={
-                            editPhotoCategory
-                          }
-                          setEditPhotoCategory={
-                            setEditPhotoCategory
-                          }
-                          editPhotoSubCategory={
-                            editPhotoSubCategory
-                          }
-                          setEditPhotoSubCategory={
-                            setEditPhotoSubCategory
-                          }
-                          editPhotoDescription={
-                            editPhotoDescription
-                          }
-                          setEditPhotoDescription={
-                            setEditPhotoDescription
-                          }
-                          photoEditLoading={
-                            photoEditLoading
-                          }
-                          startPhotoEdit={
-                            startPhotoEdit
-                          }
-                          cancelPhotoEdit={
-                            cancelPhotoEdit
-                          }
-                          savePhotoEdit={
-                            savePhotoEdit
-                          }
-                          deletePhoto={
-                            deletePhoto
-                          }
-                          setPreviewPhoto={
-                            setPreviewPhoto
-                          }
-                          inputStyle={inputStyle}
-                          labelStyle={labelStyle}
-                        />
-                      )
-                    )}
+                    {job.beforePhotos.map((photo) => (
+                      <PhotoCard
+                        key={photo.id}
+                        photo={photo}
+                        editingPhotoId={editingPhotoId}
+                        editPhotoType={editPhotoType}
+                        setEditPhotoType={setEditPhotoType}
+                        editPhotoCategory={editPhotoCategory}
+                        setEditPhotoCategory={setEditPhotoCategory}
+                        editPhotoSubCategory={editPhotoSubCategory}
+                        setEditPhotoSubCategory={
+                          setEditPhotoSubCategory
+                        }
+                        editPhotoDescription={
+                          editPhotoDescription
+                        }
+                        setEditPhotoDescription={
+                          setEditPhotoDescription
+                        }
+                        photoEditLoading={photoEditLoading}
+                        startPhotoEdit={startPhotoEdit}
+                        cancelPhotoEdit={cancelPhotoEdit}
+                        savePhotoEdit={savePhotoEdit}
+                        deletePhoto={deletePhoto}
+                        setPreviewPhoto={setPreviewPhoto}
+                        inputStyle={inputStyle}
+                        labelStyle={labelStyle}
+                      />
+                    ))}
                   </>
                 )}
 
@@ -1794,61 +1591,35 @@ export default function AdminPage() {
                   <>
                     <h4>✨ 시공 후</h4>
 
-                    {job.afterPhotos.map(
-                      (photo) => (
-                        <PhotoCard
-                          key={photo.id}
-                          photo={photo}
-                          editingPhotoId={
-                            editingPhotoId
-                          }
-                          editPhotoType={
-                            editPhotoType
-                          }
-                          setEditPhotoType={
-                            setEditPhotoType
-                          }
-                          editPhotoCategory={
-                            editPhotoCategory
-                          }
-                          setEditPhotoCategory={
-                            setEditPhotoCategory
-                          }
-                          editPhotoSubCategory={
-                            editPhotoSubCategory
-                          }
-                          setEditPhotoSubCategory={
-                            setEditPhotoSubCategory
-                          }
-                          editPhotoDescription={
-                            editPhotoDescription
-                          }
-                          setEditPhotoDescription={
-                            setEditPhotoDescription
-                          }
-                          photoEditLoading={
-                            photoEditLoading
-                          }
-                          startPhotoEdit={
-                            startPhotoEdit
-                          }
-                          cancelPhotoEdit={
-                            cancelPhotoEdit
-                          }
-                          savePhotoEdit={
-                            savePhotoEdit
-                          }
-                          deletePhoto={
-                            deletePhoto
-                          }
-                          setPreviewPhoto={
-                            setPreviewPhoto
-                          }
-                          inputStyle={inputStyle}
-                          labelStyle={labelStyle}
-                        />
-                      )
-                    )}
+                    {job.afterPhotos.map((photo) => (
+                      <PhotoCard
+                        key={photo.id}
+                        photo={photo}
+                        editingPhotoId={editingPhotoId}
+                        editPhotoType={editPhotoType}
+                        setEditPhotoType={setEditPhotoType}
+                        editPhotoCategory={editPhotoCategory}
+                        setEditPhotoCategory={setEditPhotoCategory}
+                        editPhotoSubCategory={editPhotoSubCategory}
+                        setEditPhotoSubCategory={
+                          setEditPhotoSubCategory
+                        }
+                        editPhotoDescription={
+                          editPhotoDescription
+                        }
+                        setEditPhotoDescription={
+                          setEditPhotoDescription
+                        }
+                        photoEditLoading={photoEditLoading}
+                        startPhotoEdit={startPhotoEdit}
+                        cancelPhotoEdit={cancelPhotoEdit}
+                        savePhotoEdit={savePhotoEdit}
+                        deletePhoto={deletePhoto}
+                        setPreviewPhoto={setPreviewPhoto}
+                        inputStyle={inputStyle}
+                        labelStyle={labelStyle}
+                      />
+                    ))}
                   </>
                 )}
 
@@ -1856,61 +1627,35 @@ export default function AdminPage() {
                   <>
                     <h4>🗂 기존 사진</h4>
 
-                    {job.historyPhotos.map(
-                      (photo) => (
-                        <PhotoCard
-                          key={photo.id}
-                          photo={photo}
-                          editingPhotoId={
-                            editingPhotoId
-                          }
-                          editPhotoType={
-                            editPhotoType
-                          }
-                          setEditPhotoType={
-                            setEditPhotoType
-                          }
-                          editPhotoCategory={
-                            editPhotoCategory
-                          }
-                          setEditPhotoCategory={
-                            setEditPhotoCategory
-                          }
-                          editPhotoSubCategory={
-                            editPhotoSubCategory
-                          }
-                          setEditPhotoSubCategory={
-                            setEditPhotoSubCategory
-                          }
-                          editPhotoDescription={
-                            editPhotoDescription
-                          }
-                          setEditPhotoDescription={
-                            setEditPhotoDescription
-                          }
-                          photoEditLoading={
-                            photoEditLoading
-                          }
-                          startPhotoEdit={
-                            startPhotoEdit
-                          }
-                          cancelPhotoEdit={
-                            cancelPhotoEdit
-                          }
-                          savePhotoEdit={
-                            savePhotoEdit
-                          }
-                          deletePhoto={
-                            deletePhoto
-                          }
-                          setPreviewPhoto={
-                            setPreviewPhoto
-                          }
-                          inputStyle={inputStyle}
-                          labelStyle={labelStyle}
-                        />
-                      )
-                    )}
+                    {job.historyPhotos.map((photo) => (
+                      <PhotoCard
+                        key={photo.id}
+                        photo={photo}
+                        editingPhotoId={editingPhotoId}
+                        editPhotoType={editPhotoType}
+                        setEditPhotoType={setEditPhotoType}
+                        editPhotoCategory={editPhotoCategory}
+                        setEditPhotoCategory={setEditPhotoCategory}
+                        editPhotoSubCategory={editPhotoSubCategory}
+                        setEditPhotoSubCategory={
+                          setEditPhotoSubCategory
+                        }
+                        editPhotoDescription={
+                          editPhotoDescription
+                        }
+                        setEditPhotoDescription={
+                          setEditPhotoDescription
+                        }
+                        photoEditLoading={photoEditLoading}
+                        startPhotoEdit={startPhotoEdit}
+                        cancelPhotoEdit={cancelPhotoEdit}
+                        savePhotoEdit={savePhotoEdit}
+                        deletePhoto={deletePhoto}
+                        setPreviewPhoto={setPreviewPhoto}
+                        inputStyle={inputStyle}
+                        labelStyle={labelStyle}
+                      />
+                    ))}
                   </>
                 )}
 
@@ -1979,4 +1724,4 @@ export default function AdminPage() {
       )}
     </main>
   );
-            }
+          }
