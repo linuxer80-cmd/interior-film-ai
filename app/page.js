@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 export default function Home() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   const [groups, setGroups] = useState([]);
@@ -36,63 +37,21 @@ export default function Home() {
       .slice(2)}`;
   }
 
-  function resetResults() {
-    setGroups([]);
-    setTotalEstimate(null);
-    setMessage("");
-    setLeadComplete(false);
-    setLeadMessage("");
-  }
-
-  function addImages(fileList) {
-    const files = Array.from(fileList || []).filter(
-      (file) => file.type?.startsWith("image/")
-    );
-
-    if (!files.length) return;
-
-    const remaining = Math.max(0, 10 - images.length);
-    const selected = files.slice(0, remaining);
-
-    if (!selected.length) {
-      setMessage("사진은 최대 10장까지 선택할 수 있습니다.");
-      return;
-    }
-
-    const additions = selected.map((file) => ({
-      id: makeId(),
-      file,
-      preview: URL.createObjectURL(file),
-    }));
-
-    setImages((current) => [...current, ...additions]);
-    resetResults();
-
-    if (files.length > remaining) {
-      setMessage("사진은 최대 10장까지 선택할 수 있습니다.");
-    }
-  }
-
-  function removeImage(id) {
-    setImages((current) => {
-      const target = current.find((item) => item.id === id);
-
-      if (target?.preview) {
-        URL.revokeObjectURL(target.preview);
-      }
-
-      return current.filter((item) => item.id !== id);
-    });
-
-    resetResults();
-  }
-
   function formatWon(value) {
     return Number(value || 0).toLocaleString("ko-KR");
   }
 
+  function resetResults() {
+    setGroups([]);
+    setTotalEstimate(null);
+    setLeadComplete(false);
+    setLeadMessage("");
+  }
+
   function handlePhoneChange(value) {
-    const numbers = value.replace(/[^0-9]/g, "").slice(0, 11);
+    const numbers = value
+      .replace(/[^0-9]/g, "")
+      .slice(0, 11);
 
     if (numbers.length <= 3) {
       setPhone(numbers);
@@ -114,95 +73,296 @@ export default function Home() {
     );
   }
 
-  async function resizeImage(file, maxSize = 1600) {
+  async function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
+      const reader = new FileReader();
 
-      img.onload = () => {
-        try {
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxSize || height > maxSize) {
-            if (width >= height) {
-              height = Math.round(
-                (height * maxSize) / width
-              );
-              width = maxSize;
-            } else {
-              width = Math.round(
-                (width * maxSize) / height
-              );
-              height = maxSize;
-            }
-          }
-
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-
-          const ctx = canvas.getContext("2d");
-
-          if (!ctx) {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("이미지 처리에 실패했습니다."));
-            return;
-          }
-
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              URL.revokeObjectURL(objectUrl);
-
-              if (!blob) {
-                reject(
-                  new Error("이미지 변환에 실패했습니다.")
-                );
-                return;
-              }
-
-              resolve(
-                new File([blob], "customer-photo.jpg", {
-                  type: "image/jpeg",
-                })
-              );
-            },
-            "image/jpeg",
-            0.82
+      reader.onload = () => {
+        if (typeof reader.result !== "string") {
+          reject(
+            new Error("사진 데이터를 읽을 수 없습니다.")
           );
-        } catch (error) {
-          URL.revokeObjectURL(objectUrl);
-          reject(error);
+          return;
         }
+
+        resolve(reader.result);
       };
 
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error("사진을 불러올 수 없습니다."));
+      reader.onerror = () => {
+        reject(
+          new Error("사진 파일을 읽을 수 없습니다.")
+        );
       };
 
-      img.src = objectUrl;
+      reader.readAsDataURL(file);
     });
   }
 
-  async function readJsonSafely(response) {
-    const text = await response.text();
+  async function loadImageFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+
+      img.onload = () => {
+        resolve(img);
+      };
+
+      img.onerror = () => {
+        reject(
+          new Error("사진을 불러올 수 없습니다.")
+        );
+      };
+
+      img.src = dataUrl;
+    });
+  }
+
+  async function prepareImage(
+    file,
+    maxSize = 1600,
+    quality = 0.82
+  ) {
+    const dataUrl = await fileToDataUrl(file);
+    const img = await loadImageFromDataUrl(dataUrl);
+
+    let width =
+      img.naturalWidth || img.width;
+
+    let height =
+      img.naturalHeight || img.height;
+
+    if (!width || !height) {
+      throw new Error(
+        "사진 크기를 확인할 수 없습니다."
+      );
+    }
+
+    if (
+      width > maxSize ||
+      height > maxSize
+    ) {
+      if (width >= height) {
+        height = Math.round(
+          (height * maxSize) / width
+        );
+        width = maxSize;
+      } else {
+        width = Math.round(
+          (width * maxSize) / height
+        );
+        height = maxSize;
+      }
+    }
+
+    const canvas =
+      document.createElement("canvas");
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new Error(
+        "이미지 처리 기능을 사용할 수 없습니다."
+      );
+    }
+
+    ctx.drawImage(
+      img,
+      0,
+      0,
+      width,
+      height
+    );
+
+    const blob = await new Promise(
+      (resolve, reject) => {
+        canvas.toBlob(
+          (result) => {
+            if (!result) {
+              reject(
+                new Error(
+                  "JPEG 이미지 변환에 실패했습니다."
+                )
+              );
+              return;
+            }
+
+            resolve(result);
+          },
+          "image/jpeg",
+          quality
+        );
+      }
+    );
+
+    const convertedFile =
+      new File(
+        [blob],
+        `customer-${makeId()}.jpg`,
+        {
+          type: "image/jpeg",
+        }
+      );
+
+    const preview =
+      await fileToDataUrl(convertedFile);
+
+    return {
+      file: convertedFile,
+      preview,
+    };
+  }
+
+  async function addImages(fileList) {
+    const files =
+      Array.from(fileList || []);
+
+    if (!files.length) return;
+
+    const remaining =
+      Math.max(
+        0,
+        10 - images.length
+      );
+
+    if (remaining <= 0) {
+      setMessage(
+        "사진은 최대 10장까지 선택할 수 있습니다."
+      );
+      return;
+    }
+
+    const selected =
+      files.slice(0, remaining);
+
+    setImageLoading(true);
+    setMessage(
+      `사진을 준비하고 있습니다... 0/${selected.length}`
+    );
+
+    resetResults();
+
+    try {
+      const additions = [];
+
+      for (
+        let i = 0;
+        i < selected.length;
+        i += 1
+      ) {
+        const file = selected[i];
+
+        setMessage(
+          `사진을 준비하고 있습니다... ${i + 1}/${selected.length}`
+        );
+
+        try {
+          const prepared =
+            await prepareImage(
+              file,
+              1600,
+              0.82
+            );
+
+          additions.push({
+            id: makeId(),
+            file: prepared.file,
+            preview: prepared.preview,
+          });
+        } catch (error) {
+          console.error(
+            `사진 ${i + 1} 처리 실패`,
+            error
+          );
+        }
+      }
+
+      if (!additions.length) {
+        throw new Error(
+          "선택한 사진을 불러오지 못했습니다."
+        );
+      }
+
+      setImages(
+        (current) => [
+          ...current,
+          ...additions,
+        ]
+      );
+
+      if (
+        additions.length <
+        selected.length
+      ) {
+        setMessage(
+          `⚠️ ${selected.length}장 중 ${additions.length}장만 정상적으로 불러왔습니다.`
+        );
+      } else if (
+        files.length > remaining
+      ) {
+        setMessage(
+          `✅ 사진 ${additions.length}장을 추가했습니다. 최대 10장까지 가능합니다.`
+        );
+      } else {
+        setMessage(
+          `✅ 사진 ${additions.length}장을 준비했습니다.`
+        );
+      }
+    } catch (error) {
+      console.error(error);
+
+      setMessage(
+        `❌ 오류: ${
+          error?.message ||
+          "사진을 불러올 수 없습니다."
+        }`
+      );
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
+  function removeImage(id) {
+    setImages(
+      (current) =>
+        current.filter(
+          (item) =>
+            item.id !== id
+        )
+    );
+
+    resetResults();
+    setMessage("");
+  }
+
+  async function readJsonSafely(
+    response
+  ) {
+    const text =
+      await response.text();
 
     try {
       return JSON.parse(text);
     } catch {
       throw new Error(
         text
-          ? `서버 응답 오류: ${text.slice(0, 200)}`
+          ? `서버 응답 오류: ${text.slice(
+              0,
+              200
+            )}`
           : "서버에서 올바른 응답을 받지 못했습니다."
       );
     }
   }
 
-  function normalizeCategory(value) {
-    const text = String(value || "").trim().toLowerCase();
+  function normalizeCategory(
+    value
+  ) {
+    const text =
+      String(value || "")
+        .trim()
+        .toLowerCase();
 
     if (
       text.includes("방문") ||
@@ -272,96 +432,171 @@ export default function Home() {
     return text || "other";
   }
 
-  function getGroupKey(analysis) {
+  function getGroupKey(
+    analysis
+  ) {
     return normalizeCategory(
-      `${analysis?.category || ""} ${
-        analysis?.sub_category || ""
+      `${
+        analysis?.category || ""
+      } ${
+        analysis?.sub_category ||
+        ""
       }`
     );
   }
 
-  async function getSignedImageUrl(path) {
+  async function getSignedImageUrl(
+    path
+  ) {
     if (!path) return null;
 
     try {
-      const { data, error } = await supabase.storage
+      const {
+        data,
+        error,
+      } = await supabase.storage
         .from("work-photos")
-        .createSignedUrl(path, 60 * 60);
+        .createSignedUrl(
+          path,
+          60 * 60
+        );
 
-      if (error) return null;
+      if (error) {
+        console.error(error);
+        return null;
+      }
 
-      return data?.signedUrl || null;
-    } catch {
+      return (
+        data?.signedUrl ||
+        null
+      );
+    } catch (error) {
+      console.error(error);
       return null;
     }
   }
 
-  async function analyzeOnePhoto(imageItem, index, total) {
+  async function analyzeOnePhoto(
+    imageItem,
+    index,
+    total
+  ) {
     setMessage(
-      `AI 사진 분석 중... ${index + 1}/${total}`
+      `AI 사진 분석 중... ${
+        index + 1
+      }/${total}`
     );
 
-    const resized = await resizeImage(imageItem.file);
+    const formData =
+      new FormData();
 
-    const formData = new FormData();
-    formData.append("image", resized);
-    formData.append("photoType", "before");
+    formData.append(
+      "image",
+      imageItem.file
+    );
 
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      body: formData,
-    });
+    formData.append(
+      "photoType",
+      "before"
+    );
 
-    const result = await readJsonSafely(response);
+    const response =
+      await fetch(
+        "/api/analyze",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-    if (!response.ok || !result?.analysis) {
+    const result =
+      await readJsonSafely(
+        response
+      );
+
+    if (
+      !response.ok ||
+      !result?.analysis
+    ) {
       throw new Error(
-        result?.error || `${index + 1}번째 사진 분석 실패`
+        result?.error ||
+        `${index + 1}번째 사진 분석 실패`
       );
     }
 
     return {
       ...imageItem,
-      analysis: result.analysis,
+      analysis:
+        result.analysis,
     };
   }
 
-  async function findSimilarCases(group) {
-    const analyses = group.photos.map(
-      (item) => item.analysis
-    );
+  async function findSimilarCases(
+    group
+  ) {
+    const analyses =
+      group.photos.map(
+        (item) =>
+          item.analysis
+      );
 
     const tags = [
       ...new Set(
-        analyses.flatMap((item) =>
-          Array.isArray(item?.tags) ? item.tags : []
+        analyses.flatMap(
+          (item) =>
+            Array.isArray(
+              item?.tags
+            )
+              ? item.tags
+              : []
         )
       ),
     ];
 
     const searchText = [
-      `시공 부위: ${group.category || ""}`,
-      `세부 부위: ${group.subCategory || ""}`,
-      `사진 수: ${group.photos.length}`,
+      `시공 부위: ${
+        group.category || ""
+      }`,
+      `세부 부위: ${
+        group.subCategory || ""
+      }`,
+      `사진 수: ${
+        group.photos.length
+      }`,
       ...analyses.map(
         (item, index) =>
-          `사진 ${index + 1}: ${item?.description || ""}`
+          `사진 ${
+            index + 1
+          }: ${
+            item?.description ||
+            ""
+          }`
       ),
-      `특징: ${tags.join(", ")}`,
+      `특징: ${tags.join(
+        ", "
+      )}`,
     ].join("\n");
 
-    const embeddingResponse = await fetch("/api/embedding", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text: searchText,
-      }),
-    });
+    const embeddingResponse =
+      await fetch(
+        "/api/embedding",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body:
+            JSON.stringify({
+              text: searchText,
+            }),
+        }
+      );
 
     const embeddingResult =
-      await readJsonSafely(embeddingResponse);
+      await readJsonSafely(
+        embeddingResponse
+      );
 
     if (
       !embeddingResponse.ok ||
@@ -369,15 +604,20 @@ export default function Home() {
     ) {
       throw new Error(
         embeddingResult?.error ||
-          "유사사례 검색 데이터를 만들지 못했습니다."
+        "유사사례 검색 데이터를 만들지 못했습니다."
       );
     }
 
-    const { data, error } = await supabase.rpc(
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
       "get_public_similar_cases",
       {
-        query_embedding: embeddingResult.embedding,
-        match_threshold: 0.65,
+        query_embedding:
+          embeddingResult.embedding,
+        match_threshold:
+          0.65,
         match_count: 20,
       }
     );
@@ -388,30 +628,45 @@ export default function Home() {
       );
     }
 
-    const filtered = (data || [])
-      .filter((item) => {
-        const itemGroup = normalizeCategory(
-          `${item.category || ""} ${
-            item.sub_category || ""
-          }`
-        );
+    const filtered =
+      (data || [])
+        .filter((item) => {
+          const itemGroup =
+            normalizeCategory(
+              `${
+                item.category ||
+                ""
+              } ${
+                item.sub_category ||
+                ""
+              }`
+            );
 
-        return (
-          itemGroup === group.key &&
-          Number(item.actual_cost || 0) > 0
-        );
-      })
-      .slice(0, 10);
+          return (
+            itemGroup ===
+              group.key &&
+            Number(
+              item.actual_cost ||
+              0
+            ) > 0
+          );
+        })
+        .slice(0, 10);
 
     const unique = [];
-    const seen = new Set();
+    const seen =
+      new Set();
 
-    for (const item of filtered) {
+    for (
+      const item of filtered
+    ) {
       const id =
         item.work_item_id ||
         `${item.category}-${item.actual_cost}`;
 
-      if (seen.has(id)) continue;
+      if (seen.has(id)) {
+        continue;
+      }
 
       seen.add(id);
       unique.push(item);
@@ -420,69 +675,122 @@ export default function Home() {
     return unique;
   }
 
-  function calculateEstimate(cases) {
-    if (!cases.length) return null;
+  function calculateEstimate(
+    cases
+  ) {
+    if (!cases.length) {
+      return null;
+    }
 
-    let weightedCostTotal = 0;
+    let weightedCostTotal =
+      0;
+
     let weightTotal = 0;
 
-    for (const item of cases) {
-      const cost = Number(item.actual_cost || 0);
-      const similarity = Number(item.similarity || 0);
+    for (
+      const item of cases
+    ) {
+      const cost =
+        Number(
+          item.actual_cost ||
+          0
+        );
 
-      if (cost > 0 && similarity >= 0.65) {
-        const weight = similarity * similarity;
+      const similarity =
+        Number(
+          item.similarity ||
+          0
+        );
 
-        weightedCostTotal += cost * weight;
-        weightTotal += weight;
+      if (
+        cost > 0 &&
+        similarity >= 0.65
+      ) {
+        const weight =
+          similarity *
+          similarity;
+
+        weightedCostTotal +=
+          cost * weight;
+
+        weightTotal +=
+          weight;
       }
     }
 
-    if (weightTotal <= 0) return null;
+    if (
+      weightTotal <= 0
+    ) {
+      return null;
+    }
 
     const weightedAverage =
-      weightedCostTotal / weightTotal;
+      weightedCostTotal /
+      weightTotal;
 
-    const min = Math.round(
-      (weightedAverage * 0.9) / 1000
-    ) * 1000;
+    const min =
+      Math.round(
+        (weightedAverage *
+          0.9) /
+          1000
+      ) * 1000;
 
-    const max = Math.round(
-      (weightedAverage * 1.1) / 1000
-    ) * 1000;
+    const max =
+      Math.round(
+        (weightedAverage *
+          1.1) /
+          1000
+      ) * 1000;
 
     const average =
-      Math.round(weightedAverage / 1000) * 1000;
+      Math.round(
+        weightedAverage /
+        1000
+      ) * 1000;
 
-    const topSimilarity = Math.max(
-      ...cases.map((item) =>
-        Number(item.similarity || 0)
-      )
-    );
+    const topSimilarity =
+      Math.max(
+        ...cases.map(
+          (item) =>
+            Number(
+              item.similarity ||
+              0
+            )
+        )
+      );
 
-    let confidence = "낮음";
+    let confidence =
+      "낮음";
 
-    if (cases.length >= 5 && topSimilarity >= 0.85) {
-      confidence = "높음";
+    if (
+      cases.length >= 5 &&
+      topSimilarity >= 0.85
+    ) {
+      confidence =
+        "높음";
     } else if (
       cases.length >= 2 &&
       topSimilarity >= 0.75
     ) {
-      confidence = "보통";
+      confidence =
+        "보통";
     }
 
     return {
       min,
       max,
       average,
-      count: cases.length,
+      count:
+        cases.length,
       confidence,
     };
   }
 
   async function handleAnalyze() {
     if (!images.length) {
-      setMessage("사진을 한 장 이상 선택해주세요.");
+      setMessage(
+        "사진을 한 장 이상 선택해주세요."
+      );
       return;
     }
 
@@ -493,117 +801,214 @@ export default function Home() {
     setLeadMessage("");
 
     try {
-      const analyzedPhotos = [];
+      const analyzedPhotos =
+        [];
 
-      for (let i = 0; i < images.length; i += 1) {
-        const result = await analyzeOnePhoto(
-          images[i],
-          i,
-          images.length
+      for (
+        let i = 0;
+        i < images.length;
+        i += 1
+      ) {
+        const result =
+          await analyzeOnePhoto(
+            images[i],
+            i,
+            images.length
+          );
+
+        analyzedPhotos.push(
+          result
         );
-
-        analyzedPhotos.push(result);
       }
 
       setMessage(
         "같은 시공 부위의 사진을 묶고 있습니다..."
       );
 
-      const groupMap = new Map();
+      const groupMap =
+        new Map();
 
-      for (const photo of analyzedPhotos) {
-        const key = getGroupKey(photo.analysis);
+      for (
+        const photo of analyzedPhotos
+      ) {
+        const key =
+          getGroupKey(
+            photo.analysis
+          );
 
-        if (!groupMap.has(key)) {
-          groupMap.set(key, {
+        if (
+          !groupMap.has(key)
+        ) {
+          groupMap.set(
             key,
-            category:
-              photo.analysis?.category || "시공 부위",
-            subCategory:
-              photo.analysis?.sub_category || "",
-            photos: [],
-          });
+            {
+              key,
+              category:
+                photo.analysis
+                  ?.category ||
+                "시공 부위",
+
+              subCategory:
+                photo.analysis
+                  ?.sub_category ||
+                "",
+
+              photos: [],
+            }
+          );
         }
 
-        groupMap.get(key).photos.push(photo);
+        groupMap
+          .get(key)
+          .photos.push(photo);
       }
 
-      const baseGroups = Array.from(groupMap.values());
-      const completedGroups = [];
+      const baseGroups =
+        Array.from(
+          groupMap.values()
+        );
 
-      for (let i = 0; i < baseGroups.length; i += 1) {
-        const group = baseGroups[i];
+      const completedGroups =
+        [];
+
+      for (
+        let i = 0;
+        i < baseGroups.length;
+        i += 1
+      ) {
+        const group =
+          baseGroups[i];
 
         setMessage(
-          `유사 시공사례 검색 중... ${i + 1}/${
+          `유사 시공사례 검색 중... ${
+            i + 1
+          }/${
             baseGroups.length
-          } · ${group.category}`
+          } · ${
+            group.category
+          }`
         );
 
         let cases = [];
-        let estimate = null;
+        let groupEstimate =
+          null;
 
         try {
-          cases = await findSimilarCases(group);
-          estimate = calculateEstimate(cases);
+          cases =
+            await findSimilarCases(
+              group
+            );
+
+          groupEstimate =
+            calculateEstimate(
+              cases
+            );
         } catch (error) {
-          console.error(error);
+          console.error(
+            error
+          );
         }
 
-        const casesWithImages = await Promise.all(
-          cases.slice(0, 3).map(async (item) => ({
-            ...item,
-            beforeUrl: await getSignedImageUrl(
-              item.before_path
-            ),
-            afterUrl: await getSignedImageUrl(
-              item.after_path
-            ),
-          }))
-        );
+        const casesWithImages =
+          await Promise.all(
+            cases
+              .slice(0, 3)
+              .map(
+                async (
+                  item
+                ) => ({
+                  ...item,
 
-        completedGroups.push({
-          ...group,
-          similarItems: casesWithImages,
-          estimate,
-        });
+                  beforeUrl:
+                    await getSignedImageUrl(
+                      item.before_path
+                    ),
+
+                  afterUrl:
+                    await getSignedImageUrl(
+                      item.after_path
+                    ),
+                })
+              )
+          );
+
+        completedGroups.push(
+          {
+            ...group,
+            similarItems:
+              casesWithImages,
+            estimate:
+              groupEstimate,
+          }
+        );
       }
 
-      setGroups(completedGroups);
+      setGroups(
+        completedGroups
+      );
 
-      const validEstimates = completedGroups
-        .map((item) => item.estimate)
-        .filter(Boolean);
+      const validEstimates =
+        completedGroups
+          .map(
+            (item) =>
+              item.estimate
+          )
+          .filter(Boolean);
 
-      if (validEstimates.length) {
-        const min = validEstimates.reduce(
-          (sum, item) => sum + item.min,
-          0
-        );
+      if (
+        validEstimates.length
+      ) {
+        const min =
+          validEstimates.reduce(
+            (
+              sum,
+              item
+            ) =>
+              sum +
+              item.min,
+            0
+          );
 
-        const max = validEstimates.reduce(
-          (sum, item) => sum + item.max,
-          0
-        );
+        const max =
+          validEstimates.reduce(
+            (
+              sum,
+              item
+            ) =>
+              sum +
+              item.max,
+            0
+          );
 
-        const average = validEstimates.reduce(
-          (sum, item) => sum + item.average,
-          0
-        );
+        const average =
+          validEstimates.reduce(
+            (
+              sum,
+              item
+            ) =>
+              sum +
+              item.average,
+            0
+          );
 
         const missingCount =
-          completedGroups.length - validEstimates.length;
+          completedGroups.length -
+          validEstimates.length;
 
         setTotalEstimate({
           min,
           max,
           average,
-          estimatedGroupCount: validEstimates.length,
-          totalGroupCount: completedGroups.length,
+          estimatedGroupCount:
+            validEstimates.length,
+          totalGroupCount:
+            completedGroups.length,
           missingCount,
         });
 
-        if (missingCount > 0) {
+        if (
+          missingCount > 0
+        ) {
           setMessage(
             `⚠️ ${validEstimates.length}개 부위는 견적을 계산했고, ${missingCount}개 부위는 과거 데이터가 부족합니다. 총액에는 계산 가능한 부위만 포함되었습니다.`
           );
@@ -613,7 +1018,9 @@ export default function Home() {
           );
         }
       } else {
-        setTotalEstimate(null);
+        setTotalEstimate(
+          null
+        );
 
         setMessage(
           "⚠️ 사진 분석은 완료했지만 현재 DB에 같은 부위의 실제 시공 데이터가 부족합니다. 정확한 상담을 신청해주세요."
@@ -636,27 +1043,38 @@ export default function Home() {
   async function uploadLeadPhotos() {
     const paths = [];
 
-    for (let i = 0; i < images.length; i += 1) {
-      const resized = await resizeImage(
-        images[i].file,
-        1800
-      );
+    for (
+      let i = 0;
+      i < images.length;
+      i += 1
+    ) {
+      const path =
+        `leads/${makeId()}.jpg`;
 
-      const path = `leads/${makeId()}.jpg`;
-
-      const { error } = await supabase.storage
+      const {
+        error,
+      } = await supabase.storage
         .from("work-photos")
-        .upload(path, resized, {
-          cacheControl: "3600",
-          contentType: "image/jpeg",
-          upsert: false,
-        });
+        .upload(
+          path,
+          images[i].file,
+          {
+            cacheControl:
+              "3600",
+            contentType:
+              "image/jpeg",
+            upsert: false,
+          }
+        );
 
       if (error) {
         console.error(
-          `상담 사진 ${i + 1} 저장 실패:`,
+          `상담 사진 ${
+            i + 1
+          } 저장 실패:`,
           error
         );
+
         continue;
       }
 
@@ -666,7 +1084,9 @@ export default function Home() {
     return paths;
   }
 
-  async function handleLeadSubmit(event) {
+  async function handleLeadSubmit(
+    event
+  ) {
     event.preventDefault();
 
     if (!groups.length) {
@@ -676,14 +1096,25 @@ export default function Home() {
       return;
     }
 
-    if (!customerName.trim()) {
-      setLeadMessage("이름을 입력해주세요.");
+    if (
+      !customerName.trim()
+    ) {
+      setLeadMessage(
+        "이름을 입력해주세요."
+      );
       return;
     }
 
-    const phoneNumbers = phone.replace(/[^0-9]/g, "");
+    const phoneNumbers =
+      phone.replace(
+        /[^0-9]/g,
+        ""
+      );
 
-    if (phoneNumbers.length < 9) {
+    if (
+      phoneNumbers.length <
+      9
+    ) {
       setLeadMessage(
         "연락처를 정확히 입력해주세요."
       );
@@ -691,7 +1122,9 @@ export default function Home() {
     }
 
     if (!region.trim()) {
-      setLeadMessage("시공 지역을 입력해주세요.");
+      setLeadMessage(
+        "시공 지역을 입력해주세요."
+      );
       return;
     }
 
@@ -703,6 +1136,7 @@ export default function Home() {
     }
 
     setLeadLoading(true);
+
     setLeadMessage(
       "사진과 상담 신청을 접수하고 있습니다..."
     );
@@ -711,100 +1145,211 @@ export default function Home() {
       const customerPhotoPaths =
         await uploadLeadPhotos();
 
-      const estimateDetails = groups.map((group) => ({
-        group_key: group.key,
-        category: group.category,
-        sub_category: group.subCategory,
-        photo_count: group.photos.length,
-        estimate_min: group.estimate?.min ?? null,
-        estimate_max: group.estimate?.max ?? null,
-        estimate_average:
-          group.estimate?.average ?? null,
-        confidence:
-          group.estimate?.confidence || "데이터 부족",
-        similar_count:
-          group.estimate?.count || 0,
-      }));
+      const estimateDetails =
+        groups.map(
+          (group) => ({
+            group_key:
+              group.key,
 
-      const description = groups
-        .map((group, index) => {
-          const descriptions = group.photos
-            .map(
-              (photo) =>
-                photo.analysis?.description || ""
-            )
-            .filter(Boolean)
-            .join(" / ");
+            category:
+              group.category,
 
-          return `${index + 1}. ${group.category}${
-            group.subCategory
-              ? ` · ${group.subCategory}`
-              : ""
-          } (${group.photos.length}장): ${descriptions}`;
-        })
-        .join("\n");
+            sub_category:
+              group.subCategory,
 
-      const categoryText = groups
-        .map((group) => group.category)
-        .filter(Boolean)
-        .join(", ");
+            photo_count:
+              group.photos
+                .length,
 
-      const memoLines = groups.map((group) => {
-        if (!group.estimate) {
-          return `${group.category}: 데이터 부족`;
-        }
+            estimate_min:
+              group.estimate
+                ?.min ??
+              null,
 
-        return `${group.category}: ${formatWon(
-          group.estimate.min
-        )}~${formatWon(group.estimate.max)}원`;
-      });
+            estimate_max:
+              group.estimate
+                ?.max ??
+              null,
 
-      const response = await fetch("/api/lead", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          customer_name: customerName.trim(),
-          phone: phone.trim(),
-          region: region.trim(),
+            estimate_average:
+              group.estimate
+                ?.average ??
+              null,
 
-          category: categoryText || null,
-          sub_category:
-            groups.length === 1
-              ? groups[0].subCategory
-              : "다중부위",
+            confidence:
+              group.estimate
+                ?.confidence ||
+              "데이터 부족",
 
-          ai_description: description,
+            similar_count:
+              group.estimate
+                ?.count ||
+              0,
+          })
+        );
 
-          estimate_min: totalEstimate?.min ?? null,
-          estimate_max: totalEstimate?.max ?? null,
-          estimate_average:
-            totalEstimate?.average ?? null,
+      const description =
+        groups
+          .map(
+            (
+              group,
+              index
+            ) => {
+              const descriptions =
+                group.photos
+                  .map(
+                    (
+                      photo
+                    ) =>
+                      photo
+                        .analysis
+                        ?.description ||
+                      ""
+                  )
+                  .filter(
+                    Boolean
+                  )
+                  .join(
+                    " / "
+                  );
 
-          customer_photo_path:
-            customerPhotoPaths[0] || null,
+              return `${
+                index + 1
+              }. ${
+                group.category
+              }${
+                group.subCategory
+                  ? ` · ${group.subCategory}`
+                  : ""
+              } (${
+                group.photos
+                  .length
+              }장): ${descriptions}`;
+            }
+          )
+          .join("\n");
 
-          customer_photo_paths:
-            customerPhotoPaths,
+      const categoryText =
+        groups
+          .map(
+            (group) =>
+              group.category
+          )
+          .filter(Boolean)
+          .join(", ");
 
-          estimate_details: estimateDetails,
+      const memoLines =
+        groups.map(
+          (group) => {
+            if (
+              !group.estimate
+            ) {
+              return `${group.category}: 데이터 부족`;
+            }
 
-          memo: `다중사진 AI 견적\n${memoLines.join(
-            "\n"
-          )}`,
-        }),
-      });
+            return `${
+              group.category
+            }: ${formatWon(
+              group.estimate
+                .min
+            )}~${formatWon(
+              group.estimate
+                .max
+            )}원`;
+          }
+        );
 
-      const result = await readJsonSafely(response);
+      const response =
+        await fetch(
+          "/api/lead",
+          {
+            method:
+              "POST",
 
-      if (!response.ok || !result?.success) {
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                customer_name:
+                  customerName.trim(),
+
+                phone:
+                  phone.trim(),
+
+                region:
+                  region.trim(),
+
+                category:
+                  categoryText ||
+                  null,
+
+                sub_category:
+                  groups.length ===
+                  1
+                    ? groups[0]
+                        .subCategory
+                    : "다중부위",
+
+                ai_description:
+                  description,
+
+                estimate_min:
+                  totalEstimate
+                    ?.min ??
+                  null,
+
+                estimate_max:
+                  totalEstimate
+                    ?.max ??
+                  null,
+
+                estimate_average:
+                  totalEstimate
+                    ?.average ??
+                  null,
+
+                customer_photo_path:
+                  customerPhotoPaths[
+                    0
+                  ] ||
+                  null,
+
+                customer_photo_paths:
+                  customerPhotoPaths,
+
+                estimate_details:
+                  estimateDetails,
+
+                memo:
+                  `다중사진 AI 견적\n${memoLines.join(
+                    "\n"
+                  )}`,
+              }),
+          }
+        );
+
+      const result =
+        await readJsonSafely(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
         throw new Error(
-          result?.error || "상담 신청 저장 오류"
+          result?.error ||
+          "상담 신청 저장 오류"
         );
       }
 
-      setLeadComplete(true);
+      setLeadComplete(
+        true
+      );
+
       setLeadMessage(
         "✅ 상담 신청이 완료되었습니다. 확인 후 연락드리겠습니다."
       );
@@ -813,18 +1358,22 @@ export default function Home() {
 
       setLeadMessage(
         `❌ 상담 신청 오류: ${
-          error?.message || "다시 시도해주세요."
+          error?.message ||
+          "다시 시도해주세요."
         }`
       );
     } finally {
-      setLeadLoading(false);
+      setLeadLoading(
+        false
+      );
     }
   }
 
   const sectionStyle = {
     marginTop: "24px",
     padding: "22px",
-    border: "1px solid #e5e7eb",
+    border:
+      "1px solid #e5e7eb",
     borderRadius: "20px",
     background: "#ffffff",
   };
@@ -834,15 +1383,18 @@ export default function Home() {
     padding: "15px",
     marginTop: "7px",
     fontSize: "16px",
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "12px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   };
 
   const photoButtonStyle = {
     flex: 1,
     minHeight: "72px",
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "14px",
     background: "#ffffff",
     fontSize: "16px",
@@ -855,16 +1407,20 @@ export default function Home() {
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding: "28px 18px 70px",
-        fontFamily: "Arial, sans-serif",
+        padding:
+          "28px 18px 70px",
+        fontFamily:
+          "Arial, sans-serif",
         background: "#f8fafc",
         minHeight: "100vh",
-        boxSizing: "border-box",
+        boxSizing:
+          "border-box",
       }}
     >
       <div
         style={{
-          display: "inline-block",
+          display:
+            "inline-block",
           background: "#111827",
           color: "#ffffff",
           padding: "8px 14px",
@@ -900,8 +1456,17 @@ export default function Home() {
         마지막에 총 예상견적을 보여드립니다.
       </p>
 
-      <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0, fontSize: "21px" }}>
+      <section
+        style={
+          sectionStyle
+        }
+      >
+        <h2
+          style={{
+            marginTop: 0,
+            fontSize: "21px",
+          }}
+        >
           1. 시공할 곳 사진
         </h2>
 
@@ -917,27 +1482,53 @@ export default function Home() {
         </p>
 
         <input
-          ref={cameraInputRef}
+          ref={
+            cameraInputRef
+          }
           type="file"
           accept="image/*"
           capture="environment"
-          style={{ display: "none" }}
-          onChange={(event) => {
-            addImages(event.target.files);
-            event.target.value = "";
+          style={{
+            display: "none",
           }}
+          onChange={
+            async (
+              event
+            ) => {
+              await addImages(
+                event.target
+                  .files
+              );
+
+              event.target.value =
+                "";
+            }
+          }
         />
 
         <input
-          ref={galleryInputRef}
+          ref={
+            galleryInputRef
+          }
           type="file"
           accept="image/*"
           multiple
-          style={{ display: "none" }}
-          onChange={(event) => {
-            addImages(event.target.files);
-            event.target.value = "";
+          style={{
+            display: "none",
           }}
+          onChange={
+            async (
+              event
+            ) => {
+              await addImages(
+                event.target
+                  .files
+              );
+
+              event.target.value =
+                "";
+            }
+          }
         />
 
         <div
@@ -948,10 +1539,17 @@ export default function Home() {
         >
           <button
             type="button"
-            style={photoButtonStyle}
-            disabled={loading}
+            style={
+              photoButtonStyle
+            }
+            disabled={
+              loading ||
+              imageLoading
+            }
             onClick={() =>
-              cameraInputRef.current?.click()
+              cameraInputRef
+                .current
+                ?.click()
             }
           >
             📷
@@ -961,10 +1559,17 @@ export default function Home() {
 
           <button
             type="button"
-            style={photoButtonStyle}
-            disabled={loading}
+            style={
+              photoButtonStyle
+            }
+            disabled={
+              loading ||
+              imageLoading
+            }
             onClick={() =>
-              galleryInputRef.current?.click()
+              galleryInputRef
+                .current
+                ?.click()
             }
           >
             🖼️
@@ -973,18 +1578,24 @@ export default function Home() {
           </button>
         </div>
 
-        {images.length > 0 && (
+        {images.length >
+          0 && (
           <>
             <div
               style={{
-                marginTop: "14px",
+                marginTop:
+                  "14px",
                 padding: "12px",
-                background: "#f3f4f6",
-                borderRadius: "10px",
-                fontWeight: "bold",
+                background:
+                  "#f3f4f6",
+                borderRadius:
+                  "10px",
+                fontWeight:
+                  "bold",
               }}
             >
-              ✅ 선택한 사진 {images.length}장
+              ✅ 선택한 사진{" "}
+              {images.length}장
             </div>
 
             <div
@@ -993,60 +1604,98 @@ export default function Home() {
                 gridTemplateColumns:
                   "repeat(3, minmax(0, 1fr))",
                 gap: "8px",
-                marginTop: "12px",
+                marginTop:
+                  "12px",
               }}
             >
-              {images.map((item, index) => (
-                <div
-                  key={item.id}
-                  style={{
-                    position: "relative",
-                  }}
-                >
-                  <img
-                    src={item.preview}
-                    alt={`고객 사진 ${index + 1}`}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1 / 1",
-                      objectFit: "cover",
-                      borderRadius: "10px",
-                      display: "block",
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() =>
-                      removeImage(item.id)
+              {images.map(
+                (
+                  item,
+                  index
+                ) => (
+                  <div
+                    key={
+                      item.id
                     }
                     style={{
-                      position: "absolute",
-                      top: "5px",
-                      right: "5px",
-                      width: "30px",
-                      height: "30px",
-                      border: "none",
-                      borderRadius: "50%",
-                      background:
-                        "rgba(17,24,39,0.85)",
-                      color: "#ffffff",
-                      fontSize: "16px",
+                      position:
+                        "relative",
                     }}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <img
+                      src={
+                        item.preview
+                      }
+                      alt={`고객 사진 ${
+                        index +
+                        1
+                      }`}
+                      style={{
+                        width:
+                          "100%",
+                        aspectRatio:
+                          "1 / 1",
+                        objectFit:
+                          "cover",
+                        borderRadius:
+                          "10px",
+                        display:
+                          "block",
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      disabled={
+                        loading ||
+                        imageLoading
+                      }
+                      onClick={() =>
+                        removeImage(
+                          item.id
+                        )
+                      }
+                      style={{
+                        position:
+                          "absolute",
+                        top: "5px",
+                        right:
+                          "5px",
+                        width:
+                          "30px",
+                        height:
+                          "30px",
+                        border:
+                          "none",
+                        borderRadius:
+                          "50%",
+                        background:
+                          "rgba(17,24,39,0.85)",
+                        color:
+                          "#ffffff",
+                        fontSize:
+                          "16px",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           </>
         )}
 
         <button
           type="button"
-          onClick={handleAnalyze}
-          disabled={loading || !images.length}
+          onClick={
+            handleAnalyze
+          }
+          disabled={
+            loading ||
+            imageLoading ||
+            !images.length
+          }
           style={{
             width: "100%",
             marginTop: "18px",
@@ -1059,10 +1708,16 @@ export default function Home() {
             fontWeight: "bold",
             cursor: "pointer",
             opacity:
-              loading || !images.length ? 0.65 : 1,
+              loading ||
+              imageLoading ||
+              !images.length
+                ? 0.65
+                : 1,
           }}
         >
-          {loading
+          {imageLoading
+            ? "사진 준비 중..."
+            : loading
             ? "AI 분석 중..."
             : `${images.length || ""}장 AI 견적 확인`}
         </button>
@@ -1073,7 +1728,8 @@ export default function Home() {
               marginTop: "16px",
               padding: "14px",
               borderRadius: "12px",
-              background: "#f3f4f6",
+              background:
+                "#f3f4f6",
               lineHeight: "1.6",
               color: "#374151",
             }}
@@ -1083,9 +1739,18 @@ export default function Home() {
         )}
       </section>
 
-      {groups.length > 0 && (
-        <section style={sectionStyle}>
-          <h2 style={{ marginTop: 0 }}>
+      {groups.length >
+        0 && (
+        <section
+          style={
+            sectionStyle
+          }
+        >
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
             AI 부위별 분석
           </h2>
 
@@ -1095,196 +1760,314 @@ export default function Home() {
               lineHeight: "1.6",
             }}
           >
-            총 {images.length}장의 사진을{" "}
-            <strong>{groups.length}개 시공 부위</strong>로
-            분류했습니다.
+            총 {images.length}장의
+            사진을{" "}
+            <strong>
+              {groups.length}개
+              시공 부위
+            </strong>
+            로 분류했습니다.
           </p>
 
-          {groups.map((group, index) => (
-            <div
-              key={`${group.key}-${index}`}
-              style={{
-                marginTop: "18px",
-                paddingTop: index ? "18px" : 0,
-                borderTop: index
-                  ? "1px solid #e5e7eb"
-                  : "none",
-              }}
-            >
+          {groups.map(
+            (
+              group,
+              index
+            ) => (
               <div
+                key={`${group.key}-${index}`}
                 style={{
-                  fontSize: "20px",
-                  fontWeight: "bold",
+                  marginTop:
+                    "18px",
+                  paddingTop:
+                    index
+                      ? "18px"
+                      : 0,
+                  borderTop:
+                    index
+                      ? "1px solid #e5e7eb"
+                      : "none",
                 }}
               >
-                {index + 1}. {group.category}
-                {group.subCategory
-                  ? ` · ${group.subCategory}`
-                  : ""}
-              </div>
-
-              <div
-                style={{
-                  marginTop: "5px",
-                  color: "#6b7280",
-                }}
-              >
-                같은 부위 사진 {group.photos.length}장
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "6px",
-                  overflowX: "auto",
-                  marginTop: "10px",
-                }}
-              >
-                {group.photos.map((photo) => (
-                  <img
-                    key={photo.id}
-                    src={photo.preview}
-                    alt="분석 사진"
-                    style={{
-                      width: "82px",
-                      height: "82px",
-                      objectFit: "cover",
-                      borderRadius: "9px",
-                      flexShrink: 0,
-                    }}
-                  />
-                ))}
-              </div>
-
-              {group.estimate ? (
                 <div
                   style={{
-                    marginTop: "14px",
-                    padding: "14px",
-                    background: "#f3f4f6",
-                    borderRadius: "12px",
-                    lineHeight: "1.7",
+                    fontSize:
+                      "20px",
+                    fontWeight:
+                      "bold",
                   }}
                 >
-                  <strong>
-                    {formatWon(group.estimate.min)}원 ~{" "}
-                    {formatWon(group.estimate.max)}원
-                  </strong>
-                  <br />
-                  유사 시공 {group.estimate.count}건 ·
-                  신뢰도 {group.estimate.confidence}
+                  {index + 1}.{" "}
+                  {
+                    group.category
+                  }
+                  {group.subCategory
+                    ? ` · ${group.subCategory}`
+                    : ""}
                 </div>
-              ) : (
+
                 <div
                   style={{
-                    marginTop: "14px",
-                    padding: "14px",
-                    background: "#fff7ed",
-                    borderRadius: "12px",
-                    lineHeight: "1.6",
+                    marginTop:
+                      "5px",
+                    color:
+                      "#6b7280",
                   }}
                 >
-                  ⚠️ 같은 부위의 실제 시공 데이터가
-                  부족하여 상담 확인이 필요합니다.
+                  같은 부위 사진{" "}
+                  {
+                    group.photos
+                      .length
+                  }
+                  장
                 </div>
-              )}
 
-              {group.similarItems?.length > 0 && (
-                <div style={{ marginTop: "15px" }}>
-                  <strong>비슷한 실제 시공사례</strong>
-
-                  {group.similarItems.map(
-                    (item, caseIndex) => (
-                      <div
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap: "6px",
+                    overflowX:
+                      "auto",
+                    marginTop:
+                      "10px",
+                  }}
+                >
+                  {group.photos.map(
+                    (
+                      photo
+                    ) => (
+                      <img
                         key={
-                          item.work_item_id ||
-                          caseIndex
+                          photo.id
                         }
+                        src={
+                          photo.preview
+                        }
+                        alt="분석 사진"
                         style={{
-                          marginTop: "12px",
+                          width:
+                            "82px",
+                          height:
+                            "82px",
+                          objectFit:
+                            "cover",
+                          borderRadius:
+                            "9px",
+                          flexShrink:
+                            0,
                         }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "1fr 1fr",
-                            gap: "7px",
-                          }}
-                        >
-                          {item.beforeUrl ? (
-                            <img
-                              src={item.beforeUrl}
-                              alt="시공 전"
-                              style={{
-                                width: "100%",
-                                aspectRatio: "1 / 1",
-                                objectFit: "cover",
-                                borderRadius: "10px",
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                aspectRatio: "1 / 1",
-                                background: "#f3f4f6",
-                                borderRadius: "10px",
-                              }}
-                            />
-                          )}
-
-                          {item.afterUrl ? (
-                            <img
-                              src={item.afterUrl}
-                              alt="시공 후"
-                              style={{
-                                width: "100%",
-                                aspectRatio: "1 / 1",
-                                objectFit: "cover",
-                                borderRadius: "10px",
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                aspectRatio: "1 / 1",
-                                background: "#f3f4f6",
-                                borderRadius: "10px",
-                              }}
-                            />
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: "5px",
-                            fontSize: "14px",
-                            color: "#4b5563",
-                          }}
-                        >
-                          실제 시공금액{" "}
-                          <strong>
-                            {formatWon(
-                              item.actual_cost
-                            )}
-                            원
-                          </strong>
-                          {" · "}
-                          유사도{" "}
-                          {(
-                            Number(
-                              item.similarity || 0
-                            ) * 100
-                          ).toFixed(1)}
-                          %
-                        </div>
-                      </div>
+                      />
                     )
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {group.estimate ? (
+                  <div
+                    style={{
+                      marginTop:
+                        "14px",
+                      padding:
+                        "14px",
+                      background:
+                        "#f3f4f6",
+                      borderRadius:
+                        "12px",
+                      lineHeight:
+                        "1.7",
+                    }}
+                  >
+                    <strong>
+                      {formatWon(
+                        group
+                          .estimate
+                          .min
+                      )}
+                      원 ~{" "}
+                      {formatWon(
+                        group
+                          .estimate
+                          .max
+                      )}
+                      원
+                    </strong>
+
+                    <br />
+
+                    유사 시공{" "}
+                    {
+                      group
+                        .estimate
+                        .count
+                    }
+                    건 · 신뢰도{" "}
+                    {
+                      group
+                        .estimate
+                        .confidence
+                    }
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      marginTop:
+                        "14px",
+                      padding:
+                        "14px",
+                      background:
+                        "#fff7ed",
+                      borderRadius:
+                        "12px",
+                      lineHeight:
+                        "1.6",
+                    }}
+                  >
+                    ⚠️ 같은 부위의
+                    실제 시공 데이터가
+                    부족하여 상담
+                    확인이 필요합니다.
+                  </div>
+                )}
+
+                {group
+                  .similarItems
+                  ?.length >
+                  0 && (
+                  <div
+                    style={{
+                      marginTop:
+                        "15px",
+                    }}
+                  >
+                    <strong>
+                      비슷한 실제
+                      시공사례
+                    </strong>
+
+                    {group.similarItems.map(
+                      (
+                        item,
+                        caseIndex
+                      ) => (
+                        <div
+                          key={
+                            item.work_item_id ||
+                            caseIndex
+                          }
+                          style={{
+                            marginTop:
+                              "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display:
+                                "grid",
+                              gridTemplateColumns:
+                                "1fr 1fr",
+                              gap:
+                                "7px",
+                            }}
+                          >
+                            {item.beforeUrl ? (
+                              <img
+                                src={
+                                  item.beforeUrl
+                                }
+                                alt="시공 전"
+                                style={{
+                                  width:
+                                    "100%",
+                                  aspectRatio:
+                                    "1 / 1",
+                                  objectFit:
+                                    "cover",
+                                  borderRadius:
+                                    "10px",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  aspectRatio:
+                                    "1 / 1",
+                                  background:
+                                    "#f3f4f6",
+                                  borderRadius:
+                                    "10px",
+                                }}
+                              />
+                            )}
+
+                            {item.afterUrl ? (
+                              <img
+                                src={
+                                  item.afterUrl
+                                }
+                                alt="시공 후"
+                                style={{
+                                  width:
+                                    "100%",
+                                  aspectRatio:
+                                    "1 / 1",
+                                  objectFit:
+                                    "cover",
+                                  borderRadius:
+                                    "10px",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  aspectRatio:
+                                    "1 / 1",
+                                  background:
+                                    "#f3f4f6",
+                                  borderRadius:
+                                    "10px",
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop:
+                                "5px",
+                              fontSize:
+                                "14px",
+                              color:
+                                "#4b5563",
+                            }}
+                          >
+                            실제 시공금액{" "}
+                            <strong>
+                              {formatWon(
+                                item.actual_cost
+                              )}
+                              원
+                            </strong>
+                            {" · "}
+                            유사도{" "}
+                            {(
+                              Number(
+                                item.similarity ||
+                                  0
+                              ) *
+                              100
+                            ).toFixed(
+                              1
+                            )}
+                            %
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          )}
         </section>
       )}
 
@@ -1292,7 +2075,8 @@ export default function Home() {
         <section
           style={{
             ...sectionStyle,
-            border: "2px solid #111827",
+            border:
+              "2px solid #111827",
           }}
         >
           <div
@@ -1304,7 +2088,12 @@ export default function Home() {
             부위별 예상견적 합산
           </div>
 
-          <h2 style={{ marginBottom: "10px" }}>
+          <h2
+            style={{
+              marginBottom:
+                "10px",
+            }}
+          >
             총 예상 시공 견적
           </h2>
 
@@ -1315,41 +2104,67 @@ export default function Home() {
               fontWeight: "bold",
             }}
           >
-            {formatWon(totalEstimate.min)}원
-            <br />~ {formatWon(totalEstimate.max)}원
+            {formatWon(
+              totalEstimate.min
+            )}
+            원
+            <br />
+            ~{" "}
+            {formatWon(
+              totalEstimate.max
+            )}
+            원
           </div>
 
           <div
             style={{
               marginTop: "14px",
               padding: "12px",
-              background: "#f3f4f6",
+              background:
+                "#f3f4f6",
               borderRadius: "10px",
               lineHeight: "1.7",
             }}
           >
             가중 평균 합계{" "}
             <strong>
-              {formatWon(totalEstimate.average)}원
+              {formatWon(
+                totalEstimate.average
+              )}
+              원
             </strong>
+
             <br />
+
             견적 계산 완료{" "}
             <strong>
-              {totalEstimate.estimatedGroupCount}/
-              {totalEstimate.totalGroupCount}개 부위
+              {
+                totalEstimate.estimatedGroupCount
+              }
+              /
+              {
+                totalEstimate.totalGroupCount
+              }
+              개 부위
             </strong>
           </div>
 
-          {totalEstimate.missingCount > 0 && (
+          {totalEstimate.missingCount >
+            0 && (
             <p
               style={{
                 color: "#b45309",
-                lineHeight: "1.6",
+                lineHeight:
+                  "1.6",
               }}
             >
               ⚠️ 데이터가 부족한{" "}
-              {totalEstimate.missingCount}개 부위는 위
-              총액에 포함되지 않았습니다. 상담 시 함께
+              {
+                totalEstimate.missingCount
+              }
+              개 부위는 위 총액에
+              포함되지 않았습니다.
+              상담 시 함께
               확인합니다.
             </p>
           )}
@@ -1362,24 +2177,30 @@ export default function Home() {
               lineHeight: "1.6",
             }}
           >
-            실제 과거 시공금액을 기반으로 계산한
-            예상견적입니다. 수량·크기·현장상태·자재 및
-            추가 작업에 따라 최종 금액은 달라질 수
+            실제 과거 시공금액을
+            기반으로 계산한
+            예상견적입니다.
+            수량·크기·현장상태·자재
+            및 추가 작업에 따라
+            최종 금액은 달라질 수
             있습니다.
           </p>
         </section>
       )}
 
-      {groups.length > 0 && (
+      {groups.length >
+        0 && (
         <section
           style={{
             ...sectionStyle,
-            border: "2px solid #111827",
+            border:
+              "2px solid #111827",
           }}
         >
           <div
             style={{
-              textAlign: "center",
+              textAlign:
+                "center",
               fontSize: "28px",
             }}
           >
@@ -1388,8 +2209,10 @@ export default function Home() {
 
           <h2
             style={{
-              textAlign: "center",
-              marginBottom: "8px",
+              textAlign:
+                "center",
+              marginBottom:
+                "8px",
             }}
           >
             정확한 견적 상담받기
@@ -1397,147 +2220,234 @@ export default function Home() {
 
           <p
             style={{
-              textAlign: "center",
+              textAlign:
+                "center",
               color: "#6b7280",
               lineHeight: "1.6",
             }}
           >
-            보내주신 사진 전체와 부위별 AI 견적을
-            담당자가 확인한 뒤 안내해드립니다.
+            보내주신 사진 전체와
+            부위별 AI 견적을
+            담당자가 확인한 뒤
+            안내해드립니다.
           </p>
 
           {leadComplete ? (
             <div
               style={{
                 padding: "22px",
-                borderRadius: "14px",
-                textAlign: "center",
-                background: "#ecfdf5",
+                borderRadius:
+                  "14px",
+                textAlign:
+                  "center",
+                background:
+                  "#ecfdf5",
                 lineHeight: "1.8",
               }}
             >
-              <div style={{ fontSize: "25px" }}>✅</div>
-              <strong>상담 신청 완료</strong>
+              <div
+                style={{
+                  fontSize:
+                    "25px",
+                }}
+              >
+                ✅
+              </div>
+
+              <strong>
+                상담 신청 완료
+              </strong>
+
               <br />
-              담당자가 확인 후 연락드리겠습니다.
+
+              담당자가 확인 후
+              연락드리겠습니다.
             </div>
           ) : (
-            <form onSubmit={handleLeadSubmit}>
+            <form
+              onSubmit={
+                handleLeadSubmit
+              }
+            >
               <label
                 style={{
-                  display: "block",
-                  marginBottom: "16px",
-                  fontWeight: "bold",
+                  display:
+                    "block",
+                  marginBottom:
+                    "16px",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 이름
+
                 <input
-                  value={customerName}
+                  value={
+                    customerName
+                  }
                   onChange={(e) =>
-                    setCustomerName(e.target.value)
+                    setCustomerName(
+                      e.target
+                        .value
+                    )
                   }
                   placeholder="성함"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
               <label
                 style={{
-                  display: "block",
-                  marginBottom: "16px",
-                  fontWeight: "bold",
+                  display:
+                    "block",
+                  marginBottom:
+                    "16px",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 연락처
+
                 <input
                   type="tel"
                   inputMode="numeric"
                   value={phone}
                   onChange={(e) =>
-                    handlePhoneChange(e.target.value)
+                    handlePhoneChange(
+                      e.target
+                        .value
+                    )
                   }
                   placeholder="010-0000-0000"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
               <label
                 style={{
-                  display: "block",
-                  marginBottom: "16px",
-                  fontWeight: "bold",
+                  display:
+                    "block",
+                  marginBottom:
+                    "16px",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 시공 지역
+
                 <input
                   value={region}
                   onChange={(e) =>
-                    setRegion(e.target.value)
+                    setRegion(
+                      e.target
+                        .value
+                    )
                   }
                   placeholder="예: 인천 송도"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
               <label
                 style={{
-                  display: "flex",
+                  display:
+                    "flex",
                   gap: "9px",
-                  alignItems: "flex-start",
-                  fontSize: "14px",
+                  alignItems:
+                    "flex-start",
+                  fontSize:
+                    "14px",
                   lineHeight: "1.5",
-                  color: "#4b5563",
-                  marginTop: "14px",
+                  color:
+                    "#4b5563",
+                  marginTop:
+                    "14px",
                 }}
               >
                 <input
                   type="checkbox"
-                  checked={privacyAgree}
+                  checked={
+                    privacyAgree
+                  }
                   onChange={(e) =>
-                    setPrivacyAgree(e.target.checked)
+                    setPrivacyAgree(
+                      e.target
+                        .checked
+                    )
                   }
                   style={{
-                    width: "20px",
-                    height: "20px",
-                    marginTop: "1px",
+                    width:
+                      "20px",
+                    height:
+                      "20px",
+                    marginTop:
+                      "1px",
                     flexShrink: 0,
                   }}
                 />
 
-                상담을 위한 이름, 연락처, 시공지역,
-                고객 사진 및 견적 정보 수집과 상담
+                상담을 위한 이름,
+                연락처, 시공지역,
+                고객 사진 및 견적
+                정보 수집과 상담
                 연락에 동의합니다.
               </label>
 
               {leadMessage && (
                 <div
                   style={{
-                    marginTop: "15px",
-                    padding: "12px",
-                    borderRadius: "10px",
-                    background: "#f3f4f6",
-                    lineHeight: "1.6",
+                    marginTop:
+                      "15px",
+                    padding:
+                      "12px",
+                    borderRadius:
+                      "10px",
+                    background:
+                      "#f3f4f6",
+                    lineHeight:
+                      "1.6",
                   }}
                 >
-                  {leadMessage}
+                  {
+                    leadMessage
+                  }
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={leadLoading}
+                disabled={
+                  leadLoading
+                }
                 style={{
                   width: "100%",
-                  marginTop: "20px",
-                  padding: "18px",
+                  marginTop:
+                    "20px",
+                  padding:
+                    "18px",
                   border: "none",
-                  borderRadius: "14px",
-                  background: "#111827",
-                  color: "#ffffff",
-                  fontSize: "18px",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  opacity: leadLoading ? 0.65 : 1,
+                  borderRadius:
+                    "14px",
+                  background:
+                    "#111827",
+                  color:
+                    "#ffffff",
+                  fontSize:
+                    "18px",
+                  fontWeight:
+                    "bold",
+                  cursor:
+                    "pointer",
+                  opacity:
+                    leadLoading
+                      ? 0.65
+                      : 1,
                 }}
               >
                 {leadLoading
@@ -1564,4 +2474,4 @@ export default function Home() {
       </div>
     </main>
   );
-      }
+  }
