@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function fileToDataUrl(file) {
-  return file.arrayBuffer().then((buffer) => {
-    const base64 = Buffer.from(buffer).toString("base64");
-    const mimeType = file.type || "image/jpeg";
-    return `data:${mimeType};base64,${base64}`;
-  });
+async function fileToDataUrl(file) {
+  const buffer = await file.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+  const mimeType = file.type || "image/jpeg";
+
+  return `data:${mimeType};base64,${base64}`;
 }
 
 function extractOutputText(data) {
@@ -38,13 +38,42 @@ function extractOutputText(data) {
   return "";
 }
 
+function parseAnalysisJson(outputText) {
+  let cleanedText = String(outputText || "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const firstBrace = cleanedText.indexOf("{");
+  const lastBrace = cleanedText.lastIndexOf("}");
+
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1 &&
+    lastBrace > firstBrace
+  ) {
+    cleanedText = cleanedText.slice(
+      firstBrace,
+      lastBrace + 1
+    );
+  }
+
+  return JSON.parse(cleanedText);
+}
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
 
     const image = formData.get("image");
-    const beforeImage = formData.get("beforeImage");
-    const afterImage = formData.get("afterImage");
+
+    // 다중 비교용
+    const beforeImages = formData.getAll("beforeImages");
+    const afterImages = formData.getAll("afterImages");
+
+    // 기존 단일 비교 방식과의 호환성 유지
+    const legacyBeforeImage = formData.get("beforeImage");
+    const legacyAfterImage = formData.get("afterImage");
 
     const receivedPhotoType = String(
       formData.get("photoType") || "before"
@@ -60,10 +89,28 @@ export async function POST(request) {
         : "before";
 
     // =========================================================
-    // 전후 비교 모드
+    // 다중 전후 비교
     // =========================================================
+
     if (photoType === "compare") {
-      if (!beforeImage || !afterImage) {
+      const allBeforeImages =
+        beforeImages.length > 0
+          ? beforeImages
+          : legacyBeforeImage
+          ? [legacyBeforeImage]
+          : [];
+
+      const allAfterImages =
+        afterImages.length > 0
+          ? afterImages
+          : legacyAfterImage
+          ? [legacyAfterImage]
+          : [];
+
+      if (
+        allBeforeImages.length === 0 ||
+        allAfterImages.length === 0
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -74,57 +121,117 @@ export async function POST(request) {
         );
       }
 
-      const beforeDataUrl = await fileToDataUrl(beforeImage);
-      const afterDataUrl = await fileToDataUrl(afterImage);
+      const beforeDataUrls = await Promise.all(
+        allBeforeImages.map((file) =>
+          fileToDataUrl(file)
+        )
+      );
+
+      const afterDataUrls = await Promise.all(
+        allAfterImages.map((file) =>
+          fileToDataUrl(file)
+        )
+      );
 
       const instruction = `
 당신은 인테리어필름 전문 시공 분석가이다.
 
-첫 번째 사진은 "시공 전 사진"이고,
-두 번째 사진은 "시공 후 사진"이다.
+사용자가 한 시공건의 사진들을 여러 장 제공한다.
 
-두 사진을 직접 비교해서 실제로 확인되는 변화만 분석하라.
+앞부분의 사진들은 모두 "시공 전 사진 묶음"이다.
+뒷부분의 사진들은 모두 "시공 후 사진 묶음"이다.
 
-가장 중요한 규칙:
+중요:
+사진 수가 서로 다를 수 있다.
+사진 순서가 서로 정확히 대응하지 않을 수 있다.
+따라서 사진 1장씩 억지로 짝을 맞추지 말고,
+전체 시공 전 사진 묶음과 전체 시공 후 사진 묶음을 종합적으로 비교하라.
 
-1. 시공 전과 시공 후의 실제 차이를 비교한다.
-2. 사진에서 확인할 수 없는 과거 상태나 공사 내용을 만들어내지 않는다.
-3. 색상 변화, 밝기 변화, 표면 정돈감, 통일감, 공간 분위기 변화 등을 비교한다.
-4. 도어, 문틀, 붙박이장, 싱크대, 가구 등 실제 시공 부위를 구체적으로 설명한다.
-5. 시공 후 사진은 이미 인테리어필름 시공이 완료된 상태로 판단한다.
-6. "시공이 필요하다", "교체가 필요하다", "보수가 필요하다" 같은 표현은 사용하지 않는다.
-7. 사진에서 확인할 수 있는 범위에서만 시공 완성도를 설명한다.
-8. 반드시 자연스러운 한국어만 사용한다.
-9. 중국어, 일본어, 한자 혼합 표현을 절대로 사용하지 않는다.
-10. "质감" 같은 혼합 문자를 사용하지 말고 반드시 "질감"처럼 자연스러운 한국어로 작성한다.
+분석 규칙:
 
-description은 고객에게 보여줄 수 있는 설명으로 작성한다.
+1. 여러 장의 사진 전체에서 반복적으로 확인되는 시공 부위를 파악한다.
+2. 시공 전 사진 묶음과 시공 후 사진 묶음에서 실제로 확인되는 공통 변화를 분석한다.
+3. 색상 변화, 밝기 변화, 표면 정돈감, 공간 통일감, 인테리어 분위기 변화를 설명한다.
+4. 문, 문틀, 싱크대, 붙박이장, 신발장, 몰딩 등 실제 사진에서 보이는 시공 부위를 구체적으로 설명한다.
+5. 사진 순서가 다르다고 해서 특정 전사진과 특정 후사진을 임의로 같은 물체라고 단정하지 않는다.
+6. 사진에서 확인할 수 없는 과거 상태나 시공 내용을 지어내지 않는다.
+7. 시공 후 사진은 이미 인테리어필름 시공이 완료된 상태로 판단한다.
+8. "시공이 필요하다", "교체가 필요하다", "보수가 필요하다", "시공을 권장한다" 같은 표현은 사용하지 않는다.
+9. 전후 차이가 명확하지 않은 부분은 단정하지 않는다.
+10. 반드시 자연스러운 한국어만 사용한다.
+11. 중국어, 일본어, 한자 혼합 표현을 사용하지 않는다.
+12. "质감" 같은 혼합 문자를 절대 사용하지 않고 "질감"처럼 자연스러운 한국어만 사용한다.
+13. 고객이 읽었을 때 이해하기 쉬운 설명을 작성한다.
 
-좋은 예:
+description은
+"한 시공건 전체의 시공 전후 변화"를 설명하는 문장으로 작성한다.
 
-"시공 전에는 짙은 브라운 계열의 방문과 문틀로 인해 다소 어둡고 무거운 인상이었으나, 시공 후 밝은 우드 계열 인테리어필름으로 마감되어 전체 공간이 밝고 정돈된 분위기로 변화했습니다. 도어와 문틀의 색상을 동일 계열로 통일해 공간의 일체감이 높아졌으며, 주변 벽과 바닥 마감과도 자연스럽게 어우러집니다."
+예시 표현:
 
-단, 실제 사진에서 확인되지 않는 변화는 설명하지 않는다.
+"시공 전에는 짙은 색상의 방문과 문틀이 여러 공간에서 확인되었으나, 시공 후에는 밝은 우드 계열 필름으로 통일되어 전체 공간이 한층 밝고 정돈된 분위기로 변화했습니다. 여러 도어와 문틀에 동일 계열의 마감이 적용되어 공간 전체의 일체감도 높아졌습니다."
+
+단, 예시는 문체 참고용이며 실제 사진에서 확인되는 내용만 작성한다.
 
 반드시 JSON만 반환하라.
 
 {
   "category": "대표 시공 부위",
   "sub_category": "구체적인 시공 부위",
-  "description": "시공 전과 시공 후를 비교한 자연스러운 설명",
-  "before_summary": "시공 전 상태 요약",
-  "after_summary": "시공 후 상태 요약",
+  "description": "여러 장의 시공 전후 사진을 종합 비교한 설명",
+  "before_summary": "시공 전 사진 묶음에서 공통적으로 확인되는 상태",
+  "after_summary": "시공 후 사진 묶음에서 공통적으로 확인되는 상태",
   "changes": [
-    "실제로 확인되는 변화 1",
-    "실제로 확인되는 변화 2"
+    "실제로 확인되는 주요 변화 1",
+    "실제로 확인되는 주요 변화 2"
   ],
   "tags": [
     "전후비교",
+    "다중사진",
     "시공완료",
     "사진에서 확인되는 특징"
   ]
 }
 `;
+
+      const content = [
+        {
+          type: "input_text",
+          text: instruction,
+        },
+        {
+          type: "input_text",
+          text: `아래 ${beforeDataUrls.length}장의 이미지는 모두 시공 전 사진이다.`,
+        },
+      ];
+
+      beforeDataUrls.forEach((imageUrl, index) => {
+        content.push({
+          type: "input_text",
+          text: `시공 전 사진 ${index + 1}`,
+        });
+
+        content.push({
+          type: "input_image",
+          image_url: imageUrl,
+        });
+      });
+
+      content.push({
+        type: "input_text",
+        text: `아래 ${afterDataUrls.length}장의 이미지는 모두 시공 후 사진이다.`,
+      });
+
+      afterDataUrls.forEach((imageUrl, index) => {
+        content.push({
+          type: "input_text",
+          text: `시공 후 사진 ${index + 1}`,
+        });
+
+        content.push({
+          type: "input_image",
+          image_url: imageUrl,
+        });
+      });
 
       const openaiResponse = await fetch(
         "https://api.openai.com/v1/responses",
@@ -139,28 +246,7 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
             input: [
               {
                 role: "user",
-                content: [
-                  {
-                    type: "input_text",
-                    text: instruction,
-                  },
-                  {
-                    type: "input_text",
-                    text: "첫 번째 이미지는 시공 전 사진이다.",
-                  },
-                  {
-                    type: "input_image",
-                    image_url: beforeDataUrl,
-                  },
-                  {
-                    type: "input_text",
-                    text: "두 번째 이미지는 시공 후 사진이다.",
-                  },
-                  {
-                    type: "input_image",
-                    image_url: afterDataUrl,
-                  },
-                ],
+                content,
               },
             ],
           }),
@@ -170,62 +256,47 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       const data = await openaiResponse.json();
 
       if (!openaiResponse.ok) {
-        console.error("OpenAI error:", data);
+        console.error("OpenAI compare error:", data);
 
         return NextResponse.json(
           {
             success: false,
             error:
               data?.error?.message ||
-              "전후 비교 AI 분석 요청에 실패했습니다.",
+              "다중 전후 비교 AI 분석 요청에 실패했습니다.",
           },
           { status: openaiResponse.status }
         );
       }
 
-      let outputText = extractOutputText(data);
+      const outputText = extractOutputText(data);
 
       if (!outputText) {
         return NextResponse.json(
           {
             success: false,
-            error: "AI 전후 비교 분석 결과가 없습니다.",
+            error:
+              "AI 다중 전후 비교 분석 결과가 없습니다.",
           },
           { status: 500 }
-        );
-      }
-
-      let cleanedText = outputText
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
-
-      const firstBrace = cleanedText.indexOf("{");
-      const lastBrace = cleanedText.lastIndexOf("}");
-
-      if (
-        firstBrace !== -1 &&
-        lastBrace !== -1 &&
-        lastBrace > firstBrace
-      ) {
-        cleanedText = cleanedText.slice(
-          firstBrace,
-          lastBrace + 1
         );
       }
 
       let analysis;
 
       try {
-        analysis = JSON.parse(cleanedText);
+        analysis = parseAnalysisJson(outputText);
       } catch (error) {
-        console.error("Compare JSON parse error:", cleanedText);
+        console.error(
+          "Compare JSON parse error:",
+          outputText
+        );
 
         return NextResponse.json(
           {
             success: false,
-            error: "AI 전후 비교 결과를 읽지 못했습니다.",
-            raw: cleanedText,
+            error:
+              "AI 다중 전후 비교 결과를 읽지 못했습니다.",
           },
           { status: 500 }
         );
@@ -234,6 +305,8 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       return NextResponse.json({
         success: true,
         photoType: "compare",
+        beforeCount: allBeforeImages.length,
+        afterCount: allAfterImages.length,
         analysis,
       });
     }
@@ -241,6 +314,7 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
     // =========================================================
     // 단일 사진 분석
     // =========================================================
+
     if (!image) {
       return NextResponse.json(
         {
@@ -251,20 +325,22 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       );
     }
 
-    const imageDataUrl = await fileToDataUrl(image);
+    const imageDataUrl =
+      await fileToDataUrl(image);
 
     let analysisInstruction = "";
 
     // =========================================================
-    // 시공 후
+    // 시공 후 단일 사진
     // =========================================================
+
     if (photoType === "after") {
       analysisInstruction = `
-이 사진은 인테리어필름 시공이 완료된 "시공 후 사진"이다.
+이 사진은 인테리어필름 시공이 완료된 시공 후 사진이다.
 
 당신은 인테리어필름 전문 시공 분석가이다.
 
-반드시 시공이 완료된 상태로 분석한다.
+반드시 시공 완료 상태를 중심으로 분석한다.
 
 절대로 다음 표현을 사용하지 않는다.
 
@@ -279,19 +355,17 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
 
 1. 어떤 부위에 인테리어필름 시공이 완료되었는지
 2. 현재 색상과 마감 상태
-3. 공간이 밝고 정돈되어 보이는지
+3. 공간의 밝기와 정돈감
 4. 도어, 문틀, 가구 등의 색상 통일감
 5. 필름 표면의 질감과 정돈감
 6. 전체적인 인테리어 분위기
 7. 사진에서 확인되는 시공 완료 상태
 
-중요:
 사진 한 장만으로 시공 전 상태는 정확히 알 수 없으므로
-과거 상태를 만들어내지 않는다.
+시공 전 상태를 지어내지 않는다.
 
 반드시 자연스러운 한국어만 사용한다.
 중국어, 일본어, 한자 혼합 표현을 사용하지 않는다.
-예: "무광质감" 금지, "무광 질감"이라고 작성한다.
 
 반드시 아래 JSON 형식만 반환한다.
 
@@ -308,8 +382,9 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
     }
 
     // =========================================================
-    // 시공 전
+    // 시공 전 단일 사진
     // =========================================================
+
     else {
       analysisInstruction = `
 이 사진은 인테리어필름 시공 전 사진이다.
@@ -392,7 +467,7 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       );
     }
 
-    let outputText = extractOutputText(data);
+    const outputText = extractOutputText(data);
 
     if (!outputText) {
       return NextResponse.json(
@@ -404,37 +479,21 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       );
     }
 
-    let cleanedText = outputText
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-
-    const firstBrace = cleanedText.indexOf("{");
-    const lastBrace = cleanedText.lastIndexOf("}");
-
-    if (
-      firstBrace !== -1 &&
-      lastBrace !== -1 &&
-      lastBrace > firstBrace
-    ) {
-      cleanedText = cleanedText.slice(
-        firstBrace,
-        lastBrace + 1
-      );
-    }
-
     let analysis;
 
     try {
-      analysis = JSON.parse(cleanedText);
+      analysis = parseAnalysisJson(outputText);
     } catch (error) {
-      console.error("JSON parse error:", cleanedText);
+      console.error(
+        "Single JSON parse error:",
+        outputText
+      );
 
       return NextResponse.json(
         {
           success: false,
-          error: "AI 분석 결과를 읽지 못했습니다.",
-          raw: cleanedText,
+          error:
+            "AI 분석 결과를 읽지 못했습니다.",
         },
         { status: 500 }
       );
@@ -446,7 +505,10 @@ description은 고객에게 보여줄 수 있는 설명으로 작성한다.
       analysis,
     });
   } catch (error) {
-    console.error("Analyze API error:", error);
+    console.error(
+      "Analyze API error:",
+      error
+    );
 
     return NextResponse.json(
       {
