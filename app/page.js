@@ -118,8 +118,8 @@ export default function Home() {
 
   async function prepareImage(
     file,
-    maxSize = 1600,
-    quality = 0.82
+    maxSize = 1200,
+    quality = 0.68
   ) {
     const dataUrl = await fileToDataUrl(file);
     const img = await loadImageFromDataUrl(dataUrl);
@@ -258,11 +258,13 @@ export default function Home() {
         );
 
         try {
+          // 트래픽 절약:
+          // 최대 1200px / JPEG 품질 68%
           const prepared =
             await prepareImage(
               file,
-              1600,
-              0.82
+              1200,
+              0.68
             );
 
           additions.push({
@@ -529,9 +531,7 @@ export default function Home() {
       analysis:
         result.analysis,
     };
-  }
-
-  async function findSimilarCases(
+      }  async function findSimilarCases(
     group
   ) {
     const analyses =
@@ -909,10 +909,13 @@ export default function Home() {
           );
         }
 
+        // 트래픽 절약:
+        // 고객 화면에 보여주는 유사사례를
+        // 최대 3개 → 최대 2개로 제한
         const casesWithImages =
           await Promise.all(
             cases
-              .slice(0, 3)
+              .slice(0, 2)
               .map(
                 async (
                   item
@@ -1402,8 +1405,7 @@ export default function Home() {
     cursor: "pointer",
   };
 
-  return (
-    <main
+  return (    <main
       style={{
         maxWidth: "720px",
         margin: "0 auto",
@@ -1630,6 +1632,8 @@ export default function Home() {
                         index +
                         1
                       }`}
+                      loading="lazy"
+                      decoding="async"
                       style={{
                         width:
                           "100%",
@@ -1845,6 +1849,8 @@ export default function Home() {
                           photo.preview
                         }
                         alt="분석 사진"
+                        loading="lazy"
+                        decoding="async"
                         style={{
                           width:
                             "82px",
@@ -1975,6 +1981,8 @@ export default function Home() {
                                   item.beforeUrl
                                 }
                                 alt="시공 전"
+                                loading="lazy"
+                                decoding="async"
                                 style={{
                                   width:
                                     "100%",
@@ -2005,6 +2013,8 @@ export default function Home() {
                                   item.afterUrl
                                 }
                                 alt="시공 후"
+                                loading="lazy"
+                                decoding="async"
                                 style={{
                                   width:
                                     "100%",
@@ -2186,9 +2196,7 @@ export default function Home() {
             있습니다.
           </p>
         </section>
-      )}
-
-      {groups.length >
+      )}      {groups.length >
         0 && (
         <section
           style={{
@@ -2474,4 +2482,4 @@ export default function Home() {
       </div>
     </main>
   );
-  }
+              }
