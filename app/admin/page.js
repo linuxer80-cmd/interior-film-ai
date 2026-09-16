@@ -372,7 +372,7 @@ return "-";
 }
 
 
-return '${number.toLocaleString("ko-KR")}원;
+return `${number.toLocaleString("ko-KR")}원`;
 
 
 }
