@@ -28,8 +28,8 @@ export default function Home() {
   // 현재 자동견적 로그 ID
   const usageIdRef = useRef(null);
 
-  // 자동견적 단계에서 이미 저장한 사진 경로
-  // 상세상담 신청 시 같은 사진을 다시 업로드하지 않기 위해 사용
+  // 자동견적 실행 단계에서 서버에 저장된 사진 경로
+  // 상세상담 신청 시 같은 사진을 다시 업로드하지 않고 재사용
   const estimatePhotoPathsRef = useRef([]);
 
   function makeId() {
@@ -51,18 +51,26 @@ export default function Home() {
     }
 
     const key = "interior_estimate_session_id";
-    let sessionId = window.localStorage.getItem(key);
+
+    let sessionId =
+      window.localStorage.getItem(key);
 
     if (!sessionId) {
       sessionId = makeId();
-      window.localStorage.setItem(key, sessionId);
+
+      window.localStorage.setItem(
+        key,
+        sessionId
+      );
     }
 
     return sessionId;
   }
 
   function formatWon(value) {
-    return Number(value || 0).toLocaleString("ko-KR");
+    return Number(value || 0).toLocaleString(
+      "ko-KR"
+    );
   }
 
   function resetResults() {
@@ -87,7 +95,9 @@ export default function Home() {
 
     if (numbers.length <= 7) {
       setPhone(
-        `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+        `${numbers.slice(0, 3)}-${numbers.slice(
+          3
+        )}`
       );
       return;
     }
@@ -105,9 +115,13 @@ export default function Home() {
       const reader = new FileReader();
 
       reader.onload = () => {
-        if (typeof reader.result !== "string") {
+        if (
+          typeof reader.result !== "string"
+        ) {
           reject(
-            new Error("사진 데이터를 읽을 수 없습니다.")
+            new Error(
+              "사진 데이터를 읽을 수 없습니다."
+            )
           );
           return;
         }
@@ -117,7 +131,9 @@ export default function Home() {
 
       reader.onerror = () => {
         reject(
-          new Error("사진 파일을 읽을 수 없습니다.")
+          new Error(
+            "사진 파일을 읽을 수 없습니다."
+          )
         );
       };
 
@@ -125,7 +141,9 @@ export default function Home() {
     });
   }
 
-  async function loadImageFromDataUrl(dataUrl) {
+  async function loadImageFromDataUrl(
+    dataUrl
+  ) {
     return new Promise((resolve, reject) => {
       const image = new Image();
 
@@ -133,7 +151,9 @@ export default function Home() {
 
       image.onerror = () =>
         reject(
-          new Error("사진을 불러올 수 없습니다.")
+          new Error(
+            "사진을 불러올 수 없습니다."
+          )
         );
 
       image.src = dataUrl;
@@ -146,7 +166,9 @@ export default function Home() {
     quality = 0.68
   ) {
     if (!file) {
-      throw new Error("사진 파일이 없습니다.");
+      throw new Error(
+        "사진 파일이 없습니다."
+      );
     }
 
     let bitmap = null;
@@ -155,8 +177,12 @@ export default function Home() {
     let originalHeight = 0;
 
     try {
-      if (typeof createImageBitmap === "function") {
-        bitmap = await createImageBitmap(file);
+      if (
+        typeof createImageBitmap ===
+        "function"
+      ) {
+        bitmap =
+          await createImageBitmap(file);
       }
     } catch {
       bitmap = null;
@@ -167,18 +193,29 @@ export default function Home() {
       originalWidth = bitmap.width;
       originalHeight = bitmap.height;
     } else {
-      const dataUrl = await fileToDataUrl(file);
+      const dataUrl =
+        await fileToDataUrl(file);
+
       const image =
-        await loadImageFromDataUrl(dataUrl);
+        await loadImageFromDataUrl(
+          dataUrl
+        );
 
       source = image;
+
       originalWidth =
-        image.naturalWidth || image.width;
+        image.naturalWidth ||
+        image.width;
+
       originalHeight =
-        image.naturalHeight || image.height;
+        image.naturalHeight ||
+        image.height;
     }
 
-    if (!originalWidth || !originalHeight) {
+    if (
+      !originalWidth ||
+      !originalHeight
+    ) {
       bitmap?.close?.();
 
       throw new Error(
@@ -189,24 +226,34 @@ export default function Home() {
     let width = originalWidth;
     let height = originalHeight;
 
-    if (width > maxSize || height > maxSize) {
+    if (
+      width > maxSize ||
+      height > maxSize
+    ) {
       const ratio = Math.min(
         maxSize / width,
         maxSize / height
       );
 
-      width = Math.round(width * ratio);
-      height = Math.round(height * ratio);
+      width = Math.round(
+        width * ratio
+      );
+
+      height = Math.round(
+        height * ratio
+      );
     }
 
-    const canvas = document.createElement("canvas");
+    const canvas =
+      document.createElement("canvas");
 
     canvas.width = width;
     canvas.height = height;
 
-    const context = canvas.getContext("2d", {
-      alpha: false,
-    });
+    const context =
+      canvas.getContext("2d", {
+        alpha: false,
+      });
 
     if (!context) {
       bitmap?.close?.();
@@ -217,8 +264,21 @@ export default function Home() {
     }
 
     context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
-    context.drawImage(source, 0, 0, width, height);
+
+    context.fillRect(
+      0,
+      0,
+      width,
+      height
+    );
+
+    context.drawImage(
+      source,
+      0,
+      0,
+      width,
+      height
+    );
 
     bitmap?.close?.();
 
@@ -254,12 +314,17 @@ export default function Home() {
 
     return {
       file: convertedFile,
-      preview: URL.createObjectURL(convertedFile),
+      preview:
+        URL.createObjectURL(
+          convertedFile
+        ),
     };
   }
 
   async function addImages(fileList) {
-    const files = Array.from(fileList || []);
+    const files = Array.from(
+      fileList || []
+    );
 
     if (!files.length) return;
 
@@ -275,9 +340,11 @@ export default function Home() {
       return;
     }
 
-    const selected = files.slice(0, remaining);
+    const selected =
+      files.slice(0, remaining);
 
     setImageLoading(true);
+
     setMessage(
       `사진을 준비하고 있습니다... 0/${selected.length}`
     );
@@ -299,9 +366,10 @@ export default function Home() {
         );
 
         try {
-          const prepared = await prepareImage(
-            selected[index]
-          );
+          const prepared =
+            await prepareImage(
+              selected[index]
+            );
 
           additions.push({
             id: makeId(),
@@ -310,7 +378,9 @@ export default function Home() {
           });
         } catch (error) {
           console.error(
-            `사진 ${index + 1} 처리 실패:`,
+            `사진 ${
+              index + 1
+            } 처리 실패:`,
             error
           );
         }
@@ -327,7 +397,10 @@ export default function Home() {
         ...additions,
       ]);
 
-      if (additions.length < selected.length) {
+      if (
+        additions.length <
+        selected.length
+      ) {
         setMessage(
           `⚠️ ${selected.length}장 중 ${additions.length}장만 불러왔습니다.`
         );
@@ -352,12 +425,19 @@ export default function Home() {
 
   function removeImage(id) {
     setImages((current) => {
-      const target = current.find(
-        (item) => item.id === id
-      );
+      const target =
+        current.find(
+          (item) => item.id === id
+        );
 
-      if (target?.preview?.startsWith("blob:")) {
-        URL.revokeObjectURL(target.preview);
+      if (
+        target?.preview?.startsWith(
+          "blob:"
+        )
+      ) {
+        URL.revokeObjectURL(
+          target.preview
+        );
       }
 
       return current.filter(
@@ -369,15 +449,21 @@ export default function Home() {
     setMessage("");
   }
 
-  async function readJsonSafely(response) {
-    const text = await response.text();
+  async function readJsonSafely(
+    response
+  ) {
+    const text =
+      await response.text();
 
     try {
       return JSON.parse(text);
     } catch {
       throw new Error(
         text
-          ? `서버 응답 오류: ${text.slice(0, 200)}`
+          ? `서버 응답 오류: ${text.slice(
+              0,
+              200
+            )}`
           : "서버에서 올바른 응답을 받지 못했습니다."
       );
     }
@@ -470,26 +556,46 @@ export default function Home() {
     total
   ) {
     setMessage(
-      `AI 사진 분석 중... ${index + 1}/${total}`
+      `AI 사진 분석 중... ${
+        index + 1
+      }/${total}`
     );
 
-    const formData = new FormData();
+    const formData =
+      new FormData();
 
-    formData.append("image", imageItem.file);
-    formData.append("photoType", "before");
+    formData.append(
+      "image",
+      imageItem.file
+    );
 
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      body: formData,
-    });
+    formData.append(
+      "photoType",
+      "before"
+    );
+
+    const response = await fetch(
+      "/api/analyze",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
 
     const result =
-      await readJsonSafely(response);
+      await readJsonSafely(
+        response
+      );
 
-    if (!response.ok || !result?.analysis) {
+    if (
+      !response.ok ||
+      !result?.analysis
+    ) {
       throw new Error(
         result?.error ||
-          `${index + 1}번째 사진 분석 실패`
+          `${
+            index + 1
+          }번째 사진 분석 실패`
       );
     }
 
@@ -499,50 +605,72 @@ export default function Home() {
     };
   }
 
-  async function getSignedImageUrl(path) {
+  async function getSignedImageUrl(
+    path
+  ) {
     if (!path) return null;
 
     try {
       const { data, error } =
         await supabase.storage
           .from("work-photos")
-          .createSignedUrl(path, 60 * 60);
+          .createSignedUrl(
+            path,
+            60 * 60
+          );
 
       if (error) {
         console.error(error);
         return null;
       }
 
-      return data?.signedUrl || null;
+      return (
+        data?.signedUrl || null
+      );
     } catch (error) {
       console.error(error);
       return null;
     }
   }
 
-  async function findSimilarCases(group) {
-    const analyses = group.photos.map(
-      (item) => item.analysis
-    );
+  async function findSimilarCases(
+    group
+  ) {
+    const analyses =
+      group.photos.map(
+        (item) => item.analysis
+      );
 
     const tags = [
       ...new Set(
-        analyses.flatMap((item) =>
-          Array.isArray(item?.tags)
-            ? item.tags
-            : []
+        analyses.flatMap(
+          (item) =>
+            Array.isArray(
+              item?.tags
+            )
+              ? item.tags
+              : []
         )
       ),
     ];
 
     const searchText = [
-      `시공 부위: ${group.category || ""}`,
-      `세부 부위: ${group.subCategory || ""}`,
-      `사진 수: ${group.photos.length}`,
+      `시공 부위: ${
+        group.category || ""
+      }`,
+      `세부 부위: ${
+        group.subCategory || ""
+      }`,
+      `사진 수: ${
+        group.photos.length
+      }`,
       ...analyses.map(
         (item, index) =>
-          `사진 ${index + 1}: ${
-            item?.description || ""
+          `사진 ${
+            index + 1
+          }: ${
+            item?.description ||
+            ""
           }`
       ),
       `특징: ${tags.join(", ")}`,
@@ -563,9 +691,14 @@ export default function Home() {
     );
 
     const result =
-      await readJsonSafely(response);
+      await readJsonSafely(
+        response
+      );
 
-    if (!response.ok || !result?.embedding) {
+    if (
+      !response.ok ||
+      !result?.embedding
+    ) {
       throw new Error(
         result?.error ||
           "유사사례 검색 데이터를 만들지 못했습니다."
@@ -576,7 +709,8 @@ export default function Home() {
       await supabase.rpc(
         "get_public_similar_cases",
         {
-          query_embedding: result.embedding,
+          query_embedding:
+            result.embedding,
           match_threshold:
             MATCH_THRESHOLD,
           match_count: 20,
@@ -589,18 +723,26 @@ export default function Home() {
       );
     }
 
-    const filtered = (data || [])
+    const filtered = (
+      data || []
+    )
       .filter((item) => {
         const itemGroup =
           normalizeCategory(
-            `${item.category || ""} ${
-              item.sub_category || ""
+            `${
+              item.category || ""
+            } ${
+              item.sub_category ||
+              ""
             }`
           );
 
         return (
-          itemGroup === group.key &&
-          Number(item.actual_cost || 0) > 0
+          itemGroup ===
+            group.key &&
+          Number(
+            item.actual_cost || 0
+          ) > 0
         );
       })
       .slice(0, 10);
@@ -613,7 +755,9 @@ export default function Home() {
         item.work_item_id ||
         `${item.category}-${item.actual_cost}`;
 
-      if (seen.has(id)) continue;
+      if (seen.has(id)) {
+        continue;
+      }
 
       seen.add(id);
       unique.push(item);
@@ -622,8 +766,12 @@ export default function Home() {
     return unique;
   }
 
-  function calculateEstimate(cases) {
-    if (!cases.length) return null;
+  function calculateEstimate(
+    cases
+  ) {
+    if (!cases.length) {
+      return null;
+    }
 
     let weightedCostTotal = 0;
     let weightTotal = 0;
@@ -639,10 +787,12 @@ export default function Home() {
 
       if (
         cost > 0 &&
-        similarity >= MATCH_THRESHOLD
+        similarity >=
+          MATCH_THRESHOLD
       ) {
         const weight =
-          similarity * similarity;
+          similarity *
+          similarity;
 
         weightedCostTotal +=
           cost * weight;
@@ -651,30 +801,39 @@ export default function Home() {
       }
     }
 
-    if (weightTotal <= 0) return null;
+    if (weightTotal <= 0) {
+      return null;
+    }
 
     const weightedAverage =
-      weightedCostTotal / weightTotal;
+      weightedCostTotal /
+      weightTotal;
 
     const min =
       Math.round(
-        (weightedAverage * 0.9) / 1000
+        (weightedAverage * 0.9) /
+          1000
       ) * 1000;
 
     const max =
       Math.round(
-        (weightedAverage * 1.1) / 1000
+        (weightedAverage * 1.1) /
+          1000
       ) * 1000;
 
     const average =
-      Math.round(weightedAverage / 1000) *
-      1000;
+      Math.round(
+        weightedAverage / 1000
+      ) * 1000;
 
-    const topSimilarity = Math.max(
-      ...cases.map((item) =>
-        Number(item.similarity || 0)
-      )
-    );
+    const topSimilarity =
+      Math.max(
+        ...cases.map((item) =>
+          Number(
+            item.similarity || 0
+          )
+        )
+      );
 
     let confidence = "낮음";
 
@@ -700,13 +859,28 @@ export default function Home() {
   }
 
   /*
+   * =========================================================
    * 자동견적 사진 저장
+   * =========================================================
    *
-   * 상세상담을 신청하지 않아도
-   * AI 견적을 실행하면 사진을 저장한다.
+   * 중요:
+   *
+   * 고객 브라우저에서 private Supabase Storage로
+   * 직접 업로드하지 않습니다.
+   *
+   * /api/estimate-photo 서버 API로 사진을 보내고
+   * 서버가 SUPABASE_SERVICE_ROLE_KEY를 사용해
+   * work-photos private bucket에 저장합니다.
+   *
+   * 저장 성공 시:
+   *
+   * estimate-usage/xxxxxxxx.jpg
+   *
+   * 같은 Storage 경로를 반환받습니다.
    */
   async function uploadEstimatePhotos() {
     const paths = [];
+    const failed = [];
 
     for (
       let index = 0;
@@ -720,54 +894,94 @@ export default function Home() {
           }/${images.length}`
         );
 
-        const path =
-          `estimate-usage/${makeId()}.jpg`;
+        const formData =
+          new FormData();
 
-        const { error } =
-          await supabase.storage
-            .from("work-photos")
-            .upload(
-              path,
-              images[index].file,
-              {
-                cacheControl: "3600",
-                contentType: "image/jpeg",
-                upsert: false,
-              }
-            );
+        formData.append(
+          "image",
+          images[index].file
+        );
 
-        if (error) {
-          console.error(
-            `자동견적 사진 ${
-              index + 1
-            } 저장 실패:`,
-            error
+        const response =
+          await fetch(
+            "/api/estimate-photo",
+            {
+              method: "POST",
+              body: formData,
+            }
           );
 
-          continue;
+        const result =
+          await readJsonSafely(
+            response
+          );
+
+        if (
+          !response.ok ||
+          !result?.success ||
+          !result?.path
+        ) {
+          throw new Error(
+            result?.error ||
+              "사진 저장 실패"
+          );
         }
 
-        paths.push(path);
+        paths.push(
+          result.path
+        );
       } catch (error) {
         console.error(
           `자동견적 사진 ${
             index + 1
-          } 처리 오류:`,
+          } 저장 실패:`,
           error
+        );
+
+        failed.push(
+          index + 1
         );
       }
     }
 
-    estimatePhotoPathsRef.current = paths;
+    estimatePhotoPathsRef.current =
+      paths;
+
+    /*
+     * 사진이 한 장도 저장되지 않았다면
+     * 조용히 넘어가지 않고 오류로 처리합니다.
+     *
+     * 이렇게 해야 관리자 페이지에서
+     * 또 '사진 저장 없음'만 생기는 문제를
+     * 바로 확인할 수 있습니다.
+     */
+    if (
+      images.length > 0 &&
+      paths.length === 0
+    ) {
+      throw new Error(
+        "자동견적 사진을 서버에 저장하지 못했습니다."
+      );
+    }
+
+    /*
+     * 일부 사진만 실패한 경우
+     * 성공한 사진 경로는 그대로 사용합니다.
+     */
+    if (failed.length > 0) {
+      console.warn(
+        "일부 자동견적 사진 저장 실패:",
+        failed
+      );
+    }
 
     return paths;
   }
 
   /*
+   * =========================================================
    * 자동견적 사용 로그 저장
-   *
-   * estimate_usage 테이블에
-   * 견적정보 + 사진 경로를 저장한다.
+   * =========================================================
    */
   async function saveEstimateUsage({
     completedGroups,
@@ -784,7 +998,8 @@ export default function Home() {
               "application/json",
           },
           body: JSON.stringify({
-            session_id: getSessionId(),
+            session_id:
+              getSessionId(),
 
             category:
               completedGroups
@@ -793,7 +1008,8 @@ export default function Home() {
                     group.category
                 )
                 .filter(Boolean)
-                .join(", ") || null,
+                .join(", ") ||
+              null,
 
             sub_category:
               completedGroups
@@ -802,21 +1018,28 @@ export default function Home() {
                     group.subCategory
                 )
                 .filter(Boolean)
-                .join(", ") || null,
+                .join(", ") ||
+              null,
 
-            photo_count: images.length,
+            photo_count:
+              images.length,
 
             estimate_min:
-              estimate?.min ?? null,
+              estimate?.min ??
+              null,
 
             estimate_max:
-              estimate?.max ?? null,
+              estimate?.max ??
+              null,
 
             estimate_average:
-              estimate?.average ?? null,
+              estimate?.average ??
+              null,
 
             photo_paths:
-              Array.isArray(photoPaths)
+              Array.isArray(
+                photoPaths
+              )
                 ? photoPaths
                 : [],
           }),
@@ -824,30 +1047,49 @@ export default function Home() {
       );
 
       const result =
-        await readJsonSafely(response);
+        await readJsonSafely(
+          response
+        );
 
-      /*
-       * 중요 수정:
-       * API는 id가 아니라 usage_id를 반환한다.
-       */
       if (
-        response.ok &&
-        result?.success &&
-        result?.usage_id
+        !response.ok ||
+        !result?.success
       ) {
-        usageIdRef.current =
-          result.usage_id;
-      } else {
-        console.error(
-          "자동견적 사용기록 실패:",
-          result
+        throw new Error(
+          result?.error ||
+            "자동견적 로그 저장 실패"
         );
       }
+
+      /*
+       * /api/estimate-usage 응답:
+       *
+       * {
+       *   success: true,
+       *   usage_id: "...",
+       *   data: {...}
+       * }
+       *
+       * 기존 result.id가 아니라
+       * result.usage_id를 사용해야 합니다.
+       */
+      usageIdRef.current =
+        result.usage_id ||
+        result?.data?.id ||
+        null;
+
+      return result;
     } catch (error) {
       console.error(
         "자동견적 사용기록 오류:",
         error
       );
+
+      /*
+       * 사진 저장은 성공했는데 로그 저장이 실패한 경우에도
+       * AI 견적 자체를 막지는 않습니다.
+       */
+      return null;
     }
   }
 
@@ -866,7 +1108,8 @@ export default function Home() {
     setLeadMessage("");
 
     usageIdRef.current = null;
-    estimatePhotoPathsRef.current = [];
+    estimatePhotoPathsRef.current =
+      [];
 
     try {
       const analyzedPhotos = [];
@@ -883,54 +1126,68 @@ export default function Home() {
             images.length
           );
 
-        analyzedPhotos.push(result);
+        analyzedPhotos.push(
+          result
+        );
       }
 
       setMessage(
         "같은 시공 부위의 사진을 묶고 있습니다..."
       );
 
-      const groupMap = new Map();
+      const groupMap =
+        new Map();
 
       for (const photo of analyzedPhotos) {
         const key =
-          getGroupKey(photo.analysis);
+          getGroupKey(
+            photo.analysis
+          );
 
-        if (!groupMap.has(key)) {
+        if (
+          !groupMap.has(key)
+        ) {
           groupMap.set(key, {
             key,
             category:
-              photo.analysis?.category ||
+              photo.analysis
+                ?.category ||
               "시공 부위",
             subCategory:
               photo.analysis
-                ?.sub_category || "",
+                ?.sub_category ||
+              "",
             photos: [],
           });
         }
 
-        groupMap.get(key).photos.push(photo);
+        groupMap
+          .get(key)
+          .photos.push(photo);
       }
 
-      const baseGroups = Array.from(
-        groupMap.values()
-      );
+      const baseGroups =
+        Array.from(
+          groupMap.values()
+        );
 
       const completedGroups = [];
 
       for (
         let index = 0;
-        index < baseGroups.length;
+        index <
+        baseGroups.length;
         index += 1
       ) {
-        const group = baseGroups[index];
+        const group =
+          baseGroups[index];
 
         setMessage(
           `유사 시공사례 검색 중... ${
             index + 1
-          }/${baseGroups.length} · ${
-            group.category
-          }`
+          }/${
+            baseGroups.length
+          } · ${group.category}`
         );
 
         let cases = [];
@@ -938,10 +1195,14 @@ export default function Home() {
 
         try {
           cases =
-            await findSimilarCases(group);
+            await findSimilarCases(
+              group
+            );
 
           estimate =
-            calculateEstimate(cases);
+            calculateEstimate(
+              cases
+            );
         } catch (error) {
           console.error(error);
         }
@@ -950,17 +1211,19 @@ export default function Home() {
           await Promise.all(
             cases
               .slice(0, 2)
-              .map(async (item) => ({
-                ...item,
-                beforeUrl:
-                  await getSignedImageUrl(
-                    item.before_path
-                  ),
-                afterUrl:
-                  await getSignedImageUrl(
-                    item.after_path
-                  ),
-              }))
+              .map(
+                async (item) => ({
+                  ...item,
+                  beforeUrl:
+                    await getSignedImageUrl(
+                      item.before_path
+                    ),
+                  afterUrl:
+                    await getSignedImageUrl(
+                      item.after_path
+                    ),
+                })
+              )
           );
 
         completedGroups.push({
@@ -970,16 +1233,24 @@ export default function Home() {
         });
       }
 
-      setGroups(completedGroups);
+      setGroups(
+        completedGroups
+      );
 
       const validEstimates =
         completedGroups
-          .map((item) => item.estimate)
+          .map(
+            (item) =>
+              item.estimate
+          )
           .filter(Boolean);
 
-      let calculatedTotal = null;
+      let calculatedTotal =
+        null;
 
-      if (validEstimates.length) {
+      if (
+        validEstimates.length
+      ) {
         const min =
           validEstimates.reduce(
             (sum, item) =>
@@ -997,7 +1268,8 @@ export default function Home() {
         const average =
           validEstimates.reduce(
             (sum, item) =>
-              sum + item.average,
+              sum +
+              item.average,
             0
           );
 
@@ -1024,32 +1296,45 @@ export default function Home() {
       }
 
       /*
-       * 상세상담 신청 전
-       * 자동견적 사진을 Storage에 저장
+       * =====================================================
+       * 자동견적 사진 저장
+       * =====================================================
+       *
+       * 상세상담 신청 여부와 관계없이
+       * AI 자동견적을 실행한 사진을 저장합니다.
        */
       setMessage(
-        "자동견적 기록과 사진을 저장하고 있습니다..."
+        "자동견적 사진을 안전하게 저장하고 있습니다..."
       );
 
       const photoPaths =
         await uploadEstimatePhotos();
 
       /*
-       * estimate_usage에
-       * 자동견적 정보 + photo_paths 저장
+       * 사진 경로를 포함해서
+       * estimate_usage 로그 저장
        */
+      setMessage(
+        "자동견적 기록을 저장하고 있습니다..."
+      );
+
       await saveEstimateUsage({
         completedGroups,
-        estimate: calculatedTotal,
+        estimate:
+          calculatedTotal,
         photoPaths,
       });
 
-      if (validEstimates.length) {
+      if (
+        validEstimates.length
+      ) {
         const missingCount =
           completedGroups.length -
           validEstimates.length;
 
-        if (missingCount > 0) {
+        if (
+          missingCount > 0
+        ) {
           setMessage(
             `⚠️ ${validEstimates.length}개 부위는 견적을 계산했고, ${missingCount}개 부위는 데이터가 부족합니다.`
           );
@@ -1078,20 +1363,32 @@ export default function Home() {
   }
 
   /*
-   * 상담 신청 사진
+   * =========================================================
+   * 상세상담 사진
+   * =========================================================
    *
-   * 자동견적 단계에서 이미 저장했다면
-   * 같은 사진을 다시 업로드하지 않는다.
+   * 자동견적 실행 때 이미 사진이 저장되어 있다면
+   * 다시 업로드하지 않고 같은 Storage 경로를 사용합니다.
    */
   async function uploadLeadPhotos() {
     if (
       Array.isArray(
         estimatePhotoPathsRef.current
       ) &&
-      estimatePhotoPathsRef.current.length > 0
+      estimatePhotoPathsRef.current
+        .length > 0
     ) {
-      return estimatePhotoPathsRef.current;
+      return (
+        estimatePhotoPathsRef.current
+      );
     }
+
+    /*
+     * 혹시 자동견적 사진 경로가 없는 예외 상황에서는
+     * 같은 서버 API를 이용해 다시 저장합니다.
+     *
+     * private Storage에 고객 브라우저가 직접 업로드하지 않습니다.
+     */
 
     const paths = [];
 
@@ -1100,41 +1397,71 @@ export default function Home() {
       index < images.length;
       index += 1
     ) {
-      const path =
-        `leads/${makeId()}.jpg`;
+      try {
+        const formData =
+          new FormData();
 
-      const { error } =
-        await supabase.storage
-          .from("work-photos")
-          .upload(
-            path,
-            images[index].file,
+        formData.append(
+          "image",
+          images[index].file
+        );
+
+        const response =
+          await fetch(
+            "/api/estimate-photo",
             {
-              cacheControl: "3600",
-              contentType:
-                "image/jpeg",
-              upsert: false,
+              method: "POST",
+              body: formData,
             }
           );
 
-      if (error) {
+        const result =
+          await readJsonSafely(
+            response
+          );
+
+        if (
+          !response.ok ||
+          !result?.success ||
+          !result?.path
+        ) {
+          throw new Error(
+            result?.error ||
+              "상담 사진 저장 실패"
+          );
+        }
+
+        paths.push(
+          result.path
+        );
+      } catch (error) {
         console.error(
           `상담 사진 ${
             index + 1
           } 저장 실패:`,
           error
         );
-
-        continue;
       }
-
-      paths.push(path);
     }
+
+    if (
+      images.length > 0 &&
+      paths.length === 0
+    ) {
+      throw new Error(
+        "상담 사진을 저장하지 못했습니다."
+      );
+    }
+
+    estimatePhotoPathsRef.current =
+      paths;
 
     return paths;
   }
 
-  async function handleLeadSubmit(event) {
+  async function handleLeadSubmit(
+    event
+  ) {
     event.preventDefault();
 
     if (!groups.length) {
@@ -1144,7 +1471,9 @@ export default function Home() {
       return;
     }
 
-    if (!customerName.trim()) {
+    if (
+      !customerName.trim()
+    ) {
       setLeadMessage(
         "이름을 입력해주세요."
       );
@@ -1152,9 +1481,14 @@ export default function Home() {
     }
 
     const phoneNumbers =
-      phone.replace(/[^0-9]/g, "");
+      phone.replace(
+        /[^0-9]/g,
+        ""
+      );
 
-    if (phoneNumbers.length < 9) {
+    if (
+      phoneNumbers.length < 9
+    ) {
       setLeadMessage(
         "연락처를 정확히 입력해주세요."
       );
@@ -1186,137 +1520,181 @@ export default function Home() {
         await uploadLeadPhotos();
 
       const estimateDetails =
-        groups.map((group) => ({
-          group_key: group.key,
-          category: group.category,
-          sub_category:
-            group.subCategory,
-          photo_count:
-            group.photos.length,
-          estimate_min:
-            group.estimate?.min ??
-            null,
-          estimate_max:
-            group.estimate?.max ??
-            null,
-          estimate_average:
-            group.estimate?.average ??
-            null,
-          confidence:
-            group.estimate?.confidence ||
-            "데이터 부족",
-          similar_count:
-            group.estimate?.count || 0,
-        }));
-
-      const description = groups
-        .map((group, index) => {
-          const descriptions =
-            group.photos
-              .map(
-                (photo) =>
-                  photo.analysis
-                    ?.description || ""
-              )
-              .filter(Boolean)
-              .join(" / ");
-
-          return `${index + 1}. ${
-            group.category
-          }${
-            group.subCategory
-              ? ` · ${group.subCategory}`
-              : ""
-          } (${
-            group.photos.length
-          }장): ${descriptions}`;
-        })
-        .join("\n");
-
-      const categoryText = groups
-        .map((group) => group.category)
-        .filter(Boolean)
-        .join(", ");
-
-      const memoLines = groups.map(
-        (group) => {
-          if (!group.estimate) {
-            return `${group.category}: 데이터 부족`;
-          }
-
-          return `${
-            group.category
-          }: ${formatWon(
-            group.estimate.min
-          )}~${formatWon(
-            group.estimate.max
-          )}원`;
-        }
-      );
-
-      const response = await fetch(
-        "/api/lead",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            customer_name:
-              customerName.trim(),
-
-            phone: phone.trim(),
-
-            region: region.trim(),
+        groups.map(
+          (group) => ({
+            group_key:
+              group.key,
 
             category:
-              categoryText || null,
+              group.category,
 
             sub_category:
-              groups.length === 1
-                ? groups[0]
-                    .subCategory
-                : "다중부위",
+              group.subCategory,
 
-            ai_description:
-              description,
+            photo_count:
+              group.photos.length,
 
             estimate_min:
-              totalEstimate?.min ??
+              group.estimate
+                ?.min ??
               null,
 
             estimate_max:
-              totalEstimate?.max ??
+              group.estimate
+                ?.max ??
               null,
 
             estimate_average:
-              totalEstimate?.average ??
+              group.estimate
+                ?.average ??
               null,
 
-            customer_photo_path:
-              customerPhotoPaths[0] ||
-              null,
+            confidence:
+              group.estimate
+                ?.confidence ||
+              "데이터 부족",
 
-            customer_photo_paths:
-              customerPhotoPaths,
+            similar_count:
+              group.estimate
+                ?.count || 0,
+          })
+        );
 
-            estimate_details:
-              estimateDetails,
+      const description =
+        groups
+          .map(
+            (group, index) => {
+              const descriptions =
+                group.photos
+                  .map(
+                    (photo) =>
+                      photo
+                        .analysis
+                        ?.description ||
+                      ""
+                  )
+                  .filter(Boolean)
+                  .join(" / ");
 
-            memo:
-              `다중사진 AI 견적\n${memoLines.join(
-                "\n"
-              )}`,
+              return `${
+                index + 1
+              }. ${
+                group.category
+              }${
+                group.subCategory
+                  ? ` · ${group.subCategory}`
+                  : ""
+              } (${
+                group.photos.length
+              }장): ${descriptions}`;
+            }
+          )
+          .join("\n");
 
-            usage_id:
-              usageIdRef.current,
-          }),
-        }
-      );
+      const categoryText =
+        groups
+          .map(
+            (group) =>
+              group.category
+          )
+          .filter(Boolean)
+          .join(", ");
+
+      const memoLines =
+        groups.map(
+          (group) => {
+            if (
+              !group.estimate
+            ) {
+              return `${group.category}: 데이터 부족`;
+            }
+
+            return `${
+              group.category
+            }: ${formatWon(
+              group.estimate.min
+            )}~${formatWon(
+              group.estimate.max
+            )}원`;
+          }
+        );
+
+      const response =
+        await fetch(
+          "/api/lead",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify(
+              {
+                customer_name:
+                  customerName.trim(),
+
+                phone:
+                  phone.trim(),
+
+                region:
+                  region.trim(),
+
+                category:
+                  categoryText ||
+                  null,
+
+                sub_category:
+                  groups.length ===
+                  1
+                    ? groups[0]
+                        .subCategory
+                    : "다중부위",
+
+                ai_description:
+                  description,
+
+                estimate_min:
+                  totalEstimate
+                    ?.min ??
+                  null,
+
+                estimate_max:
+                  totalEstimate
+                    ?.max ??
+                  null,
+
+                estimate_average:
+                  totalEstimate
+                    ?.average ??
+                  null,
+
+                customer_photo_path:
+                  customerPhotoPaths[
+                    0
+                  ] || null,
+
+                customer_photo_paths:
+                  customerPhotoPaths,
+
+                estimate_details:
+                  estimateDetails,
+
+                memo:
+                  `다중사진 AI 견적\n${memoLines.join(
+                    "\n"
+                  )}`,
+
+                usage_id:
+                  usageIdRef.current,
+              }
+            ),
+          }
+        );
 
       const result =
-        await readJsonSafely(response);
+        await readJsonSafely(
+          response
+        );
 
       if (
         !response.ok ||
@@ -1350,7 +1728,8 @@ export default function Home() {
   const sectionStyle = {
     marginTop: "24px",
     padding: "22px",
-    border: "1px solid #e5e7eb",
+    border:
+      "1px solid #e5e7eb",
     borderRadius: "20px",
     background: "#ffffff",
   };
@@ -1360,7 +1739,8 @@ export default function Home() {
     padding: "15px",
     marginTop: "7px",
     fontSize: "16px",
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "12px",
     boxSizing: "border-box",
   };
@@ -1368,7 +1748,8 @@ export default function Home() {
   const photoButtonStyle = {
     flex: 1,
     minHeight: "72px",
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "14px",
     background: "#ffffff",
     fontSize: "16px",
@@ -1381,8 +1762,10 @@ export default function Home() {
       style={{
         maxWidth: "720px",
         margin: "0 auto",
-        padding: "28px 18px 70px",
-        fontFamily: "Arial, sans-serif",
+        padding:
+          "28px 18px 70px",
+        fontFamily:
+          "Arial, sans-serif",
         background: "#f8fafc",
         minHeight: "100vh",
         boxSizing: "border-box",
@@ -1391,7 +1774,8 @@ export default function Home() {
     >
       <div
         style={{
-          display: "inline-block",
+          display:
+            "inline-block",
           background: "#111827",
           color: "#ffffff",
           padding: "8px 14px",
@@ -1422,12 +1806,18 @@ export default function Home() {
         }}
       >
         여러 시공 부위의 사진을 한 번에
-        올려주세요. AI가 같은 부위끼리 묶어서
-        예상견적을 계산합니다.
+        올려주세요. AI가 같은 부위끼리
+        묶어서 예상견적을 계산합니다.
       </p>
 
-      <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>
+      <section
+        style={sectionStyle}
+      >
+        <h2
+          style={{
+            marginTop: 0,
+          }}
+        >
           1. 시공할 곳 사진
         </h2>
 
@@ -1437,9 +1827,10 @@ export default function Home() {
             lineHeight: 1.6,
           }}
         >
-          최대 10장까지 선택할 수 있습니다.
-          같은 부위를 여러 각도로 촬영하면
-          정확도가 좋아집니다.
+          최대 10장까지 선택할 수
+          있습니다. 같은 부위를 여러
+          각도로 촬영하면 정확도가
+          좋아집니다.
         </p>
 
         <input
@@ -1447,13 +1838,18 @@ export default function Home() {
           type="file"
           accept="image/*"
           capture="environment"
-          style={{ display: "none" }}
-          onChange={async (event) => {
+          style={{
+            display: "none",
+          }}
+          onChange={async (
+            event
+          ) => {
             await addImages(
               event.target.files
             );
 
-            event.target.value = "";
+            event.target.value =
+              "";
           }}
         />
 
@@ -1462,13 +1858,18 @@ export default function Home() {
           type="file"
           accept="image/*"
           multiple
-          style={{ display: "none" }}
-          onChange={async (event) => {
+          style={{
+            display: "none",
+          }}
+          onChange={async (
+            event
+          ) => {
             await addImages(
               event.target.files
             );
 
-            event.target.value = "";
+            event.target.value =
+              "";
           }}
         />
 
@@ -1480,9 +1881,12 @@ export default function Home() {
         >
           <button
             type="button"
-            style={photoButtonStyle}
+            style={
+              photoButtonStyle
+            }
             disabled={
-              loading || imageLoading
+              loading ||
+              imageLoading
             }
             onClick={() =>
               cameraInputRef.current?.click()
@@ -1495,9 +1899,12 @@ export default function Home() {
 
           <button
             type="button"
-            style={photoButtonStyle}
+            style={
+              photoButtonStyle
+            }
             disabled={
-              loading || imageLoading
+              loading ||
+              imageLoading
             }
             onClick={() =>
               galleryInputRef.current?.click()
@@ -1515,9 +1922,12 @@ export default function Home() {
               style={{
                 marginTop: "14px",
                 padding: "12px",
-                background: "#f3f4f6",
-                borderRadius: "10px",
-                fontWeight: "bold",
+                background:
+                  "#f3f4f6",
+                borderRadius:
+                  "10px",
+                fontWeight:
+                  "bold",
               }}
             >
               ✅ 선택한 사진{" "}
@@ -1534,7 +1944,10 @@ export default function Home() {
               }}
             >
               {images.map(
-                (item, index) => (
+                (
+                  item,
+                  index
+                ) => (
                   <div
                     key={item.id}
                     style={{
@@ -1543,21 +1956,25 @@ export default function Home() {
                     }}
                   >
                     <img
-                      src={item.preview}
+                      src={
+                        item.preview
+                      }
                       alt={`고객 사진 ${
                         index + 1
                       }`}
                       loading="lazy"
                       decoding="async"
                       style={{
-                        width: "100%",
+                        width:
+                          "100%",
                         aspectRatio:
                           "1 / 1",
                         objectFit:
                           "cover",
                         borderRadius:
                           "10px",
-                        display: "block",
+                        display:
+                          "block",
                       }}
                     />
 
@@ -1578,14 +1995,18 @@ export default function Home() {
                         top: "5px",
                         right: "5px",
                         width: "30px",
-                        height: "30px",
-                        border: "none",
+                        height:
+                          "30px",
+                        border:
+                          "none",
                         borderRadius:
                           "50%",
                         background:
                           "rgba(17,24,39,.85)",
-                        color: "#fff",
-                        fontSize: "16px",
+                        color:
+                          "#fff",
+                        fontSize:
+                          "16px",
                       }}
                     >
                       ×
@@ -1599,7 +2020,9 @@ export default function Home() {
 
         <button
           type="button"
-          onClick={handleAnalyze}
+          onClick={
+            handleAnalyze
+          }
           disabled={
             loading ||
             imageLoading ||
@@ -1629,7 +2052,8 @@ export default function Home() {
             : loading
             ? "AI 분석 중..."
             : `${
-                images.length || ""
+                images.length ||
+                ""
               }장 AI 견적 확인`}
         </button>
 
@@ -1638,8 +2062,10 @@ export default function Home() {
             style={{
               marginTop: "16px",
               padding: "14px",
-              borderRadius: "12px",
-              background: "#f3f4f6",
+              borderRadius:
+                "12px",
+              background:
+                "#f3f4f6",
               lineHeight: 1.6,
             }}
           >
@@ -1649,8 +2075,14 @@ export default function Home() {
       </section>
 
       {groups.length > 0 && (
-        <section style={sectionStyle}>
-          <h2 style={{ marginTop: 0 }}>
+        <section
+          style={sectionStyle}
+        >
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
             AI 부위별 분석
           </h2>
 
@@ -1660,30 +2092,41 @@ export default function Home() {
               lineHeight: 1.6,
             }}
           >
-            총 {images.length}장의 사진을{" "}
+            총 {images.length}장의
+            사진을{" "}
             <strong>
-              {groups.length}개 시공 부위
+              {groups.length}개
+              시공 부위
             </strong>
             로 분류했습니다.
           </p>
 
           {groups.map(
-            (group, index) => (
+            (
+              group,
+              index
+            ) => (
               <div
                 key={`${group.key}-${index}`}
                 style={{
-                  marginTop: "18px",
+                  marginTop:
+                    "18px",
                   paddingTop:
-                    index ? "18px" : 0,
-                  borderTop: index
-                    ? "1px solid #e5e7eb"
-                    : "none",
+                    index
+                      ? "18px"
+                      : 0,
+                  borderTop:
+                    index
+                      ? "1px solid #e5e7eb"
+                      : "none",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "20px",
-                    fontWeight: "bold",
+                    fontSize:
+                      "20px",
+                    fontWeight:
+                      "bold",
                   }}
                 >
                   {index + 1}.{" "}
@@ -1695,38 +2138,53 @@ export default function Home() {
 
                 <div
                   style={{
-                    marginTop: "5px",
-                    color: "#6b7280",
+                    marginTop:
+                      "5px",
+                    color:
+                      "#6b7280",
                   }}
                 >
                   같은 부위 사진{" "}
-                  {group.photos.length}장
+                  {
+                    group.photos
+                      .length
+                  }
+                  장
                 </div>
 
                 <div
                   style={{
                     display: "flex",
                     gap: "6px",
-                    overflowX: "auto",
-                    marginTop: "10px",
+                    overflowX:
+                      "auto",
+                    marginTop:
+                      "10px",
                   }}
                 >
                   {group.photos.map(
                     (photo) => (
                       <img
-                        key={photo.id}
-                        src={photo.preview}
+                        key={
+                          photo.id
+                        }
+                        src={
+                          photo.preview
+                        }
                         alt="분석 사진"
                         loading="lazy"
                         decoding="async"
                         style={{
-                          width: "82px",
-                          height: "82px",
+                          width:
+                            "82px",
+                          height:
+                            "82px",
                           objectFit:
                             "cover",
                           borderRadius:
                             "9px",
-                          flexShrink: 0,
+                          flexShrink:
+                            0,
                         }}
                       />
                     )
@@ -1736,23 +2194,28 @@ export default function Home() {
                 {group.estimate ? (
                   <div
                     style={{
-                      marginTop: "14px",
-                      padding: "14px",
+                      marginTop:
+                        "14px",
+                      padding:
+                        "14px",
                       background:
                         "#f3f4f6",
                       borderRadius:
                         "12px",
-                      lineHeight: 1.7,
+                      lineHeight:
+                        1.7,
                     }}
                   >
                     <strong>
                       {formatWon(
-                        group.estimate
+                        group
+                          .estimate
                           .min
                       )}
                       원 ~{" "}
                       {formatWon(
-                        group.estimate
+                        group
+                          .estimate
                           .max
                       )}
                       원
@@ -1760,42 +2223,51 @@ export default function Home() {
                     <br />
                     유사 시공{" "}
                     {
-                      group.estimate
+                      group
+                        .estimate
                         .count
                     }
                     건 · 신뢰도{" "}
                     {
-                      group.estimate
+                      group
+                        .estimate
                         .confidence
                     }
                   </div>
                 ) : (
                   <div
                     style={{
-                      marginTop: "14px",
-                      padding: "14px",
+                      marginTop:
+                        "14px",
+                      padding:
+                        "14px",
                       background:
                         "#fff7ed",
                       borderRadius:
                         "12px",
-                      lineHeight: 1.6,
+                      lineHeight:
+                        1.6,
                     }}
                   >
-                    ⚠️ 실제 시공 데이터가
-                    부족하여 상담 확인이
+                    ⚠️ 실제 시공
+                    데이터가 부족하여
+                    상담 확인이
                     필요합니다.
                   </div>
                 )}
 
                 {group.similarItems
-                  ?.length > 0 && (
+                  ?.length >
+                  0 && (
                   <div
                     style={{
-                      marginTop: "15px",
+                      marginTop:
+                        "15px",
                     }}
                   >
                     <strong>
-                      비슷한 실제 시공사례
+                      비슷한 실제
+                      시공사례
                     </strong>
 
                     {group.similarItems.map(
@@ -1898,7 +2370,8 @@ export default function Home() {
                               )}
                               원
                             </strong>
-                            {" · "}유사도{" "}
+                            {" · "}
+                            유사도{" "}
                             {(
                               Number(
                                 item.similarity ||
@@ -1963,8 +2436,10 @@ export default function Home() {
             style={{
               marginTop: "14px",
               padding: "12px",
-              background: "#f3f4f6",
-              borderRadius: "10px",
+              background:
+                "#f3f4f6",
+              borderRadius:
+                "10px",
               lineHeight: 1.7,
             }}
           >
@@ -2001,8 +2476,8 @@ export default function Home() {
               {
                 totalEstimate.missingCount
               }
-              개 부위는 총액에 포함되지
-              않았습니다.
+              개 부위는 총액에
+              포함되지 않았습니다.
             </p>
           )}
 
@@ -2030,7 +2505,8 @@ export default function Home() {
         >
           <h2
             style={{
-              textAlign: "center",
+              textAlign:
+                "center",
             }}
           >
             💬 정확한 견적 상담받기
@@ -2038,7 +2514,8 @@ export default function Home() {
 
           <p
             style={{
-              textAlign: "center",
+              textAlign:
+                "center",
               color: "#6b7280",
               lineHeight: 1.6,
             }}
@@ -2051,15 +2528,19 @@ export default function Home() {
             <div
               style={{
                 padding: "22px",
-                borderRadius: "14px",
-                textAlign: "center",
-                background: "#ecfdf5",
+                borderRadius:
+                  "14px",
+                textAlign:
+                  "center",
+                background:
+                  "#ecfdf5",
                 lineHeight: 1.8,
               }}
             >
               <div
                 style={{
-                  fontSize: "25px",
+                  fontSize:
+                    "25px",
                 }}
               >
                 ✅
@@ -2079,32 +2560,42 @@ export default function Home() {
             >
               <label
                 style={{
-                  display: "block",
+                  display:
+                    "block",
                   marginBottom:
                     "16px",
-                  fontWeight: "bold",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 이름
                 <input
-                  value={customerName}
-                  onChange={(event) =>
+                  value={
+                    customerName
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setCustomerName(
                       event.target
                         .value
                     )
                   }
                   placeholder="성함"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
               <label
                 style={{
-                  display: "block",
+                  display:
+                    "block",
                   marginBottom:
                     "16px",
-                  fontWeight: "bold",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 연락처
@@ -2112,36 +2603,46 @@ export default function Home() {
                   type="tel"
                   inputMode="numeric"
                   value={phone}
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     handlePhoneChange(
                       event.target
                         .value
                     )
                   }
                   placeholder="010-0000-0000"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
               <label
                 style={{
-                  display: "block",
+                  display:
+                    "block",
                   marginBottom:
                     "16px",
-                  fontWeight: "bold",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 시공 지역
                 <input
                   value={region}
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setRegion(
                       event.target
                         .value
                     )
                   }
                   placeholder="예: 인천 송도"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </label>
 
@@ -2162,7 +2663,9 @@ export default function Home() {
                   checked={
                     privacyAgree
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setPrivacyAgree(
                       event.target
                         .checked
@@ -2186,12 +2689,14 @@ export default function Home() {
                   style={{
                     marginTop:
                       "15px",
-                    padding: "12px",
+                    padding:
+                      "12px",
                     borderRadius:
                       "10px",
                     background:
                       "#f3f4f6",
-                    lineHeight: 1.6,
+                    lineHeight:
+                      1.6,
                   }}
                 >
                   {leadMessage}
@@ -2200,22 +2705,29 @@ export default function Home() {
 
               <button
                 type="submit"
-                disabled={leadLoading}
+                disabled={
+                  leadLoading
+                }
                 style={{
                   width: "100%",
-                  marginTop: "20px",
+                  marginTop:
+                    "20px",
                   padding: "18px",
                   border: "none",
                   borderRadius:
                     "14px",
                   background:
                     "#111827",
-                  color: "#ffffff",
-                  fontSize: "18px",
-                  fontWeight: "bold",
-                  opacity: leadLoading
-                    ? 0.65
-                    : 1,
+                  color:
+                    "#ffffff",
+                  fontSize:
+                    "18px",
+                  fontWeight:
+                    "bold",
+                  opacity:
+                    leadLoading
+                      ? 0.65
+                      : 1,
                 }}
               >
                 {leadLoading
@@ -2242,4 +2754,4 @@ export default function Home() {
       </div>
     </main>
   );
-              }
+                }
