@@ -133,6 +133,21 @@ export default function AdminPage() {
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageMessage, setUsageMessage] = useState("");
 
+  /*
+    자동견적 사진용 상태
+
+    중요:
+    목록을 열었다고 사진 URL을 만들지 않습니다.
+    관리자가 "사진 보기" 버튼을 눌렀을 때만
+    private bucket signed URL을 생성합니다.
+  */
+
+  const [openUsagePhotoId, setOpenUsagePhotoId] = useState(null);
+
+  const [usagePhotoUrls, setUsagePhotoUrls] = useState({});
+
+  const [usagePhotoLoadingId, setUsagePhotoLoadingId] = useState(null);
+
   /* =========================================================
      스타일
   ========================================================= */
@@ -213,6 +228,74 @@ export default function AdminPage() {
     return String(value || "")
       .replace(/[,()]/g, " ")
       .trim();
+  }
+
+  /*
+    estimate_usage.photo_paths 정리
+
+    Supabase text[]이면 배열 그대로 사용합니다.
+    혹시 문자열 형태로 들어와도 최대한 복구합니다.
+  */
+
+  function getUsagePhotoPaths(row) {
+    const value = row?.photo_paths;
+
+    if (Array.isArray(value)) {
+      return [...new Set(value.filter(Boolean))];
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+
+      if (!trimmed) {
+        return [];
+      }
+
+      /*
+        JSON 배열 문자열 대응
+        예:
+        ["estimate-usage/a.jpg","estimate-usage/b.jpg"]
+      */
+
+      try {
+        const parsed = JSON.parse(trimmed);
+
+        if (Array.isArray(parsed)) {
+          return [...new Set(parsed.filter(Boolean))];
+        }
+      } catch {}
+
+      /*
+        PostgreSQL 배열 문자열 대응
+        예:
+        {estimate-usage/a.jpg,estimate-usage/b.jpg}
+      */
+
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        const inside = trimmed.slice(1, -1);
+
+        if (!inside.trim()) {
+          return [];
+        }
+
+        return [
+          ...new Set(
+            inside
+              .split(",")
+              .map((item) =>
+                item
+                  .trim()
+                  .replace(/^"(.*)"$/, "$1")
+              )
+              .filter(Boolean)
+          ),
+        ];
+      }
+
+      return [trimmed];
+    }
+
+    return [];
   }
 
   function getLeadPhotoPaths(lead) {
@@ -422,6 +505,113 @@ export default function AdminPage() {
   }
 
   /* =========================================================
+     자동견적 사진 보기
+
+     estimate_usage.photo_paths에 저장된 경로를 사용합니다.
+
+     중요:
+     이 함수는 "사진 보기" 버튼을 눌렀을 때만 실행됩니다.
+     따라서 로그 목록을 보는 것만으로는 사진 트래픽이 발생하지 않습니다.
+  ========================================================= */
+
+  async function toggleUsagePhotos(row) {
+    if (!row?.id) {
+      return;
+    }
+
+    /*
+      이미 열려 있으면 닫기
+    */
+
+    if (openUsagePhotoId === row.id) {
+      setOpenUsagePhotoId(null);
+      return;
+    }
+
+    const paths = getUsagePhotoPaths(row);
+
+    if (paths.length === 0) {
+      setUsageMessage(
+        "⚠️ 이 자동견적에는 저장된 사진 경로가 없습니다."
+      );
+      return;
+    }
+
+    /*
+      이미 signed URL을 만든 적이 있으면
+      다시 Storage 요청하지 않고 바로 표시
+    */
+
+    const cached = usagePhotoUrls[row.id];
+
+    if (
+      Array.isArray(cached) &&
+      cached.length > 0
+    ) {
+      setOpenUsagePhotoId(row.id);
+      return;
+    }
+
+    setUsagePhotoLoadingId(row.id);
+
+    try {
+      const urls = [];
+
+      for (const path of paths) {
+        const { data, error } = await supabase.storage
+          .from("work-photos")
+          .createSignedUrl(path, SIGNED_URL_SECONDS);
+
+        if (error) {
+          console.error(
+            "자동견적 사진 Signed URL 오류:",
+            path,
+            error
+          );
+
+          continue;
+        }
+
+        if (data?.signedUrl) {
+          urls.push({
+            path,
+            url: data.signedUrl,
+          });
+        }
+      }
+
+      if (urls.length === 0) {
+        throw new Error(
+          "저장된 사진을 불러올 수 없습니다. Storage 경로 또는 권한을 확인해주세요."
+        );
+      }
+
+      setUsagePhotoUrls((current) => ({
+        ...current,
+        [row.id]: urls,
+      }));
+
+      setOpenUsagePhotoId(row.id);
+
+      if (urls.length < paths.length) {
+        setUsageMessage(
+          `⚠️ 사진 ${paths.length}장 중 ${urls.length}장만 불러왔습니다.`
+        );
+      }
+    } catch (error) {
+      console.error("자동견적 사진 보기:", error);
+
+      setUsageMessage(
+        `❌ 자동견적 사진 오류: ${
+          error?.message || "사진을 불러오지 못했습니다."
+        }`
+      );
+    } finally {
+      setUsagePhotoLoadingId(null);
+    }
+  }
+
+  /* =========================================================
      사용자 로그 분석
      실제 estimate_usage 테이블 기준
   ========================================================= */
@@ -432,24 +622,13 @@ export default function AdminPage() {
 
     try {
       /*
-        실제 estimate_usage 컬럼
+        photo_paths까지 같이 조회합니다.
 
-        id
-        session_id
-        category
-        sub_category
-        photo_count
-        estimate_min
-        estimate_max
-        estimate_average
-        converted_to_lead
-        created_at
+        사진 자체는 여기서 다운로드하지 않습니다.
+        Storage 경로 문자열만 조회합니다.
       */
 
-      const [
-        usageResult,
-        leadResult,
-      ] = await Promise.all([
+      const [usageResult, leadResult] = await Promise.all([
         supabase
           .from("estimate_usage")
           .select(`
@@ -458,6 +637,7 @@ export default function AdminPage() {
             category,
             sub_category,
             photo_count,
+            photo_paths,
             estimate_min,
             estimate_max,
             estimate_average,
@@ -485,7 +665,8 @@ export default function AdminPage() {
 
         throw new Error(
           `estimate_usage 조회 실패: ${
-            usageResult.error.message || "RLS/SELECT 권한을 확인해주세요."
+            usageResult.error.message ||
+            "RLS/SELECT 권한을 확인해주세요."
           }`
         );
       }
@@ -504,7 +685,7 @@ export default function AdminPage() {
         : [];
 
       /*
-        한국시간 오늘 00:00 계산
+        한국시간 오늘 00:00
       */
 
       const now = new Date();
@@ -518,9 +699,17 @@ export default function AdminPage() {
 
       const parts = kstFormatter.formatToParts(now);
 
-      const year = parts.find((part) => part.type === "year")?.value;
-      const month = parts.find((part) => part.type === "month")?.value;
-      const day = parts.find((part) => part.type === "day")?.value;
+      const year = parts.find(
+        (part) => part.type === "year"
+      )?.value;
+
+      const month = parts.find(
+        (part) => part.type === "month"
+      )?.value;
+
+      const day = parts.find(
+        (part) => part.type === "day"
+      )?.value;
 
       const todayStart = new Date(
         `${year}-${month}-${day}T00:00:00+09:00`
@@ -531,12 +720,13 @@ export default function AdminPage() {
       */
 
       const sevenDaysStart = new Date(
-        todayStart.getTime() -
-          6 * 24 * 60 * 60 * 1000
+        todayStart.getTime() - 6 * 24 * 60 * 60 * 1000
       );
 
       const todayCount = rows.filter((row) => {
-        if (!row.created_at) return false;
+        if (!row.created_at) {
+          return false;
+        }
 
         const createdAt = new Date(row.created_at);
 
@@ -547,7 +737,9 @@ export default function AdminPage() {
       }).length;
 
       const sevenDaysCount = rows.filter((row) => {
-        if (!row.created_at) return false;
+        if (!row.created_at) {
+          return false;
+        }
 
         const createdAt = new Date(row.created_at);
 
@@ -572,12 +764,7 @@ export default function AdminPage() {
       }
 
       /*
-        실제 자동견적 → 상세상담 전환
-
-        customer_leads 전체 개수를 전환율 계산에 사용하지 않는다.
-
-        estimate_usage.converted_to_lead === true
-        인 로그만 전환으로 계산한다.
+        자동견적 → 상세상담 전환
       */
 
       const convertedCount = rows.filter(
@@ -602,20 +789,34 @@ export default function AdminPage() {
       });
 
       /*
-        최근 실행 30건만 화면 표시
+        최근 30건
       */
 
       setUsageRecent(rows.slice(0, 30));
+
+      /*
+        새로고침할 때 이전에 열었던 사진은 닫습니다.
+        URL 캐시는 그대로 두므로 같은 사진을 다시 누르면
+        추가 요청 없이 표시할 수 있습니다.
+      */
+
+      setOpenUsagePhotoId(null);
 
       if (rows.length === 0) {
         setUsageMessage(
           "⚠️ estimate_usage 조회는 성공했지만 현재 로그인 계정에서 보이는 로그가 0건입니다. 실제 테이블에 데이터가 있다면 RLS SELECT 정책을 확인해야 합니다."
         );
       } else {
+        const photoLogCount = rows.filter(
+          (row) => getUsagePhotoPaths(row).length > 0
+        ).length;
+
         setUsageMessage(
           `✅ 자동견적 로그 ${rows.length.toLocaleString(
             "ko-KR"
-          )}건 확인 · 상세상담 전환표시 ${convertedCount.toLocaleString(
+          )}건 확인 · 사진 저장 로그 ${photoLogCount.toLocaleString(
+            "ko-KR"
+          )}건 · 상세상담 전환 ${convertedCount.toLocaleString(
             "ko-KR"
           )}건`
         );
@@ -1517,12 +1718,6 @@ export default function AdminPage() {
 
   /* =========================================================
      시공사진 저장
-
-     중요:
-     1. 사진을 먼저 1200px / JPEG 70%로 압축
-     2. 실제 저장될 압축파일 기준 SHA-256 생성
-     3. 고객사진은 중복검사 대상에서 제외
-     4. 과거 시공 DB끼리만 중복검사
   ========================================================= */
 
   async function savePhoto({
@@ -1546,13 +1741,6 @@ export default function AdminPage() {
       await getImageHash(
         compressed
       );
-
-    /*
-      photo_type = customer 는 제외.
-
-      NULL photo_type도 과거 시공 데이터일 수 있으므로
-      neq만 사용하지 않고 OR 조건 사용.
-    */
 
     const {
       data: duplicates,
@@ -1679,11 +1867,6 @@ export default function AdminPage() {
     }
 
     try {
-      /*
-        photo_url 컬럼이 NOT NULL이므로
-        private bucket이어도 문자열 값은 반드시 저장.
-      */
-
       const { data: publicData } =
         supabase.storage
           .from("work-photos")
@@ -2016,7 +2199,10 @@ export default function AdminPage() {
 
   /* =========================================================
      고객 상담
-     ↓↓↓ 2/2 코드는 바로 이 아래부터 이어집니다.
+
+     ★ 여기까지 1/2
+     ★ 다음 2/2의 첫 줄을 바로 아래에 이어서 붙이세요.
+     ★ 중간에 } 를 추가하지 마세요.
   ========================================================= */
   async function loadUnreadCount() {
     try {
@@ -2029,13 +2215,13 @@ export default function AdminPage() {
         .eq("is_read", false);
 
       if (error) {
-        console.error("미확인 상담 개수:", error);
+        console.error("미확인 상담 수:", error);
         return;
       }
 
       setUnreadCount(count || 0);
     } catch (error) {
-      console.error("미확인 상담 개수:", error);
+      console.error("미확인 상담 수:", error);
     }
   }
 
@@ -2048,29 +2234,52 @@ export default function AdminPage() {
 
     try {
       const from =
-        (page - 1) *
-        LEAD_PAGE_SIZE;
+        (page - 1) * LEAD_PAGE_SIZE;
 
       const to =
-        from +
-        LEAD_PAGE_SIZE -
-        1;
+        from + LEAD_PAGE_SIZE - 1;
 
       let query = supabase
         .from("customer_leads")
-        .select("*", {
-          count: "exact",
-        });
+        .select(
+          `
+          id,
+          customer_name,
+          phone,
+          region,
+          address,
+          preferred_date,
+          request_text,
+          status,
+          admin_memo,
+          is_read,
+          session_id,
+          usage_id,
+          customer_photo_path,
+          customer_photo_paths,
+          estimate_min,
+          estimate_max,
+          estimate_average,
+          final_price,
+          quote_work_details,
+          quote_material,
+          quote_note,
+          quote_created_at,
+          created_at
+        `,
+          {
+            count: "exact",
+          }
+        );
 
       if (
         filter &&
         filter !== "all"
       ) {
-        query =
-          query.eq(
-            "status",
-            filter
-          );
+        query = query.eq(
+          "status",
+          filter
+        );
       }
 
       const {
@@ -2083,29 +2292,16 @@ export default function AdminPage() {
         })
         .range(from, to);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        data || []
-      );
-
-      setLeadTotal(
-        count || 0
-      );
-
+      setLeads(data || []);
+      setLeadTotal(count || 0);
       setLeadPage(page);
-
-      await loadUnreadCount();
     } catch (error) {
-      console.error(
-        "고객상담:",
-        error
-      );
+      console.error(error);
 
       setLeadsMessage(
-        `❌ 고객상담 오류: ${
+        `❌ 상담 목록 오류: ${
           error?.message ||
           "불러오기 실패"
         }`
@@ -2115,58 +2311,35 @@ export default function AdminPage() {
     }
   }
 
-  function changeLeadFilter(
-    value
-  ) {
-    setLeadFilter(value);
-    setOpenLeadId(null);
-    loadLeads(1, value);
-  }
-
   async function markLeadRead(
     lead
   ) {
-    if (!lead?.id) {
-      return;
-    }
+    if (!lead?.id) return;
 
-    if (
-      lead.is_read === true
-    ) {
+    if (lead.is_read === true) {
       return;
     }
 
     try {
       const { error } =
         await supabase
-          .from(
-            "customer_leads"
-          )
+          .from("customer_leads")
           .update({
             is_read: true,
           })
-          .eq(
-            "id",
-            lead.id
-          );
+          .eq("id", lead.id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        (current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              lead.id
-                ? {
-                    ...item,
-                    is_read:
-                      true,
-                  }
-                : item
-          )
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === lead.id
+            ? {
+                ...item,
+                is_read: true,
+              }
+            : item
+        )
       );
 
       setUnreadCount(
@@ -2178,7 +2351,7 @@ export default function AdminPage() {
       );
     } catch (error) {
       console.error(
-        "읽음처리:",
+        "읽음 처리:",
         error
       );
     }
@@ -2187,23 +2360,95 @@ export default function AdminPage() {
   async function toggleLeadDetail(
     lead
   ) {
-    if (
-      openLeadId ===
-      lead.id
-    ) {
-      setOpenLeadId(
-        null
+    if (openLeadId === lead.id) {
+      setOpenLeadId(null);
+      return;
+    }
+
+    setOpenLeadId(lead.id);
+
+    await markLeadRead(lead);
+  }
+
+  async function loadLeadPhotos(
+    lead
+  ) {
+    const paths =
+      getLeadPhotoPaths(lead);
+
+    if (paths.length === 0) {
+      setLeadsMessage(
+        "⚠️ 저장된 고객 사진이 없습니다."
       );
       return;
     }
 
-    setOpenLeadId(
+    if (
+      Array.isArray(
+        leadPhotoUrls[lead.id]
+      ) &&
+      leadPhotoUrls[lead.id]
+        .length > 0
+    ) {
+      return;
+    }
+
+    setLeadPhotoLoadingId(
       lead.id
     );
 
-    await markLeadRead(
-      lead
-    );
+    try {
+      const urls = [];
+
+      for (const path of paths) {
+        const { data, error } =
+          await supabase.storage
+            .from("work-photos")
+            .createSignedUrl(
+              path,
+              SIGNED_URL_SECONDS
+            );
+
+        if (error) {
+          console.error(
+            "고객 사진:",
+            error
+          );
+          continue;
+        }
+
+        if (data?.signedUrl) {
+          urls.push({
+            path,
+            url: data.signedUrl,
+          });
+        }
+      }
+
+      if (urls.length === 0) {
+        throw new Error(
+          "고객 사진을 불러오지 못했습니다."
+        );
+      }
+
+      setLeadPhotoUrls(
+        (current) => ({
+          ...current,
+          [lead.id]: urls,
+        })
+      );
+    } catch (error) {
+      setLeadsMessage(
+        `❌ 고객 사진 오류: ${
+          error?.message ||
+          "실패"
+        }`
+      );
+    } finally {
+      setLeadPhotoLoadingId(
+        null
+      );
+    }
   }
 
   async function updateLeadStatus(
@@ -2213,37 +2458,23 @@ export default function AdminPage() {
     try {
       const { error } =
         await supabase
-          .from(
-            "customer_leads"
-          )
+          .from("customer_leads")
           .update({
             status,
           })
-          .eq(
-            "id",
-            leadId
-          );
+          .eq("id", leadId);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        (current) =>
-          current.map(
-            (lead) =>
-              lead.id ===
-              leadId
-                ? {
-                    ...lead,
-                    status,
-                  }
-                : lead
-          )
-      );
-
-      setLeadsMessage(
-        "✅ 상담 상태가 변경되었습니다."
+      setLeads((current) =>
+        current.map((lead) =>
+          lead.id === leadId
+            ? {
+                ...lead,
+                status,
+              }
+            : lead
+        )
       );
     } catch (error) {
       setLeadsMessage(
@@ -2257,44 +2488,22 @@ export default function AdminPage() {
 
   async function saveLeadMemo(
     leadId,
-    value
+    memo
   ) {
     try {
       const { error } =
         await supabase
-          .from(
-            "customer_leads"
-          )
+          .from("customer_leads")
           .update({
             admin_memo:
-              value || null,
+              memo || null,
           })
-          .eq(
-            "id",
-            leadId
-          );
+          .eq("id", leadId);
 
-      if (error) {
-        throw error;
-      }
-
-      setLeads(
-        (current) =>
-          current.map(
-            (lead) =>
-              lead.id ===
-              leadId
-                ? {
-                    ...lead,
-                    admin_memo:
-                      value,
-                  }
-                : lead
-          )
-      );
+      if (error) throw error;
 
       setLeadsMessage(
-        "✅ 관리자 메모 저장 완료"
+        "✅ 상담 메모가 저장되었습니다."
       );
     } catch (error) {
       setLeadsMessage(
@@ -2306,169 +2515,51 @@ export default function AdminPage() {
     }
   }
 
-  async function loadLeadPhoto(
-    lead,
-    path
-  ) {
-    if (!path) {
-      return null;
-    }
-
-    const key =
-      `${lead.id}:${path}`;
-
-    if (
-      leadPhotoUrls[key]
-    ) {
-      return leadPhotoUrls[
-        key
-      ];
-    }
-
-    setLeadPhotoLoadingId(
-      key
-    );
-
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.storage
-          .from(
-            "work-photos"
-          )
-          .createSignedUrl(
-            path,
-            SIGNED_URL_SECONDS
-          );
-
-      if (error) {
-        throw error;
-      }
-
-      if (
-        !data?.signedUrl
-      ) {
-        throw new Error(
-          "사진 주소를 만들 수 없습니다."
-        );
-      }
-
-      setLeadPhotoUrls(
-        (current) => ({
-          ...current,
-          [key]:
-            data.signedUrl,
-        })
-      );
-
-      return data.signedUrl;
-    } catch (error) {
-      setLeadsMessage(
-        `❌ 고객사진 오류: ${
-          error?.message ||
-          "실패"
-        }`
-      );
-
-      return null;
-    } finally {
-      setLeadPhotoLoadingId(
-        null
-      );
-    }
-  }
-
-  async function openLeadPhoto(
-    lead,
-    path
-  ) {
-    const key =
-      `${lead.id}:${path}`;
-
-    let url =
-      leadPhotoUrls[key];
-
-    if (!url) {
-      url =
-        await loadLeadPhoto(
-          lead,
-          path
-        );
-    }
-
-    if (url) {
-      setPreviewPhoto(
-        url
-      );
-    }
-  }
-
-  /* =========================================================
-     최종 견적
-  ========================================================= */
-
   function updateLeadLocal(
     leadId,
     field,
     value
   ) {
-    setLeads(
-      (current) =>
-        current.map(
-          (lead) =>
-            lead.id ===
-            leadId
-              ? {
-                  ...lead,
-                  [field]:
-                    value,
-                }
-              : lead
-        )
+    setLeads((current) =>
+      current.map((lead) =>
+        lead.id === leadId
+          ? {
+              ...lead,
+              [field]: value,
+            }
+          : lead
+      )
     );
   }
 
   async function saveFinalQuote(
     lead
   ) {
+    const price = Number(
+      String(
+        lead.final_price || ""
+      ).replace(/,/g, "")
+    );
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      setLeadsMessage(
+        "⚠️ 최종 견적금액을 입력해주세요."
+      );
+      return;
+    }
+
     try {
-      const price =
-        Number(
-          String(
-            lead.final_price ||
-              ""
-          ).replace(
-            /,/g,
-            ""
-          )
-        );
-
-      if (
-        !Number.isFinite(
-          price
-        ) ||
-        price <= 0
-      ) {
-        throw new Error(
-          "최종 견적금액을 입력해주세요."
-        );
-      }
-
-      const createdAt =
+      const quoteCreatedAt =
         new Date().toISOString();
 
-      const {
-        error,
-      } =
+      const { error } =
         await supabase
-          .from(
-            "customer_leads"
-          )
+          .from("customer_leads")
           .update({
-            final_price:
-              price,
+            final_price: price,
 
             quote_work_details:
               lead.quote_work_details ||
@@ -2483,33 +2574,24 @@ export default function AdminPage() {
               null,
 
             quote_created_at:
-              createdAt,
+              quoteCreatedAt,
           })
-          .eq(
-            "id",
-            lead.id
-          );
+          .eq("id", lead.id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        (current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              lead.id
-                ? {
-                    ...item,
-                    final_price:
-                      price,
-
-                    quote_created_at:
-                      createdAt,
-                  }
-                : item
-          )
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === lead.id
+            ? {
+                ...item,
+                final_price:
+                  price,
+                quote_created_at:
+                  quoteCreatedAt,
+              }
+            : item
+        )
       );
 
       setLeadsMessage(
@@ -2525,162 +2607,72 @@ export default function AdminPage() {
     }
   }
 
+  /* =========================================================
+     견적 이미지
+  ========================================================= */
+
   function wrapCanvasText(
     ctx,
     text,
-    x,
-    y,
-    maxWidth,
-    lineHeight
+    maxWidth
   ) {
-    const value =
-      String(
-        text || ""
-      ).trim();
+    const words =
+      String(text || "")
+        .split(/\s+/)
+        .filter(Boolean);
 
-    if (!value) {
-      return y;
-    }
+    const lines = [];
 
-    const paragraphs =
-      value.split("\n");
+    let current = "";
 
-    let currentY = y;
+    for (const word of words) {
+      const test =
+        current
+          ? `${current} ${word}`
+          : word;
 
-    for (
-      const paragraph of
-      paragraphs
-    ) {
       if (
-        paragraph === ""
+        ctx.measureText(test)
+          .width > maxWidth &&
+        current
       ) {
-        currentY +=
-          lineHeight;
-        continue;
-      }
-
-      let line = "";
-
-      for (
-        const char of
-        paragraph
-      ) {
-        const testLine =
-          line + char;
-
-        const width =
-          ctx.measureText(
-            testLine
-          ).width;
-
-        if (
-          width >
-            maxWidth &&
-          line
-        ) {
-          ctx.fillText(
-            line,
-            x,
-            currentY
-          );
-
-          line = char;
-
-          currentY +=
-            lineHeight;
-        } else {
-          line =
-            testLine;
-        }
-      }
-
-      if (line) {
-        ctx.fillText(
-          line,
-          x,
-          currentY
-        );
-
-        currentY +=
-          lineHeight;
+        lines.push(current);
+        current = word;
+      } else {
+        current = test;
       }
     }
 
-    return currentY;
-  }
-
-  function getQuoteDate(
-    lead
-  ) {
-    const value =
-      lead.quote_created_at ||
-      new Date().toISOString();
-
-    return new Date(
-      value
-    ).toLocaleDateString(
-      "ko-KR",
-      {
-        timeZone:
-          "Asia/Seoul",
-      }
-    );
-  }
-
-  async function createQuoteImage(
-    lead
-  ) {
-    const price =
-      Number(
-        String(
-          lead.final_price ||
-            ""
-        ).replace(
-          /,/g,
-          ""
-        )
-      );
-
-    if (
-      !Number.isFinite(
-        price
-      ) ||
-      price <= 0
-    ) {
-      throw new Error(
-        "먼저 최종 견적금액을 입력하고 저장해주세요."
-      );
+    if (current) {
+      lines.push(current);
     }
 
+    return lines.length
+      ? lines
+      : [""];
+  }
+
+  async function createQuoteBlob(
+    lead
+  ) {
     const canvas =
       document.createElement(
         "canvas"
       );
 
-    canvas.width =
-      1080;
-
-    canvas.height =
-      1500;
+    canvas.width = 1080;
+    canvas.height = 1500;
 
     const ctx =
-      canvas.getContext(
-        "2d"
-      );
+      canvas.getContext("2d");
 
     if (!ctx) {
       throw new Error(
-        "견적 이미지 생성 실패"
+        "견적 이미지를 만들 수 없습니다."
       );
     }
 
-    /*
-      배경
-    */
-
-    ctx.fillStyle =
-      "#f7f3ed";
-
+    ctx.fillStyle = "#f7f4ef";
     ctx.fillRect(
       0,
       0,
@@ -2688,120 +2680,155 @@ export default function AdminPage() {
       canvas.height
     );
 
-    /*
-      상단 제목
-    */
+    ctx.fillStyle = "#5d4037";
+    ctx.fillRect(
+      0,
+      0,
+      canvas.width,
+      210
+    );
 
-    ctx.fillStyle =
-      "#34261f";
-
+    ctx.fillStyle = "#ffffff";
     ctx.font =
-      "bold 58px sans-serif";
+      "bold 54px sans-serif";
 
     ctx.fillText(
       "기분좋은공간",
-      80,
-      110
+      70,
+      95
     );
 
     ctx.font =
-      "bold 38px sans-serif";
+      "30px sans-serif";
 
     ctx.fillText(
-      "인테리어필름 견적서",
-      80,
-      175
+      "인테리어필름 최종 견적서",
+      70,
+      150
     );
 
-    ctx.strokeStyle =
-      "#9b7a61";
+    let y = 290;
 
-    ctx.lineWidth =
-      3;
+    ctx.fillStyle = "#111827";
+    ctx.font =
+      "bold 32px sans-serif";
 
-    ctx.beginPath();
-
-    ctx.moveTo(
-      80,
-      215
+    ctx.fillText(
+      "고객 정보",
+      70,
+      y
     );
 
-    ctx.lineTo(
-      1000,
-      215
-    );
+    y += 55;
 
-    ctx.stroke();
+    ctx.font =
+      "28px sans-serif";
 
-    let y = 285;
-
-    function drawLabel(
-      label,
-      value
-    ) {
-      ctx.fillStyle =
-        "#6b5749";
-
-      ctx.font =
-        "bold 25px sans-serif";
-
-      ctx.fillText(
-        label,
-        80,
-        y
-      );
-
-      ctx.fillStyle =
-        "#222222";
-
-      ctx.font =
-        "30px sans-serif";
-
-      ctx.fillText(
-        String(
-          value || "-"
-        ),
-        300,
-        y
-      );
-
-      y += 62;
-    }
-
-    drawLabel(
-      "고객명",
-      lead.customer_name ||
+    ctx.fillText(
+      `고객명 : ${
+        lead.customer_name ||
         "-"
+      }`,
+      70,
+      y
     );
 
-    drawLabel(
-      "연락처",
-      lead.phone ||
-        "-"
-    );
+    y += 45;
 
-    drawLabel(
-      "지역",
-      lead.region ||
+    ctx.fillText(
+      `지역 : ${
+        lead.region ||
         lead.address ||
         "-"
+      }`,
+      70,
+      y
     );
 
-    drawLabel(
-      "견적일",
-      getQuoteDate(
-        lead
-      )
+    y += 75;
+
+    ctx.strokeStyle = "#d6d3d1";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(70, y);
+    ctx.lineTo(1010, y);
+    ctx.stroke();
+
+    y += 70;
+
+    ctx.font =
+      "bold 32px sans-serif";
+
+    ctx.fillText(
+      "시공 내용",
+      70,
+      y
     );
 
-    y += 20;
+    y += 50;
 
-    /*
-      최종금액 박스
-    */
+    ctx.font =
+      "27px sans-serif";
 
-    ctx.fillStyle =
-      "#ffffff";
+    const workLines =
+      wrapCanvasText(
+        ctx,
+        lead.quote_work_details ||
+          "상담 후 확정",
+        900
+      );
+
+    for (const line of workLines) {
+      ctx.fillText(
+        line,
+        70,
+        y
+      );
+
+      y += 42;
+    }
+
+    y += 35;
+
+    ctx.font =
+      "bold 32px sans-serif";
+
+    ctx.fillText(
+      "사용 자재",
+      70,
+      y
+    );
+
+    y += 50;
+
+    ctx.font =
+      "27px sans-serif";
+
+    const materialLines =
+      wrapCanvasText(
+        ctx,
+        lead.quote_material ||
+          "협의",
+        900
+      );
+
+    for (
+      const line of
+      materialLines
+    ) {
+      ctx.fillText(
+        line,
+        70,
+        y
+      );
+
+      y += 42;
+    }
+
+    y += 45;
+
+    ctx.fillStyle = "#5d4037";
 
     ctx.fillRect(
       70,
@@ -2810,364 +2837,213 @@ export default function AdminPage() {
       150
     );
 
-    ctx.strokeStyle =
-      "#9b7a61";
-
-    ctx.lineWidth =
-      3;
-
-    ctx.strokeRect(
-      70,
-      y,
-      940,
-      150
-    );
-
-    ctx.fillStyle =
-      "#6b5749";
+    ctx.fillStyle = "#ffffff";
 
     ctx.font =
-      "bold 27px sans-serif";
+      "bold 31px sans-serif";
 
     ctx.fillText(
       "최종 견적금액",
       110,
-      y + 55
+      y + 58
     );
 
-    ctx.fillStyle =
-      "#34261f";
-
     ctx.font =
-      "bold 48px sans-serif";
+      "bold 46px sans-serif";
 
-    ctx.textAlign =
-      "right";
+    ctx.textAlign = "right";
 
     ctx.fillText(
-      `${price.toLocaleString(
-        "ko-KR"
-      )}원`,
+      formatWon(
+        lead.final_price
+      ),
       960,
-      y + 105
+      y + 108
     );
 
-    ctx.textAlign =
-      "left";
+    ctx.textAlign = "left";
 
-    y += 210;
+    y += 220;
 
-    /*
-      시공내용
-    */
-
-    ctx.fillStyle =
-      "#6b5749";
+    ctx.fillStyle = "#111827";
 
     ctx.font =
-      "bold 27px sans-serif";
+      "bold 30px sans-serif";
 
     ctx.fillText(
-      "시공 내용",
-      80,
+      "안내사항",
+      70,
       y
     );
 
-    y += 45;
-
-    ctx.fillStyle =
-      "#222222";
+    y += 48;
 
     ctx.font =
-      "28px sans-serif";
+      "25px sans-serif";
 
-    y =
-      wrapCanvasText(
-        ctx,
-        lead.quote_work_details ||
-          lead.category ||
-          lead.sub_category ||
-          "상담 후 확정",
-        80,
-        y,
-        920,
-        42
-      );
-
-    y += 30;
-
-    /*
-      사용 자재
-    */
-
-    ctx.fillStyle =
-      "#6b5749";
-
-    ctx.font =
-      "bold 27px sans-serif";
-
-    ctx.fillText(
-      "사용 자재",
-      80,
-      y
-    );
-
-    y += 45;
-
-    ctx.fillStyle =
-      "#222222";
-
-    ctx.font =
-      "28px sans-serif";
-
-    y =
-      wrapCanvasText(
-        ctx,
-        lead.quote_material ||
-          "상담 후 확정",
-        80,
-        y,
-        920,
-        42
-      );
-
-    y += 30;
-
-    /*
-      안내사항
-    */
-
-    ctx.fillStyle =
-      "#6b5749";
-
-    ctx.font =
-      "bold 27px sans-serif";
-
-    ctx.fillText(
-      "안내 사항",
-      80,
-      y
-    );
-
-    y += 45;
-
-    ctx.fillStyle =
-      "#222222";
-
-    ctx.font =
-      "27px sans-serif";
-
-    y =
+    const noteLines =
       wrapCanvasText(
         ctx,
         lead.quote_note ||
           "현장 상태 및 추가 작업 발생 시 금액이 변경될 수 있습니다.",
-        80,
-        y,
-        920,
-        40
+        900
       );
 
-    /*
-      하단
-    */
-
-    ctx.fillStyle =
-      "#6b5749";
-
-    ctx.font =
-      "24px sans-serif";
-
-    ctx.fillText(
-      "기분좋은공간 · 인테리어필름 시공",
-      80,
-      1400
-    );
-
-    ctx.fillText(
-      "담당 : 정근호",
-      80,
-      1445
-    );
-
-    const blob =
-      await new Promise(
-        (resolve) =>
-          canvas.toBlob(
-            resolve,
-            "image/jpeg",
-            0.92
-          )
+    for (
+      const line of
+      noteLines
+    ) {
+      ctx.fillText(
+        line,
+        70,
+        y
       );
 
-    if (!blob) {
-      throw new Error(
-        "견적 이미지 생성 실패"
-      );
+      y += 39;
     }
 
-    const fileName =
-      `기분좋은공간_견적서_${
-        lead.customer_name ||
-        "고객"
-      }_${Date.now()}.jpg`;
+    ctx.fillStyle = "#78716c";
 
-    return new File(
-      [blob],
-      fileName,
-      {
-        type:
+    ctx.font =
+      "23px sans-serif";
+
+    ctx.fillText(
+      `견적일 : ${new Date().toLocaleDateString(
+        "ko-KR"
+      )}`,
+      70,
+      1390
+    );
+
+    ctx.fillText(
+      "기분좋은공간 · 대표 정근호",
+      70,
+      1435
+    );
+
+    return await new Promise(
+      (resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(
+                new Error(
+                  "견적 이미지 생성 실패"
+                )
+              );
+
+              return;
+            }
+
+            resolve(blob);
+          },
           "image/jpeg",
+          0.92
+        );
       }
     );
   }
 
-  async function downloadQuoteImage(
+  async function shareQuote(
     lead
   ) {
-    try {
-      const file =
-        await createQuoteImage(
-          lead
-        );
+    const price = Number(
+      String(
+        lead.final_price || ""
+      ).replace(/,/g, "")
+    );
 
-      const url =
-        URL.createObjectURL(
-          file
-        );
-
-      const link =
-        document.createElement(
-          "a"
-        );
-
-      link.href = url;
-      link.download =
-        file.name;
-
-      document.body.appendChild(
-        link
-      );
-
-      link.click();
-
-      link.remove();
-
-      setTimeout(
-        () =>
-          URL.revokeObjectURL(
-            url
-          ),
-        1000
-      );
-
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
       setLeadsMessage(
-        "✅ 견적 이미지가 만들어졌습니다. 확인 후 고객에게 전송할 수 있습니다."
+        "⚠️ 먼저 최종 견적금액을 저장해주세요."
       );
-    } catch (error) {
-      setLeadsMessage(
-        `❌ 견적 이미지 오류: ${
-          error?.message ||
-          "실패"
-        }`
-      );
+
+      return;
     }
-  }
 
-  async function shareQuoteImage(
-    lead
-  ) {
     try {
-      const file =
-        await createQuoteImage(
+      const blob =
+        await createQuoteBlob(
           lead
+        );
+
+      const file =
+        new File(
+          [blob],
+          `기분좋은공간_견적_${
+            lead.customer_name ||
+            "고객"
+          }.jpg`,
+          {
+            type: "image/jpeg",
+          }
         );
 
       if (
-        navigator.share
+        navigator.share &&
+        (!navigator.canShare ||
+          navigator.canShare({
+            files: [file],
+          }))
       ) {
-        const shareData = {
+        await navigator.share({
           title:
             "기분좋은공간 견적서",
 
           text:
-            `${
-              lead.customer_name ||
-              "고객"
-            }님 기분좋은공간 인테리어필름 견적서입니다.`,
+            "기분좋은공간 인테리어필름 견적서입니다.",
 
           files: [file],
-        };
+        });
 
-        if (
-          !navigator.canShare ||
-          navigator.canShare({
-            files: [file],
-          })
-        ) {
-          await navigator.share(
-            shareData
-          );
-
-          setLeadsMessage(
-            "✅ 공유창을 열었습니다. 메시지 앱을 선택해 고객에게 전송해주세요."
-          );
-
-          return;
-        }
+        return;
       }
-
-      /*
-        공유가 지원되지 않는 경우
-        자동 다운로드
-      */
 
       const url =
         URL.createObjectURL(
-          file
+          blob
         );
 
-      const link =
+      const anchor =
         document.createElement(
           "a"
         );
 
-      link.href = url;
-      link.download =
+      anchor.href = url;
+
+      anchor.download =
         file.name;
 
       document.body.appendChild(
-        link
+        anchor
       );
 
-      link.click();
-      link.remove();
+      anchor.click();
 
-      setTimeout(
-        () =>
-          URL.revokeObjectURL(
-            url
-          ),
-        1000
-      );
+      anchor.remove();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(
+          url
+        );
+      }, 1000);
 
       setLeadsMessage(
-        "⚠️ 이 브라우저에서는 직접 공유가 지원되지 않아 견적 이미지를 저장했습니다."
+        "✅ 견적 이미지를 저장했습니다. 문자에서 사진을 첨부해 전송해주세요."
       );
     } catch (error) {
       if (
         error?.name ===
         "AbortError"
       ) {
-        setLeadsMessage(
-          "공유가 취소되었습니다."
-        );
-
         return;
       }
 
       setLeadsMessage(
-        `❌ 고객 전송 오류: ${
+        `❌ 견적 이미지 오류: ${
           error?.message ||
           "실패"
         }`
@@ -3183,12 +3059,14 @@ export default function AdminPage() {
     photo,
   }) {
     const url =
-      jobPhotoUrls[
-        photo.id
-      ];
+      jobPhotoUrls[photo.id];
 
-    const isLoading =
+    const loadingPhoto =
       loadingPhotoId ===
+      photo.id;
+
+    const editing =
+      editingPhotoId ===
       photo.id;
 
     return (
@@ -3196,269 +3074,105 @@ export default function AdminPage() {
         style={{
           border:
             "1px solid #e5e7eb",
-          borderRadius:
-            "12px",
-          padding:
-            "12px",
-          marginBottom:
-            "12px",
-          background:
-            "#fafafa",
+          borderRadius: "12px",
+          padding: "12px",
+          marginBottom: "10px",
+          background: "#fafafa",
         }}
       >
         <div
           style={{
-            display:
-              "flex",
-            justifyContent:
-              "space-between",
-            alignItems:
-              "center",
-            gap: "10px",
-            marginBottom:
-              "10px",
+            fontWeight: "bold",
+            marginBottom: "8px",
           }}
         >
-          <div>
-            <strong>
-              {photo.photo_type ===
-              "before"
-                ? "시공 전"
-                : photo.photo_type ===
-                  "after"
-                ? "시공 후"
-                : photo.photo_type ||
-                  "사진"}
-            </strong>
-
-            <div
-              style={{
-                fontSize:
-                  "13px",
-                color:
-                  "#6b7280",
-                marginTop:
-                  "4px",
-              }}
-            >
-              {photo.category ||
-                "-"}{" "}
-              /{" "}
-              {photo.sub_category ||
-                "-"}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              openJobPhoto(
-                photo
-              )
-            }
-            style={{
-              padding:
-                "8px 11px",
-              border:
-                "none",
-              borderRadius:
-                "8px",
-              background:
-                "#111827",
-              color:
-                "white",
-              fontWeight:
-                "bold",
-              cursor:
-                "pointer",
-            }}
-          >
-            {isLoading
-              ? "불러오는 중..."
-              : "사진 보기"}
-          </button>
+          {photo.photo_type ===
+          "before"
+            ? "시공 전"
+            : photo.photo_type ===
+              "after"
+            ? "시공 후"
+            : photo.photo_type ||
+              "사진"}
         </div>
 
-        {url && (
+        {url ? (
           <img
             src={url}
-            alt="시공사진"
+            alt=""
             loading="lazy"
+            decoding="async"
             onClick={() =>
               setPreviewPhoto(
                 url
               )
             }
             style={{
-              width:
-                "100%",
-              maxHeight:
-                "300px",
+              width: "100%",
+              maxHeight: "300px",
               objectFit:
-                "cover",
+                "contain",
               borderRadius:
                 "10px",
               cursor:
                 "pointer",
+              background:
+                "#111827",
               marginBottom:
                 "10px",
             }}
           />
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              loadSingleJobPhoto(
+                photo
+              )
+            }
+            disabled={
+              loadingPhoto
+            }
+            style={
+              secondaryButtonStyle
+            }
+          >
+            {loadingPhoto
+              ? "사진 불러오는 중..."
+              : "📷 사진 보기"}
+          </button>
         )}
 
-        {editingPhotoId ===
-        photo.id ? (
-          <div
-            style={{
-              display:
-                "grid",
-              gap: "8px",
-            }}
-          >
-            <select
-              value={
-                editPhotoType
-              }
-              onChange={(e) =>
-                setEditPhotoType(
-                  e.target
-                    .value
-                )
-              }
-              style={
-                inputStyle
-              }
-            >
-              <option value="before">
-                시공 전
-              </option>
-
-              <option value="after">
-                시공 후
-              </option>
-            </select>
-
-            <input
-              value={
-                editPhotoCategory
-              }
-              onChange={(e) =>
-                setEditPhotoCategory(
-                  e.target
-                    .value
-                )
-              }
-              placeholder="카테고리"
-              style={
-                inputStyle
-              }
-            />
-
-            <input
-              value={
-                editPhotoSubCategory
-              }
-              onChange={(e) =>
-                setEditPhotoSubCategory(
-                  e.target
-                    .value
-                )
-              }
-              placeholder="세부 부위"
-              style={
-                inputStyle
-              }
-            />
-
-            <textarea
-              value={
-                editPhotoDescription
-              }
-              onChange={(e) =>
-                setEditPhotoDescription(
-                  e.target
-                    .value
-                )
-              }
-              placeholder="AI 설명"
-              rows={4}
-              style={
-                inputStyle
-              }
-            />
-
-            <button
-              type="button"
-              disabled={
-                photoEditLoading
-              }
-              onClick={() =>
-                savePhotoEdit(
-                  photo
-                )
-              }
-              style={
-                primaryButtonStyle
-              }
-            >
-              {photoEditLoading
-                ? "저장 중..."
-                : "사진정보 저장"}
-            </button>
-
-            <button
-              type="button"
-              onClick={
-                cancelPhotoEdit
-              }
-              style={
-                secondaryButtonStyle
-              }
-            >
-              취소
-            </button>
-          </div>
-        ) : (
+        {!editing ? (
           <>
-            {photo.ai_description && (
-              <div
-                style={{
-                  fontSize:
-                    "14px",
-                  lineHeight:
-                    1.6,
-                  marginBottom:
-                    "8px",
-                }}
-              >
-                {
-                  photo.ai_description
-                }
+            <div
+              style={{
+                fontSize:
+                  "14px",
+                marginTop:
+                  "10px",
+                lineHeight:
+                  1.6,
+              }}
+            >
+              <div>
+                <b>분류:</b>{" "}
+                {photo.category ||
+                  "-"}
               </div>
-            )}
 
-            {Array.isArray(
-              photo.ai_tags
-            ) &&
-              photo.ai_tags
-                .length >
-                0 && (
-                <div
-                  style={{
-                    fontSize:
-                      "13px",
-                    color:
-                      "#6b7280",
-                    marginBottom:
-                      "10px",
-                  }}
-                >
-                  #
-                  {photo.ai_tags.join(
-                    " #"
-                  )}
-                </div>
-              )}
+              <div>
+                <b>세부:</b>{" "}
+                {photo.sub_category ||
+                  "-"}
+              </div>
+
+              <div>
+                <b>AI 설명:</b>{" "}
+                {photo.ai_description ||
+                  "-"}
+              </div>
+            </div>
 
             <div
               style={{
@@ -3467,6 +3181,8 @@ export default function AdminPage() {
                 gridTemplateColumns:
                   "1fr 1fr",
                 gap: "8px",
+                marginTop:
+                  "10px",
               }}
             >
               <button
@@ -3480,7 +3196,7 @@ export default function AdminPage() {
                   secondaryButtonStyle
                 }
               >
-                사진정보 수정
+                수정
               </button>
 
               <button
@@ -3496,17 +3212,147 @@ export default function AdminPage() {
                     "#b91c1c",
                 }}
               >
-                사진 삭제
+                삭제
               </button>
             </div>
           </>
+        ) : (
+          <div
+            style={{
+              marginTop:
+                "10px",
+            }}
+          >
+            <select
+              value={
+                editPhotoType
+              }
+              onChange={(e) =>
+                setEditPhotoType(
+                  e.target.value
+                )
+              }
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "8px",
+              }}
+            >
+              <option value="before">
+                시공 전
+              </option>
+
+              <option value="after">
+                시공 후
+              </option>
+
+              <option value="history">
+                기타 시공사진
+              </option>
+            </select>
+
+            <input
+              value={
+                editPhotoCategory
+              }
+              onChange={(e) =>
+                setEditPhotoCategory(
+                  e.target.value
+                )
+              }
+              placeholder="카테고리"
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "8px",
+              }}
+            />
+
+            <input
+              value={
+                editPhotoSubCategory
+              }
+              onChange={(e) =>
+                setEditPhotoSubCategory(
+                  e.target.value
+                )
+              }
+              placeholder="세부 분류"
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "8px",
+              }}
+            />
+
+            <textarea
+              value={
+                editPhotoDescription
+              }
+              onChange={(e) =>
+                setEditPhotoDescription(
+                  e.target.value
+                )
+              }
+              placeholder="AI 설명"
+              rows={4}
+              style={{
+                ...inputStyle,
+                resize:
+                  "vertical",
+                marginBottom:
+                  "8px",
+              }}
+            />
+
+            <div
+              style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "1fr 1fr",
+                gap: "8px",
+              }}
+            >
+              <button
+                type="button"
+                disabled={
+                  photoEditLoading
+                }
+                onClick={() =>
+                  savePhotoEdit(
+                    photo
+                  )
+                }
+                style={
+                  primaryButtonStyle
+                }
+              >
+                {photoEditLoading
+                  ? "저장 중..."
+                  : "저장"}
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  cancelPhotoEdit
+                }
+                style={
+                  secondaryButtonStyle
+                }
+              >
+                취소
+              </button>
+            </div>
+          </div>
         )}
       </div>
     );
   }
 
   /* =========================================================
-     렌더링
+     화면
   ========================================================= */
 
   const totalJobPages =
@@ -3530,24 +3376,139 @@ export default function AdminPage() {
   return (
     <main
       style={{
-        maxWidth:
-          "1100px",
-        margin:
-          "0 auto",
+        maxWidth: "900px",
+        margin: "0 auto",
         padding:
-          "16px",
-        fontFamily:
-          "Arial, sans-serif",
+          "16px 14px 80px",
+        background:
+          "#f8fafc",
+        minHeight:
+          "100vh",
         color:
           "#111827",
       }}
     >
+      {newLeadAlert && (
+        <div
+          style={{
+            position:
+              "fixed",
+            top: "16px",
+            left: "50%",
+            transform:
+              "translateX(-50%)",
+            width:
+              "calc(100% - 28px)",
+            maxWidth:
+              "600px",
+            background:
+              "#991b1b",
+            color:
+              "#ffffff",
+            padding:
+              "16px",
+            borderRadius:
+              "14px",
+            zIndex:
+              9999,
+            boxShadow:
+              "0 8px 30px rgba(0,0,0,.25)",
+          }}
+        >
+          <div
+            style={{
+              fontWeight:
+                "bold",
+              fontSize:
+                "17px",
+            }}
+          >
+            🔔 신규 상담이
+            들어왔습니다.
+          </div>
+
+          <div
+            style={{
+              marginTop:
+                "6px",
+              fontSize:
+                "14px",
+            }}
+          >
+            {newLeadAlert.customer_name ||
+              "고객"}{" "}
+            ·{" "}
+            {newLeadAlert.phone ||
+              "-"}
+          </div>
+
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "1fr auto",
+              gap: "8px",
+              marginTop:
+                "12px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setNewLeadAlert(
+                  null
+                );
+
+                document.title =
+                  "기분좋은공간";
+
+                changeTab(
+                  "leads"
+                );
+              }}
+              style={{
+                ...primaryButtonStyle,
+                background:
+                  "#ffffff",
+                color:
+                  "#991b1b",
+              }}
+            >
+              상담 확인
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setNewLeadAlert(
+                  null
+                )
+              }
+              style={{
+                border:
+                  "1px solid rgba(255,255,255,.5)",
+                background:
+                  "transparent",
+                color:
+                  "#ffffff",
+                borderRadius:
+                  "10px",
+                padding:
+                  "0 14px",
+              }}
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
       <h1
         style={{
-          fontSize:
-            "24px",
-          marginBottom:
-            "6px",
+          fontSize: "24px",
+          margin:
+            "8px 0 16px",
         }}
       >
         기분좋은공간 관리자
@@ -3555,92 +3516,165 @@ export default function AdminPage() {
 
       <div
         style={{
-          color:
-            "#6b7280",
-          marginBottom:
-            "18px",
-          fontSize:
-            "14px",
-        }}
-      >
-        AI 견적 · 시공 DB ·
-        고객 상담 관리
-      </div>
-
-      {/* 탭 */}
-
-      <div
-        style={{
           display:
             "grid",
           gridTemplateColumns:
-            "repeat(4, minmax(0, 1fr))",
+            "repeat(4, 1fr)",
           gap: "6px",
           marginBottom:
             "18px",
         }}
       >
-        {[
-          [
-            "jobs",
-            "시공 DB",
-          ],
-          [
-            "register",
-            "시공 등록",
-          ],
-          [
-            "usage",
-            "로그 분석",
-          ],
-          [
-            "leads",
-            `고객 상담${
-              unreadCount >
-              0
-                ? ` (${unreadCount})`
-                : ""
-            }`,
-          ],
-        ].map(
-          ([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() =>
-                changeTab(
-                  key
-                )
-              }
+        <button
+          type="button"
+          onClick={() =>
+            changeTab("jobs")
+          }
+          style={{
+            padding:
+              "11px 4px",
+            border:
+              "1px solid #d1d5db",
+            borderRadius:
+              "9px",
+            background:
+              activeTab ===
+              "jobs"
+                ? "#111827"
+                : "#ffffff",
+            color:
+              activeTab ===
+              "jobs"
+                ? "#ffffff"
+                : "#111827",
+            fontWeight:
+              "bold",
+            fontSize:
+              "13px",
+          }}
+        >
+          시공 DB
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            changeTab(
+              "register"
+            )
+          }
+          style={{
+            padding:
+              "11px 4px",
+            border:
+              "1px solid #d1d5db",
+            borderRadius:
+              "9px",
+            background:
+              activeTab ===
+              "register"
+                ? "#111827"
+                : "#ffffff",
+            color:
+              activeTab ===
+              "register"
+                ? "#ffffff"
+                : "#111827",
+            fontWeight:
+              "bold",
+            fontSize:
+              "13px",
+          }}
+        >
+          시공 등록
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            changeTab(
+              "usage"
+            )
+          }
+          style={{
+            padding:
+              "11px 4px",
+            border:
+              "1px solid #d1d5db",
+            borderRadius:
+              "9px",
+            background:
+              activeTab ===
+              "usage"
+                ? "#111827"
+                : "#ffffff",
+            color:
+              activeTab ===
+              "usage"
+                ? "#ffffff"
+                : "#111827",
+            fontWeight:
+              "bold",
+            fontSize:
+              "13px",
+          }}
+        >
+          로그 분석
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            changeTab(
+              "leads"
+            )
+          }
+          style={{
+            position:
+              "relative",
+            padding:
+              "11px 4px",
+            border:
+              "1px solid #d1d5db",
+            borderRadius:
+              "9px",
+            background:
+              activeTab ===
+              "leads"
+                ? "#111827"
+                : "#ffffff",
+            color:
+              activeTab ===
+              "leads"
+                ? "#ffffff"
+                : "#111827",
+            fontWeight:
+              "bold",
+            fontSize:
+              "13px",
+          }}
+        >
+          고객 상담
+
+          {unreadCount >
+            0 && (
+            <span
               style={{
-                padding:
-                  "12px 4px",
-                border:
-                  "1px solid #d1d5db",
-                borderRadius:
-                  "10px",
-                background:
-                  activeTab ===
-                  key
-                    ? "#111827"
-                    : "#ffffff",
+                marginLeft:
+                  "4px",
                 color:
                   activeTab ===
-                  key
-                    ? "#ffffff"
-                    : "#111827",
-                fontWeight:
-                  "bold",
-                fontSize:
-                  "13px",
-                cursor:
-                  "pointer",
+                  "leads"
+                    ? "#fde68a"
+                    : "#dc2626",
               }}
             >
-              {label}
-            </button>
-          )
-        )}
+              (
+              {unreadCount}
+              )
+            </span>
+          )}
+        </button>
       </div>
 
       {/* =====================================================
@@ -3655,7 +3689,12 @@ export default function AdminPage() {
               sectionStyle
             }
           >
-            <h2>
+            <h2
+              style={{
+                marginTop:
+                  0,
+              }}
+            >
               시공 DB
             </h2>
 
@@ -3686,7 +3725,7 @@ export default function AdminPage() {
                     searchJobs();
                   }
                 }}
-                placeholder="시공부위 / 메모 검색"
+                placeholder="부위, 세부부위, 메모 검색"
                 style={
                   inputStyle
                 }
@@ -3698,16 +3737,16 @@ export default function AdminPage() {
                   searchJobs
                 }
                 style={{
-                  padding:
-                    "0 18px",
                   border:
                     "none",
                   borderRadius:
                     "10px",
+                  padding:
+                    "0 18px",
                   background:
                     "#111827",
                   color:
-                    "white",
+                    "#ffffff",
                   fontWeight:
                     "bold",
                 }}
@@ -3748,28 +3787,26 @@ export default function AdminPage() {
               )}
               건
             </div>
-
-            {jobsMessage && (
-              <div
-                style={{
-                  whiteSpace:
-                    "pre-wrap",
-                  marginTop:
-                    "12px",
-                  padding:
-                    "12px",
-                  borderRadius:
-                    "10px",
-                  background:
-                    "#f3f4f6",
-                }}
-              >
-                {
-                  jobsMessage
-                }
-              </div>
-            )}
           </section>
+
+          {jobsMessage && (
+            <pre
+              style={{
+                whiteSpace:
+                  "pre-wrap",
+                background:
+                  "#ffffff",
+                padding:
+                  "12px",
+                borderRadius:
+                  "10px",
+                border:
+                  "1px solid #e5e7eb",
+              }}
+            >
+              {jobsMessage}
+            </pre>
+          )}
 
           {jobsLoading ? (
             <section
@@ -3778,6 +3815,17 @@ export default function AdminPage() {
               }
             >
               불러오는 중...
+            </section>
+          ) : jobs.length ===
+            0 ? (
+            <section
+              style={
+                sectionStyle
+              }
+            >
+              등록된 시공
+              데이터가
+              없습니다.
             </section>
           ) : (
             jobs.map(
@@ -3792,18 +3840,14 @@ export default function AdminPage() {
                 >
                   {editingId ===
                   job.id ? (
-                    <div
-                      style={{
-                        display:
-                          "grid",
-                        gap: "8px",
-                      }}
-                    >
+                    <>
                       <input
                         value={
                           editCategory
                         }
-                        onChange={(e) =>
+                        onChange={(
+                          e
+                        ) =>
                           setEditCategory(
                             e
                               .target
@@ -3811,16 +3855,20 @@ export default function AdminPage() {
                           )
                         }
                         placeholder="시공 부위"
-                        style={
-                          inputStyle
-                        }
+                        style={{
+                          ...inputStyle,
+                          marginBottom:
+                            "8px",
+                        }}
                       />
 
                       <input
                         value={
                           editSubCategory
                         }
-                        onChange={(e) =>
+                        onChange={(
+                          e
+                        ) =>
                           setEditSubCategory(
                             e
                               .target
@@ -3828,16 +3876,20 @@ export default function AdminPage() {
                           )
                         }
                         placeholder="세부 부위"
-                        style={
-                          inputStyle
-                        }
+                        style={{
+                          ...inputStyle,
+                          marginBottom:
+                            "8px",
+                        }}
                       />
 
                       <input
                         value={
                           editCost
                         }
-                        onChange={(e) =>
+                        onChange={(
+                          e
+                        ) =>
                           setEditCost(
                             e
                               .target
@@ -3846,135 +3898,34 @@ export default function AdminPage() {
                         }
                         inputMode="numeric"
                         placeholder="실제 시공금액"
-                        style={
-                          inputStyle
-                        }
+                        style={{
+                          ...inputStyle,
+                          marginBottom:
+                            "8px",
+                        }}
                       />
 
                       <textarea
                         value={
                           editMemo
                         }
-                        onChange={(e) =>
+                        onChange={(
+                          e
+                        ) =>
                           setEditMemo(
                             e
                               .target
                               .value
                           )
                         }
-                        rows={4}
                         placeholder="메모"
-                        style={
-                          inputStyle
-                        }
+                        rows={4}
+                        style={{
+                          ...inputStyle,
+                          resize:
+                            "vertical",
+                        }}
                       />
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          saveJobEdit(
-                            job.id
-                          )
-                        }
-                        style={
-                          primaryButtonStyle
-                        }
-                      >
-                        수정 저장
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={
-                          cancelEdit
-                        }
-                        style={
-                          secondaryButtonStyle
-                        }
-                      >
-                        취소
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          justifyContent:
-                            "space-between",
-                          alignItems:
-                            "flex-start",
-                          gap:
-                            "10px",
-                        }}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              fontWeight:
-                                "bold",
-                              fontSize:
-                                "18px",
-                            }}
-                          >
-                            {job.category ||
-                              "-"}
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize:
-                                "14px",
-                              color:
-                                "#6b7280",
-                              marginTop:
-                                "4px",
-                            }}
-                          >
-                            {job.sub_category ||
-                              "-"}
-                          </div>
-                        </div>
-
-                        <strong>
-                          {formatWon(
-                            job.actual_cost
-                          )}
-                        </strong>
-                      </div>
-
-                      {job.memo && (
-                        <div
-                          style={{
-                            whiteSpace:
-                              "pre-wrap",
-                            marginTop:
-                              "10px",
-                            fontSize:
-                              "14px",
-                          }}
-                        >
-                          {
-                            job.memo
-                          }
-                        </div>
-                      )}
-
-                      <div
-                        style={{
-                          color:
-                            "#9ca3af",
-                          fontSize:
-                            "12px",
-                          marginTop:
-                            "8px",
-                        }}
-                      >
-                        {formatDate(
-                          job.created_at
-                        )}
-                      </div>
 
                       <div
                         style={{
@@ -3985,26 +3936,151 @@ export default function AdminPage() {
                           gap:
                             "8px",
                           marginTop:
-                            "12px",
+                            "8px",
                         }}
                       >
                         <button
                           type="button"
                           onClick={() =>
-                            toggleJobDetail(
+                            saveJobEdit(
                               job.id
                             )
+                          }
+                          style={
+                            primaryButtonStyle
+                          }
+                        >
+                          저장
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={
+                            cancelEdit
                           }
                           style={
                             secondaryButtonStyle
                           }
                         >
-                          {openJobId ===
-                          job.id
-                            ? "사진 닫기"
-                            : "사진 보기"}
+                          취소
                         </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display:
+                            "flex",
+                          justifyContent:
+                            "space-between",
+                          gap:
+                            "12px",
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize:
+                                "18px",
+                              fontWeight:
+                                "bold",
+                            }}
+                          >
+                            {job.category ||
+                              "-"}
+                          </div>
 
+                          <div
+                            style={{
+                              color:
+                                "#6b7280",
+                              fontSize:
+                                "14px",
+                              marginTop:
+                                "4px",
+                            }}
+                          >
+                            {job.sub_category ||
+                              "-"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            fontWeight:
+                              "bold",
+                            textAlign:
+                              "right",
+                          }}
+                        >
+                          {formatWon(
+                            job.actual_cost
+                          )}
+                        </div>
+                      </div>
+
+                      {job.memo && (
+                        <div
+                          style={{
+                            marginTop:
+                              "10px",
+                            whiteSpace:
+                              "pre-wrap",
+                            fontSize:
+                              "14px",
+                          }}
+                        >
+                          {job.memo}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          marginTop:
+                            "10px",
+                          fontSize:
+                            "12px",
+                          color:
+                            "#9ca3af",
+                        }}
+                      >
+                        {formatDate(
+                          job.created_at
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleJobDetail(
+                            job.id
+                          )
+                        }
+                        style={{
+                          ...secondaryButtonStyle,
+                          marginTop:
+                            "12px",
+                        }}
+                      >
+                        {openJobId ===
+                        job.id
+                          ? "사진 닫기"
+                          : "📷 사진 / 상세 보기"}
+                      </button>
+
+                      <div
+                        style={{
+                          display:
+                            "grid",
+                          gridTemplateColumns:
+                            "1fr 1fr",
+                          gap:
+                            "8px",
+                          marginTop:
+                            "8px",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() =>
@@ -4018,85 +4094,81 @@ export default function AdminPage() {
                         >
                           수정
                         </button>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteJob(
-                            job
-                          )
-                        }
-                        style={{
-                          ...secondaryButtonStyle,
-                          marginTop:
-                            "8px",
-                          color:
-                            "#b91c1c",
-                        }}
-                      >
-                        시공건 삭제
-                      </button>
-
-                      {openJobId ===
-                        job.id && (
-                        <div
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteJob(
+                              job
+                            )
+                          }
                           style={{
-                            marginTop:
-                              "16px",
+                            ...secondaryButtonStyle,
+                            color:
+                              "#b91c1c",
                           }}
                         >
-                          {jobPhotoLoadingId ===
-                          job.id ? (
+                          삭제
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {openJobId ===
+                    job.id && (
+                    <div
+                      style={{
+                        marginTop:
+                          "14px",
+                        paddingTop:
+                          "14px",
+                        borderTop:
+                          "1px solid #e5e7eb",
+                      }}
+                    >
+                      {jobPhotoLoadingId ===
+                      job.id ? (
+                        <div>
+                          사진정보
+                          불러오는
+                          중...
+                        </div>
+                      ) : (
+                        <>
+                          {(jobPhotos[
+                            job.id
+                          ] ||
+                            [])
+                            .length ===
+                          0 ? (
                             <div>
-                              사진정보
-                              불러오는 중...
+                              연결된
+                              사진이
+                              없습니다.
                             </div>
                           ) : (
-                            <>
-                              {(
-                                jobPhotos[
-                                  job.id
-                                ] ||
-                                []
-                              ).length ===
-                              0 ? (
-                                <div
-                                  style={{
-                                    color:
-                                      "#6b7280",
-                                  }}
-                                >
-                                  연결된
-                                  사진이
-                                  없습니다.
-                                </div>
-                              ) : (
-                                (
-                                  jobPhotos[
-                                    job.id
-                                  ] ||
-                                  []
-                                ).map(
-                                  (
+                            (
+                              jobPhotos[
+                                job.id
+                              ] || []
+                            ).map(
+                              (
+                                photo
+                              ) => (
+                                <PhotoCard
+                                  key={
+                                    photo.id
+                                  }
+                                  photo={
                                     photo
-                                  ) => (
-                                    <PhotoCard
-                                      key={
-                                        photo.id
-                                      }
-                                      photo={
-                                        photo
-                                      }
-                                    />
-                                  )
-                                )
-                              )}
-                            </>
+                                  }
+                                />
+                              )
+                            )
                           )}
-                        </div>
+                        </>
                       )}
-                    </>
+                    </div>
                   )}
                 </section>
               )
@@ -4109,11 +4181,11 @@ export default function AdminPage() {
                 "grid",
               gridTemplateColumns:
                 "1fr auto 1fr",
-              gap: "8px",
               alignItems:
                 "center",
-              marginBottom:
-                "30px",
+              gap: "8px",
+              marginTop:
+                "14px",
             }}
           >
             <button
@@ -4123,8 +4195,7 @@ export default function AdminPage() {
               }
               onClick={() =>
                 loadJobs(
-                  jobPage -
-                    1,
+                  jobPage - 1,
                   jobSearchApplied
                 )
               }
@@ -4144,9 +4215,7 @@ export default function AdminPage() {
               }}
             >
               {jobPage} /{" "}
-              {
-                totalJobPages
-              }
+              {totalJobPages}
             </div>
 
             <button
@@ -4157,8 +4226,7 @@ export default function AdminPage() {
               }
               onClick={() =>
                 loadJobs(
-                  jobPage +
-                    1,
+                  jobPage + 1,
                   jobSearchApplied
                 )
               }
@@ -4184,13 +4252,301 @@ export default function AdminPage() {
               sectionStyle
             }
           >
-            <h2>
-              AI 설정
+            <h2
+              style={{
+                marginTop:
+                  0,
+              }}
+            >
+              시공사례 등록
             </h2>
 
-            <label>
-              유사도 기준
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              시공 부위
             </label>
+
+            <input
+              value={category}
+              onChange={(e) =>
+                setCategory(
+                  e.target.value
+                )
+              }
+              placeholder="예: 문·문틀, 싱크대, 중문"
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "12px",
+              }}
+            />
+
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              실제 시공금액
+            </label>
+
+            <input
+              value={
+                actualCost
+              }
+              onChange={(e) =>
+                setActualCost(
+                  e.target.value
+                )
+              }
+              inputMode="numeric"
+              placeholder="예: 180000"
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "12px",
+              }}
+            />
+
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              사용 자재
+            </label>
+
+            <input
+              value={material}
+              onChange={(e) =>
+                setMaterial(
+                  e.target.value
+                )
+              }
+              placeholder="예: 현대 L&C GS245"
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "12px",
+              }}
+            />
+
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              메모
+            </label>
+
+            <textarea
+              value={memo}
+              onChange={(e) =>
+                setMemo(
+                  e.target.value
+                )
+              }
+              placeholder="특이사항"
+              rows={4}
+              style={{
+                ...inputStyle,
+                resize:
+                  "vertical",
+                marginBottom:
+                  "14px",
+              }}
+            />
+
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              시공 전 사진
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) =>
+                setBeforeImages(
+                  Array.from(
+                    e.target
+                      .files ||
+                      []
+                  )
+                )
+              }
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "8px",
+              }}
+            />
+
+            <div
+              style={{
+                fontSize:
+                  "13px",
+                color:
+                  "#6b7280",
+                marginBottom:
+                  "14px",
+              }}
+            >
+              선택{" "}
+              {
+                beforeImages.length
+              }
+              장
+            </div>
+
+            <label
+              style={{
+                display:
+                  "block",
+                fontWeight:
+                  "bold",
+                marginBottom:
+                  "6px",
+              }}
+            >
+              시공 후 사진
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) =>
+                setAfterImages(
+                  Array.from(
+                    e.target
+                      .files ||
+                      []
+                  )
+                )
+              }
+              style={{
+                ...inputStyle,
+                marginBottom:
+                  "8px",
+              }}
+            />
+
+            <div
+              style={{
+                fontSize:
+                  "13px",
+                color:
+                  "#6b7280",
+                marginBottom:
+                  "14px",
+              }}
+            >
+              선택{" "}
+              {
+                afterImages.length
+              }
+              장
+            </div>
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={
+                handleSave
+              }
+              style={
+                primaryButtonStyle
+              }
+            >
+              {loading
+                ? "AI 분석 + 저장 중..."
+                : "시공사례 저장"}
+            </button>
+          </section>
+
+          {message && (
+            <pre
+              style={{
+                whiteSpace:
+                  "pre-wrap",
+                background:
+                  "#ffffff",
+                border:
+                  "1px solid #e5e7eb",
+                borderRadius:
+                  "12px",
+                padding:
+                  "14px",
+              }}
+            >
+              {message}
+            </pre>
+          )}
+
+          <section
+            style={
+              sectionStyle
+            }
+          >
+            <h3
+              style={{
+                marginTop:
+                  0,
+              }}
+            >
+              AI 검색 설정
+            </h3>
+
+            <div
+              style={{
+                fontSize:
+                  "14px",
+                color:
+                  "#6b7280",
+                marginBottom:
+                  "8px",
+              }}
+            >
+              현재 유사도
+              기준:{" "}
+              {Math.round(
+                Number(
+                  similarityThreshold
+                ) * 100
+              )}
+              %
+            </div>
 
             <input
               type="number"
@@ -4202,36 +4558,15 @@ export default function AdminPage() {
               }
               onChange={(e) =>
                 setSimilarityThreshold(
-                  e.target
-                    .value
+                  e.target.value
                 )
               }
               style={{
                 ...inputStyle,
-                marginTop:
+                marginBottom:
                   "8px",
               }}
             />
-
-            <div
-              style={{
-                fontSize:
-                  "13px",
-                color:
-                  "#6b7280",
-                marginTop:
-                  "6px",
-              }}
-            >
-              현재 기준 약{" "}
-              {Math.round(
-                Number(
-                  similarityThreshold ||
-                    0
-                ) * 100
-              )}
-              %
-            </div>
 
             <button
               type="button"
@@ -4241,15 +4576,13 @@ export default function AdminPage() {
               onClick={
                 saveSimilaritySetting
               }
-              style={{
-                ...primaryButtonStyle,
-                marginTop:
-                  "10px",
-              }}
+              style={
+                secondaryButtonStyle
+              }
             >
               {settingLoading
                 ? "저장 중..."
-                : "AI 설정 저장"}
+                : "유사도 설정 저장"}
             </button>
 
             {settingMessage && (
@@ -4257,217 +4590,11 @@ export default function AdminPage() {
                 style={{
                   marginTop:
                     "10px",
-                }}
-              >
-                {
-                  settingMessage
-                }
-              </div>
-            )}
-          </section>
-
-          <section
-            style={
-              sectionStyle
-            }
-          >
-            <h2>
-              시공사례 등록
-            </h2>
-
-            <div
-              style={{
-                display:
-                  "grid",
-                gap: "12px",
-              }}
-            >
-              <input
-                value={
-                  category
-                }
-                onChange={(e) =>
-                  setCategory(
-                    e.target
-                      .value
-                  )
-                }
-                placeholder="시공 부위 예: 문·문틀 / 싱크대 / 중문"
-                style={
-                  inputStyle
-                }
-              />
-
-              <input
-                value={
-                  actualCost
-                }
-                onChange={(e) =>
-                  setActualCost(
-                    e.target
-                      .value
-                  )
-                }
-                inputMode="numeric"
-                placeholder="실제 시공금액 예: 180000"
-                style={
-                  inputStyle
-                }
-              />
-
-              <input
-                value={
-                  material
-                }
-                onChange={(e) =>
-                  setMaterial(
-                    e.target
-                      .value
-                  )
-                }
-                placeholder="사용 자재 예: 현대 GS245"
-                style={
-                  inputStyle
-                }
-              />
-
-              <textarea
-                value={
-                  memo
-                }
-                onChange={(e) =>
-                  setMemo(
-                    e.target
-                      .value
-                  )
-                }
-                placeholder="메모"
-                rows={3}
-                style={
-                  inputStyle
-                }
-              />
-
-              <div>
-                <strong>
-                  시공 전 사진
-                </strong>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) =>
-                    setBeforeImages(
-                      Array.from(
-                        e.target
-                          .files ||
-                          []
-                      )
-                    )
-                  }
-                  style={{
-                    ...inputStyle,
-                    marginTop:
-                      "8px",
-                  }}
-                />
-
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-                    fontSize:
-                      "13px",
-                    color:
-                      "#6b7280",
-                  }}
-                >
-                  선택{" "}
-                  {
-                    beforeImages.length
-                  }
-                  장
-                </div>
-              </div>
-
-              <div>
-                <strong>
-                  시공 후 사진
-                </strong>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) =>
-                    setAfterImages(
-                      Array.from(
-                        e.target
-                          .files ||
-                          []
-                      )
-                    )
-                  }
-                  style={{
-                    ...inputStyle,
-                    marginTop:
-                      "8px",
-                  }}
-                />
-
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-                    fontSize:
-                      "13px",
-                    color:
-                      "#6b7280",
-                  }}
-                >
-                  선택{" "}
-                  {
-                    afterImages.length
-                  }
-                  장
-                </div>
-              </div>
-
-              <button
-                type="button"
-                disabled={
-                  loading
-                }
-                onClick={
-                  handleSave
-                }
-                style={
-                  primaryButtonStyle
-                }
-              >
-                {loading
-                  ? "AI 분석 + 저장 중..."
-                  : "시공사례 저장"}
-              </button>
-            </div>
-
-            {message && (
-              <div
-                style={{
                   whiteSpace:
                     "pre-wrap",
-                  marginTop:
-                    "14px",
-                  padding:
-                    "12px",
-                  background:
-                    "#f3f4f6",
-                  borderRadius:
-                    "10px",
                 }}
               >
-                {message}
+                {settingMessage}
               </div>
             )}
           </section>
@@ -4497,29 +4624,13 @@ export default function AdminPage() {
                 gap: "10px",
               }}
             >
-              <div>
-                <h2
-                  style={{
-                    margin:
-                      "0 0 5px",
-                  }}
-                >
-                  자동견적 로그
-                  분석
-                </h2>
-
-                <div
-                  style={{
-                    fontSize:
-                      "13px",
-                    color:
-                      "#6b7280",
-                  }}
-                >
-                  estimate_usage
-                  실제 데이터 기준
-                </div>
-              </div>
+              <h2
+                style={{
+                  margin: 0,
+                }}
+              >
+                자동견적 로그 분석
+              </h2>
 
               <button
                 type="button"
@@ -4530,20 +4641,16 @@ export default function AdminPage() {
                   usageLoading
                 }
                 style={{
-                  padding:
-                    "10px 14px",
                   border:
-                    "none",
+                    "1px solid #d1d5db",
                   borderRadius:
                     "9px",
                   background:
-                    "#111827",
-                  color:
                     "#ffffff",
+                  padding:
+                    "9px 12px",
                   fontWeight:
                     "bold",
-                  cursor:
-                    "pointer",
                 }}
               >
                 {usageLoading
@@ -4560,57 +4667,64 @@ export default function AdminPage() {
                   "repeat(2, minmax(0, 1fr))",
                 gap: "10px",
                 marginTop:
-                  "18px",
+                  "16px",
               }}
             >
               {[
                 [
                   "오늘 자동견적",
                   usageStats.today,
+                  "건",
                 ],
 
                 [
                   "최근 7일",
                   usageStats.sevenDays,
+                  "건",
                 ],
 
                 [
                   "전체 자동견적",
                   usageStats.total,
+                  "건",
                 ],
 
                 [
                   "예상 사용자",
                   usageStats.sessions,
+                  "명",
                 ],
 
                 [
-                  "전체 상세상담",
+                  "상세 상담",
                   usageStats.leads,
+                  "건",
                 ],
 
                 [
-                  "자동견적→상담",
+                  "견적→상담 전환",
                   usageStats.converted,
+                  "건",
                 ],
               ].map(
                 ([
                   label,
                   value,
+                  unit,
                 ]) => (
                   <div
                     key={
                       label
                     }
                     style={{
+                      padding:
+                        "14px",
                       border:
                         "1px solid #e5e7eb",
                       borderRadius:
                         "12px",
-                      padding:
-                        "14px",
                       background:
-                        "#fafafa",
+                        "#f9fafb",
                     }}
                   >
                     <div
@@ -4621,19 +4735,17 @@ export default function AdminPage() {
                           "#6b7280",
                       }}
                     >
-                      {
-                        label
-                      }
+                      {label}
                     </div>
 
                     <div
                       style={{
                         fontSize:
-                          "26px",
+                          "25px",
                         fontWeight:
                           "bold",
                         marginTop:
-                          "5px",
+                          "4px",
                       }}
                     >
                       {Number(
@@ -4642,6 +4754,7 @@ export default function AdminPage() {
                       ).toLocaleString(
                         "ko-KR"
                       )}
+                      {unit}
                     </div>
                   </div>
                 )
@@ -4653,11 +4766,11 @@ export default function AdminPage() {
                 marginTop:
                   "10px",
                 padding:
-                  "15px",
+                  "14px",
                 borderRadius:
                   "12px",
                 background:
-                  "#34261f",
+                  "#5d4037",
                 color:
                   "#ffffff",
               }}
@@ -4667,7 +4780,7 @@ export default function AdminPage() {
                   fontSize:
                     "13px",
                   opacity:
-                    0.8,
+                    0.85,
                 }}
               >
                 자동견적 → 상세상담
@@ -4677,61 +4790,30 @@ export default function AdminPage() {
               <div
                 style={{
                   fontSize:
-                    "32px",
+                    "30px",
                   fontWeight:
                     "bold",
                   marginTop:
                     "4px",
                 }}
               >
-                {
-                  usageStats.conversion
-                }
+                {usageStats.conversion}
                 %
-              </div>
-
-              <div
-                style={{
-                  fontSize:
-                    "12px",
-                  opacity:
-                    0.75,
-                  marginTop:
-                    "5px",
-                }}
-              >
-                estimate_usage의
-                converted_to_lead=true
-                기준
               </div>
             </div>
 
             {usageMessage && (
               <div
                 style={{
-                  whiteSpace:
-                    "pre-wrap",
                   marginTop:
                     "12px",
-                  padding:
-                    "12px",
-                  background:
-                    usageMessage.startsWith(
-                      "❌"
-                    )
-                      ? "#fef2f2"
-                      : "#f3f4f6",
-                  borderRadius:
-                    "10px",
+                  whiteSpace:
+                    "pre-wrap",
                   fontSize:
                     "14px",
-                  lineHeight:
-                    1.6,
                 }}
               >
-                {
-                  usageMessage
-                }
+                {usageMessage}
               </div>
             )}
           </section>
@@ -4741,13 +4823,19 @@ export default function AdminPage() {
               sectionStyle
             }
           >
-            <h2>
+            <h3
+              style={{
+                marginTop:
+                  0,
+              }}
+            >
               최근 자동견적
-            </h2>
+            </h3>
 
             {usageLoading ? (
               <div>
-                불러오는 중...
+                로그 불러오는
+                중...
               </div>
             ) : usageRecent.length ===
               0 ? (
@@ -4757,42 +4845,29 @@ export default function AdminPage() {
                     "#6b7280",
                 }}
               >
-                표시할 자동견적
-                로그가 없습니다.
+                자동견적 기록이
+                없습니다.
               </div>
             ) : (
               usageRecent.map(
                 (row) => {
-                  let amount =
-                    "견적금액 미기록";
+                  const paths =
+                    getUsagePhotoPaths(
+                      row
+                    );
 
-                  if (
-                    row.estimate_average !==
-                      null &&
-                    row.estimate_average !==
-                      undefined
-                  ) {
-                    amount =
-                      `평균 ${formatWon(
-                        row.estimate_average
-                      )}`;
-                  } else if (
-                    row.estimate_min !==
-                      null &&
-                    row.estimate_max !==
-                      null &&
-                    row.estimate_min !==
-                      undefined &&
-                    row.estimate_max !==
-                      undefined
-                  ) {
-                    amount =
-                      `${formatWon(
-                        row.estimate_min
-                      )} ~ ${formatWon(
-                        row.estimate_max
-                      )}`;
-                  }
+                  const urls =
+                    usagePhotoUrls[
+                      row.id
+                    ] || [];
+
+                  const isOpen =
+                    openUsagePhotoId ===
+                    row.id;
+
+                  const photoLoading =
+                    usagePhotoLoadingId ===
+                    row.id;
 
                   return (
                     <div
@@ -4800,10 +4875,10 @@ export default function AdminPage() {
                         row.id
                       }
                       style={{
-                        borderTop:
-                          "1px solid #e5e7eb",
                         padding:
-                          "14px 0",
+                          "15px 0",
+                        borderBottom:
+                          "1px solid #e5e7eb",
                       }}
                     >
                       <div
@@ -4812,71 +4887,119 @@ export default function AdminPage() {
                             "flex",
                           justifyContent:
                             "space-between",
+                          alignItems:
+                            "flex-start",
                           gap:
                             "10px",
                         }}
                       >
-                        <strong>
-                          {row.category ||
-                            "미분류"}
-                        </strong>
+                        <div>
+                          <div
+                            style={{
+                              fontWeight:
+                                "bold",
+                              fontSize:
+                                "16px",
+                            }}
+                          >
+                            {row.category ||
+                              "미분류"}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop:
+                                "4px",
+                              fontSize:
+                                "14px",
+                              color:
+                                "#4b5563",
+                            }}
+                          >
+                            {row.sub_category ||
+                              "-"}
+                          </div>
+                        </div>
 
                         <span
                           style={{
                             fontSize:
                               "12px",
                             color:
-                              row.converted_to_lead
-                                ? "#047857"
-                                : "#6b7280",
+                              "#6b7280",
+                            whiteSpace:
+                              "nowrap",
                           }}
                         >
-                          {row.converted_to_lead
-                            ? "상담 전환"
-                            : "자동견적"}
+                          자동견적
                         </span>
                       </div>
 
                       <div
                         style={{
+                          marginTop:
+                            "8px",
                           fontSize:
                             "14px",
-                          color:
-                            "#4b5563",
-                          marginTop:
-                            "5px",
-                        }}
-                      >
-                        세부:{" "}
-                        {row.sub_category ||
-                          "-"}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize:
-                            "14px",
-                          marginTop:
-                            "5px",
+                          lineHeight:
+                            1.6,
                         }}
                       >
                         사진{" "}
-                        {Number(
-                          row.photo_count ||
-                            0
+                        {row.photo_count ||
+                          paths.length ||
+                          0}
+                        장
+
+                        {row.estimate_average !==
+                          null &&
+                          row.estimate_average !==
+                            undefined && (
+                          <>
+                            {" "}
+                            · 평균{" "}
+                            <b>
+                              {formatWon(
+                                row.estimate_average
+                              )}
+                            </b>
+                          </>
                         )}
-                        장 ·{" "}
-                        {amount}
                       </div>
+
+                      {(row.estimate_min !==
+                        null ||
+                        row.estimate_max !==
+                          null) && (
+                        <div
+                          style={{
+                            marginTop:
+                              "3px",
+                            fontSize:
+                              "13px",
+                            color:
+                              "#6b7280",
+                          }}
+                        >
+                          예상 범위:{" "}
+                          {formatWon(
+                            row.estimate_min
+                          )}{" "}
+                          ~{" "}
+                          {formatWon(
+                            row.estimate_max
+                          )}
+                        </div>
+                      )}
 
                       <div
                         style={{
+                          marginTop:
+                            "7px",
                           fontSize:
                             "12px",
                           color:
                             "#9ca3af",
-                          marginTop:
-                            "5px",
                           wordBreak:
                             "break-all",
                         }}
@@ -4885,10 +5008,145 @@ export default function AdminPage() {
                           row.created_at
                         )}
                         <br />
-                        session:{" "}
+                        세션:{" "}
                         {row.session_id ||
                           "-"}
                       </div>
+
+                      {/* =====================================
+                          자동견적 사진 보기 핵심 부분
+                      ===================================== */}
+
+                      {paths.length >
+                      0 ? (
+                        <button
+                          type="button"
+                          disabled={
+                            photoLoading
+                          }
+                          onClick={() =>
+                            toggleUsagePhotos(
+                              row
+                            )
+                          }
+                          style={{
+                            ...secondaryButtonStyle,
+                            marginTop:
+                              "10px",
+                            background:
+                              isOpen
+                                ? "#f3f4f6"
+                                : "#ffffff",
+                          }}
+                        >
+                          {photoLoading
+                            ? "📷 사진 불러오는 중..."
+                            : isOpen
+                            ? "사진 닫기"
+                            : `📷 사진 보기 (${paths.length})`}
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            marginTop:
+                              "9px",
+                            fontSize:
+                              "12px",
+                            color:
+                              "#9ca3af",
+                          }}
+                        >
+                          사진 저장 없음
+                        </div>
+                      )}
+
+                      {isOpen &&
+                        urls.length >
+                          0 && (
+                          <div
+                            style={{
+                              display:
+                                "grid",
+                              gridTemplateColumns:
+                                urls.length ===
+                                1
+                                  ? "1fr"
+                                  : "repeat(2, minmax(0, 1fr))",
+                              gap:
+                                "8px",
+                              marginTop:
+                                "10px",
+                            }}
+                          >
+                            {urls.map(
+                              (
+                                item,
+                                index
+                              ) => (
+                                <img
+                                  key={`${item.path}-${index}`}
+                                  src={
+                                    item.url
+                                  }
+                                  alt={`자동견적 사진 ${
+                                    index +
+                                    1
+                                  }`}
+                                  loading="lazy"
+                                  decoding="async"
+                                  onClick={() =>
+                                    setPreviewPhoto(
+                                      item.url
+                                    )
+                                  }
+                                  style={{
+                                    width:
+                                      "100%",
+                                    height:
+                                      urls.length ===
+                                      1
+                                        ? "320px"
+                                        : "180px",
+                                    objectFit:
+                                      "contain",
+                                    background:
+                                      "#111827",
+                                    borderRadius:
+                                      "10px",
+                                    cursor:
+                                      "pointer",
+                                  }}
+                                />
+                              )
+                            )}
+                          </div>
+                        )}
+
+                      {row.converted_to_lead ===
+                        true && (
+                        <div
+                          style={{
+                            display:
+                              "inline-block",
+                            marginTop:
+                              "9px",
+                            padding:
+                              "4px 8px",
+                            borderRadius:
+                              "999px",
+                            background:
+                              "#dcfce7",
+                            color:
+                              "#166534",
+                            fontSize:
+                              "12px",
+                            fontWeight:
+                              "bold",
+                          }}
+                        >
+                          상세상담 전환
+                        </div>
+                      )}
                     </div>
                   );
                 }
@@ -4905,60 +5163,6 @@ export default function AdminPage() {
       {activeTab ===
         "leads" && (
         <>
-          {newLeadAlert && (
-            <section
-              style={{
-                ...sectionStyle,
-                background:
-                  "#fff7ed",
-                border:
-                  "2px solid #fb923c",
-              }}
-            >
-              <strong>
-                🔔 신규 상담이
-                들어왔습니다.
-              </strong>
-
-              <div
-                style={{
-                  marginTop:
-                    "8px",
-                }}
-              >
-                {newLeadAlert.customer_name ||
-                  "고객"}{" "}
-                ·{" "}
-                {newLeadAlert.phone ||
-                  "-"}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNewLeadAlert(
-                    null
-                  );
-
-                  document.title =
-                    "기분좋은공간 관리자";
-
-                  loadLeads(
-                    1,
-                    leadFilter
-                  );
-                }}
-                style={{
-                  ...primaryButtonStyle,
-                  marginTop:
-                    "10px",
-                }}
-              >
-                확인
-              </button>
-            </section>
-          )}
-
           <section
             style={
               sectionStyle
@@ -4972,33 +5176,17 @@ export default function AdminPage() {
                   "space-between",
                 alignItems:
                   "center",
-                gap: "10px",
+                gap:
+                  "10px",
               }}
             >
-              <div>
-                <h2
-                  style={{
-                    margin: 0,
-                  }}
-                >
-                  고객 상담
-                </h2>
-
-                <div
-                  style={{
-                    fontSize:
-                      "13px",
-                    color:
-                      "#6b7280",
-                    marginTop:
-                      "5px",
-                  }}
-                >
-                  미확인{" "}
-                  {unreadCount}
-                  건
-                </div>
-              </div>
+              <h2
+                style={{
+                  margin: 0,
+                }}
+              >
+                고객 상담
+              </h2>
 
               <button
                 type="button"
@@ -5006,23 +5194,25 @@ export default function AdminPage() {
                   enableNotifications
                 }
                 style={{
-                  padding:
-                    "9px 12px",
                   border:
                     "1px solid #d1d5db",
-                  borderRadius:
-                    "9px",
                   background:
                     notificationEnabled
-                      ? "#ecfdf5"
+                      ? "#dcfce7"
                       : "#ffffff",
+                  borderRadius:
+                    "9px",
+                  padding:
+                    "8px 10px",
+                  fontSize:
+                    "12px",
                   fontWeight:
                     "bold",
                 }}
               >
                 {notificationEnabled
                   ? "🔔 알림 ON"
-                  : "알림 켜기"}
+                  : "🔕 알림 켜기"}
               </button>
             </div>
 
@@ -5030,12 +5220,19 @@ export default function AdminPage() {
               value={
                 leadFilter
               }
-              onChange={(e) =>
-                changeLeadFilter(
-                  e.target
-                    .value
-                )
-              }
+              onChange={(e) => {
+                const next =
+                  e.target.value;
+
+                setLeadFilter(
+                  next
+                );
+
+                loadLeads(
+                  1,
+                  next
+                );
+              }}
               style={{
                 ...inputStyle,
                 marginTop:
@@ -5043,7 +5240,7 @@ export default function AdminPage() {
               }}
             >
               <option value="all">
-                전체
+                전체 상담
               </option>
 
               {STATUS_OPTIONS.map(
@@ -5056,9 +5253,7 @@ export default function AdminPage() {
                       status
                     }
                   >
-                    {
-                      status
-                    }
+                    {status}
                   </option>
                 )
               )}
@@ -5068,40 +5263,32 @@ export default function AdminPage() {
               style={{
                 marginTop:
                   "10px",
-                color:
-                  "#6b7280",
                 fontSize:
                   "14px",
+                color:
+                  "#6b7280",
               }}
             >
               총{" "}
               {leadTotal.toLocaleString(
                 "ko-KR"
               )}
-              건
+              건 · 미확인{" "}
+              {unreadCount}건
             </div>
-
-            {leadsMessage && (
-              <div
-                style={{
-                  whiteSpace:
-                    "pre-wrap",
-                  marginTop:
-                    "10px",
-                  padding:
-                    "12px",
-                  background:
-                    "#f3f4f6",
-                  borderRadius:
-                    "10px",
-                }}
-              >
-                {
-                  leadsMessage
-                }
-              </div>
-            )}
           </section>
+
+          {leadsMessage && (
+            <div
+              style={{
+                ...sectionStyle,
+                whiteSpace:
+                  "pre-wrap",
+              }}
+            >
+              {leadsMessage}
+            </div>
+          )}
 
           {leadsLoading ? (
             <section
@@ -5109,7 +5296,18 @@ export default function AdminPage() {
                 sectionStyle
               }
             >
+              상담 목록
               불러오는 중...
+            </section>
+          ) : leads.length ===
+            0 ? (
+            <section
+              style={
+                sectionStyle
+              }
+            >
+              상담 내역이
+              없습니다.
             </section>
           ) : (
             leads.map(
@@ -5118,6 +5316,11 @@ export default function AdminPage() {
                   getLeadPhotoPaths(
                     lead
                   );
+
+                const photos =
+                  leadPhotoUrls[
+                    lead.id
+                  ] || [];
 
                 return (
                   <section
@@ -5129,448 +5332,341 @@ export default function AdminPage() {
                       border:
                         lead.is_read ===
                         false
-                          ? "2px solid #fb923c"
-                          : sectionStyle.border,
+                          ? "2px solid #dc2626"
+                          : "1px solid #e5e7eb",
                     }}
                   >
                     <div
-                      onClick={() =>
-                        toggleLeadDetail(
-                          lead
-                        )
-                      }
                       style={{
-                        cursor:
-                          "pointer",
+                        display:
+                          "flex",
+                        justifyContent:
+                          "space-between",
+                        gap:
+                          "10px",
                       }}
                     >
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          justifyContent:
-                            "space-between",
-                          gap:
-                            "10px",
-                        }}
-                      >
-                        <div>
-                          <strong
-                            style={{
-                              fontSize:
-                                "17px",
-                            }}
-                          >
-                            {lead.customer_name ||
-                              "이름 미입력"}
-                          </strong>
-
-                          {lead.is_read ===
-                            false && (
-                            <span
-                              style={{
-                                marginLeft:
-                                  "7px",
-                                color:
-                                  "#ea580c",
-                                fontSize:
-                                  "12px",
-                                fontWeight:
-                                  "bold",
-                              }}
-                            >
-                              NEW
-                            </span>
-                          )}
-                        </div>
-
-                        <span
+                      <div>
+                        <div
                           style={{
                             fontSize:
-                              "13px",
-                            color:
-                              "#6b7280",
+                              "18px",
+                            fontWeight:
+                              "bold",
                           }}
                         >
-                          {lead.status ||
-                            "신규문의"}
-                        </span>
+                          {lead.is_read ===
+                            false &&
+                            "🔴 "}
+                          {lead.customer_name ||
+                            "고객"}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop:
+                              "4px",
+                            fontSize:
+                              "14px",
+                            color:
+                              "#4b5563",
+                          }}
+                        >
+                          {lead.phone ||
+                            "-"}
+                        </div>
                       </div>
 
-                      <div
+                      <select
+                        value={
+                          lead.status ||
+                          "신규문의"
+                        }
+                        onChange={(
+                          e
+                        ) =>
+                          updateLeadStatus(
+                            lead.id,
+                            e
+                              .target
+                              .value
+                          )
+                        }
                         style={{
-                          marginTop:
+                          border:
+                            "1px solid #d1d5db",
+                          borderRadius:
+                            "8px",
+                          padding:
                             "7px",
-                          fontSize:
-                            "14px",
+                          background:
+                            "#ffffff",
                         }}
                       >
-                        {lead.phone ||
-                          "-"}
-                      </div>
+                        {STATUS_OPTIONS.map(
+                          (
+                            status
+                          ) => (
+                            <option
+                              key={
+                                status
+                              }
+                              value={
+                                status
+                              }
+                            >
+                              {
+                                status
+                              }
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
 
-                      <div
-                        style={{
-                          marginTop:
-                            "4px",
-                          color:
-                            "#6b7280",
-                          fontSize:
-                            "13px",
-                        }}
-                      >
+                    <div
+                      style={{
+                        marginTop:
+                          "10px",
+                        fontSize:
+                          "14px",
+                        lineHeight:
+                          1.6,
+                      }}
+                    >
+                      <div>
+                        <b>
+                          지역:
+                        </b>{" "}
                         {lead.region ||
                           lead.address ||
                           "-"}
                       </div>
 
-                      <div
-                        style={{
-                          marginTop:
-                            "5px",
-                          color:
-                            "#9ca3af",
-                          fontSize:
-                            "12px",
-                        }}
-                      >
+                      <div>
+                        <b>
+                          희망일:
+                        </b>{" "}
+                        {lead.preferred_date ||
+                          "-"}
+                      </div>
+
+                      <div>
+                        <b>
+                          AI 평균:
+                        </b>{" "}
+                        {formatWon(
+                          lead.estimate_average
+                        )}
+                      </div>
+
+                      <div>
+                        <b>
+                          접수:
+                        </b>{" "}
                         {formatDate(
                           lead.created_at
                         )}
                       </div>
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleLeadDetail(
+                          lead
+                        )
+                      }
+                      style={{
+                        ...secondaryButtonStyle,
+                        marginTop:
+                          "12px",
+                      }}
+                    >
+                      {openLeadId ===
+                      lead.id
+                        ? "상세 닫기"
+                        : "상세 보기"}
+                    </button>
+
                     {openLeadId ===
                       lead.id && (
                       <div
                         style={{
                           marginTop:
-                            "16px",
+                            "14px",
+                          paddingTop:
+                            "14px",
                           borderTop:
                             "1px solid #e5e7eb",
-                          paddingTop:
-                            "16px",
                         }}
                       >
-                        <label>
-                          상담 상태
+                        <div
+                          style={{
+                            whiteSpace:
+                              "pre-wrap",
+                            fontSize:
+                              "14px",
+                            lineHeight:
+                              1.7,
+                          }}
+                        >
+                          <b>
+                            고객 요청
+                          </b>
+                          <br />
+                          {lead.request_text ||
+                            "-"}
+                        </div>
+
+                        {photoPaths.length >
+                        0 ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                leadPhotoLoadingId ===
+                                lead.id
+                              }
+                              onClick={() =>
+                                loadLeadPhotos(
+                                  lead
+                                )
+                              }
+                              style={{
+                                ...secondaryButtonStyle,
+                                marginTop:
+                                  "12px",
+                              }}
+                            >
+                              {leadPhotoLoadingId ===
+                              lead.id
+                                ? "사진 불러오는 중..."
+                                : `📷 고객 사진 보기 (${photoPaths.length})`}
+                            </button>
+
+                            {photos.length >
+                              0 && (
+                              <div
+                                style={{
+                                  display:
+                                    "grid",
+                                  gridTemplateColumns:
+                                    photos.length ===
+                                    1
+                                      ? "1fr"
+                                      : "repeat(2, minmax(0, 1fr))",
+                                  gap:
+                                    "8px",
+                                  marginTop:
+                                    "10px",
+                                }}
+                              >
+                                {photos.map(
+                                  (
+                                    item,
+                                    index
+                                  ) => (
+                                    <img
+                                      key={`${item.path}-${index}`}
+                                      src={
+                                        item.url
+                                      }
+                                      alt=""
+                                      loading="lazy"
+                                      decoding="async"
+                                      onClick={() =>
+                                        setPreviewPhoto(
+                                          item.url
+                                        )
+                                      }
+                                      style={{
+                                        width:
+                                          "100%",
+                                        height:
+                                          photos.length ===
+                                          1
+                                            ? "320px"
+                                            : "180px",
+                                        objectFit:
+                                          "contain",
+                                        background:
+                                          "#111827",
+                                        borderRadius:
+                                          "10px",
+                                        cursor:
+                                          "pointer",
+                                      }}
+                                    />
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div
+                            style={{
+                              marginTop:
+                                "12px",
+                              fontSize:
+                                "13px",
+                              color:
+                                "#9ca3af",
+                            }}
+                          >
+                            저장된 고객
+                            사진 없음
+                          </div>
+                        )}
+
+                        <label
+                          style={{
+                            display:
+                              "block",
+                            marginTop:
+                              "16px",
+                            fontWeight:
+                              "bold",
+                            marginBottom:
+                              "6px",
+                          }}
+                        >
+                          관리자 메모
                         </label>
 
-                        <select
-                          value={
-                            lead.status ||
-                            "신규문의"
+                        <textarea
+                          defaultValue={
+                            lead.admin_memo ||
+                            ""
                           }
-                          onChange={(e) =>
-                            updateLeadStatus(
+                          onBlur={(e) =>
+                            saveLeadMemo(
                               lead.id,
                               e
                                 .target
                                 .value
                             )
                           }
+                          rows={4}
                           style={{
                             ...inputStyle,
+                            resize:
+                              "vertical",
+                          }}
+                        />
+
+                        <div
+                          style={{
                             marginTop:
-                              "6px",
-                            marginBottom:
-                              "12px",
-                          }}
-                        >
-                          {STATUS_OPTIONS.map(
-                            (
-                              status
-                            ) => (
-                              <option
-                                key={
-                                  status
-                                }
-                                value={
-                                  status
-                                }
-                              >
-                                {
-                                  status
-                                }
-                              </option>
-                            )
-                          )}
-                        </select>
-
-                        {lead.message && (
-                          <div
-                            style={{
-                              marginBottom:
-                                "12px",
-                            }}
-                          >
-                            <strong>
-                              고객 요청사항
-                            </strong>
-
-                            <div
-                              style={{
-                                whiteSpace:
-                                  "pre-wrap",
-                                marginTop:
-                                  "5px",
-                                padding:
-                                  "10px",
-                                background:
-                                  "#f9fafb",
-                                borderRadius:
-                                  "8px",
-                              }}
-                            >
-                              {
-                                lead.message
-                              }
-                            </div>
-                          </div>
-                        )}
-
-                        {(lead.category ||
-                          lead.sub_category) && (
-                          <div
-                            style={{
-                              marginBottom:
-                                "12px",
-                            }}
-                          >
-                            <strong>
-                              AI 분석
-                            </strong>
-
-                            <div
-                              style={{
-                                marginTop:
-                                  "5px",
-                              }}
-                            >
-                              {lead.category ||
-                                "-"}{" "}
-                              /{" "}
-                              {lead.sub_category ||
-                                "-"}
-                            </div>
-                          </div>
-                        )}
-
-                        {(lead.estimate_min !==
-                          null ||
-                          lead.estimate_max !==
-                            null ||
-                          lead.estimate_average !==
-                            null) && (
-                          <div
-                            style={{
-                              padding:
-                                "12px",
-                              background:
-                                "#f9fafb",
-                              borderRadius:
-                                "10px",
-                              marginBottom:
-                                "12px",
-                            }}
-                          >
-                            <strong>
-                              AI 자동견적
-                            </strong>
-
-                            <div
-                              style={{
-                                marginTop:
-                                  "7px",
-                              }}
-                            >
-                              {lead.estimate_min !==
-                                null &&
-                              lead.estimate_max !==
-                                null
-                                ? `${formatWon(
-                                    lead.estimate_min
-                                  )} ~ ${formatWon(
-                                    lead.estimate_max
-                                  )}`
-                                : formatWon(
-                                    lead.estimate_average
-                                  )}
-                            </div>
-                          </div>
-                        )}
-
-                        {photoPaths.length >
-                          0 && (
-                          <div
-                            style={{
-                              marginBottom:
-                                "16px",
-                            }}
-                          >
-                            <strong>
-                              고객사진{" "}
-                              {
-                                photoPaths.length
-                              }
-                              장
-                            </strong>
-
-                            <div
-                              style={{
-                                display:
-                                  "grid",
-                                gridTemplateColumns:
-                                  "repeat(2, minmax(0, 1fr))",
-                                gap:
-                                  "8px",
-                                marginTop:
-                                  "8px",
-                              }}
-                            >
-                              {photoPaths.map(
-                                (
-                                  path,
-                                  index
-                                ) => {
-                                  const key =
-                                    `${lead.id}:${path}`;
-
-                                  const url =
-                                    leadPhotoUrls[
-                                      key
-                                    ];
-
-                                  return (
-                                    <div
-                                      key={
-                                        key
-                                      }
-                                    >
-                                      {url ? (
-                                        <img
-                                          src={
-                                            url
-                                          }
-                                          alt={`고객사진 ${
-                                            index +
-                                            1
-                                          }`}
-                                          loading="lazy"
-                                          onClick={() =>
-                                            setPreviewPhoto(
-                                              url
-                                            )
-                                          }
-                                          style={{
-                                            width:
-                                              "100%",
-                                            height:
-                                              "140px",
-                                            objectFit:
-                                              "cover",
-                                            borderRadius:
-                                              "10px",
-                                            cursor:
-                                              "pointer",
-                                          }}
-                                        />
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            openLeadPhoto(
-                                              lead,
-                                              path
-                                            )
-                                          }
-                                          style={{
-                                            ...secondaryButtonStyle,
-                                            minHeight:
-                                              "100px",
-                                          }}
-                                        >
-                                          {leadPhotoLoadingId ===
-                                          key
-                                            ? "불러오는 중..."
-                                            : `사진 ${
-                                                index +
-                                                1
-                                              } 보기`}
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <div
-                          style={{
-                            marginBottom:
                               "18px",
-                          }}
-                        >
-                          <strong>
-                            관리자 메모
-                          </strong>
-
-                          <textarea
-                            value={
-                              lead.admin_memo ||
-                              ""
-                            }
-                            onChange={(e) =>
-                              updateLeadLocal(
-                                lead.id,
-                                "admin_memo",
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                            rows={4}
-                            placeholder="상담 내용, 방문 일정 등"
-                            style={{
-                              ...inputStyle,
-                              marginTop:
-                                "7px",
-                            }}
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              saveLeadMemo(
-                                lead.id,
-                                lead.admin_memo ||
-                                  ""
-                              )
-                            }
-                            style={{
-                              ...secondaryButtonStyle,
-                              marginTop:
-                                "7px",
-                            }}
-                          >
-                            메모 저장
-                          </button>
-                        </div>
-
-                        {/* 최종 견적 */}
-
-                        <div
-                          style={{
                             padding:
-                              "15px",
-                            background:
-                              "#f7f3ed",
+                              "14px",
                             borderRadius:
                               "12px",
+                            background:
+                              "#faf7f2",
                             border:
-                              "1px solid #d6c5b6",
+                              "1px solid #e7dfd6",
                           }}
                         >
                           <h3
@@ -5578,55 +5674,91 @@ export default function AdminPage() {
                               margin:
                                 "0 0 12px",
                               color:
-                                "#34261f",
+                                "#5d4037",
                             }}
                           >
                             최종 견적
                           </h3>
 
+                          <label
+                            style={{
+                              display:
+                                "block",
+                              fontWeight:
+                                "bold",
+                              marginBottom:
+                                "6px",
+                            }}
+                          >
+                            최종
+                            견적금액
+                          </label>
+
                           <input
                             value={
-                              lead.final_price !==
-                                null &&
-                              lead.final_price !==
-                                undefined
-                                ? Number(
-                                    lead.final_price
-                                  ).toLocaleString(
-                                    "ko-KR"
-                                  )
-                                : ""
+                              lead.final_price ||
+                              ""
                             }
-                            onChange={(e) => {
-                              const raw =
-                                e.target.value.replace(
-                                  /[^0-9]/g,
-                                  ""
-                                );
-
+                            onChange={(
+                              e
+                            ) =>
                               updateLeadLocal(
                                 lead.id,
                                 "final_price",
-                                raw
-                                  ? Number(
-                                      raw
-                                    )
-                                  : ""
-                              );
-                            }}
-                            inputMode="numeric"
-                            placeholder="최종 견적금액"
-                            style={
-                              inputStyle
+                                e
+                                  .target
+                                  .value
+                              )
                             }
+                            inputMode="numeric"
+                            placeholder="예: 550000"
+                            style={{
+                              ...inputStyle,
+                              marginBottom:
+                                "10px",
+                            }}
                           />
+
+                          {lead.final_price && (
+                            <div
+                              style={{
+                                marginTop:
+                                  "-4px",
+                                marginBottom:
+                                  "12px",
+                                fontWeight:
+                                  "bold",
+                                color:
+                                  "#5d4037",
+                              }}
+                            >
+                              {formatWon(
+                                lead.final_price
+                              )}
+                            </div>
+                          )}
+
+                          <label
+                            style={{
+                              display:
+                                "block",
+                              fontWeight:
+                                "bold",
+                              marginBottom:
+                                "6px",
+                            }}
+                          >
+                            시공 내용
+                          </label>
 
                           <textarea
                             value={
                               lead.quote_work_details ||
                               ""
                             }
-                            onChange={(e) =>
+                            onChange={(
+                              e
+                            ) =>
                               updateLeadLocal(
                                 lead.id,
                                 "quote_work_details",
@@ -5636,20 +5768,37 @@ export default function AdminPage() {
                               )
                             }
                             rows={4}
-                            placeholder="시공 내용 예: 방문 3개 + 문틀 3세트"
+                            placeholder="예: 방문 및 문틀 인테리어필름 시공"
                             style={{
                               ...inputStyle,
-                              marginTop:
-                                "8px",
+                              resize:
+                                "vertical",
+                              marginBottom:
+                                "10px",
                             }}
                           />
+
+                          <label
+                            style={{
+                              display:
+                                "block",
+                              fontWeight:
+                                "bold",
+                              marginBottom:
+                                "6px",
+                            }}
+                          >
+                            사용 자재
+                          </label>
 
                           <input
                             value={
                               lead.quote_material ||
                               ""
                             }
-                            onChange={(e) =>
+                            onChange={(
+                              e
+                            ) =>
                               updateLeadLocal(
                                 lead.id,
                                 "quote_material",
@@ -5658,20 +5807,35 @@ export default function AdminPage() {
                                   .value
                               )
                             }
-                            placeholder="사용 자재 예: 현대 L&C GS245"
+                            placeholder="예: 현대 L&C 인테리어필름"
                             style={{
                               ...inputStyle,
-                              marginTop:
-                                "8px",
+                              marginBottom:
+                                "10px",
                             }}
                           />
+
+                          <label
+                            style={{
+                              display:
+                                "block",
+                              fontWeight:
+                                "bold",
+                              marginBottom:
+                                "6px",
+                            }}
+                          >
+                            안내사항
+                          </label>
 
                           <textarea
                             value={
                               lead.quote_note ||
                               ""
                             }
-                            onChange={(e) =>
+                            onChange={(
+                              e
+                            ) =>
                               updateLeadLocal(
                                 lead.id,
                                 "quote_note",
@@ -5681,11 +5845,11 @@ export default function AdminPage() {
                               )
                             }
                             rows={3}
-                            placeholder="고객 안내사항"
+                            placeholder="현장 상태에 따라 추가 비용이 발생할 수 있습니다."
                             style={{
                               ...inputStyle,
-                              marginTop:
-                                "8px",
+                              resize:
+                                "vertical",
                             }}
                           />
 
@@ -5699,9 +5863,9 @@ export default function AdminPage() {
                             style={{
                               ...primaryButtonStyle,
                               background:
-                                "#6b4f3b",
+                                "#5d4037",
                               marginTop:
-                                "10px",
+                                "12px",
                             }}
                           >
                             최종 견적 저장
@@ -5710,83 +5874,40 @@ export default function AdminPage() {
                           {lead.quote_created_at && (
                             <div
                               style={{
+                                marginTop:
+                                  "8px",
                                 fontSize:
                                   "12px",
                                 color:
-                                  "#6b7280",
-                                marginTop:
-                                  "8px",
+                                  "#78716c",
                               }}
                             >
-                              최종 저장:{" "}
+                              저장:{" "}
                               {formatDate(
                                 lead.quote_created_at
                               )}
                             </div>
                           )}
 
-                          <div
+                          <button
+                            type="button"
+                            onClick={() =>
+                              shareQuote(
+                                lead
+                              )
+                            }
                             style={{
-                              display:
-                                "grid",
-                              gridTemplateColumns:
-                                "1fr 1fr",
-                              gap:
-                                "8px",
-                              marginTop:
-                                "12px",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadQuoteImage(
-                                  lead
-                                )
-                              }
-                              style={{
-                                ...secondaryButtonStyle,
-                                background:
-                                  "#ffffff",
-                              }}
-                            >
-                              견적 이미지 만들기
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                shareQuoteImage(
-                                  lead
-                                )
-                              }
-                              style={{
-                                ...primaryButtonStyle,
-                                background:
-                                  "#6b4f3b",
-                              }}
-                            >
-                              고객에게 전송
-                            </button>
-                          </div>
-
-                          <div
-                            style={{
+                              ...secondaryButtonStyle,
                               marginTop:
                                 "8px",
-                              fontSize:
-                                "12px",
-                              lineHeight:
-                                1.5,
+                              borderColor:
+                                "#5d4037",
                               color:
-                                "#6b7280",
+                                "#5d4037",
                             }}
                           >
-                            견적 이미지를 먼저
-                            확인한 뒤 고객에게
-                            전송하세요. 전송 버튼은
-                            휴대폰 공유창을 엽니다.
-                          </div>
+                            📤 견적 이미지 만들기 / 고객에게 전송
+                          </button>
                         </div>
                       </div>
                     )}
@@ -5802,11 +5923,9 @@ export default function AdminPage() {
                 "grid",
               gridTemplateColumns:
                 "1fr auto 1fr",
-              gap: "8px",
               alignItems:
                 "center",
-              marginBottom:
-                "30px",
+              gap: "8px",
             }}
           >
             <button
@@ -5816,8 +5935,7 @@ export default function AdminPage() {
               }
               onClick={() =>
                 loadLeads(
-                  leadPage -
-                    1,
+                  leadPage - 1,
                   leadFilter
                 )
               }
@@ -5837,9 +5955,7 @@ export default function AdminPage() {
               }}
             >
               {leadPage} /{" "}
-              {
-                totalLeadPages
-              }
+              {totalLeadPages}
             </div>
 
             <button
@@ -5850,8 +5966,7 @@ export default function AdminPage() {
               }
               onClick={() =>
                 loadLeads(
-                  leadPage +
-                    1,
+                  leadPage + 1,
                   leadFilter
                 )
               }
@@ -5865,7 +5980,9 @@ export default function AdminPage() {
         </>
       )}
 
-      {/* 사진 크게보기 */}
+      {/* =====================================================
+          사진 크게 보기
+      ===================================================== */}
 
       {previewPhoto && (
         <div
@@ -5878,10 +5995,10 @@ export default function AdminPage() {
             position:
               "fixed",
             inset: 0,
-            zIndex:
-              9999,
             background:
-              "rgba(0,0,0,0.88)",
+              "rgba(0,0,0,.88)",
+            zIndex:
+              10000,
             display:
               "flex",
             alignItems:
@@ -5889,76 +6006,62 @@ export default function AdminPage() {
             justifyContent:
               "center",
             padding:
-              "15px",
+              "16px",
           }}
         >
-          <div
+          <button
+            type="button"
+            onClick={() =>
+              setPreviewPhoto(
+                null
+              )
+            }
             style={{
               position:
-                "relative",
+                "absolute",
+              top: "18px",
+              right:
+                "18px",
+              border:
+                "none",
+              borderRadius:
+                "999px",
+              width:
+                "44px",
+              height:
+                "44px",
+              background:
+                "#ffffff",
+              fontSize:
+                "22px",
+              fontWeight:
+                "bold",
+              cursor:
+                "pointer",
+            }}
+          >
+            ×
+          </button>
+
+          <img
+            src={
+              previewPhoto
+            }
+            alt=""
+            onClick={(e) =>
+              e.stopPropagation()
+            }
+            style={{
               maxWidth:
                 "100%",
               maxHeight:
-                "100%",
+                "90vh",
+              objectFit:
+                "contain",
+              borderRadius:
+                "10px",
             }}
-          >
-            <button
-              type="button"
-              onClick={() =>
-                setPreviewPhoto(
-                  null
-                )
-              }
-              style={{
-                position:
-                  "absolute",
-                right:
-                  "5px",
-                top:
-                  "5px",
-                zIndex:
-                  2,
-                border:
-                  "none",
-                borderRadius:
-                  "999px",
-                width:
-                  "42px",
-                height:
-                  "42px",
-                background:
-                  "rgba(0,0,0,0.65)",
-                color:
-                  "#ffffff",
-                fontSize:
-                  "22px",
-                cursor:
-                  "pointer",
-              }}
-            >
-              ×
-            </button>
-
-            <img
-              src={
-                previewPhoto
-              }
-              alt="확대사진"
-              onClick={(e) =>
-                e.stopPropagation()
-              }
-              style={{
-                maxWidth:
-                  "100%",
-                maxHeight:
-                  "90vh",
-                objectFit:
-                  "contain",
-                borderRadius:
-                  "10px",
-              }}
-            />
-          </div>
+          />
         </div>
       )}
     </main>
