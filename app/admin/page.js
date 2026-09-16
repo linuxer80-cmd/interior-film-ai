@@ -1,283 +1,494 @@
 "use client";
 
+
 import { useEffect, useRef, useState } from "react";
+
 import { supabase } from "../../lib/supabase";
 
+
 const JOB_PAGE_SIZE = 10;
+
 const LEAD_PAGE_SIZE = 20;
+
 const SIGNED_URL_SECONDS = 60 * 30;
+
 
 const PROJECT_ID = "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
 
+
 const STATUS_OPTIONS = [
+
 "신규문의",
+
 "상담중",
+
 "방문견적",
+
 "계약완료",
+
 "미계약",
+
 ];
 
+
 export default function AdminPage() {
+
 /* =========================================================
+
 탭
+
 ========================================================= */
+
 
 const [activeTab, setActiveTab] = useState("jobs");
+
 const activeTabRef = useRef("jobs");
 
+
 /* =========================================================
+
 AI 설정
+
 ========================================================= */
+
 
 const [similarityThreshold, setSimilarityThreshold] = useState(0.65);
+
 const [settingMessage, setSettingMessage] = useState("");
+
 const [settingLoading, setSettingLoading] = useState(false);
 
+
 /* =========================================================
+
 시공 등록
+
 ========================================================= */
+
 
 const [beforeImages, setBeforeImages] = useState([]);
+
 const [afterImages, setAfterImages] = useState([]);
 
+
 const [category, setCategory] = useState("");
+
 const [actualCost, setActualCost] = useState("");
+
 const [material, setMaterial] = useState("");
+
 const [memo, setMemo] = useState("");
 
+
 const [message, setMessage] = useState("");
+
 const [loading, setLoading] = useState(false);
 
+
 /* =========================================================
+
 시공 DB
+
 ========================================================= */
 
+
 const [jobs, setJobs] = useState([]);
+
 const [jobsLoading, setJobsLoading] = useState(false);
+
 const [jobsMessage, setJobsMessage] = useState("");
 
+
 const [jobSearch, setJobSearch] = useState("");
+
 const [jobSearchApplied, setJobSearchApplied] = useState("");
 
+
 const [jobPage, setJobPage] = useState(1);
+
 const [jobTotal, setJobTotal] = useState(0);
+
 
 const [openJobId, setOpenJobId] = useState(null);
 
+
 const [jobPhotos, setJobPhotos] = useState({});
+
 const [jobPhotoLoadingId, setJobPhotoLoadingId] = useState(null);
 
+
 const [jobPhotoUrls, setJobPhotoUrls] = useState({});
+
 const [loadingPhotoId, setLoadingPhotoId] = useState(null);
 
+
 /* =========================================================
+
 시공 수정
+
 ========================================================= */
+
 
 const [editingId, setEditingId] = useState(null);
+
 const [editCategory, setEditCategory] = useState("");
+
 const [editSubCategory, setEditSubCategory] = useState("");
+
 const [editCost, setEditCost] = useState("");
+
 const [editMemo, setEditMemo] = useState("");
 
+
 /* =========================================================
+
 사진 수정
+
 ========================================================= */
+
 
 const [previewPhoto, setPreviewPhoto] = useState(null);
 
+
 const [editingPhotoId, setEditingPhotoId] = useState(null);
+
 const [editPhotoType, setEditPhotoType] = useState("before");
+
 const [editPhotoCategory, setEditPhotoCategory] = useState("");
+
 const [editPhotoSubCategory, setEditPhotoSubCategory] = useState("");
+
 const [editPhotoDescription, setEditPhotoDescription] = useState("");
+
 const [photoEditLoading, setPhotoEditLoading] = useState(false);
 
+
 /* =========================================================
+
 고객 상담
+
 ========================================================= */
 
+
 const [leads, setLeads] = useState([]);
+
 const [leadsLoading, setLeadsLoading] = useState(false);
+
 const [leadsMessage, setLeadsMessage] = useState("");
 
+
 const [leadPage, setLeadPage] = useState(1);
+
 const [leadTotal, setLeadTotal] = useState(0);
 
+
 const [leadFilter, setLeadFilter] = useState("all");
+
 const [unreadCount, setUnreadCount] = useState(0);
+
 
 const [openLeadId, setOpenLeadId] = useState(null);
 
+
 const [leadPhotoUrls, setLeadPhotoUrls] = useState({});
+
 const [leadPhotoLoadingId, setLeadPhotoLoadingId] = useState(null);
 
+
 const [newLeadAlert, setNewLeadAlert] = useState(null);
+
 const [notificationEnabled, setNotificationEnabled] = useState(false);
 
+
 /* =========================================================
+
 사용자 로그 분석
+
 ========================================================= */
 
+
 const [usageStats, setUsageStats] = useState({
+
 today: 0,
+
 sevenDays: 0,
+
 total: 0,
+
 sessions: 0,
+
 leads: 0,
+
 converted: 0,
+
 conversion: 0,
+
 });
 
+
 const [usageRecent, setUsageRecent] = useState([]);
+
 const [usageLoading, setUsageLoading] = useState(false);
+
 const [usageMessage, setUsageMessage] = useState("");
 
+
 /*
+
 자동견적 사진용 상태
 
+
 중요:
+
 목록을 열었다고 사진 URL을 만들지 않습니다.
+
 관리자가 "사진 보기" 버튼을 눌렀을 때만
+
 private bucket signed URL을 생성합니다.
 
+
 */
+
 
 const [openUsagePhotoId, setOpenUsagePhotoId] = useState(null);
 
+
 const [usagePhotoUrls, setUsagePhotoUrls] = useState({});
+
 
 const [usagePhotoLoadingId, setUsagePhotoLoadingId] = useState(null);
 
+
 /* =========================================================
+
 스타일
+
 ========================================================= */
+
 
 const inputStyle = {
+
 width: "100%",
+
 padding: "14px",
+
 fontSize: "16px",
+
 border: "1px solid #d1d5db",
+
 borderRadius: "10px",
+
 boxSizing: "border-box",
+
 background: "#ffffff",
+
 color: "#111827",
+
 };
+
 
 const sectionStyle = {
+
 padding: "18px",
+
 border: "1px solid #e5e7eb",
+
 borderRadius: "16px",
+
 background: "#ffffff",
+
 marginBottom: "18px",
+
 };
+
 
 const primaryButtonStyle = {
+
 width: "100%",
+
 padding: "14px",
+
 border: "none",
+
 borderRadius: "10px",
+
 background: "#111827",
+
 color: "#ffffff",
+
 fontWeight: "bold",
+
 fontSize: "15px",
+
 cursor: "pointer",
+
 };
+
 
 const secondaryButtonStyle = {
+
 width: "100%",
+
 padding: "11px",
+
 border: "1px solid #d1d5db",
+
 borderRadius: "10px",
+
 background: "#ffffff",
+
 color: "#111827",
+
 fontWeight: "bold",
+
 cursor: "pointer",
+
 };
 
+
 /* =========================================================
+
 공통 함수
+
 ========================================================= */
 
+
 function formatWon(value) {
+
 if (value === null || value === undefined || value === "") {
+
 return "-";
+
 }
+
 
 const number = Number(value);
 
+
 if (!Number.isFinite(number)) {
+
 return "-";
+
 }
+
 
 return ${number.toLocaleString("ko-KR")}원;
 
+
 }
+
 
 function formatDate(value) {
+
 if (!value) return "-";
 
+
 try {
+
 return new Date(value).toLocaleString("ko-KR", {
+
 timeZone: "Asia/Seoul",
+
 });
+
 } catch {
+
 return value;
-}
 
 }
+
+
+}
+
 
 function sanitizeSearchKeyword(value) {
+
 return String(value || "")
+
 .replace(/[,()]/g, " ")
+
 .trim();
+
 }
 
+
 /*
+
 estimate_usage.photo_paths 정리
 
+
 Supabase text[]이면 배열 그대로 사용합니다.
+
 혹시 문자열 형태로 들어와도 최대한 복구합니다.
 
+
 */
+
 
 function getUsagePhotoPaths(row) {
+
 const value = row?.photo_paths;
 
+
 if (Array.isArray(value)) {
+
 return [...new Set(value.filter(Boolean))];
+
 }
+
 
 if (typeof value === "string") {
+
 const trimmed = value.trim();
 
+
 if (!trimmed) {
+
 return [];
+
 }
 
+
 /*
+
 JSON 배열 문자열 대응
+
 예:
+
 ["estimate-usage/a.jpg","estimate-usage/b.jpg"]
+
 */
 
+
 try {
+
 const parsed = JSON.parse(trimmed);
+
 
 if (Array.isArray(parsed)) {      
   return [...new Set(parsed.filter(Boolean))];      
-}
+}      
+
+
 
 } catch {}
 
+
 /*
+
 PostgreSQL 배열 문자열 대응
+
 예:
+
 {estimate-usage/a.jpg,estimate-usage/b.jpg}
+
 */
 
+
 if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+
 const inside = trimmed.slice(1, -1);
+
 
 if (!inside.trim()) {      
   return [];      
@@ -294,288 +505,508 @@ return [
       )      
       .filter(Boolean)      
   ),      
-];
+];      
+
+
 
 }
+
 
 return [trimmed];
+
 }
+
 
 return [];
 
+
 }
+
 
 function getLeadPhotoPaths(lead) {
+
 const paths = [];
 
+
 if (Array.isArray(lead?.customer_photo_paths)) {
+
 for (const path of lead.customer_photo_paths) {
+
 if (path && !paths.includes(path)) {
+
 paths.push(path);
-}
-}
+
 }
 
-if (
-lead?.customer_photo_path &&
-!paths.includes(lead.customer_photo_path)
-) {
-paths.push(lead.customer_photo_path);
 }
+
+}
+
+
+if (
+
+lead?.customer_photo_path &&
+
+!paths.includes(lead.customer_photo_path)
+
+) {
+
+paths.push(lead.customer_photo_path);
+
+}
+
 
 return paths;
 
+
 }
+
 
 function changeTab(tab) {
+
 activeTabRef.current = tab;
+
 setActiveTab(tab);
 
+
 if (tab === "usage") {
+
 loadUsageStats();
+
 }
+
 
 if (tab === "leads") {
+
 loadLeads(1, leadFilter);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 초기 실행
+
 ========================================================= */
 
+
 useEffect(() => {
+
 loadSettings();
+
 loadJobs(1, "");
+
 loadUnreadCount();
 
+
 if (
+
 typeof Notification !== "undefined" &&
+
 Notification.permission === "granted"
+
 ) {
+
 setNotificationEnabled(true);
+
 }
+
 
 const channel = supabase
+
 .channel("customer-leads-admin-realtime")
+
 .on(
+
 "postgres_changes",
+
 {
+
 event: "INSERT",
+
 schema: "public",
+
 table: "customer_leads",
+
 },
+
 (payload) => {
+
 handleRealtimeLead(payload.new);
+
 }
+
 )
+
 .subscribe();
 
+
 return () => {
+
 supabase.removeChannel(channel);
+
 };
+
 
 }, []);
 
+
 useEffect(() => {
+
 activeTabRef.current = activeTab;
+
 }, [activeTab]);
 
+
 /* =========================================================
+
 신규 상담 실시간 알림
+
 ========================================================= */
+
 
 function handleRealtimeLead(lead) {
+
 setUnreadCount((current) => current + 1);
 
+
 setNewLeadAlert({
+
 id: lead.id,
+
 customer_name: lead.customer_name,
+
 phone: lead.phone,
+
 region: lead.region,
+
 created_at: lead.created_at,
+
 });
+
 
 if (typeof document !== "undefined") {
+
 document.title = "🔴 신규 상담 | 기분좋은공간";
+
 }
 
+
 try {
+
 navigator.vibrate?.([250, 120, 250]);
+
 } catch {}
 
+
 try {
+
 if (
+
 typeof Notification !== "undefined" &&
+
 Notification.permission === "granted"
+
 ) {
+
 new Notification("🔔 신규 상담이 들어왔습니다.", {
+
 body: ${lead.customer_name || "고객"} ${lead.phone || ""},
+
 });
+
 }
+
 } catch {}
+
 
 if (activeTabRef.current === "leads") {
+
 loadLeads(1, leadFilter);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 알림
+
 ========================================================= */
 
+
 async function enableNotifications() {
+
 try {
+
 if (!("Notification" in window)) {
+
 alert("이 브라우저는 알림 기능을 지원하지 않습니다.");
+
 return;
+
 }
+
 
 const permission = await Notification.requestPermission();
 
+
 if (permission !== "granted") {
+
 setNotificationEnabled(false);
+
 alert("알림 권한을 허용해주세요.");
+
 return;
+
 }
+
 
 setNotificationEnabled(true);
 
+
 new Notification("기분좋은공간", {
+
 body: "신규 상담 알림이 활성화되었습니다.",
+
 });
+
 } catch (error) {
+
 console.error(error);
 
+
 alert(알림 설정 오류: ${error?.message || "실패"});
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 AI 설정
+
 ========================================================= */
 
+
 async function loadSettings() {
+
 try {
+
 const { data, error } = await supabase
+
 .from("app_settings")
+
 .select("similarity_threshold")
+
 .eq("id", 1)
+
 .single();
 
+
 if (error) throw error;
 
+
 if (
+
 data?.similarity_threshold !== null &&
+
 data?.similarity_threshold !== undefined
+
 ) {
+
 setSimilarityThreshold(Number(data.similarity_threshold));
-}
-} catch (error) {
-console.error("설정 불러오기:", error);
-}
 
 }
+
+} catch (error) {
+
+console.error("설정 불러오기:", error);
+
+}
+
+
+}
+
 
 async function saveSimilaritySetting() {
+
 setSettingLoading(true);
+
 setSettingMessage("");
 
+
 try {
+
 const threshold = Number(similarityThreshold);
 
+
 if (
+
 !Number.isFinite(threshold) ||
+
 threshold < 0 ||
+
 threshold > 1
+
 ) {
+
 throw new Error("유사도 기준은 0~1 사이 숫자로 입력해주세요.");
+
 }
 
+
 const { error } = await supabase
+
 .from("app_settings")
+
 .update({
+
 similarity_threshold: threshold,
+
 updated_at: new Date().toISOString(),
+
 })
+
 .eq("id", 1);
+
 
 if (error) throw error;
 
+
 setSettingMessage(
+
 ✅ AI 유사도 기준 ${Math.round(threshold * 100)}% 저장 완료
+
 );
+
 } catch (error) {
+
 setSettingMessage(
+
 ❌ 설정 저장 오류: ${error?.message || "실패"}
+
 );
+
 } finally {
+
 setSettingLoading(false);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 자동견적 사진 보기
+
 
 estimate_usage.photo_paths에 저장된 경로를 사용합니다.
 
+
 중요:
+
 이 함수는 "사진 보기" 버튼을 눌렀을 때만 실행됩니다.
+
 따라서 로그 목록을 보는 것만으로는 사진 트래픽이 발생하지 않습니다.
+
 
 ========================================================= */
 
+
 async function toggleUsagePhotos(row) {
+
 if (!row?.id) {
+
 return;
+
 }
+
 
 /*
+
 이미 열려 있으면 닫기
+
 */
 
+
 if (openUsagePhotoId === row.id) {
+
 setOpenUsagePhotoId(null);
+
 return;
+
 }
+
 
 const paths = getUsagePhotoPaths(row);
 
+
 if (paths.length === 0) {
+
 setUsageMessage(
+
 "⚠️ 이 자동견적에는 저장된 사진 경로가 없습니다."
+
 );
+
 return;
+
 }
 
+
 /*
+
 이미 signed URL을 만든 적이 있으면
+
 다시 Storage 요청하지 않고 바로 표시
+
 */
+
 
 const cached = usagePhotoUrls[row.id];
 
+
 if (
+
 Array.isArray(cached) &&
+
 cached.length > 0
+
 ) {
+
 setOpenUsagePhotoId(row.id);
+
 return;
+
 }
+
 
 setUsagePhotoLoadingId(row.id);
 
+
 try {
+
 const urls = [];
 
+
 for (const path of paths) {
+
 const { data, error } = await supabase.storage
+
 .from("work-photos")
+
 .createSignedUrl(path, SIGNED_URL_SECONDS);
+
 
 if (error) {      
   console.error(      
@@ -592,234 +1023,394 @@ if (data?.signedUrl) {
     path,      
     url: data.signedUrl,      
   });      
-}
+}      
+
+
 
 }
+
 
 if (urls.length === 0) {
+
 throw new Error(
+
 "저장된 사진을 불러올 수 없습니다. Storage 경로 또는 권한을 확인해주세요."
+
 );
+
 }
 
+
 setUsagePhotoUrls((current) => ({
+
 ...current,
+
 [row.id]: urls,
+
 }));
+
 
 setOpenUsagePhotoId(row.id);
 
+
 if (urls.length < paths.length) {
+
 setUsageMessage(
+
 ⚠️ 사진 ${paths.length}장 중 ${urls.length}장만 불러왔습니다.
+
 );
+
 }
+
 } catch (error) {
+
 console.error("자동견적 사진 보기:", error);
 
+
 setUsageMessage(
+
 ❌ 자동견적 사진 오류: ${     error?.message || "사진을 불러오지 못했습니다."     }
+
 );
+
 } finally {
+
 setUsagePhotoLoadingId(null);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 사용자 로그 분석
+
 실제 estimate_usage 테이블 기준
+
 ========================================================= */
 
+
 async function loadUsageStats() {
+
 setUsageLoading(true);
+
 setUsageMessage("");
 
+
 try {
+
 /*
+
 photo_paths까지 같이 조회합니다.
 
+
 사진 자체는 여기서 다운로드하지 않습니다.      
-Storage 경로 문자열만 조회합니다.
+Storage 경로 문자열만 조회합니다.      
+
+
 
 */
 
+
 const [usageResult, leadResult] = await Promise.all([
+
 supabase
+
 .from("estimate_usage")
+
 .select(    id,     session_id,     category,     sub_category,     photo_count,     photo_paths,     estimate_min,     estimate_max,     estimate_average,     converted_to_lead,     created_at    )
+
 .order("created_at", {
+
 ascending: false,
+
 })
+
 .limit(5000),
+
 
 supabase      
   .from("customer_leads")      
   .select("id", {      
     count: "exact",      
     head: true,      
-  }),
+  }),      
+
+
 
 ]);
 
+
 if (usageResult.error) {
+
 console.error(
+
 "estimate_usage 조회 오류:",
+
 usageResult.error
+
 );
+
 
 throw new Error(      
   `estimate_usage 조회 실패: ${      
     usageResult.error.message ||      
     "RLS/SELECT 권한을 확인해주세요."      
   }`      
-);
+);      
+
+
 
 }
+
 
 if (leadResult.error) {
+
 console.error(
+
 "customer_leads 조회 오류:",
+
 leadResult.error
+
 );
 
-throw leadResult.error;
+
+throw leadResult.error;      
+
+
 
 }
 
+
 const rows = Array.isArray(usageResult.data)
+
 ? usageResult.data
+
 : [];
 
+
 /*
+
 한국시간 오늘 00:00
+
 */
+
 
 const now = new Date();
 
+
 const kstFormatter = new Intl.DateTimeFormat("en-CA", {
+
 timeZone: "Asia/Seoul",
+
 year: "numeric",
+
 month: "2-digit",
+
 day: "2-digit",
+
 });
+
 
 const parts = kstFormatter.formatToParts(now);
 
+
 const year = parts.find(
+
 (part) => part.type === "year"
+
 )?.value;
+
 
 const month = parts.find(
+
 (part) => part.type === "month"
+
 )?.value;
+
 
 const day = parts.find(
+
 (part) => part.type === "day"
+
 )?.value;
 
+
 const todayStart = new Date(
+
 ${year}-${month}-${day}T00:00:00+09:00
+
 );
+
 
 /*
+
 오늘 포함 최근 7일
+
 */
 
+
 const sevenDaysStart = new Date(
+
 todayStart.getTime() - 6 * 24 * 60 * 60 * 1000
+
 );
 
+
 const todayCount = rows.filter((row) => {
+
 if (!row.created_at) {
+
 return false;
+
 }
+
 
 const createdAt = new Date(row.created_at);      
   
 return (      
   !Number.isNaN(createdAt.getTime()) &&      
   createdAt >= todayStart      
-);
+);      
+
+
 
 }).length;
 
+
 const sevenDaysCount = rows.filter((row) => {
+
 if (!row.created_at) {
+
 return false;
+
 }
+
 
 const createdAt = new Date(row.created_at);      
   
 return (      
   !Number.isNaN(createdAt.getTime()) &&      
   createdAt >= sevenDaysStart      
-);
+);      
+
+
 
 }).length;
 
+
 /*
+
 session_id 중복 제거
+
 */
+
 
 const sessionIds = new Set();
 
+
 for (const row of rows) {
+
 const sessionId = String(row.session_id || "").trim();
+
 
 if (sessionId) {      
   sessionIds.add(sessionId);      
-}
+}      
+
+
 
 }
+
 
 /*
+
 자동견적 → 상세상담 전환
+
 */
 
+
 const convertedCount = rows.filter(
+
 (row) => row.converted_to_lead === true
+
 ).length;
+
 
 const total = rows.length;
 
+
 const conversion =
+
 total > 0
+
 ? Math.round((convertedCount / total) * 1000) / 10
+
 : 0;
 
+
 setUsageStats({
+
 today: todayCount,
+
 sevenDays: sevenDaysCount,
+
 total,
+
 sessions: sessionIds.size,
+
 leads: leadResult.count || 0,
+
 converted: convertedCount,
+
 conversion,
+
 });
 
+
 /*
+
 최근 30건
+
 */
+
 
 setUsageRecent(rows.slice(0, 30));
 
+
 /*
+
 새로고침할 때 이전에 열었던 사진은 닫습니다.
+
 URL 캐시는 그대로 두므로 같은 사진을 다시 누르면
+
 추가 요청 없이 표시할 수 있습니다.
+
 */
+
 
 setOpenUsagePhotoId(null);
 
+
 if (rows.length === 0) {
+
 setUsageMessage(
+
 "⚠️ estimate_usage 조회는 성공했지만 현재 로그인 계정에서 보이는 로그가 0건입니다. 실제 테이블에 데이터가 있다면 RLS SELECT 정책을 확인해야 합니다."
+
 );
+
 } else {
+
 const photoLogCount = rows.filter(
+
 (row) => getUsagePhotoPaths(row).length > 0
+
 ).length;
+
 
 setUsageMessage(      
   `✅ 자동견적 로그 ${rows.length.toLocaleString(      
@@ -829,253 +1420,443 @@ setUsageMessage(
   )}건 · 상세상담 전환 ${convertedCount.toLocaleString(      
     "ko-KR"      
   )}건`      
-);
+);      
+
+
 
 }
+
 } catch (error) {
+
 console.error("사용자 로그 통계 오류:", error);
 
+
 setUsageStats({
+
 today: 0,
+
 sevenDays: 0,
+
 total: 0,
+
 sessions: 0,
+
 leads: 0,
+
 converted: 0,
+
 conversion: 0,
+
 });
+
 
 setUsageRecent([]);
 
+
 setUsageMessage(
+
 ❌ 사용자 로그 조회 오류\n${     error?.message || "estimate_usage 조회에 실패했습니다."     }\n\nSupabase의 estimate_usage RLS/SELECT 권한을 확인해주세요.
+
 );
+
 } finally {
+
 setUsageLoading(false);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 시공 DB
+
 ========================================================= */
 
+
 async function loadJobs(
+
 page = 1,
+
 keyword = jobSearchApplied
+
 ) {
+
 setJobsLoading(true);
+
 setJobsMessage("");
 
+
 try {
+
 const from = (page - 1) * JOB_PAGE_SIZE;
+
 const to = from + JOB_PAGE_SIZE - 1;
+
 
 const safeKeyword = sanitizeSearchKeyword(keyword);
 
+
 let query = supabase
+
 .from("work_items")
+
 .select(
+
     id,     project_id,     category,     sub_category,     actual_cost,     memo,     created_at    ,
+
 {
+
 count: "exact",
+
 }
+
 );
+
 
 if (safeKeyword) {
+
 query = query.or(
+
 category.ilike.%${safeKeyword}%,sub_category.ilike.%${safeKeyword}%,memo.ilike.%${safeKeyword}%
+
 );
+
 }
+
 
 const { data, error, count } = await query
+
 .order("created_at", {
+
 ascending: false,
+
 })
+
 .range(from, to);
 
+
 if (error) throw error;
+
 
 setJobs(data || []);
+
 setJobTotal(count || 0);
+
 setJobPage(page);
+
 setOpenJobId(null);
+
 } catch (error) {
+
 console.error(error);
 
+
 setJobsMessage(
+
 ❌ 시공 DB 오류: ${error?.message || "불러오기 실패"}
+
 );
+
 } finally {
+
 setJobsLoading(false);
-}
 
 }
+
+
+}
+
 
 function searchJobs() {
+
 const keyword = sanitizeSearchKeyword(jobSearch);
 
+
 setJobSearchApplied(keyword);
+
 loadJobs(1, keyword);
 
+
 }
+
 
 function clearJobSearch() {
+
 setJobSearch("");
+
 setJobSearchApplied("");
+
 loadJobs(1, "");
+
 }
 
+
 async function loadJobPhotos(workItemId) {
+
 setJobPhotoLoadingId(workItemId);
 
+
 try {
+
 const { data, error } = await supabase
+
 .from("work_photos")
+
 .select(    id,     work_item_id,     project_id,     photo_type,     category,     sub_category,     storage_path,     ai_description,     ai_tags,     created_at    )
+
 .eq("work_item_id", workItemId)
+
 .order("created_at", {
+
 ascending: true,
+
 });
+
 
 if (error) throw error;
 
+
 setJobPhotos((current) => ({
+
 ...current,
+
 [workItemId]: data || [],
+
 }));
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 사진정보 오류: ${error?.message || "실패"}
+
 );
+
 } finally {
+
 setJobPhotoLoadingId(null);
-}
 
 }
+
+
+}
+
 
 async function toggleJobDetail(jobId) {
+
 if (openJobId === jobId) {
+
 setOpenJobId(null);
+
 return;
+
 }
+
 
 setOpenJobId(jobId);
 
+
 if (!jobPhotos[jobId]) {
+
 await loadJobPhotos(jobId);
-}
 
 }
+
+
+}
+
 
 async function loadSingleJobPhoto(photo) {
+
 if (!photo?.storage_path) return null;
 
+
 if (jobPhotoUrls[photo.id]) {
+
 return jobPhotoUrls[photo.id];
+
 }
+
 
 setLoadingPhotoId(photo.id);
 
+
 try {
+
 const { data, error } = await supabase.storage
+
 .from("work-photos")
+
 .createSignedUrl(
+
 photo.storage_path,
+
 SIGNED_URL_SECONDS
+
 );
+
 
 if (error) throw error;
 
+
 const url = data?.signedUrl;
 
+
 if (!url) {
+
 throw new Error("사진 주소를 만들 수 없습니다.");
+
 }
+
 
 setJobPhotoUrls((current) => ({
+
 ...current,
+
 [photo.id]: url,
+
 }));
 
+
 return url;
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 사진 오류: ${error?.message || "실패"}
+
 );
 
+
 return null;
+
 } finally {
+
 setLoadingPhotoId(null);
-}
 
 }
+
+
+}
+
 
 async function openJobPhoto(photo) {
+
 let url = jobPhotoUrls[photo.id];
 
+
 if (!url) {
+
 url = await loadSingleJobPhoto(photo);
+
 }
+
 
 if (url) {
+
 setPreviewPhoto(url);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 시공 수정
+
 ========================================================= */
 
+
 function startEdit(job) {
+
 setEditingId(job.id);
+
 
 setEditCategory(job.category || "");
 
+
 setEditSubCategory(
+
 job.sub_category ||
+
 job.category ||
+
 ""
+
 );
 
+
 setEditCost(
+
 job.actual_cost !== null &&
+
 job.actual_cost !== undefined
+
 ? String(job.actual_cost)
+
 : ""
+
 );
+
 
 setEditMemo(job.memo || "");
 
+
 }
+
 
 function cancelEdit() {
+
 setEditingId(null);
+
 }
+
 
 async function saveJobEdit(jobId) {
+
 const cost = Number(
+
 String(editCost).replace(/,/g, "")
+
 );
 
+
 if (!editCategory.trim()) {
+
 setJobsMessage("⚠️ 시공 부위를 입력해주세요.");
+
 return;
+
 }
+
 
 if (!Number.isFinite(cost) || cost <= 0) {
+
 setJobsMessage("⚠️ 실제 시공금액을 입력해주세요.");
+
 return;
+
 }
 
+
 try {
+
 const { error } = await supabase
+
 .from("work_items")
+
 .update({
+
 category: editCategory.trim(),
 
-sub_category:      
+
+  sub_category:      
     editSubCategory.trim() ||      
     editCategory.trim(),      
   
@@ -1088,129 +1869,224 @@ sub_category:
   updated_at:      
     new Date().toISOString(),      
 })      
-.eq("id", jobId);
+.eq("id", jobId);      
+
+
 
 if (error) throw error;
 
+
 setEditingId(null);
 
+
 setJobsMessage(
+
 "✅ 시공 데이터가 수정되었습니다."
+
 );
+
 
 await loadJobs(
+
 jobPage,
+
 jobSearchApplied
+
 );
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 수정 오류: ${error?.message || "실패"}
+
 );
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 임베딩
+
 ========================================================= */
 
+
 async function createEmbedding(text) {
+
 if (!String(text || "").trim()) {
+
 return null;
+
 }
 
+
 const response = await fetch("/api/embedding", {
+
 method: "POST",
+
 headers: {
+
 "Content-Type": "application/json",
+
 },
+
 body: JSON.stringify({
+
 text,
+
 }),
+
 });
+
 
 let result = {};
 
+
 try {
+
 result = await response.json();
+
 } catch {}
 
+
 if (!response.ok) {
+
 throw new Error(
+
 result?.error ||
+
 "임베딩 생성 실패"
+
 );
+
 }
+
 
 return result.embedding || null;
 
+
 }
+
 
 /* =========================================================
+
 사진정보 수정
+
 ========================================================= */
 
+
 function startPhotoEdit(photo) {
+
 setEditingPhotoId(photo.id);
 
+
 setEditPhotoType(
+
 photo.photo_type || "before"
+
 );
+
 
 setEditPhotoCategory(
+
 photo.category || ""
+
 );
+
 
 setEditPhotoSubCategory(
+
 photo.sub_category ||
+
 photo.category ||
+
 ""
+
 );
+
 
 setEditPhotoDescription(
+
 photo.ai_description || ""
+
 );
 
+
 }
+
 
 function cancelPhotoEdit() {
+
 setEditingPhotoId(null);
+
 }
 
+
 async function savePhotoEdit(photo) {
+
 if (!editPhotoCategory.trim()) {
+
 setJobsMessage(
+
 "⚠️ 사진 카테고리를 입력해주세요."
+
 );
+
 return;
+
 }
+
 
 setPhotoEditLoading(true);
 
+
 try {
+
 let tags = Array.isArray(photo.ai_tags)
+
 ? [...photo.ai_tags]
+
 : [];
 
+
 tags = tags.filter(
+
 (tag) =>
+
 tag !== "시공전" &&
+
 tag !== "시공후" &&
+
 tag !== "전후비교"
+
 );
 
+
 if (editPhotoType === "before") {
+
 tags.push("시공전");
+
 }
 
+
 if (editPhotoType === "after") {
+
 tags.push("시공후");
+
 }
+
 
 tags = [...new Set(tags)];
 
+
 const searchText = [
+
 시공 부위: ${editPhotoCategory.trim()},
+
 
 `세부 부위: ${      
   editPhotoSubCategory.trim() ||      
@@ -1227,20 +2103,30 @@ const searchText = [
   
 `사진 설명: ${editPhotoDescription.trim()}`,      
   
-`특징: ${tags.join(", ")}`,
+`특징: ${tags.join(", ")}`,      
+
+
 
 ].join("\n");
 
+
 const embedding = await createEmbedding(
+
 searchText
+
 );
 
+
 const { error } = await supabase
+
 .from("work_photos")
+
 .update({
+
 photo_type: editPhotoType,
 
-category: editPhotoCategory.trim(),      
+
+  category: editPhotoCategory.trim(),      
   
   sub_category:      
     editPhotoSubCategory.trim() ||      
@@ -1252,199 +2138,344 @@ category: editPhotoCategory.trim(),
   ai_tags: tags,      
   embedding,      
 })      
-.eq("id", photo.id);
+.eq("id", photo.id);      
+
+
 
 if (error) throw error;
+
 
 setEditingPhotoId(null);
 
+
 setJobsMessage(
+
 "✅ 사진 정보가 수정되었습니다."
+
 );
+
 
 await loadJobPhotos(
+
 photo.work_item_id
+
 );
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 사진 수정 오류: ${error?.message || "실패"}
+
 );
+
 } finally {
+
 setPhotoEditLoading(false);
-}
 
 }
+
+
+}
+
 
 async function deletePhoto(photo) {
+
 if (
+
 !window.confirm(
+
 "이 사진을 완전히 삭제하시겠습니까?"
+
 )
+
 ) {
+
 return;
+
 }
 
+
 try {
+
 if (photo.storage_path) {
+
 const { error } = await supabase.storage
+
 .from("work-photos")
+
 .remove([photo.storage_path]);
+
 
 if (error) {      
   console.error(error);      
-}
+}      
+
+
 
 }
+
 
 const { error } = await supabase
+
 .from("work_photos")
+
 .delete()
+
 .eq("id", photo.id);
+
 
 if (error) throw error;
 
+
 setJobPhotos((current) => ({
+
 ...current,
+
 
 [photo.work_item_id]: (      
   current[photo.work_item_id] || []      
 ).filter(      
   (item) =>      
     item.id !== photo.id      
-),
+),      
+
+
 
 }));
 
+
 setJobPhotoUrls((current) => {
+
 const next = {
+
 ...current,
+
 };
+
 
 delete next[photo.id];      
   
-return next;
+return next;      
+
+
 
 });
 
+
 setJobsMessage(
+
 "✅ 사진이 삭제되었습니다."
+
 );
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 사진 삭제 오류: ${error?.message || "실패"}
+
 );
-}
 
 }
+
+
+}
+
 
 async function deleteJob(job) {
+
 if (
+
 !window.confirm(
+
 "이 시공건과 연결된 모든 사진까지 완전히 삭제하시겠습니까?"
+
 )
+
 ) {
+
 return;
+
 }
+
 
 try {
+
 const {
+
 data: photos,
+
 error: photosError,
+
 } = await supabase
+
 .from("work_photos")
+
 .select("id,storage_path")
+
 .eq("work_item_id", job.id);
 
+
 if (photosError) {
+
 throw photosError;
+
 }
 
+
 const paths = (photos || [])
+
 .map(
+
 (photo) =>
+
 photo.storage_path
+
 )
+
 .filter(Boolean);
 
+
 if (paths.length) {
+
 const { error } = await supabase.storage
+
 .from("work-photos")
+
 .remove(paths);
+
 
 if (error) {      
   console.error(error);      
-}
+}      
+
+
 
 }
+
 
 const {
+
 error: photoDeleteError,
+
 } = await supabase
+
 .from("work_photos")
+
 .delete()
+
 .eq("work_item_id", job.id);
 
+
 if (photoDeleteError) {
+
 throw photoDeleteError;
+
 }
 
+
 const { error } = await supabase
+
 .from("work_items")
+
 .delete()
+
 .eq("id", job.id);
+
 
 if (error) throw error;
 
+
 setOpenJobId(null);
 
+
 setJobPhotos((current) => {
+
 const next = {
+
 ...current,
+
 };
+
 
 delete next[job.id];      
   
-return next;
+return next;      
+
+
 
 });
 
+
 setJobsMessage(
+
 "✅ 시공건이 삭제되었습니다."
+
 );
+
 
 const targetPage =
+
 jobs.length === 1 &&
+
 jobPage > 1
+
 ? jobPage - 1
+
 : jobPage;
 
+
 await loadJobs(
+
 targetPage,
+
 jobSearchApplied
+
 );
+
 } catch (error) {
+
 setJobsMessage(
+
 ❌ 시공 삭제 오류: ${error?.message || "실패"}
+
 );
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 이미지 압축
+
 1200px / JPEG 70%
+
 ========================================================= */
 
+
 async function resizeImage(
+
 file,
+
 maxSize = 1200,
+
 quality = 0.7
+
 ) {
+
 return new Promise((resolve, reject) => {
+
 const reader = new FileReader();
 
+
 reader.onload = () => {
+
 const image = new Image();
+
 
 image.onload = () => {      
   let width =      
@@ -1554,349 +2585,625 @@ image.onerror = () =>
     )      
   );      
   
-image.src = reader.result;
+image.src = reader.result;      
+
+
 
 };
 
+
 reader.onerror = () =>
+
 reject(
+
 new Error(
+
 "사진 파일을 읽지 못했습니다."
+
 )
+
 );
+
 
 reader.readAsDataURL(file);
+
 });
 
+
 }
 
+
 /* =========================================================
+
 SHA-256
+
 ========================================================= */
+
 
 async function getImageHash(file) {
+
 const buffer =
+
 await file.arrayBuffer();
 
+
 const hashBuffer =
+
 await crypto.subtle.digest(
+
 "SHA-256",
+
 buffer
+
 );
+
 
 return Array.from(
+
 new Uint8Array(hashBuffer)
+
 )
+
 .map((byte) =>
+
 byte
+
 .toString(16)
+
 .padStart(2, "0")
+
 )
+
 .join("");
 
+
 }
+
 
 /* =========================================================
+
 AI 분석
+
 ========================================================= */
 
+
 async function analyzeImage(
+
 file,
+
 photoType
+
 ) {
+
 const formData = new FormData();
 
-formData.append(
-"image",
-file
-);
 
 formData.append(
-"photo_type",
-photoType
+
+"image",
+
+file
+
 );
+
+
+formData.append(
+
+"photo_type",
+
+photoType
+
+);
+
 
 const response = await fetch(
+
 "/api/analyze",
+
 {
+
 method: "POST",
+
 body: formData,
+
 }
+
 );
+
 
 let result = {};
 
+
 try {
+
 result =
+
 await response.json();
+
 } catch {}
 
+
 if (!response.ok) {
+
 throw new Error(
+
 result?.error ||
+
 "AI 사진 분석 실패"
+
 );
+
 }
 
+
 return {
+
 category:
+
 result?.category ||
+
 result?.analysis?.category ||
+
 "",
+
 
 sub_category:
+
 result?.sub_category ||
+
 result?.subcategory ||
+
 result?.analysis?.sub_category ||
+
 "",
 
+
 description:
+
 result?.description ||
+
 result?.ai_description ||
+
 result?.analysis?.description ||
+
 "",
+
 
 tags:
+
 Array.isArray(result?.tags)
+
 ? result.tags
+
 : Array.isArray(result?.ai_tags)
+
 ? result.ai_tags
+
 : Array.isArray(
+
 result?.analysis?.tags
+
 )
+
 ? result.analysis.tags
+
 : [],
+
 };
 
+
 }
+
 
 async function compareMultipleBeforeAfter(
+
 beforeFiles,
+
 afterFiles
+
 ) {
+
 if (
+
 beforeFiles.length === 0 ||
+
 afterFiles.length === 0
+
 ) {
+
 return null;
+
 }
+
 
 try {
+
 const formData = new FormData();
 
+
 beforeFiles.forEach((file) => {
+
 formData.append(
+
 "before",
+
 file
+
 );
+
 });
+
 
 afterFiles.forEach((file) => {
+
 formData.append(
+
 "after",
+
 file
+
 );
+
 });
 
+
 const response = await fetch(
+
 "/api/analyze",
+
 {
+
 method: "POST",
+
 body: formData,
+
 }
+
 );
+
 
 if (!response.ok) {
+
 return null;
+
 }
+
 
 const result =
+
 await response.json();
 
+
 return {
+
 description:
+
 result?.comparison ||
+
 result?.description ||
+
 result?.analysis?.description ||
+
 "",
+
 };
+
 } catch (error) {
+
 console.error(
+
 "전후 비교:",
+
 error
+
 );
+
 
 return null;
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 시공사진 저장
+
 ========================================================= */
 
+
 async function savePhoto({
+
 file,
+
 workItemId,
+
 projectId,
+
 photoType,
+
 categoryValue,
+
 subCategoryValue,
+
 analysis,
+
 comparison,
+
 }) {
+
 const compressed =
+
 await resizeImage(
+
 file,
+
 1200,
+
 0.7
+
 );
+
 
 const imageHash =
+
 await getImageHash(
+
 compressed
+
 );
 
+
 const {
+
 data: duplicates,
+
 error: duplicateError,
+
 } = await supabase
+
 .from("work_photos")
+
 .select("id,photo_type")
+
 .eq("image_hash", imageHash)
+
 .or(
+
 "photo_type.is.null,photo_type.neq.customer"
+
 )
+
 .limit(1);
 
+
 if (duplicateError) {
+
 throw duplicateError;
+
 }
+
 
 if (
+
 duplicates &&
+
 duplicates.length > 0
+
 ) {
+
 return {
+
 skipped: true,
+
 reason: "duplicate",
+
 };
+
 }
+
 
 const description =
+
 analysis?.description ||
+
 analysis?.ai_description ||
+
 "";
 
+
 let tags =
+
 analysis?.tags ||
+
 analysis?.ai_tags ||
+
 [];
 
+
 if (!Array.isArray(tags)) {
+
 tags = [];
+
 }
+
 
 if (photoType === "before") {
+
 tags.push("시공전");
+
 }
+
 
 if (photoType === "after") {
+
 tags.push("시공후");
+
 }
 
+
 if (comparison) {
+
 tags.push("전후비교");
+
 }
+
 
 tags = [...new Set(tags)];
 
+
 const finalCategory =
+
 categoryValue ||
+
 analysis?.category ||
+
 "기타";
 
+
 const finalSubCategory =
+
 subCategoryValue ||
+
 analysis?.sub_category ||
+
 finalCategory;
 
+
 const searchText = [
+
 시공 부위: ${finalCategory},
+
 
 세부 부위: ${finalSubCategory},
 
+
 사진 상태: ${     photoType === "before"     ? "시공 전"     : "시공 후"     },
+
 
 사진 설명: ${description},
 
+
 특징: ${tags.join(", ")},
 
+
 comparison?.description
+
 ? 전후 비교: ${comparison.description}
+
 : "",
+
 ]
+
 .filter(Boolean)
+
 .join("\n");
+
 
 let embedding = null;
 
+
 try {
+
 embedding =
+
 await createEmbedding(
+
 searchText
+
 );
+
 } catch (error) {
+
 console.error(
+
 "임베딩:",
+
 error
+
 );
+
 }
 
+
 const storagePath =
+
 history/${projectId}/${workItemId}/${photoType}/${Date.now()}-${crypto.randomUUID()}.jpg;
 
+
 const { error: uploadError } =
+
 await supabase.storage
+
 .from("work-photos")
+
 .upload(
+
 storagePath,
+
 compressed,
+
 {
+
 contentType:
+
 "image/jpeg",
 
-cacheControl:      
+
+    cacheControl:      
       "3600",      
   
     upsert: false,      
   }      
-);
+);      
+
+
 
 if (uploadError) {
+
 throw uploadError;
+
 }
 
+
 try {
+
 const { data: publicData } =
+
 supabase.storage
+
 .from("work-photos")
+
 .getPublicUrl(
+
 storagePath
+
 );
 
+
 const photoUrl =
+
 publicData?.publicUrl ||
+
 storagePath;
 
+
 const { error } =
+
 await supabase
+
 .from("work_photos")
+
 .insert({
+
 work_item_id:
+
 workItemId,
 
-project_id:      
+
+    project_id:      
       projectId,      
   
     photo_type:      
@@ -1924,96 +3231,170 @@ project_id:
   
     image_hash:      
       imageHash,      
-  });
+  });      
+
+
 
 if (error) throw error;
 
+
 return {
+
 skipped: false,
+
 };
+
 } catch (error) {
+
 try {
+
 await supabase.storage
+
 .from("work-photos")
+
 .remove([
+
 storagePath,
+
 ]);
+
 } catch {}
 
+
 throw error;
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 시공사례 등록
+
 ========================================================= */
 
+
 async function handleSave() {
+
 if (
+
 beforeImages.length === 0 &&
+
 afterImages.length === 0
+
 ) {
+
 setMessage(
+
 "⚠️ 시공 전 또는 시공 후 사진을 한 장 이상 선택해주세요."
+
 );
+
 return;
+
 }
+
 
 if (!category.trim()) {
+
 setMessage(
+
 "⚠️ 시공 부위를 입력해주세요."
+
 );
+
 return;
+
 }
+
 
 const cost = Number(
+
 String(actualCost).replace(
+
 /,/g,
+
 ""
+
 )
+
 );
 
+
 if (
+
 !Number.isFinite(cost) ||
+
 cost <= 0
+
 ) {
+
 setMessage(
+
 "⚠️ 실제 시공금액을 정확히 입력해주세요."
+
 );
+
 return;
+
 }
+
 
 setLoading(true);
 
+
 setMessage(
+
 "시공 데이터를 생성하고 있습니다..."
+
 );
+
 
 let workItemId = null;
 
+
 try {
+
 const combinedMemo = [
+
 material.trim()
+
 ? 자재: ${material.trim()}
+
 : "",
 
-memo.trim(),
+
+memo.trim(),      
+
+
 
 ]
+
 .filter(Boolean)
+
 .join("\n");
 
+
 const {
+
 data: workItem,
+
 error,
+
 } = await supabase
+
 .from("work_items")
+
 .insert({
+
 project_id:
+
 PROJECT_ID,
 
-category:      
+
+  category:      
     category.trim(),      
   
   sub_category:      
@@ -2027,50 +3408,82 @@ category:
     null,      
 })      
 .select()      
-.single();
+.single();      
+
+
 
 if (error) throw error;
 
+
 workItemId =
+
 workItem.id;
 
+
 setMessage(
+
 "AI가 시공 전/후 사진을 비교하고 있습니다..."
+
 );
+
 
 const comparison =
+
 await compareMultipleBeforeAfter(
+
 beforeImages,
+
 afterImages
+
 );
 
+
 const allPhotos = [
+
 ...beforeImages.map(
+
 (file) => ({
+
 file,
+
 type: "before",
+
 })
+
 ),
+
 
 ...afterImages.map(      
   (file) => ({      
     file,      
     type: "after",      
   })      
-),
+),      
+
+
 
 ];
 
+
 let saved = 0;
+
 let duplicate = 0;
 
+
 for (
+
 let index = 0;
+
 index < allPhotos.length;
+
 index++
+
 ) {
+
 const item =
+
 allPhotos[index];
+
 
 setMessage(      
   `${      
@@ -2127,68 +3540,118 @@ if (result?.skipped) {
   duplicate++;      
 } else {      
   saved++;      
-}
+}      
+
+
 
 }
+
 
 if (saved === 0) {
+
 await supabase
+
 .from("work_items")
+
 .delete()
+
 .eq(
+
 "id",
+
 workItem.id
+
 );
+
 
 workItemId = null;      
   
 throw new Error(      
   "선택한 사진이 모두 이미 시공 DB에 등록되어 있습니다."      
-);
+);      
+
+
 
 }
+
 
 setBeforeImages([]);
+
 setAfterImages([]);
+
 setCategory("");
+
 setActualCost("");
+
 setMaterial("");
+
 setMemo("");
 
+
 setMessage(
+
 duplicate > 0
+
 ? ✅ 시공사례 저장 완료!\n사진 ${saved}장 저장 / 중복 ${duplicate}장 제외
+
 : ✅ 시공사례 저장 완료!\n사진 ${saved}장 + AI 분석 + 임베딩 저장
+
 );
+
 
 await loadJobs(
+
 1,
+
 ""
+
 );
+
 } catch (error) {
+
 console.error(error);
 
+
 if (workItemId) {
+
 try {
+
 const { count } =
+
 await supabase
+
 .from(
+
 "work_photos"
+
 )
+
 .select(
+
 "id",
+
 {
+
 count:
+
 "exact",
+
 head: true,
+
 }
+
 )
+
 .eq(
+
 "work_item_id",
+
 workItemId
+
 );
 
-if (!count) {      
+
+  if (!count) {      
     await supabase      
       .from(      
         "work_items"      
@@ -2199,208 +3662,375 @@ if (!count) {
         workItemId      
       );      
   }      
-} catch {}
+} catch {}      
+
+
 
 }
+
 
 setMessage(
+
 ❌ 오류: ${     error?.message ||     "저장 실패"     }
+
 );
+
 } finally {
+
 setLoading(false);
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 고객 상담
 
+
 ★ 여기까지 1/2
+
 ★ 다음 2/2의 첫 줄을 바로 아래에 이어서 붙이세요.
+
 ★ 중간에 } 를 추가하지 마세요.
 
+
 ========================================================= */
+
 async function loadUnreadCount() {
+
 try {
+
 const { count, error } = await supabase
+
 .from("customer_leads")
+
 .select("id", {
+
 count: "exact",
+
 head: true,
+
 })
+
 .eq("is_read", false);
 
+
 if (error) {
+
 console.error("미확인 상담 수:", error);
+
 return;
+
 }
+
 
 setUnreadCount(count || 0);
+
 } catch (error) {
+
 console.error("미확인 상담 수:", error);
-}
 
 }
+
+
+}
+
 
 async function loadLeads(
+
 page = 1,
+
 filter = leadFilter
+
 ) {
+
 setLeadsLoading(true);
+
 setLeadsMessage("");
 
+
 try {
+
 const from =
+
 (page - 1) * LEAD_PAGE_SIZE;
 
+
 const to =
+
 from + LEAD_PAGE_SIZE - 1;
 
+
 let query = supabase
+
 .from("customer_leads")
+
 .select(
+
     id,     customer_name,     phone,     region,     address,     preferred_date,     request_text,     status,     admin_memo,     is_read,     session_id,     usage_id,     customer_photo_path,     customer_photo_paths,     estimate_min,     estimate_max,     estimate_average,     final_price,     quote_work_details,     quote_material,     quote_note,     quote_created_at,     created_at    ,
+
 {
+
 count: "exact",
+
 }
+
 );
+
 
 if (
+
 filter &&
+
 filter !== "all"
+
 ) {
+
 query = query.eq(
+
 "status",
+
 filter
+
 );
+
 }
+
 
 const {
+
 data,
+
 error,
+
 count,
+
 } = await query
+
 .order("created_at", {
+
 ascending: false,
+
 })
+
 .range(from, to);
 
+
 if (error) throw error;
+
 
 setLeads(data || []);
+
 setLeadTotal(count || 0);
+
 setLeadPage(page);
+
 } catch (error) {
+
 console.error(error);
 
+
 setLeadsMessage(
+
 ❌ 상담 목록 오류: ${     error?.message ||     "불러오기 실패"     }
+
 );
+
 } finally {
+
 setLeadsLoading(false);
-}
 
 }
+
+
+}
+
 
 async function markLeadRead(
+
 lead
+
 ) {
+
 if (!lead?.id) return;
 
+
 if (lead.is_read === true) {
+
 return;
+
 }
 
+
 try {
+
 const { error } =
+
 await supabase
+
 .from("customer_leads")
+
 .update({
+
 is_read: true,
+
 })
+
 .eq("id", lead.id);
+
 
 if (error) throw error;
 
+
 setLeads((current) =>
+
 current.map((item) =>
+
 item.id === lead.id
+
 ? {
+
 ...item,
+
 is_read: true,
+
 }
+
 : item
+
 )
+
 );
+
 
 setUnreadCount(
+
 (current) =>
+
 Math.max(
+
 0,
+
 current - 1
+
 )
+
 );
+
 } catch (error) {
+
 console.error(
+
 "읽음 처리:",
+
 error
+
 );
-}
 
 }
+
+
+}
+
 
 async function toggleLeadDetail(
+
 lead
+
 ) {
+
 if (openLeadId === lead.id) {
+
 setOpenLeadId(null);
+
 return;
+
 }
+
 
 setOpenLeadId(lead.id);
 
+
 await markLeadRead(lead);
 
+
 }
+
 
 async function loadLeadPhotos(
+
 lead
+
 ) {
+
 const paths =
+
 getLeadPhotoPaths(lead);
 
+
 if (paths.length === 0) {
+
 setLeadsMessage(
+
 "⚠️ 저장된 고객 사진이 없습니다."
+
 );
+
 return;
+
 }
+
 
 if (
+
 Array.isArray(
+
 leadPhotoUrls[lead.id]
+
 ) &&
+
 leadPhotoUrls[lead.id]
+
 .length > 0
+
 ) {
+
 return;
+
 }
 
+
 setLeadPhotoLoadingId(
+
 lead.id
+
 );
+
 
 try {
+
 const urls = [];
 
+
 for (const path of paths) {
+
 const { data, error } =
+
 await supabase.storage
+
 .from("work-photos")
+
 .createSignedUrl(
+
 path,
+
 SIGNED_URL_SECONDS
+
 );
+
 
 if (error) {      
   console.error(      
@@ -2415,141 +4045,258 @@ if (data?.signedUrl) {
     path,      
     url: data.signedUrl,      
   });      
-}
+}      
+
+
 
 }
+
 
 if (urls.length === 0) {
+
 throw new Error(
+
 "고객 사진을 불러오지 못했습니다."
+
 );
+
 }
+
 
 setLeadPhotoUrls(
+
 (current) => ({
+
 ...current,
+
 [lead.id]: urls,
+
 })
+
 );
+
 } catch (error) {
+
 setLeadsMessage(
+
 ❌ 고객 사진 오류: ${     error?.message ||     "실패"     }
+
 );
+
 } finally {
+
 setLeadPhotoLoadingId(
+
 null
+
 );
-}
 
 }
+
+
+}
+
 
 async function updateLeadStatus(
+
 leadId,
+
 status
+
 ) {
+
 try {
+
 const { error } =
+
 await supabase
+
 .from("customer_leads")
+
 .update({
+
 status,
+
 })
+
 .eq("id", leadId);
+
 
 if (error) throw error;
 
+
 setLeads((current) =>
+
 current.map((lead) =>
+
 lead.id === leadId
+
 ? {
+
 ...lead,
+
 status,
-}
-: lead
-)
-);
-} catch (error) {
-setLeadsMessage(
-❌ 상태 변경 오류: ${     error?.message ||     "실패"     }
-);
-}
 
 }
+
+: lead
+
+)
+
+);
+
+} catch (error) {
+
+setLeadsMessage(
+
+❌ 상태 변경 오류: ${     error?.message ||     "실패"     }
+
+);
+
+}
+
+
+}
+
 
 async function saveLeadMemo(
+
 leadId,
+
 memo
+
 ) {
+
 try {
+
 const { error } =
+
 await supabase
+
 .from("customer_leads")
+
 .update({
+
 admin_memo:
+
 memo || null,
+
 })
+
 .eq("id", leadId);
+
 
 if (error) throw error;
 
+
 setLeadsMessage(
+
 "✅ 상담 메모가 저장되었습니다."
+
 );
+
 } catch (error) {
+
 setLeadsMessage(
+
 ❌ 메모 저장 오류: ${     error?.message ||     "실패"     }
+
 );
-}
 
 }
+
+
+}
+
 
 function updateLeadLocal(
+
 leadId,
+
 field,
+
 value
+
 ) {
+
 setLeads((current) =>
+
 current.map((lead) =>
+
 lead.id === leadId
+
 ? {
+
 ...lead,
+
 [field]: value,
+
 }
+
 : lead
+
 )
+
 );
+
 }
+
 
 async function saveFinalQuote(
+
 lead
+
 ) {
+
 const price = Number(
+
 String(
+
 lead.final_price || ""
+
 ).replace(/,/g, "")
+
 );
+
 
 if (
+
 !Number.isFinite(price) ||
+
 price <= 0
+
 ) {
+
 setLeadsMessage(
+
 "⚠️ 최종 견적금액을 입력해주세요."
+
 );
+
 return;
+
 }
 
+
 try {
+
 const quoteCreatedAt =
+
 new Date().toISOString();
 
+
 const { error } =
+
 await supabase
+
 .from("customer_leads")
+
 .update({
+
 final_price: price,
 
-quote_work_details:      
+
+    quote_work_details:      
       lead.quote_work_details ||      
       null,      
   
@@ -2564,490 +4311,863 @@ quote_work_details:
     quote_created_at:      
       quoteCreatedAt,      
   })      
-  .eq("id", lead.id);
+  .eq("id", lead.id);      
+
+
 
 if (error) throw error;
 
+
 setLeads((current) =>
+
 current.map((item) =>
+
 item.id === lead.id
+
 ? {
+
 ...item,
+
 final_price:
+
 price,
+
 quote_created_at:
+
 quoteCreatedAt,
+
 }
+
 : item
+
 )
+
 );
 
+
 setLeadsMessage(
+
 "✅ 최종 견적이 저장되었습니다."
+
 );
+
 } catch (error) {
+
 setLeadsMessage(
+
 ❌ 최종 견적 저장 오류: ${     error?.message ||     "실패"     }
+
 );
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 견적 이미지
+
 ========================================================= */
 
+
 function wrapCanvasText(
+
 ctx,
+
 text,
+
 maxWidth
+
 ) {
+
 const words =
+
 String(text || "")
+
 .split(/\s+/)
+
 .filter(Boolean);
+
 
 const lines = [];
 
+
 let current = "";
 
+
 for (const word of words) {
+
 const test =
+
 current
+
 ? ${current} ${word}
+
 : word;
 
+
 if (
+
 ctx.measureText(test)
+
 .width > maxWidth &&
+
 current
+
 ) {
+
 lines.push(current);
+
 current = word;
+
 } else {
+
 current = test;
+
 }
+
 }
+
 
 if (current) {
+
 lines.push(current);
+
 }
+
 
 return lines.length
+
 ? lines
+
 : [""];
 
+
 }
+
 
 async function createQuoteBlob(
+
 lead
+
 ) {
+
 const canvas =
+
 document.createElement(
+
 "canvas"
+
 );
+
 
 canvas.width = 1080;
+
 canvas.height = 1500;
 
+
 const ctx =
+
 canvas.getContext("2d");
 
+
 if (!ctx) {
+
 throw new Error(
+
 "견적 이미지를 만들 수 없습니다."
+
 );
+
 }
 
+
 ctx.fillStyle = "#f7f4ef";
+
 ctx.fillRect(
+
 0,
+
 0,
+
 canvas.width,
+
 canvas.height
+
 );
+
 
 ctx.fillStyle = "#5d4037";
+
 ctx.fillRect(
+
 0,
+
 0,
+
 canvas.width,
+
 210
+
 );
+
 
 ctx.fillStyle = "#ffffff";
+
 ctx.font =
+
 "bold 54px sans-serif";
 
+
 ctx.fillText(
+
 "기분좋은공간",
+
 70,
+
 95
+
 );
+
 
 ctx.font =
+
 "30px sans-serif";
 
+
 ctx.fillText(
+
 "인테리어필름 최종 견적서",
+
 70,
+
 150
+
 );
+
 
 let y = 290;
 
+
 ctx.fillStyle = "#111827";
+
 ctx.font =
+
 "bold 32px sans-serif";
 
+
 ctx.fillText(
+
 "고객 정보",
+
 70,
+
 y
+
 );
+
 
 y += 55;
 
+
 ctx.font =
+
 "28px sans-serif";
 
+
 ctx.fillText(
+
 고객명 : ${     lead.customer_name ||     "-"     },
+
 70,
+
 y
+
 );
+
 
 y += 45;
 
+
 ctx.fillText(
+
 지역 : ${     lead.region ||     lead.address ||     "-"     },
+
 70,
+
 y
+
 );
+
 
 y += 75;
 
+
 ctx.strokeStyle = "#d6d3d1";
+
 ctx.lineWidth = 2;
 
+
 ctx.beginPath();
+
 ctx.moveTo(70, y);
+
 ctx.lineTo(1010, y);
+
 ctx.stroke();
+
 
 y += 70;
 
+
 ctx.font =
+
 "bold 32px sans-serif";
 
+
 ctx.fillText(
+
 "시공 내용",
+
 70,
+
 y
+
 );
+
 
 y += 50;
 
+
 ctx.font =
+
 "27px sans-serif";
 
+
 const workLines =
+
 wrapCanvasText(
+
 ctx,
+
 lead.quote_work_details ||
+
 "상담 후 확정",
+
 900
+
 );
+
 
 for (const line of workLines) {
+
 ctx.fillText(
+
 line,
+
 70,
+
 y
+
 );
 
+
 y += 42;
+
 }
+
 
 y += 35;
 
+
 ctx.font =
+
 "bold 32px sans-serif";
 
+
 ctx.fillText(
+
 "사용 자재",
+
 70,
+
 y
+
 );
+
 
 y += 50;
 
+
 ctx.font =
+
 "27px sans-serif";
 
+
 const materialLines =
+
 wrapCanvasText(
+
 ctx,
+
 lead.quote_material ||
+
 "협의",
+
 900
+
 );
+
 
 for (
+
 const line of
+
 materialLines
+
 ) {
+
 ctx.fillText(
+
 line,
+
 70,
+
 y
+
 );
 
+
 y += 42;
+
 }
+
 
 y += 45;
 
+
 ctx.fillStyle = "#5d4037";
 
+
 ctx.fillRect(
+
 70,
+
 y,
+
 940,
+
 150
+
 );
+
 
 ctx.fillStyle = "#ffffff";
 
+
 ctx.font =
+
 "bold 31px sans-serif";
 
+
 ctx.fillText(
+
 "최종 견적금액",
+
 110,
+
 y + 58
+
 );
 
+
 ctx.font =
+
 "bold 46px sans-serif";
+
 
 ctx.textAlign = "right";
 
+
 ctx.fillText(
+
 formatWon(
+
 lead.final_price
+
 ),
+
 960,
+
 y + 108
+
 );
+
 
 ctx.textAlign = "left";
 
+
 y += 220;
+
 
 ctx.fillStyle = "#111827";
 
+
 ctx.font =
+
 "bold 30px sans-serif";
 
+
 ctx.fillText(
+
 "안내사항",
+
 70,
+
 y
+
 );
+
 
 y += 48;
 
+
 ctx.font =
+
 "25px sans-serif";
 
+
 const noteLines =
+
 wrapCanvasText(
+
 ctx,
+
 lead.quote_note ||
+
 "현장 상태 및 추가 작업 발생 시 금액이 변경될 수 있습니다.",
+
 900
+
 );
+
 
 for (
+
 const line of
+
 noteLines
+
 ) {
+
 ctx.fillText(
+
 line,
+
 70,
+
 y
+
 );
 
+
 y += 39;
+
 }
+
 
 ctx.fillStyle = "#78716c";
 
+
 ctx.font =
+
 "23px sans-serif";
 
-ctx.fillText(
-견적일 : ${new Date().toLocaleDateString(     "ko-KR"     )},
-70,
-1390
-);
 
 ctx.fillText(
-"기분좋은공간 · 대표 정근호",
+
+견적일 : ${new Date().toLocaleDateString(     "ko-KR"     )},
+
 70,
-1435
+
+1390
+
 );
+
+
+ctx.fillText(
+
+"기분좋은공간 · 대표 정근호",
+
+70,
+
+1435
+
+);
+
 
 return await new Promise(
+
 (resolve, reject) => {
+
 canvas.toBlob(
+
 (blob) => {
+
 if (!blob) {
+
 reject(
+
 new Error(
+
 "견적 이미지 생성 실패"
+
 )
+
 );
 
-return;      
+
+      return;      
     }      
   
     resolve(blob);      
   },      
   "image/jpeg",      
   0.92      
-);
+);      
+
+
 
 }
+
 );
 
+
 }
+
 
 async function shareQuote(
+
 lead
+
 ) {
+
 const price = Number(
+
 String(
+
 lead.final_price || ""
+
 ).replace(/,/g, "")
+
 );
 
+
 if (
+
 !Number.isFinite(price) ||
+
 price <= 0
+
 ) {
+
 setLeadsMessage(
+
 "⚠️ 먼저 최종 견적금액을 저장해주세요."
+
 );
+
 
 return;
+
 }
+
 
 try {
+
 const blob =
+
 await createQuoteBlob(
+
 lead
+
 );
+
 
 const file =
+
 new File(
+
 [blob],
+
 기분좋은공간_견적_${     lead.customer_name ||     "고객"     }.jpg,
+
 {
+
 type: "image/jpeg",
+
 }
+
 );
 
+
 if (
+
 navigator.share &&
+
 (!navigator.canShare ||
+
 navigator.canShare({
+
 files: [file],
+
 }))
+
 ) {
+
 await navigator.share({
+
 title:
+
 "기분좋은공간 견적서",
 
-text:      
+
+  text:      
     "기분좋은공간 인테리어필름 견적서입니다.",      
   
   files: [file],      
 });      
   
-return;
+return;      
+
+
 
 }
 
+
 const url =
+
 URL.createObjectURL(
+
 blob
+
 );
 
+
 const anchor =
+
 document.createElement(
+
 "a"
+
 );
+
 
 anchor.href = url;
 
+
 anchor.download =
+
 file.name;
 
+
 document.body.appendChild(
+
 anchor
+
 );
+
 
 anchor.click();
 
+
 anchor.remove();
 
+
 setTimeout(() => {
+
 URL.revokeObjectURL(
+
 url
+
 );
+
 }, 1000);
 
+
 setLeadsMessage(
+
 "✅ 견적 이미지를 저장했습니다. 문자에서 사진을 첨부해 전송해주세요."
+
 );
+
 } catch (error) {
+
 if (
+
 error?.name ===
+
 "AbortError"
+
 ) {
+
 return;
+
 }
+
 
 setLeadsMessage(
+
 ❌ 견적 이미지 오류: ${     error?.message ||     "실패"     }
+
 );
-}
 
 }
+
+
+}
+
 
 /* =========================================================
+
 사진 카드
+
 ========================================================= */
 
+
 function PhotoCard({
+
 photo,
+
 }) {
+
 const url =
+
 jobPhotoUrls[photo.id];
 
+
 const loadingPhoto =
+
 loadingPhotoId ===
+
 photo.id;
 
+
 const editing =
+
 editingPhotoId ===
+
 photo.id;
+
 
 return (
 
-{photo.photo_type ===           "before"             ? "시공 전"             : photo.photo_type ===               "after"             ? "시공 후"             : photo.photo_type ||               "사진"}
+
+       {photo.photo_type ===           "before"             ? "시공 전"             : photo.photo_type ===               "after"             ? "시공 후"             : photo.photo_type ||               "사진"}           
+
+
 
 {url ? (      
   <img      
@@ -3299,42 +5419,71 @@ return (
       </button>      
     </div>      
   </div>      
-)}
+)}      
 
-);
+
+
+ );     
+
+
 
 }
 
+
 /* =========================================================
+
 화면
+
 ========================================================= */
 
+
 const totalJobPages =
+
 Math.max(
+
 1,
+
 Math.ceil(
+
 jobTotal /
+
 JOB_PAGE_SIZE
+
 )
+
 );
+
 
 const totalLeadPages =
+
 Math.max(
+
 1,
+
 Math.ceil(
+
 leadTotal /
+
 LEAD_PAGE_SIZE
+
 )
+
 );
 
+
 return (
+
 {newLeadAlert && (
+
 
 🔔 신규 상담이   들어왔습니다.
 
-{newLeadAlert.customer_name ||               "고객"}{" "}             ·{" "}             {newLeadAlert.phone ||               "-"}
 
-<div      
+         {newLeadAlert.customer_name ||               "고객"}{" "}             ·{" "}             {newLeadAlert.phone ||               "-"}             
+
+
+
+  <div      
     style={{      
       display:      
         "grid",      
@@ -3393,13 +5542,19 @@ return (
       닫기      
     </button>      
   </div>      
-</div>
+</div>      
+
+
 
 )}
 
+
 기분좋은공간 관리자
 
-changeTab("jobs")           }           style={{             padding:               "11px 4px",             border:               "1px solid #d1d5db",             borderRadius:               "9px",             background:               activeTab ===               "jobs"                 ? "#111827"                 : "#ffffff",             color:               activeTab ===               "jobs"                 ? "#ffffff"                 : "#111827",             fontWeight:               "bold",             fontSize:               "13px",           }}         >           시공 DB
+
+                  changeTab("jobs")           }           style={{             padding:               "11px 4px",             border:               "1px solid #d1d5db",             borderRadius:               "9px",             background:               activeTab ===               "jobs"                 ? "#111827"                 : "#ffffff",             color:               activeTab ===               "jobs"                 ? "#ffffff"                 : "#111827",             fontWeight:               "bold",             fontSize:               "13px",           }}         >           시공 DB                
+
+
 
 <button      
   type="button"      
@@ -3519,28 +5674,30 @@ changeTab("jobs")           }           style={{             padding:           
       )      
     </span>      
   )}      
-</button>
+</button>      
+
+
 
 {/* =====================================================
+
 시공 DB
+
 ===================================================== */}
 
+
 {activeTab ===
+
 "jobs" && (
+
 <>
 
-<section  
-style={  
-sectionStyle  
-}  
->  
-<h2  
-style={{  
-marginTop:  
-0,  
-}}  
->  
-시공 DB  <div      
+
+  
+
+  
+시공 DB  
+
+    <div      
       style={{      
         display:      
           "grid",      
@@ -4079,30 +6236,33 @@ marginTop:
       다음      
     </button>      
   </div>      
-</>
+</>      
+
+
 
 )}
 
+
 {/* =====================================================
+
 시공 등록
+
 ===================================================== */}
 
+
 {activeTab ===
+
 "register" && (
+
 <>
 
-<section  
-style={  
-sectionStyle  
-}  
->  
-<h2  
-style={{  
-marginTop:  
-0,  
-}}  
->  
-시공사례 등록  <label      
+
+  
+
+  
+시공사례 등록  
+
+    <label      
       style={{      
         display:      
           "block",      
@@ -4439,40 +6599,35 @@ marginTop:
       </div>      
     )}      
   </section>      
-</>
+</>      
+
+
 
 )}
 
+
 {/* =====================================================
+
 로그 분석
+
 ===================================================== */}
 
+
 {activeTab ===
+
 "usage" && (
+
 <>
 
-<section  
-style={  
-sectionStyle  
-}  
->  
-<div  
-style={{  
-display:  
-"flex",  
-justifyContent:  
-"space-between",  
-alignItems:  
-"center",  
-gap: "10px",  
-}}  
->  
-<h2  
-style={{  
-margin: 0,  
-}}  
->  
-자동견적 로그 분석  <button      
+
+  
+
+  
+
+  
+자동견적 로그 분석  
+
+      <button      
         type="button"      
         onClick={      
           loadUsageStats      
@@ -4993,41 +7148,35 @@ margin: 0,
       )      
     )}      
   </section>      
-</>
+</>      
+
+
 
 )}
 
+
 {/* =====================================================
+
 고객 상담
+
 ===================================================== */}
 
+
 {activeTab ===
+
 "leads" && (
+
 <>
 
-<section  
-style={  
-sectionStyle  
-}  
->  
-<div  
-style={{  
-display:  
-"flex",  
-justifyContent:  
-"space-between",  
-alignItems:  
-"center",  
-gap:  
-"10px",  
-}}  
->  
-<h2  
-style={{  
-margin: 0,  
-}}  
->  
-고객 상담  <button      
+
+  
+
+  
+
+  
+고객 상담  
+
+      <button      
         type="button"      
         onClick={      
           enableNotifications      
@@ -5424,485 +7573,5 @@ margin: 0,
                                   "100%",      
                                 height:      
                                   photos.length ===      
+
                                   1      
-                                    ? "320px"      
-                                    : "180px",      
-                                objectFit:      
-                                  "contain",      
-                                background:      
-                                  "#111827",      
-                                borderRadius:      
-                                  "10px",      
-                                cursor:      
-                                  "pointer",      
-                              }}      
-                            />      
-                          )      
-                        )}      
-                      </div>      
-                    )}      
-                  </>      
-                ) : (      
-                  <div      
-                    style={{      
-                      marginTop:      
-                        "12px",      
-                      fontSize:      
-                        "13px",      
-                      color:      
-                        "#9ca3af",      
-                    }}      
-                  >      
-                    저장된 고객      
-                    사진 없음      
-                  </div>      
-                )}      
-  
-                <label      
-                  style={{      
-                    display:      
-                      "block",      
-                    marginTop:      
-                      "16px",      
-                    fontWeight:      
-                      "bold",      
-                    marginBottom:      
-                      "6px",      
-                  }}      
-                >      
-                  관리자 메모      
-                </label>      
-  
-                <textarea      
-                  defaultValue={      
-                    lead.admin_memo ||      
-                    ""      
-                  }      
-                  onBlur={(e) =>      
-                    saveLeadMemo(      
-                      lead.id,      
-                      e      
-                        .target      
-                        .value      
-                    )      
-                  }      
-                  rows={4}      
-                  style={{      
-                    ...inputStyle,      
-                    resize:      
-                      "vertical",      
-                  }}      
-                />      
-  
-                <div      
-                  style={{      
-                    marginTop:      
-                      "18px",      
-                    padding:      
-                      "14px",      
-                    borderRadius:      
-                      "12px",      
-                    background:      
-                      "#faf7f2",      
-                    border:      
-                      "1px solid #e7dfd6",      
-                  }}      
-                >      
-                  <h3      
-                    style={{      
-                      margin:      
-                        "0 0 12px",      
-                      color:      
-                        "#5d4037",      
-                    }}      
-                  >      
-                    최종 견적      
-                  </h3>      
-  
-                  <label      
-                    style={{      
-                      display:      
-                        "block",      
-                      fontWeight:      
-                        "bold",      
-                      marginBottom:      
-                        "6px",      
-                    }}      
-                  >      
-                    최종      
-                    견적금액      
-                  </label>      
-  
-                  <input      
-                    value={      
-                      lead.final_price ||      
-                      ""      
-                    }      
-                    onChange={(      
-                      e      
-                    ) =>      
-                      updateLeadLocal(      
-                        lead.id,      
-                        "final_price",      
-                        e      
-                          .target      
-                          .value      
-                      )      
-                    }      
-                    inputMode="numeric"      
-                    placeholder="예: 550000"      
-                    style={{      
-                      ...inputStyle,      
-                      marginBottom:      
-                        "10px",      
-                    }}      
-                  />      
-  
-                  {lead.final_price && (      
-                    <div      
-                      style={{      
-                        marginTop:      
-                          "-4px",      
-                        marginBottom:      
-                          "12px",      
-                        fontWeight:      
-                          "bold",      
-                        color:      
-                          "#5d4037",      
-                      }}      
-                    >      
-                      {formatWon(      
-                        lead.final_price      
-                      )}      
-                    </div>      
-                  )}      
-  
-                  <label      
-                    style={{      
-                      display:      
-                        "block",      
-                      fontWeight:      
-                        "bold",      
-                      marginBottom:      
-                        "6px",      
-                    }}      
-                  >      
-                    시공 내용      
-                  </label>      
-  
-                  <textarea      
-                    value={      
-                      lead.quote_work_details ||      
-                      ""      
-                    }      
-                    onChange={(      
-                      e      
-                    ) =>      
-                      updateLeadLocal(      
-                        lead.id,      
-                        "quote_work_details",      
-                        e      
-                          .target      
-                          .value      
-                      )      
-                    }      
-                    rows={4}      
-                    placeholder="예: 방문 및 문틀 인테리어필름 시공"      
-                    style={{      
-                      ...inputStyle,      
-                      resize:      
-                        "vertical",      
-                      marginBottom:      
-                        "10px",      
-                    }}      
-                  />      
-  
-                  <label      
-                    style={{      
-                      display:      
-                        "block",      
-                      fontWeight:      
-                        "bold",      
-                      marginBottom:      
-                        "6px",      
-                    }}      
-                  >      
-                    사용 자재      
-                  </label>      
-  
-                  <input      
-                    value={      
-                      lead.quote_material ||      
-                      ""      
-                    }      
-                    onChange={(      
-                      e      
-                    ) =>      
-                      updateLeadLocal(      
-                        lead.id,      
-                        "quote_material",      
-                        e      
-                          .target      
-                          .value      
-                      )      
-                    }      
-                    placeholder="예: 현대 L&C 인테리어필름"      
-                    style={{      
-                      ...inputStyle,      
-                      marginBottom:      
-                        "10px",      
-                    }}      
-                  />      
-  
-                  <label      
-                    style={{      
-                      display:      
-                        "block",      
-                      fontWeight:      
-                        "bold",      
-                      marginBottom:      
-                        "6px",      
-                    }}      
-                  >      
-                    안내사항      
-                  </label>      
-  
-                  <textarea      
-                    value={      
-                      lead.quote_note ||      
-                      ""      
-                    }      
-                    onChange={(      
-                      e      
-                    ) =>      
-                      updateLeadLocal(      
-                        lead.id,      
-                        "quote_note",      
-                        e      
-                          .target      
-                          .value      
-                      )      
-                    }      
-                    rows={3}      
-                    placeholder="현장 상태에 따라 추가 비용이 발생할 수 있습니다."      
-                    style={{      
-                      ...inputStyle,      
-                      resize:      
-                        "vertical",      
-                    }}      
-                  />      
-  
-                  <button      
-                    type="button"      
-                    onClick={() =>      
-                      saveFinalQuote(      
-                        lead      
-                      )      
-                    }      
-                    style={{      
-                      ...primaryButtonStyle,      
-                      background:      
-                        "#5d4037",      
-                      marginTop:      
-                        "12px",      
-                    }}      
-                  >      
-                    최종 견적 저장      
-                  </button>      
-  
-                  {lead.quote_created_at && (      
-                    <div      
-                      style={{      
-                        marginTop:      
-                          "8px",      
-                        fontSize:      
-                          "12px",      
-                        color:      
-                          "#78716c",      
-                      }}      
-                    >      
-                      저장:{" "}      
-                      {formatDate(      
-                        lead.quote_created_at      
-                      )}      
-                    </div>      
-                  )}      
-  
-                  <button      
-                    type="button"      
-                    onClick={() =>      
-                      shareQuote(      
-                        lead      
-                      )      
-                    }      
-                    style={{      
-                      ...secondaryButtonStyle,      
-                      marginTop:      
-                        "8px",      
-                      borderColor:      
-                        "#5d4037",      
-                      color:      
-                        "#5d4037",      
-                    }}      
-                  >      
-                    📤 견적 이미지 만들기 / 고객에게 전송      
-                  </button>      
-                </div>      
-              </div>      
-            )}      
-          </section>      
-        );      
-      }      
-    )      
-  )}      
-  
-  <div      
-    style={{      
-      display:      
-        "grid",      
-      gridTemplateColumns:      
-        "1fr auto 1fr",      
-      alignItems:      
-        "center",      
-      gap: "8px",      
-    }}      
-  >      
-    <button      
-      type="button"      
-      disabled={      
-        leadPage <= 1      
-      }      
-      onClick={() =>      
-        loadLeads(      
-          leadPage - 1,      
-          leadFilter      
-        )      
-      }      
-      style={      
-        secondaryButtonStyle      
-      }      
-    >      
-      이전      
-    </button>      
-  
-    <div      
-      style={{      
-        textAlign:      
-          "center",      
-        fontSize:      
-          "14px",      
-      }}      
-    >      
-      {leadPage} /{" "}      
-      {totalLeadPages}      
-    </div>      
-  
-    <button      
-      type="button"      
-      disabled={      
-        leadPage >=      
-        totalLeadPages      
-      }      
-      onClick={() =>      
-        loadLeads(      
-          leadPage + 1,      
-          leadFilter      
-        )      
-      }      
-      style={      
-        secondaryButtonStyle      
-      }      
-    >      
-      다음      
-    </button>      
-  </div>      
-</>
-
-)}
-
-{/* =====================================================
-사진 크게 보기
-===================================================== */}
-
-{previewPhoto && (
-
-<div  
-onClick={() =>  
-setPreviewPhoto(  
-null  
-)  
-}  
-style={{  
-position:  
-"fixed",  
-inset: 0,  
-background:  
-"rgba(0,0,0,.88)",  
-zIndex:  
-10000,  
-display:  
-"flex",  
-alignItems:  
-"center",  
-justifyContent:  
-"center",  
-padding:  
-"16px",  
-}}  
->  
-<button  
-type="button"  
-onClick={() =>  
-setPreviewPhoto(  
-null  
-)  
-}  
-style={{  
-position:  
-"absolute",  
-top: "18px",  
-right:  
-"18px",  
-border:  
-"none",  
-borderRadius:  
-"999px",  
-width:  
-"44px",  
-height:  
-"44px",  
-background:  
-"#ffffff",  
-fontSize:  
-"22px",  
-fontWeight:  
-"bold",  
-cursor:  
-"pointer",  
-}}  
->  
-×  <img      
-    src={      
-      previewPhoto      
-    }      
-    alt=""      
-    onClick={(e) =>      
-      e.stopPropagation()      
-    }      
-    style={{      
-      maxWidth:      
-        "100%",      
-      maxHeight:      
-        "90vh",      
-      objectFit:      
-        "contain",      
-      borderRadius:      
-        "10px",      
-    }}      
-  />      
-</div>
-
-)}
-
-);
-}
