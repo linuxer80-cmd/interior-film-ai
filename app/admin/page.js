@@ -2853,6 +2853,7 @@ export default function AdminPage() {
 
           <div
             style={{
+              display: "none",
               padding: "13px",
               marginBottom:
                 "14px",
