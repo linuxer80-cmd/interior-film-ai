@@ -24,7 +24,13 @@ export default function Home() {
 
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+
+  // 현재 자동견적 로그 ID
   const usageIdRef = useRef(null);
+
+  // 자동견적 단계에서 이미 저장한 사진 경로
+  // 상세상담 신청 시 같은 사진을 다시 업로드하지 않기 위해 사용
+  const estimatePhotoPathsRef = useRef([]);
 
   function makeId() {
     if (
@@ -64,7 +70,9 @@ export default function Home() {
     setTotalEstimate(null);
     setLeadComplete(false);
     setLeadMessage("");
+
     usageIdRef.current = null;
+    estimatePhotoPathsRef.current = [];
   }
 
   function handlePhoneChange(value) {
@@ -147,9 +155,7 @@ export default function Home() {
     let originalHeight = 0;
 
     try {
-      if (
-        typeof createImageBitmap === "function"
-      ) {
+      if (typeof createImageBitmap === "function") {
         bitmap = await createImageBitmap(file);
       }
     } catch {
@@ -193,8 +199,7 @@ export default function Home() {
       height = Math.round(height * ratio);
     }
 
-    const canvas =
-      document.createElement("canvas");
+    const canvas = document.createElement("canvas");
 
     canvas.width = width;
     canvas.height = height;
@@ -322,9 +327,7 @@ export default function Home() {
         ...additions,
       ]);
 
-      if (
-        additions.length < selected.length
-      ) {
+      if (additions.length < selected.length) {
         setMessage(
           `⚠️ ${selected.length}장 중 ${additions.length}장만 불러왔습니다.`
         );
@@ -353,9 +356,7 @@ export default function Home() {
         (item) => item.id === id
       );
 
-      if (
-        target?.preview?.startsWith("blob:")
-      ) {
+      if (target?.preview?.startsWith("blob:")) {
         URL.revokeObjectURL(target.preview);
       }
 
@@ -485,10 +486,7 @@ export default function Home() {
     const result =
       await readJsonSafely(response);
 
-    if (
-      !response.ok ||
-      !result?.analysis
-    ) {
+    if (!response.ok || !result?.analysis) {
       throw new Error(
         result?.error ||
           `${index + 1}번째 사진 분석 실패`
@@ -539,9 +537,7 @@ export default function Home() {
 
     const searchText = [
       `시공 부위: ${group.category || ""}`,
-      `세부 부위: ${
-        group.subCategory || ""
-      }`,
+      `세부 부위: ${group.subCategory || ""}`,
       `사진 수: ${group.photos.length}`,
       ...analyses.map(
         (item, index) =>
@@ -569,10 +565,7 @@ export default function Home() {
     const result =
       await readJsonSafely(response);
 
-    if (
-      !response.ok ||
-      !result?.embedding
-    ) {
+    if (!response.ok || !result?.embedding) {
       throw new Error(
         result?.error ||
           "유사사례 검색 데이터를 만들지 못했습니다."
@@ -583,8 +576,7 @@ export default function Home() {
       await supabase.rpc(
         "get_public_similar_cases",
         {
-          query_embedding:
-            result.embedding,
+          query_embedding: result.embedding,
           match_threshold:
             MATCH_THRESHOLD,
           match_count: 20,
@@ -707,9 +699,74 @@ export default function Home() {
     };
   }
 
+  /*
+   * 자동견적 사진 저장
+   *
+   * 상세상담을 신청하지 않아도
+   * AI 견적을 실행하면 여기서 사진을 저장한다.
+   */
+  async function uploadEstimatePhotos() {
+    const paths = [];
+
+    for (
+      let index = 0;
+      index < images.length;
+      index += 1
+    ) {
+      try {
+        setMessage(
+          `견적 사진 저장 중... ${
+            index + 1
+          }/${images.length}`
+        );
+
+        const path =
+          `estimate-usage/${makeId()}.jpg`;
+
+        const { error } =
+          await supabase.storage
+            .from("work-photos")
+            .upload(
+              path,
+              images[index].file,
+              {
+                cacheControl: "3600",
+                contentType: "image/jpeg",
+                upsert: false,
+              }
+            );
+
+        if (error) {
+          console.error(
+            `자동견적 사진 ${
+              index + 1
+            } 저장 실패:`,
+            error
+          );
+
+          continue;
+        }
+
+        paths.push(path);
+      } catch (error) {
+        console.error(
+          `자동견적 사진 ${
+            index + 1
+          } 처리 오류:`,
+          error
+        );
+      }
+    }
+
+    estimatePhotoPathsRef.current = paths;
+
+    return paths;
+  }
+
   async function saveEstimateUsage({
     completedGroups,
     estimate,
+    photoPaths,
   }) {
     try {
       const response = await fetch(
@@ -722,6 +779,7 @@ export default function Home() {
           },
           body: JSON.stringify({
             session_id: getSessionId(),
+
             category:
               completedGroups
                 .map(
@@ -730,6 +788,7 @@ export default function Home() {
                 )
                 .filter(Boolean)
                 .join(", ") || null,
+
             sub_category:
               completedGroups
                 .map(
@@ -738,13 +797,22 @@ export default function Home() {
                 )
                 .filter(Boolean)
                 .join(", ") || null,
+
             photo_count: images.length,
+
             estimate_min:
               estimate?.min ?? null,
+
             estimate_max:
               estimate?.max ?? null,
+
             estimate_average:
               estimate?.average ?? null,
+
+            photo_paths:
+              Array.isArray(photoPaths)
+                ? photoPaths
+                : [],
           }),
         }
       );
@@ -785,7 +853,9 @@ export default function Home() {
     setTotalEstimate(null);
     setLeadComplete(false);
     setLeadMessage("");
+
     usageIdRef.current = null;
+    estimatePhotoPathsRef.current = [];
 
     try {
       const analyzedPhotos = [];
@@ -938,6 +1008,35 @@ export default function Home() {
         setTotalEstimate(
           calculatedTotal
         );
+      } else {
+        setTotalEstimate(null);
+      }
+
+      /*
+       * 중요:
+       * 상세상담 신청 전에 자동견적 사진 저장
+       */
+      setMessage(
+        "자동견적 기록과 사진을 저장하고 있습니다..."
+      );
+
+      const photoPaths =
+        await uploadEstimatePhotos();
+
+      /*
+       * estimate_usage에
+       * 자동견적 정보 + 사진 경로 저장
+       */
+      await saveEstimateUsage({
+        completedGroups,
+        estimate: calculatedTotal,
+        photoPaths,
+      });
+
+      if (validEstimates.length) {
+        const missingCount =
+          completedGroups.length -
+          validEstimates.length;
 
         if (missingCount > 0) {
           setMessage(
@@ -949,17 +1048,10 @@ export default function Home() {
           );
         }
       } else {
-        setTotalEstimate(null);
-
         setMessage(
           "⚠️ 사진 분석은 완료했지만 같은 부위의 실제 시공 데이터가 부족합니다. 정확한 상담을 신청해주세요."
         );
       }
-
-      await saveEstimateUsage({
-        completedGroups,
-        estimate: calculatedTotal,
-      });
     } catch (error) {
       console.error(error);
 
@@ -974,7 +1066,22 @@ export default function Home() {
     }
   }
 
+  /*
+   * 상담 신청 사진
+   *
+   * 자동견적 단계에서 이미 사진이 저장되어 있으면
+   * 다시 업로드하지 않고 그 경로를 그대로 사용한다.
+   */
   async function uploadLeadPhotos() {
+    if (
+      Array.isArray(
+        estimatePhotoPathsRef.current
+      ) &&
+      estimatePhotoPathsRef.current.length > 0
+    ) {
+      return estimatePhotoPathsRef.current;
+    }
+
     const paths = [];
 
     for (
@@ -1147,37 +1254,50 @@ export default function Home() {
           body: JSON.stringify({
             customer_name:
               customerName.trim(),
+
             phone: phone.trim(),
+
             region: region.trim(),
+
             category:
               categoryText || null,
+
             sub_category:
               groups.length === 1
                 ? groups[0]
                     .subCategory
                 : "다중부위",
+
             ai_description:
               description,
+
             estimate_min:
               totalEstimate?.min ??
               null,
+
             estimate_max:
               totalEstimate?.max ??
               null,
+
             estimate_average:
               totalEstimate?.average ??
               null,
+
             customer_photo_path:
               customerPhotoPaths[0] ||
               null,
+
             customer_photo_paths:
               customerPhotoPaths,
+
             estimate_details:
               estimateDetails,
+
             memo:
               `다중사진 AI 견적\n${memoLines.join(
                 "\n"
               )}`,
+
             usage_id:
               usageIdRef.current,
           }),
@@ -2111,4 +2231,4 @@ export default function Home() {
       </div>
     </main>
   );
-        }
+      }
