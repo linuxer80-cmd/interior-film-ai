@@ -703,7 +703,7 @@ export default function Home() {
    * 자동견적 사진 저장
    *
    * 상세상담을 신청하지 않아도
-   * AI 견적을 실행하면 여기서 사진을 저장한다.
+   * AI 견적을 실행하면 사진을 저장한다.
    */
   async function uploadEstimatePhotos() {
     const paths = [];
@@ -763,6 +763,12 @@ export default function Home() {
     return paths;
   }
 
+  /*
+   * 자동견적 사용 로그 저장
+   *
+   * estimate_usage 테이블에
+   * 견적정보 + 사진 경로를 저장한다.
+   */
   async function saveEstimateUsage({
     completedGroups,
     estimate,
@@ -820,12 +826,17 @@ export default function Home() {
       const result =
         await readJsonSafely(response);
 
+      /*
+       * 중요 수정:
+       * API는 id가 아니라 usage_id를 반환한다.
+       */
       if (
         response.ok &&
         result?.success &&
-        result?.id
+        result?.usage_id
       ) {
-        usageIdRef.current = result.id;
+        usageIdRef.current =
+          result.usage_id;
       } else {
         console.error(
           "자동견적 사용기록 실패:",
@@ -1013,8 +1024,8 @@ export default function Home() {
       }
 
       /*
-       * 중요:
-       * 상세상담 신청 전에 자동견적 사진 저장
+       * 상세상담 신청 전
+       * 자동견적 사진을 Storage에 저장
        */
       setMessage(
         "자동견적 기록과 사진을 저장하고 있습니다..."
@@ -1025,7 +1036,7 @@ export default function Home() {
 
       /*
        * estimate_usage에
-       * 자동견적 정보 + 사진 경로 저장
+       * 자동견적 정보 + photo_paths 저장
        */
       await saveEstimateUsage({
         completedGroups,
@@ -1069,8 +1080,8 @@ export default function Home() {
   /*
    * 상담 신청 사진
    *
-   * 자동견적 단계에서 이미 사진이 저장되어 있으면
-   * 다시 업로드하지 않고 그 경로를 그대로 사용한다.
+   * 자동견적 단계에서 이미 저장했다면
+   * 같은 사진을 다시 업로드하지 않는다.
    */
   async function uploadLeadPhotos() {
     if (
@@ -2231,4 +2242,4 @@ export default function Home() {
       </div>
     </main>
   );
-      }
+              }
