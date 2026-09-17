@@ -53,4 +53,49 @@ export function getUsagePhotoPaths(row) {
     } catch {}
 
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      const inside = trimmed.slice(1
+      const inside = trimmed.slice(1, -1);
+
+      if (!inside.trim()) {
+        return [];
+      }
+
+      return [
+        ...new Set(
+          inside
+            .split(",")
+            .map((item) =>
+              item
+                .trim()
+                .replace(/^"(.*)"$/, "$1")
+            )
+            .filter(Boolean)
+        ),
+      ];
+    }
+
+    return [trimmed];
+  }
+
+  return [];
+}
+
+export function getLeadPhotoPaths(lead) {
+  const paths = [];
+
+  if (Array.isArray(lead?.customer_photo_paths)) {
+    for (const path of lead.customer_photo_paths) {
+      if (path && !paths.includes(path)) {
+        paths.push(path);
+      }
+    }
+  }
+
+  if (
+    lead?.customer_photo_path &&
+    !paths.includes(lead.customer_photo_path)
+  ) {
+    paths.push(lead.customer_photo_path);
+  }
+
+  return paths;
+}
