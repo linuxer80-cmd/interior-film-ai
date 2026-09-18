@@ -14,19 +14,15 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from "./adminStyles";
+import {
+  JOB_PAGE_SIZE,
+  LEAD_PAGE_SIZE,
+  SIGNED_URL_SECONDS,
+  PROJECT_ID,
+  STATUS_OPTIONS,
+} from "./adminConstants";
 const JOB_PAGE_SIZE = 10;
-const LEAD_PAGE_SIZE = 20;
-const SIGNED_URL_SECONDS = 60 * 30;
 
-const PROJECT_ID = "d9a21463-1f8f-452a-9dd0-cdc69ebfa27f";
-
-const STATUS_OPTIONS = [
-  "신규문의",
-  "상담중",
-  "방문견적",
-  "계약완료",
-  "미계약",
-];
 
 export default function AdminPage() {
   /* =========================================================
