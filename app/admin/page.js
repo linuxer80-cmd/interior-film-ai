@@ -39,6 +39,7 @@ import PhotoCard from "./PhotoCard";
 import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
 import NewLeadAlert from "./NewLeadAlert";
+import Pagination from "./Pagination";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -2730,68 +2731,24 @@ export default function AdminPage() {
             )
           )}
 
-          <div
-            style={{
-              display:
-                "grid",
-              gridTemplateColumns:
-                "1fr auto 1fr",
-              alignItems:
-                "center",
-              gap: "8px",
-              marginTop:
-                "14px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={
-                jobPage <= 1
-              }
-              onClick={() =>
-                loadJobs(
-                  jobPage - 1,
-                  jobSearchApplied
-                )
-              }
-              style={
-                secondaryButtonStyle
-              }
-            >
-              이전
-            </button>
-
-            <div
-              style={{
-                textAlign:
-                  "center",
-                fontSize:
-                  "14px",
-              }}
-            >
-              {jobPage} /{" "}
-              {totalJobPages}
-            </div>
-
-            <button
-              type="button"
-              disabled={
-                jobPage >=
-                totalJobPages
-              }
-              onClick={() =>
-                loadJobs(
-                  jobPage + 1,
-                  jobSearchApplied
-                )
-              }
-              style={
-                secondaryButtonStyle
-              }
-            >
-              다음
-            </button>
-          </div>
+         
+                <Pagination
+  currentPage={jobPage}
+  totalPages={totalJobPages}
+  onPrevious={() =>
+    loadJobs(
+      jobPage - 1,
+      jobSearchApplied
+    )
+  }
+  onNext={() =>
+    loadJobs(
+      jobPage + 1,
+      jobSearchApplied
+    )
+  }
+  marginTop="14px"
+/>
         </>
       )}
 
@@ -4473,66 +4430,22 @@ export default function AdminPage() {
             )
           )}
 
-          <div
-            style={{
-              display:
-                "grid",
-              gridTemplateColumns:
-                "1fr auto 1fr",
-              alignItems:
-                "center",
-              gap: "8px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={
-                leadPage <= 1
-              }
-              onClick={() =>
-                loadLeads(
-                  leadPage - 1,
-                  leadFilter
-                )
-              }
-              style={
-                secondaryButtonStyle
-              }
-            >
-              이전
-            </button>
-
-            <div
-              style={{
-                textAlign:
-                  "center",
-                fontSize:
-                  "14px",
-              }}
-            >
-              {leadPage} /{" "}
-              {totalLeadPages}
-            </div>
-
-            <button
-              type="button"
-              disabled={
-                leadPage >=
-                totalLeadPages
-              }
-              onClick={() =>
-                loadLeads(
-                  leadPage + 1,
-                  leadFilter
-                )
-              }
-              style={
-                secondaryButtonStyle
-              }
-            >
-              다음
-            </button>
-          </div>
+         <Pagination
+  currentPage={leadPage}
+  totalPages={totalLeadPages}
+  onPrevious={() =>
+    loadLeads(
+      leadPage - 1,
+      leadFilter
+    )
+  }
+  onNext={() =>
+    loadLeads(
+      leadPage + 1,
+      leadFilter
+    )
+  }
+/>
         </>
       )}
 
