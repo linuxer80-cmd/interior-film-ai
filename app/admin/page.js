@@ -36,6 +36,7 @@ import {
   shareQuote,
 } from "./quoteUtils";
 import PhotoCard from "./PhotoCard";
+import PhotoPreviewModal from "./PhotoPreviewModal";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -4802,87 +4803,12 @@ export default function AdminPage() {
       {/* =====================================================
           사진 크게 보기
       ===================================================== */}
-
-      {previewPhoto && (
-        <div
-          onClick={() =>
-            setPreviewPhoto(
-              null
-            )
-          }
-          style={{
-            position:
-              "fixed",
-            inset: 0,
-            background:
-              "rgba(0,0,0,.88)",
-            zIndex:
-              10000,
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "center",
-            padding:
-              "16px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              setPreviewPhoto(
-                null
-              )
-            }
-            style={{
-              position:
-                "absolute",
-              top: "18px",
-              right:
-                "18px",
-              border:
-                "none",
-              borderRadius:
-                "999px",
-              width:
-                "44px",
-              height:
-                "44px",
-              background:
-                "#ffffff",
-              fontSize:
-                "22px",
-              fontWeight:
-                "bold",
-              cursor:
-                "pointer",
-            }}
-          >
-            ×
-          </button>
-
-          <img
-            src={
-              previewPhoto
-            }
-            alt=""
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-            style={{
-              maxWidth:
-                "100%",
-              maxHeight:
-                "90vh",
-              objectFit:
-                "contain",
-              borderRadius:
-                "10px",
-            }}
-          />
-        </div>
-      )}
+<PhotoPreviewModal
+  previewPhoto={previewPhoto}
+  setPreviewPhoto={setPreviewPhoto}
+/>
+      
+  
     </main>
   );
     }
