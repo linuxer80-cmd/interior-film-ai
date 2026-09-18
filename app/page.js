@@ -887,6 +887,7 @@ export default function Home() {
   async function uploadEstimatePhotos() {
     const paths = [];
     const failed = [];
+    const uploadErrors = [];
 
     for (
       let index = 0;
@@ -947,6 +948,11 @@ export default function Home() {
         failed.push(
           index + 1
         );
+
+        uploadErrors.push(
+          error?.message ||
+            `자동견적 사진 ${index + 1} 저장 실패`
+        );
       }
     }
 
@@ -966,7 +972,8 @@ export default function Home() {
       paths.length === 0
     ) {
       throw new Error(
-        "자동견적 사진을 서버에 저장하지 못했습니다."
+        uploadErrors[0] ||
+          "자동견적 사진을 서버에 저장하지 못했습니다."
       );
     }
 
