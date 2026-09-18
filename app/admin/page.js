@@ -37,6 +37,7 @@ import {
 } from "./quoteUtils";
 import PhotoCard from "./PhotoCard";
 import PhotoPreviewModal from "./PhotoPreviewModal";
+import AdminTabs from "./AdminTabs";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -2312,169 +2313,12 @@ export default function AdminPage() {
       >
         기분좋은공간 관리자
       </h1>
-
-      <div
-        style={{
-          display:
-            "grid",
-          gridTemplateColumns:
-            "repeat(4, 1fr)",
-          gap: "6px",
-          marginBottom:
-            "18px",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() =>
-            changeTab("jobs")
-          }
-          style={{
-            padding:
-              "11px 4px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius:
-              "9px",
-            background:
-              activeTab ===
-              "jobs"
-                ? "#111827"
-                : "#ffffff",
-            color:
-              activeTab ===
-              "jobs"
-                ? "#ffffff"
-                : "#111827",
-            fontWeight:
-              "bold",
-            fontSize:
-              "13px",
-          }}
-        >
-          시공 DB
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            changeTab(
-              "register"
-            )
-          }
-          style={{
-            padding:
-              "11px 4px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius:
-              "9px",
-            background:
-              activeTab ===
-              "register"
-                ? "#111827"
-                : "#ffffff",
-            color:
-              activeTab ===
-              "register"
-                ? "#ffffff"
-                : "#111827",
-            fontWeight:
-              "bold",
-            fontSize:
-              "13px",
-          }}
-        >
-          시공 등록
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            changeTab(
-              "usage"
-            )
-          }
-          style={{
-            padding:
-              "11px 4px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius:
-              "9px",
-            background:
-              activeTab ===
-              "usage"
-                ? "#111827"
-                : "#ffffff",
-            color:
-              activeTab ===
-              "usage"
-                ? "#ffffff"
-                : "#111827",
-            fontWeight:
-              "bold",
-            fontSize:
-              "13px",
-          }}
-        >
-          로그 분석
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            changeTab(
-              "leads"
-            )
-          }
-          style={{
-            position:
-              "relative",
-            padding:
-              "11px 4px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius:
-              "9px",
-            background:
-              activeTab ===
-              "leads"
-                ? "#111827"
-                : "#ffffff",
-            color:
-              activeTab ===
-              "leads"
-                ? "#ffffff"
-                : "#111827",
-            fontWeight:
-              "bold",
-            fontSize:
-              "13px",
-          }}
-        >
-          고객 상담
-
-          {unreadCount >
-            0 && (
-            <span
-              style={{
-                marginLeft:
-                  "4px",
-                color:
-                  activeTab ===
-                  "leads"
-                    ? "#fde68a"
-                    : "#dc2626",
-              }}
-            >
-              (
-              {unreadCount}
-              )
-            </span>
-          )}
-        </button>
-      </div>
+<AdminTabs
+  activeTab={activeTab}
+  changeTab={changeTab}
+  unreadCount={unreadCount}
+/>
+            
 
       {/* =====================================================
           시공 DB
