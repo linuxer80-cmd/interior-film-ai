@@ -26,7 +26,11 @@ import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
-import { getCachedSignedUrl, setCachedSignedUrl } from "./signedUrlCache";
+import {
+  getCachedSignedUrl,
+  setCachedSignedUrl,
+} from "./signedUrlCache";
+
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -372,16 +376,38 @@ export default function AdminPage() {
       const urls = [];
 
       for (const path of paths) {
+        const cachedUrl = getCachedSignedUrl(path);
+
+        if (cachedUrl) {
+          urls.push({
+            path,
+            url: cachedUrl,
+          });
+
+          continue;
+        }
+
         const { data, error } = await supabase.storage
           .from("work-photos")
           .createSignedUrl(path, SIGNED_URL_SECONDS);
 
         if (error) {
-          console.error("자동견적 사진 Signed URL 오류:", path, error);
+          console.error(
+            "자동견적 사진 Signed URL 오류:",
+            path,
+            error,
+          );
+
           continue;
         }
 
         if (data?.signedUrl) {
+          setCachedSignedUrl(
+            path,
+            data.signedUrl,
+            SIGNED_URL_SECONDS,
+          );
+
           urls.push({
             path,
             url: data.signedUrl,
@@ -502,7 +528,10 @@ export default function AdminPage() {
 
         const createdAt = new Date(row.created_at);
 
-        return !Number.isNaN(createdAt.getTime()) && createdAt >= todayStart;
+        return (
+          !Number.isNaN(createdAt.getTime()) &&
+          createdAt >= todayStart
+        );
       }).length;
 
       const sevenDaysCount = rows.filter((row) => {
@@ -513,7 +542,8 @@ export default function AdminPage() {
         const createdAt = new Date(row.created_at);
 
         return (
-          !Number.isNaN(createdAt.getTime()) && createdAt >= sevenDaysStart
+          !Number.isNaN(createdAt.getTime()) &&
+          createdAt >= sevenDaysStart
         );
       }).length;
 
@@ -534,7 +564,9 @@ export default function AdminPage() {
       const total = rows.length;
 
       const conversion =
-        total > 0 ? Math.round((convertedCount / total) * 1000) / 10 : 0;
+        total > 0
+          ? Math.round((convertedCount / total) * 1000) / 10
+          : 0;
 
       setUsageStats({
         today: todayCount,
@@ -563,7 +595,9 @@ export default function AdminPage() {
             "ko-KR",
           )}건 확인 · 사진 저장 로그 ${photoLogCount.toLocaleString(
             "ko-KR",
-          )}건 · 상세상담 전환 ${convertedCount.toLocaleString("ko-KR")}건`,
+          )}건 · 상세상담 전환 ${convertedCount.toLocaleString(
+            "ko-KR",
+          )}건`,
         );
       }
     } catch (error) {
@@ -595,7 +629,10 @@ export default function AdminPage() {
      시공 DB
   ========================================================= */
 
-  async function loadJobs(page = 1, keyword = jobSearchApplied) {
+  async function loadJobs(
+    page = 1,
+    keyword = jobSearchApplied,
+  ) {
     setJobsLoading(true);
     setJobsMessage("");
 
@@ -603,7 +640,8 @@ export default function AdminPage() {
       const from = (page - 1) * JOB_PAGE_SIZE;
       const to = from + JOB_PAGE_SIZE - 1;
 
-      const safeKeyword = sanitizeSearchKeyword(keyword);
+      const safeKeyword =
+        sanitizeSearchKeyword(keyword);
 
       let query = supabase.from("work_items").select(
         `
@@ -640,14 +678,20 @@ export default function AdminPage() {
       setOpenJobId(null);
     } catch (error) {
       console.error(error);
-      setJobsMessage(`❌ 시공 DB 오류: ${error?.message || "불러오기 실패"}`);
+
+      setJobsMessage(
+        `❌ 시공 DB 오류: ${
+          error?.message || "불러오기 실패"
+        }`,
+      );
     } finally {
       setJobsLoading(false);
     }
   }
 
   function searchJobs() {
-    const keyword = sanitizeSearchKeyword(jobSearch);
+    const keyword =
+      sanitizeSearchKeyword(jobSearch);
 
     setJobSearchApplied(keyword);
     loadJobs(1, keyword);
@@ -691,7 +735,11 @@ export default function AdminPage() {
         [workItemId]: data || [],
       }));
     } catch (error) {
-      setJobsMessage(`❌ 사진정보 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 사진정보 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     } finally {
       setJobPhotoLoadingId(null);
     }
@@ -719,7 +767,9 @@ export default function AdminPage() {
       return jobPhotoUrls[photo.id];
     }
 
-    const cachedUrl = getCachedSignedUrl(photo.storage_path);
+    const cachedUrl = getCachedSignedUrl(
+      photo.storage_path,
+    );
 
     if (cachedUrl) {
       setJobPhotoUrls((current) => ({
@@ -735,17 +785,26 @@ export default function AdminPage() {
     try {
       const { data, error } = await supabase.storage
         .from("work-photos")
-        .createSignedUrl(photo.storage_path, SIGNED_URL_SECONDS);
+        .createSignedUrl(
+          photo.storage_path,
+          SIGNED_URL_SECONDS,
+        );
 
       if (error) throw error;
 
       const url = data?.signedUrl;
 
       if (!url) {
-        throw new Error("사진 주소를 만들 수 없습니다.");
+        throw new Error(
+          "사진 주소를 만들 수 없습니다.",
+        );
       }
 
-      setCachedSignedUrl(photo.storage_path, url, SIGNED_URL_SECONDS);
+      setCachedSignedUrl(
+        photo.storage_path,
+        url,
+        SIGNED_URL_SECONDS,
+      );
 
       setJobPhotoUrls((current) => ({
         ...current,
@@ -754,7 +813,12 @@ export default function AdminPage() {
 
       return url;
     } catch (error) {
-      setJobsMessage(`❌ 사진 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 사진 오류: ${
+          error?.message || "실패"
+        }`,
+      );
+
       return null;
     } finally {
       setLoadingPhotoId(null);
@@ -780,10 +844,13 @@ export default function AdminPage() {
   function startEdit(job) {
     setEditingId(job.id);
     setEditCategory(job.category || "");
-    setEditSubCategory(job.sub_category || job.category || "");
+    setEditSubCategory(
+      job.sub_category || job.category || "",
+    );
 
     setEditCost(
-      job.actual_cost !== null && job.actual_cost !== undefined
+      job.actual_cost !== null &&
+        job.actual_cost !== undefined
         ? String(job.actual_cost)
         : "",
     );
@@ -796,15 +863,21 @@ export default function AdminPage() {
   }
 
   async function saveJobEdit(jobId) {
-    const cost = Number(String(editCost).replace(/,/g, ""));
+    const cost = Number(
+      String(editCost).replace(/,/g, ""),
+    );
 
     if (!editCategory.trim()) {
-      setJobsMessage("⚠️ 시공 부위를 입력해주세요.");
+      setJobsMessage(
+        "⚠️ 시공 부위를 입력해주세요.",
+      );
       return;
     }
 
     if (!Number.isFinite(cost) || cost <= 0) {
-      setJobsMessage("⚠️ 실제 시공금액을 입력해주세요.");
+      setJobsMessage(
+        "⚠️ 실제 시공금액을 입력해주세요.",
+      );
       return;
     }
 
@@ -813,7 +886,9 @@ export default function AdminPage() {
         .from("work_items")
         .update({
           category: editCategory.trim(),
-          sub_category: editSubCategory.trim() || editCategory.trim(),
+          sub_category:
+            editSubCategory.trim() ||
+            editCategory.trim(),
           actual_cost: cost,
           memo: editMemo.trim() || null,
           updated_at: new Date().toISOString(),
@@ -823,11 +898,21 @@ export default function AdminPage() {
       if (error) throw error;
 
       setEditingId(null);
-      setJobsMessage("✅ 시공 데이터가 수정되었습니다.");
 
-      await loadJobs(jobPage, jobSearchApplied);
+      setJobsMessage(
+        "✅ 시공 데이터가 수정되었습니다.",
+      );
+
+      await loadJobs(
+        jobPage,
+        jobSearchApplied,
+      );
     } catch (error) {
-      setJobsMessage(`❌ 수정 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 수정 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
@@ -837,10 +922,20 @@ export default function AdminPage() {
 
   function startPhotoEdit(photo) {
     setEditingPhotoId(photo.id);
-    setEditPhotoType(photo.photo_type || "before");
-    setEditPhotoCategory(photo.category || "");
-    setEditPhotoSubCategory(photo.sub_category || photo.category || "");
-    setEditPhotoDescription(photo.ai_description || "");
+    setEditPhotoType(
+      photo.photo_type || "before",
+    );
+    setEditPhotoCategory(
+      photo.category || "",
+    );
+    setEditPhotoSubCategory(
+      photo.sub_category ||
+        photo.category ||
+        "",
+    );
+    setEditPhotoDescription(
+      photo.ai_description || "",
+    );
   }
 
   function cancelPhotoEdit() {
@@ -849,17 +944,24 @@ export default function AdminPage() {
 
   async function savePhotoEdit(photo) {
     if (!editPhotoCategory.trim()) {
-      setJobsMessage("⚠️ 사진 카테고리를 입력해주세요.");
+      setJobsMessage(
+        "⚠️ 사진 카테고리를 입력해주세요.",
+      );
       return;
     }
 
     setPhotoEditLoading(true);
 
     try {
-      let tags = Array.isArray(photo.ai_tags) ? [...photo.ai_tags] : [];
+      let tags = Array.isArray(photo.ai_tags)
+        ? [...photo.ai_tags]
+        : [];
 
       tags = tags.filter(
-        (tag) => tag !== "시공전" && tag !== "시공후" && tag !== "전후비교",
+        (tag) =>
+          tag !== "시공전" &&
+          tag !== "시공후" &&
+          tag !== "전후비교",
       );
 
       if (editPhotoType === "before") {
@@ -874,7 +976,10 @@ export default function AdminPage() {
 
       const searchText = [
         `시공 부위: ${editPhotoCategory.trim()}`,
-        `세부 부위: ${editPhotoSubCategory.trim() || editPhotoCategory.trim()}`,
+        `세부 부위: ${
+          editPhotoSubCategory.trim() ||
+          editPhotoCategory.trim()
+        }`,
         `사진 상태: ${
           editPhotoType === "before"
             ? "시공 전"
@@ -885,15 +990,18 @@ export default function AdminPage() {
         `사진 설명: ${editPhotoDescription.trim()}`,
         `특징: ${tags.join(", ")}`,
       ].join("\n");
+            const embedding = await createEmbedding(searchText);
 
-      const embedding = await createEmbedding(searchText);
       const { error } = await supabase
         .from("work_photos")
         .update({
           photo_type: editPhotoType,
           category: editPhotoCategory.trim(),
-          sub_category: editPhotoSubCategory.trim() || editPhotoCategory.trim(),
-          ai_description: editPhotoDescription.trim(),
+          sub_category:
+            editPhotoSubCategory.trim() ||
+            editPhotoCategory.trim(),
+          ai_description:
+            editPhotoDescription.trim(),
           ai_tags: tags,
           embedding,
         })
@@ -902,26 +1010,42 @@ export default function AdminPage() {
       if (error) throw error;
 
       setEditingPhotoId(null);
-      setJobsMessage("✅ 사진 정보가 수정되었습니다.");
 
-      await loadJobPhotos(photo.work_item_id);
+      setJobsMessage(
+        "✅ 사진 정보가 수정되었습니다.",
+      );
+
+      await loadJobPhotos(
+        photo.work_item_id,
+      );
     } catch (error) {
-      setJobsMessage(`❌ 사진 수정 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 사진 수정 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     } finally {
       setPhotoEditLoading(false);
     }
   }
 
   async function deletePhoto(photo) {
-    if (!window.confirm("이 사진을 완전히 삭제하시겠습니까?")) {
+    if (
+      !window.confirm(
+        "이 사진을 완전히 삭제하시겠습니까?",
+      )
+    ) {
       return;
     }
 
     try {
       if (photo.storage_path) {
-        const { error } = await supabase.storage
-          .from("work-photos")
-          .remove([photo.storage_path]);
+        const { error } =
+          await supabase.storage
+            .from("work-photos")
+            .remove([
+              photo.storage_path,
+            ]);
 
         if (error) {
           console.error(error);
@@ -937,8 +1061,13 @@ export default function AdminPage() {
 
       setJobPhotos((current) => ({
         ...current,
-        [photo.work_item_id]: (current[photo.work_item_id] || []).filter(
-          (item) => item.id !== photo.id,
+        [photo.work_item_id]: (
+          current[
+            photo.work_item_id
+          ] || []
+        ).filter(
+          (item) =>
+            item.id !== photo.id,
         ),
       }));
 
@@ -952,9 +1081,15 @@ export default function AdminPage() {
         return next;
       });
 
-      setJobsMessage("✅ 사진이 삭제되었습니다.");
+      setJobsMessage(
+        "✅ 사진이 삭제되었습니다.",
+      );
     } catch (error) {
-      setJobsMessage(`❌ 사진 삭제 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 사진 삭제 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
@@ -968,7 +1103,10 @@ export default function AdminPage() {
     }
 
     try {
-      const { data: photos, error: photosError } = await supabase
+      const {
+        data: photos,
+        error: photosError,
+      } = await supabase
         .from("work_photos")
         .select("id,storage_path")
         .eq("work_item_id", job.id);
@@ -978,20 +1116,26 @@ export default function AdminPage() {
       }
 
       const paths = (photos || [])
-        .map((photo) => photo.storage_path)
+        .map(
+          (photo) =>
+            photo.storage_path,
+        )
         .filter(Boolean);
 
       if (paths.length) {
-        const { error } = await supabase.storage
-          .from("work-photos")
-          .remove(paths);
+        const { error } =
+          await supabase.storage
+            .from("work-photos")
+            .remove(paths);
 
         if (error) {
           console.error(error);
         }
       }
 
-      const { error: photoDeleteError } = await supabase
+      const {
+        error: photoDeleteError,
+      } = await supabase
         .from("work_photos")
         .delete()
         .eq("work_item_id", job.id);
@@ -1019,14 +1163,26 @@ export default function AdminPage() {
         return next;
       });
 
-      setJobsMessage("✅ 시공건이 삭제되었습니다.");
+      setJobsMessage(
+        "✅ 시공건이 삭제되었습니다.",
+      );
 
       const targetPage =
-        jobs.length === 1 && jobPage > 1 ? jobPage - 1 : jobPage;
+        jobs.length === 1 &&
+        jobPage > 1
+          ? jobPage - 1
+          : jobPage;
 
-      await loadJobs(targetPage, jobSearchApplied);
+      await loadJobs(
+        targetPage,
+        jobSearchApplied,
+      );
     } catch (error) {
-      setJobsMessage(`❌ 시공 삭제 오류: ${error?.message || "실패"}`);
+      setJobsMessage(
+        `❌ 시공 삭제 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
@@ -1044,31 +1200,50 @@ export default function AdminPage() {
     analysis,
     comparison,
   }) {
-    const compressed = await resizeImage(file, 1200, 0.7);
+    const compressed = await resizeImage(
+      file,
+      1200,
+      0.7,
+    );
 
-    const imageHash = await getImageHash(compressed);
+    const imageHash =
+      await getImageHash(compressed);
 
-    const { data: duplicates, error: duplicateError } = await supabase
+    const {
+      data: duplicates,
+      error: duplicateError,
+    } = await supabase
       .from("work_photos")
       .select("id,photo_type")
       .eq("image_hash", imageHash)
-      .or("photo_type.is.null,photo_type.neq.customer")
+      .or(
+        "photo_type.is.null,photo_type.neq.customer",
+      )
       .limit(1);
 
     if (duplicateError) {
       throw duplicateError;
     }
 
-    if (duplicates && duplicates.length > 0) {
+    if (
+      duplicates &&
+      duplicates.length > 0
+    ) {
       return {
         skipped: true,
         reason: "duplicate",
       };
     }
 
-    const description = analysis?.description || analysis?.ai_description || "";
+    const description =
+      analysis?.description ||
+      analysis?.ai_description ||
+      "";
 
-    let tags = analysis?.tags || analysis?.ai_tags || [];
+    let tags =
+      analysis?.tags ||
+      analysis?.ai_tags ||
+      [];
 
     if (!Array.isArray(tags)) {
       tags = [];
@@ -1088,18 +1263,29 @@ export default function AdminPage() {
 
     tags = [...new Set(tags)];
 
-    const finalCategory = categoryValue || analysis?.category || "기타";
+    const finalCategory =
+      categoryValue ||
+      analysis?.category ||
+      "기타";
 
     const finalSubCategory =
-      subCategoryValue || analysis?.sub_category || finalCategory;
+      subCategoryValue ||
+      analysis?.sub_category ||
+      finalCategory;
 
     const searchText = [
       `시공 부위: ${finalCategory}`,
       `세부 부위: ${finalSubCategory}`,
-      `사진 상태: ${photoType === "before" ? "시공 전" : "시공 후"}`,
+      `사진 상태: ${
+        photoType === "before"
+          ? "시공 전"
+          : "시공 후"
+      }`,
       `사진 설명: ${description}`,
       `특징: ${tags.join(", ")}`,
-      comparison?.description ? `전후 비교: ${comparison.description}` : "",
+      comparison?.description
+        ? `전후 비교: ${comparison.description}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1107,45 +1293,68 @@ export default function AdminPage() {
     let embedding = null;
 
     try {
-      embedding = await createEmbedding(searchText);
+      embedding =
+        await createEmbedding(
+          searchText,
+        );
     } catch (error) {
-      console.error("임베딩:", error);
+      console.error(
+        "임베딩:",
+        error,
+      );
     }
 
     const storagePath = `history/${projectId}/${workItemId}/${photoType}/${Date.now()}-${crypto.randomUUID()}.jpg`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("work-photos")
-      .upload(storagePath, compressed, {
-        contentType: "image/jpeg",
-        cacheControl: "315336000",
-        upsert: false,
-      });
+    const { error: uploadError } =
+      await supabase.storage
+        .from("work-photos")
+        .upload(
+          storagePath,
+          compressed,
+          {
+            contentType:
+              "image/jpeg",
+            cacheControl:
+              "31536000",
+            upsert: false,
+          },
+        );
 
     if (uploadError) {
       throw uploadError;
     }
 
     try {
-      const { data: publicData } = supabase.storage
-        .from("work-photos")
-        .getPublicUrl(storagePath);
+      const { data: publicData } =
+        supabase.storage
+          .from("work-photos")
+          .getPublicUrl(storagePath);
 
-      const photoUrl = publicData?.publicUrl || storagePath;
+      const photoUrl =
+        publicData?.publicUrl ||
+        storagePath;
 
-      const { error } = await supabase.from("work_photos").insert({
-        work_item_id: workItemId,
-        project_id: projectId,
-        photo_type: photoType,
-        category: finalCategory,
-        sub_category: finalSubCategory,
-        storage_path: storagePath,
-        photo_url: photoUrl,
-        ai_description: description,
-        ai_tags: tags,
-        embedding,
-        image_hash: imageHash,
-      });
+      const { error } =
+        await supabase
+          .from("work_photos")
+          .insert({
+            work_item_id:
+              workItemId,
+            project_id: projectId,
+            photo_type: photoType,
+            category: finalCategory,
+            sub_category:
+              finalSubCategory,
+            storage_path:
+              storagePath,
+            photo_url: photoUrl,
+            ai_description:
+              description,
+            ai_tags: tags,
+            embedding,
+            image_hash: imageHash,
+          });
 
       if (error) throw error;
 
@@ -1154,7 +1363,9 @@ export default function AdminPage() {
       };
     } catch (error) {
       try {
-        await supabase.storage.from("work-photos").remove([storagePath]);
+        await supabase.storage
+          .from("work-photos")
+          .remove([storagePath]);
       } catch {}
 
       throw error;
@@ -1166,44 +1377,71 @@ export default function AdminPage() {
   ========================================================= */
 
   async function handleSave() {
-    if (beforeImages.length === 0 && afterImages.length === 0) {
-      setMessage("⚠️ 시공 전 또는 시공 후 사진을 한 장 이상 선택해주세요.");
+    if (
+      beforeImages.length === 0 &&
+      afterImages.length === 0
+    ) {
+      setMessage(
+        "⚠️ 시공 전 또는 시공 후 사진을 한 장 이상 선택해주세요.",
+      );
       return;
     }
 
     if (!category.trim()) {
-      setMessage("⚠️ 시공 부위를 입력해주세요.");
+      setMessage(
+        "⚠️ 시공 부위를 입력해주세요.",
+      );
       return;
     }
 
-    const cost = Number(String(actualCost).replace(/,/g, ""));
+    const cost = Number(
+      String(actualCost).replace(
+        /,/g,
+        "",
+      ),
+    );
 
-    if (!Number.isFinite(cost) || cost <= 0) {
-      setMessage("⚠️ 실제 시공금액을 정확히 입력해주세요.");
+    if (
+      !Number.isFinite(cost) ||
+      cost <= 0
+    ) {
+      setMessage(
+        "⚠️ 실제 시공금액을 정확히 입력해주세요.",
+      );
       return;
     }
 
     setLoading(true);
-    setMessage("시공 데이터를 생성하고 있습니다...");
+
+    setMessage(
+      "시공 데이터를 생성하고 있습니다...",
+    );
 
     let workItemId = null;
 
     try {
       const combinedMemo = [
-        material.trim() ? `자재: ${material.trim()}` : "",
+        material.trim()
+          ? `자재: ${material.trim()}`
+          : "",
         memo.trim(),
       ]
         .filter(Boolean)
         .join("\n");
 
-      const { data: workItem, error } = await supabase
+      const {
+        data: workItem,
+        error,
+      } = await supabase
         .from("work_items")
         .insert({
           project_id: PROJECT_ID,
           category: category.trim(),
-          sub_category: category.trim(),
+          sub_category:
+            category.trim(),
           actual_cost: cost,
-          memo: combinedMemo || null,
+          memo:
+            combinedMemo || null,
         })
         .select()
         .single();
@@ -1212,55 +1450,83 @@ export default function AdminPage() {
 
       workItemId = workItem.id;
 
-      setMessage("AI가 시공 전/후 사진을 비교하고 있습니다...");
-
-      const comparison = await compareMultipleBeforeAfter(
-        beforeImages,
-        afterImages,
+      setMessage(
+        "AI가 시공 전/후 사진을 비교하고 있습니다...",
       );
 
-      const allPhotos = [
-        ...beforeImages.map((file) => ({
-          file,
-          type: "before",
-        })),
+      const comparison =
+        await compareMultipleBeforeAfter(
+          beforeImages,
+          afterImages,
+        );
 
-        ...afterImages.map((file) => ({
-          file,
-          type: "after",
-        })),
+      const allPhotos = [
+        ...beforeImages.map(
+          (file) => ({
+            file,
+            type: "before",
+          }),
+        ),
+
+        ...afterImages.map(
+          (file) => ({
+            file,
+            type: "after",
+          }),
+        ),
       ];
 
       let saved = 0;
       let duplicate = 0;
 
-      for (let index = 0; index < allPhotos.length; index++) {
-        const item = allPhotos[index];
+      for (
+        let index = 0;
+        index < allPhotos.length;
+        index++
+      ) {
+        const item =
+          allPhotos[index];
 
         setMessage(
-          `${item.type === "before" ? "시공 전" : "시공 후"} 사진 ${
-            index + 1
-          }/${allPhotos.length} AI 분석 + 저장 중...`,
+          `${
+            item.type === "before"
+              ? "시공 전"
+              : "시공 후"
+          } 사진 ${index + 1}/${
+            allPhotos.length
+          } AI 분석 + 저장 중...`,
         );
 
         let analysis = {};
 
         try {
-          analysis = await analyzeImage(item.file, item.type);
+          analysis =
+            await analyzeImage(
+              item.file,
+              item.type,
+            );
         } catch (error) {
-          console.error("AI 분석:", error);
+          console.error(
+            "AI 분석:",
+            error,
+          );
         }
 
-        const result = await savePhoto({
-          file: item.file,
-          workItemId: workItem.id,
-          projectId: PROJECT_ID,
-          photoType: item.type,
-          categoryValue: category.trim(),
-          subCategoryValue: category.trim(),
-          analysis,
-          comparison,
-        });
+        const result =
+          await savePhoto({
+            file: item.file,
+            workItemId:
+              workItem.id,
+            projectId:
+              PROJECT_ID,
+            photoType: item.type,
+            categoryValue:
+              category.trim(),
+            subCategoryValue:
+              category.trim(),
+            analysis,
+            comparison,
+          });
 
         if (result?.skipped) {
           duplicate++;
@@ -1270,11 +1536,19 @@ export default function AdminPage() {
       }
 
       if (saved === 0) {
-        await supabase.from("work_items").delete().eq("id", workItem.id);
+        await supabase
+          .from("work_items")
+          .delete()
+          .eq(
+            "id",
+            workItem.id,
+          );
 
         workItemId = null;
 
-        throw new Error("선택한 사진이 모두 이미 시공 DB에 등록되어 있습니다.");
+        throw new Error(
+          "선택한 사진이 모두 이미 시공 DB에 등록되어 있습니다.",
+        );
       }
 
       setBeforeImages([]);
@@ -1296,21 +1570,40 @@ export default function AdminPage() {
 
       if (workItemId) {
         try {
-          const { count } = await supabase
-            .from("work_photos")
-            .select("id", {
-              count: "exact",
-              head: true,
-            })
-            .eq("work_item_id", workItemId);
+          const { count } =
+            await supabase
+              .from(
+                "work_photos",
+              )
+              .select("id", {
+                count: "exact",
+                head: true,
+              })
+              .eq(
+                "work_item_id",
+                workItemId,
+              );
 
           if (!count) {
-            await supabase.from("work_items").delete().eq("id", workItemId);
+            await supabase
+              .from(
+                "work_items",
+              )
+              .delete()
+              .eq(
+                "id",
+                workItemId,
+              );
           }
         } catch {}
       }
 
-      setMessage(`❌ 오류: ${error?.message || "저장 실패"}`);
+      setMessage(
+        `❌ 오류: ${
+          error?.message ||
+          "저장 실패"
+        }`,
+      );
     } finally {
       setLoading(false);
     }
@@ -1322,35 +1615,53 @@ export default function AdminPage() {
 
   async function loadUnreadCount() {
     try {
-      const { count, error } = await supabase
-        .from("customer_leads")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq("is_read", false);
+      const { count, error } =
+        await supabase
+          .from("customer_leads")
+          .select("id", {
+            count: "exact",
+            head: true,
+          })
+          .eq("is_read", false);
 
       if (error) {
-        console.error("미확인 상담 수:", error);
+        console.error(
+          "미확인 상담 수:",
+          error,
+        );
         return;
       }
 
       setUnreadCount(count || 0);
     } catch (error) {
-      console.error("미확인 상담 수:", error);
+      console.error(
+        "미확인 상담 수:",
+        error,
+      );
     }
   }
 
-  async function loadLeads(page = 1, filter = leadFilter) {
+  async function loadLeads(
+    page = 1,
+    filter = leadFilter,
+  ) {
     setLeadsLoading(true);
     setLeadsMessage("");
 
     try {
-      const from = (page - 1) * LEAD_PAGE_SIZE;
-      const to = from + LEAD_PAGE_SIZE - 1;
+      const from =
+        (page - 1) *
+        LEAD_PAGE_SIZE;
 
-      let query = supabase.from("customer_leads").select(
-        `
+      const to =
+        from +
+        LEAD_PAGE_SIZE -
+        1;
+
+      let query = supabase
+        .from("customer_leads")
+        .select(
+          `
           id,
           customer_name,
           phone,
@@ -1375,16 +1686,26 @@ export default function AdminPage() {
           quote_created_at,
           created_at
         `,
-        {
-          count: "exact",
-        },
-      );
+          {
+            count: "exact",
+          },
+        );
 
-      if (filter && filter !== "all") {
-        query = query.eq("status", filter);
+      if (
+        filter &&
+        filter !== "all"
+      ) {
+        query = query.eq(
+          "status",
+          filter,
+        );
       }
 
-      const { data, error, count } = await query
+      const {
+        data,
+        error,
+        count,
+      } = await query
         .order("created_at", {
           ascending: false,
         })
@@ -1399,7 +1720,10 @@ export default function AdminPage() {
       console.error(error);
 
       setLeadsMessage(
-        `❌ 상담 목록 오류: ${error?.message || "불러오기 실패"}`,
+        `❌ 상담 목록 오류: ${
+          error?.message ||
+          "불러오기 실패"
+        }`,
       );
     } finally {
       setLeadsLoading(false);
@@ -1414,12 +1738,13 @@ export default function AdminPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          is_read: true,
-        })
-        .eq("id", lead.id);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            is_read: true,
+          })
+          .eq("id", lead.id);
 
       if (error) throw error;
 
@@ -1434,13 +1759,23 @@ export default function AdminPage() {
         ),
       );
 
-      setUnreadCount((current) => Math.max(0, current - 1));
+      setUnreadCount((current) =>
+        Math.max(
+          0,
+          current - 1,
+        ),
+      );
     } catch (error) {
-      console.error("읽음 처리:", error);
+      console.error(
+        "읽음 처리:",
+        error,
+      );
     }
   }
 
-  async function toggleLeadDetail(lead) {
+  async function toggleLeadDetail(
+    lead,
+  ) {
     if (openLeadId === lead.id) {
       setOpenLeadId(null);
       return;
@@ -1451,37 +1786,73 @@ export default function AdminPage() {
     await markLeadRead(lead);
   }
 
-  async function loadLeadPhotos(lead) {
-    const paths = getLeadPhotoPaths(lead);
+  async function loadLeadPhotos(
+    lead,
+  ) {
+    const paths =
+      getLeadPhotoPaths(lead);
 
     if (paths.length === 0) {
-      setLeadsMessage("⚠️ 저장된 고객 사진이 없습니다.");
+      setLeadsMessage(
+        "⚠️ 저장된 고객 사진이 없습니다.",
+      );
       return;
     }
 
     if (
-      Array.isArray(leadPhotoUrls[lead.id]) &&
-      leadPhotoUrls[lead.id].length > 0
+      Array.isArray(
+        leadPhotoUrls[lead.id],
+      ) &&
+      leadPhotoUrls[lead.id]
+        .length > 0
     ) {
       return;
     }
 
-    setLeadPhotoLoadingId(lead.id);
+    setLeadPhotoLoadingId(
+      lead.id,
+    );
 
     try {
       const urls = [];
 
       for (const path of paths) {
-        const { data, error } = await supabase.storage
-          .from("work-photos")
-          .createSignedUrl(path, SIGNED_URL_SECONDS);
+        const cachedUrl =
+          getCachedSignedUrl(path);
+
+        if (cachedUrl) {
+          urls.push({
+            path,
+            url: cachedUrl,
+          });
+
+          continue;
+        }
+
+        const { data, error } =
+          await supabase.storage
+            .from("work-photos")
+            .createSignedUrl(
+              path,
+              SIGNED_URL_SECONDS,
+            );
 
         if (error) {
-          console.error("고객 사진:", error);
+          console.error(
+            "고객 사진:",
+            error,
+          );
+
           continue;
         }
 
         if (data?.signedUrl) {
+          setCachedSignedUrl(
+            path,
+            data.signedUrl,
+            SIGNED_URL_SECONDS,
+          );
+
           urls.push({
             path,
             url: data.signedUrl,
@@ -1490,28 +1861,42 @@ export default function AdminPage() {
       }
 
       if (urls.length === 0) {
-        throw new Error("고객 사진을 불러오지 못했습니다.");
+        throw new Error(
+          "고객 사진을 불러오지 못했습니다.",
+        );
       }
 
-      setLeadPhotoUrls((current) => ({
-        ...current,
-        [lead.id]: urls,
-      }));
+      setLeadPhotoUrls(
+        (current) => ({
+          ...current,
+          [lead.id]: urls,
+        }),
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 고객 사진 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 고객 사진 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     } finally {
-      setLeadPhotoLoadingId(null);
+      setLeadPhotoLoadingId(
+        null,
+      );
     }
   }
 
-  async function updateLeadStatus(leadId, status) {
+  async function updateLeadStatus(
+    leadId,
+    status,
+  ) {
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          status,
-        })
-        .eq("id", leadId);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            status,
+          })
+          .eq("id", leadId);
 
       if (error) throw error;
 
@@ -1526,28 +1911,47 @@ export default function AdminPage() {
         ),
       );
     } catch (error) {
-      setLeadsMessage(`❌ 상태 변경 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 상태 변경 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
-  async function saveLeadMemo(leadId, memo) {
+  async function saveLeadMemo(
+    leadId,
+    memo,
+  ) {
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          admin_memo: memo || null,
-        })
-        .eq("id", leadId);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            admin_memo:
+              memo || null,
+          })
+          .eq("id", leadId);
 
       if (error) throw error;
 
-      setLeadsMessage("✅ 상담 메모가 저장되었습니다.");
+      setLeadsMessage(
+        "✅ 상담 메모가 저장되었습니다.",
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 메모 저장 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 메모 저장 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
-  function updateLeadLocal(leadId, field, value) {
+  function updateLeadLocal(
+    leadId,
+    field,
+    value,
+  ) {
     setLeads((current) =>
       current.map((lead) =>
         lead.id === leadId
@@ -1560,27 +1964,47 @@ export default function AdminPage() {
     );
   }
 
-  async function saveFinalQuote(lead) {
-    const price = Number(String(lead.final_price || "").replace(/,/g, ""));
+  async function saveFinalQuote(
+    lead,
+  ) {
+    const price = Number(
+      String(
+        lead.final_price || "",
+      ).replace(/,/g, ""),
+    );
 
-    if (!Number.isFinite(price) || price <= 0) {
-      setLeadsMessage("⚠️ 최종 견적금액을 입력해주세요.");
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      setLeadsMessage(
+        "⚠️ 최종 견적금액을 입력해주세요.",
+      );
       return;
     }
 
     try {
-      const quoteCreatedAt = new Date().toISOString();
+      const quoteCreatedAt =
+        new Date().toISOString();
 
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          final_price: price,
-          quote_work_details: lead.quote_work_details || null,
-          quote_material: lead.quote_material || null,
-          quote_note: lead.quote_note || null,
-          quote_created_at: quoteCreatedAt,
-        })
-        .eq("id", lead.id);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            final_price: price,
+            quote_work_details:
+              lead.quote_work_details ||
+              null,
+            quote_material:
+              lead.quote_material ||
+              null,
+            quote_note:
+              lead.quote_note ||
+              null,
+            quote_created_at:
+              quoteCreatedAt,
+          })
+          .eq("id", lead.id);
 
       if (error) throw error;
 
@@ -1590,15 +2014,22 @@ export default function AdminPage() {
             ? {
                 ...item,
                 final_price: price,
-                quote_created_at: quoteCreatedAt,
+                quote_created_at:
+                  quoteCreatedAt,
               }
             : item,
         ),
       );
 
-      setLeadsMessage("✅ 최종 견적이 저장되었습니다.");
+      setLeadsMessage(
+        "✅ 최종 견적이 저장되었습니다.",
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 최종 견적 저장 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 최종 견적 저장 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
@@ -1606,24 +2037,40 @@ export default function AdminPage() {
      화면
   ========================================================= */
 
-  const totalJobPages = Math.max(1, Math.ceil(jobTotal / JOB_PAGE_SIZE));
+  const totalJobPages = Math.max(
+    1,
+    Math.ceil(
+      jobTotal / JOB_PAGE_SIZE,
+    ),
+  );
 
-  const totalLeadPages = Math.max(1, Math.ceil(leadTotal / LEAD_PAGE_SIZE));
+  const totalLeadPages = Math.max(
+    1,
+    Math.ceil(
+      leadTotal /
+        LEAD_PAGE_SIZE,
+    ),
+  );
 
   return (
     <main
       style={{
         maxWidth: "900px",
         margin: "0 auto",
-        padding: "16px 14px 80px",
+        padding:
+          "16px 14px 80px",
         background: "#f8fafc",
         minHeight: "100vh",
         color: "#111827",
       }}
     >
       <NewLeadAlert
-        newLeadAlert={newLeadAlert}
-        setNewLeadAlert={setNewLeadAlert}
+        newLeadAlert={
+          newLeadAlert
+        }
+        setNewLeadAlert={
+          setNewLeadAlert
+        }
         changeTab={changeTab}
       />
 
@@ -1649,51 +2096,111 @@ export default function AdminPage() {
       {activeTab === "jobs" && (
         <JobsTab
           jobSearch={jobSearch}
-          setJobSearch={setJobSearch}
+          setJobSearch={
+            setJobSearch
+          }
           searchJobs={searchJobs}
-          clearJobSearch={clearJobSearch}
-          jobSearchApplied={jobSearchApplied}
+          clearJobSearch={
+            clearJobSearch
+          }
+          jobSearchApplied={
+            jobSearchApplied
+          }
           jobTotal={jobTotal}
           jobsMessage={jobsMessage}
           jobsLoading={jobsLoading}
           jobs={jobs}
           editingId={editingId}
-          editCategory={editCategory}
-          setEditCategory={setEditCategory}
-          editSubCategory={editSubCategory}
-          setEditSubCategory={setEditSubCategory}
+          editCategory={
+            editCategory
+          }
+          setEditCategory={
+            setEditCategory
+          }
+          editSubCategory={
+            editSubCategory
+          }
+          setEditSubCategory={
+            setEditSubCategory
+          }
           editCost={editCost}
-          setEditCost={setEditCost}
+          setEditCost={
+            setEditCost
+          }
           editMemo={editMemo}
-          setEditMemo={setEditMemo}
-          saveJobEdit={saveJobEdit}
+          setEditMemo={
+            setEditMemo
+          }
+          saveJobEdit={
+            saveJobEdit
+          }
           cancelEdit={cancelEdit}
           startEdit={startEdit}
           deleteJob={deleteJob}
           openJobId={openJobId}
-          toggleJobDetail={toggleJobDetail}
-          jobPhotoLoadingId={jobPhotoLoadingId}
+          toggleJobDetail={
+            toggleJobDetail
+          }
+          jobPhotoLoadingId={
+            jobPhotoLoadingId
+          }
           jobPhotos={jobPhotos}
-          jobPhotoUrls={jobPhotoUrls}
-          loadingPhotoId={loadingPhotoId}
-          editingPhotoId={editingPhotoId}
-          setPreviewPhoto={setPreviewPhoto}
-          loadSingleJobPhoto={loadSingleJobPhoto}
-          startPhotoEdit={startPhotoEdit}
+          jobPhotoUrls={
+            jobPhotoUrls
+          }
+          loadingPhotoId={
+            loadingPhotoId
+          }
+          editingPhotoId={
+            editingPhotoId
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+          loadSingleJobPhoto={
+            loadSingleJobPhoto
+          }
+          startPhotoEdit={
+            startPhotoEdit
+          }
           deletePhoto={deletePhoto}
-          editPhotoType={editPhotoType}
-          setEditPhotoType={setEditPhotoType}
-          editPhotoCategory={editPhotoCategory}
-          setEditPhotoCategory={setEditPhotoCategory}
-          editPhotoSubCategory={editPhotoSubCategory}
-          setEditPhotoSubCategory={setEditPhotoSubCategory}
-          editPhotoDescription={editPhotoDescription}
-          setEditPhotoDescription={setEditPhotoDescription}
-          photoEditLoading={photoEditLoading}
-          savePhotoEdit={savePhotoEdit}
-          cancelPhotoEdit={cancelPhotoEdit}
+          editPhotoType={
+            editPhotoType
+          }
+          setEditPhotoType={
+            setEditPhotoType
+          }
+          editPhotoCategory={
+            editPhotoCategory
+          }
+          setEditPhotoCategory={
+            setEditPhotoCategory
+          }
+          editPhotoSubCategory={
+            editPhotoSubCategory
+          }
+          setEditPhotoSubCategory={
+            setEditPhotoSubCategory
+          }
+          editPhotoDescription={
+            editPhotoDescription
+          }
+          setEditPhotoDescription={
+            setEditPhotoDescription
+          }
+          photoEditLoading={
+            photoEditLoading
+          }
+          savePhotoEdit={
+            savePhotoEdit
+          }
+          cancelPhotoEdit={
+            cancelPhotoEdit
+          }
           jobPage={jobPage}
-          totalJobPages={totalJobPages}
+          totalJobPages={
+            totalJobPages
+          }
           loadJobs={loadJobs}
         />
       )}
@@ -1702,28 +2209,49 @@ export default function AdminPage() {
           시공 등록
       ===================================================== */}
 
-      {activeTab === "register" && (
+      {activeTab ===
+        "register" && (
         <RegisterTab
           category={category}
           setCategory={setCategory}
           actualCost={actualCost}
-          setActualCost={setActualCost}
+          setActualCost={
+            setActualCost
+          }
           material={material}
           setMaterial={setMaterial}
           memo={memo}
           setMemo={setMemo}
-          beforeImages={beforeImages}
-          setBeforeImages={setBeforeImages}
-          afterImages={afterImages}
-          setAfterImages={setAfterImages}
+          beforeImages={
+            beforeImages
+          }
+          setBeforeImages={
+            setBeforeImages
+          }
+          afterImages={
+            afterImages
+          }
+          setAfterImages={
+            setAfterImages
+          }
           loading={loading}
           handleSave={handleSave}
           message={message}
-          similarityThreshold={similarityThreshold}
-          setSimilarityThreshold={setSimilarityThreshold}
-          settingLoading={settingLoading}
-          saveSimilaritySetting={saveSimilaritySetting}
-          settingMessage={settingMessage}
+          similarityThreshold={
+            similarityThreshold
+          }
+          setSimilarityThreshold={
+            setSimilarityThreshold
+          }
+          settingLoading={
+            settingLoading
+          }
+          saveSimilaritySetting={
+            saveSimilaritySetting
+          }
+          settingMessage={
+            settingMessage
+          }
         />
       )}
 
@@ -1734,15 +2262,33 @@ export default function AdminPage() {
       {activeTab === "usage" && (
         <UsageTab
           usageStats={usageStats}
-          usageMessage={usageMessage}
-          usageLoading={usageLoading}
-          loadUsageStats={loadUsageStats}
-          usageRecent={usageRecent}
-          usagePhotoUrls={usagePhotoUrls}
-          openUsagePhotoId={openUsagePhotoId}
-          usagePhotoLoadingId={usagePhotoLoadingId}
-          toggleUsagePhotos={toggleUsagePhotos}
-          setPreviewPhoto={setPreviewPhoto}
+          usageMessage={
+            usageMessage
+          }
+          usageLoading={
+            usageLoading
+          }
+          loadUsageStats={
+            loadUsageStats
+          }
+          usageRecent={
+            usageRecent
+          }
+          usagePhotoUrls={
+            usagePhotoUrls
+          }
+          openUsagePhotoId={
+            openUsagePhotoId
+          }
+          usagePhotoLoadingId={
+            usagePhotoLoadingId
+          }
+          toggleUsagePhotos={
+            toggleUsagePhotos
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
         />
       )}
 
@@ -1753,28 +2299,60 @@ export default function AdminPage() {
       {activeTab === "leads" && (
         <LeadsTab
           leadFilter={leadFilter}
-          setLeadFilter={setLeadFilter}
+          setLeadFilter={
+            setLeadFilter
+          }
           loadLeads={loadLeads}
           leadTotal={leadTotal}
           unreadCount={unreadCount}
-          notificationEnabled={notificationEnabled}
-          enableNotifications={enableNotifications}
-          leadsMessage={leadsMessage}
-          leadsLoading={leadsLoading}
+          notificationEnabled={
+            notificationEnabled
+          }
+          enableNotifications={
+            enableNotifications
+          }
+          leadsMessage={
+            leadsMessage
+          }
+          leadsLoading={
+            leadsLoading
+          }
           leads={leads}
-          updateLeadStatus={updateLeadStatus}
+          updateLeadStatus={
+            updateLeadStatus
+          }
           openLeadId={openLeadId}
-          toggleLeadDetail={toggleLeadDetail}
-          leadPhotoUrls={leadPhotoUrls}
-          leadPhotoLoadingId={leadPhotoLoadingId}
-          loadLeadPhotos={loadLeadPhotos}
-          setPreviewPhoto={setPreviewPhoto}
-          saveLeadMemo={saveLeadMemo}
-          updateLeadLocal={updateLeadLocal}
-          saveFinalQuote={saveFinalQuote}
-          setLeadsMessage={setLeadsMessage}
+          toggleLeadDetail={
+            toggleLeadDetail
+          }
+          leadPhotoUrls={
+            leadPhotoUrls
+          }
+          leadPhotoLoadingId={
+            leadPhotoLoadingId
+          }
+          loadLeadPhotos={
+            loadLeadPhotos
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+          saveLeadMemo={
+            saveLeadMemo
+          }
+          updateLeadLocal={
+            updateLeadLocal
+          }
+          saveFinalQuote={
+            saveFinalQuote
+          }
+          setLeadsMessage={
+            setLeadsMessage
+          }
           leadPage={leadPage}
-          totalLeadPages={totalLeadPages}
+          totalLeadPages={
+            totalLeadPages
+          }
         />
       )}
 
@@ -1784,8 +2362,10 @@ export default function AdminPage() {
 
       <PhotoPreviewModal
         previewPhoto={previewPhoto}
-        setPreviewPhoto={setPreviewPhoto}
+        setPreviewPhoto={
+          setPreviewPhoto
+        }
       />
     </main>
   );
-}
+          }
