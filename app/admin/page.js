@@ -3121,82 +3121,13 @@ export default function AdminPage() {
       {activeTab ===
         "usage" && (
         <>
-          d:
           
-                [
-                  "견적→상담 전환",
-                  usageStats.converted,
-                  "건",
-                ],
-              ].map(
-                ([
-                  label,
-                  value,
-                  unit,
-                ]) => (
-                  <div
-                    key={
-                      label
-                    }
-                    style={{
-                      padding:
-                        "14px",
-                      border:
-                        "1px solid #e5e7eb",
-                      borderRadius:
-                        "12px",
-                      background:
-                        "#f9fafb",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize:
-                          "13px",
-                        color:
-                          "#6b7280",
-                      }}
-                    >
-                      {label}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize:
-                          "25px",
-                        fontWeight:
-                          "bold",
-                        marginTop:
-                          "4px",
-                      }}
-                    >
-                      {Number(
-                        value ||
-                          0
-                      ).toLocaleString(
-                        "ko-KR"
-                      )}
-                      {unit}
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop:
-                  "10px",
-                padding:
-                  "14px",
-                borderRadius:
-<UsageSummary
+              <UsageSummary
   usageStats={usageStats}
   usageMessage={usageMessage}
   usageLoading={usageLoading}
   loadUsageStats={loadUsageStats}
 />
-
           <section
             style={
               sectionStyle
@@ -3439,99 +3370,7 @@ export default function AdminPage() {
                         </div>
                       )}
 
-                      {isOpen &&
-                        urls.length >
-                          0 && (
-                          <div
-                            style={{
-                              display:
-                                "grid",
-                              gridTemplateColumns:
-                                urls.length ===
-                                1
-                                  ? "1fr"
-                                  : "repeat(2, minmax(0, 1fr))",
-                              gap:
-                                "8px",
-                              marginTop:
-                                "10px",
-                            }}
-                          >
-                            {urls.map(
-                              (
-                                item,
-                                index
-                              ) => (
-                                <img
-                                  key={`${item.path}-${index}`}
-                                  src={
-                                    item.url
-                                  }
-                                  alt={`자동견적 사진 ${
-                                    index +
-                                    1
-                                  }`}
-                                  loading="lazy"
-                                  decoding="async"
-                                  onClick={() =>
-                                    setPreviewPhoto(
-                                      item.url
-                                    )
-                                  }
-                                  style={{
-                                    width:
-                                      "100%",
-                                    height:
-                                      urls.length ===
-                                      1
-                                        ? "320px"
-                                        : "180px",
-                                    objectFit:
-                                      "contain",
-                                    background:
-                                      "#111827",
-                                    borderRadius:
-                                      "10px",
-                                    cursor:
-                                      "pointer",
-                                  }}
-                                />
-                              )
-                            )}
-                          </div>
-                        )}
-
-                      {row.converted_to_lead ===
-                        true && (
-                        <div
-                          style={{
-                            display:
-                              "inline-block",
-                            marginTop:
-                              "9px",
-                            padding:
-                              "4px 8px",
-                            borderRadius:
-                              "999px",
-                            background:
-                              "#dcfce7",
-                            color:
-                              "#166534",
-                            fontSize:
-                              "12px",
-                            fontWeight:
-                              "bold",
-                          }}
-                        >
-                          상세상담 전환
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-              )
-            )}
-          </section>
+욥 
         </>
       )}
 
