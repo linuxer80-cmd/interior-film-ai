@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import FilmColorPicker from "./FilmColorPicker";
 
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
@@ -2073,6 +2074,8 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      <FilmColorPicker />
 
       {groups.length > 0 && (
         <section
