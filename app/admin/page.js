@@ -40,6 +40,7 @@ import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
 import NewLeadAlert from "./NewLeadAlert";
 import Pagination from "./Pagination";
+import UsageSummary from "./UsageSummary";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -3120,99 +3121,8 @@ export default function AdminPage() {
       {activeTab ===
         "usage" && (
         <>
-          <section
-            style={
-              sectionStyle
-            }
-          >
-            <div
-              style={{
-                display:
-                  "flex",
-                justifyContent:
-                  "space-between",
-                alignItems:
-                  "center",
-                gap: "10px",
-              }}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                }}
-              >
-                자동견적 로그 분석
-              </h2>
-
-              <button
-                type="button"
-                onClick={
-                  loadUsageStats
-                }
-                disabled={
-                  usageLoading
-                }
-                style={{
-                  border:
-                    "1px solid #d1d5db",
-                  borderRadius:
-                    "9px",
-                  background:
-                    "#ffffff",
-                  padding:
-                    "9px 12px",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                {usageLoading
-                  ? "조회 중..."
-                  : "새로고침"}
-              </button>
-            </div>
-
-            <div
-              style={{
-                display:
-                  "grid",
-                gridTemplateColumns:
-                  "repeat(2, minmax(0, 1fr))",
-                gap: "10px",
-                marginTop:
-                  "16px",
-              }}
-            >
-              {[
-                [
-                  "오늘 자동견적",
-                  usageStats.today,
-                  "건",
-                ],
-
-                [
-                  "최근 7일",
-                  usageStats.sevenDays,
-                  "건",
-                ],
-
-                [
-                  "전체 자동견적",
-                  usageStats.total,
-                  "건",
-                ],
-
-                [
-                  "예상 사용자",
-                  usageStats.sessions,
-                  "명",
-                ],
-
-                [
-                  "상세 상담",
-                  usageStats.leads,
-                  "건",
-                ],
-
+          d:
+          
                 [
                   "견적→상담 전환",
                   usageStats.converted,
@@ -3280,55 +3190,12 @@ export default function AdminPage() {
                 padding:
                   "14px",
                 borderRadius:
-                  "12px",
-                background:
-                  "#5d4037",
-                color:
-                  "#ffffff",
-              }}
-            >
-              <div
-                style={{
-                  fontSize:
-                    "13px",
-                  opacity:
-                    0.85,
-                }}
-              >
-                자동견적 → 상세상담
-                전환율
-              </div>
-
-              <div
-                style={{
-                  fontSize:
-                    "30px",
-                  fontWeight:
-                    "bold",
-                  marginTop:
-                    "4px",
-                }}
-              >
-                {usageStats.conversion}
-                %
-              </div>
-            </div>
-
-            {usageMessage && (
-              <div
-                style={{
-                  marginTop:
-                    "12px",
-                  whiteSpace:
-                    "pre-wrap",
-                  fontSize:
-                    "14px",
-                }}
-              >
-                {usageMessage}
-              </div>
-            )}
-          </section>
+<UsageSummary
+  usageStats={usageStats}
+  usageMessage={usageMessage}
+  usageLoading={usageLoading}
+  loadUsageStats={loadUsageStats}
+/>
 
           <section
             style={
