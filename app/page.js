@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import FilmColorPicker from "./FilmColorPicker";
+import VirtualInstallPanel from "./VirtualInstallPanel";
 
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
@@ -15,6 +16,7 @@ export default function Home() {
   const [groups, setGroups] = useState([]);
   const [totalEstimate, setTotalEstimate] = useState(null);
   const [resultMode, setResultMode] = useState("");
+  const [selectedFilm, setSelectedFilm] = useState(null);
 
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -79,6 +81,7 @@ export default function Home() {
     setGroups([]);
     setTotalEstimate(null);
     setResultMode("");
+    setSelectedFilm(null);
     setLeadComplete(false);
     setLeadMessage("");
 
@@ -2583,7 +2586,19 @@ export default function Home() {
 
       {groups.length > 0 &&
         resultMode === "virtual" && (
-        <FilmColorPicker />
+        <>
+          <FilmColorPicker
+            onSelect={setSelectedFilm}
+          />
+
+          <VirtualInstallPanel
+            images={images}
+            product={selectedFilm}
+            onRequestDetail={() =>
+              setResultMode("detail")
+            }
+          />
+        </>
       )}
 
       {groups.length > 0 &&
