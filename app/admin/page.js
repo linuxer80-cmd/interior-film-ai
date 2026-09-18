@@ -25,6 +25,11 @@ import {
   resizeImage,
   getImageHash,
 } from "./imageUtils";
+import {
+  createEmbedding,
+  analyzeImage,
+  compareMultipleBeforeAfter,
+} from "./aiUtils";
 
 export default function AdminPage() {
   /* =========================================================
@@ -961,40 +966,7 @@ export default function AdminPage() {
     }
   }
 
-  /* =========================================================
-     임베딩
-  ========================================================= */
-
-  async function createEmbedding(text) {
-    if (!String(text || "").trim()) {
-      return null;
-    }
-
-    const response = await fetch("/api/embedding", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text,
-      }),
-    });
-
-    let result = {};
-
-    try {
-      result = await response.json();
-    } catch {}
-
-    if (!response.ok) {
-      throw new Error(
-        result?.error ||
-          "임베딩 생성 실패"
-      );
-    }
-
-    return result.embedding || null;
-  }
+  
 
   /* =========================================================
      사진정보 수정
@@ -1271,46 +1243,7 @@ export default function AdminPage() {
   }
 
 
-  /* =========================================================
-     AI 분석
-  ========================================================= */
-
-  async function analyzeImage(
-    file,
-    photoType
-  ) {
-    const formData = new FormData();
-
-    formData.append(
-      "image",
-      file
-    );
-
-    formData.append(
-      "photo_type",
-      photoType
-    );
-
-    const response = await fetch(
-      "/api/analyze",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    let result = {};
-
-    try {
-      result =
-        await response.json();
-    } catch {}
-
-    if (!response.ok) {
-      throw new Error(
-        result?.error ||
-          "AI 사진 분석 실패"
-      );
+ 
     }
 
     return {
@@ -1378,31 +1311,7 @@ export default function AdminPage() {
           method: "POST",
           body: formData,
         }
-      );
 
-      if (!response.ok) {
-        return null;
-      }
-
-      const result =
-        await response.json();
-
-      return {
-        description:
-          result?.comparison ||
-          result?.description ||
-          result?.analysis?.description ||
-          "",
-      };
-    } catch (error) {
-      console.error(
-        "전후 비교:",
-        error
-      );
-
-      return null;
-    }
-  }
 
   /* =========================================================
      시공사진 저장
