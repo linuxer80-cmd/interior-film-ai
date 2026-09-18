@@ -913,6 +913,7 @@ export default function AdminPage() {
         `사진 설명: ${editPhotoDescription.trim()}`,
         `특징: ${tags.join(", ")}`,
       ].join("\n");
+            const embedding = await createEmbedding(searchText);
 
       const embedding =
         await createEmbedding(
@@ -1370,9 +1371,11 @@ export default function AdminPage() {
         .from("work_items")
         .insert({          project_id: PROJECT_ID,
           category: category.trim(),
-          sub_category: category.trim(),
+          sub_category:
+            category.trim(),
           actual_cost: cost,
-          memo: combinedMemo || null,
+          memo:
+            combinedMemo || null,
         })
         .select()
         .single();
@@ -1381,55 +1384,83 @@ export default function AdminPage() {
 
       workItemId = workItem.id;
 
-      setMessage("AI가 시공 전/후 사진을 비교하고 있습니다...");
-
-      const comparison = await compareMultipleBeforeAfter(
-        beforeImages,
-        afterImages,
+      setMessage(
+        "AI가 시공 전/후 사진을 비교하고 있습니다...",
       );
 
-      const allPhotos = [
-        ...beforeImages.map((file) => ({
-          file,
-          type: "before",
-        })),
+      const comparison =
+        await compareMultipleBeforeAfter(
+          beforeImages,
+          afterImages,
+        );
 
-        ...afterImages.map((file) => ({
-          file,
-          type: "after",
-        })),
+      const allPhotos = [
+        ...beforeImages.map(
+          (file) => ({
+            file,
+            type: "before",
+          }),
+        ),
+
+        ...afterImages.map(
+          (file) => ({
+            file,
+            type: "after",
+          }),
+        ),
       ];
 
       let saved = 0;
       let duplicate = 0;
 
-      for (let index = 0; index < allPhotos.length; index++) {
-        const item = allPhotos[index];
+      for (
+        let index = 0;
+        index < allPhotos.length;
+        index++
+      ) {
+        const item =
+          allPhotos[index];
 
         setMessage(
-          `${item.type === "before" ? "시공 전" : "시공 후"} 사진 ${
-            index + 1
-          }/${allPhotos.length} AI 분석 + 저장 중...`,
+          `${
+            item.type === "before"
+              ? "시공 전"
+              : "시공 후"
+          } 사진 ${index + 1}/${
+            allPhotos.length
+          } AI 분석 + 저장 중...`,
         );
 
         let analysis = {};
 
         try {
-          analysis = await analyzeImage(item.file, item.type);
+          analysis =
+            await analyzeImage(
+              item.file,
+              item.type,
+            );
         } catch (error) {
-          console.error("AI 분석:", error);
+          console.error(
+            "AI 분석:",
+            error,
+          );
         }
 
-        const result = await savePhoto({
-          file: item.file,
-          workItemId: workItem.id,
-          projectId: PROJECT_ID,
-          photoType: item.type,
-          categoryValue: category.trim(),
-          subCategoryValue: category.trim(),
-          analysis,
-          comparison,
-        });
+        const result =
+          await savePhoto({
+            file: item.file,
+            workItemId:
+              workItem.id,
+            projectId:
+              PROJECT_ID,
+            photoType: item.type,
+            categoryValue:
+              category.trim(),
+            subCategoryValue:
+              category.trim(),
+            analysis,
+            comparison,
+          });
 
         if (result?.skipped) {
           duplicate++;
@@ -1439,11 +1470,19 @@ export default function AdminPage() {
       }
 
       if (saved === 0) {
-        await supabase.from("work_items").delete().eq("id", workItem.id);
+        await supabase
+          .from("work_items")
+          .delete()
+          .eq(
+            "id",
+            workItem.id,
+          );
 
         workItemId = null;
 
-        throw new Error("선택한 사진이 모두 이미 시공 DB에 등록되어 있습니다.");
+        throw new Error(
+          "선택한 사진이 모두 이미 시공 DB에 등록되어 있습니다.",
+        );
       }
 
       setBeforeImages([]);
@@ -1465,21 +1504,40 @@ export default function AdminPage() {
 
       if (workItemId) {
         try {
-          const { count } = await supabase
-            .from("work_photos")
-            .select("id", {
-              count: "exact",
-              head: true,
-            })
-            .eq("work_item_id", workItemId);
+          const { count } =
+            await supabase
+              .from(
+                "work_photos",
+              )
+              .select("id", {
+                count: "exact",
+                head: true,
+              })
+              .eq(
+                "work_item_id",
+                workItemId,
+              );
 
           if (!count) {
-            await supabase.from("work_items").delete().eq("id", workItemId);
+            await supabase
+              .from(
+                "work_items",
+              )
+              .delete()
+              .eq(
+                "id",
+                workItemId,
+              );
           }
         } catch {}
       }
 
-      setMessage(`❌ 오류: ${error?.message || "저장 실패"}`);
+      setMessage(
+        `❌ 오류: ${
+          error?.message ||
+          "저장 실패"
+        }`,
+      );
     } finally {
       setLoading(false);
     }
@@ -1491,35 +1549,53 @@ export default function AdminPage() {
 
   async function loadUnreadCount() {
     try {
-      const { count, error } = await supabase
-        .from("customer_leads")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq("is_read", false);
+      const { count, error } =
+        await supabase
+          .from("customer_leads")
+          .select("id", {
+            count: "exact",
+            head: true,
+          })
+          .eq("is_read", false);
 
       if (error) {
-        console.error("미확인 상담 수:", error);
+        console.error(
+          "미확인 상담 수:",
+          error,
+        );
         return;
       }
 
       setUnreadCount(count || 0);
     } catch (error) {
-      console.error("미확인 상담 수:", error);
+      console.error(
+        "미확인 상담 수:",
+        error,
+      );
     }
   }
 
-  async function loadLeads(page = 1, filter = leadFilter) {
+  async function loadLeads(
+    page = 1,
+    filter = leadFilter,
+  ) {
     setLeadsLoading(true);
     setLeadsMessage("");
 
     try {
-      const from = (page - 1) * LEAD_PAGE_SIZE;
-      const to = from + LEAD_PAGE_SIZE - 1;
+      const from =
+        (page - 1) *
+        LEAD_PAGE_SIZE;
 
-      let query = supabase.from("customer_leads").select(
-        `
+      const to =
+        from +
+        LEAD_PAGE_SIZE -
+        1;
+
+      let query = supabase
+        .from("customer_leads")
+        .select(
+          `
           id,
           customer_name,
           phone,
@@ -1544,16 +1620,26 @@ export default function AdminPage() {
           quote_created_at,
           created_at
         `,
-        {
-          count: "exact",
-        },
-      );
+          {
+            count: "exact",
+          },
+        );
 
-      if (filter && filter !== "all") {
-        query = query.eq("status", filter);
+      if (
+        filter &&
+        filter !== "all"
+      ) {
+        query = query.eq(
+          "status",
+          filter,
+        );
       }
 
-      const { data, error, count } = await query
+      const {
+        data,
+        error,
+        count,
+      } = await query
         .order("created_at", {
           ascending: false,
         })
@@ -1568,7 +1654,10 @@ export default function AdminPage() {
       console.error(error);
 
       setLeadsMessage(
-        `❌ 상담 목록 오류: ${error?.message || "불러오기 실패"}`,
+        `❌ 상담 목록 오류: ${
+          error?.message ||
+          "불러오기 실패"
+        }`,
       );
     } finally {
       setLeadsLoading(false);
@@ -1583,12 +1672,13 @@ export default function AdminPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          is_read: true,
-        })
-        .eq("id", lead.id);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            is_read: true,
+          })
+          .eq("id", lead.id);
 
       if (error) throw error;
 
@@ -1603,13 +1693,23 @@ export default function AdminPage() {
         ),
       );
 
-      setUnreadCount((current) => Math.max(0, current - 1));
+      setUnreadCount((current) =>
+        Math.max(
+          0,
+          current - 1,
+        ),
+      );
     } catch (error) {
-      console.error("읽음 처리:", error);
+      console.error(
+        "읽음 처리:",
+        error,
+      );
     }
   }
 
-  async function toggleLeadDetail(lead) {
+  async function toggleLeadDetail(
+    lead,
+  ) {
     if (openLeadId === lead.id) {
       setOpenLeadId(null);
       return;
@@ -1620,22 +1720,32 @@ export default function AdminPage() {
     await markLeadRead(lead);
   }
 
-  async function loadLeadPhotos(lead) {
-    const paths = getLeadPhotoPaths(lead);
+  async function loadLeadPhotos(
+    lead,
+  ) {
+    const paths =
+      getLeadPhotoPaths(lead);
 
     if (paths.length === 0) {
-      setLeadsMessage("⚠️ 저장된 고객 사진이 없습니다.");
+      setLeadsMessage(
+        "⚠️ 저장된 고객 사진이 없습니다.",
+      );
       return;
     }
 
     if (
-      Array.isArray(leadPhotoUrls[lead.id]) &&
-      leadPhotoUrls[lead.id].length > 0
+      Array.isArray(
+        leadPhotoUrls[lead.id],
+      ) &&
+      leadPhotoUrls[lead.id]
+        .length > 0
     ) {
       return;
     }
 
-    setLeadPhotoLoadingId(lead.id);
+    setLeadPhotoLoadingId(
+      lead.id,
+    );
 
     try {
       const urls = [];
@@ -1656,12 +1766,21 @@ export default function AdminPage() {
           .createSignedUrl(path, SIGNED_URL_SECONDS);
 
         if (error) {
-          console.error("고객 사진:", error);
+          console.error(
+            "고객 사진:",
+            error,
+          );
+
           continue;
         }
 
         if (data?.signedUrl) {
           setCachedSignedUrl(path, data.signedUrl, SIGNED_URL_SECONDS);
+          setCachedSignedUrl(
+            path,
+            data.signedUrl,
+            SIGNED_URL_SECONDS,
+          );
 
           urls.push({
             path,
@@ -1671,28 +1790,42 @@ export default function AdminPage() {
       }
 
       if (urls.length === 0) {
-        throw new Error("고객 사진을 불러오지 못했습니다.");
+        throw new Error(
+          "고객 사진을 불러오지 못했습니다.",
+        );
       }
 
-      setLeadPhotoUrls((current) => ({
-        ...current,
-        [lead.id]: urls,
-      }));
+      setLeadPhotoUrls(
+        (current) => ({
+          ...current,
+          [lead.id]: urls,
+        }),
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 고객 사진 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 고객 사진 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     } finally {
-      setLeadPhotoLoadingId(null);
+      setLeadPhotoLoadingId(
+        null,
+      );
     }
   }
 
-  async function updateLeadStatus(leadId, status) {
+  async function updateLeadStatus(
+    leadId,
+    status,
+  ) {
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          status,
-        })
-        .eq("id", leadId);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            status,
+          })
+          .eq("id", leadId);
 
       if (error) throw error;
 
@@ -1707,28 +1840,47 @@ export default function AdminPage() {
         ),
       );
     } catch (error) {
-      setLeadsMessage(`❌ 상태 변경 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 상태 변경 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
-  async function saveLeadMemo(leadId, memo) {
+  async function saveLeadMemo(
+    leadId,
+    memo,
+  ) {
     try {
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          admin_memo: memo || null,
-        })
-        .eq("id", leadId);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            admin_memo:
+              memo || null,
+          })
+          .eq("id", leadId);
 
       if (error) throw error;
 
-      setLeadsMessage("✅ 상담 메모가 저장되었습니다.");
+      setLeadsMessage(
+        "✅ 상담 메모가 저장되었습니다.",
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 메모 저장 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 메모 저장 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
-  function updateLeadLocal(leadId, field, value) {
+  function updateLeadLocal(
+    leadId,
+    field,
+    value,
+  ) {
     setLeads((current) =>
       current.map((lead) =>
         lead.id === leadId
@@ -1741,27 +1893,47 @@ export default function AdminPage() {
     );
   }
 
-  async function saveFinalQuote(lead) {
-    const price = Number(String(lead.final_price || "").replace(/,/g, ""));
+  async function saveFinalQuote(
+    lead,
+  ) {
+    const price = Number(
+      String(
+        lead.final_price || "",
+      ).replace(/,/g, ""),
+    );
 
-    if (!Number.isFinite(price) || price <= 0) {
-      setLeadsMessage("⚠️ 최종 견적금액을 입력해주세요.");
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      setLeadsMessage(
+        "⚠️ 최종 견적금액을 입력해주세요.",
+      );
       return;
     }
 
     try {
-      const quoteCreatedAt = new Date().toISOString();
+      const quoteCreatedAt =
+        new Date().toISOString();
 
-      const { error } = await supabase
-        .from("customer_leads")
-        .update({
-          final_price: price,
-          quote_work_details: lead.quote_work_details || null,
-          quote_material: lead.quote_material || null,
-          quote_note: lead.quote_note || null,
-          quote_created_at: quoteCreatedAt,
-        })
-        .eq("id", lead.id);
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            final_price: price,
+            quote_work_details:
+              lead.quote_work_details ||
+              null,
+            quote_material:
+              lead.quote_material ||
+              null,
+            quote_note:
+              lead.quote_note ||
+              null,
+            quote_created_at:
+              quoteCreatedAt,
+          })
+          .eq("id", lead.id);
 
       if (error) throw error;
 
@@ -1771,15 +1943,22 @@ export default function AdminPage() {
             ? {
                 ...item,
                 final_price: price,
-                quote_created_at: quoteCreatedAt,
+                quote_created_at:
+                  quoteCreatedAt,
               }
             : item,
         ),
       );
 
-      setLeadsMessage("✅ 최종 견적이 저장되었습니다.");
+      setLeadsMessage(
+        "✅ 최종 견적이 저장되었습니다.",
+      );
     } catch (error) {
-      setLeadsMessage(`❌ 최종 견적 저장 오류: ${error?.message || "실패"}`);
+      setLeadsMessage(
+        `❌ 최종 견적 저장 오류: ${
+          error?.message || "실패"
+        }`,
+      );
     }
   }
 
@@ -1787,24 +1966,40 @@ export default function AdminPage() {
      화면
   ========================================================= */
 
-  const totalJobPages = Math.max(1, Math.ceil(jobTotal / JOB_PAGE_SIZE));
+  const totalJobPages = Math.max(
+    1,
+    Math.ceil(
+      jobTotal / JOB_PAGE_SIZE,
+    ),
+  );
 
-  const totalLeadPages = Math.max(1, Math.ceil(leadTotal / LEAD_PAGE_SIZE));
+  const totalLeadPages = Math.max(
+    1,
+    Math.ceil(
+      leadTotal /
+        LEAD_PAGE_SIZE,
+    ),
+  );
 
   return (
     <main
       style={{
         maxWidth: "900px",
         margin: "0 auto",
-        padding: "16px 14px 80px",
+        padding:
+          "16px 14px 80px",
         background: "#f8fafc",
         minHeight: "100vh",
         color: "#111827",
       }}
     >
       <NewLeadAlert
-        newLeadAlert={newLeadAlert}
-        setNewLeadAlert={setNewLeadAlert}
+        newLeadAlert={
+          newLeadAlert
+        }
+        setNewLeadAlert={
+          setNewLeadAlert
+        }
         changeTab={changeTab}
       />
 
@@ -1830,51 +2025,111 @@ export default function AdminPage() {
       {activeTab === "jobs" && (
         <JobsTab
           jobSearch={jobSearch}
-          setJobSearch={setJobSearch}
+          setJobSearch={
+            setJobSearch
+          }
           searchJobs={searchJobs}
-          clearJobSearch={clearJobSearch}
-          jobSearchApplied={jobSearchApplied}
+          clearJobSearch={
+            clearJobSearch
+          }
+          jobSearchApplied={
+            jobSearchApplied
+          }
           jobTotal={jobTotal}
           jobsMessage={jobsMessage}
           jobsLoading={jobsLoading}
           jobs={jobs}
           editingId={editingId}
-          editCategory={editCategory}
-          setEditCategory={setEditCategory}
-          editSubCategory={editSubCategory}
-          setEditSubCategory={setEditSubCategory}
+          editCategory={
+            editCategory
+          }
+          setEditCategory={
+            setEditCategory
+          }
+          editSubCategory={
+            editSubCategory
+          }
+          setEditSubCategory={
+            setEditSubCategory
+          }
           editCost={editCost}
-          setEditCost={setEditCost}
+          setEditCost={
+            setEditCost
+          }
           editMemo={editMemo}
-          setEditMemo={setEditMemo}
-          saveJobEdit={saveJobEdit}
+          setEditMemo={
+            setEditMemo
+          }
+          saveJobEdit={
+            saveJobEdit
+          }
           cancelEdit={cancelEdit}
           startEdit={startEdit}
           deleteJob={deleteJob}
           openJobId={openJobId}
-          toggleJobDetail={toggleJobDetail}
-          jobPhotoLoadingId={jobPhotoLoadingId}
+          toggleJobDetail={
+            toggleJobDetail
+          }
+          jobPhotoLoadingId={
+            jobPhotoLoadingId
+          }
           jobPhotos={jobPhotos}
-          jobPhotoUrls={jobPhotoUrls}
-          loadingPhotoId={loadingPhotoId}
-          editingPhotoId={editingPhotoId}
-          setPreviewPhoto={setPreviewPhoto}
-          loadSingleJobPhoto={loadSingleJobPhoto}
-          startPhotoEdit={startPhotoEdit}
+          jobPhotoUrls={
+            jobPhotoUrls
+          }
+          loadingPhotoId={
+            loadingPhotoId
+          }
+          editingPhotoId={
+            editingPhotoId
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+          loadSingleJobPhoto={
+            loadSingleJobPhoto
+          }
+          startPhotoEdit={
+            startPhotoEdit
+          }
           deletePhoto={deletePhoto}
-          editPhotoType={editPhotoType}
-          setEditPhotoType={setEditPhotoType}
-          editPhotoCategory={editPhotoCategory}
-          setEditPhotoCategory={setEditPhotoCategory}
-          editPhotoSubCategory={editPhotoSubCategory}
-          setEditPhotoSubCategory={setEditPhotoSubCategory}
-          editPhotoDescription={editPhotoDescription}
-          setEditPhotoDescription={setEditPhotoDescription}
-          photoEditLoading={photoEditLoading}
-          savePhotoEdit={savePhotoEdit}
-          cancelPhotoEdit={cancelPhotoEdit}
+          editPhotoType={
+            editPhotoType
+          }
+          setEditPhotoType={
+            setEditPhotoType
+          }
+          editPhotoCategory={
+            editPhotoCategory
+          }
+          setEditPhotoCategory={
+            setEditPhotoCategory
+          }
+          editPhotoSubCategory={
+            editPhotoSubCategory
+          }
+          setEditPhotoSubCategory={
+            setEditPhotoSubCategory
+          }
+          editPhotoDescription={
+            editPhotoDescription
+          }
+          setEditPhotoDescription={
+            setEditPhotoDescription
+          }
+          photoEditLoading={
+            photoEditLoading
+          }
+          savePhotoEdit={
+            savePhotoEdit
+          }
+          cancelPhotoEdit={
+            cancelPhotoEdit
+          }
           jobPage={jobPage}
-          totalJobPages={totalJobPages}
+          totalJobPages={
+            totalJobPages
+          }
           loadJobs={loadJobs}
         />
       )}
@@ -1883,28 +2138,49 @@ export default function AdminPage() {
           시공 등록
       ===================================================== */}
 
-      {activeTab === "register" && (
+      {activeTab ===
+        "register" && (
         <RegisterTab
           category={category}
           setCategory={setCategory}
           actualCost={actualCost}
-          setActualCost={setActualCost}
+          setActualCost={
+            setActualCost
+          }
           material={material}
           setMaterial={setMaterial}
           memo={memo}
           setMemo={setMemo}
-          beforeImages={beforeImages}
-          setBeforeImages={setBeforeImages}
-          afterImages={afterImages}
-          setAfterImages={setAfterImages}
+          beforeImages={
+            beforeImages
+          }
+          setBeforeImages={
+            setBeforeImages
+          }
+          afterImages={
+            afterImages
+          }
+          setAfterImages={
+            setAfterImages
+          }
           loading={loading}
           handleSave={handleSave}
           message={message}
-          similarityThreshold={similarityThreshold}
-          setSimilarityThreshold={setSimilarityThreshold}
-          settingLoading={settingLoading}
-          saveSimilaritySetting={saveSimilaritySetting}
-          settingMessage={settingMessage}
+          similarityThreshold={
+            similarityThreshold
+          }
+          setSimilarityThreshold={
+            setSimilarityThreshold
+          }
+          settingLoading={
+            settingLoading
+          }
+          saveSimilaritySetting={
+            saveSimilaritySetting
+          }
+          settingMessage={
+            settingMessage
+          }
         />
       )}
 
@@ -1915,15 +2191,33 @@ export default function AdminPage() {
       {activeTab === "usage" && (
         <UsageTab
           usageStats={usageStats}
-          usageMessage={usageMessage}
-          usageLoading={usageLoading}
-          loadUsageStats={loadUsageStats}
-          usageRecent={usageRecent}
-          usagePhotoUrls={usagePhotoUrls}
-          openUsagePhotoId={openUsagePhotoId}
-          usagePhotoLoadingId={usagePhotoLoadingId}
-          toggleUsagePhotos={toggleUsagePhotos}
-          setPreviewPhoto={setPreviewPhoto}
+          usageMessage={
+            usageMessage
+          }
+          usageLoading={
+            usageLoading
+          }
+          loadUsageStats={
+            loadUsageStats
+          }
+          usageRecent={
+            usageRecent
+          }
+          usagePhotoUrls={
+            usagePhotoUrls
+          }
+          openUsagePhotoId={
+            openUsagePhotoId
+          }
+          usagePhotoLoadingId={
+            usagePhotoLoadingId
+          }
+          toggleUsagePhotos={
+            toggleUsagePhotos
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
         />
       )}
 
@@ -1934,28 +2228,60 @@ export default function AdminPage() {
       {activeTab === "leads" && (
         <LeadsTab
           leadFilter={leadFilter}
-          setLeadFilter={setLeadFilter}
+          setLeadFilter={
+            setLeadFilter
+          }
           loadLeads={loadLeads}
           leadTotal={leadTotal}
           unreadCount={unreadCount}
-          notificationEnabled={notificationEnabled}
-          enableNotifications={enableNotifications}
-          leadsMessage={leadsMessage}
-          leadsLoading={leadsLoading}
+          notificationEnabled={
+            notificationEnabled
+          }
+          enableNotifications={
+            enableNotifications
+          }
+          leadsMessage={
+            leadsMessage
+          }
+          leadsLoading={
+            leadsLoading
+          }
           leads={leads}
-          updateLeadStatus={updateLeadStatus}
+          updateLeadStatus={
+            updateLeadStatus
+          }
           openLeadId={openLeadId}
-          toggleLeadDetail={toggleLeadDetail}
-          leadPhotoUrls={leadPhotoUrls}
-          leadPhotoLoadingId={leadPhotoLoadingId}
-          loadLeadPhotos={loadLeadPhotos}
-          setPreviewPhoto={setPreviewPhoto}
-          saveLeadMemo={saveLeadMemo}
-          updateLeadLocal={updateLeadLocal}
-          saveFinalQuote={saveFinalQuote}
-          setLeadsMessage={setLeadsMessage}
+          toggleLeadDetail={
+            toggleLeadDetail
+          }
+          leadPhotoUrls={
+            leadPhotoUrls
+          }
+          leadPhotoLoadingId={
+            leadPhotoLoadingId
+          }
+          loadLeadPhotos={
+            loadLeadPhotos
+          }
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+          saveLeadMemo={
+            saveLeadMemo
+          }
+          updateLeadLocal={
+            updateLeadLocal
+          }
+          saveFinalQuote={
+            saveFinalQuote
+          }
+          setLeadsMessage={
+            setLeadsMessage
+          }
           leadPage={leadPage}
-          totalLeadPages={totalLeadPages}
+          totalLeadPages={
+            totalLeadPages
+          }
         />
       )}
 
@@ -1965,7 +2291,9 @@ export default function AdminPage() {
 
       <PhotoPreviewModal
         previewPhoto={previewPhoto}
-        setPreviewPhoto={setPreviewPhoto}
+        setPreviewPhoto={
+          setPreviewPhoto
+        }
       />
     </main>
   );
