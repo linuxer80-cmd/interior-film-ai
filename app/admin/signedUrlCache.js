@@ -1,80 +1,69 @@
 const CACHE_PREFIX = "admin-signed-url:";
+const EXPIRY_MARGIN_SECONDS = 60;
 
-export function getCachedSignedUrl(storagePath) {
-  if (
-    typeof window === "undefined" ||
-    !storagePath
-  ) {
-    return null;
-  }
+function getStorage() {
+  if (typeof window === "undefined") return null;
 
   try {
-    const key = `${CACHE_PREFIX}${storagePath}`;
-    const saved = window.sessionStorage.getItem(key);
-
-    if (!saved) {
-      return null;
-    }
-
-    const parsed = JSON.parse(saved);
-
-    if (
-      !parsed?.url ||
-      !parsed?.expiresAt ||
-      parsed.expiresAt <= Date.now() + 30000
-    ) {
-      window.sessionStorage.removeItem(key);
-      return null;
-    }
-
-    return parsed.url;
+    return window.sessionStorage;
   } catch {
     return null;
   }
 }
 
-export function setCachedSignedUrl(
-  storagePath,
-  url,
-  validSeconds,
-) {
-  if (
-    typeof window === "undefined" ||
-    !storagePath ||
-    !url
-  ) {
-    return;
-  }
+export function getCachedSignedUrl(path) {
+  if (!path) return null;
+
+  const storage = getStorage();
+
+  if (!storage) return null;
+
+  const key = `${CACHE_PREFIX}${path}`;
 
   try {
-    const safeSeconds = Math.max(
-      60,
-      Number(validSeconds || 1800) - 60,
-    );
+    const rawValue = storage.getItem(key);
 
-    const key = `${CACHE_PREFIX}${storagePath}`;
+    if (!rawValue) return null;
 
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({
-        url,
-        expiresAt: Date.now() + safeSeconds * 1000,
-      }),
-    );
-  } catch {}
+    const cached = JSON.parse(rawValue);
+
+    if (
+      !cached?.url ||
+      !cached?.expiresAt ||
+      Date.now() >= Number(cached.expiresAt)
+    ) {
+      storage.removeItem(key);
+      return null;
+    }
+
+    return cached.url;
+  } catch {
+    storage.removeItem(key);
+    return null;
+  }
 }
 
-export function removeCachedSignedUrl(storagePath) {
-  if (
-    typeof window === "undefined" ||
-    !storagePath
-  ) {
-    return;
-  }
+export function setCachedSignedUrl(path, url, expiresInSeconds) {
+  if (!path || !url) return;
+
+  const storage = getStorage();
+
+  if (!storage) return;
+
+  const validSeconds = Math.max(
+    1,
+    Number(expiresInSeconds || 0) - EXPIRY_MARGIN_SECONDS,
+  );
 
   try {
-    window.sessionStorage.removeItem(
-      `${CACHE_PREFIX}${storagePath}`,
+    storage.setItem(
+      `${CACHE_PREFIX}${path}`,
+      JSON.stringify({
+        url,
+        expiresAt: Date.now() + validSeconds * 1000,
+      }),
     );
-  } catch {}
+  } catch {
+    // 브라우저 저장공간 사용이 불가능해도 사진 로딩은 계속 진행합니다.
+  }
 }
