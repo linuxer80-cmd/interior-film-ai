@@ -208,6 +208,103 @@ export async function createQuoteBlob(lead) {
     );
   });
 }
+export async function createQuotePreview(lead) {
+  const price = Number(
+    String(lead?.final_price || "").replace(/,/g, ""),
+  );
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error("먼저 최종 견적금액을 저장해주세요.");
+  }
+
+  const blob = await createQuoteBlob(lead);
+
+  if (!blob) {
+    throw new Error("견적 이미지를 만들지 못했습니다.");
+  }
+
+  return {
+    blob,
+    url: URL.createObjectURL(blob),
+  };
+}
+
+async function convertQuoteBlobToPng(blob) {
+  const bitmap = await createImageBitmap(blob);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    bitmap.close?.();
+    throw new Error("견적 이미지를 변환하지 못했습니다.");
+  }
+
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+
+  return await new Promise((resolve, reject) => {
+    canvas.toBlob((pngBlob) => {
+      if (!pngBlob) {
+        reject(new Error("견적 이미지 복사 준비에 실패했습니다."));
+        return;
+      }
+
+      resolve(pngBlob);
+    }, "image/png");
+  });
+}
+
+export async function copyQuoteImage(blob) {
+  if (!blob) {
+    throw new Error("먼저 견적서를 만들어주세요.");
+  }
+
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.clipboard ||
+    typeof ClipboardItem === "undefined"
+  ) {
+    throw new Error("이 브라우저에서는 이미지 복사를 지원하지 않습니다.");
+  }
+
+  const pngBlob = await convertQuoteBlobToPng(blob);
+
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      "image/png": pngBlob,
+    }),
+  ]);
+
+  return true;
+}
+
+export function openCustomerSms(lead) {
+  const phone = String(lead?.phone || "").replace(/[^\d+]/g, "");
+
+  if (!phone) {
+    throw new Error("고객 전화번호가 없습니다.");
+  }
+
+  const customerName = String(
+    lead?.customer_name || "고객",
+  ).trim();
+
+  const message = [
+    `${customerName} 고객님,`,
+    "기분좋은공간 인테리어필름 견적서입니다.",
+    "",
+    "복사된 견적 이미지를 아래 입력창에 붙여넣어 확인해주세요.",
+    "",
+    "감사합니다.",
+    "기분좋은공간 · 대표 정근호",
+  ].join("\n");
+
+  window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
+}
 export async function shareQuote(lead, setLeadsMessage) {
   const phone = String(lead?.phone || "").replace(/[^\d+]/g, "");
 
