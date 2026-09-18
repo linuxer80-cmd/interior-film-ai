@@ -8,7 +8,12 @@ import {
   getUsagePhotoPaths,
   sanitizeSearchKeyword,
 } from "./adminUtils";
-
+import {
+  inputStyle,
+  sectionStyle,
+  primaryButtonStyle,
+  secondaryButtonStyle,
+} from "./adminStyles";
 const JOB_PAGE_SIZE = 10;
 const LEAD_PAGE_SIZE = 20;
 const SIGNED_URL_SECONDS = 60 * 30;
