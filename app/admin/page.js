@@ -913,7 +913,6 @@ export default function AdminPage() {
         `사진 설명: ${editPhotoDescription.trim()}`,
         `특징: ${tags.join(", ")}`,
       ].join("\n");
-            const embedding = await createEmbedding(searchText);
 
       const embedding =
         await createEmbedding(
