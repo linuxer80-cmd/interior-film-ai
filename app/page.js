@@ -1397,6 +1397,7 @@ export default function Home() {
      */
 
     const paths = [];
+    const uploadErrors = [];
 
     for (
       let index = 0;
@@ -1447,6 +1448,11 @@ export default function Home() {
           } 저장 실패:`,
           error
         );
+
+        uploadErrors.push(
+          error?.message ||
+            `상담 사진 ${index + 1} 저장 실패`
+        );
       }
     }
 
@@ -1455,7 +1461,8 @@ export default function Home() {
       paths.length === 0
     ) {
       throw new Error(
-        "상담 사진을 저장하지 못했습니다."
+        uploadErrors[0] ||
+          "상담 사진을 저장하지 못했습니다."
       );
     }
 
