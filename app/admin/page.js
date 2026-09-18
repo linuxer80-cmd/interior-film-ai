@@ -33,6 +33,7 @@ import {
 } from "./aiUtils";
 import {
   wrapCanvasText,
+  shareQuote,
 } from "./quoteUtils";
 export default function AdminPage() {
   /* =========================================================
@@ -4983,7 +4984,9 @@ export default function AdminPage() {
                             type="button"
                             onClick={() =>
                               shareQuote(
-                                lead
+  lead,
+  setLeadsMessage
+)
                               )
                             }
                             style={{
