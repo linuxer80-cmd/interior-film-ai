@@ -1103,7 +1103,7 @@ export default function AdminPage() {
       .from("work-photos")
       .upload(storagePath, compressed, {
         contentType: "image/jpeg",
-        cacheControl: "3600",
+        cacheControl: "315336000",
         upsert: false,
       });
 
