@@ -26,7 +26,10 @@ import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
-
+import {
+  getCachedSignedUrl,
+  setCachedSignedUrl,
+} from "./signedUrlCache";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -711,11 +714,69 @@ export default function AdminPage() {
   }
 
   async function loadSingleJobPhoto(photo) {
-    if (!photo?.storage_path) return null;
+  if (!photo?.storage_path) {
+    return null;
+  }
 
-    if (jobPhotoUrls[photo.id]) {
-      return jobPhotoUrls[photo.id];
+  if (jobPhotoUrls[photo.id]) {
+    return jobPhotoUrls[photo.id];
+  }
+
+  const cachedUrl = getCachedSignedUrl(
+    photo.storage_path,
+  );
+
+  if (cachedUrl) {
+    setJobPhotoUrls((current) => ({
+      ...current,
+      [photo.id]: cachedUrl,
+    }));
+
+    return cachedUrl;
+  }
+
+  setLoadingPhotoId(photo.id);
+
+  try {
+    const { data, error } = await supabase.storage
+      .from("work-photos")
+      .createSignedUrl(
+        photo.storage_path,
+        SIGNED_URL_SECONDS,
+      );
+
+    if (error) {
+      throw error;
     }
+
+    const url = data?.signedUrl;
+
+    if (!url) {
+      throw new Error("사진 주소를 만들 수 없습니다.");
+    }
+
+    setCachedSignedUrl(
+      photo.storage_path,
+      url,
+      SIGNED_URL_SECONDS,
+    );
+
+    setJobPhotoUrls((current) => ({
+      ...current,
+      [photo.id]: url,
+    }));
+
+    return url;
+  } catch (error) {
+    setJobsMessage(
+      `❌ 사진 오류: ${error?.message || "실패"}`,
+    );
+
+    return null;
+  } finally {
+    setLoadingPhotoId(null);
+  }
+        }
 
     setLoadingPhotoId(photo.id);
 
