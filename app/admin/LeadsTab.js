@@ -647,8 +647,7 @@ function QuoteForm({
           color: "#5d4037",
         }}
       >
-        📤 견적 이미지 만들기 /
-        고객에게 전송
+        💬 고객에게 견적 문자 보내기
       </button>
     </div>
   );

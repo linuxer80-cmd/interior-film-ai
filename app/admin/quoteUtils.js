@@ -208,81 +208,55 @@ export async function createQuoteBlob(lead) {
     );
   });
 }
+export async function shareQuote(lead, setLeadsMessage) {
+  const phone = String(lead?.phone || "").replace(/[^\d+]/g, "");
 
-export async function shareQuote(
-  lead,
-  setMessage = () => {}
-) {
-  const price = Number(
-    String(lead.final_price || "").replace(
-      /,/g,
-      ""
-    )
-  );
-
-  if (!Number.isFinite(price) || price <= 0) {
-    setMessage(
-      "⚠️ 먼저 최종 견적금액을 저장해주세요."
-    );
+  if (!phone) {
+    setLeadsMessage?.("⚠️ 고객 전화번호가 없습니다.");
     return;
   }
 
+  const price = Number(
+    String(lead?.final_price || "").replace(/,/g, ""),
+  );
+
+  if (!Number.isFinite(price) || price <= 0) {
+    setLeadsMessage?.("⚠️ 먼저 최종 견적금액을 저장해주세요.");
+    return;
+  }
+
+  const customerName = String(lead?.customer_name || "고객").trim();
+
+  const workDetails = String(
+    lead?.quote_work_details || lead?.request_text || "",
+  ).trim();
+
+  const material = String(lead?.quote_material || "").trim();
+  const note = String(lead?.quote_note || "").trim();
+
+  const message = [
+    `[기분좋은공간 인테리어필름 견적]`,
+    "",
+    `${customerName} 고객님, 요청하신 견적을 안내드립니다.`,
+    "",
+    workDetails ? `■ 시공 내용\n${workDetails}` : "",
+    material ? `■ 사용 자재\n${material}` : "",
+    `■ 최종 견적\n${price.toLocaleString("ko-KR")}원`,
+    note ? `■ 안내사항\n${note}` : "",
+    "",
+    "감사합니다.",
+    "기분좋은공간 · 대표 정근호",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   try {
-    const blob = await createQuoteBlob(lead);
-
-    const file = new File(
-      [blob],
-      `기분좋은공간_견적_${
-        lead.customer_name || "고객"
-      }.jpg`,
-      {
-        type: "image/jpeg",
-      }
-    );
-
-    if (
-      navigator.share &&
-      (!navigator.canShare ||
-        navigator.canShare({
-          files: [file],
-        }))
-    ) {
-      await navigator.share({
-        title: "기분좋은공간 견적서",
-        text:
-          "기분좋은공간 인테리어필름 견적서입니다.",
-        files: [file],
-      });
-
-      return;
-    }
-
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-
-    anchor.href = url;
-    anchor.download = file.name;
-
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
-
-    setMessage(
-      "✅ 견적 이미지를 저장했습니다. 문자에서 사진을 첨부해 전송해주세요."
-    );
+    window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
   } catch (error) {
-    if (error?.name === "AbortError") {
-      return;
-    }
+    console.error("문자 작성 화면 열기 오류:", error);
 
-    setMessage(
-      `❌ 견적 이미지 오류: ${
-        error?.message || "실패"
-      }`
+    setLeadsMessage?.(
+      `❌ 문자 앱을 열지 못했습니다: ${error?.message || "실패"}`,
     );
   }
-    }
+      }
