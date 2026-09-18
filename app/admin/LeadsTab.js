@@ -12,9 +12,7 @@ import {
 import {
   STATUS_OPTIONS,
 } from "./adminConstants";
-import {
-  shareQuote,
-} from "./quoteUtils";
+import QuoteSendPanel from "./QuoteSendPanel";
 import Pagination from "./Pagination";
 
 export default function LeadsTab({
@@ -632,23 +630,10 @@ function QuoteForm({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() =>
-          shareQuote(
-            lead,
-            setLeadsMessage
-          )
-        }
-        style={{
-          ...secondaryButtonStyle,
-          marginTop: "8px",
-          borderColor: "#5d4037",
-          color: "#5d4037",
-        }}
-      >
-        💬 고객에게 견적 문자 보내기
-      </button>
+      <QuoteSendPanel
+  lead={lead}
+  setLeadsMessage={setLeadsMessage}
+/>
     </div>
   );
 }
