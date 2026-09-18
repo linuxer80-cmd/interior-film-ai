@@ -26,10 +26,7 @@ import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
-import {
-  getCachedSignedUrl,
-  setCachedSignedUrl,
-} from "./signedUrlCache";
+import { getCachedSignedUrl, setCachedSignedUrl } from "./signedUrlCache";
 export default function AdminPage() {
   /* =========================================================
      탭
@@ -713,63 +710,25 @@ export default function AdminPage() {
     }
   }
 
-  
-
-  const cachedUrl = getCachedSignedUrl(
-    photo.storage_path,
-  );
-
-  if (cachedUrl) {
-    setJobPhotoUrls((current) => ({
-      ...current,
-      [photo.id]: cachedUrl,
-    }));
-
-    return cachedUrl;
-  }
-
-  setLoadingPhotoId(photo.id);
-
-  try {
-    const { data, error } = await supabase.storage
-      .from("work-photos")
-      .createSignedUrl(
-        photo.storage_path,
-        SIGNED_URL_SECONDS,
-      );
-
-    if (error) {
-      throw error;
+  async function loadSingleJobPhoto(photo) {
+    if (!photo?.storage_path) {
+      return null;
     }
 
-    const url = data?.signedUrl;
-
-    if (!url) {
-      throw new Error("사진 주소를 만들 수 없습니다.");
+    if (jobPhotoUrls[photo.id]) {
+      return jobPhotoUrls[photo.id];
     }
 
-    setCachedSignedUrl(
-      photo.storage_path,
-      url,
-      SIGNED_URL_SECONDS,
-    );
+    const cachedUrl = getCachedSignedUrl(photo.storage_path);
 
-    setJobPhotoUrls((current) => ({
-      ...current,
-      [photo.id]: url,
-    }));
+    if (cachedUrl) {
+      setJobPhotoUrls((current) => ({
+        ...current,
+        [photo.id]: cachedUrl,
+      }));
 
-    return url;
-  } catch (error) {
-    setJobsMessage(
-      `❌ 사진 오류: ${error?.message || "실패"}`,
-    );
-
-    return null;
-  } finally {
-    setLoadingPhotoId(null);
-  }
-        }
+      return cachedUrl;
+    }
 
     setLoadingPhotoId(photo.id);
 
@@ -779,82 +738,28 @@ export default function AdminPage() {
         .createSignedUrl(photo.storage_path, SIGNED_URL_SECONDS);
 
       if (error) throw error;
-async function loadSingleJobPhoto(photo) {
-  if (!photo?.storage_path) {
-    return null;
-  }
 
-  if (jobPhotoUrls[photo.id]) {
-    return jobPhotoUrls[photo.id];
-  }
+      const url = data?.signedUrl;
 
-  const cachedUrl = getCachedSignedUrl(
-    photo.storage_path,
-  );
+      if (!url) {
+        throw new Error("사진 주소를 만들 수 없습니다.");
+      }
 
-  if (cachedUrl) {
-    setJobPhotoUrls((current) => ({
-      ...current,
-      [photo.id]: cachedUrl,
-    }));
+      setCachedSignedUrl(photo.storage_path, url, SIGNED_URL_SECONDS);
 
-    return cachedUrl;
-  }
+      setJobPhotoUrls((current) => ({
+        ...current,
+        [photo.id]: url,
+      }));
 
-  setLoadingPhotoId(photo.id);
-
-  try {
-    const { data, error } = await supabase.storage
-      .from("work-photos")
-      .createSignedUrl(
-        photo.storage_path,
-        SIGNED_URL_SECONDS,
-      );
-
-    if (error) {
-      throw error;
+      return url;
+    } catch (error) {
+      setJobsMessage(`❌ 사진 오류: ${error?.message || "실패"}`);
+      return null;
+    } finally {
+      setLoadingPhotoId(null);
     }
-
-    const url = data?.signedUrl;
-
-    if (!url) {
-      throw new Error("사진 주소를 만들 수 없습니다.");
-    }
-
-    setCachedSignedUrl(
-      photo.storage_path,
-      url,
-      SIGNED_URL_SECONDS,
-    );
-
-    setJobPhotoUrls((current) => ({
-      ...current,
-      [photo.id]: url,
-    }));
-
-    return url;
-  } catch (error) {
-    setJobsMessage(
-      `❌ 사진 오류: ${error?.message || "실패"}`,
-    );
-
-    return null;
-  } finally {
-    setLoadingPhotoId(null);
   }
-}
-
-async function openJobPhoto(photo) {
-  let url = jobPhotoUrls[photo.id];
-
-  if (!url) {
-    url = await loadSingleJobPhoto(photo);
-  }
-
-  if (url) {
-    setPreviewPhoto(url);
-  }
-}
 
   async function openJobPhoto(photo) {
     let url = jobPhotoUrls[photo.id];
@@ -982,7 +887,7 @@ async function openJobPhoto(photo) {
       ].join("\n");
 
       const embedding = await createEmbedding(searchText);
-            const { error } = await supabase
+      const { error } = await supabase
         .from("work_photos")
         .update({
           photo_type: editPhotoType,
@@ -1883,4 +1788,4 @@ async function openJobPhoto(photo) {
       />
     </main>
   );
-    }
+}
