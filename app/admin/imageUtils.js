@@ -12,18 +12,15 @@ export async function resizeImage(
       image.onload = () => {
         let width = image.naturalWidth || image.width;
         let height = image.naturalHeight || image.height;
-
         const longest = Math.max(width, height);
 
         if (longest > maxSize) {
           const ratio = maxSize / longest;
-
           width = Math.round(width * ratio);
           height = Math.round(height * ratio);
         }
 
         const canvas = document.createElement("canvas");
-
         canvas.width = width;
         canvas.height = height;
 
@@ -43,4 +40,59 @@ export async function resizeImage(
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              reject(new Error("사진
+              reject(new Error("사진 압축 실패"));
+              return;
+            }
+
+            const originalName = String(
+              file.name || "photo"
+            );
+
+            const fileName =
+              originalName.replace(/\.[^.]+$/, "") +
+              ".jpg";
+
+            resolve(
+              new File([blob], fileName, {
+                type: "image/jpeg",
+              })
+            );
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      image.onerror = () => {
+        reject(
+          new Error("사진을 불러오지 못했습니다.")
+        );
+      };
+
+      image.src = reader.result;
+    };
+
+    reader.onerror = () => {
+      reject(
+        new Error("사진 파일을 읽지 못했습니다.")
+      );
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function getImageHash(file) {
+  const buffer = await file.arrayBuffer();
+
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    buffer
+  );
+
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) =>
+      byte.toString(16).padStart(2, "0")
+    )
+    .join("");
+}
