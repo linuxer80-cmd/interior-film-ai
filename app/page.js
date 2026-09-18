@@ -14,6 +14,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [groups, setGroups] = useState([]);
   const [totalEstimate, setTotalEstimate] = useState(null);
+  const [resultMode, setResultMode] = useState("");
 
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -77,6 +78,7 @@ export default function Home() {
   function resetResults() {
     setGroups([]);
     setTotalEstimate(null);
+    setResultMode("");
     setLeadComplete(false);
     setLeadMessage("");
 
@@ -2075,8 +2077,6 @@ export default function Home() {
         )}
       </section>
 
-      <FilmColorPicker />
-
       {groups.length > 0 && (
         <section
           style={sectionStyle}
@@ -2499,6 +2499,95 @@ export default function Home() {
       )}
 
       {groups.length > 0 && (
+        <section
+          style={{
+            ...sectionStyle,
+            padding: "18px",
+          }}
+        >
+          <h2
+            style={{
+              marginTop: 0,
+              textAlign: "center",
+            }}
+          >
+            다음 서비스를 선택하세요
+          </h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(2, minmax(0, 1fr))",
+              gap: "10px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setResultMode("detail")
+              }
+              style={{
+                minHeight: "72px",
+                padding: "12px",
+                borderRadius: "14px",
+                border:
+                  resultMode === "detail"
+                    ? "3px solid #111827"
+                    : "1px solid #d1d5db",
+                background:
+                  resultMode === "detail"
+                    ? "#111827"
+                    : "#ffffff",
+                color:
+                  resultMode === "detail"
+                    ? "#ffffff"
+                    : "#111827",
+                fontSize: "16px",
+                fontWeight: "bold",
+              }}
+            >
+              💬 상세견적 신청
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setResultMode("virtual")
+              }
+              style={{
+                minHeight: "72px",
+                padding: "12px",
+                borderRadius: "14px",
+                border:
+                  resultMode === "virtual"
+                    ? "3px solid #5d4037"
+                    : "1px solid #d1d5db",
+                background:
+                  resultMode === "virtual"
+                    ? "#5d4037"
+                    : "#ffffff",
+                color:
+                  resultMode === "virtual"
+                    ? "#ffffff"
+                    : "#111827",
+                fontSize: "16px",
+                fontWeight: "bold",
+              }}
+            >
+              🎨 가상 시공 보기
+            </button>
+          </div>
+        </section>
+      )}
+
+      {groups.length > 0 &&
+        resultMode === "virtual" && (
+        <FilmColorPicker />
+      )}
+
+      {groups.length > 0 &&
+        resultMode === "detail" && (
         <section
           style={{
             ...sectionStyle,
