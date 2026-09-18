@@ -4986,8 +4986,7 @@ export default function AdminPage() {
                               shareQuote(
   lead,
   setLeadsMessage
-)
-                              )
+                      )
                             }
                             style={{
                               ...secondaryButtonStyle,
