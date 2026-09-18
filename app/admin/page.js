@@ -21,7 +21,6 @@ import {
   PROJECT_ID,
   STATUS_OPTIONS,
 } from "./adminConstants";
-const JOB_PAGE_SIZE = 10;
 
 
 export default function AdminPage() {
