@@ -183,14 +183,30 @@ function TypeButton({
   description,
   onClick,
 }) {
+  function handleSelect(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    if (onClick) {
+      onClick();
+    }
+  }
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onPointerDown={
+        handleSelect
+      }
+      onClick={
+        handleSelect
+      }
       style={{
+        position: "relative",
+        zIndex: 2,
         width: "100%",
-        minHeight: "112px",
-        padding: "15px",
+        minHeight: "108px",
+        padding: "14px 12px",
         border: active
           ? "2px solid #6d28d9"
           : "1px solid #d1d5db",
@@ -201,6 +217,10 @@ function TypeButton({
         color: "#111827",
         textAlign: "left",
         cursor: "pointer",
+        touchAction: "manipulation",
+        WebkitTapHighlightColor:
+          "transparent",
+        userSelect: "none",
       }}
     >
       <div
@@ -209,13 +229,18 @@ function TypeButton({
           alignItems: "center",
           justifyContent:
             "space-between",
-          gap: "8px",
+          gap: "7px",
+          pointerEvents: "none",
         }}
       >
         <strong
           style={{
-            fontSize: "16px",
+            minWidth: 0,
+            fontSize: "14px",
             lineHeight: 1.35,
+            letterSpacing:
+              "-0.5px",
+            wordBreak: "keep-all",
           }}
         >
           {title}
@@ -223,9 +248,9 @@ function TypeButton({
 
         <span
           style={{
-            width: "25px",
-            height: "25px",
-            flex: "0 0 25px",
+            width: "24px",
+            height: "24px",
+            flex: "0 0 24px",
             display: "flex",
             alignItems: "center",
             justifyContent:
@@ -246,8 +271,10 @@ function TypeButton({
         style={{
           marginTop: "6px",
           color: "#6b7280",
-          fontSize: "12px",
-          lineHeight: 1.5,
+          fontSize: "11px",
+          lineHeight: 1.45,
+          wordBreak: "keep-all",
+          pointerEvents: "none",
         }}
       >
         {description}
@@ -255,7 +282,6 @@ function TypeButton({
     </button>
   );
 }
-
 function ModeButton({
   active,
   children,
