@@ -13,6 +13,7 @@ import ServiceSelector from "./components/ServiceSelector";
 import FilmPriceSelector from "./components/FilmPriceSelector";
 import FilmAdjustedEstimate from "./components/FilmAdjustedEstimate";
 import LeadForm from "./components/LeadForm";
+import VirtualToneSelector from "./components/VirtualToneSelector";
 
 import useEstimate from "./hooks/useEstimate";
 
@@ -65,6 +66,20 @@ export default function Home() {
 
   const [fireType, setFireType] =
     useState("non_fire");
+
+  /*
+   * 부분 톤 상태
+   */
+
+  const [
+    useSplitTone,
+    setUseSplitTone,
+  ] = useState(false);
+
+  const [
+    areaFilms,
+    setAreaFilms,
+  ] = useState({});
 
   /*
    * =========================================================
@@ -863,6 +878,9 @@ export default function Home() {
       "non_fire"
     );
 
+    setUseSplitTone(false);
+    setAreaFilms({});
+
     setLeadComplete(
       false
     );
@@ -891,6 +909,9 @@ export default function Home() {
       "non_fire"
     );
 
+    setUseSplitTone(false);
+    setAreaFilms({});
+
     setLeadComplete(
       false
     );
@@ -916,6 +937,9 @@ export default function Home() {
     setFireType(
       "non_fire"
     );
+
+    setUseSplitTone(false);
+    setAreaFilms({});
 
     setLeadComplete(
       false
@@ -1077,11 +1101,32 @@ export default function Home() {
         resultMode ===
           "virtual" && (
           <>
-            {/* 필름 선택 */}
+            {/* 기본 필름 선택 */}
 
             <FilmColorPicker
               onSelect={
                 handleFilmSelect
+              }
+            />
+
+            {/* 부분 톤 차이 */}
+
+            <VirtualToneSelector
+              groups={groups}
+              product={
+                selectedFilm
+              }
+              useSplitTone={
+                useSplitTone
+              }
+              onUseSplitToneChange={
+                setUseSplitTone
+              }
+              areaFilms={
+                areaFilms
+              }
+              onAreaFilmsChange={
+                setAreaFilms
               }
             />
 
@@ -1118,14 +1163,7 @@ export default function Home() {
               }
             />
 
-            {/*
-             * 가상 시공
-             *
-             * 중요:
-             * AI 분석 결과 groups를 전달해서
-             * 싱크대 / 문·문틀일 때만
-             * 부분 톤 선택 기능을 표시
-             */}
+            {/* 가상 시공 */}
 
             <VirtualInstallPanel
               images={images}
@@ -1133,6 +1171,12 @@ export default function Home() {
                 selectedFilm
               }
               groups={groups}
+              useSplitTone={
+                useSplitTone
+              }
+              areaFilms={
+                areaFilms
+              }
               onRequestDetail={() =>
                 setResultMode(
                   "detail"
@@ -1209,4 +1253,4 @@ export default function Home() {
       </div>
     </main>
   );
-        }
+}
