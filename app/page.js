@@ -310,16 +310,298 @@ export default function Home() {
 
   /*
    * =========================================================
+   * 부분시공 부위 → 필름 연결
+   * =========================================================
+   *
+   * 기본 선택:
+   *   selectedFilm
+   *
+   * 부위별 다르게:
+   *   areaFilms.upper
+   *   areaFilms.lower
+   *   areaFilms.fridge
+   *   areaFilms.tall
+   *   areaFilms.pantry
+   *   areaFilms.island
+   *   areaFilms.door_leaf
+   *   areaFilms.door_frame
+   *
+   * AI 그룹이 "싱크대/주방가구"처럼 하나로 묶여 있는 경우에는
+   * 해당 주방 부위들의 평균 자재단가를 사용한다.
+   */
+
+  function normalizeGroupText(group) {
+    return [
+      group?.key,
+      group?.category,
+      group?.subCategory,
+      group?.sub_category,
+      group?.name,
+      group?.label,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, "")
+      .toLowerCase();
+  }
+
+  function getAreaKeyForGroup(group) {
+    const text =
+      normalizeGroupText(group);
+
+    if (
+      text.includes("냉장고장") ||
+      text.includes("냉장고")
+    ) {
+      return "fridge";
+    }
+
+    if (
+      text.includes("키큰장") ||
+      text.includes("키높이장") ||
+      text.includes("톨장")
+    ) {
+      return "tall";
+    }
+
+    if (
+      text.includes("팬트리") ||
+      text.includes("펜트리")
+    ) {
+      return "pantry";
+    }
+
+    if (
+      text.includes("아일랜드")
+    ) {
+      return "island";
+    }
+
+    if (
+      text.includes("상부장") ||
+      text.includes("상부")
+    ) {
+      return "upper";
+    }
+
+    if (
+      text.includes("하부장") ||
+      text.includes("하부")
+    ) {
+      return "lower";
+    }
+
+    if (
+      text.includes("문틀") ||
+      text.includes("도어프레임") ||
+      text.includes("doorframe")
+    ) {
+      return "door_frame";
+    }
+
+    if (
+      text.includes("문짝") ||
+      text.includes("도어짝") ||
+      text.includes("doorleaf")
+    ) {
+      return "door_leaf";
+    }
+
+    return "";
+  }
+
+  function getFilmPriceValue(
+    film,
+    type
+  ) {
+    if (!film) {
+      return 0;
+    }
+
+    if (type === "fire") {
+      return Number(
+        film.fire_price_per_meter ||
+          0
+      );
+    }
+
+    return Number(
+      film.non_fire_price_per_meter ||
+        0
+    );
+  }
+
+  function makeAverageFilm(
+    films
+  ) {
+    const validFilms = films.filter(
+      Boolean
+    );
+
+    if (!validFilms.length) {
+      return selectedFilm;
+    }
+
+    const averagePrice = (
+      type
+    ) => {
+      const prices =
+        validFilms
+          .map((film) =>
+            getFilmPriceValue(
+              film,
+              type
+            )
+          )
+          .filter(
+            (price) => price > 0
+          );
+
+      if (!prices.length) {
+        return 0;
+      }
+
+      return (
+        prices.reduce(
+          (sum, price) =>
+            sum + price,
+          0
+        ) / prices.length
+      );
+    };
+
+    return {
+      ...selectedFilm,
+
+      fire_price_per_meter:
+        averagePrice("fire"),
+
+      non_fire_price_per_meter:
+        averagePrice(
+          "non_fire"
+        ),
+    };
+  }
+
+  function getKitchenAverageFilm() {
+    const keys = [
+      "upper",
+      "lower",
+      "fridge",
+      "tall",
+      "pantry",
+      "island",
+    ];
+
+    /*
+     * 싱크대 기본은 상부장 + 하부장.
+     * 추가 부위가 실제 선택되어 있으면 함께 계산.
+     */
+    const activeKeys = [
+      "upper",
+      "lower",
+      ...keys.filter(
+        (key) =>
+          ![
+            "upper",
+            "lower",
+          ].includes(key) &&
+          areaFilms?.[key]
+      ),
+    ];
+
+    const films =
+      activeKeys.map(
+        (key) =>
+          areaFilms?.[key] ||
+          selectedFilm
+      );
+
+    return makeAverageFilm(
+      films
+    );
+  }
+
+  function getDoorAverageFilm() {
+    return makeAverageFilm([
+      areaFilms?.door_leaf ||
+        selectedFilm,
+      areaFilms?.door_frame ||
+        selectedFilm,
+    ]);
+  }
+
+  function getFilmForGroup(
+    group
+  ) {
+    if (!selectedFilm) {
+      return null;
+    }
+
+    if (!useSplitTone) {
+      return selectedFilm;
+    }
+
+    const areaKey =
+      getAreaKeyForGroup(group);
+
+    if (
+      areaKey &&
+      areaFilms?.[areaKey]
+    ) {
+      return areaFilms[areaKey];
+    }
+
+    const text =
+      normalizeGroupText(group);
+
+    /*
+     * AI가 상부/하부를 나누지 않고
+     * 싱크대·주방가구 한 그룹으로 분석한 경우
+     */
+    if (
+      text.includes("싱크대") ||
+      text.includes("주방가구") ||
+      text.includes("주방장")
+    ) {
+      return getKitchenAverageFilm();
+    }
+
+    /*
+     * AI가 문짝/문틀을 한 그룹으로 분석한 경우
+     */
+    if (
+      text.includes("문") ||
+      text.includes("도어")
+    ) {
+      const hasDoorOverride =
+        areaFilms?.door_leaf ||
+        areaFilms?.door_frame;
+
+      if (hasDoorOverride) {
+        return getDoorAverageFilm();
+      }
+    }
+
+    return selectedFilm;
+  }
+
+  /*
+   * =========================================================
    * 선택 필름 적용 부위별 수정견적
    * =========================================================
    */
 
   const displayGroups =
     groups.map((group) => {
-      if (
-        !group.estimate ||
-        !selectedFilm
-      ) {
+      if (!group.estimate) {
+        return group;
+      }
+
+      const filmForGroup =
+        getFilmForGroup(group);
+
+      if (!filmForGroup) {
         return group;
       }
 
@@ -331,17 +613,15 @@ export default function Home() {
 
           min:
             adjustEstimateByFilm(
-              group.estimate
-                .min,
-              selectedFilm,
+              group.estimate.min,
+              filmForGroup,
               fireType
             ),
 
           max:
             adjustEstimateByFilm(
-              group.estimate
-                .max,
-              selectedFilm,
+              group.estimate.max,
+              filmForGroup,
               fireType
             ),
 
@@ -349,51 +629,83 @@ export default function Home() {
             adjustEstimateByFilm(
               group.estimate
                 .average,
-              selectedFilm,
+              filmForGroup,
               fireType
             ),
         },
+
+        /*
+         * 화면/상담 저장에서 필요할 때
+         * 어떤 필름으로 계산됐는지 확인 가능
+         */
+        appliedFilm:
+          filmForGroup,
       };
     });
 
   /*
    * =========================================================
-   * 선택 필름 적용 총 수정견적
+   * 부위별 수정견적 → 총 수정견적
    * =========================================================
+   *
+   * 중요:
+   * 예전에는 totalEstimate 전체에 selectedFilm 하나만 적용했다.
+   * 이제는 각 부위에 적용된 수정금액을 먼저 계산하고 합산한다.
    */
+
+  const estimatedGroups =
+    displayGroups.filter(
+      (group) =>
+        group?.estimate &&
+        Number.isFinite(
+          Number(
+            group.estimate.average
+          )
+        )
+    );
+
+  const hasAdjustedGroups =
+    estimatedGroups.length > 0;
+
+  const sumEstimateField = (
+    field
+  ) =>
+    estimatedGroups.reduce(
+      (sum, group) =>
+        sum +
+        Number(
+          group.estimate?.[
+            field
+          ] || 0
+        ),
+      0
+    );
 
   const displayTotalEstimate =
     totalEstimate
-      ? {
-          ...totalEstimate,
+      ? selectedFilm &&
+        hasAdjustedGroups
+        ? {
+            ...totalEstimate,
 
-          min:
-            selectedFilm
-              ? adjustEstimateByFilm(
-                  totalEstimate.min,
-                  selectedFilm,
-                  fireType
-                )
-              : totalEstimate.min,
+            min:
+              sumEstimateField(
+                "min"
+              ),
 
-          max:
-            selectedFilm
-              ? adjustEstimateByFilm(
-                  totalEstimate.max,
-                  selectedFilm,
-                  fireType
-                )
-              : totalEstimate.max,
+            max:
+              sumEstimateField(
+                "max"
+              ),
 
-          average:
-            selectedFilm
-              ? adjustEstimateByFilm(
-                  totalEstimate.average,
-                  selectedFilm,
-                  fireType
-                )
-              : totalEstimate.average,
-        }
+            average:
+              sumEstimateField(
+                "average"
+              ),
+          }
+        : {
+            ...totalEstimate,
+          }
       : null;
 
   /*
