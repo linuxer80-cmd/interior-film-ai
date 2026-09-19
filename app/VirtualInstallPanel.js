@@ -10,109 +10,384 @@ import FilmColorPicker from "./FilmColorPicker";
 
 /*
  * =========================================================
- * 시공 부위 판정
+ * 문자열 정리
  * =========================================================
  */
 
-function detectSplitType(groups = []) {
-  const text = groups
-    .map((group) =>
-      [
-        group?.key,
-        group?.category,
-        group?.subCategory,
-      ]
-        .filter(Boolean)
-        .join(" ")
-    )
-    .join(" ")
+function normalizeText(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
     .toLowerCase();
-
-  /*
-   * 냉장고장은 주방으로 분석될 수 있지만
-   * 사용자가 부위 분리를 원하지 않으므로
-   * 가장 먼저 제외
-   */
-  if (
-    text.includes("냉장고장") ||
-    text.includes("냉장고 장")
-  ) {
-    return null;
-  }
-
-  /*
-   * 붙박이장
-   */
-  if (
-    text.includes("붙박이장") ||
-    text.includes("옷장")
-  ) {
-    return null;
-  }
-
-  /*
-   * 신발장
-   */
-  if (
-    text.includes("신발장") ||
-    text.includes("현관장")
-  ) {
-    return null;
-  }
-
-  /*
-   * 싱크대
-   */
-  if (
-    text.includes("싱크대") ||
-    text.includes("상부장") ||
-    text.includes("하부장") ||
-    text.includes("주방가구") ||
-    text.includes("주방 가구")
-  ) {
-    return "kitchen";
-  }
-
-  /*
-   * 문 + 문틀
-   */
-  if (
-    text.includes("방문") ||
-    text.includes("방화문") ||
-    text.includes("문틀") ||
-    text.includes("도어")
-  ) {
-    return "door";
-  }
-
-  return null;
 }
-
 
 /*
  * =========================================================
- * 부위 명칭
+ * group의 모든 설명 문자열 합치기
  * =========================================================
  */
 
-function getSplitLabels(type) {
-  if (type === "kitchen") {
-    return {
-      first: "상부장",
-      second: "하부장",
-    };
-  }
+function getGroupText(group) {
+  return [
+    group?.key,
+    group?.category,
+    group?.subCategory,
+    group?.sub_category,
+    group?.name,
+    group?.label,
+    group?.title,
+    group?.description,
+    group?.ai_description,
 
-  if (type === "door") {
-    return {
-      first: "문짝",
-      second: "문틀",
-    };
-  }
-
-  return null;
+    ...(Array.isArray(group?.photos)
+      ? group.photos.flatMap((photo) => [
+          photo?.analysis?.category,
+          photo?.analysis?.subCategory,
+          photo?.analysis?.sub_category,
+          photo?.analysis?.description,
+          ...(Array.isArray(
+            photo?.analysis?.tags
+          )
+            ? photo.analysis.tags
+            : []),
+        ])
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
+/*
+ * =========================================================
+ * 특정 단어 존재 여부
+ * =========================================================
+ */
+
+function includesAny(text, words) {
+  const normalized =
+    normalizeText(text);
+
+  return words.some((word) =>
+    normalized.includes(
+      normalizeText(word)
+    )
+  );
+}
+
+/*
+ * =========================================================
+ * 시공 부위 자동 판정
+ *
+ * 반환 예:
+ *
+ * [
+ *   { key: "upper", label: "상부장" },
+ *   { key: "lower", label: "하부장" },
+ *   { key: "fridge", label: "냉장고장" }
+ * ]
+ *
+ * =========================================================
+ */
+
+function detectInstallAreas(groups = []) {
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+
+  const groupTexts = groups.map(
+    getGroupText
+  );
+
+  const fullText =
+    groupTexts.join(" ");
+
+  /*
+   * -------------------------------------------------------
+   * 문 / 문틀
+   * -------------------------------------------------------
+   */
+
+  const hasDoor =
+    includesAny(fullText, [
+      "방문",
+      "방화문",
+      "도어",
+      "문짝",
+      "도어패널",
+    ]);
+
+  const hasDoorFrame =
+    includesAny(fullText, [
+      "문틀",
+      "도어프레임",
+      "도어 프레임",
+      "jamb",
+      "casing",
+    ]);
+
+  if (hasDoor && hasDoorFrame) {
+    return [
+      {
+        key: "door_leaf",
+        label: "문짝",
+        type: "door",
+      },
+      {
+        key: "door_frame",
+        label: "문틀",
+        type: "door",
+      },
+    ];
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 주방 여부
+   * -------------------------------------------------------
+   */
+
+  const kitchenContext =
+    includesAny(fullText, [
+      "싱크대",
+      "주방",
+      "주방가구",
+      "상부장",
+      "하부장",
+      "냉장고장",
+      "키큰장",
+      "키큰 장",
+      "팬트리장",
+      "팬트리 장",
+      "아일랜드",
+      "아일랜드장",
+    ]);
+
+  if (!kitchenContext) {
+    return [];
+  }
+
+  const areas = [];
+
+  /*
+   * -------------------------------------------------------
+   * 상부장
+   * -------------------------------------------------------
+   */
+
+  const hasUpper =
+    includesAny(fullText, [
+      "상부장",
+      "상부 장",
+      "벽장",
+      "벽부장",
+      "wall cabinet",
+      "upper cabinet",
+    ]);
+
+  /*
+   * -------------------------------------------------------
+   * 하부장
+   * -------------------------------------------------------
+   */
+
+  const hasLower =
+    includesAny(fullText, [
+      "하부장",
+      "하부 장",
+      "베이스장",
+      "base cabinet",
+      "lower cabinet",
+    ]);
+
+  /*
+   * AI가 단순히 '싱크대'라고만 분석한 경우에는
+   * 기존 동작을 유지하기 위해
+   * 상부장 + 하부장 기본 생성
+   */
+
+  const genericSink =
+    includesAny(fullText, [
+      "싱크대",
+      "주방가구",
+      "주방 가구",
+    ]);
+
+  if (hasUpper || genericSink) {
+    areas.push({
+      key: "upper",
+      label: "상부장",
+      type: "kitchen",
+    });
+  }
+
+  if (hasLower || genericSink) {
+    areas.push({
+      key: "lower",
+      label: "하부장",
+      type: "kitchen",
+    });
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 냉장고장
+   * -------------------------------------------------------
+   */
+
+  const hasFridge =
+    includesAny(fullText, [
+      "냉장고장",
+      "냉장고 장",
+      "냉장고수납장",
+      "냉장고 수납장",
+      "냉장고옆장",
+      "냉장고 옆장",
+      "refrigerator cabinet",
+      "fridge cabinet",
+    ]);
+
+  if (hasFridge) {
+    areas.push({
+      key: "fridge",
+      label: "냉장고장",
+      type: "kitchen",
+    });
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 키큰장
+   * -------------------------------------------------------
+   */
+
+  const hasTall =
+    includesAny(fullText, [
+      "키큰장",
+      "키큰 장",
+      "키높이장",
+      "키높이 장",
+      "톨장",
+      "tall cabinet",
+    ]);
+
+  if (hasTall) {
+    areas.push({
+      key: "tall",
+      label: "키큰장",
+      type: "kitchen",
+    });
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 팬트리장
+   * -------------------------------------------------------
+   */
+
+  const hasPantry =
+    includesAny(fullText, [
+      "팬트리장",
+      "팬트리 장",
+      "팬트리",
+      "pantry cabinet",
+    ]);
+
+  if (hasPantry) {
+    areas.push({
+      key: "pantry",
+      label: "팬트리장",
+      type: "kitchen",
+    });
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 아일랜드장
+   * -------------------------------------------------------
+   */
+
+  const hasIsland =
+    includesAny(fullText, [
+      "아일랜드장",
+      "아일랜드 장",
+      "아일랜드",
+      "island cabinet",
+    ]);
+
+  if (hasIsland) {
+    areas.push({
+      key: "island",
+      label: "아일랜드장",
+      type: "kitchen",
+    });
+  }
+
+  /*
+   * -------------------------------------------------------
+   * 중복 제거
+   * -------------------------------------------------------
+   */
+
+  const unique = [];
+
+  const seen = new Set();
+
+  for (const area of areas) {
+    if (!seen.has(area.key)) {
+      seen.add(area.key);
+      unique.push(area);
+    }
+  }
+
+  /*
+   * 부분톤은 최소 2부위 이상일 때만
+   */
+
+  if (unique.length < 2) {
+    return [];
+  }
+
+  return unique;
+}
+
+/*
+ * =========================================================
+ * 필름 데이터를 API용으로 정리
+ * =========================================================
+ */
+
+function makeFilmPayload(
+  area,
+  film
+) {
+  return {
+    areaKey: area?.key || "",
+    areaLabel: area?.label || "",
+
+    brand:
+      film?.brand || "",
+
+    productCode:
+      film?.product_code || "",
+
+    productName:
+      film?.product_name || "",
+
+    texture:
+      film?.texture || "",
+
+    colorFamily:
+      film?.color_family || "",
+
+    colorDescription:
+      film?.color_description || "",
+
+    colorHex:
+      film?.color_hex || "",
+
+    sampleImageUrl:
+      film?.sample_image_path || "",
+  };
+}
 
 /*
  * =========================================================
@@ -147,44 +422,55 @@ export default function VirtualInstallPanel({
   ] = useState("");
 
   /*
-   * 부분 톤 차이 사용 여부
+   * 부분 톤 사용 여부
    */
+
   const [
     useSplitTone,
     setUseSplitTone,
   ] = useState(false);
 
   /*
-   * 두 번째 필름
+   * 추가 부위 필름
+   *
+   * 예:
+   * {
+   *   lower: {...},
+   *   fridge: {...}
+   * }
    */
-  const [
-    secondaryFilm,
-    setSecondaryFilm,
-  ] = useState(null);
 
+  const [
+    areaFilms,
+    setAreaFilms,
+  ] = useState({});
 
   /*
    * =======================================================
-   * 시공부위 판정
+   * 시공 부위 자동 판정
    * =======================================================
    */
 
-  const splitType =
+  const installAreas =
     useMemo(
       () =>
-        detectSplitType(groups),
+        detectInstallAreas(groups),
       [groups]
     );
 
-  const splitLabels =
-    useMemo(
-      () =>
-        getSplitLabels(
-          splitType
-        ),
-      [splitType]
-    );
+  const canSplitTone =
+    installAreas.length >= 2;
 
+  /*
+   * 첫 번째 부위는
+   * 메인 FilmColorPicker에서 선택한 product 사용
+   */
+
+  const primaryArea =
+    installAreas[0] || null;
+
+  const secondaryAreas =
+    installAreas.slice(1);
 
   /*
    * =======================================================
@@ -215,10 +501,9 @@ export default function VirtualInstallPanel({
     selectedImageId,
   ]);
 
-
   /*
    * =======================================================
-   * 필름 / 사진 변경 시 결과 초기화
+   * 결과 초기화
    * =======================================================
    */
 
@@ -227,23 +512,58 @@ export default function VirtualInstallPanel({
     setMessage("");
   }, [
     product?.id,
-    secondaryFilm?.id,
     selectedImageId,
     useSplitTone,
+    areaFilms,
   ]);
 
+  /*
+   * =======================================================
+   * 부분톤 불가능하면 초기화
+   * =======================================================
+   */
+
+  useEffect(() => {
+    if (!canSplitTone) {
+      setUseSplitTone(false);
+      setAreaFilms({});
+    }
+  }, [canSplitTone]);
 
   /*
-   * 분리 불가능한 부위가 되면
-   * 부분톤 자동 해제
+   * =======================================================
+   * 분석 부위가 변경되면
+   * 존재하지 않는 부위의 선택값 제거
+   * =======================================================
    */
-  useEffect(() => {
-    if (!splitType) {
-      setUseSplitTone(false);
-      setSecondaryFilm(null);
-    }
-  }, [splitType]);
 
+  useEffect(() => {
+    const validKeys =
+      new Set(
+        secondaryAreas.map(
+          (area) => area.key
+        )
+      );
+
+    setAreaFilms((previous) => {
+      const next = {};
+
+      for (
+        const [key, value]
+        of Object.entries(previous)
+      ) {
+        if (validKeys.has(key)) {
+          next[key] = value;
+        }
+      }
+
+      return next;
+    });
+  }, [
+    installAreas
+      .map((area) => area.key)
+      .join("|"),
+  ]);
 
   /*
    * =======================================================
@@ -266,6 +586,68 @@ export default function VirtualInstallPanel({
       selectedImageId,
     ]);
 
+  /*
+   * =======================================================
+   * 특정 부위 필름 선택
+   * =======================================================
+   */
+
+  function selectAreaFilm(
+    areaKey,
+    film
+  ) {
+    setAreaFilms(
+      (previous) => ({
+        ...previous,
+        [areaKey]: film,
+      })
+    );
+  }
+
+  /*
+   * =======================================================
+   * 부분톤 필름 배열
+   * =======================================================
+   */
+
+  const selectedAreaFilms =
+    useMemo(() => {
+      if (
+        !useSplitTone ||
+        !canSplitTone ||
+        !product
+      ) {
+        return [];
+      }
+
+      return installAreas.map(
+        (area, index) => {
+          const film =
+            index === 0
+              ? product
+              : areaFilms[
+                  area.key
+                ] || null;
+
+          return {
+            area,
+            film,
+          };
+        }
+      );
+    }, [
+      useSplitTone,
+      canSplitTone,
+      installAreas,
+      product,
+      areaFilms,
+    ]);
+
+  /*
+   * =======================================================
+   * 렌더 조건
+   * =======================================================
+   */
 
   if (
     !product ||
@@ -273,7 +655,6 @@ export default function VirtualInstallPanel({
   ) {
     return null;
   }
-
 
   /*
    * =======================================================
@@ -284,16 +665,28 @@ export default function VirtualInstallPanel({
   async function generateVirtualImage() {
     if (loading) return;
 
+    /*
+     * 부분톤 사용 시
+     * 모든 추가 부위 필름 선택 확인
+     */
+
     if (
       useSplitTone &&
-      splitType &&
-      !secondaryFilm
+      canSplitTone
     ) {
-      setMessage(
-        `❌ ${splitLabels?.second || "두 번째 부위"}에 적용할 필름을 선택해주세요.`
-      );
+      const missingArea =
+        secondaryAreas.find(
+          (area) =>
+            !areaFilms[area.key]
+        );
 
-      return;
+      if (missingArea) {
+        setMessage(
+          `❌ ${missingArea.label}에 적용할 필름을 선택해주세요.`
+        );
+
+        return;
+      }
     }
 
     setLoading(true);
@@ -308,13 +701,13 @@ export default function VirtualInstallPanel({
         new FormData();
 
       /*
-       * 고객사진
+       * 고객 사진
        */
+
       formData.append(
         "image",
         selectedImage.file
       );
-
 
       /*
        * ===================================================
@@ -362,79 +755,40 @@ export default function VirtualInstallPanel({
         product.sample_image_path || ""
       );
 
-
       /*
        * ===================================================
-       * 부분 톤 정보
+       * 동적 부분톤 데이터
        * ===================================================
        */
 
       formData.append(
-        "splitType",
-        useSplitTone
-          ? splitType || ""
-          : ""
-      );
-
-      formData.append(
         "useSplitTone",
-        useSplitTone
+        useSplitTone &&
+        canSplitTone
           ? "true"
           : "false"
       );
 
-
-      /*
-       * ===================================================
-       * 두 번째 필름
-       * ===================================================
-       */
-
       if (
         useSplitTone &&
-        secondaryFilm
+        canSplitTone
       ) {
-        formData.append(
-          "secondaryBrand",
-          secondaryFilm.brand || ""
-        );
+        const areaPayload =
+          selectedAreaFilms.map(
+            ({ area, film }) =>
+              makeFilmPayload(
+                area,
+                film
+              )
+          );
 
         formData.append(
-          "secondaryProductCode",
-          secondaryFilm.product_code || ""
-        );
-
-        formData.append(
-          "secondaryProductName",
-          secondaryFilm.product_name || ""
-        );
-
-        formData.append(
-          "secondaryTexture",
-          secondaryFilm.texture || ""
-        );
-
-        formData.append(
-          "secondaryColorFamily",
-          secondaryFilm.color_family || ""
-        );
-
-        formData.append(
-          "secondaryColorDescription",
-          secondaryFilm.color_description || ""
-        );
-
-        formData.append(
-          "secondaryColorHex",
-          secondaryFilm.color_hex || ""
-        );
-
-        formData.append(
-          "secondarySampleImageUrl",
-          secondaryFilm.sample_image_path || ""
+          "areaFilms",
+          JSON.stringify(
+            areaPayload
+          )
         );
       }
-
 
       /*
        * ===================================================
@@ -462,7 +816,7 @@ export default function VirtualInstallPanel({
       ) {
         throw new Error(
           result?.error ||
-          "가상 시공 이미지 생성에 실패했습니다."
+            "가상 시공 이미지 생성에 실패했습니다."
         );
       }
 
@@ -471,10 +825,10 @@ export default function VirtualInstallPanel({
       );
 
       if (
-        result?.splitReferenceUsed
+        result?.multiReferenceUsed
       ) {
         setMessage(
-          "✅ 두 가지 실제 필름 샘플을 참고한 부분 톤 가상시공이 완성되었습니다."
+          `✅ ${result.referenceCount || installAreas.length}개 부위의 실제 필름 샘플을 참고한 부분 톤 가상시공이 완성되었습니다.`
         );
       } else if (
         result?.sampleReferenceUsed
@@ -501,7 +855,6 @@ export default function VirtualInstallPanel({
     }
   }
 
-
   /*
    * =======================================================
    * 화면
@@ -526,7 +879,6 @@ export default function VirtualInstallPanel({
       >
         가상 시공 미리보기
       </h2>
-
 
       {/* 사진 선택 */}
 
@@ -600,7 +952,6 @@ export default function VirtualInstallPanel({
         </>
       )}
 
-
       {/* 기본 필름 */}
 
       <div
@@ -614,8 +965,8 @@ export default function VirtualInstallPanel({
       >
         <div>
           {useSplitTone &&
-          splitLabels
-            ? `${splitLabels.first} 필름`
+          primaryArea
+            ? `${primaryArea.label} 필름`
             : "선택 필름"}
           :{" "}
           <strong>
@@ -648,198 +999,285 @@ export default function VirtualInstallPanel({
         )}
       </div>
 
-
       {/* ===================================================
           부분 톤 기능
           =================================================== */}
 
-      {splitType &&
-        splitLabels && (
-          <div
+      {canSplitTone && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "16px",
+            border:
+              "1px solid #d1d5db",
+            borderRadius: "14px",
+            background: "#fafafa",
+          }}
+        >
+          <strong>
+            부분 톤 차이
+          </strong>
+
+          <p
             style={{
-              marginTop: "16px",
-              padding: "16px",
-              border:
-                "1px solid #d1d5db",
-              borderRadius: "14px",
-              background:
-                "#fafafa",
+              margin:
+                "7px 0 12px",
+              color:
+                "#6b7280",
+              fontSize:
+                "14px",
+              lineHeight: 1.6,
             }}
           >
-            <strong>
-              부분 톤 차이
-            </strong>
+            감지된 시공 부위별로
+            서로 다른 필름을 선택할 수
+            있습니다.
+          </p>
 
-            <p
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+              marginBottom: "12px",
+            }}
+          >
+            {installAreas.map(
+              (area) => (
+                <span
+                  key={area.key}
+                  style={{
+                    padding:
+                      "6px 9px",
+                    borderRadius:
+                      "20px",
+                    background:
+                      "#eef2ff",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      "bold",
+                  }}
+                >
+                  {area.label}
+                </span>
+              )
+            )}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "1fr 1fr",
+              gap: "8px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setUseSplitTone(
+                  false
+                );
+
+                setAreaFilms({});
+              }}
               style={{
-                margin:
-                  "7px 0 12px",
+                padding:
+                  "13px 8px",
+                borderRadius:
+                  "11px",
+                border:
+                  !useSplitTone
+                    ? "2px solid #111827"
+                    : "1px solid #d1d5db",
+                background:
+                  !useSplitTone
+                    ? "#111827"
+                    : "#ffffff",
                 color:
-                  "#6b7280",
-                fontSize:
-                  "14px",
-                lineHeight: 1.6,
+                  !useSplitTone
+                    ? "#ffffff"
+                    : "#111827",
+                fontWeight:
+                  "bold",
               }}
             >
-              {splitType ===
-              "kitchen"
-                ? "상부장과 하부장을 서로 다른 필름으로 미리 볼 수 있습니다."
-                : "문짝과 문틀을 서로 다른 필름으로 미리 볼 수 있습니다."}
-            </p>
+              한 가지 필름
+            </button>
 
+            <button
+              type="button"
+              onClick={() =>
+                setUseSplitTone(
+                  true
+                )
+              }
+              style={{
+                padding:
+                  "13px 8px",
+                borderRadius:
+                  "11px",
+                border:
+                  useSplitTone
+                    ? "2px solid #5d4037"
+                    : "1px solid #d1d5db",
+                background:
+                  useSplitTone
+                    ? "#5d4037"
+                    : "#ffffff",
+                color:
+                  useSplitTone
+                    ? "#ffffff"
+                    : "#111827",
+                fontWeight:
+                  "bold",
+              }}
+            >
+              부분 톤 다르게
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================
+          추가 부위별 필름 선택
+          =================================================== */}
+
+      {useSplitTone &&
+        canSplitTone && (
+          <>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "1fr 1fr",
-                gap: "8px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setUseSplitTone(
-                    false
-                  );
-                  setSecondaryFilm(
-                    null
-                  );
-                }}
-                style={{
-                  padding:
-                    "13px 8px",
-                  borderRadius:
-                    "11px",
-                  border:
-                    !useSplitTone
-                      ? "2px solid #111827"
-                      : "1px solid #d1d5db",
-                  background:
-                    !useSplitTone
-                      ? "#111827"
-                      : "#ffffff",
-                  color:
-                    !useSplitTone
-                      ? "#ffffff"
-                      : "#111827",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                한 가지 필름
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setUseSplitTone(
-                    true
-                  )
-                }
-                style={{
-                  padding:
-                    "13px 8px",
-                  borderRadius:
-                    "11px",
-                  border:
-                    useSplitTone
-                      ? "2px solid #5d4037"
-                      : "1px solid #d1d5db",
-                  background:
-                    useSplitTone
-                      ? "#5d4037"
-                      : "#ffffff",
-                  color:
-                    useSplitTone
-                      ? "#ffffff"
-                      : "#111827",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                부분 톤 다르게
-              </button>
-            </div>
-          </div>
-        )}
-
-
-      {/* 두 번째 필름 선택 */}
-
-      {splitType &&
-        splitLabels &&
-        useSplitTone && (
-          <div
-            style={{
-              marginTop: "16px",
-              paddingTop: "4px",
-              borderTop:
-                "2px solid #e5e7eb",
-            }}
-          >
-            <h3>
-              {splitLabels.second} 필름 선택
-            </h3>
-
-            <p
-              style={{
-                color:
-                  "#6b7280",
+                marginTop: "16px",
+                padding: "14px",
+                borderRadius:
+                  "12px",
+                background:
+                  "#eef2ff",
                 lineHeight: 1.6,
               }}
             >
-              {splitLabels.first}에는{" "}
+              <strong>
+                {primaryArea?.label}
+              </strong>
+              <br />
+
+              {product.brand}{" "}
               <strong>
                 {product.product_code}
               </strong>
-              , {splitLabels.second}에는
-              아래에서 선택하는 필름이
-              적용됩니다.
-            </p>
 
-            <FilmColorPicker
-              onSelect={
-                setSecondaryFilm
+              <br />
+
+              {product.color_description ||
+                product.color_family}
+            </div>
+
+            {secondaryAreas.map(
+              (
+                area,
+                index
+              ) => {
+                const selected =
+                  areaFilms[
+                    area.key
+                  ];
+
+                return (
+                  <div
+                    key={
+                      area.key
+                    }
+                    style={{
+                      marginTop:
+                        "18px",
+                      paddingTop:
+                        "8px",
+                      borderTop:
+                        "2px solid #e5e7eb",
+                    }}
+                  >
+                    <h3
+                      style={{
+                        marginBottom:
+                          "6px",
+                      }}
+                    >
+                      {area.label} 필름 선택
+                    </h3>
+
+                    <p
+                      style={{
+                        marginTop: 0,
+                        color:
+                          "#6b7280",
+                        lineHeight:
+                          1.6,
+                      }}
+                    >
+                      {area.label}에
+                      적용할 필름을
+                      선택해주세요.
+                    </p>
+
+                    <FilmColorPicker
+                      key={`${area.key}-${index}`}
+                      onSelect={(
+                        film
+                      ) =>
+                        selectAreaFilm(
+                          area.key,
+                          film
+                        )
+                      }
+                    />
+
+                    {selected && (
+                      <div
+                        style={{
+                          marginTop:
+                            "12px",
+                          padding:
+                            "13px",
+                          borderRadius:
+                            "12px",
+                          background:
+                            "#eef2ff",
+                          lineHeight:
+                            1.6,
+                        }}
+                      >
+                        <strong>
+                          {
+                            area.label
+                          }
+                        </strong>
+
+                        <br />
+
+                        {
+                          selected.brand
+                        }{" "}
+
+                        <strong>
+                          {
+                            selected.product_code
+                          }
+                        </strong>
+
+                        <br />
+
+                        {selected.color_description ||
+                          selected.color_family}
+                      </div>
+                    )}
+                  </div>
+                );
               }
-            />
-
-            {secondaryFilm && (
-              <div
-                style={{
-                  marginTop:
-                    "12px",
-                  padding:
-                    "13px",
-                  borderRadius:
-                    "12px",
-                  background:
-                    "#eef2ff",
-                  lineHeight: 1.6,
-                }}
-              >
-                <strong>
-                  {splitLabels.second}
-                </strong>
-                <br />
-
-                {
-                  secondaryFilm.brand
-                }{" "}
-                <strong>
-                  {
-                    secondaryFilm.product_code
-                  }
-                </strong>
-
-                <br />
-
-                {secondaryFilm.color_description ||
-                  secondaryFilm.color_family}
-              </div>
             )}
-          </div>
+          </>
         )}
-
 
       {/* 생성 버튼 */}
 
@@ -869,11 +1307,10 @@ export default function VirtualInstallPanel({
           {loading
             ? "가상 시공 생성 중..."
             : useSplitTone
-            ? "부분 톤으로 가상 시공하기"
-            : "이 필름으로 가상 시공하기"}
+              ? `${installAreas.length}개 부위로 가상 시공하기`
+              : "이 필름으로 가상 시공하기"}
         </button>
       )}
-
 
       {message && (
         <div
@@ -888,7 +1325,6 @@ export default function VirtualInstallPanel({
           {message}
         </div>
       )}
-
 
       {/* 결과 */}
 
@@ -1038,4 +1474,4 @@ export default function VirtualInstallPanel({
       </p>
     </section>
   );
-              }
+      }
