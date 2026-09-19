@@ -22,7 +22,7 @@ function normalizeText(value) {
 
 /*
  * =========================================================
- * group의 모든 설명 문자열 합치기
+ * group 내용 합치기
  * =========================================================
  */
 
@@ -44,6 +44,7 @@ function getGroupText(group) {
           photo?.analysis?.subCategory,
           photo?.analysis?.sub_category,
           photo?.analysis?.description,
+
           ...(Array.isArray(
             photo?.analysis?.tags
           )
@@ -58,7 +59,7 @@ function getGroupText(group) {
 
 /*
  * =========================================================
- * 특정 단어 존재 여부
+ * 특정 단어 포함 여부
  * =========================================================
  */
 
@@ -76,15 +77,6 @@ function includesAny(text, words) {
 /*
  * =========================================================
  * 시공 부위 자동 판정
- *
- * 반환 예:
- *
- * [
- *   { key: "upper", label: "상부장" },
- *   { key: "lower", label: "하부장" },
- *   { key: "fridge", label: "냉장고장" }
- * ]
- *
  * =========================================================
  */
 
@@ -93,12 +85,10 @@ function detectInstallAreas(groups = []) {
     return [];
   }
 
-  const groupTexts = groups.map(
-    getGroupText
-  );
-
   const fullText =
-    groupTexts.join(" ");
+    groups
+      .map(getGroupText)
+      .join(" ");
 
   /*
    * -------------------------------------------------------
@@ -124,7 +114,10 @@ function detectInstallAreas(groups = []) {
       "casing",
     ]);
 
-  if (hasDoor && hasDoorFrame) {
+  if (
+    hasDoor &&
+    hasDoorFrame
+  ) {
     return [
       {
         key: "door_leaf",
@@ -168,9 +161,7 @@ function detectInstallAreas(groups = []) {
   const areas = [];
 
   /*
-   * -------------------------------------------------------
    * 상부장
-   * -------------------------------------------------------
    */
 
   const hasUpper =
@@ -184,9 +175,7 @@ function detectInstallAreas(groups = []) {
     ]);
 
   /*
-   * -------------------------------------------------------
    * 하부장
-   * -------------------------------------------------------
    */
 
   const hasLower =
@@ -199,9 +188,8 @@ function detectInstallAreas(groups = []) {
     ]);
 
   /*
-   * AI가 단순히 '싱크대'라고만 분석한 경우에는
-   * 기존 동작을 유지하기 위해
-   * 상부장 + 하부장 기본 생성
+   * 단순 싱크대 분석일 경우
+   * 기존처럼 상부장 + 하부장 기본 생성
    */
 
   const genericSink =
@@ -211,7 +199,10 @@ function detectInstallAreas(groups = []) {
       "주방 가구",
     ]);
 
-  if (hasUpper || genericSink) {
+  if (
+    hasUpper ||
+    genericSink
+  ) {
     areas.push({
       key: "upper",
       label: "상부장",
@@ -219,7 +210,10 @@ function detectInstallAreas(groups = []) {
     });
   }
 
-  if (hasLower || genericSink) {
+  if (
+    hasLower ||
+    genericSink
+  ) {
     areas.push({
       key: "lower",
       label: "하부장",
@@ -228,9 +222,7 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * -------------------------------------------------------
    * 냉장고장
-   * -------------------------------------------------------
    */
 
   const hasFridge =
@@ -254,9 +246,7 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * -------------------------------------------------------
    * 키큰장
-   * -------------------------------------------------------
    */
 
   const hasTall =
@@ -278,9 +268,7 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * -------------------------------------------------------
    * 팬트리장
-   * -------------------------------------------------------
    */
 
   const hasPantry =
@@ -300,9 +288,7 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * -------------------------------------------------------
    * 아일랜드장
-   * -------------------------------------------------------
    */
 
   const hasIsland =
@@ -322,14 +308,13 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * -------------------------------------------------------
    * 중복 제거
-   * -------------------------------------------------------
    */
 
   const unique = [];
 
-  const seen = new Set();
+  const seen =
+    new Set();
 
   for (const area of areas) {
     if (!seen.has(area.key)) {
@@ -339,7 +324,8 @@ function detectInstallAreas(groups = []) {
   }
 
   /*
-   * 부분톤은 최소 2부위 이상일 때만
+   * 2부위 미만이면
+   * 부분톤 기능 사용 안 함
    */
 
   if (unique.length < 2) {
@@ -351,7 +337,7 @@ function detectInstallAreas(groups = []) {
 
 /*
  * =========================================================
- * 필름 데이터를 API용으로 정리
+ * API용 필름 데이터
  * =========================================================
  */
 
@@ -360,8 +346,11 @@ function makeFilmPayload(
   film
 ) {
   return {
-    areaKey: area?.key || "",
-    areaLabel: area?.label || "",
+    areaKey:
+      area?.key || "",
+
+    areaLabel:
+      area?.label || "",
 
     brand:
       film?.brand || "",
@@ -387,6 +376,44 @@ function makeFilmPayload(
     sampleImageUrl:
       film?.sample_image_path || "",
   };
+}
+
+/*
+ * =========================================================
+ * 필름 이름
+ * =========================================================
+ */
+
+function getFilmTitle(film) {
+  if (!film) {
+    return "필름 미선택";
+  }
+
+  return [
+    film.brand,
+    film.product_code,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/*
+ * =========================================================
+ * 필름 설명
+ * =========================================================
+ */
+
+function getFilmDescription(film) {
+  if (!film) {
+    return "";
+  }
+
+  return (
+    film.color_description ||
+    film.color_family ||
+    film.product_name ||
+    ""
+  );
 }
 
 /*
@@ -422,7 +449,7 @@ export default function VirtualInstallPanel({
   ] = useState("");
 
   /*
-   * 부분 톤 사용 여부
+   * 부분톤 사용 여부
    */
 
   const [
@@ -431,13 +458,9 @@ export default function VirtualInstallPanel({
   ] = useState(false);
 
   /*
-   * 추가 부위 필름
+   * 부위별 변경 필름
    *
-   * 예:
-   * {
-   *   lower: {...},
-   *   fridge: {...}
-   * }
+   * 값이 없으면 메인 product 사용
    */
 
   const [
@@ -446,8 +469,19 @@ export default function VirtualInstallPanel({
   ] = useState({});
 
   /*
+   * 현재 열려있는 필름 선택기
+   *
+   * 한 번에 하나만 열림
+   */
+
+  const [
+    editingAreaKey,
+    setEditingAreaKey,
+  ] = useState("");
+
+  /*
    * =======================================================
-   * 시공 부위 자동 판정
+   * 시공 부위
    * =======================================================
    */
 
@@ -462,17 +496,6 @@ export default function VirtualInstallPanel({
     installAreas.length >= 2;
 
   /*
-   * 첫 번째 부위는
-   * 메인 FilmColorPicker에서 선택한 product 사용
-   */
-
-  const primaryArea =
-    installAreas[0] || null;
-
-  const secondaryAreas =
-    installAreas.slice(1);
-
-  /*
    * =======================================================
    * 사진 기본 선택
    * =======================================================
@@ -484,14 +507,14 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    const imageExists =
+    const exists =
       images.some(
         (item) =>
           item.id ===
           selectedImageId
       );
 
-    if (!imageExists) {
+    if (!exists) {
       setSelectedImageId(
         images[0].id
       );
@@ -499,70 +522,6 @@ export default function VirtualInstallPanel({
   }, [
     images,
     selectedImageId,
-  ]);
-
-  /*
-   * =======================================================
-   * 결과 초기화
-   * =======================================================
-   */
-
-  useEffect(() => {
-    setResultUrl("");
-    setMessage("");
-  }, [
-    product?.id,
-    selectedImageId,
-    useSplitTone,
-    areaFilms,
-  ]);
-
-  /*
-   * =======================================================
-   * 부분톤 불가능하면 초기화
-   * =======================================================
-   */
-
-  useEffect(() => {
-    if (!canSplitTone) {
-      setUseSplitTone(false);
-      setAreaFilms({});
-    }
-  }, [canSplitTone]);
-
-  /*
-   * =======================================================
-   * 분석 부위가 변경되면
-   * 존재하지 않는 부위의 선택값 제거
-   * =======================================================
-   */
-
-  useEffect(() => {
-    const validKeys =
-      new Set(
-        secondaryAreas.map(
-          (area) => area.key
-        )
-      );
-
-    setAreaFilms((previous) => {
-      const next = {};
-
-      for (
-        const [key, value]
-        of Object.entries(previous)
-      ) {
-        if (validKeys.has(key)) {
-          next[key] = value;
-        }
-      }
-
-      return next;
-    });
-  }, [
-    installAreas
-      .map((area) => area.key)
-      .join("|"),
   ]);
 
   /*
@@ -588,25 +547,170 @@ export default function VirtualInstallPanel({
 
   /*
    * =======================================================
-   * 특정 부위 필름 선택
+   * 필름 / 사진 변경 시 결과 초기화
    * =======================================================
    */
 
-  function selectAreaFilm(
+  useEffect(() => {
+    setResultUrl("");
+    setMessage("");
+  }, [
+    product?.id,
+    selectedImageId,
+    useSplitTone,
+    areaFilms,
+  ]);
+
+  /*
+   * =======================================================
+   * 부분톤 불가능해지면 초기화
+   * =======================================================
+   */
+
+  useEffect(() => {
+    if (!canSplitTone) {
+      setUseSplitTone(false);
+      setAreaFilms({});
+      setEditingAreaKey("");
+    }
+  }, [canSplitTone]);
+
+  /*
+   * =======================================================
+   * 분석 부위 변경 시
+   * 필요 없는 저장값 제거
+   * =======================================================
+   */
+
+  useEffect(() => {
+    const validKeys =
+      new Set(
+        installAreas.map(
+          (area) =>
+            area.key
+        )
+      );
+
+    setAreaFilms(
+      (previous) => {
+        const next = {};
+
+        for (
+          const [key, value]
+          of Object.entries(
+            previous
+          )
+        ) {
+          if (
+            validKeys.has(key)
+          ) {
+            next[key] =
+              value;
+          }
+        }
+
+        return next;
+      }
+    );
+
+    if (
+      editingAreaKey &&
+      !validKeys.has(
+        editingAreaKey
+      )
+    ) {
+      setEditingAreaKey("");
+    }
+  }, [
+    installAreas
+      .map(
+        (area) =>
+          area.key
+      )
+      .join("|"),
+  ]);
+
+  /*
+   * =======================================================
+   * 특정 부위에 실제 적용되는 필름
+   *
+   * 별도 선택값이 없으면
+   * 메인 product
+   * =======================================================
+   */
+
+  function getAreaFilm(
+    areaKey
+  ) {
+    return (
+      areaFilms[areaKey] ||
+      product
+    );
+  }
+
+  /*
+   * =======================================================
+   * 필름 변경
+   *
+   * 선택 즉시 Picker 닫기
+   * =======================================================
+   */
+
+  function handleAreaFilmSelect(
     areaKey,
     film
   ) {
     setAreaFilms(
       (previous) => ({
         ...previous,
-        [areaKey]: film,
+        [areaKey]:
+          film,
       })
     );
+
+    setEditingAreaKey("");
   }
 
   /*
    * =======================================================
-   * 부분톤 필름 배열
+   * 메인 필름으로 되돌리기
+   * =======================================================
+   */
+
+  function resetAreaFilm(
+    areaKey
+  ) {
+    setAreaFilms(
+      (previous) => {
+        const next = {
+          ...previous,
+        };
+
+        delete next[
+          areaKey
+        ];
+
+        return next;
+      }
+    );
+
+    setEditingAreaKey("");
+  }
+
+  /*
+   * =======================================================
+   * 모든 부위 메인 필름
+   * =======================================================
+   */
+
+  function resetAllAreaFilms() {
+    setAreaFilms({});
+    setEditingAreaKey("");
+  }
+
+  /*
+   * =======================================================
+   * API에 보낼 부위별 필름
    * =======================================================
    */
 
@@ -621,19 +725,14 @@ export default function VirtualInstallPanel({
       }
 
       return installAreas.map(
-        (area, index) => {
-          const film =
-            index === 0
-              ? product
-              : areaFilms[
-                  area.key
-                ] || null;
-
-          return {
-            area,
-            film,
-          };
-        }
+        (area) => ({
+          area,
+          film:
+            areaFilms[
+              area.key
+            ] ||
+            product,
+        })
       );
     }, [
       useSplitTone,
@@ -641,6 +740,37 @@ export default function VirtualInstallPanel({
       installAreas,
       product,
       areaFilms,
+    ]);
+
+  /*
+   * =======================================================
+   * 메인 필름과 다른 부위 개수
+   * =======================================================
+   */
+
+  const changedAreaCount =
+    useMemo(() => {
+      return installAreas.filter(
+        (area) => {
+          const selected =
+            areaFilms[
+              area.key
+            ];
+
+          if (!selected) {
+            return false;
+          }
+
+          return (
+            selected.id !==
+            product?.id
+          );
+        }
+      ).length;
+    }, [
+      installAreas,
+      areaFilms,
+      product?.id,
     ]);
 
   /*
@@ -663,33 +793,12 @@ export default function VirtualInstallPanel({
    */
 
   async function generateVirtualImage() {
-    if (loading) return;
-
-    /*
-     * 부분톤 사용 시
-     * 모든 추가 부위 필름 선택 확인
-     */
-
-    if (
-      useSplitTone &&
-      canSplitTone
-    ) {
-      const missingArea =
-        secondaryAreas.find(
-          (area) =>
-            !areaFilms[area.key]
-        );
-
-      if (missingArea) {
-        setMessage(
-          `❌ ${missingArea.label}에 적용할 필름을 선택해주세요.`
-        );
-
-        return;
-      }
+    if (loading) {
+      return;
     }
 
     setLoading(true);
+
     setResultUrl("");
 
     setMessage(
@@ -757,25 +866,28 @@ export default function VirtualInstallPanel({
 
       /*
        * ===================================================
-       * 동적 부분톤 데이터
+       * 부분톤
        * ===================================================
        */
 
+      const splitEnabled =
+        useSplitTone &&
+        canSplitTone;
+
       formData.append(
         "useSplitTone",
-        useSplitTone &&
-        canSplitTone
+        splitEnabled
           ? "true"
           : "false"
       );
 
-      if (
-        useSplitTone &&
-        canSplitTone
-      ) {
+      if (splitEnabled) {
         const areaPayload =
           selectedAreaFilms.map(
-            ({ area, film }) =>
+            ({
+              area,
+              film,
+            }) =>
               makeFilmPayload(
                 area,
                 film
@@ -808,7 +920,9 @@ export default function VirtualInstallPanel({
       const result =
         await response
           .json()
-          .catch(() => ({}));
+          .catch(
+            () => ({})
+          );
 
       if (
         !response.ok ||
@@ -828,7 +942,7 @@ export default function VirtualInstallPanel({
         result?.multiReferenceUsed
       ) {
         setMessage(
-          `✅ ${result.referenceCount || installAreas.length}개 부위의 실제 필름 샘플을 참고한 부분 톤 가상시공이 완성되었습니다.`
+          `✅ ${installAreas.length}개 시공 부위를 구분한 가상 시공 이미지가 완성되었습니다.`
         );
       } else if (
         result?.sampleReferenceUsed
@@ -875,12 +989,16 @@ export default function VirtualInstallPanel({
       <h2
         style={{
           marginTop: 0,
+          marginBottom:
+            "14px",
         }}
       >
         가상 시공 미리보기
       </h2>
 
-      {/* 사진 선택 */}
+      {/* ===================================================
+          사진 선택
+          =================================================== */}
 
       {images.length > 1 && (
         <>
@@ -952,7 +1070,9 @@ export default function VirtualInstallPanel({
         </>
       )}
 
-      {/* 기본 필름 */}
+      {/* ===================================================
+          메인 선택 필름
+          =================================================== */}
 
       <div
         style={{
@@ -960,24 +1080,29 @@ export default function VirtualInstallPanel({
           padding: "14px",
           borderRadius: "12px",
           background: "#f3f4f6",
-          lineHeight: 1.6,
+          lineHeight: 1.55,
         }}
       >
-        <div>
-          {useSplitTone &&
-          primaryArea
-            ? `${primaryArea.label} 필름`
-            : "선택 필름"}
-          :{" "}
-          <strong>
-            {product.brand}{" "}
-            {product.product_code}
-          </strong>
+        <div
+          style={{
+            fontSize: "13px",
+            color: "#6b7280",
+            marginBottom: "3px",
+          }}
+        >
+          선택 필름
         </div>
 
+        <strong>
+          {getFilmTitle(
+            product
+          )}
+        </strong>
+
         <div>
-          {product.color_description ||
-            product.color_family}
+          {getFilmDescription(
+            product
+          )}
         </div>
 
         {product.sample_image_path && (
@@ -989,9 +1114,9 @@ export default function VirtualInstallPanel({
             style={{
               display: "block",
               width: "100%",
-              maxWidth: "180px",
-              marginTop: "10px",
-              borderRadius: "10px",
+              maxWidth: "150px",
+              marginTop: "9px",
+              borderRadius: "9px",
               border:
                 "1px solid #e5e7eb",
             }}
@@ -1000,77 +1125,52 @@ export default function VirtualInstallPanel({
       </div>
 
       {/* ===================================================
-          부분 톤 기능
+          부분톤 선택
           =================================================== */}
 
       {canSplitTone && (
         <div
           style={{
-            marginTop: "16px",
-            padding: "16px",
+            marginTop: "14px",
+            padding: "14px",
             border:
               "1px solid #d1d5db",
             borderRadius: "14px",
             background: "#fafafa",
           }}
         >
-          <strong>
+          <div
+            style={{
+              fontWeight:
+                "bold",
+              fontSize:
+                "16px",
+            }}
+          >
             부분 톤 차이
-          </strong>
+          </div>
 
           <p
             style={{
               margin:
-                "7px 0 12px",
+                "5px 0 11px",
               color:
                 "#6b7280",
               fontSize:
-                "14px",
-              lineHeight: 1.6,
+                "13px",
+              lineHeight: 1.5,
             }}
           >
-            감지된 시공 부위별로
-            서로 다른 필름을 선택할 수
-            있습니다.
+            필요한 부위만 필름을
+            변경할 수 있습니다.
           </p>
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-              marginBottom: "12px",
-            }}
-          >
-            {installAreas.map(
-              (area) => (
-                <span
-                  key={area.key}
-                  style={{
-                    padding:
-                      "6px 9px",
-                    borderRadius:
-                      "20px",
-                    background:
-                      "#eef2ff",
-                    fontSize:
-                      "13px",
-                    fontWeight:
-                      "bold",
-                  }}
-                >
-                  {area.label}
-                </span>
-              )
-            )}
-          </div>
 
           <div
             style={{
               display: "grid",
               gridTemplateColumns:
                 "1fr 1fr",
-              gap: "8px",
+              gap: "7px",
             }}
           >
             <button
@@ -1080,13 +1180,13 @@ export default function VirtualInstallPanel({
                   false
                 );
 
-                setAreaFilms({});
+                resetAllAreaFilms();
               }}
               style={{
                 padding:
-                  "13px 8px",
+                  "12px 7px",
                 borderRadius:
-                  "11px",
+                  "10px",
                 border:
                   !useSplitTone
                     ? "2px solid #111827"
@@ -1108,16 +1208,20 @@ export default function VirtualInstallPanel({
 
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
                 setUseSplitTone(
                   true
-                )
-              }
+                );
+
+                setEditingAreaKey(
+                  ""
+                );
+              }}
               style={{
                 padding:
-                  "13px 8px",
+                  "12px 7px",
                 borderRadius:
-                  "11px",
+                  "10px",
                 border:
                   useSplitTone
                     ? "2px solid #5d4037"
@@ -1141,145 +1245,424 @@ export default function VirtualInstallPanel({
       )}
 
       {/* ===================================================
-          추가 부위별 필름 선택
+          부위별 필름 카드
           =================================================== */}
 
       {useSplitTone &&
         canSplitTone && (
-          <>
+          <div
+            style={{
+              marginTop:
+                "14px",
+            }}
+          >
             <div
               style={{
-                marginTop: "16px",
-                padding: "14px",
-                borderRadius:
-                  "12px",
-                background:
-                  "#eef2ff",
-                lineHeight: 1.6,
+                display:
+                  "flex",
+                justifyContent:
+                  "space-between",
+                alignItems:
+                  "center",
+                gap: "8px",
+                marginBottom:
+                  "8px",
               }}
             >
               <strong>
-                {primaryArea?.label}
-              </strong>
-              <br />
-
-              {product.brand}{" "}
-              <strong>
-                {product.product_code}
+                부위별 필름
               </strong>
 
-              <br />
-
-              {product.color_description ||
-                product.color_family}
+              {changedAreaCount >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    resetAllAreaFilms
+                  }
+                  style={{
+                    padding:
+                      "6px 9px",
+                    border:
+                      "1px solid #d1d5db",
+                    borderRadius:
+                      "8px",
+                    background:
+                      "#ffffff",
+                    fontSize:
+                      "12px",
+                  }}
+                >
+                  모두 같은 필름
+                </button>
+              )}
             </div>
 
-            {secondaryAreas.map(
-              (
-                area,
-                index
-              ) => {
-                const selected =
-                  areaFilms[
-                    area.key
-                  ];
-
-                return (
-                  <div
-                    key={
+            <div
+              style={{
+                display:
+                  "grid",
+                gap: "8px",
+              }}
+            >
+              {installAreas.map(
+                (area) => {
+                  const film =
+                    getAreaFilm(
                       area.key
-                    }
-                    style={{
-                      marginTop:
-                        "18px",
-                      paddingTop:
-                        "8px",
-                      borderTop:
-                        "2px solid #e5e7eb",
-                    }}
-                  >
-                    <h3
-                      style={{
-                        marginBottom:
-                          "6px",
-                      }}
-                    >
-                      {area.label} 필름 선택
-                    </h3>
+                    );
 
-                    <p
-                      style={{
-                        marginTop: 0,
-                        color:
-                          "#6b7280",
-                        lineHeight:
-                          1.6,
-                      }}
-                    >
-                      {area.label}에
-                      적용할 필름을
-                      선택해주세요.
-                    </p>
+                  const changed =
+                    Boolean(
+                      areaFilms[
+                        area.key
+                      ] &&
+                        areaFilms[
+                          area.key
+                        ]?.id !==
+                          product?.id
+                    );
 
-                    <FilmColorPicker
-                      key={`${area.key}-${index}`}
-                      onSelect={(
-                        film
-                      ) =>
-                        selectAreaFilm(
-                          area.key,
-                          film
-                        )
+                  const editing =
+                    editingAreaKey ===
+                    area.key;
+
+                  return (
+                    <div
+                      key={
+                        area.key
                       }
-                    />
-
-                    {selected && (
+                    >
                       <div
                         style={{
-                          marginTop:
-                            "12px",
                           padding:
-                            "13px",
+                            "11px 12px",
+                          border:
+                            editing
+                              ? "2px solid #5d4037"
+                              : changed
+                                ? "1px solid #a78bfa"
+                                : "1px solid #e5e7eb",
                           borderRadius:
                             "12px",
                           background:
-                            "#eef2ff",
-                          lineHeight:
-                            1.6,
+                            changed
+                              ? "#f5f3ff"
+                              : "#ffffff",
                         }}
                       >
-                        <strong>
-                          {
-                            area.label
-                          }
-                        </strong>
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            alignItems:
+                              "center",
+                            gap:
+                              "10px",
+                          }}
+                        >
+                          {film
+                            ?.sample_image_path && (
+                            <img
+                              src={
+                                film.sample_image_path
+                              }
+                              alt=""
+                              style={{
+                                width:
+                                  "48px",
+                                height:
+                                  "48px",
+                                flex:
+                                  "0 0 48px",
+                                objectFit:
+                                  "cover",
+                                borderRadius:
+                                  "8px",
+                                border:
+                                  "1px solid #e5e7eb",
+                              }}
+                            />
+                          )}
 
-                        <br />
+                          <div
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize:
+                                  "13px",
+                                fontWeight:
+                                  "bold",
+                                marginBottom:
+                                  "2px",
+                              }}
+                            >
+                              {
+                                area.label
+                              }
 
-                        {
-                          selected.brand
-                        }{" "}
+                              {changed && (
+                                <span
+                                  style={{
+                                    marginLeft:
+                                      "6px",
+                                    color:
+                                      "#7c3aed",
+                                    fontSize:
+                                      "11px",
+                                  }}
+                                >
+                                  다른 필름
+                                </span>
+                              )}
+                            </div>
 
-                        <strong>
-                          {
-                            selected.product_code
-                          }
-                        </strong>
+                            <div
+                              style={{
+                                fontSize:
+                                  "14px",
+                                fontWeight:
+                                  "bold",
+                                whiteSpace:
+                                  "nowrap",
+                                overflow:
+                                  "hidden",
+                                textOverflow:
+                                  "ellipsis",
+                              }}
+                            >
+                              {getFilmTitle(
+                                film
+                              )}
+                            </div>
 
-                        <br />
+                            <div
+                              style={{
+                                marginTop:
+                                  "1px",
+                                color:
+                                  "#6b7280",
+                                fontSize:
+                                  "12px",
+                                whiteSpace:
+                                  "nowrap",
+                                overflow:
+                                  "hidden",
+                                textOverflow:
+                                  "ellipsis",
+                              }}
+                            >
+                              {getFilmDescription(
+                                film
+                              )}
+                            </div>
+                          </div>
 
-                        {selected.color_description ||
-                          selected.color_family}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingAreaKey(
+                                editing
+                                  ? ""
+                                  : area.key
+                              )
+                            }
+                            style={{
+                              flex:
+                                "0 0 auto",
+                              padding:
+                                "9px 11px",
+                              border:
+                                "1px solid #d1d5db",
+                              borderRadius:
+                                "9px",
+                              background:
+                                editing
+                                  ? "#5d4037"
+                                  : "#ffffff",
+                              color:
+                                editing
+                                  ? "#ffffff"
+                                  : "#111827",
+                              fontWeight:
+                                "bold",
+                              fontSize:
+                                "13px",
+                            }}
+                          >
+                            {editing
+                              ? "닫기"
+                              : "필름 변경"}
+                          </button>
+                        </div>
+
+                        {changed && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              resetAreaFilm(
+                                area.key
+                              )
+                            }
+                            style={{
+                              marginTop:
+                                "8px",
+                              padding:
+                                "6px 9px",
+                              border:
+                                "none",
+                              borderRadius:
+                                "7px",
+                              background:
+                                "#ede9fe",
+                              color:
+                                "#5b21b6",
+                              fontSize:
+                                "12px",
+                              fontWeight:
+                                "bold",
+                            }}
+                          >
+                            메인 필름으로
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              }
-            )}
-          </>
+
+                      {/* ===================================
+                          현재 선택한 한 부위만
+                          FilmColorPicker 표시
+                          =================================== */}
+
+                      {editing && (
+                        <div
+                          style={{
+                            marginTop:
+                              "8px",
+                            padding:
+                              "12px",
+                            border:
+                              "1px solid #d1d5db",
+                            borderRadius:
+                              "12px",
+                            background:
+                              "#ffffff",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display:
+                                "flex",
+                              justifyContent:
+                                "space-between",
+                              alignItems:
+                                "center",
+                              gap:
+                                "8px",
+                              marginBottom:
+                                "10px",
+                            }}
+                          >
+                            <div>
+                              <strong>
+                                {
+                                  area.label
+                                }{" "}
+                                필름 변경
+                              </strong>
+
+                              <div
+                                style={{
+                                  marginTop:
+                                    "2px",
+                                  color:
+                                    "#6b7280",
+                                  fontSize:
+                                    "12px",
+                                }}
+                              >
+                                선택하면
+                                자동으로
+                                닫힙니다.
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingAreaKey(
+                                  ""
+                                )
+                              }
+                              style={{
+                                padding:
+                                  "7px 10px",
+                                border:
+                                  "1px solid #d1d5db",
+                                borderRadius:
+                                  "8px",
+                                background:
+                                  "#ffffff",
+                                fontSize:
+                                  "12px",
+                              }}
+                            >
+                              닫기
+                            </button>
+                          </div>
+
+                          <FilmColorPicker
+                            key={`picker-${area.key}`}
+                            onSelect={(
+                              film
+                            ) =>
+                              handleAreaFilmSelect(
+                                area.key,
+                                film
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+              )}
+            </div>
+
+            {/* 현재 조합 요약 */}
+
+            <div
+              style={{
+                marginTop:
+                  "10px",
+                padding:
+                  "10px 12px",
+                borderRadius:
+                  "10px",
+                background:
+                  "#f8fafc",
+                color:
+                  "#475569",
+                fontSize:
+                  "12px",
+                lineHeight: 1.55,
+              }}
+            >
+              {changedAreaCount ===
+              0
+                ? `현재 ${installAreas.length}개 부위 모두 ${product.product_code} 필름이 적용됩니다.`
+                : `${installAreas.length}개 부위 중 ${changedAreaCount}개 부위에 다른 필름을 적용합니다.`}
+            </div>
+          </div>
         )}
 
-      {/* 생성 버튼 */}
+      {/* ===================================================
+          생성 버튼
+          =================================================== */}
 
       {!resultUrl && (
         <button
@@ -1290,7 +1673,7 @@ export default function VirtualInstallPanel({
           }
           style={{
             width: "100%",
-            marginTop: "18px",
+            marginTop: "16px",
             padding: "16px",
             border: "none",
             borderRadius: "13px",
@@ -1312,6 +1695,8 @@ export default function VirtualInstallPanel({
         </button>
       )}
 
+      {/* 메시지 */}
+
       {message && (
         <div
           style={{
@@ -1326,7 +1711,9 @@ export default function VirtualInstallPanel({
         </div>
       )}
 
-      {/* 결과 */}
+      {/* ===================================================
+          결과
+          =================================================== */}
 
       {resultUrl && (
         <>
