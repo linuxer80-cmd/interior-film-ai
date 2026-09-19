@@ -8,7 +8,6 @@ import VirtualInstallPanel from "./VirtualInstallPanel";
 
 import EstimatePhotoUploader from "./components/EstimatePhotoUploader";
 import EstimateResult from "./components/EstimateResult";
-import EstimateTotal from "./components/EstimateTotal";
 import ServiceSelector from "./components/ServiceSelector";
 import FilmPriceSelector from "./components/FilmPriceSelector";
 import FilmAdjustedEstimate from "./components/FilmAdjustedEstimate";
@@ -54,6 +53,16 @@ export default function Home() {
 
   const [resultMode, setResultMode] =
     useState("");
+
+  const [
+    showEstimateDetails,
+    setShowEstimateDetails,
+  ] = useState(false);
+
+  const [
+    showFilmPicker,
+    setShowFilmPicker,
+  ] = useState(true);
 
   const [
     selectedFilm,
@@ -274,6 +283,8 @@ export default function Home() {
     setSelectedFilm(
       completedFilm
     );
+
+    setShowFilmPicker(false);
 
     /*
      * 선택한 제품이
@@ -1181,6 +1192,8 @@ export default function Home() {
     files
   ) {
     setResultMode("");
+    setShowEstimateDetails(false);
+    setShowFilmPicker(true);
 
     setSelectedFilm(
       null
@@ -1212,6 +1225,8 @@ export default function Home() {
     id
   ) {
     setResultMode("");
+    setShowEstimateDetails(false);
+    setShowFilmPicker(true);
 
     setSelectedFilm(
       null
@@ -1241,6 +1256,8 @@ export default function Home() {
 
   async function startAnalyze() {
     setResultMode("");
+    setShowEstimateDetails(false);
+    setShowFilmPicker(true);
 
     setSelectedFilm(
       null
@@ -1276,7 +1293,7 @@ export default function Home() {
         margin: "0 auto",
 
         padding:
-          "28px 18px 70px",
+          "18px 14px 60px",
 
         fontFamily:
           "Arial, sans-serif",
@@ -1323,13 +1340,13 @@ export default function Home() {
       <h1
         style={{
           marginTop:
-            "18px",
+            "12px",
 
           marginBottom:
             "8px",
 
           fontSize:
-            "32px",
+            "27px",
 
           lineHeight: 1.3,
         }}
@@ -1345,7 +1362,7 @@ export default function Home() {
             "#6b7280",
 
           fontSize:
-            "17px",
+            "15px",
 
           lineHeight: 1.7,
         }}
@@ -1375,24 +1392,119 @@ export default function Home() {
         }
       />
 
-      {/* 2. AI 분석 결과 */}
+      {/* 2~3. 총견적 요약 + 부위별 상세 */}
 
-      <EstimateResult
-        groups={
-          displayGroups
-        }
-        imageCount={
-          images.length
-        }
-      />
+      {displayTotalEstimate && (
+        <section
+          style={{
+            marginTop: "14px",
+            padding: "17px",
+            border:
+              "1px solid #e5e7eb",
+            borderRadius: "18px",
+            background: "#ffffff",
+            boxShadow:
+              "0 8px 24px rgba(15,23,42,0.06)",
+          }}
+        >
+          <div
+            style={{
+              color: "#6b7280",
+              fontSize: "13px",
+              fontWeight: "bold",
+            }}
+          >
+            AI 예상견적
+          </div>
 
-      {/* 3. 총 예상견적 */}
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize:
+                "clamp(23px, 6vw, 31px)",
+              lineHeight: 1.25,
+              fontWeight: "900",
+              letterSpacing: "-1px",
+            }}
+          >
+            {Number(
+              displayTotalEstimate.min ||
+                0
+            ).toLocaleString(
+              "ko-KR"
+            )}{" "}
+            ~{" "}
+            {Number(
+              displayTotalEstimate.max ||
+                0
+            ).toLocaleString(
+              "ko-KR"
+            )}
+            원
+          </div>
 
-      <EstimateTotal
-        totalEstimate={
-          displayTotalEstimate
-        }
-      />
+          <div
+            style={{
+              marginTop: "5px",
+              color: "#6b7280",
+              fontSize: "13px",
+            }}
+          >
+            평균{" "}
+            {Number(
+              displayTotalEstimate.average ||
+                0
+            ).toLocaleString(
+              "ko-KR"
+            )}
+            원
+            {` · ${displayGroups.length}개 부위 계산 완료`}
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowEstimateDetails(
+                (value) => !value
+              )
+            }
+            aria-expanded={
+              showEstimateDetails
+            }
+            style={{
+              width: "100%",
+              marginTop: "12px",
+              padding: "11px",
+              border: "none",
+              borderRadius: "11px",
+              background: "#f3f4f6",
+              color: "#374151",
+              fontWeight: "bold",
+            }}
+          >
+            {showEstimateDetails
+              ? "부위별 견적 닫기 ▲"
+              : `부위별 견적 ${displayGroups.length}개 보기 ▼`}
+          </button>
+
+          {showEstimateDetails && (
+            <div
+              style={{
+                marginTop: "8px",
+              }}
+            >
+              <EstimateResult
+                groups={
+                  displayGroups
+                }
+                imageCount={
+                  images.length
+                }
+              />
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 4. 서비스 선택 */}
 
@@ -1415,11 +1527,179 @@ export default function Home() {
           <>
             {/* 기본 필름 선택 */}
 
-            <FilmColorPicker
-              onSelect={
-                handleFilmSelect
-              }
-            />
+            {selectedFilm &&
+            !showFilmPicker ? (
+              <section
+                style={{
+                  marginTop: "14px",
+                  padding: "14px",
+                  border:
+                    "1px solid #e5e7eb",
+                  borderRadius:
+                    "16px",
+                  background:
+                    "#ffffff",
+                  display: "flex",
+                  alignItems:
+                    "center",
+                  gap: "11px",
+                }}
+              >
+                {selectedFilm.sample_image_path ? (
+                  <img
+                    src={
+                      selectedFilm.sample_image_path
+                    }
+                    alt="선택 필름"
+                    style={{
+                      width:
+                        "48px",
+                      height:
+                        "48px",
+                      objectFit:
+                        "cover",
+                      borderRadius:
+                        "10px",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width:
+                        "48px",
+                      height:
+                        "48px",
+                      borderRadius:
+                        "10px",
+                      background:
+                        selectedFilm.color_hex ||
+                        "#f3f4f6",
+                      border:
+                        "1px solid #e5e7eb",
+                    }}
+                  />
+                )}
+
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        "12px",
+                    }}
+                  >
+                    적용할 필름
+                  </div>
+
+                  <div
+                    style={{
+                      fontWeight:
+                        "bold",
+                      whiteSpace:
+                        "nowrap",
+                      overflow:
+                        "hidden",
+                      textOverflow:
+                        "ellipsis",
+                    }}
+                  >
+                    {[
+                      selectedFilm.brand,
+                      selectedFilm.product_code,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </div>
+
+                  <div
+                    style={{
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        "12px",
+                      whiteSpace:
+                        "nowrap",
+                      overflow:
+                        "hidden",
+                      textOverflow:
+                        "ellipsis",
+                    }}
+                  >
+                    {selectedFilm.color_description ||
+                      selectedFilm.product_name ||
+                      selectedFilm.color_family ||
+                      ""}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowFilmPicker(
+                      true
+                    )
+                  }
+                  style={{
+                    border: "none",
+                    background:
+                      "transparent",
+                    color:
+                      "#5b21b6",
+                    fontWeight:
+                      "bold",
+                  }}
+                >
+                  변경 ›
+                </button>
+              </section>
+            ) : (
+              <div
+                style={{
+                  marginTop: "14px",
+                }}
+              >
+                {selectedFilm && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowFilmPicker(
+                        false
+                      )
+                    }
+                    style={{
+                      width:
+                        "100%",
+                      marginBottom:
+                        "8px",
+                      padding:
+                        "10px",
+                      border:
+                        "1px solid #e5e7eb",
+                      borderRadius:
+                        "10px",
+                      background:
+                        "#ffffff",
+                      fontWeight:
+                        "bold",
+                    }}
+                  >
+                    필름 선택 닫기 ▲
+                  </button>
+                )}
+
+                <FilmColorPicker
+                  onSelect={
+                    handleFilmSelect
+                  }
+                />
+              </div>
+            )}
 
             {/* 부분 톤 차이 */}
 
@@ -1565,4 +1845,4 @@ export default function Home() {
       </div>
     </main>
   );
-}
+        }
