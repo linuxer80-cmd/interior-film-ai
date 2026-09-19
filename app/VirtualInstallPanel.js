@@ -6,8 +6,6 @@ import {
   useState,
 } from "react";
 
-import FilmColorPicker from "./FilmColorPicker";
-
 /*
  * =========================================================
  * 문자열 정리
@@ -77,18 +75,21 @@ function includesAny(text, words) {
 /*
  * =========================================================
  * 시공 부위 자동 판정
+ *
+ * VirtualToneSelector와 동일한 기준을 사용한다.
  * =========================================================
  */
 
-function detectInstallAreas(groups = []) {
+function detectInstallAreas(
+  groups = []
+) {
   if (!Array.isArray(groups)) {
     return [];
   }
 
-  const fullText =
-    groups
-      .map(getGroupText)
-      .join(" ");
+  const fullText = groups
+    .map(getGroupText)
+    .join(" ");
 
   /*
    * -------------------------------------------------------
@@ -96,14 +97,16 @@ function detectInstallAreas(groups = []) {
    * -------------------------------------------------------
    */
 
-  const hasDoor =
-    includesAny(fullText, [
+  const hasDoor = includesAny(
+    fullText,
+    [
       "방문",
       "방화문",
       "도어",
       "문짝",
       "도어패널",
-    ]);
+    ]
+  );
 
   const hasDoorFrame =
     includesAny(fullText, [
@@ -134,7 +137,7 @@ function detectInstallAreas(groups = []) {
 
   /*
    * -------------------------------------------------------
-   * 주방 여부
+   * 주방
    * -------------------------------------------------------
    */
 
@@ -164,39 +167,45 @@ function detectInstallAreas(groups = []) {
    * 상부장
    */
 
-  const hasUpper =
-    includesAny(fullText, [
+  const hasUpper = includesAny(
+    fullText,
+    [
       "상부장",
       "상부 장",
       "벽장",
       "벽부장",
       "wall cabinet",
       "upper cabinet",
-    ]);
+    ]
+  );
 
   /*
    * 하부장
    */
 
-  const hasLower =
-    includesAny(fullText, [
+  const hasLower = includesAny(
+    fullText,
+    [
       "하부장",
       "하부 장",
       "베이스장",
       "base cabinet",
       "lower cabinet",
-    ]);
+    ]
+  );
 
   /*
-   * 일반 싱크대로만 분석된 경우
+   * 일반 싱크대
    */
 
-  const genericSink =
-    includesAny(fullText, [
+  const genericSink = includesAny(
+    fullText,
+    [
       "싱크대",
       "주방가구",
       "주방 가구",
-    ]);
+    ]
+  );
 
   if (
     hasUpper ||
@@ -224,8 +233,9 @@ function detectInstallAreas(groups = []) {
    * 냉장고장
    */
 
-  const hasFridge =
-    includesAny(fullText, [
+  const hasFridge = includesAny(
+    fullText,
+    [
       "냉장고장",
       "냉장고 장",
       "냉장고수납장",
@@ -234,7 +244,8 @@ function detectInstallAreas(groups = []) {
       "냉장고 옆장",
       "refrigerator cabinet",
       "fridge cabinet",
-    ]);
+    ]
+  );
 
   if (hasFridge) {
     areas.push({
@@ -248,15 +259,17 @@ function detectInstallAreas(groups = []) {
    * 키큰장
    */
 
-  const hasTall =
-    includesAny(fullText, [
+  const hasTall = includesAny(
+    fullText,
+    [
       "키큰장",
       "키큰 장",
       "키높이장",
       "키높이 장",
       "톨장",
       "tall cabinet",
-    ]);
+    ]
+  );
 
   if (hasTall) {
     areas.push({
@@ -270,13 +283,15 @@ function detectInstallAreas(groups = []) {
    * 팬트리장
    */
 
-  const hasPantry =
-    includesAny(fullText, [
+  const hasPantry = includesAny(
+    fullText,
+    [
       "팬트리장",
       "팬트리 장",
       "팬트리",
       "pantry cabinet",
-    ]);
+    ]
+  );
 
   if (hasPantry) {
     areas.push({
@@ -290,13 +305,15 @@ function detectInstallAreas(groups = []) {
    * 아일랜드장
    */
 
-  const hasIsland =
-    includesAny(fullText, [
+  const hasIsland = includesAny(
+    fullText,
+    [
       "아일랜드장",
       "아일랜드 장",
       "아일랜드",
       "island cabinet",
-    ]);
+    ]
+  );
 
   if (hasIsland) {
     areas.push({
@@ -320,6 +337,11 @@ function detectInstallAreas(groups = []) {
     }
   }
 
+  /*
+   * 2개 이상일 때만
+   * 부분 톤 사용
+   */
+
   if (unique.length < 2) {
     return [];
   }
@@ -329,7 +351,7 @@ function detectInstallAreas(groups = []) {
 
 /*
  * =========================================================
- * API용 필름 데이터
+ * API용 부위별 필름 데이터
  * =========================================================
  */
 
@@ -360,19 +382,21 @@ function makeFilmPayload(
       film?.color_family || "",
 
     colorDescription:
-      film?.color_description || "",
+      film?.color_description ||
+      "",
 
     colorHex:
       film?.color_hex || "",
 
     sampleImageUrl:
-      film?.sample_image_path || "",
+      film?.sample_image_path ||
+      "",
   };
 }
 
 /*
  * =========================================================
- * 필름 표시용
+ * 필름 제목
  * =========================================================
  */
 
@@ -389,7 +413,15 @@ function getFilmTitle(film) {
     .join(" ");
 }
 
-function getFilmDescription(film) {
+/*
+ * =========================================================
+ * 필름 설명
+ * =========================================================
+ */
+
+function getFilmDescription(
+  film
+) {
   if (!film) {
     return "";
   }
@@ -409,11 +441,26 @@ function getFilmDescription(film) {
  */
 
 export default function VirtualInstallPanel({
-  images,
-  product,
+  images = [],
+  product = null,
   groups = [],
+
+  /*
+   * page.js / VirtualToneSelector에서
+   * 관리되는 부분 톤 상태
+   */
+
+  useSplitTone = false,
+  areaFilms = {},
+
   onRequestDetail,
 }) {
+  /*
+   * =======================================================
+   * 상태
+   * =======================================================
+   */
+
   const [
     selectedImageId,
     setSelectedImageId,
@@ -434,29 +481,6 @@ export default function VirtualInstallPanel({
     setMessage,
   ] = useState("");
 
-  const [
-    useSplitTone,
-    setUseSplitTone,
-  ] = useState(false);
-
-  /*
-   * 부위별 변경 필름
-   */
-
-  const [
-    areaFilms,
-    setAreaFilms,
-  ] = useState({});
-
-  /*
-   * 현재 열려있는 필름 선택기
-   */
-
-  const [
-    editingAreaKey,
-    setEditingAreaKey,
-  ] = useState("");
-
   /*
    * =======================================================
    * 시공 부위
@@ -466,7 +490,9 @@ export default function VirtualInstallPanel({
   const installAreas =
     useMemo(
       () =>
-        detectInstallAreas(groups),
+        detectInstallAreas(
+          groups
+        ),
       [groups]
     );
 
@@ -516,7 +542,8 @@ export default function VirtualInstallPanel({
             item.id ===
             selectedImageId
         ) ||
-        images?.[0]
+        images?.[0] ||
+        null
       );
     }, [
       images,
@@ -525,7 +552,8 @@ export default function VirtualInstallPanel({
 
   /*
    * =======================================================
-   * 결과 초기화
+   * 필름/사진/부분톤이 바뀌면
+   * 이전 가상시공 결과 초기화
    * =======================================================
    */
 
@@ -534,6 +562,7 @@ export default function VirtualInstallPanel({
     setMessage("");
   }, [
     product?.id,
+    product?.product_code,
     selectedImageId,
     useSplitTone,
     areaFilms,
@@ -541,152 +570,7 @@ export default function VirtualInstallPanel({
 
   /*
    * =======================================================
-   * 부분톤 불가능 시 초기화
-   * =======================================================
-   */
-
-  useEffect(() => {
-    if (!canSplitTone) {
-      setUseSplitTone(false);
-      setAreaFilms({});
-      setEditingAreaKey("");
-    }
-  }, [canSplitTone]);
-
-  /*
-   * =======================================================
-   * 분석 부위 변경 시 불필요한 값 제거
-   * =======================================================
-   */
-
-  useEffect(() => {
-    const validKeys =
-      new Set(
-        installAreas.map(
-          (area) =>
-            area.key
-        )
-      );
-
-    setAreaFilms(
-      (previous) => {
-        const next = {};
-
-        for (
-          const [key, value]
-          of Object.entries(
-            previous
-          )
-        ) {
-          if (
-            validKeys.has(key)
-          ) {
-            next[key] =
-              value;
-          }
-        }
-
-        return next;
-      }
-    );
-
-    if (
-      editingAreaKey &&
-      !validKeys.has(
-        editingAreaKey
-      )
-    ) {
-      setEditingAreaKey("");
-    }
-  }, [
-    installAreas
-      .map(
-        (area) =>
-          area.key
-      )
-      .join("|"),
-  ]);
-
-  /*
-   * =======================================================
-   * 부위에 적용되는 필름
-   * =======================================================
-   */
-
-  function getAreaFilm(
-    areaKey
-  ) {
-    return (
-      areaFilms[areaKey] ||
-      product
-    );
-  }
-
-  /*
-   * =======================================================
-   * 부위 필름 선택
-   * =======================================================
-   */
-
-  function handleAreaFilmSelect(
-    areaKey,
-    film
-  ) {
-    setAreaFilms(
-      (previous) => ({
-        ...previous,
-        [areaKey]:
-          film,
-      })
-    );
-
-    /*
-     * 선택하면 자동 접기
-     */
-
-    setEditingAreaKey("");
-  }
-
-  /*
-   * =======================================================
-   * 한 부위 메인 필름으로 복귀
-   * =======================================================
-   */
-
-  function resetAreaFilm(
-    areaKey
-  ) {
-    setAreaFilms(
-      (previous) => {
-        const next = {
-          ...previous,
-        };
-
-        delete next[
-          areaKey
-        ];
-
-        return next;
-      }
-    );
-
-    setEditingAreaKey("");
-  }
-
-  /*
-   * =======================================================
-   * 전부 메인 필름으로
-   * =======================================================
-   */
-
-  function resetAllAreaFilms() {
-    setAreaFilms({});
-    setEditingAreaKey("");
-  }
-
-  /*
-   * =======================================================
-   * API 전달 데이터
+   * API로 보낼 부위별 필름
    * =======================================================
    */
 
@@ -705,7 +589,7 @@ export default function VirtualInstallPanel({
           area,
 
           film:
-            areaFilms[
+            areaFilms?.[
               area.key
             ] ||
             product,
@@ -721,16 +605,23 @@ export default function VirtualInstallPanel({
 
   /*
    * =======================================================
-   * 다른 필름 사용 부위 수
+   * 기본 필름과 다른 부위 수
    * =======================================================
    */
 
   const changedAreaCount =
     useMemo(() => {
+      if (
+        !product ||
+        !canSplitTone
+      ) {
+        return 0;
+      }
+
       return installAreas.filter(
         (area) => {
           const selected =
-            areaFilms[
+            areaFilms?.[
               area.key
             ];
 
@@ -738,30 +629,30 @@ export default function VirtualInstallPanel({
             return false;
           }
 
-          return (
-            selected.id !==
+          if (
+            selected?.id &&
             product?.id
+          ) {
+            return (
+              selected.id !==
+              product.id
+            );
+          }
+
+          return (
+            selected
+              ?.product_code !==
+            product
+              ?.product_code
           );
         }
       ).length;
     }, [
       installAreas,
       areaFilms,
-      product?.id,
+      product,
+      canSplitTone,
     ]);
-
-  /*
-   * =======================================================
-   * 렌더 조건
-   * =======================================================
-   */
-
-  if (
-    !product ||
-    !selectedImage
-  ) {
-    return null;
-  }
 
   /*
    * =======================================================
@@ -774,7 +665,24 @@ export default function VirtualInstallPanel({
       return;
     }
 
+    if (!product) {
+      setMessage(
+        "❌ 먼저 필름을 선택해주세요."
+      );
+
+      return;
+    }
+
+    if (!selectedImage) {
+      setMessage(
+        "❌ 가상 시공할 사진을 선택해주세요."
+      );
+
+      return;
+    }
+
     setLoading(true);
+
     setResultUrl("");
 
     setMessage(
@@ -786,7 +694,9 @@ export default function VirtualInstallPanel({
         new FormData();
 
       /*
+       * ---------------------------------------------------
        * 고객 사진
+       * ---------------------------------------------------
        */
 
       formData.append(
@@ -795,7 +705,9 @@ export default function VirtualInstallPanel({
       );
 
       /*
+       * ---------------------------------------------------
        * 기본 필름
+       * ---------------------------------------------------
        */
 
       formData.append(
@@ -805,12 +717,14 @@ export default function VirtualInstallPanel({
 
       formData.append(
         "productCode",
-        product.product_code || ""
+        product.product_code ||
+          ""
       );
 
       formData.append(
         "productName",
-        product.product_name || ""
+        product.product_name ||
+          ""
       );
 
       formData.append(
@@ -820,12 +734,14 @@ export default function VirtualInstallPanel({
 
       formData.append(
         "colorFamily",
-        product.color_family || ""
+        product.color_family ||
+          ""
       );
 
       formData.append(
         "colorDescription",
-        product.color_description || ""
+        product.color_description ||
+          ""
       );
 
       formData.append(
@@ -835,16 +751,21 @@ export default function VirtualInstallPanel({
 
       formData.append(
         "sampleImageUrl",
-        product.sample_image_path || ""
+        product.sample_image_path ||
+          ""
       );
 
       /*
-       * 부분톤
+       * ---------------------------------------------------
+       * 부분 톤
+       * ---------------------------------------------------
        */
 
       const splitEnabled =
-        useSplitTone &&
-        canSplitTone;
+        Boolean(
+          useSplitTone &&
+            canSplitTone
+        );
 
       formData.append(
         "useSplitTone",
@@ -852,6 +773,14 @@ export default function VirtualInstallPanel({
           ? "true"
           : "false"
       );
+
+      /*
+       * 부분 톤을 사용하는 경우
+       * 모든 인식 부위를 전송
+       *
+       * 별도로 변경하지 않은 부위는
+       * 기본 product가 들어간다.
+       */
 
       if (splitEnabled) {
         const areaPayload =
@@ -875,7 +804,9 @@ export default function VirtualInstallPanel({
       }
 
       /*
-       * API
+       * ---------------------------------------------------
+       * API 호출
+       * ---------------------------------------------------
        */
 
       const response =
@@ -890,9 +821,7 @@ export default function VirtualInstallPanel({
       const result =
         await response
           .json()
-          .catch(
-            () => ({})
-          );
+          .catch(() => ({}));
 
       if (
         !response.ok ||
@@ -908,14 +837,22 @@ export default function VirtualInstallPanel({
         result.imageUrl
       );
 
+      /*
+       * ---------------------------------------------------
+       * 완료 메시지
+       * ---------------------------------------------------
+       */
+
       if (
-        result?.multiReferenceUsed
+        result
+          ?.multiReferenceUsed
       ) {
         setMessage(
           `✅ ${installAreas.length}개 시공 부위를 구분한 가상 시공 이미지가 완성되었습니다.`
         );
       } else if (
-        result?.sampleReferenceUsed
+        result
+          ?.sampleReferenceUsed
       ) {
         setMessage(
           "✅ 실제 필름 샘플을 참고한 가상 시공 이미지가 완성되었습니다."
@@ -941,6 +878,22 @@ export default function VirtualInstallPanel({
 
   /*
    * =======================================================
+   * 아직 필름을 선택하지 않은 경우
+   *
+   * VirtualToneSelector는 page.js에서 별도로 보이므로
+   * 여기서는 가상시공 실행 영역만 숨긴다.
+   * =======================================================
+   */
+
+  if (
+    !product ||
+    !selectedImage
+  ) {
+    return null;
+  }
+
+  /*
+   * =======================================================
    * 화면
    * =======================================================
    */
@@ -948,7 +901,7 @@ export default function VirtualInstallPanel({
   return (
     <section
       style={{
-        marginTop: "18px",
+        marginTop: "14px",
         padding: "16px",
         border:
           "1px solid #e5e7eb",
@@ -956,176 +909,94 @@ export default function VirtualInstallPanel({
         background: "#ffffff",
       }}
     >
-      <h2
-        style={{
-          margin:
-            "0 0 14px",
-        }}
-      >
-        가상 시공 미리보기
-      </h2>
-
-      {/* ===================================================
-          1. 부분 톤 차이
-          제목 바로 아래로 이동
-          =================================================== */}
-
-      {canSplitTone && (
-        <div
-          style={{
-            padding: "13px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius: "13px",
-            background: "#fafafa",
-          }}
-        >
-          <div
-            style={{
-              fontWeight:
-                "bold",
-              fontSize:
-                "16px",
-            }}
-          >
-            부분 톤 차이
-          </div>
-
-          <div
-            style={{
-              marginTop:
-                "3px",
-              color:
-                "#6b7280",
-              fontSize:
-                "13px",
-            }}
-          >
-            필요한 부위만 다른 필름을
-            선택할 수 있습니다.
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "1fr 1fr",
-              gap: "7px",
-              marginTop:
-                "10px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setUseSplitTone(
-                  false
-                );
-
-                resetAllAreaFilms();
-              }}
-              style={{
-                padding:
-                  "11px 6px",
-                borderRadius:
-                  "10px",
-                border:
-                  !useSplitTone
-                    ? "2px solid #111827"
-                    : "1px solid #d1d5db",
-                background:
-                  !useSplitTone
-                    ? "#111827"
-                    : "#ffffff",
-                color:
-                  !useSplitTone
-                    ? "#ffffff"
-                    : "#111827",
-                fontWeight:
-                  "bold",
-                fontSize:
-                  "14px",
-              }}
-            >
-              한 가지 필름
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setUseSplitTone(
-                  true
-                );
-
-                setEditingAreaKey(
-                  ""
-                );
-              }}
-              style={{
-                padding:
-                  "11px 6px",
-                borderRadius:
-                  "10px",
-                border:
-                  useSplitTone
-                    ? "2px solid #5d4037"
-                    : "1px solid #d1d5db",
-                background:
-                  useSplitTone
-                    ? "#5d4037"
-                    : "#ffffff",
-                color:
-                  useSplitTone
-                    ? "#ffffff"
-                    : "#111827",
-                fontWeight:
-                  "bold",
-                fontSize:
-                  "14px",
-              }}
-            >
-              부분 톤 다르게
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================
-          2. 선택 필름
-          큰 카드 → 작은 가로 카드
-          =================================================== */}
+      {/* =================================================
+          제목
+          ================================================= */}
 
       <div
         style={{
           display: "flex",
-          alignItems:
-            "center",
-          gap: "11px",
-          marginTop:
-            "12px",
-          padding:
-            "11px",
-          borderRadius:
-            "12px",
-          background:
-            "#f3f4f6",
+          justifyContent:
+            "space-between",
+          alignItems: "center",
+          gap: "10px",
         }}
       >
-        {product.sample_image_path ? (
+        <div>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "20px",
+            }}
+          >
+            가상 시공 미리보기
+          </h2>
+
+          <div
+            style={{
+              marginTop: "4px",
+              color: "#6b7280",
+              fontSize: "12px",
+            }}
+          >
+            선택한 실제 필름을
+            고객 사진에 적용합니다.
+          </div>
+        </div>
+
+        {useSplitTone &&
+          canSplitTone && (
+            <div
+              style={{
+                flex: "0 0 auto",
+                padding:
+                  "5px 8px",
+                borderRadius:
+                  "20px",
+                background:
+                  "#f3e8ff",
+                color:
+                  "#6b21a8",
+                fontSize:
+                  "11px",
+                fontWeight:
+                  "bold",
+              }}
+            >
+              {installAreas.length}
+              개 부위
+            </div>
+          )}
+      </div>
+
+      {/* =================================================
+          선택 필름 요약
+          ================================================= */}
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          marginTop: "12px",
+          padding: "10px",
+          borderRadius: "11px",
+          background: "#f8fafc",
+        }}
+      >
+        {product
+          .sample_image_path ? (
           <img
             src={
               product.sample_image_path
             }
-            alt={`${product.product_code} 필름 샘플`}
+            alt={`${product.product_code || ""} 필름 샘플`}
             style={{
-              width: "58px",
-              height: "58px",
-              flex:
-                "0 0 58px",
-              objectFit:
-                "cover",
-              borderRadius:
-                "9px",
+              width: "50px",
+              height: "50px",
+              flex: "0 0 50px",
+              objectFit: "cover",
+              borderRadius: "8px",
               border:
                 "1px solid #e5e7eb",
               background:
@@ -1135,12 +1006,10 @@ export default function VirtualInstallPanel({
         ) : (
           <div
             style={{
-              width: "58px",
-              height: "58px",
-              flex:
-                "0 0 58px",
-              borderRadius:
-                "9px",
+              width: "50px",
+              height: "50px",
+              flex: "0 0 50px",
+              borderRadius: "8px",
               border:
                 "1px solid #e5e7eb",
               background:
@@ -1158,23 +1027,18 @@ export default function VirtualInstallPanel({
         >
           <div
             style={{
-              color:
-                "#6b7280",
-              fontSize:
-                "12px",
-              marginBottom:
-                "2px",
+              color: "#6b7280",
+              fontSize: "11px",
             }}
           >
-            선택 필름
+            기본 필름
           </div>
 
           <div
             style={{
-              fontWeight:
-                "bold",
-              fontSize:
-                "16px",
+              marginTop: "1px",
+              fontWeight: "bold",
+              fontSize: "15px",
               whiteSpace:
                 "nowrap",
               overflow:
@@ -1190,10 +1054,9 @@ export default function VirtualInstallPanel({
 
           <div
             style={{
-              color:
-                "#4b5563",
-              fontSize:
-                "13px",
+              marginTop: "1px",
+              color: "#4b5563",
+              fontSize: "12px",
               whiteSpace:
                 "nowrap",
               overflow:
@@ -1209,25 +1072,218 @@ export default function VirtualInstallPanel({
         </div>
       </div>
 
-      {/* ===================================================
-          3. 사진 선택
-          =================================================== */}
+      {/* =================================================
+          부분 톤 적용 요약
+          ================================================= */}
+
+      {useSplitTone &&
+        canSplitTone && (
+          <div
+            style={{
+              marginTop: "9px",
+              padding:
+                "9px 10px",
+              borderRadius:
+                "9px",
+              background:
+                "#faf5ff",
+              color:
+                "#6b21a8",
+              fontSize:
+                "12px",
+              lineHeight: 1.5,
+            }}
+          >
+            {changedAreaCount >
+            0
+              ? `${installAreas.length}개 부위 중 ${changedAreaCount}개 부위에 다른 필름을 적용합니다.`
+              : `${installAreas.length}개 부위를 각각 구분하여 가상 시공합니다.`}
+          </div>
+        )}
+
+      {/* =================================================
+          부위별 적용 필름 간단 요약
+          ================================================= */}
+
+      {useSplitTone &&
+        canSplitTone && (
+          <div
+            style={{
+              display: "grid",
+              gap: "5px",
+              marginTop: "9px",
+            }}
+          >
+            {installAreas.map(
+              (area) => {
+                const film =
+                  areaFilms?.[
+                    area.key
+                  ] ||
+                  product;
+
+                const changed =
+                  Boolean(
+                    areaFilms?.[
+                      area.key
+                    ] &&
+                      (
+                        areaFilms?.[
+                          area.key
+                        ]?.id
+                          ? areaFilms[
+                              area.key
+                            ].id !==
+                            product?.id
+                          : areaFilms[
+                              area.key
+                            ]
+                              ?.product_code !==
+                            product
+                              ?.product_code
+                      )
+                  );
+
+                return (
+                  <div
+                    key={
+                      area.key
+                    }
+                    style={{
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      gap: "7px",
+                      padding:
+                        "7px 8px",
+                      border:
+                        "1px solid #e5e7eb",
+                      borderRadius:
+                        "8px",
+                      background:
+                        changed
+                          ? "#faf5ff"
+                          : "#ffffff",
+                    }}
+                  >
+                    {film
+                      ?.sample_image_path ? (
+                      <img
+                        src={
+                          film.sample_image_path
+                        }
+                        alt=""
+                        style={{
+                          width:
+                            "30px",
+                          height:
+                            "30px",
+                          flex:
+                            "0 0 30px",
+                          objectFit:
+                            "cover",
+                          borderRadius:
+                            "5px",
+                          border:
+                            "1px solid #e5e7eb",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width:
+                            "30px",
+                          height:
+                            "30px",
+                          flex:
+                            "0 0 30px",
+                          borderRadius:
+                            "5px",
+                          border:
+                            "1px solid #e5e7eb",
+                          background:
+                            film
+                              ?.color_hex ||
+                            "#ffffff",
+                        }}
+                      />
+                    )}
+
+                    <strong
+                      style={{
+                        flex:
+                          "0 0 68px",
+                        fontSize:
+                          "12px",
+                      }}
+                    >
+                      {area.label}
+                    </strong>
+
+                    <div
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize:
+                          "12px",
+                        whiteSpace:
+                          "nowrap",
+                        overflow:
+                          "hidden",
+                        textOverflow:
+                          "ellipsis",
+                      }}
+                    >
+                      {film
+                        ?.product_code ||
+                        "기본 필름"}
+                    </div>
+
+                    {changed && (
+                      <span
+                        style={{
+                          flex:
+                            "0 0 auto",
+                          padding:
+                            "2px 5px",
+                          borderRadius:
+                            "10px",
+                          background:
+                            "#ede9fe",
+                          color:
+                            "#6d28d9",
+                          fontSize:
+                            "9px",
+                          fontWeight:
+                            "bold",
+                        }}
+                      >
+                        변경
+                      </span>
+                    )}
+                  </div>
+                );
+              }
+            )}
+          </div>
+        )}
+
+      {/* =================================================
+          사진 선택
+          ================================================= */}
 
       {images.length > 1 && (
         <div
           style={{
-            marginTop:
-              "12px",
+            marginTop: "13px",
           }}
         >
           <div
             style={{
-              fontWeight:
-                "bold",
-              fontSize:
-                "13px",
-              marginBottom:
-                "7px",
+              fontWeight: "bold",
+              fontSize: "13px",
+              marginBottom: "7px",
             }}
           >
             가상 시공할 사진
@@ -1237,10 +1293,8 @@ export default function VirtualInstallPanel({
             style={{
               display: "flex",
               gap: "7px",
-              overflowX:
-                "auto",
-              paddingBottom:
-                "3px",
+              overflowX: "auto",
+              paddingBottom: "3px",
             }}
           >
             {images.map(
@@ -1259,17 +1313,19 @@ export default function VirtualInstallPanel({
                   style={{
                     flex:
                       "0 0 66px",
-                    padding:
-                      "2px",
+                    padding: "2px",
                     borderRadius:
                       "9px",
                     border:
-                      selectedImage?.id ===
+                      selectedImage
+                        ?.id ===
                       item.id
                         ? "3px solid #111827"
                         : "1px solid #d1d5db",
                     background:
                       "#ffffff",
+                    cursor:
+                      "pointer",
                   }}
                 >
                   <img
@@ -1282,8 +1338,7 @@ export default function VirtualInstallPanel({
                     style={{
                       display:
                         "block",
-                      width:
-                        "100%",
+                      width: "100%",
                       aspectRatio:
                         "1 / 1",
                       objectFit:
@@ -1299,395 +1354,9 @@ export default function VirtualInstallPanel({
         </div>
       )}
 
-      {/* ===================================================
-          4. 부분톤 사용 시 부위별 필름
-          =================================================== */}
-
-      {useSplitTone &&
-        canSplitTone && (
-          <div
-            style={{
-              marginTop:
-                "14px",
-            }}
-          >
-            <div
-              style={{
-                display:
-                  "flex",
-                justifyContent:
-                  "space-between",
-                alignItems:
-                  "center",
-                gap: "8px",
-                marginBottom:
-                  "8px",
-              }}
-            >
-              <strong>
-                부위별 필름
-              </strong>
-
-              {changedAreaCount >
-                0 && (
-                <button
-                  type="button"
-                  onClick={
-                    resetAllAreaFilms
-                  }
-                  style={{
-                    padding:
-                      "6px 8px",
-                    border:
-                      "1px solid #d1d5db",
-                    borderRadius:
-                      "8px",
-                    background:
-                      "#ffffff",
-                    fontSize:
-                      "12px",
-                  }}
-                >
-                  모두 같은 필름
-                </button>
-              )}
-            </div>
-
-            <div
-              style={{
-                display:
-                  "grid",
-                gap: "7px",
-              }}
-            >
-              {installAreas.map(
-                (area) => {
-                  const film =
-                    getAreaFilm(
-                      area.key
-                    );
-
-                  const changed =
-                    Boolean(
-                      areaFilms[
-                        area.key
-                      ] &&
-                        areaFilms[
-                          area.key
-                        ]?.id !==
-                          product?.id
-                    );
-
-                  const editing =
-                    editingAreaKey ===
-                    area.key;
-
-                  return (
-                    <div
-                      key={
-                        area.key
-                      }
-                    >
-                      {/* 부위 카드 */}
-
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          gap:
-                            "9px",
-                          padding:
-                            "9px 10px",
-                          border:
-                            editing
-                              ? "2px solid #5d4037"
-                              : changed
-                                ? "1px solid #a78bfa"
-                                : "1px solid #e5e7eb",
-                          borderRadius:
-                            "11px",
-                          background:
-                            changed
-                              ? "#f5f3ff"
-                              : "#ffffff",
-                        }}
-                      >
-                        {film
-                          ?.sample_image_path ? (
-                          <img
-                            src={
-                              film.sample_image_path
-                            }
-                            alt=""
-                            style={{
-                              width:
-                                "43px",
-                              height:
-                                "43px",
-                              flex:
-                                "0 0 43px",
-                              objectFit:
-                                "cover",
-                              borderRadius:
-                                "7px",
-                              border:
-                                "1px solid #e5e7eb",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width:
-                                "43px",
-                              height:
-                                "43px",
-                              flex:
-                                "0 0 43px",
-                              borderRadius:
-                                "7px",
-                              border:
-                                "1px solid #e5e7eb",
-                              background:
-                                film?.color_hex ||
-                                "#ffffff",
-                            }}
-                          />
-                        )}
-
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight:
-                                "bold",
-                              fontSize:
-                                "13px",
-                            }}
-                          >
-                            {
-                              area.label
-                            }
-
-                            {changed && (
-                              <span
-                                style={{
-                                  marginLeft:
-                                    "5px",
-                                  color:
-                                    "#7c3aed",
-                                  fontSize:
-                                    "10px",
-                                }}
-                              >
-                                변경
-                              </span>
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              fontWeight:
-                                "bold",
-                              fontSize:
-                                "14px",
-                              whiteSpace:
-                                "nowrap",
-                              overflow:
-                                "hidden",
-                              textOverflow:
-                                "ellipsis",
-                            }}
-                          >
-                            {film
-                              ?.product_code ||
-                              ""}
-                          </div>
-
-                          <div
-                            style={{
-                              color:
-                                "#6b7280",
-                              fontSize:
-                                "11px",
-                              whiteSpace:
-                                "nowrap",
-                              overflow:
-                                "hidden",
-                              textOverflow:
-                                "ellipsis",
-                            }}
-                          >
-                            {getFilmDescription(
-                              film
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingAreaKey(
-                              editing
-                                ? ""
-                                : area.key
-                            )
-                          }
-                          style={{
-                            flex:
-                              "0 0 auto",
-                            padding:
-                              "8px 9px",
-                            border:
-                              "1px solid #d1d5db",
-                            borderRadius:
-                              "8px",
-                            background:
-                              editing
-                                ? "#5d4037"
-                                : "#ffffff",
-                            color:
-                              editing
-                                ? "#ffffff"
-                                : "#111827",
-                            fontWeight:
-                              "bold",
-                            fontSize:
-                              "12px",
-                          }}
-                        >
-                          {editing
-                            ? "닫기"
-                            : "변경"}
-                        </button>
-                      </div>
-
-                      {/* 필름 변경 선택기 */}
-
-                      {editing && (
-                        <div
-                          style={{
-                            marginTop:
-                              "7px",
-                            padding:
-                              "11px",
-                            border:
-                              "1px solid #d1d5db",
-                            borderRadius:
-                              "11px",
-                            background:
-                              "#ffffff",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "space-between",
-                              gap:
-                                "8px",
-                              marginBottom:
-                                "8px",
-                            }}
-                          >
-                            <strong
-                              style={{
-                                fontSize:
-                                  "14px",
-                              }}
-                            >
-                              {
-                                area.label
-                              }{" "}
-                              필름 변경
-                            </strong>
-
-                            {changed && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  resetAreaFilm(
-                                    area.key
-                                  )
-                                }
-                                style={{
-                                  padding:
-                                    "6px 8px",
-                                  border:
-                                    "none",
-                                  borderRadius:
-                                    "7px",
-                                  background:
-                                    "#ede9fe",
-                                  color:
-                                    "#5b21b6",
-                                  fontSize:
-                                    "11px",
-                                  fontWeight:
-                                    "bold",
-                                }}
-                              >
-                                기본 필름
-                              </button>
-                            )}
-                          </div>
-
-                          <FilmColorPicker
-                            key={`picker-${area.key}`}
-                            onSelect={(
-                              film
-                            ) =>
-                              handleAreaFilmSelect(
-                                area.key,
-                                film
-                              )
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-              )}
-            </div>
-
-            {/* 요약 */}
-
-            <div
-              style={{
-                marginTop:
-                  "8px",
-                padding:
-                  "9px 10px",
-                borderRadius:
-                  "9px",
-                background:
-                  "#f8fafc",
-                color:
-                  "#475569",
-                fontSize:
-                  "12px",
-              }}
-            >
-              {changedAreaCount ===
-              0
-                ? `현재 ${installAreas.length}개 부위 모두 ${product.product_code} 필름이 적용됩니다.`
-                : `${installAreas.length}개 부위 중 ${changedAreaCount}개 부위의 필름을 다르게 선택했습니다.`}
-            </div>
-          </div>
-        )}
-
-      {/* ===================================================
-          5. 생성 버튼
-          =================================================== */}
+      {/* =================================================
+          생성 버튼
+          ================================================= */}
 
       {!resultUrl && (
         <button
@@ -1706,6 +1375,10 @@ export default function VirtualInstallPanel({
             color: "#ffffff",
             fontSize: "16px",
             fontWeight: "bold",
+            cursor:
+              loading
+                ? "default"
+                : "pointer",
             opacity:
               loading
                 ? 0.65
@@ -1714,13 +1387,16 @@ export default function VirtualInstallPanel({
         >
           {loading
             ? "가상 시공 생성 중..."
-            : useSplitTone
+            : useSplitTone &&
+                canSplitTone
               ? `${installAreas.length}개 부위로 가상 시공하기`
               : "이 필름으로 가상 시공하기"}
         </button>
       )}
 
-      {/* 메시지 */}
+      {/* =================================================
+          메시지
+          ================================================= */}
 
       {message && (
         <div
@@ -1737,9 +1413,9 @@ export default function VirtualInstallPanel({
         </div>
       )}
 
-      {/* ===================================================
+      {/* =================================================
           결과
-          =================================================== */}
+          ================================================= */}
 
       {resultUrl && (
         <>
@@ -1752,6 +1428,8 @@ export default function VirtualInstallPanel({
               marginTop: "14px",
             }}
           >
+            {/* 원본 */}
+
             <div>
               <strong
                 style={{
@@ -1770,15 +1448,15 @@ export default function VirtualInstallPanel({
                 style={{
                   display:
                     "block",
-                  width:
-                    "100%",
-                  marginTop:
-                    "5px",
+                  width: "100%",
+                  marginTop: "5px",
                   borderRadius:
                     "10px",
                 }}
               />
             </div>
+
+            {/* 결과 */}
 
             <div>
               <strong
@@ -1796,16 +1474,16 @@ export default function VirtualInstallPanel({
                 style={{
                   display:
                     "block",
-                  width:
-                    "100%",
-                  marginTop:
-                    "5px",
+                  width: "100%",
+                  marginTop: "5px",
                   borderRadius:
                     "10px",
                 }}
               />
             </div>
           </div>
+
+          {/* 저장 */}
 
           <a
             href={resultUrl}
@@ -1819,21 +1497,19 @@ export default function VirtualInstallPanel({
               padding: "12px",
               border:
                 "1px solid #d1d5db",
-              borderRadius:
-                "10px",
+              borderRadius: "10px",
               color: "#111827",
-              textAlign:
-                "center",
+              textAlign: "center",
               textDecoration:
                 "none",
-              fontWeight:
-                "bold",
-              fontSize:
-                "14px",
+              fontWeight: "bold",
+              fontSize: "14px",
             }}
           >
             가상 시공 이미지 저장
           </a>
+
+          {/* 상세견적 */}
 
           <button
             type="button"
@@ -1845,18 +1521,18 @@ export default function VirtualInstallPanel({
               marginTop: "8px",
               padding: "14px",
               border: "none",
-              borderRadius:
-                "10px",
-              background:
-                "#111827",
+              borderRadius: "10px",
+              background: "#111827",
               color: "#ffffff",
               fontSize: "16px",
-              fontWeight:
-                "bold",
+              fontWeight: "bold",
+              cursor: "pointer",
             }}
           >
             이 색상으로 상세견적 신청
           </button>
+
+          {/* 다시 생성 */}
 
           <button
             type="button"
@@ -1870,12 +1546,17 @@ export default function VirtualInstallPanel({
               padding: "12px",
               border:
                 "1px solid #d1d5db",
-              borderRadius:
-                "10px",
-              background:
-                "#ffffff",
-              fontWeight:
-                "bold",
+              borderRadius: "10px",
+              background: "#ffffff",
+              fontWeight: "bold",
+              cursor:
+                loading
+                  ? "default"
+                  : "pointer",
+              opacity:
+                loading
+                  ? 0.65
+                  : 1,
             }}
           >
             {loading
@@ -1885,14 +1566,15 @@ export default function VirtualInstallPanel({
         </>
       )}
 
+      {/* =================================================
+          안내
+          ================================================= */}
+
       <p
         style={{
-          margin:
-            "12px 0 0",
-          color:
-            "#6b7280",
-          fontSize:
-            "11px",
+          margin: "12px 0 0",
+          color: "#6b7280",
+          fontSize: "11px",
           lineHeight: 1.5,
         }}
       >
@@ -1902,4 +1584,4 @@ export default function VirtualInstallPanel({
       </p>
     </section>
   );
-    }
+          }
