@@ -1555,4 +1555,10 @@ export default function VirtualInstallPanel({
               }}
             >
               이 색상으로 상세견적 신청
-           
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+            }
