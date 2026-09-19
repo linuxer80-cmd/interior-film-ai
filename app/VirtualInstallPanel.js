@@ -6,285 +6,118 @@ import {
   useState,
 } from "react";
 
-function normalizeText(value) {
-  return String(value || "")
-    .replace(/\s+/g, "")
-    .toLowerCase();
-}
+import FilmColorPicker from "./FilmColorPicker";
 
-function getGroupText(group) {
-  return [
-    group?.key,
-    group?.category,
-    group?.subCategory,
-    group?.sub_category,
-    group?.name,
-    group?.label,
-    group?.title,
-    group?.description,
-    group?.ai_description,
+/*
+ * =========================================================
+ * 사진 고유값
+ * =========================================================
+ */
 
-    ...(Array.isArray(group?.photos)
-      ? group.photos.flatMap(
-          (photo) => [
-            photo?.analysis
-              ?.category,
-            photo?.analysis
-              ?.subCategory,
-            photo?.analysis
-              ?.sub_category,
-            photo?.analysis
-              ?.description,
-
-            ...(Array.isArray(
-              photo?.analysis
-                ?.tags
-            )
-              ? photo.analysis
-                  .tags
-              : []),
-          ]
-        )
-      : []),
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function includesAny(
-  text,
-  words
-) {
-  const normalized =
-    normalizeText(text);
-
-  return words.some((word) =>
-    normalized.includes(
-      normalizeText(word)
-    )
+function getImageId(image, index) {
+  return String(
+    image?.id ||
+      image?.key ||
+      image?.name ||
+      image?.file?.name ||
+      index
   );
 }
 
-function detectInstallAreas(
-  groups = []
-) {
-  if (!Array.isArray(groups)) {
-    return [];
-  }
+/*
+ * =========================================================
+ * 사진 미리보기 주소
+ * =========================================================
+ */
 
-  const fullText = groups
-    .map(getGroupText)
-    .join(" ");
-
-  /*
-   * 문짝·문틀
-   */
-
-  const hasDoor = includesAny(
-    fullText,
-    [
-      "방문",
-      "방화문",
-      "도어",
-      "문짝",
-      "도어패널",
-    ]
+function getImagePreview(image) {
+  return (
+    image?.preview ||
+    image?.previewUrl ||
+    image?.url ||
+    image?.src ||
+    ""
   );
+}
 
-  const hasDoorFrame =
-    includesAny(fullText, [
-      "문틀",
-      "도어프레임",
-      "도어 프레임",
-      "jamb",
-      "casing",
-    ]);
+/*
+ * =========================================================
+ * 가상시공 종류
+ * =========================================================
+ */
 
-  if (
-    hasDoor &&
-    hasDoorFrame
-  ) {
-    return [
-      {
-        key: "door_leaf",
-        label: "문짝",
-        type: "door",
-      },
-      {
-        key: "door_frame",
-        label: "문틀",
-        type: "door",
-      },
-    ];
-  }
+const TARGET_TYPES = [
+  {
+    key: "kitchen",
+    label: "싱크대·주방가구",
+    description:
+      "상부장·하부장·냉장고장 등을 시공합니다.",
+  },
+  {
+    key: "door",
+    label: "문·문틀",
+    description:
+      "문짝과 문틀을 구분해 시공합니다.",
+  },
+];
 
-  /*
-   * 주방
-   */
+/*
+ * =========================================================
+ * 종류별 자동 적용 부위
+ *
+ * 사용자가 시공 부위를 체크하는 방식이 아닙니다.
+ * 선택한 종류에 포함된 부위를 AI가 사진에서 찾아 적용합니다.
+ * 사진에 없는 부위는 새로 만들지 않습니다.
+ * =========================================================
+ */
 
-  const kitchenContext =
-    includesAny(fullText, [
-      "싱크대",
-      "주방",
-      "주방가구",
-      "상부장",
-      "하부장",
-      "냉장고장",
-      "키큰장",
-      "키큰 장",
-      "팬트리장",
-      "팬트리 장",
-      "아일랜드",
-      "아일랜드장",
-    ]);
-
-  if (!kitchenContext) {
-    return [];
-  }
-
-  const areas = [];
-
-  const hasUpper =
-    includesAny(fullText, [
-      "상부장",
-      "상부 장",
-      "벽장",
-      "벽부장",
-      "wall cabinet",
-      "upper cabinet",
-    ]);
-
-  const hasLower =
-    includesAny(fullText, [
-      "하부장",
-      "하부 장",
-      "베이스장",
-      "base cabinet",
-      "lower cabinet",
-    ]);
-
-  const genericSink =
-    includesAny(fullText, [
-      "싱크대",
-      "주방가구",
-      "주방 가구",
-    ]);
-
-  if (
-    hasUpper ||
-    genericSink
-  ) {
-    areas.push({
-      key: "upper",
+const TARGET_AREAS = {
+  kitchen: [
+    {
+      key: "kitchen_upper",
       label: "상부장",
-      type: "kitchen",
-    });
-  }
-
-  if (
-    hasLower ||
-    genericSink
-  ) {
-    areas.push({
-      key: "lower",
+    },
+    {
+      key: "kitchen_lower",
       label: "하부장",
-      type: "kitchen",
-    });
-  }
-
-  const hasFridge =
-    includesAny(fullText, [
-      "냉장고장",
-      "냉장고 장",
-      "냉장고수납장",
-      "냉장고 수납장",
-      "냉장고옆장",
-      "냉장고 옆장",
-      "refrigerator cabinet",
-      "fridge cabinet",
-    ]);
-
-  if (hasFridge) {
-    areas.push({
-      key: "fridge",
+    },
+    {
+      key: "fridge_cabinet",
       label: "냉장고장",
-      type: "kitchen",
-    });
-  }
-
-  const hasTall =
-    includesAny(fullText, [
-      "키큰장",
-      "키큰 장",
-      "키높이장",
-      "키높이 장",
-      "톨장",
-      "tall cabinet",
-    ]);
-
-  if (hasTall) {
-    areas.push({
-      key: "tall",
+    },
+    {
+      key: "tall_cabinet",
       label: "키큰장",
-      type: "kitchen",
-    });
-  }
-
-  const hasPantry =
-    includesAny(fullText, [
-      "팬트리장",
-      "팬트리 장",
-      "팬트리",
-      "pantry cabinet",
-    ]);
-
-  if (hasPantry) {
-    areas.push({
-      key: "pantry",
+    },
+    {
+      key: "pantry_cabinet",
       label: "팬트리장",
-      type: "kitchen",
-    });
-  }
-
-  const hasIsland =
-    includesAny(fullText, [
-      "아일랜드장",
-      "아일랜드 장",
-      "아일랜드",
-      "island cabinet",
-    ]);
-
-  if (hasIsland) {
-    areas.push({
-      key: "island",
+    },
+    {
+      key: "island_cabinet",
       label: "아일랜드장",
-      type: "kitchen",
-    });
-  }
+    },
+  ],
 
-  const unique = [];
-  const seen = new Set();
+  door: [
+    {
+      key: "door_leaf",
+      label: "문짝",
+    },
+    {
+      key: "door_frame",
+      label: "문틀",
+    },
+  ],
+};
 
-  for (const area of areas) {
-    if (
-      !seen.has(area.key)
-    ) {
-      seen.add(area.key);
-      unique.push(area);
-    }
-  }
+/*
+ * =========================================================
+ * 필름 API 데이터
+ * =========================================================
+ */
 
-  if (unique.length < 2) {
-    return [];
-  }
-
-  return unique;
-}
-
-function makeFilmPayload(
-  area,
-  film
-) {
+function makeFilmPayload(area, film) {
   return {
     areaKey:
       area?.key || "",
@@ -296,36 +129,37 @@ function makeFilmPayload(
       film?.brand || "",
 
     productCode:
-      film?.product_code ||
-      "",
+      film?.product_code || "",
 
     productName:
-      film?.product_name ||
-      "",
+      film?.product_name || "",
 
     texture:
       film?.texture || "",
 
     colorFamily:
-      film?.color_family ||
-      "",
+      film?.color_family || "",
 
     colorDescription:
-      film?.color_description ||
-      "",
+      film?.color_description || "",
 
     colorHex:
       film?.color_hex || "",
 
     sampleImageUrl:
-      film?.sample_image_path ||
-      "",
+      film?.sample_image_path || "",
   };
 }
 
+/*
+ * =========================================================
+ * 필름 이름
+ * =========================================================
+ */
+
 function getFilmTitle(film) {
   if (!film) {
-    return "필름 미선택";
+    return "필름을 선택하세요";
   }
 
   return [
@@ -336,46 +170,177 @@ function getFilmTitle(film) {
     .join(" ");
 }
 
-function getFilmDescription(
-  film
+/*
+ * =========================================================
+ * 결과 이미지 저장
+ * =========================================================
+ */
+
+function downloadImage(
+  imageUrl,
+  fileName
 ) {
-  if (!film) {
-    return "";
+  if (!imageUrl) {
+    return;
   }
 
+  const link =
+    document.createElement("a");
+
+  link.href = imageUrl;
+  link.download =
+    fileName ||
+    "virtual-install.webp";
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/*
+ * =========================================================
+ * 공통 버튼
+ * =========================================================
+ */
+
+function SelectButton({
+  active,
+  title,
+  description,
+  onClick,
+}) {
   return (
-    film.color_description ||
-    film.color_family ||
-    film.product_name ||
-    ""
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        padding: "13px",
+        border: active
+          ? "2px solid #6d28d9"
+          : "1px solid #d1d5db",
+        borderRadius: "12px",
+        background: active
+          ? "#f5f3ff"
+          : "#ffffff",
+        color: "#111827",
+        textAlign: "left",
+        cursor: "pointer",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent:
+            "space-between",
+          gap: "8px",
+        }}
+      >
+        <strong
+          style={{
+            fontSize: "14px",
+          }}
+        >
+          {title}
+        </strong>
+
+        <span
+          style={{
+            width: "22px",
+            height: "22px",
+            flex: "0 0 22px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "center",
+            borderRadius: "50%",
+            background: active
+              ? "#6d28d9"
+              : "#e5e7eb",
+            color: "#ffffff",
+            fontSize: "13px",
+            fontWeight: "900",
+          }}
+        >
+          {active ? "✓" : ""}
+        </span>
+      </div>
+
+      {description && (
+        <div
+          style={{
+            marginTop: "4px",
+            color: "#6b7280",
+            fontSize: "11px",
+            lineHeight: 1.45,
+          }}
+        >
+          {description}
+        </div>
+      )}
+    </button>
   );
 }
 
+/*
+ * =========================================================
+ * 메인
+ * =========================================================
+ */
+
 export default function VirtualInstallPanel({
-  images,
+  images = [],
   product,
   groups = [],
   useSplitTone = false,
   areaFilms = {},
+  onUseSplitToneChange,
+  onAreaFilmsChange,
   onRequestDetail,
 }) {
   /*
-   * 선택된 사진 ID 배열
+   * 한 번에 선택할 사진 하나
    */
-
   const [
-    selectedImageIds,
-    setSelectedImageIds,
-  ] = useState([]);
+    selectedImageId,
+    setSelectedImageId,
+  ] = useState("");
 
   /*
-   * 사진별 가상시공 결과
+   * 싱크대 또는 문·문틀
    */
+  const [
+    targetType,
+    setTargetType,
+  ] = useState("");
+
+  /*
+   * 모두 같은 컬러 또는 여러 톤
+   */
+  const [
+    colorMode,
+    setColorMode,
+  ] = useState(
+    useSplitTone
+      ? "multi"
+      : "single"
+  );
+
+  /*
+   * 이 화면에서 사용하는 부위별 필름
+   */
+  const [
+    localAreaFilms,
+    setLocalAreaFilms,
+  ] = useState(
+    areaFilms || {}
+  );
 
   const [
-    results,
-    setResults,
-  ] = useState([]);
+    result,
+    setResult,
+  ] = useState(null);
 
   const [
     loading,
@@ -387,359 +352,427 @@ export default function VirtualInstallPanel({
     setMessage,
   ] = useState("");
 
-  const [
-    progress,
-    setProgress,
-  ] = useState({
-    current: 0,
-    total: 0,
-  });
-
-  const installAreas =
-    useMemo(
-      () =>
-        detectInstallAreas(
-          groups
-        ),
-      [groups]
-    );
-
-  const canSplitTone =
-    installAreas.length >= 2;
-
   /*
-   * 사진이 추가되면 전체 사진을
-   * 기본 선택
+   * 사진이 처음 들어오면 첫 번째 사진을 자동 선택합니다.
    */
-
   useEffect(() => {
-    const validIds =
-      new Set(
-        (images || []).map(
-          (item) =>
-            item.id
-        )
+    if (!images.length) {
+      setSelectedImageId("");
+      setResult(null);
+      return;
+    }
+
+    const exists =
+      images.some(
+        (image, index) =>
+          getImageId(
+            image,
+            index
+          ) ===
+          selectedImageId
       );
 
-    setSelectedImageIds(
-      (previous) => {
-        const kept =
-          previous.filter(
-            (id) =>
-              validIds.has(id)
-          );
-
-        if (
-          kept.length > 0
-        ) {
-          return kept;
-        }
-
-        return (
-          images || []
-        ).map(
-          (item) =>
-            item.id
-        );
-      }
-    );
-  }, [images]);
-
-  /*
-   * 선택된 실제 사진 객체
-   */
-
-  const selectedImages =
-    useMemo(
-      () =>
-        (images || []).filter(
-          (item) =>
-            selectedImageIds.includes(
-              item.id
-            )
-        ),
-      [
-        images,
-        selectedImageIds,
-      ]
-    );
-
-  /*
-   * 필름 또는 사진 선택이 바뀌면
-   * 이전 결과 초기화
-   */
-
-  useEffect(() => {
-    setResults([]);
-    setMessage("");
+    if (!exists) {
+      setSelectedImageId(
+        getImageId(
+          images[0],
+          0
+        )
+      );
+    }
   }, [
-    product?.id,
-    selectedImageIds.join(
-      "|"
-    ),
-    useSplitTone,
-    areaFilms,
+    images,
+    selectedImageId,
   ]);
 
   /*
-   * API에 전달할 부위별 필름
+   * 부모에 저장된 부위별 필름과 동기화합니다.
    */
+  useEffect(() => {
+    setLocalAreaFilms(
+      areaFilms || {}
+    );
+  }, [areaFilms]);
 
-  const selectedAreaFilms =
+  /*
+   * 부모의 여러 톤 상태와 동기화합니다.
+   */
+  useEffect(() => {
+    setColorMode(
+      useSplitTone
+        ? "multi"
+        : "single"
+    );
+  }, [useSplitTone]);
+
+  /*
+   * 사진·필름·옵션이 변경되면 이전 결과를 초기화합니다.
+   */
+  useEffect(() => {
+    setResult(null);
+    setMessage("");
+  }, [
+    selectedImageId,
+    targetType,
+    colorMode,
+    product?.id,
+    localAreaFilms,
+  ]);
+
+  /*
+   * 현재 선택한 사진
+   */
+  const selectedImage =
     useMemo(() => {
-      if (
-        !useSplitTone ||
-        !canSplitTone ||
-        !product
-      ) {
-        return [];
-      }
-
-      return installAreas.map(
-        (area) => ({
-          area,
-
-          film:
-            areaFilms?.[
-              area.key
-            ] ||
-            product,
-        })
+      return (
+        images.find(
+          (image, index) =>
+            getImageId(
+              image,
+              index
+            ) ===
+            selectedImageId
+        ) || null
       );
     }, [
-      useSplitTone,
-      canSplitTone,
-      installAreas,
-      product,
-      areaFilms,
+      images,
+      selectedImageId,
     ]);
 
-  function toggleImage(id) {
+  /*
+   * 선택 종류에 해당하는 자동 시공 부위
+   */
+  const targetAreas =
+    useMemo(() => {
+      return (
+        TARGET_AREAS[
+          targetType
+        ] || []
+      );
+    }, [targetType]);
+
+  /*
+   * 여러 톤 사용 시 모든 부위에 기본 필름을 채웁니다.
+   */
+  useEffect(() => {
+    if (
+      colorMode !==
+        "multi" ||
+      !targetAreas.length ||
+      !product
+    ) {
+      return;
+    }
+
+    setLocalAreaFilms(
+      (previous) => {
+        const next = {
+          ...previous,
+        };
+
+        targetAreas.forEach(
+          (area) => {
+            if (!next[area.key]) {
+              next[area.key] =
+                product;
+            }
+          }
+        );
+
+        return next;
+      }
+    );
+  }, [
+    colorMode,
+    targetAreas,
+    product,
+  ]);
+
+  /*
+   * 사진 하나 선택
+   *
+   * 기존처럼 여러 장을 동시에 체크하지 않고
+   * 누른 사진 하나만 선택합니다.
+   */
+  function selectImage(
+    imageId
+  ) {
     if (loading) {
       return;
     }
 
-    setSelectedImageIds(
-      (previous) =>
-        previous.includes(id)
-          ? previous.filter(
-              (value) =>
-                value !== id
-            )
-          : [
-              ...previous,
-              id,
-            ]
+    setSelectedImageId(
+      imageId
+    );
+
+    setTargetType("");
+  }
+
+  /*
+   * 시공 종류 선택
+   */
+  function selectTargetType(
+    nextType
+  ) {
+    if (loading) {
+      return;
+    }
+
+    setTargetType(
+      nextType
     );
   }
 
   /*
-   * 사진 한 장에 사용할
-   * API 요청 데이터 생성
+   * 컬러 방식 선택
    */
-
-  function makeRequestForm(
-    image
+  function selectColorMode(
+    nextMode
   ) {
+    if (loading) {
+      return;
+    }
+
+    setColorMode(
+      nextMode
+    );
+
+    const split =
+      nextMode === "multi";
+
+    if (
+      onUseSplitToneChange
+    ) {
+      onUseSplitToneChange(
+        split
+      );
+    }
+  }
+
+  /*
+   * 부위별 필름 선택
+   */
+  function selectAreaFilm(
+    areaKey,
+    film
+  ) {
+    const next = {
+      ...localAreaFilms,
+      [areaKey]:
+        film || product,
+    };
+
+    setLocalAreaFilms(
+      next
+    );
+
+    if (
+      onAreaFilmsChange
+    ) {
+      onAreaFilmsChange(
+        next
+      );
+    }
+  }
+
+  /*
+   * API 전송 데이터 만들기
+   */
+  function makeRequestForm() {
     const formData =
       new FormData();
 
     formData.append(
       "image",
-      image.file
+      selectedImage.file
+    );
+
+    formData.append(
+      "targetType",
+      targetType
     );
 
     formData.append(
       "brand",
-      product.brand || ""
+      product?.brand || ""
     );
 
     formData.append(
       "productCode",
-      product.product_code ||
+      product?.product_code ||
         ""
     );
 
     formData.append(
       "productName",
-      product.product_name ||
+      product?.product_name ||
         ""
     );
 
     formData.append(
       "texture",
-      product.texture || ""
+      product?.texture || ""
     );
 
     formData.append(
       "colorFamily",
-      product.color_family ||
+      product?.color_family ||
         ""
     );
 
     formData.append(
       "colorDescription",
-      product.color_description ||
+      product?.color_description ||
         ""
     );
 
     formData.append(
       "colorHex",
-      product.color_hex ||
+      product?.color_hex ||
         ""
     );
 
     formData.append(
       "sampleImageUrl",
-      product.sample_image_path ||
+      product?.sample_image_path ||
         ""
     );
 
-    const splitEnabled =
-      useSplitTone &&
-      canSplitTone;
+    const multiTone =
+      colorMode === "multi";
 
     formData.append(
       "useSplitTone",
-      splitEnabled
+      multiTone
         ? "true"
         : "false"
     );
 
-    if (splitEnabled) {
-      const areaPayload =
-        selectedAreaFilms.map(
-          ({
+    /*
+     * 모든 부위에 같은 컬러를 적용할 때도
+     * 해당 종류의 적용 부위를 API에 명확하게 전달합니다.
+     */
+    const films =
+      targetAreas.map(
+        (area) =>
+          makeFilmPayload(
             area,
-            film,
-          }) =>
-            makeFilmPayload(
-              area,
-              film
-            )
-        );
-
-      formData.append(
-        "areaFilms",
-        JSON.stringify(
-          areaPayload
-        )
+            multiTone
+              ? localAreaFilms[
+                  area.key
+                ] || product
+              : product
+          )
       );
-    }
+
+    formData.append(
+      "areaFilms",
+      JSON.stringify(
+        films
+      )
+    );
 
     return formData;
   }
 
   /*
-   * 선택된 사진을 순서대로
-   * 가상시공
+   * 가상시공 실행
    */
-
-  async function generateVirtualImages() {
-    if (
-      loading ||
-      selectedImages.length ===
-        0
-    ) {
+  async function generateVirtualImage() {
+    if (loading) {
       return;
     }
 
-    setLoading(true);
-    setResults([]);
+    if (!selectedImage) {
+      setMessage(
+        "가상시공할 사진을 선택해주세요."
+      );
+      return;
+    }
 
-    setProgress({
-      current: 0,
-      total:
-        selectedImages.length,
-    });
+    if (!targetType) {
+      setMessage(
+        "싱크대·주방가구 또는 문·문틀을 선택해주세요."
+      );
+      return;
+    }
 
-    setMessage(
-      "선택한 사진을 순서대로 가상 시공하고 있습니다."
-    );
+    if (!product) {
+      setMessage(
+        "먼저 필름 컬러를 선택해주세요."
+      );
+      return;
+    }
 
-    const completed = [];
-
-    try {
-      for (
-        let index = 0;
-        index <
-        selectedImages.length;
-        index += 1
-      ) {
-        const image =
-          selectedImages[
-            index
-          ];
-
-        setProgress({
-          current:
-            index + 1,
-          total:
-            selectedImages.length,
-        });
-
-        setMessage(
-          `사진 ${
-            index + 1
-          }/${
-            selectedImages.length
-          } 가상 시공 중...`
+    if (
+      colorMode ===
+      "multi"
+    ) {
+      const missing =
+        targetAreas.find(
+          (area) =>
+            !localAreaFilms[
+              area.key
+            ]
         );
 
-        const response =
-          await fetch(
-            "/api/virtual-install",
-            {
-              method:
-                "POST",
+      if (missing) {
+        setMessage(
+          `${missing.label} 필름을 선택해주세요.`
+        );
+        return;
+      }
+    }
 
-              body:
-                makeRequestForm(
-                  image
-                ),
-            }
+    setLoading(true);
+    setResult(null);
+    setMessage(
+      "선택한 사진을 가상 시공하고 있습니다."
+    );
+
+    try {
+      const response =
+        await fetch(
+          "/api/virtual-install",
+          {
+            method: "POST",
+            body:
+              makeRequestForm(),
+          }
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({})
           );
 
-        const result =
-          await response
-            .json()
-            .catch(
-              () => ({})
-            );
-
-        if (
-          !response.ok ||
-          !result?.imageUrl
-        ) {
-          throw new Error(
-            result?.error ||
-              `사진 ${
-                index + 1
-              } 가상 시공에 실패했습니다.`
-          );
-        }
-
-        completed.push({
-          image,
-          imageUrl:
-            result.imageUrl,
-        });
-
-        /*
-         * 한 장 완료될 때마다
-         * 바로 화면에 표시
-         */
-
-        setResults([
-          ...completed,
-        ]);
+      if (
+        !response.ok ||
+        !data?.imageUrl
+      ) {
+        throw new Error(
+          data?.error ||
+            "가상시공에 실패했습니다."
+        );
       }
 
+      setResult({
+        image:
+          selectedImage,
+        imageUrl:
+          data.imageUrl,
+      });
+
       setMessage(
-        `✅ 선택한 사진 ${completed.length}장의 가상 시공이 완료되었습니다.`
+        "✅ 선택한 사진의 가상 시공이 완료되었습니다."
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        "가상시공 오류:",
+        error
+      );
 
       setMessage(
         `❌ ${
@@ -752,14 +785,10 @@ export default function VirtualInstallPanel({
     }
   }
 
-  /*
-   * 필름이나 사진이 없으면
-   * 패널 표시하지 않음
-   */
-
   if (
-    !product ||
-    !images?.length
+    !Array.isArray(images) ||
+    !images.length ||
+    !product
   ) {
     return null;
   }
@@ -771,271 +800,623 @@ export default function VirtualInstallPanel({
         padding: "15px",
         border:
           "1px solid #e5e7eb",
-        borderRadius: "17px",
-        background: "#ffffff",
-        boxShadow:
-          "0 8px 24px rgba(15,23,42,0.05)",
+        borderRadius: "18px",
+        background:
+          "#ffffff",
       }}
     >
-      {/* 제목 */}
-
       <div
         style={{
-          display: "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "space-between",
-          gap: "10px",
+          fontSize: "18px",
+          fontWeight: "900",
+          color: "#111827",
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "18px",
-          }}
-        >
-          🎨 가상시공
-        </h2>
-
-        <span
-          style={{
-            color: "#6b7280",
-            fontSize: "12px",
-          }}
-        >
-          {
-            selectedImageIds.length
-          }
-          장 선택
-        </span>
+        가상 시공
       </div>
-
-      {/* 선택 필름 요약 */}
 
       <div
         style={{
-          display: "flex",
-          alignItems:
-            "center",
-          gap: "10px",
-          marginTop: "11px",
-          padding: "10px",
+          marginTop: "4px",
+          color: "#6b7280",
+          fontSize: "12px",
+          lineHeight: 1.55,
+        }}
+      >
+        사진 한 장과 시공 종류를 선택한 뒤
+        컬러를 적용해보세요.
+      </div>
+
+      {/* 선택 필름 */}
+      <div
+        style={{
+          marginTop: "13px",
+          padding: "12px",
           borderRadius: "12px",
           background: "#f3f4f6",
         }}
       >
-        {product.sample_image_path ? (
-          <img
-            src={
-              product.sample_image_path
-            }
-            alt="선택 필름"
-            style={{
-              width: "47px",
-              height: "47px",
-              objectFit:
-                "cover",
-              borderRadius:
-                "9px",
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: "47px",
-              height: "47px",
-              borderRadius:
-                "9px",
-              background:
-                product.color_hex ||
-                "#ffffff",
-              border:
-                "1px solid #e5e7eb",
-            }}
-          />
-        )}
+        <div
+          style={{
+            color: "#6b7280",
+            fontSize: "11px",
+            fontWeight: "700",
+          }}
+        >
+          기본 선택 필름
+        </div>
 
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
+            marginTop: "3px",
+            color: "#111827",
+            fontSize: "16px",
+            fontWeight: "900",
           }}
         >
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: "11px",
-            }}
-          >
-            선택 필름
-          </div>
+          {getFilmTitle(
+            product
+          )}
+        </div>
 
-          <div
-            style={{
-              fontWeight:
-                "bold",
-              whiteSpace:
-                "nowrap",
-              overflow:
-                "hidden",
-              textOverflow:
-                "ellipsis",
-            }}
-          >
-            {getFilmTitle(
-              product
-            )}
-          </div>
-
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: "12px",
-              whiteSpace:
-                "nowrap",
-              overflow:
-                "hidden",
-              textOverflow:
-                "ellipsis",
-            }}
-          >
-            {getFilmDescription(
-              product
-            )}
-          </div>
+        <div
+          style={{
+            marginTop: "2px",
+            color: "#6b7280",
+            fontSize: "12px",
+          }}
+        >
+          {product.color_description ||
+            product.color_family ||
+            product.product_name ||
+            ""}
         </div>
       </div>
 
-      {/* 부위별 필름 안내 */}
-
-      {useSplitTone &&
-        canSplitTone && (
-          <div
-            style={{
-              marginTop: "10px",
-              padding: "8px 10px",
-              borderRadius: "9px",
-              background: "#f5f3ff",
-              color: "#5b21b6",
-              fontSize: "12px",
-              fontWeight: "bold",
-            }}
-          >
-            부위별로 선택한 필름을
-            적용합니다.
-          </div>
-        )}
-
-      {/* 사진 선택 제목 */}
-
+      {/* 1. 사진 한 장 선택 */}
       <div
         style={{
-          display: "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "space-between",
-          marginTop: "13px",
-          marginBottom: "7px",
+          marginTop: "18px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            gap: "8px",
+          }}
+        >
+          <strong
+            style={{
+              fontSize: "15px",
+            }}
+          >
+            1. 가상시공할 사진
+          </strong>
+
+          <span
+            style={{
+              color: "#6d28d9",
+              fontSize: "11px",
+              fontWeight: "800",
+            }}
+          >
+            한 장만 선택
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
+            gap: "9px",
+            marginTop: "9px",
+          }}
+        >
+          {images.map(
+            (image, index) => {
+              const imageId =
+                getImageId(
+                  image,
+                  index
+                );
+
+              const active =
+                selectedImageId ===
+                imageId;
+
+              return (
+                <button
+                  key={imageId}
+                  type="button"
+                  disabled={
+                    loading
+                  }
+                  onClick={() =>
+                    selectImage(
+                      imageId
+                    )
+                  }
+                  style={{
+                    position:
+                      "relative",
+                    minWidth: 0,
+                    padding: "4px",
+                    border: active
+                      ? "3px solid #6d28d9"
+                      : "1px solid #d1d5db",
+                    borderRadius:
+                      "13px",
+                    background:
+                      "#ffffff",
+                    cursor:
+                      loading
+                        ? "default"
+                        : "pointer",
+                  }}
+                >
+                  <img
+                    src={getImagePreview(
+                      image
+                    )}
+                    alt={`사진 ${
+                      index + 1
+                    }`}
+                    style={{
+                      display:
+                        "block",
+                      width: "100%",
+                      aspectRatio:
+                        "4 / 3",
+                      objectFit:
+                        "cover",
+                      borderRadius:
+                        "9px",
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      position:
+                        "absolute",
+                      top: "8px",
+                      right: "8px",
+                      width: "30px",
+                      height: "30px",
+                      display: "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
+                      borderRadius:
+                        "50%",
+                      background: active
+                        ? "#6d28d9"
+                        : "rgba(17,24,39,0.55)",
+                      color:
+                        "#ffffff",
+                      fontSize:
+                        "17px",
+                      fontWeight:
+                        "900",
+                    }}
+                  >
+                    {active
+                      ? "✓"
+                      : ""}
+                  </span>
+
+                  <span
+                    style={{
+                      display:
+                        "block",
+                      padding:
+                        "6px 3px 3px",
+                      color:
+                        "#111827",
+                      fontSize:
+                        "12px",
+                      fontWeight:
+                        "800",
+                    }}
+                  >
+                    사진 {index + 1}
+                  </span>
+                </button>
+              );
+            }
+          )}
+        </div>
+      </div>
+
+      {/* 2. 시공 종류 */}
+      <div
+        style={{
+          marginTop: "19px",
         }}
       >
         <strong
           style={{
-            fontSize: "13px",
+            display: "block",
+            marginBottom: "8px",
+            fontSize: "15px",
           }}
         >
-          가상시공할 사진
+          2. 시공 종류
         </strong>
 
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() =>
-            setSelectedImageIds(
-              selectedImageIds.length ===
-                images.length
-                ? []
-                : images.map(
-                    (item) =>
-                      item.id
-                  )
-            )
-          }
+        <div
           style={{
-            border: "none",
-            background:
-              "transparent",
-            color: "#5b21b6",
-            fontSize: "12px",
-            fontWeight: "bold",
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
+            gap: "8px",
           }}
         >
-          {selectedImageIds.length ===
-          images.length
-            ? "전체 해제"
-            : "전체 선택"}
-        </button>
-      </div>
-
-      {/* 사진 목록 */}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(2, minmax(0, 1fr))",
-          gap: "8px",
-        }}
-      >
-        {images.map(
-          (
-            item,
-            index
-          ) => {
-            const checked =
-              selectedImageIds.includes(
-                item.id
-              );
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                disabled={
-                  loading
+          {TARGET_TYPES.map(
+            (type) => (
+              <SelectButton
+                key={type.key}
+                active={
+                  targetType ===
+                  type.key
+                }
+                title={
+                  type.label
+                }
+                description={
+                  type.description
                 }
                 onClick={() =>
-                  toggleImage(
-                    item.id
+                  selectTargetType(
+                    type.key
                   )
                 }
-                aria-pressed={
-                  checked
-                }
-                style={{
-                  position:
-                    "relative",
-                  padding: "2px",
-                  borderRadius:
-                    "11px",
-                  border:
-                    checked
-                      ? "3px solid #5b21b6"
-                      : "1px solid #d1d5db",
-                  background:
-                    "#ffffff",
-                  overflow:
-                    "hidden",
-                }}
-              >
+              />
+            )
+          )}
+        </div>
+      </div>
+
+      {/* 3. 컬러 적용 방식 */}
+      {targetType && (
+        <div
+          style={{
+            marginTop: "19px",
+          }}
+        >
+          <strong
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              fontSize: "15px",
+            }}
+          >
+            3. 컬러 적용 방식
+          </strong>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(2, minmax(0, 1fr))",
+              gap: "8px",
+            }}
+          >
+            <SelectButton
+              active={
+                colorMode ===
+                "single"
+              }
+              title="모두 같은 컬러"
+              description="기본 선택 필름을 전체 부위에 적용"
+              onClick={() =>
+                selectColorMode(
+                  "single"
+                )
+              }
+            />
+
+            <SelectButton
+              active={
+                colorMode ===
+                "multi"
+              }
+              title="부위별 여러 톤"
+              description="각 부위의 필름을 따로 선택"
+              onClick={() =>
+                selectColorMode(
+                  "multi"
+                )
+              }
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 모두 같은 컬러 안내 */}
+      {targetType &&
+        colorMode ===
+          "single" && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "12px",
+              borderRadius:
+                "11px",
+              background:
+                "#f5f3ff",
+              color:
+                "#5b21b6",
+              fontSize:
+                "12px",
+              fontWeight:
+                "700",
+              lineHeight: 1.55,
+            }}
+          >
+            {targetType ===
+            "kitchen"
+              ? "사진에 실제로 보이는 상부장·하부장·냉장고장·키큰장·팬트리장·아일랜드장에 같은 컬러를 적용합니다."
+              : "사진에 실제로 보이는 문짝과 문틀에 같은 컬러를 적용합니다."}
+          </div>
+        )}
+
+      {/* 부위별 여러 톤 */}
+      {targetType &&
+        colorMode ===
+          "multi" && (
+          <div
+            style={{
+              marginTop: "14px",
+            }}
+          >
+            <div
+              style={{
+                marginBottom:
+                  "10px",
+                color:
+                  "#5b21b6",
+                fontSize:
+                  "12px",
+                fontWeight:
+                  "800",
+              }}
+            >
+              부위별 필름 선택
+            </div>
+
+            {targetAreas.map(
+              (area) => {
+                const film =
+                  localAreaFilms[
+                    area.key
+                  ] || product;
+
+                return (
+                  <div
+                    key={
+                      area.key
+                    }
+                    style={{
+                      marginBottom:
+                        "12px",
+                      padding:
+                        "12px",
+                      border:
+                        "1px solid #e5e7eb",
+                      borderRadius:
+                        "13px",
+                      background:
+                        "#fafafa",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          fontSize:
+                            "15px",
+                          color:
+                            "#111827",
+                        }}
+                      >
+                        {area.label}
+                      </strong>
+
+                      <span
+                        style={{
+                          maxWidth:
+                            "65%",
+                          color:
+                            "#6d28d9",
+                          fontSize:
+                            "12px",
+                          fontWeight:
+                            "800",
+                          whiteSpace:
+                            "nowrap",
+                          overflow:
+                            "hidden",
+                          textOverflow:
+                            "ellipsis",
+                        }}
+                      >
+                        {getFilmTitle(
+                          film
+                        )}
+                      </span>
+                    </div>
+
+                    <FilmColorPicker
+                      value={film}
+                      onSelect={(
+                        selectedFilm
+                      ) =>
+                        selectAreaFilm(
+                          area.key,
+                          selectedFilm ||
+                            product
+                        )
+                      }
+                    />
+                  </div>
+                );
+              }
+            )}
+
+            <div
+              style={{
+                padding: "11px",
+                borderRadius:
+                  "10px",
+                background:
+                  "#f9fafb",
+                color:
+                  "#6b7280",
+                fontSize:
+                  "11px",
+                lineHeight: 1.5,
+              }}
+            >
+              사진에 없는 가구나 부위는 새로
+              만들지 않고 자동으로 제외합니다.
+            </div>
+          </div>
+        )}
+
+      {/* 실행 버튼 */}
+      {targetType && (
+        <button
+          type="button"
+          disabled={
+            loading ||
+            !selectedImage
+          }
+          onClick={
+            generateVirtualImage
+          }
+          style={{
+            width: "100%",
+            marginTop: "17px",
+            padding: "15px",
+            border: "none",
+            borderRadius:
+              "13px",
+            background:
+              loading
+                ? "#9ca3af"
+                : "#6b463c",
+            color: "#ffffff",
+            fontSize: "16px",
+            fontWeight: "900",
+            cursor:
+              loading
+                ? "default"
+                : "pointer",
+          }}
+        >
+          {loading
+            ? "가상 시공 중..."
+            : "선택한 사진 가상 시공하기"}
+        </button>
+      )}
+
+      {/* 상태 메시지 */}
+      {message && (
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "12px",
+            borderRadius: "11px",
+            background:
+              message.startsWith(
+                "❌"
+              )
+                ? "#fef2f2"
+                : "#f9fafb",
+            color:
+              message.startsWith(
+                "❌"
+              )
+                ? "#b91c1c"
+                : "#374151",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {/* 결과 */}
+      {result && (
+        <div
+          style={{
+            marginTop: "20px",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "9px",
+              fontSize: "17px",
+              fontWeight: "900",
+              color: "#111827",
+            }}
+          >
+            가상시공 결과
+          </div>
+
+          <div
+            style={{
+              padding: "10px",
+              border:
+                "1px solid #e5e7eb",
+              borderRadius:
+                "15px",
+              background:
+                "#ffffff",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(2, minmax(0, 1fr))",
+                gap: "8px",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    marginBottom:
+                      "5px",
+                    fontSize:
+                      "12px",
+                    fontWeight:
+                      "800",
+                  }}
+                >
+                  원본
+                </div>
+
                 <img
-                  src={
-                    item.preview
-                  }
-                  alt={`사진 ${
-                    index + 1
-                  }`}
+                  src={getImagePreview(
+                    result.image
+                  )}
+                  alt="원본"
                   style={{
                     display:
                       "block",
@@ -1045,335 +1426,107 @@ export default function VirtualInstallPanel({
                     objectFit:
                       "cover",
                     borderRadius:
-                      "7px",
+                      "10px",
                   }}
                 />
+              </div>
 
-                <span
-                  style={{
-                    position:
-                      "absolute",
-                    right: "7px",
-                    top: "7px",
-                    width: "24px",
-                    height: "24px",
-                    display:
-                      "grid",
-                    placeItems:
-                      "center",
-                    borderRadius:
-                      "50%",
-                    background:
-                      checked
-                        ? "#5b21b6"
-                        : "rgba(255,255,255,0.9)",
-                    color:
-                      checked
-                        ? "#ffffff"
-                        : "#9ca3af",
-                    fontWeight:
-                      "bold",
-                    boxShadow:
-                      "0 2px 7px rgba(0,0,0,.15)",
-                  }}
-                >
-                  ✓
-                </span>
-              </button>
-            );
-          }
-        )}
-      </div>
-
-      {/* 실행 버튼 */}
-
-      <button
-        type="button"
-        disabled={
-          loading ||
-          selectedImages.length ===
-            0
-        }
-        onClick={
-          generateVirtualImages
-        }
-        style={{
-          width: "100%",
-          marginTop: "12px",
-          padding: "15px",
-          border: "none",
-          borderRadius: "12px",
-          background: "#5d4037",
-          color: "#ffffff",
-          fontSize: "16px",
-          fontWeight: "bold",
-          opacity:
-            loading ||
-            selectedImages.length ===
-              0
-              ? 0.55
-              : 1,
-        }}
-      >
-        {loading
-          ? `가상 시공 중 ${progress.current}/${progress.total}`
-          : `선택한 ${selectedImages.length}장 가상 시공하기`}
-      </button>
-
-      {/* 진행 표시 */}
-
-      {loading && (
-        <div
-          style={{
-            height: "7px",
-            marginTop: "9px",
-            borderRadius:
-              "999px",
-            background: "#e5e7eb",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${
-                progress.total
-                  ? (progress.current /
-                      progress.total) *
-                    100
-                  : 0
-              }%`,
-              height: "100%",
-              borderRadius:
-                "999px",
-              background: "#5b21b6",
-              transition:
-                "width .3s ease",
-            }}
-          />
-        </div>
-      )}
-
-      {/* 상태 메시지 */}
-
-      {message && (
-        <div
-          style={{
-            marginTop: "9px",
-            padding: "9px 10px",
-            borderRadius: "9px",
-            background: "#f8fafc",
-            fontSize: "13px",
-            lineHeight: 1.5,
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      {/* 가상시공 결과 */}
-
-      {results.length > 0 && (
-        <div
-          style={{
-            marginTop: "14px",
-          }}
-        >
-          <strong>
-            가상시공 결과{" "}
-            {results.length}장
-          </strong>
-
-          <div
-            style={{
-              display: "grid",
-              gap: "12px",
-              marginTop: "9px",
-            }}
-          >
-            {results.map(
-              (
-                item,
-                index
-              ) => (
+              <div>
                 <div
-                  key={
-                    item.image.id
-                  }
                   style={{
-                    padding: "10px",
-                    border:
-                      "1px solid #e5e7eb",
-                    borderRadius:
+                    marginBottom:
+                      "5px",
+                    fontSize:
                       "12px",
+                    fontWeight:
+                      "800",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(2, minmax(0, 1fr))",
-                      gap: "7px",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize:
-                            "12px",
-                          fontWeight:
-                            "bold",
-                        }}
-                      >
-                        원본{" "}
-                        {index + 1}
-                      </div>
-
-                      <img
-                        src={
-                          item.image
-                            .preview
-                        }
-                        alt={`원본 ${
-                          index + 1
-                        }`}
-                        style={{
-                          display:
-                            "block",
-                          width:
-                            "100%",
-                          marginTop:
-                            "4px",
-                          borderRadius:
-                            "8px",
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <div
-                        style={{
-                          fontSize:
-                            "12px",
-                          fontWeight:
-                            "bold",
-                        }}
-                      >
-                        가상시공
-                      </div>
-
-                      <img
-                        src={
-                          item.imageUrl
-                        }
-                        alt={`가상 시공 결과 ${
-                          index + 1
-                        }`}
-                        style={{
-                          display:
-                            "block",
-                          width:
-                            "100%",
-                          marginTop:
-                            "4px",
-                          borderRadius:
-                            "8px",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <a
-                    href={
-                      item.imageUrl
-                    }
-                    download={`virtual-${
-                      product.product_code ||
-                      "film"
-                    }-${index + 1}.webp`}
-                    style={{
-                      display:
-                        "block",
-                      marginTop:
-                        "7px",
-                      padding: "9px",
-                      border:
-                        "1px solid #d1d5db",
-                      borderRadius:
-                        "9px",
-                      color:
-                        "#111827",
-                      textAlign:
-                        "center",
-                      textDecoration:
-                        "none",
-                      fontSize:
-                        "13px",
-                      fontWeight:
-                        "bold",
-                    }}
-                  >
-                    결과{" "}
-                    {index + 1} 저장
-                  </a>
+                  가상시공
                 </div>
-              )
-            )}
+
+                <img
+                  src={
+                    result.imageUrl
+                  }
+                  alt="가상시공 결과"
+                  style={{
+                    display:
+                      "block",
+                    width: "100%",
+                    aspectRatio:
+                      "4 / 3",
+                    objectFit:
+                      "cover",
+                    borderRadius:
+                      "10px",
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                downloadImage(
+                  result.imageUrl,
+                  `virtual-install-${Date.now()}.webp`
+                )
+              }
+              style={{
+                width: "100%",
+                marginTop: "10px",
+                padding: "12px",
+                border:
+                  "1px solid #d1d5db",
+                borderRadius:
+                  "10px",
+                background:
+                  "#ffffff",
+                color:
+                  "#111827",
+                fontSize:
+                  "14px",
+                fontWeight:
+                  "800",
+                cursor:
+                  "pointer",
+              }}
+            >
+              결과 이미지 저장
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={
-              onRequestDetail
-            }
-            style={{
-              width: "100%",
-              marginTop: "10px",
-              padding: "14px",
-              border: "none",
-              borderRadius: "10px",
-              background: "#111827",
-              color: "#ffffff",
-              fontSize: "16px",
-              fontWeight: "bold",
-            }}
-          >
-            이 색상으로 상세견적 신청
-          </button>
-
-          <button
-            type="button"
-            disabled={loading}
-            onClick={
-              generateVirtualImages
-            }
-            style={{
-              width: "100%",
-              marginTop: "8px",
-              padding: "12px",
-              border:
-                "1px solid #d1d5db",
-              borderRadius: "10px",
-              background: "#ffffff",
-              fontWeight: "bold",
-            }}
-          >
-            가상 시공 다시 만들기
-          </button>
+          {onRequestDetail && (
+            <button
+              type="button"
+              onClick={
+                onRequestDetail
+              }
+              style={{
+                width: "100%",
+                marginTop: "12px",
+                padding: "15px",
+                border: "none",
+                borderRadius:
+                  "12px",
+                background:
+                  "#111827",
+                color:
+                  "#ffffff",
+                fontSize:
+                  "16px",
+                fontWeight:
+                  "900",
+                cursor:
+                  "pointer",
+              }}
+            >
+              이 색상으로 상세견적 신청
+            </button>
+          )}
         </div>
       )}
-
-      <p
-        style={{
-          margin: "11px 0 0",
-          color: "#6b7280",
-          fontSize: "11px",
-          lineHeight: 1.5,
-        }}
-      >
-        가상 이미지는 이해를 돕기
-        위한 참고용이며 실제 필름의
-        색상과 차이가 있을 수 있습니다.
-      </p>
     </section>
   );
-}
+          }
