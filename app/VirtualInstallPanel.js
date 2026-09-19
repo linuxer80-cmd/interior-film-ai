@@ -94,11 +94,17 @@ export default function VirtualInstallPanel({
       const formData =
         new FormData();
 
+      /*
+       * 고객 원본사진
+       */
       formData.append(
         "image",
         selectedImage.file
       );
 
+      /*
+       * 선택 필름 정보
+       */
       formData.append(
         "brand",
         product.brand || ""
@@ -107,6 +113,12 @@ export default function VirtualInstallPanel({
       formData.append(
         "productCode",
         product.product_code ||
+          ""
+      );
+
+      formData.append(
+        "productName",
+        product.product_name ||
           ""
       );
 
@@ -130,6 +142,16 @@ export default function VirtualInstallPanel({
       formData.append(
         "colorHex",
         product.color_hex || ""
+      );
+
+      /*
+       * 핵심:
+       * 실제 현대보닥 필름 샘플 이미지 URL
+       */
+      formData.append(
+        "sampleImageUrl",
+        product.sample_image_path ||
+          ""
       );
 
       const response =
@@ -161,7 +183,9 @@ export default function VirtualInstallPanel({
       );
 
       setMessage(
-        "✅ 가상 시공 이미지가 완성되었습니다."
+        result?.sampleReferenceUsed
+          ? "✅ 실제 필름 샘플을 참고한 가상 시공 이미지가 완성되었습니다."
+          : "✅ 가상 시공 이미지가 완성되었습니다."
       );
     } catch (error) {
       console.error(error);
@@ -276,9 +300,46 @@ export default function VirtualInstallPanel({
           {product.brand}{" "}
           {product.product_code}
         </strong>
+
         <br />
+
         {product.color_description ||
           product.color_family}
+
+        {product.sample_image_path && (
+          <>
+            <div
+              style={{
+                marginTop: "12px",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: "6px",
+                  fontSize: "13px",
+                  color: "#6b7280",
+                }}
+              >
+                실제 필름 샘플
+              </div>
+
+              <img
+                src={
+                  product.sample_image_path
+                }
+                alt={`${product.product_code} 필름 샘플`}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  maxWidth: "180px",
+                  borderRadius: "10px",
+                  border:
+                    "1px solid #e5e7eb",
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {!resultUrl && (
@@ -426,6 +487,39 @@ export default function VirtualInstallPanel({
           >
             이 색상으로 상세견적 신청
           </button>
+
+          <button
+            type="button"
+            onClick={
+              generateVirtualImage
+            }
+            disabled={loading}
+            style={{
+              width: "100%",
+              marginTop: "10px",
+              padding: "14px",
+              border:
+                "1px solid #d1d5db",
+              borderRadius:
+                "12px",
+              background:
+                "#ffffff",
+              color:
+                "#111827",
+              fontSize:
+                "15px",
+              fontWeight:
+                "bold",
+              opacity:
+                loading
+                  ? 0.65
+                  : 1,
+            }}
+          >
+            {loading
+              ? "다시 생성 중..."
+              : "가상 시공 다시 만들기"}
+          </button>
         </>
       )}
 
@@ -443,4 +537,4 @@ export default function VirtualInstallPanel({
       </p>
     </section>
   );
-      }
+  }
