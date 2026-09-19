@@ -486,6 +486,8 @@ export default function FilmColorPicker({
             "wood_species",
             "tone_family",
             "sample_image_path",
+            "fire_price_per_meter",
+            "non_fire_price_per_meter",
             "material_price_per_meter",
             "price_multiplier",
             "additional_cost",
