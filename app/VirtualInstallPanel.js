@@ -143,59 +143,7 @@ function getAnalysisText(photo, group) {
     .join(" ");
 }
 
-function detectTargetTypeForImage(
-  image,
-  imageIndex,
-  images,
-  groups
-) {
-  const imageValues = getIdentityValues(image);
-
-  const entries = [];
-
-  (Array.isArray(groups) ? groups : []).forEach((group) => {
-    const photos = Array.isArray(group?.photos)
-      ? group.photos
-      : [];
-
-    photos.forEach((photo) => {
-      entries.push({
-        photo,
-        group,
-      });
-    });
-  });
-
-  let matchedEntries = entries.filter(({ photo }) => {
-    const photoValues = getIdentityValues(photo);
-
-    return imageValues.some((value) =>
-      photoValues.includes(value)
-    );
-  });
-
-  /*
-   * ID나 파일명이 없는 데이터는 전체 사진 순서로 연결합니다.
-   */
-  if (
-    !matchedEntries.length &&
-    entries.length === images.length &&
-    entries[imageIndex]
-  ) {
-    matchedEntries = [entries[imageIndex]];
-  }
-
-  let text = matchedEntries
-    .map(({ photo, group }) =>
-      getAnalysisText(photo, group)
-    )
-    .join(" ");
-
-  /*
-   * 분석 결과가 이미지 객체에 직접 들어 있는 경우
-   */
-  text += ` ${getAnalysisText(image, null)}`;
-
+function detectTypeFromText(text) {
   const kitchenWords = [
     "싱크대",
     "주방",
@@ -225,12 +173,123 @@ function detectTargetTypeForImage(
     "doorframe",
   ];
 
-  if (includesAny(text, kitchenWords)) {
+  const hasKitchen = includesAny(text, kitchenWords);
+  const hasDoor = includesAny(text, doorWords);
+
+  if (hasDoor && !hasKitchen) {
+    return "door";
+  }
+
+  if (hasKitchen && !hasDoor) {
     return "kitchen";
   }
 
-  if (includesAny(text, doorWords)) {
+  return "";
+}
+
+function detectTargetTypeForImage(
+  image,
+  imageIndex,
+  images,
+  groups
+) {
+  const imageValues = getIdentityValues(image);
+  const entries = [];
+
+  (Array.isArray(groups) ? groups : []).forEach((group) => {
+    const photos = Array.isArray(group?.photos)
+      ? group.photos
+      : [];
+
+    photos.forEach((photo) => {
+      entries.push({
+        photo,
+        group,
+      });
+    });
+  });
+
+  let matchedEntries = entries.filter(({ photo }) => {
+    const photoValues = getIdentityValues(photo);
+
+    return imageValues.some((value) =>
+      photoValues.includes(value)
+    );
+  });
+
+  if (
+    !matchedEntries.length &&
+    entries.length === images.length &&
+    entries[imageIndex]
+  ) {
+    matchedEntries = [entries[imageIndex]];
+  }
+
+  const photoText = [
+    getAnalysisText(image, null),
+    ...matchedEntries.map(({ photo }) =>
+      getAnalysisText(photo, null)
+    ),
+  ].join(" ");
+
+  const photoType = detectTypeFromText(photoText);
+
+  if (photoType) {
+    return photoType;
+  }
+
+  const groupText = matchedEntries
+    .map(({ group }) => getAnalysisText(null, group))
+    .join(" ");
+
+  const groupType = detectTypeFromText(groupText);
+
+  if (groupType) {
+    return groupType;
+  }
+
+  const priorityText = [
+    image?.category,
+    image?.subCategory,
+    image?.sub_category,
+
+    ...matchedEntries.flatMap(({ photo }) => [
+      photo?.category,
+      photo?.subCategory,
+      photo?.sub_category,
+      photo?.analysis?.category,
+      photo?.analysis?.subCategory,
+      photo?.analysis?.sub_category,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (
+    includesAny(priorityText, [
+      "방문",
+      "방화문",
+      "중문",
+      "문짝",
+      "문틀",
+      "도어",
+      "door",
+    ])
+  ) {
     return "door";
+  }
+
+  if (
+    includesAny(priorityText, [
+      "싱크대",
+      "주방",
+      "상부장",
+      "하부장",
+      "cabinet",
+      "kitchen",
+    ])
+  ) {
+    return "kitchen";
   }
 
   return "";
@@ -482,8 +541,7 @@ export default function VirtualInstallPanel({
 
   const [message, setMessage] =
     useState("");
-
-  useEffect(() => {
+    useEffect(() => {
     if (!images.length) {
       setSelectedImageId("");
       setTargetType("");
@@ -531,8 +589,26 @@ export default function VirtualInstallPanel({
     );
   }, [images, selectedImageId]);
 
+  const detectedTargetType = useMemo(() => {
+    if (!selectedImage) {
+      return "";
+    }
+
+    return detectTargetTypeForImage(
+      selectedImage,
+      selectedImageIndex,
+      images,
+      groups
+    );
+  }, [
+    selectedImage,
+    selectedImageIndex,
+    images,
+    groups,
+  ]);
+
   /*
-   * 사진을 선택하면 기존 AI 분석 결과로
+   * 선택한 사진의 AI 분석 결과만 사용해
    * 싱크대 또는 문·문틀을 자동 선택합니다.
    */
   useEffect(() => {
@@ -543,35 +619,23 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    const detectedType =
-      detectTargetTypeForImage(
-        selectedImage,
-        selectedImageIndex,
-        images,
-        groups
-      );
-
-    if (!detectedType) {
+    if (!detectedTargetType) {
       setTargetType("");
       return;
     }
 
     setTargetType((current) =>
-      current === detectedType
+      current === detectedTargetType
         ? current
-        : detectedType
+        : detectedTargetType
     );
 
     setColorMode("single");
-
     onUseSplitToneChange?.(false);
   }, [
-    selectedImage,
-    selectedImageIndex,
-    images,
-    groups,
+    selectedImageId,
+    detectedTargetType,
     manualTypeMode,
-    onUseSplitToneChange,
   ]);
 
   useEffect(() => {
@@ -633,8 +697,13 @@ export default function VirtualInstallPanel({
     setManualTypeMode(false);
     setTargetType("");
     setSelectedImageId(imageId);
+    setColorMode("single");
+    setLocalAreaFilms({});
     setResult(null);
     setMessage("");
+
+    onUseSplitToneChange?.(false);
+    onAreaFilmsChange?.({});
   }
 
   function selectTargetType(type) {
@@ -656,9 +725,6 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    /*
-     * 자동판정을 잠시 끄고 수동 선택화면을 표시합니다.
-     */
     setManualTypeMode(true);
     setTargetType("");
     setResult(null);
@@ -825,6 +891,7 @@ export default function VirtualInstallPanel({
 
     setLoading(true);
     setResult(null);
+
     setMessage(
       "선택한 사진을 가상 시공하고 있습니다."
     );
@@ -913,8 +980,8 @@ export default function VirtualInstallPanel({
           lineHeight: 1.55,
         }}
       >
-        사진을 선택하면 AI 분석 결과에 맞는
-        시공 부위가 자동으로 표시됩니다.
+        사진을 선택하면 AI 분석 결과에 맞는 시공 부위가
+        자동으로 표시됩니다.
       </div>
 
       <div
@@ -1012,8 +1079,8 @@ export default function VirtualInstallPanel({
                 disabled={loading}
                 onClick={() =>
                   selectImage(imageId)
-                }
-                style={{
+}
+                            style={{
                   position: "relative",
                   minWidth: 0,
                   padding: "4px",
@@ -1025,8 +1092,7 @@ export default function VirtualInstallPanel({
                   cursor: loading
                     ? "default"
                     : "pointer",
-                  touchAction:
-                    "manipulation",
+                  touchAction: "manipulation",
                 }}
               >
                 <img
@@ -1122,9 +1188,7 @@ export default function VirtualInstallPanel({
                 title={type.label}
                 description={type.description}
                 onSelect={() =>
-                  selectManualTargetType(
-                    type.key
-                  )
+                  selectManualTargetType(type.key)
                 }
               />
             ))}
@@ -1174,8 +1238,7 @@ export default function VirtualInstallPanel({
               onClick={changeTargetType}
               style={{
                 padding: "8px 11px",
-                border:
-                  "1px solid #c4b5fd",
+                border: "1px solid #c4b5fd",
                 borderRadius: "9px",
                 background: "#ffffff",
                 color: "#6d28d9",
@@ -1197,8 +1260,7 @@ export default function VirtualInstallPanel({
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent:
-                  "space-between",
+                justifyContent: "space-between",
                 gap: "8px",
                 marginBottom: "8px",
               }}
@@ -1233,9 +1295,7 @@ export default function VirtualInstallPanel({
               }}
             >
               <ModeButton
-                active={
-                  colorMode === "single"
-                }
+                active={colorMode === "single"}
                 onClick={() =>
                   selectColorMode("single")
                 }
@@ -1244,9 +1304,7 @@ export default function VirtualInstallPanel({
               </ModeButton>
 
               <ModeButton
-                active={
-                  colorMode === "multi"
-                }
+                active={colorMode === "multi"}
                 onClick={() =>
                   selectColorMode("multi")
                 }
@@ -1305,8 +1363,7 @@ export default function VirtualInstallPanel({
                     style={{
                       marginBottom: "11px",
                       padding: "12px",
-                      border:
-                        "1px solid #e5e7eb",
+                      border: "1px solid #e5e7eb",
                       borderRadius: "13px",
                       background: "#fafafa",
                     }}
@@ -1378,9 +1435,7 @@ export default function VirtualInstallPanel({
               loading ||
               !selectedImage
             }
-            onClick={
-              generateVirtualImage
-            }
+            onClick={generateVirtualImage}
             style={{
               width: "100%",
               marginTop: "17px",
@@ -1446,8 +1501,7 @@ export default function VirtualInstallPanel({
           <div
             style={{
               padding: "10px",
-              border:
-                "1px solid #e5e7eb",
+              border: "1px solid #e5e7eb",
               borderRadius: "15px",
               background: "#ffffff",
             }}
@@ -1472,9 +1526,7 @@ export default function VirtualInstallPanel({
                 </div>
 
                 <img
-                  src={getImagePreview(
-                    result.image
-                  )}
+                  src={getImagePreview(result.image)}
                   alt="원본"
                   style={{
                     display: "block",
@@ -1523,8 +1575,7 @@ export default function VirtualInstallPanel({
                 width: "100%",
                 marginTop: "10px",
                 padding: "12px",
-                border:
-                  "1px solid #d1d5db",
+                border: "1px solid #d1d5db",
                 borderRadius: "10px",
                 background: "#ffffff",
                 color: "#111827",
@@ -1561,4 +1612,4 @@ export default function VirtualInstallPanel({
       )}
     </section>
   );
-            }
+              }
