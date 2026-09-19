@@ -6,6 +6,141 @@ export const maxDuration = 60;
 const MAX_FILE_SIZE =
   10 * 1024 * 1024;
 
+const MAX_SAMPLE_SIZE =
+  10 * 1024 * 1024;
+
+
+/*
+ * =========================================================
+ * 실제 필름 샘플 이미지 가져오기
+ * =========================================================
+ */
+
+async function fetchSampleImage(
+  sampleImageUrl,
+  productCode
+) {
+  if (!sampleImageUrl) {
+    return null;
+  }
+
+  try {
+    const url =
+      new URL(sampleImageUrl);
+
+    /*
+     * 보안을 위해
+     * 현재 Supabase Storage 주소만 허용
+     */
+    const allowedHost =
+      "gxtvvzysuhexhpljpswj.supabase.co";
+
+    if (
+      url.hostname !==
+      allowedHost
+    ) {
+      console.warn(
+        "허용되지 않은 샘플 이미지 주소:",
+        url.hostname
+      );
+
+      return null;
+    }
+
+    const response =
+      await fetch(
+        url.toString(),
+        {
+          cache: "no-store",
+        }
+      );
+
+    if (!response.ok) {
+      console.error(
+        "필름 샘플 이미지 로드 실패:",
+        response.status,
+        sampleImageUrl
+      );
+
+      return null;
+    }
+
+    const contentType =
+      response.headers.get(
+        "content-type"
+      ) ||
+      "image/jpeg";
+
+    if (
+      !contentType.startsWith(
+        "image/"
+      )
+    ) {
+      console.error(
+        "필름 샘플 파일이 이미지가 아닙니다:",
+        contentType
+      );
+
+      return null;
+    }
+
+    const arrayBuffer =
+      await response.arrayBuffer();
+
+    if (
+      arrayBuffer.byteLength >
+      MAX_SAMPLE_SIZE
+    ) {
+      console.error(
+        "필름 샘플 이미지 용량 초과"
+      );
+
+      return null;
+    }
+
+    let extension = "jpg";
+
+    if (
+      contentType.includes(
+        "png"
+      )
+    ) {
+      extension = "png";
+    } else if (
+      contentType.includes(
+        "webp"
+      )
+    ) {
+      extension = "webp";
+    }
+
+    return new File(
+      [arrayBuffer],
+      `${
+        productCode ||
+        "film-sample"
+      }.${extension}`,
+      {
+        type: contentType,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "필름 샘플 이미지 가져오기 오류:",
+      error
+    );
+
+    return null;
+  }
+}
+
+
+/*
+ * =========================================================
+ * POST
+ * =========================================================
+ */
+
 export async function POST(request) {
   try {
     if (
@@ -25,10 +160,17 @@ export async function POST(request) {
     const requestData =
       await request.formData();
 
+    /*
+     * 고객 원본사진
+     */
     const image =
-      requestData.get("image");
+      requestData.get(
+        "image"
+      );
 
-    if (!(image instanceof File)) {
+    if (
+      !(image instanceof File)
+    ) {
       return NextResponse.json(
         {
           error:
@@ -41,7 +183,8 @@ export async function POST(request) {
     }
 
     if (
-      image.size > MAX_FILE_SIZE
+      image.size >
+      MAX_FILE_SIZE
     ) {
       return NextResponse.json(
         {
@@ -54,27 +197,43 @@ export async function POST(request) {
       );
     }
 
-    const brand = String(
-      requestData.get("brand") ||
-        ""
-    );
+    /*
+     * 제품정보
+     */
+    const brand =
+      String(
+        requestData.get(
+          "brand"
+        ) || ""
+      );
 
-    const productCode = String(
-      requestData.get(
-        "productCode"
-      ) || ""
-    );
+    const productCode =
+      String(
+        requestData.get(
+          "productCode"
+        ) || ""
+      );
 
-    const texture = String(
-      requestData.get("texture") ||
-        ""
-    );
+    const productName =
+      String(
+        requestData.get(
+          "productName"
+        ) || ""
+      );
 
-    const colorFamily = String(
-      requestData.get(
-        "colorFamily"
-      ) || ""
-    );
+    const texture =
+      String(
+        requestData.get(
+          "texture"
+        ) || ""
+      );
+
+    const colorFamily =
+      String(
+        requestData.get(
+          "colorFamily"
+        ) || ""
+      );
 
     const colorDescription =
       String(
@@ -83,32 +242,138 @@ export async function POST(request) {
         ) || ""
       );
 
-    const colorHex = String(
-      requestData.get("colorHex") ||
-        ""
-    );
+    const colorHex =
+      String(
+        requestData.get(
+          "colorHex"
+        ) || ""
+      );
 
-    const prompt = [
-      "Edit this real interior photo into a photorealistic virtual interior-film installation preview.",
+    const sampleImageUrl =
+      String(
+        requestData.get(
+          "sampleImageUrl"
+        ) || ""
+      );
 
-      "Apply the selected interior film only to the main cabinet, door, door-frame, molding, or furniture surface that is clearly intended for refinishing.",
 
-      "Preserve the original room layout, camera angle, perspective, lighting, shadows, handles, hardware, glass, walls, floor, ceiling, appliances, and all object shapes.",
+    /*
+     * =====================================================
+     * 실제 필름 샘플 이미지 로드
+     * =====================================================
+     */
 
-      "Do not add, remove, resize, or redesign any objects.",
+    const sampleImage =
+      await fetchSampleImage(
+        sampleImageUrl,
+        productCode
+      );
 
-      "Change only the finish of the installable surface.",
+    const sampleReferenceUsed =
+      Boolean(sampleImage);
+
+
+    /*
+     * =====================================================
+     * 프롬프트
+     * =====================================================
+     */
+
+    const promptParts = [
+      "Create a photorealistic virtual interior-film installation preview.",
+
+      "IMAGE 1 is the customer's real interior photo and must remain the structural base image.",
+
+      sampleReferenceUsed
+        ? "IMAGE 2 is the actual reference sample of the selected interior film. Use IMAGE 2 as the visual reference for the new surface finish."
+        : "No physical film sample image is available, so use the supplied product and color information as the finish reference.",
+
+      "Identify the main cabinet, cabinet doors, interior door, door frame, molding, built-in furniture, or other clearly refinishable film surface in IMAGE 1.",
+
+      "Change ONLY the finish of that installable surface.",
+
+      "Preserve the exact room layout, camera position, perspective, dimensions, proportions, furniture geometry, panel divisions, handles, hinges, hardware, glass, appliances, walls, floor, ceiling, lighting, shadows, reflections, and surrounding objects from IMAGE 1.",
+
+      "Do not redesign the furniture.",
+
+      "Do not add or remove cabinet doors.",
+
+      "Do not change handles or hardware.",
+
+      "Do not add decorative objects.",
+
+      "Do not change the architecture.",
+
+      "Do not modify surfaces that would not normally receive interior film.",
 
       `Selected product: ${brand} ${productCode}.`,
 
-      `Pattern: ${texture}. Color family: ${colorFamily}.`,
+      productName
+        ? `Product name: ${productName}.`
+        : "",
 
-      `Color description: ${colorDescription}. Approximate color: ${colorHex}.`,
+      texture
+        ? `Material category or pattern: ${texture}.`
+        : "",
 
-      "Keep realistic seams, edges, reflections, and material texture.",
+      colorFamily
+        ? `Color family: ${colorFamily}.`
+        : "",
 
-      "Return a clean realistic result without text, labels, borders, or watermarks.",
-    ].join(" ");
+      colorDescription
+        ? `Color description: ${colorDescription}.`
+        : "",
+
+      colorHex
+        ? `Approximate digital color reference: ${colorHex}.`
+        : "",
+
+      sampleReferenceUsed
+        ? "The actual film sample in IMAGE 2 has priority over the text color description and approximate HEX value."
+        : "",
+
+      sampleReferenceUsed
+        ? "Match the dominant color, undertone, grain, pattern, texture, visual direction, contrast, and surface character of IMAGE 2 as closely as possible."
+        : "",
+
+      sampleReferenceUsed
+        ? "For wood film, preserve the wood species appearance, grain direction, grain scale, light-dark variation, and natural pattern shown in IMAGE 2."
+        : "",
+
+      sampleReferenceUsed
+        ? "For stone or marble film, preserve the vein style, pattern scale, contrast, and overall stone character shown in IMAGE 2."
+        : "",
+
+      sampleReferenceUsed
+        ? "For metal film, preserve the metallic tone, directional texture, sheen character, and surface appearance shown in IMAGE 2 without turning it into mirror chrome unless the sample itself looks that way."
+        : "",
+
+      sampleReferenceUsed
+        ? "For fabric or leather film, preserve the fine surface texture and pattern character of IMAGE 2 while keeping realistic scale."
+        : "",
+
+      "Adapt the reference material naturally to the perspective and geometry of the target surfaces.",
+
+      "Keep realistic panel seams, corners, edges, highlights, shadows, and reflections.",
+
+      "The result should look like the same real room after professional interior-film installation, not like newly generated or redesigned furniture.",
+
+      "Return only the finished photorealistic interior image.",
+
+      "Do not include text, labels, sample boards, split screens, borders, arrows, annotations, or watermarks.",
+    ];
+
+    const prompt =
+      promptParts
+        .filter(Boolean)
+        .join(" ");
+
+
+    /*
+     * =====================================================
+     * OpenAI 이미지 편집 요청
+     * =====================================================
+     */
 
     const openAIForm =
       new FormData();
@@ -120,6 +385,11 @@ export async function POST(request) {
         "gpt-image-2.5-flare"
     );
 
+
+    /*
+     * IMAGE 1
+     * 고객 원본사진
+     */
     openAIForm.append(
       "image[]",
       image,
@@ -127,11 +397,34 @@ export async function POST(request) {
         "interior.jpg"
     );
 
+
+    /*
+     * IMAGE 2
+     * 실제 필름 샘플
+     */
+    if (sampleImage) {
+      openAIForm.append(
+        "image[]",
+        sampleImage,
+        sampleImage.name ||
+          "film-sample.jpg"
+      );
+    }
+
+
+    /*
+     * 프롬프트
+     */
     openAIForm.append(
       "prompt",
       prompt
     );
 
+
+    /*
+     * 현재 비용 절약을 위해
+     * 기존 low 품질 유지
+     */
     openAIForm.append(
       "size",
       "1024x1024"
@@ -152,22 +445,42 @@ export async function POST(request) {
       "70"
     );
 
-    const response = await fetch(
-      "https://api.openai.com/v1/images/edits",
-      {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: openAIForm,
-      }
-    );
+
+    /*
+     * =====================================================
+     * OpenAI 요청
+     * =====================================================
+     */
+
+    const response =
+      await fetch(
+        "https://api.openai.com/v1/images/edits",
+        {
+          method: "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+
+          body: openAIForm,
+        }
+      );
+
 
     const result =
       await response
         .json()
-        .catch(() => ({}));
+        .catch(
+          () => ({})
+        );
+
+
+    /*
+     * =====================================================
+     * 오류 처리
+     * =====================================================
+     */
 
     if (!response.ok) {
       console.error(
@@ -189,6 +502,13 @@ export async function POST(request) {
       );
     }
 
+
+    /*
+     * =====================================================
+     * 결과 이미지
+     * =====================================================
+     */
+
     const item =
       result?.data?.[0];
 
@@ -196,6 +516,7 @@ export async function POST(request) {
       item?.b64_json
         ? `data:image/webp;base64,${item.b64_json}`
         : item?.url;
+
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -209,13 +530,27 @@ export async function POST(request) {
       );
     }
 
+
+    /*
+     * =====================================================
+     * 성공
+     * =====================================================
+     */
+
     return NextResponse.json({
       success: true,
+
       imageUrl,
+
       productCode,
+
+      sampleReferenceUsed,
+
       usage:
-        result?.usage || null,
+        result?.usage ||
+        null,
     });
+
   } catch (error) {
     console.error(
       "Virtual install route error:",
@@ -233,4 +568,4 @@ export async function POST(request) {
       }
     );
   }
-}
+          }
