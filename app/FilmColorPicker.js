@@ -1,188 +1,101 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const PAGE_SIZE = 6;
 
 
-/*
-=========================================================
-현대보닥 제품코드 기준 제품군
+/* =========================================================
+   제품 코드 → 실제 제품 라인
+========================================================= */
 
-중요:
-긴 prefix부터 검사해야 합니다.
+const PRODUCT_LINES = [
+  { prefix: "OGW", label: "옵티컬 그레인 우드", category: "wood", filter: "wood" },
+  { prefix: "SPW", label: "스페셜우드", category: "wood", filter: "wood" },
+  { prefix: "PNT", label: "프리미엄페인티드우드", category: "solid", filter: "color" },
+  { prefix: "PTW", label: "페인티드우드", category: "solid", filter: "color" },
+  { prefix: "ZSW", label: "슈퍼화이트우드", category: "solid", filter: "color" },
 
-예:
-SPW03 -> SPW
-W018  -> W
-=========================================================
-*/
-const PRODUCT_GROUPS = [
-  {
-    prefix: "OGW",
-    label: "옵티컬 그레인 우드",
-    filter: "wood",
-  },
-  {
-    prefix: "SPW",
-    label: "스페셜우드",
-    filter: "wood",
-  },
-  {
-    prefix: "PNT",
-    label: "프리미엄페인티드우드",
-    filter: "color",
-  },
-  {
-    prefix: "PTW",
-    label: "페인티드우드",
-    filter: "color",
-  },
-  {
-    prefix: "ZSW",
-    label: "슈퍼화이트우드",
-    filter: "color",
-  },
-  {
-    prefix: "ECF",
-    label: "이지클린필름",
-    filter: "color",
-  },
-  {
-    prefix: "EXF",
-    label: "외장용필름",
-    filter: "color",
-  },
-  {
-    prefix: "UMI",
-    label: "고광택메탈",
-    filter: "color",
-  },
-  {
-    prefix: "APZ",
-    label: "골드",
-    filter: "color",
-  },
-  {
-    prefix: "BLC",
-    label: "모노블랑",
-    filter: "color",
-  },
+  { prefix: "ECF", label: "이지클린필름", category: "etc", filter: "color" },
+  { prefix: "EXF", label: "외장용필름", category: "etc", filter: "color" },
 
-  {
-    prefix: "LW",
-    label: "롱우드",
-    filter: "wood",
-  },
-  {
-    prefix: "ZX",
-    label: "프리미엄우드",
-    filter: "wood",
-  },
+  { prefix: "UMI", label: "고광택메탈", category: "metal", filter: "color" },
+  { prefix: "APZ", label: "골드", category: "metal", filter: "color" },
 
-  {
-    prefix: "NS",
-    label: "스톤앤마블",
-    filter: "color",
-  },
-  {
-    prefix: "PM",
-    label: "프리미엄마블",
-    filter: "color",
-  },
-  {
-    prefix: "PNC",
-    label: "프리미엄페인티드콘크리트",
-    filter: "color",
-  },
-  {
-    prefix: "RM",
-    label: "리얼마블",
-    filter: "color",
-  },
+  { prefix: "BLC", label: "모노블랑", category: "etc", filter: "color" },
 
-  {
-    prefix: "VM",
-    label: "벨벳메탈",
-    filter: "color",
-  },
+  { prefix: "LW", label: "롱우드", category: "wood", filter: "wood" },
+  { prefix: "ZX", label: "프리미엄우드", category: "wood", filter: "wood" },
 
-  {
-    prefix: "SF",
-    label: "소프트페브릭",
-    filter: "color",
-  },
-  {
-    prefix: "SL",
-    label: "소프트레더",
-    filter: "color",
-  },
-  {
-    prefix: "RF",
-    label: "리얼페브릭",
-    filter: "color",
-  },
-  {
-    prefix: "NF",
-    label: "네츄럴페브릭",
-    filter: "color",
-  },
+  { prefix: "NS", label: "스톤앤마블", category: "stone", filter: "tone" },
+  { prefix: "PM", label: "프리미엄마블", category: "stone", filter: "tone" },
+  { prefix: "PNC", label: "프리미엄페인티드콘크리트", category: "stone", filter: "tone" },
+  { prefix: "RM", label: "리얼마블", category: "stone", filter: "tone" },
 
-  {
-    prefix: "SMT",
-    label: "슈퍼매트",
-    filter: "color",
-  },
+  { prefix: "VM", label: "벨벳메탈", category: "metal", filter: "color" },
 
-  {
-    prefix: "CP",
-    label: "텍스쳐필름",
-    filter: "color",
-  },
-  {
-    prefix: "HS",
-    label: "텍스쳐필름",
-    filter: "color",
-  },
-  {
-    prefix: "LM",
-    label: "텍스쳐필름",
-    filter: "color",
-  },
-  {
-    prefix: "LS",
-    label: "텍스쳐필름",
-    filter: "color",
-  },
+  { prefix: "SF", label: "소프트패브릭", category: "fabric", filter: "tone" },
+  { prefix: "RF", label: "리얼패브릭", category: "fabric", filter: "tone" },
+  { prefix: "NF", label: "네츄럴패브릭", category: "fabric", filter: "tone" },
+
+  { prefix: "SL", label: "소프트레더", category: "leather", filter: "tone" },
+
+  { prefix: "SMT", label: "슈퍼매트", category: "etc", filter: "color" },
+
+  { prefix: "CP", label: "텍스쳐", category: "solid", filter: "color" },
+  { prefix: "HS", label: "텍스쳐", category: "solid", filter: "color" },
+  { prefix: "LM", label: "텍스쳐", category: "solid", filter: "color" },
+  { prefix: "LS", label: "텍스쳐", category: "solid", filter: "color" },
 
   /*
-  반드시 W와 S는 아래쪽에 둡니다.
-  다른 코드가 먼저 판별되어야 합니다.
+   W와 S는 반드시 아래쪽
   */
+  { prefix: "W", label: "우드", category: "wood", filter: "wood" },
+  { prefix: "S", label: "솔리드", category: "solid", filter: "color" },
+];
+
+
+/* =========================================================
+   대분류
+========================================================= */
+
+const CATEGORIES = [
   {
-    prefix: "W",
+    key: "wood",
     label: "우드",
-    filter: "wood",
   },
   {
-    prefix: "S",
+    key: "solid",
     label: "솔리드",
-    filter: "color",
+  },
+  {
+    key: "stone",
+    label: "스톤&마블",
+  },
+  {
+    key: "metal",
+    label: "메탈",
+  },
+  {
+    key: "fabric",
+    label: "패브릭",
+  },
+  {
+    key: "leather",
+    label: "레더",
+  },
+  {
+    key: "etc",
+    label: "기타",
   },
 ];
 
 
-/*
-=========================================================
-중복 제거
-=========================================================
-*/
+/* =========================================================
+   중복 제거
+========================================================= */
+
 function unique(values) {
   return [
     ...new Set(
@@ -192,66 +105,66 @@ function unique(values) {
             value !== null &&
             value !== undefined
         )
-        .map((value) =>
-          String(value).trim()
-        )
+        .map((value) => String(value).trim())
         .filter(Boolean)
     ),
   ];
 }
 
 
-/*
-=========================================================
-제품코드에서 제품군 찾기
-=========================================================
-*/
-function getProductGroup(productCode) {
-  const code = String(
-    productCode || ""
-  )
+/* =========================================================
+   제품코드 → 제품라인 찾기
+========================================================= */
+
+function getProductLine(productCode) {
+  const code = String(productCode || "")
     .trim()
     .toUpperCase();
 
-  if (!code) {
-    return null;
-  }
+  if (!code) return null;
 
   return (
-    PRODUCT_GROUPS.find(
-      (group) =>
-        code.startsWith(
-          group.prefix
-        )
+    PRODUCT_LINES.find((line) =>
+      code.startsWith(line.prefix)
     ) || null
   );
 }
 
 
-/*
-=========================================================
-선택 버튼
-=========================================================
-*/
+/* =========================================================
+   톤 화면 표시 이름
+========================================================= */
+
+function getToneLabel(value) {
+  if (value === "라이트톤") return "라이트";
+  if (value === "미디엄톤") return "미디엄";
+  if (value === "딥톤") return "딥";
+
+  /*
+   DB의 기타톤은 고객 화면에서는
+   포인트톤으로 표시
+  */
+  if (value === "기타톤") return "포인트";
+
+  return value;
+}
+
+
+/* =========================================================
+   공통 버튼
+========================================================= */
+
 function Options({
   title,
   items,
   value,
   onChange,
 }) {
-  if (!items.length) {
-    return null;
-  }
+  if (!items.length) return null;
 
   return (
-    <div
-      style={{
-        marginTop: "18px",
-      }}
-    >
-      <strong>
-        {title}
-      </strong>
+    <div style={{ marginTop: "18px" }}>
+      <strong>{title}</strong>
 
       <div
         style={{
@@ -262,24 +175,16 @@ function Options({
         }}
       >
         {items.map((item) => {
-          const active =
-            value === item.value;
+          const active = value === item.value;
 
           return (
             <button
               key={item.value}
               type="button"
-              onClick={() =>
-                onChange(
-                  item.value
-                )
-              }
+              onClick={() => onChange(item.value)}
               style={{
-                padding:
-                  "10px 14px",
-
-                borderRadius:
-                  "999px",
+                padding: "10px 14px",
+                borderRadius: "999px",
 
                 border: active
                   ? "2px solid #111827"
@@ -293,11 +198,8 @@ function Options({
                   ? "#ffffff"
                   : "#374151",
 
-                fontWeight:
-                  "bold",
-
-                cursor:
-                  "pointer",
+                fontWeight: "bold",
+                cursor: "pointer",
               }}
             >
               {item.label}
@@ -310,81 +212,51 @@ function Options({
 }
 
 
-/*
-=========================================================
-메인
-=========================================================
-*/
+/* =========================================================
+   메인
+========================================================= */
+
 export default function FilmColorPicker({
   onSelect,
   onGenerate,
 }) {
-  const [
-    products,
-    setProducts,
-  ] = useState([]);
+  const [products, setProducts] = useState([]);
 
-  const [
-    brand,
-    setBrand,
-  ] = useState("");
+  const [brand, setBrand] = useState("");
 
   /*
-  제품코드 prefix
-
-  W
-  S
-  LW
-  SPW
-  ZX
-  ...
+   2단계 대분류
+   wood / solid / stone / metal...
   */
-  const [
-    groupPrefix,
-    setGroupPrefix,
-  ] = useState("");
+  const [category, setCategory] = useState("");
 
   /*
-  수종 또는 색상계열
+   3단계 제품라인
+   W / SPW / ZX / S...
   */
-  const [
-    detail,
-    setDetail,
-  ] = useState("");
-
-  const [
-    search,
-    setSearch,
-  ] = useState("");
-
-  const [
-    selected,
-    setSelected,
-  ] = useState(null);
-
-  const [
-    limit,
-    setLimit,
-  ] = useState(
-    PAGE_SIZE
-  );
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    message,
-    setMessage,
-  ] = useState("");
-
+  const [linePrefix, setLinePrefix] = useState("");
 
   /*
-  =========================================================
-  DB 제품 불러오기
-  =========================================================
+   4단계
+   수종 / 컬러 / 톤
   */
+  const [detail, setDetail] = useState("");
+
+  const [search, setSearch] = useState("");
+
+  const [selected, setSelected] = useState(null);
+
+  const [limit, setLimit] = useState(PAGE_SIZE);
+
+  const [loading, setLoading] = useState(true);
+
+  const [message, setMessage] = useState("");
+
+
+  /* =========================================================
+     DB 불러오기
+  ========================================================= */
+
   useEffect(() => {
     let mounted = true;
 
@@ -392,50 +264,36 @@ export default function FilmColorPicker({
       setLoading(true);
       setMessage("");
 
-      const {
-        data,
-        error,
-      } =
-        await supabase
-          .from(
-            "film_products"
-          )
-          .select(
-            [
-              "id",
-              "brand",
-              "product_code",
-              "product_name",
-              "color_family",
-              "color_description",
-              "color_hex",
-              "texture",
-              "grade",
-              "wood_species",
-              "sample_image_path",
-              "material_price_per_meter",
-              "price_multiplier",
-              "additional_cost",
-              "sort_order",
-            ].join(",")
-          )
-          .eq(
-            "is_active",
-            true
-          )
-          .order("brand")
-          .order(
-            "sort_order"
-          );
+      const { data, error } = await supabase
+        .from("film_products")
+        .select(
+          [
+            "id",
+            "brand",
+            "product_code",
+            "product_name",
+            "color_family",
+            "color_description",
+            "color_hex",
+            "texture",
+            "grade",
+            "wood_species",
+            "tone_family",
+            "sample_image_path",
+            "material_price_per_meter",
+            "price_multiplier",
+            "additional_cost",
+            "sort_order",
+          ].join(",")
+        )
+        .eq("is_active", true)
+        .order("brand")
+        .order("sort_order");
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (error) {
-        console.error(
-          error
-        );
+        console.error(error);
 
         setMessage(
           `필름 제품을 불러오지 못했습니다. ${
@@ -445,32 +303,19 @@ export default function FilmColorPicker({
 
         setProducts([]);
       } else {
-        const rows =
-          data || [];
+        const rows = data || [];
 
-        setProducts(
-          rows
+        setProducts(rows);
+
+        const brandList = unique(
+          rows.map((item) => item.brand)
         );
 
-        const brandList =
-          unique(
-            rows.map(
-              (item) =>
-                item.brand
-            )
-          );
-
         /*
-        제조사가 하나면
-        현대보닥 자동선택
+         제조사가 하나면 자동선택
         */
-        if (
-          brandList.length ===
-          1
-        ) {
-          setBrand(
-            brandList[0]
-          );
+        if (brandList.length === 1) {
+          setBrand(brandList[0]);
         }
       }
 
@@ -485,264 +330,273 @@ export default function FilmColorPicker({
   }, []);
 
 
-  /*
-  =========================================================
-  제조사 목록
-  =========================================================
-  */
-  const brands =
-    useMemo(
-      () =>
-        unique(
-          products.map(
-            (item) =>
-              item.brand
-          )
-        ),
-      [products]
+  /* =========================================================
+     제조사
+  ========================================================= */
+
+  const brands = useMemo(() => {
+    return unique(
+      products.map((item) => item.brand)
+    );
+  }, [products]);
+
+
+  /* =========================================================
+     선택 제조사에 존재하는 대분류
+  ========================================================= */
+
+  const availableCategories = useMemo(() => {
+    if (!brand) return [];
+
+    const brandProducts = products.filter(
+      (item) => item.brand === brand
     );
 
-
-  /*
-  =========================================================
-  선택한 제조사에 실제 존재하는 제품군만 표시
-
-  여기서 texture / grade를 사용하지 않습니다.
-
-  product_code prefix만 사용합니다.
-  =========================================================
-  */
-  const availableGroups =
-    useMemo(() => {
-      if (!brand) {
-        return [];
-      }
-
-      const brandProducts =
-        products.filter(
-          (item) =>
-            item.brand ===
-            brand
+    return CATEGORIES.filter((cat) => {
+      return brandProducts.some((product) => {
+        const line = getProductLine(
+          product.product_code
         );
 
-      return PRODUCT_GROUPS.filter(
-        (group) =>
-          brandProducts.some(
-            (product) => {
-              const found =
-                getProductGroup(
-                  product.product_code
-                );
-
-              return (
-                found?.prefix ===
-                group.prefix
-              );
-            }
-          )
-      );
-    }, [
-      brand,
-      products,
-    ]);
+        return line?.category === cat.key;
+      });
+    });
+  }, [brand, products]);
 
 
-  /*
-  =========================================================
-  현재 선택된 제품군
-  =========================================================
-  */
-  const selectedGroup =
-    useMemo(
-      () =>
-        PRODUCT_GROUPS.find(
-          (group) =>
-            group.prefix ===
-            groupPrefix
-        ) || null,
-      [groupPrefix]
+  /* =========================================================
+     선택 대분류 안의 제품라인
+  ========================================================= */
+
+  const availableLines = useMemo(() => {
+    if (!brand || !category) return [];
+
+    const brandProducts = products.filter(
+      (item) => item.brand === brand
     );
 
+    /*
+     같은 label의 제품라인을 하나로 묶음
 
-  /*
-  =========================================================
-  선택한 제품군의 제품들
-  =========================================================
-  */
-  const groupProducts =
-    useMemo(() => {
-      if (
-        !brand ||
-        !groupPrefix
-      ) {
-        return [];
-      }
+     예:
+     CP / HS / LM / LS
+     → 화면에서는 "텍스쳐" 버튼 하나
+    */
 
-      return products.filter(
-        (product) => {
-          if (
-            product.brand !==
-            brand
-          ) {
-            return false;
-          }
+    const map = new Map();
 
-          const group =
-            getProductGroup(
-              product.product_code
-            );
-
-          return (
-            group?.prefix ===
-            groupPrefix
+    PRODUCT_LINES
+      .filter((line) => line.category === category)
+      .forEach((line) => {
+        const exists = brandProducts.some((product) => {
+          const found = getProductLine(
+            product.product_code
           );
+
+          return found?.prefix === line.prefix;
+        });
+
+        if (!exists) return;
+
+        if (!map.has(line.label)) {
+          map.set(line.label, {
+            key: line.label,
+            label: line.label,
+            prefixes: [],
+            filter: line.filter,
+          });
         }
-      );
-    }, [
-      brand,
-      groupPrefix,
-      products,
-    ]);
 
-
-  /*
-  =========================================================
-  3단계
-
-  자연우드:
-  wood_species
-
-  나머지:
-  color_family
-  =========================================================
-  */
-  const details =
-    useMemo(() => {
-      if (
-        !selectedGroup
-      ) {
-        return [];
-      }
-
-      if (
-        selectedGroup.filter ===
-        "wood"
-      ) {
-        return unique(
-          groupProducts.map(
-            (item) =>
-              item.wood_species
-          )
+        map.get(line.label).prefixes.push(
+          line.prefix
         );
+      });
+
+    return [...map.values()];
+  }, [brand, category, products]);
+
+
+  /* =========================================================
+     현재 선택 제품라인
+  ========================================================= */
+
+  const selectedLine = useMemo(() => {
+    return (
+      availableLines.find(
+        (line) => line.key === linePrefix
+      ) || null
+    );
+  }, [availableLines, linePrefix]);
+
+
+  /* =========================================================
+     제품라인에 포함된 실제 제품
+  ========================================================= */
+
+  const lineProducts = useMemo(() => {
+    if (
+      !brand ||
+      !category ||
+      !selectedLine
+    ) {
+      return [];
+    }
+
+    return products.filter((product) => {
+      if (product.brand !== brand) {
+        return false;
       }
 
+      const line = getProductLine(
+        product.product_code
+      );
+
+      if (!line) return false;
+
+      return selectedLine.prefixes.includes(
+        line.prefix
+      );
+    });
+  }, [
+    brand,
+    category,
+    selectedLine,
+    products,
+  ]);
+
+
+  /* =========================================================
+     4단계 목록
+
+     우드 → 수종
+     솔리드/메탈 → 컬러
+     마블/패브릭/레더 → 톤
+  ========================================================= */
+
+  const details = useMemo(() => {
+    if (!selectedLine) return [];
+
+    if (selectedLine.filter === "wood") {
       return unique(
-        groupProducts.map(
-          (item) =>
-            item.color_family
+        lineProducts.map(
+          (item) => item.wood_species
         )
       );
-    }, [
-      selectedGroup,
-      groupProducts,
-    ]);
+    }
+
+    if (selectedLine.filter === "tone") {
+      const tones = unique(
+        lineProducts.map(
+          (item) => item.tone_family
+        )
+      );
+
+      /*
+       고객 화면 순서
+      */
+
+      const order = [
+        "라이트톤",
+        "미디엄톤",
+        "딥톤",
+        "기타톤",
+      ];
+
+      return tones.sort((a, b) => {
+        const ai = order.indexOf(a);
+        const bi = order.indexOf(b);
+
+        return (
+          (ai === -1 ? 999 : ai) -
+          (bi === -1 ? 999 : bi)
+        );
+      });
+    }
+
+    return unique(
+      lineProducts.map(
+        (item) => item.color_family
+      )
+    );
+  }, [selectedLine, lineProducts]);
 
 
-  /*
-  =========================================================
-  제품 검색
-  =========================================================
-  */
-  const matches =
-    useMemo(() => {
-      const keyword =
-        search
-          .trim()
-          .toLowerCase();
+  /* =========================================================
+     필터된 제품
+  ========================================================= */
 
-      return groupProducts.filter(
-        (item) => {
-          /*
-          수종 / 색상 필터
-          */
-          if (detail) {
-            if (
-              selectedGroup?.filter ===
-              "wood"
-            ) {
-              if (
-                item.wood_species !==
-                detail
-              ) {
-                return false;
-              }
-            } else {
-              if (
-                item.color_family !==
-                detail
-              ) {
-                return false;
-              }
-            }
-          }
+  const matches = useMemo(() => {
+    const keyword = search
+      .trim()
+      .toLowerCase();
 
-          /*
-          수종/색상을 선택하지 않았고
-          검색어도 없으면 제품 숨김
-          */
-          if (
-            !detail &&
-            !keyword
-          ) {
+    return lineProducts.filter((item) => {
+      if (detail) {
+        if (selectedLine?.filter === "wood") {
+          if (item.wood_species !== detail) {
             return false;
           }
-
-          if (!keyword) {
-            return true;
-          }
-
-          /*
-          검색 대상
-          */
-          return [
-            item.product_code,
-            item.product_name,
-            item.color_family,
-            item.color_description,
-            item.wood_species,
-          ]
-            .filter(Boolean)
-            .some(
-              (value) =>
-                String(value)
-                  .toLowerCase()
-                  .includes(
-                    keyword
-                  )
-            );
         }
-      );
-    }, [
-      groupProducts,
-      detail,
-      search,
-      selectedGroup,
-    ]);
+
+        else if (
+          selectedLine?.filter === "tone"
+        ) {
+          if (item.tone_family !== detail) {
+            return false;
+          }
+        }
+
+        else {
+          if (item.color_family !== detail) {
+            return false;
+          }
+        }
+      }
+
+      /*
+       아무 세부조건도 없고
+       검색어도 없으면 제품 숨김
+      */
+
+      if (!detail && !keyword) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      return [
+        item.product_code,
+        item.product_name,
+        item.color_family,
+        item.color_description,
+        item.wood_species,
+        item.tone_family,
+      ]
+        .filter(Boolean)
+        .some((value) =>
+          String(value)
+            .toLowerCase()
+            .includes(keyword)
+        );
+    });
+  }, [
+    lineProducts,
+    detail,
+    search,
+    selectedLine,
+  ]);
 
 
-  /*
-  =========================================================
-  제품선택 초기화
-  =========================================================
-  */
+  /* =========================================================
+     선택 초기화
+  ========================================================= */
+
   function clearProduct() {
     setSelected(null);
-
     setSearch("");
-
-    setLimit(
-      PAGE_SIZE
-    );
+    setLimit(PAGE_SIZE);
 
     if (onSelect) {
       onSelect(null);
@@ -750,17 +604,41 @@ export default function FilmColorPicker({
   }
 
 
-  /*
-  =========================================================
-  제조사
-  =========================================================
-  */
-  function chooseBrand(
-    value
-  ) {
+  /* =========================================================
+     제조사 선택
+  ========================================================= */
+
+  function chooseBrand(value) {
     setBrand(value);
 
-    setGroupPrefix("");
+    setCategory("");
+    setLinePrefix("");
+    setDetail("");
+
+    clearProduct();
+  }
+
+
+  /* =========================================================
+     대분류 선택
+  ========================================================= */
+
+  function chooseCategory(value) {
+    setCategory(value);
+
+    setLinePrefix("");
+    setDetail("");
+
+    clearProduct();
+  }
+
+
+  /* =========================================================
+     제품라인 선택
+  ========================================================= */
+
+  function chooseLine(value) {
+    setLinePrefix(value);
 
     setDetail("");
 
@@ -768,77 +646,68 @@ export default function FilmColorPicker({
   }
 
 
-  /*
-  =========================================================
-  제품군
-  =========================================================
-  */
-  function chooseGroup(
-    value
-  ) {
-    setGroupPrefix(
-      value
-    );
+  /* =========================================================
+     세부 선택
+  ========================================================= */
 
-    setDetail("");
-
-    clearProduct();
-  }
-
-
-  /*
-  =========================================================
-  수종 / 색상
-  =========================================================
-  */
-  function chooseDetail(
-    value
-  ) {
+  function chooseDetail(value) {
     setDetail(value);
 
     clearProduct();
   }
 
 
-  /*
-  =========================================================
-  제품 선택
-  =========================================================
-  */
-  function chooseProduct(
-    product
-  ) {
-    setSelected(
-      product
-    );
+  /* =========================================================
+     제품 선택
+  ========================================================= */
+
+  function chooseProduct(product) {
+    setSelected(product);
 
     if (onSelect) {
-      onSelect(
-        product
-      );
+      onSelect(product);
     }
   }
 
 
-  /*
-  =========================================================
-  제품 카드 설명
-  =========================================================
-  */
-  function getProductInfo(
-    product
-  ) {
-    const group =
-      getProductGroup(
-        product.product_code
-      );
+  /* =========================================================
+     4단계 제목
+  ========================================================= */
 
-    if (
-      group?.filter ===
-      "wood"
-    ) {
+  function getDetailTitle() {
+    if (!selectedLine) {
+      return "4. 세부 선택";
+    }
+
+    if (selectedLine.filter === "wood") {
+      return "4. 수종";
+    }
+
+    if (selectedLine.filter === "tone") {
+      return "4. 톤";
+    }
+
+    return "4. 컬러";
+  }
+
+
+  /* =========================================================
+     제품 카드 설명
+  ========================================================= */
+
+  function getProductInfo(product) {
+    if (selectedLine?.filter === "wood") {
       return [
         product.wood_species,
+        product.color_family,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+
+    if (selectedLine?.filter === "tone") {
+      return [
+        getToneLabel(product.tone_family),
         product.color_family,
       ]
         .filter(Boolean)
@@ -853,30 +722,23 @@ export default function FilmColorPicker({
   }
 
 
-  /*
-  =========================================================
-  화면
-  =========================================================
-  */
+  /* =========================================================
+     화면
+  ========================================================= */
+
   return (
     <section
       style={{
         marginTop: "18px",
         padding: "18px",
-        border:
-          "1px solid #e5e7eb",
+        border: "1px solid #e5e7eb",
         borderRadius: "18px",
         background: "#ffffff",
       }}
     >
-      <h2
-        style={{
-          margin: 0,
-        }}
-      >
+      <h2 style={{ margin: 0 }}>
         가상 시공 필름 선택
       </h2>
-
 
       <p
         style={{
@@ -884,12 +746,7 @@ export default function FilmColorPicker({
           lineHeight: 1.6,
         }}
       >
-        제조사와 필름 제품군을
-        선택한 후{" "}
-        {selectedGroup?.filter ===
-        "wood"
-          ? "수종을"
-          : "색상 계열을"}{" "}
+        원하는 필름 종류와 제품 라인을
         선택하세요.
       </p>
 
@@ -913,648 +770,430 @@ export default function FilmColorPicker({
       )}
 
 
-      {!loading &&
-        !message && (
-          <>
+      {!loading && !message && (
+        <>
 
-            {/* ========================= */}
-            {/* 1. 제조사 */}
-            {/* ========================= */}
+          {/* 1 제조사 */}
 
+          <Options
+            title="1. 제조사"
+            items={brands.map((value) => ({
+              value,
+              label: value,
+            }))}
+            value={brand}
+            onChange={chooseBrand}
+          />
+
+
+          {/* 2 대분류 */}
+
+          {brand && (
             <Options
-              title="1. 제조사"
-              items={
-                brands.map(
-                  (value) => ({
-                    value,
-                    label: value,
-                  })
-                )
-              }
-              value={brand}
-              onChange={
-                chooseBrand
-              }
+              title="2. 필름 종류"
+              items={availableCategories.map(
+                (item) => ({
+                  value: item.key,
+                  label: item.label,
+                })
+              )}
+              value={category}
+              onChange={chooseCategory}
             />
+          )}
 
 
-            {/* ========================= */}
-            {/* 2. 제품군 */}
-            {/* ========================= */}
+          {/* 3 제품라인 */}
 
-            {brand && (
-              <Options
-                title="2. 필름 패턴"
-                items={
-                  availableGroups.map(
-                    (group) => ({
-                      value:
-                        group.prefix,
-
-                      label:
-                        group.label,
-                    })
-                  )
-                }
-                value={
-                  groupPrefix
-                }
-                onChange={
-                  chooseGroup
-                }
-              />
-            )}
-
-
-            {/* ========================= */}
-            {/* 3. 수종 / 색상 */}
-            {/* ========================= */}
-
-            {brand &&
-              selectedGroup && (
-                <Options
-                  title={
-                    selectedGroup.filter ===
-                    "wood"
-                      ? "3. 수종"
-                      : "3. 색상 계열"
-                  }
-                  items={
-                    details.map(
-                      (value) => ({
-                        value,
-                        label:
-                          value,
-                      })
-                    )
-                  }
-                  value={
-                    detail
-                  }
-                  onChange={
-                    chooseDetail
-                  }
-                />
+          {brand && category && (
+            <Options
+              title="3. 제품 라인"
+              items={availableLines.map(
+                (item) => ({
+                  value: item.key,
+                  label: item.label,
+                })
               )}
+              value={linePrefix}
+              onChange={chooseLine}
+            />
+          )}
 
 
-            {/* ========================= */}
-            {/* 제품 검색 */}
-            {/* ========================= */}
+          {/* 4 수종 / 컬러 / 톤 */}
 
-            {brand &&
-              selectedGroup && (
-                <input
-                  value={search}
+          {selectedLine && (
+            <Options
+              title={getDetailTitle()}
+              items={details.map((value) => ({
+                value,
 
-                  onChange={(
-                    event
-                  ) => {
-                    setSearch(
-                      event
-                        .target
-                        .value
-                    );
+                label:
+                  selectedLine.filter === "tone"
+                    ? getToneLabel(value)
+                    : value,
+              }))}
+              value={detail}
+              onChange={chooseDetail}
+            />
+          )}
 
-                    setLimit(
-                      PAGE_SIZE
-                    );
-                  }}
 
-                  placeholder={
-                    selectedGroup.filter ===
-                    "wood"
-                      ? `제품번호 검색 (예: ${groupPrefix}03)`
-                      : groupPrefix ===
-                        "S"
-                      ? "제품번호 검색 (예: S245)"
-                      : "제품번호 검색"
-                  }
+          {/* 제품 검색 */}
 
+          {selectedLine && (
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setLimit(PAGE_SIZE);
+              }}
+              placeholder="제품번호 검색"
+              style={{
+                width: "100%",
+                marginTop: "18px",
+                padding: "13px",
+                border: "1px solid #d1d5db",
+                borderRadius: "12px",
+                boxSizing: "border-box",
+                fontSize: "16px",
+              }}
+            />
+          )}
+
+
+          {/* 제품 */}
+
+          {(detail || search.trim()) &&
+            selectedLine && (
+              <>
+
+                <div
                   style={{
-                    width:
-                      "100%",
-
-                    marginTop:
-                      "18px",
-
-                    padding:
-                      "13px",
-
-                    border:
-                      "1px solid #d1d5db",
-
-                    borderRadius:
-                      "12px",
-
-                    boxSizing:
-                      "border-box",
-
-                    fontSize:
-                      "16px",
+                    marginTop: "16px",
+                    color: "#6b7280",
+                    fontSize: "14px",
                   }}
-                />
-              )}
-
-
-            {/* ========================= */}
-            {/* 결과 */}
-            {/* ========================= */}
-
-            {(detail ||
-              search.trim()) &&
-              selectedGroup && (
-                <>
-
-                  <div
+                >
+                  제품{" "}
+                  <strong
                     style={{
-                      marginTop:
-                        "16px",
-
-                      color:
-                        "#6b7280",
-
-                      fontSize:
-                        "14px",
+                      color: "#111827",
                     }}
                   >
-                    제품{" "}
-
-                    <strong
-                      style={{
-                        color:
-                          "#111827",
-                      }}
-                    >
-                      {
-                        matches.length
-                      }
-                      개
-                    </strong>
-                  </div>
+                    {matches.length}개
+                  </strong>
+                </div>
 
 
-                  <div
-                    style={{
-                      display:
-                        "grid",
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(2, minmax(0, 1fr))",
+                    gap: "10px",
+                    marginTop: "10px",
+                  }}
+                >
+                  {matches
+                    .slice(0, limit)
+                    .map((product) => {
+                      const active =
+                        selected?.id ===
+                        product.id;
 
-                      gridTemplateColumns:
-                        "repeat(2, minmax(0, 1fr))",
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() =>
+                            chooseProduct(product)
+                          }
+                          style={{
+                            padding: "9px",
+                            borderRadius: "13px",
 
-                      gap:
-                        "10px",
+                            border: active
+                              ? "3px solid #111827"
+                              : "1px solid #d1d5db",
 
-                      marginTop:
-                        "10px",
-                    }}
-                  >
+                            background: "#ffffff",
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
 
-                    {matches
-                      .slice(
-                        0,
-                        limit
-                      )
-                      .map(
-                        (
-                          product
-                        ) => {
-                          const active =
-                            selected
-                              ?.id ===
-                            product.id;
-
-                          return (
-                            <button
-                              key={
-                                product.id
+                          {product.sample_image_path ? (
+                            <img
+                              src={
+                                product.sample_image_path
                               }
-
-                              type="button"
-
-                              onClick={() =>
-                                chooseProduct(
-                                  product
-                                )
+                              alt={
+                                product.product_code
                               }
-
+                              loading="lazy"
+                              decoding="async"
                               style={{
-                                padding:
-                                  "9px",
-
-                                borderRadius:
-                                  "13px",
-
+                                display: "block",
+                                width: "100%",
+                                aspectRatio: "1.5 / 1",
+                                objectFit: "cover",
+                                borderRadius: "8px",
+                              }}
+                            />
+                          ) : (
+                            <span
+                              style={{
+                                display: "block",
+                                width: "100%",
+                                aspectRatio: "1.5 / 1",
+                                borderRadius: "8px",
                                 border:
-                                  active
-                                    ? "3px solid #111827"
-                                    : "1px solid #d1d5db",
-
+                                  "1px solid #e5e7eb",
                                 background:
+                                  product.color_hex ||
                                   "#ffffff",
+                              }}
+                            />
+                          )}
 
-                                textAlign:
-                                  "left",
 
-                                cursor:
-                                  "pointer",
+                          <strong
+                            style={{
+                              display: "block",
+                              marginTop: "7px",
+                              fontSize: "15px",
+                            }}
+                          >
+                            {product.product_code}
+                          </strong>
+
+
+                          {product.product_name && (
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: "2px",
+                                color: "#374151",
+                                fontSize: "12px",
+                                fontWeight: "bold",
                               }}
                             >
-
-                              {product.sample_image_path ? (
-                                <img
-                                  src={
-                                    product.sample_image_path
-                                  }
-
-                                  alt={
-                                    product.product_code
-                                  }
-
-                                  loading="lazy"
-
-                                  decoding="async"
-
-                                  style={{
-                                    display:
-                                      "block",
-
-                                    width:
-                                      "100%",
-
-                                    aspectRatio:
-                                      "1.5 / 1",
-
-                                    objectFit:
-                                      "cover",
-
-                                    borderRadius:
-                                      "8px",
-                                  }}
-                                />
-                              ) : (
-                                <span
-                                  style={{
-                                    display:
-                                      "block",
-
-                                    width:
-                                      "100%",
-
-                                    aspectRatio:
-                                      "1.5 / 1",
-
-                                    borderRadius:
-                                      "8px",
-
-                                    border:
-                                      "1px solid #e5e7eb",
-
-                                    background:
-                                      product.color_hex ||
-                                      "#ffffff",
-                                  }}
-                                />
-                              )}
+                              {product.product_name}
+                            </span>
+                          )}
 
 
-                              <strong
-                                style={{
-                                  display:
-                                    "block",
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: "3px",
+                              color: "#6b7280",
+                              fontSize: "12px",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {getProductInfo(product)}
+                          </span>
 
-                                  marginTop:
-                                    "7px",
-
-                                  fontSize:
-                                    "15px",
-                                }}
-                              >
-                                {
-                                  product.product_code
-                                }
-                              </strong>
-
-
-                              {product.product_name && (
-                                <span
-                                  style={{
-                                    display:
-                                      "block",
-
-                                    marginTop:
-                                      "2px",
-
-                                    color:
-                                      "#374151",
-
-                                    fontSize:
-                                      "12px",
-
-                                    fontWeight:
-                                      "bold",
-                                  }}
-                                >
-                                  {
-                                    product.product_name
-                                  }
-                                </span>
-                              )}
-
-
-                              <span
-                                style={{
-                                  display:
-                                    "block",
-
-                                  marginTop:
-                                    "3px",
-
-                                  color:
-                                    "#6b7280",
-
-                                  fontSize:
-                                    "12px",
-
-                                  lineHeight:
-                                    1.4,
-                                }}
-                              >
-                                {getProductInfo(
-                                  product
-                                )}
-                              </span>
-
-                            </button>
-                          );
-                        }
-                      )}
-
-                  </div>
-
-
-                  {!matches.length && (
-                    <p
-                      style={{
-                        color:
-                          "#6b7280",
-                      }}
-                    >
-                      조건에 맞는 제품이
-                      없습니다.
-                    </p>
-                  )}
-
-
-                  {limit <
-                    matches.length && (
-                    <button
-                      type="button"
-
-                      onClick={() =>
-                        setLimit(
-                          (
-                            value
-                          ) =>
-                            value +
-                            PAGE_SIZE
-                        )
-                      }
-
-                      style={{
-                        width:
-                          "100%",
-
-                        marginTop:
-                          "12px",
-
-                        padding:
-                          "13px",
-
-                        border:
-                          "1px solid #d1d5db",
-
-                        borderRadius:
-                          "12px",
-
-                        background:
-                          "#ffffff",
-
-                        fontWeight:
-                          "bold",
-
-                        cursor:
-                          "pointer",
-                      }}
-                    >
-                      제품 더보기 (
-                      {matches.length -
-                        limit}
-                      개)
-                    </button>
-                  )}
-
-                </>
-              )}
-
-
-            {/* ========================= */}
-            {/* 선택 제품 */}
-            {/* ========================= */}
-
-            {selected && (
-              <div
-                style={{
-                  marginTop:
-                    "18px",
-
-                  padding:
-                    "15px",
-
-                  borderRadius:
-                    "14px",
-
-                  background:
-                    "#f3f4f6",
-                }}
-              >
-
-                <div
-                  style={{
-                    color:
-                      "#6b7280",
-
-                    fontSize:
-                      "13px",
-
-                    lineHeight:
-                      1.5,
-                  }}
-                >
-                  {
-                    selected.brand
-                  }
-
-                  {" 〉 "}
-
-                  {
-                    selectedGroup
-                      ?.label
-                  }
-
-                  {" 〉 "}
-
-                  {selectedGroup
-                    ?.filter ===
-                  "wood"
-                    ? selected.wood_species
-                    : selected.color_family}
+                        </button>
+                      );
+                    })}
                 </div>
 
 
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-
-                    fontSize:
-                      "20px",
-
-                    fontWeight:
-                      "bold",
-                  }}
-                >
-                  {
-                    selected.product_code
-                  }
-                </div>
-
-
-                {selected.product_name && (
-                  <div
+                {!matches.length && (
+                  <p
                     style={{
-                      marginTop:
-                        "3px",
-
-                      color:
-                        "#374151",
-
-                      fontWeight:
-                        "bold",
+                      color: "#6b7280",
                     }}
                   >
-                    {
-                      selected.product_name
-                    }
-                  </div>
+                    조건에 맞는 제품이 없습니다.
+                  </p>
                 )}
 
 
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-
-                    color:
-                      "#4b5563",
-
-                    lineHeight:
-                      1.6,
-                  }}
-                >
-
-                  {selectedGroup
-                    ?.filter ===
-                    "wood" &&
-                    selected.wood_species && (
-                      <>
-                        수종:{" "}
-                        <strong>
-                          {
-                            selected.wood_species
-                          }
-                        </strong>
-
-                        <br />
-                      </>
-                    )}
-
-
-                  {selected.color_family && (
-                    <>
-                      색상:{" "}
-                      {
-                        selected.color_family
-                      }
-                    </>
-                  )}
-
-
-                  {selected.color_description && (
-                    <>
-                      <br />
-
-                      {
-                        selected.color_description
-                      }
-                    </>
-                  )}
-
-                </div>
-
-
-                {onGenerate && (
+                {limit < matches.length && (
                   <button
                     type="button"
-
                     onClick={() =>
-                      onGenerate(
-                        selected
+                      setLimit(
+                        (value) =>
+                          value + PAGE_SIZE
                       )
                     }
-
                     style={{
-                      width:
-                        "100%",
-
-                      marginTop:
-                        "14px",
-
-                      padding:
-                        "15px",
-
+                      width: "100%",
+                      marginTop: "12px",
+                      padding: "13px",
                       border:
-                        "none",
-
-                      borderRadius:
-                        "12px",
-
-                      background:
-                        "#111827",
-
-                      color:
-                        "#ffffff",
-
-                      fontSize:
-                        "17px",
-
-                      fontWeight:
-                        "bold",
-
-                      cursor:
-                        "pointer",
+                        "1px solid #d1d5db",
+                      borderRadius: "12px",
+                      background: "#ffffff",
+                      fontWeight: "bold",
+                      cursor: "pointer",
                     }}
                   >
-                    이 필름으로 가상 시공하기
+                    제품 더보기 (
+                    {matches.length - limit}개)
                   </button>
                 )}
 
-              </div>
+              </>
             )}
 
-          </>
-        )}
+
+          {/* 선택한 제품 */}
+
+          {selected && (
+            <div
+              style={{
+                marginTop: "18px",
+                padding: "15px",
+                borderRadius: "14px",
+                background: "#f3f4f6",
+              }}
+            >
+              <div
+                style={{
+                  color: "#6b7280",
+                  fontSize: "13px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {selected.brand}
+                {" 〉 "}
+
+                {
+                  CATEGORIES.find(
+                    (item) =>
+                      item.key === category
+                  )?.label
+                }
+
+                {" 〉 "}
+
+                {selectedLine?.label}
+
+                {" 〉 "}
+
+                {selectedLine?.filter === "wood"
+                  ? selected.wood_species
+                  : selectedLine?.filter === "tone"
+                  ? getToneLabel(
+                      selected.tone_family
+                    )
+                  : selected.color_family}
+              </div>
+
+
+              <div
+                style={{
+                  marginTop: "5px",
+                  fontSize: "20px",
+                  fontWeight: "bold",
+                }}
+              >
+                {selected.product_code}
+              </div>
+
+
+              {selected.product_name && (
+                <div
+                  style={{
+                    marginTop: "3px",
+                    color: "#374151",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {selected.product_name}
+                </div>
+              )}
+
+
+              <div
+                style={{
+                  marginTop: "7px",
+                  color: "#4b5563",
+                  lineHeight: 1.6,
+                }}
+              >
+
+                {selectedLine?.filter ===
+                  "wood" &&
+                  selected.wood_species && (
+                    <>
+                      수종:{" "}
+                      <strong>
+                        {selected.wood_species}
+                      </strong>
+                      <br />
+                    </>
+                  )}
+
+
+                {selectedLine?.filter ===
+                  "tone" &&
+                  selected.tone_family && (
+                    <>
+                      톤:{" "}
+                      <strong>
+                        {getToneLabel(
+                          selected.tone_family
+                        )}
+                      </strong>
+                      <br />
+                    </>
+                  )}
+
+
+                {selected.color_family && (
+                  <>
+                    컬러:{" "}
+                    {selected.color_family}
+                  </>
+                )}
+
+
+                {selected.color_description && (
+                  <>
+                    <br />
+                    {selected.color_description}
+                  </>
+                )}
+
+              </div>
+
+
+              {onGenerate && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onGenerate(selected)
+                  }
+                  style={{
+                    width: "100%",
+                    marginTop: "14px",
+                    padding: "15px",
+                    border: "none",
+                    borderRadius: "12px",
+                    background: "#111827",
+                    color: "#ffffff",
+                    fontSize: "17px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  이 필름으로 가상 시공하기
+                </button>
+              )}
+
+            </div>
+          )}
+
+        </>
+      )}
 
     </section>
   );
-        }
+      }
