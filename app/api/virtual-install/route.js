@@ -9,10 +9,13 @@ const MAX_FILE_SIZE =
 const MAX_SAMPLE_SIZE =
   10 * 1024 * 1024;
 
+const ALLOWED_SAMPLE_HOST =
+  "gxtvvzysuhexhpljpswj.supabase.co";
+
 
 /*
  * =========================================================
- * 실제 필름 샘플 이미지 가져오기
+ * 필름 샘플 가져오기
  * =========================================================
  */
 
@@ -26,18 +29,13 @@ async function fetchSampleImage(
 
   try {
     const url =
-      new URL(sampleImageUrl);
-
-    /*
-     * 보안을 위해
-     * 현재 Supabase Storage 주소만 허용
-     */
-    const allowedHost =
-      "gxtvvzysuhexhpljpswj.supabase.co";
+      new URL(
+        sampleImageUrl
+      );
 
     if (
       url.hostname !==
-      allowedHost
+      ALLOWED_SAMPLE_HOST
     ) {
       console.warn(
         "허용되지 않은 샘플 이미지 주소:",
@@ -51,15 +49,15 @@ async function fetchSampleImage(
       await fetch(
         url.toString(),
         {
-          cache: "no-store",
+          cache:
+            "no-store",
         }
       );
 
     if (!response.ok) {
       console.error(
         "필름 샘플 이미지 로드 실패:",
-        response.status,
-        sampleImageUrl
+        response.status
       );
 
       return null;
@@ -76,11 +74,6 @@ async function fetchSampleImage(
         "image/"
       )
     ) {
-      console.error(
-        "필름 샘플 파일이 이미지가 아닙니다:",
-        contentType
-      );
-
       return null;
     }
 
@@ -91,42 +84,42 @@ async function fetchSampleImage(
       arrayBuffer.byteLength >
       MAX_SAMPLE_SIZE
     ) {
-      console.error(
-        "필름 샘플 이미지 용량 초과"
-      );
-
       return null;
     }
 
-    let extension = "jpg";
+    let extension =
+      "jpg";
 
     if (
       contentType.includes(
         "png"
       )
     ) {
-      extension = "png";
+      extension =
+        "png";
     } else if (
       contentType.includes(
         "webp"
       )
     ) {
-      extension = "webp";
+      extension =
+        "webp";
     }
 
     return new File(
       [arrayBuffer],
       `${
         productCode ||
-        "film-sample"
+        "sample"
       }.${extension}`,
       {
-        type: contentType,
+        type:
+          contentType,
       }
     );
   } catch (error) {
     console.error(
-      "필름 샘플 이미지 가져오기 오류:",
+      "샘플 이미지 오류:",
       error
     );
 
@@ -141,10 +134,13 @@ async function fetchSampleImage(
  * =========================================================
  */
 
-export async function POST(request) {
+export async function POST(
+  request
+) {
   try {
     if (
-      !process.env.OPENAI_API_KEY
+      !process.env
+        .OPENAI_API_KEY
     ) {
       return NextResponse.json(
         {
@@ -160,9 +156,6 @@ export async function POST(request) {
     const requestData =
       await request.formData();
 
-    /*
-     * 고객 원본사진
-     */
     const image =
       requestData.get(
         "image"
@@ -197,9 +190,13 @@ export async function POST(request) {
       );
     }
 
+
     /*
-     * 제품정보
+     * =====================================================
+     * 기본 필름
+     * =====================================================
      */
+
     const brand =
       String(
         requestData.get(
@@ -259,7 +256,91 @@ export async function POST(request) {
 
     /*
      * =====================================================
-     * 실제 필름 샘플 이미지 로드
+     * 부분 시공
+     * =====================================================
+     */
+
+    const useSplitTone =
+      String(
+        requestData.get(
+          "useSplitTone"
+        ) || ""
+      ) === "true";
+
+    const splitType =
+      String(
+        requestData.get(
+          "splitType"
+        ) || ""
+      );
+
+
+    /*
+     * =====================================================
+     * 두 번째 필름
+     * =====================================================
+     */
+
+    const secondaryBrand =
+      String(
+        requestData.get(
+          "secondaryBrand"
+        ) || ""
+      );
+
+    const secondaryProductCode =
+      String(
+        requestData.get(
+          "secondaryProductCode"
+        ) || ""
+      );
+
+    const secondaryProductName =
+      String(
+        requestData.get(
+          "secondaryProductName"
+        ) || ""
+      );
+
+    const secondaryTexture =
+      String(
+        requestData.get(
+          "secondaryTexture"
+        ) || ""
+      );
+
+    const secondaryColorFamily =
+      String(
+        requestData.get(
+          "secondaryColorFamily"
+        ) || ""
+      );
+
+    const secondaryColorDescription =
+      String(
+        requestData.get(
+          "secondaryColorDescription"
+        ) || ""
+      );
+
+    const secondaryColorHex =
+      String(
+        requestData.get(
+          "secondaryColorHex"
+        ) || ""
+      );
+
+    const secondarySampleImageUrl =
+      String(
+        requestData.get(
+          "secondarySampleImageUrl"
+        ) || ""
+      );
+
+
+    /*
+     * =====================================================
+     * 샘플 다운로드
      * =====================================================
      */
 
@@ -269,8 +350,97 @@ export async function POST(request) {
         productCode
       );
 
+    let secondarySampleImage =
+      null;
+
+    if (
+      useSplitTone &&
+      secondaryProductCode
+    ) {
+      secondarySampleImage =
+        await fetchSampleImage(
+          secondarySampleImageUrl,
+          secondaryProductCode
+        );
+    }
+
     const sampleReferenceUsed =
-      Boolean(sampleImage);
+      Boolean(
+        sampleImage
+      );
+
+    const splitReferenceUsed =
+      Boolean(
+        useSplitTone &&
+        sampleImage &&
+        secondarySampleImage
+      );
+
+
+    /*
+     * =====================================================
+     * 부위별 지시문
+     * =====================================================
+     */
+
+    let splitInstruction =
+      "";
+
+    if (
+      useSplitTone &&
+      splitType ===
+        "kitchen"
+    ) {
+      splitInstruction = `
+This is a TWO-FINISH kitchen installation.
+
+IMAGE 2 is the actual film reference for the UPPER CABINETS.
+
+IMAGE 3 is the actual film reference for the LOWER CABINETS.
+
+Apply IMAGE 2 ONLY to the upper wall-mounted cabinet doors and their film-finished visible cabinet surfaces.
+
+Apply IMAGE 3 ONLY to the lower base cabinet doors, drawer fronts, and their film-finished visible cabinet surfaces.
+
+Correctly distinguish upper cabinets from lower cabinets using their physical position relative to the countertop.
+
+Do not apply either film to the countertop, backsplash, wall tiles, sink, faucet, appliances, cooktop, hood, glass, floor, ceiling, or other non-cabinet surfaces.
+
+Do not mix the two reference finishes.
+
+Upper cabinets must visually match IMAGE 2.
+
+Lower cabinets must visually match IMAGE 3.
+`;
+    }
+
+    if (
+      useSplitTone &&
+      splitType ===
+        "door"
+    ) {
+      splitInstruction = `
+This is a TWO-FINISH interior door installation.
+
+IMAGE 2 is the actual film reference for the DOOR LEAF.
+
+IMAGE 3 is the actual film reference for the DOOR FRAME.
+
+Apply IMAGE 2 ONLY to the actual moving door leaf or door panel.
+
+Apply IMAGE 3 ONLY to the surrounding door frame, jamb, and casing surfaces that are normally finished with interior film.
+
+Do not confuse the door leaf with the surrounding frame.
+
+Preserve handles, locks, hinges, glass, hardware, walls, floor, ceiling, and adjacent surfaces.
+
+Do not mix the two finishes.
+
+The door leaf must visually match IMAGE 2.
+
+The door frame must visually match IMAGE 3.
+`;
+    }
 
 
     /*
@@ -279,99 +449,132 @@ export async function POST(request) {
      * =====================================================
      */
 
-    const promptParts = [
+    const prompt = [
       "Create a photorealistic virtual interior-film installation preview.",
 
-      "IMAGE 1 is the customer's real interior photo and must remain the structural base image.",
+      "IMAGE 1 is the customer's original real interior photo. IMAGE 1 must remain the structural base image.",
 
-      sampleReferenceUsed
-        ? "IMAGE 2 is the actual reference sample of the selected interior film. Use IMAGE 2 as the visual reference for the new surface finish."
-        : "No physical film sample image is available, so use the supplied product and color information as the finish reference.",
+      sampleImage
+        ? "IMAGE 2 is an actual physical reference sample of the primary selected interior film."
+        : "",
 
-      "Identify the main cabinet, cabinet doors, interior door, door frame, molding, built-in furniture, or other clearly refinishable film surface in IMAGE 1.",
+      splitReferenceUsed
+        ? "IMAGE 3 is an actual physical reference sample of the secondary selected interior film."
+        : "",
 
-      "Change ONLY the finish of that installable surface.",
+      splitInstruction,
 
-      "Preserve the exact room layout, camera position, perspective, dimensions, proportions, furniture geometry, panel divisions, handles, hinges, hardware, glass, appliances, walls, floor, ceiling, lighting, shadows, reflections, and surrounding objects from IMAGE 1.",
+      !useSplitTone
+        ? "Apply the primary selected film only to the main clearly refinishable cabinet, door, door-frame, molding, built-in furniture, or similar interior-film surface."
+        : "",
 
-      "Do not redesign the furniture.",
+      "Preserve the original room layout and architecture.",
 
-      "Do not add or remove cabinet doors.",
+      "Preserve the exact camera angle, perspective, dimensions, proportions, cabinet geometry, panel divisions and object positions.",
 
-      "Do not change handles or hardware.",
+      "Preserve handles, hinges, locks, rails, hardware, glass, appliances and fixtures.",
 
-      "Do not add decorative objects.",
+      "Preserve walls, floor, ceiling, countertop, backsplash, sink and faucet unless they are explicitly identified as the film installation target.",
 
-      "Do not change the architecture.",
+      "Do not add objects.",
 
-      "Do not modify surfaces that would not normally receive interior film.",
+      "Do not remove objects.",
 
-      `Selected product: ${brand} ${productCode}.`,
+      "Do not redesign furniture.",
+
+      "Do not change cabinet door count or panel divisions.",
+
+      "Do not change the size or position of any object.",
+
+      `Primary selected product: ${brand} ${productCode}.`,
 
       productName
-        ? `Product name: ${productName}.`
+        ? `Primary product name: ${productName}.`
         : "",
 
       texture
-        ? `Material category or pattern: ${texture}.`
+        ? `Primary material category: ${texture}.`
         : "",
 
       colorFamily
-        ? `Color family: ${colorFamily}.`
+        ? `Primary color family: ${colorFamily}.`
         : "",
 
       colorDescription
-        ? `Color description: ${colorDescription}.`
+        ? `Primary color description: ${colorDescription}.`
         : "",
 
       colorHex
-        ? `Approximate digital color reference: ${colorHex}.`
+        ? `Primary approximate digital color: ${colorHex}.`
         : "",
 
-      sampleReferenceUsed
-        ? "The actual film sample in IMAGE 2 has priority over the text color description and approximate HEX value."
+      useSplitTone &&
+      secondaryProductCode
+        ? `Secondary selected product: ${secondaryBrand} ${secondaryProductCode}.`
         : "",
 
-      sampleReferenceUsed
-        ? "Match the dominant color, undertone, grain, pattern, texture, visual direction, contrast, and surface character of IMAGE 2 as closely as possible."
+      useSplitTone &&
+      secondaryProductName
+        ? `Secondary product name: ${secondaryProductName}.`
         : "",
 
-      sampleReferenceUsed
-        ? "For wood film, preserve the wood species appearance, grain direction, grain scale, light-dark variation, and natural pattern shown in IMAGE 2."
+      useSplitTone &&
+      secondaryTexture
+        ? `Secondary material category: ${secondaryTexture}.`
         : "",
 
-      sampleReferenceUsed
-        ? "For stone or marble film, preserve the vein style, pattern scale, contrast, and overall stone character shown in IMAGE 2."
+      useSplitTone &&
+      secondaryColorFamily
+        ? `Secondary color family: ${secondaryColorFamily}.`
         : "",
 
-      sampleReferenceUsed
-        ? "For metal film, preserve the metallic tone, directional texture, sheen character, and surface appearance shown in IMAGE 2 without turning it into mirror chrome unless the sample itself looks that way."
+      useSplitTone &&
+      secondaryColorDescription
+        ? `Secondary color description: ${secondaryColorDescription}.`
         : "",
 
-      sampleReferenceUsed
-        ? "For fabric or leather film, preserve the fine surface texture and pattern character of IMAGE 2 while keeping realistic scale."
+      useSplitTone &&
+      secondaryColorHex
+        ? `Secondary approximate digital color: ${secondaryColorHex}.`
         : "",
 
-      "Adapt the reference material naturally to the perspective and geometry of the target surfaces.",
+      sampleImage
+        ? "For the primary finish, IMAGE 2 has priority over text descriptions and HEX values."
+        : "",
 
-      "Keep realistic panel seams, corners, edges, highlights, shadows, and reflections.",
+      secondarySampleImage
+        ? "For the secondary finish, IMAGE 3 has priority over text descriptions and HEX values."
+        : "",
 
-      "The result should look like the same real room after professional interior-film installation, not like newly generated or redesigned furniture.",
+      "Match the reference film's dominant color, undertone, grain, pattern, texture, direction, contrast and material character as closely as possible.",
 
-      "Return only the finished photorealistic interior image.",
+      "For wood film, preserve realistic wood grain direction, scale and natural light-dark variation.",
 
-      "Do not include text, labels, sample boards, split screens, borders, arrows, annotations, or watermarks.",
-    ];
+      "For stone or marble film, preserve realistic vein style, pattern scale and contrast.",
 
-    const prompt =
-      promptParts
-        .filter(Boolean)
-        .join(" ");
+      "For metal film, preserve metallic tone, directional surface character and realistic sheen.",
+
+      "For fabric or leather film, preserve the fine material texture at realistic scale.",
+
+      "Adapt each film naturally to the perspective and geometry of the target surface.",
+
+      "Keep realistic seams, corners, edges, highlights, shadows and reflections.",
+
+      "The finished image must look like the same real room after professional interior-film installation.",
+
+      "Do not create a different kitchen, different door, or redesigned furniture.",
+
+      "Return only one finished photorealistic interior image.",
+
+      "Do not include text, labels, sample boards, split screens, borders, arrows, annotations or watermarks.",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
 
     /*
      * =====================================================
-     * OpenAI 이미지 편집 요청
+     * OpenAI
      * =====================================================
      */
 
@@ -388,7 +591,6 @@ export async function POST(request) {
 
     /*
      * IMAGE 1
-     * 고객 원본사진
      */
     openAIForm.append(
       "image[]",
@@ -400,31 +602,38 @@ export async function POST(request) {
 
     /*
      * IMAGE 2
-     * 실제 필름 샘플
      */
     if (sampleImage) {
       openAIForm.append(
         "image[]",
         sampleImage,
         sampleImage.name ||
-          "film-sample.jpg"
+          "primary-film.jpg"
       );
     }
 
 
     /*
-     * 프롬프트
+     * IMAGE 3
      */
+    if (
+      useSplitTone &&
+      secondarySampleImage
+    ) {
+      openAIForm.append(
+        "image[]",
+        secondarySampleImage,
+        secondarySampleImage.name ||
+          "secondary-film.jpg"
+      );
+    }
+
+
     openAIForm.append(
       "prompt",
       prompt
     );
 
-
-    /*
-     * 현재 비용 절약을 위해
-     * 기존 low 품질 유지
-     */
     openAIForm.append(
       "size",
       "1024x1024"
@@ -448,7 +657,7 @@ export async function POST(request) {
 
     /*
      * =====================================================
-     * OpenAI 요청
+     * 요청
      * =====================================================
      */
 
@@ -463,10 +672,10 @@ export async function POST(request) {
               `Bearer ${process.env.OPENAI_API_KEY}`,
           },
 
-          body: openAIForm,
+          body:
+            openAIForm,
         }
       );
-
 
     const result =
       await response
@@ -475,12 +684,6 @@ export async function POST(request) {
           () => ({})
         );
 
-
-    /*
-     * =====================================================
-     * 오류 처리
-     * =====================================================
-     */
 
     if (!response.ok) {
       console.error(
@@ -505,7 +708,7 @@ export async function POST(request) {
 
     /*
      * =====================================================
-     * 결과 이미지
+     * 결과
      * =====================================================
      */
 
@@ -516,7 +719,6 @@ export async function POST(request) {
       item?.b64_json
         ? `data:image/webp;base64,${item.b64_json}`
         : item?.url;
-
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -531,12 +733,6 @@ export async function POST(request) {
     }
 
 
-    /*
-     * =====================================================
-     * 성공
-     * =====================================================
-     */
-
     return NextResponse.json({
       success: true,
 
@@ -544,13 +740,23 @@ export async function POST(request) {
 
       productCode,
 
+      secondaryProductCode:
+        secondaryProductCode ||
+        null,
+
+      splitType:
+        useSplitTone
+          ? splitType
+          : null,
+
       sampleReferenceUsed,
+
+      splitReferenceUsed,
 
       usage:
         result?.usage ||
         null,
     });
-
   } catch (error) {
     console.error(
       "Virtual install route error:",
@@ -568,4 +774,4 @@ export async function POST(request) {
       }
     );
   }
-          }
+}
