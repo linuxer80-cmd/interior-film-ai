@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -160,18 +159,6 @@ export default function Home() {
    * =========================================================
    * 필름 선택
    * =========================================================
-   *
-   * FilmColorPicker가 가격정보를 가지고 있으면 그대로 사용.
-   *
-   * 가격정보가 없는 경우
-   * film_products에서 해당 제품의
-   *
-   * fire_price_per_meter
-   * non_fire_price_per_meter
-   *
-   * 를 다시 조회합니다.
-   *
-   * 실제 m당 가격은 고객 화면에 표시하지 않습니다.
    */
 
   async function handleFilmSelect(
@@ -310,16 +297,6 @@ export default function Home() {
    * =========================================================
    * 선택 필름 적용 부위별 수정견적
    * =========================================================
-   *
-   * AI 기본견적은 솔리드 필름 기준.
-   *
-   * 견적의
-   *
-   * 70% = 인건비 + 기타
-   * 30% = 필름 자재비
-   *
-   * 자재비 30%에만
-   * 선택 필름의 가격 차이를 적용합니다.
    */
 
   const displayGroups =
@@ -408,9 +385,6 @@ export default function Home() {
    * =========================================================
    * 상담 사진 저장
    * =========================================================
-   *
-   * 자동견적 단계에서 사진을 이미 저장했다면
-   * 같은 Storage 경로를 그대로 재사용합니다.
    */
 
   async function uploadLeadPhotos() {
@@ -593,9 +567,6 @@ export default function Home() {
 
       /*
        * 부위별 최종 견적
-       *
-       * 필름을 선택했다면
-       * 수정된 견적이 들어갑니다.
        */
 
       const estimateDetails =
@@ -723,10 +694,8 @@ export default function Home() {
         );
 
       /*
-       * 선택한 필름정보도
+       * 선택 필름정보도
        * 상담 관리자 메모에 저장
-       *
-       * m당 단가는 고객에게 표시하지 않습니다.
        */
 
       if (selectedFilm) {
@@ -1132,9 +1101,6 @@ export default function Home() {
 
             {/*
              * 선택 필름 적용 수정견적
-             *
-             * 가상이미지 생성 버튼보다
-             * 먼저 보여줍니다.
              */}
 
             <FilmAdjustedEstimate
@@ -1152,15 +1118,21 @@ export default function Home() {
               }
             />
 
-            {/* 가상 시공 */}
+            {/*
+             * 가상 시공
+             *
+             * 중요:
+             * AI 분석 결과 groups를 전달해서
+             * 싱크대 / 문·문틀일 때만
+             * 부분 톤 선택 기능을 표시
+             */}
 
             <VirtualInstallPanel
-              images={
-                images
-              }
+              images={images}
               product={
                 selectedFilm
               }
+              groups={groups}
               onRequestDetail={() =>
                 setResultMode(
                   "detail"
@@ -1237,4 +1209,4 @@ export default function Home() {
       </div>
     </main>
   );
-            }
+        }
