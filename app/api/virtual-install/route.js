@@ -3,39 +3,37 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const MAX_SAMPLE_SIZE = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE =
+  10 * 1024 * 1024;
+
+const MAX_SAMPLE_SIZE =
+  10 * 1024 * 1024;
+
 const MAX_AREA_FILMS = 8;
 
-/*
- * 문자열 정리
- */
-function cleanText(value, maxLength = 300) {
+function cleanText(
+  value,
+  maxLength = 300
+) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
 }
 
-/*
- * HEX 색상값 검사
- */
 function cleanHex(value) {
-  const hex = cleanText(value, 20);
+  const hex = cleanText(
+    value,
+    20
+  );
 
-  if (/^#[0-9a-fA-F]{3,8}$/.test(hex)) {
-    return hex;
-  }
-
-  return "";
+  return /^#[0-9a-fA-F]{3,8}$/.test(
+    hex
+  )
+    ? hex
+    : "";
 }
 
-/*
- * 허용할 필름 샘플 이미지 주소 검사
- *
- * Supabase 주소와 기존 프로젝트에서 사용한
- * Supabase 주소만 허용합니다.
- */
 function getAllowedSampleHosts() {
   const hosts = new Set([
     "gxtvvzysuhexhpljpswj.supabase.co",
@@ -43,14 +41,19 @@ function getAllowedSampleHosts() {
 
   try {
     const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
+      process.env
+        .NEXT_PUBLIC_SUPABASE_URL;
 
     if (supabaseUrl) {
-      hosts.add(new URL(supabaseUrl).hostname);
+      hosts.add(
+        new URL(
+          supabaseUrl
+        ).hostname
+      );
     }
   } catch (error) {
     console.error(
-      "Supabase URL 확인 오류:",
+      "Supabase URL 오류:",
       error
     );
   }
@@ -58,9 +61,6 @@ function getAllowedSampleHosts() {
   return hosts;
 }
 
-/*
- * 필름 샘플 이미지 다운로드
- */
 async function fetchSampleImage(
   sampleImageUrl,
   productCode,
@@ -71,32 +71,40 @@ async function fetchSampleImage(
   }
 
   try {
-    const url = new URL(sampleImageUrl);
-    const allowedHosts = getAllowedSampleHosts();
+    const url =
+      new URL(
+        sampleImageUrl
+      );
 
     if (
       url.protocol !== "https:" ||
-      !allowedHosts.has(url.hostname)
+      !getAllowedSampleHosts().has(
+        url.hostname
+      )
     ) {
       console.warn(
-        "허용되지 않은 필름 샘플 주소:",
+        "허용되지 않은 샘플 주소:",
         url.hostname
       );
 
       return null;
     }
 
-    const response = await fetch(
-      url.toString(),
-      {
-        cache: "no-store",
-        signal: AbortSignal.timeout(15000),
-      }
-    );
+    const response =
+      await fetch(
+        url.toString(),
+        {
+          cache: "no-store",
+          signal:
+            AbortSignal.timeout(
+              15000
+            ),
+        }
+      );
 
     if (!response.ok) {
       console.error(
-        "필름 샘플 로드 실패:",
+        "샘플 이미지 로드 실패:",
         response.status,
         productCode
       );
@@ -105,10 +113,15 @@ async function fetchSampleImage(
     }
 
     const contentType =
-      response.headers.get("content-type") ||
-      "image/jpeg";
+      response.headers.get(
+        "content-type"
+      ) || "image/jpeg";
 
-    if (!contentType.startsWith("image/")) {
+    if (
+      !contentType.startsWith(
+        "image/"
+      )
+    ) {
       return null;
     }
 
@@ -117,29 +130,41 @@ async function fetchSampleImage(
 
     if (
       !arrayBuffer.byteLength ||
-      arrayBuffer.byteLength > MAX_SAMPLE_SIZE
+      arrayBuffer.byteLength >
+        MAX_SAMPLE_SIZE
     ) {
       return null;
     }
 
     let extension = "jpg";
 
-    if (contentType.includes("png")) {
+    if (
+      contentType.includes(
+        "png"
+      )
+    ) {
       extension = "png";
-    } else if (contentType.includes("webp")) {
+    } else if (
+      contentType.includes(
+        "webp"
+      )
+    ) {
       extension = "webp";
     }
 
     return new File(
       [arrayBuffer],
-      `film-${index}-${productCode || "sample"}.${extension}`,
+      `film-${index}-${
+        productCode ||
+        "sample"
+      }.${extension}`,
       {
         type: contentType,
       }
     );
   } catch (error) {
     console.error(
-      "필름 샘플 이미지 오류:",
+      "필름 샘플 오류:",
       productCode,
       error
     );
@@ -148,108 +173,156 @@ async function fetchSampleImage(
   }
 }
 
-/*
- * 기본 필름 데이터 읽기
- */
-function getPrimaryFilm(formData) {
+function getPrimaryFilm(
+  formData
+) {
   return {
     areaKey: "all",
-    areaLabel: "전체 시공 부위",
+    areaLabel:
+      "전체 시공 부위",
+
     brand: cleanText(
       formData.get("brand"),
       100
     ),
-    productCode: cleanText(
-      formData.get("productCode"),
-      100
-    ),
-    productName: cleanText(
-      formData.get("productName"),
-      200
-    ),
+
+    productCode:
+      cleanText(
+        formData.get(
+          "productCode"
+        ),
+        100
+      ),
+
+    productName:
+      cleanText(
+        formData.get(
+          "productName"
+        ),
+        200
+      ),
+
     texture: cleanText(
       formData.get("texture"),
       100
     ),
-    colorFamily: cleanText(
-      formData.get("colorFamily"),
-      100
-    ),
-    colorDescription: cleanText(
-      formData.get("colorDescription"),
-      300
-    ),
+
+    colorFamily:
+      cleanText(
+        formData.get(
+          "colorFamily"
+        ),
+        100
+      ),
+
+    colorDescription:
+      cleanText(
+        formData.get(
+          "colorDescription"
+        ),
+        300
+      ),
+
     colorHex: cleanHex(
       formData.get("colorHex")
     ),
-    sampleImageUrl: cleanText(
-      formData.get("sampleImageUrl"),
-      2000
-    ),
+
+    sampleImageUrl:
+      cleanText(
+        formData.get(
+          "sampleImageUrl"
+        ),
+        2000
+      ),
   };
 }
 
-/*
- * 부위별 필름 JSON 읽기
- */
-function getAreaFilms(formData) {
-  const rawValue = formData.get("areaFilms");
+function getAreaFilms(
+  formData
+) {
+  const rawValue =
+    formData.get("areaFilms");
 
   if (!rawValue) {
     return [];
   }
 
   try {
-    const parsed = JSON.parse(
-      String(rawValue)
-    );
+    const parsed =
+      JSON.parse(
+        String(rawValue)
+      );
 
-    if (!Array.isArray(parsed)) {
+    if (
+      !Array.isArray(parsed)
+    ) {
       return [];
     }
 
     return parsed
-      .slice(0, MAX_AREA_FILMS)
+      .slice(
+        0,
+        MAX_AREA_FILMS
+      )
       .map((item) => ({
-        areaKey: cleanText(
-          item?.areaKey,
-          100
-        ),
-        areaLabel: cleanText(
-          item?.areaLabel,
-          100
-        ),
-        brand: cleanText(
-          item?.brand,
-          100
-        ),
-        productCode: cleanText(
-          item?.productCode,
-          100
-        ),
-        productName: cleanText(
-          item?.productName,
-          200
-        ),
-        texture: cleanText(
-          item?.texture,
-          100
-        ),
-        colorFamily: cleanText(
-          item?.colorFamily,
-          100
-        ),
-        colorDescription: cleanText(
-          item?.colorDescription,
-          300
-        ),
-        colorHex: cleanHex(
-          item?.colorHex
-        ),
-        sampleImageUrl: cleanText(
-          item?.sampleImageUrl,
-          2000
-        ),
+        areaKey:
+          cleanText(
+            item?.areaKey,
+            100
+          ),
+
+        areaLabel:
+          cleanText(
+            item?.areaLabel,
+            100
+          ),
+
+        brand:
+          cleanText(
+            item?.brand,
+            100
+          ),
+
+        productCode:
+          cleanText(
+            item?.productCode,
+            100
+          ),
+
+        productName:
+          cleanText(
+            item?.productName,
+            200
+          ),
+
+        texture:
+          cleanText(
+            item?.texture,
+            100
+          ),
+
+        colorFamily:
+          cleanText(
+            item?.colorFamily,
+            100
+          ),
+
+        colorDescription:
+          cleanText(
+            item?.colorDescription,
+            300
+          ),
+
+        colorHex:
+          cleanHex(
+            item?.colorHex
+          ),
+
+        sampleImageUrl:
+          cleanText(
+            item?.sampleImageUrl,
+            2000
+          ),
       }))
       .filter(
         (item) =>
@@ -266,111 +339,102 @@ function getAreaFilms(formData) {
   }
 }
 
-/*
- * 부위별 영문 시공지시
- */
-function getAreaInstruction(area) {
-  const key = area.areaKey;
-  const label = area.areaLabel || key;
+function getTargetPrompt(
+  targetType
+) {
+  if (
+    targetType === "kitchen"
+  ) {
+    return [
+      "The installation target is KITCHEN CABINETRY ONLY.",
 
+      "Apply interior film only to existing visible upper cabinet doors, lower cabinet doors, drawer fronts, refrigerator cabinet doors, tall cabinet doors, pantry cabinet doors, island cabinet doors and their visible film-finished side panels.",
+
+      "Only modify a listed cabinet area when that area actually exists and is visible in IMAGE 1.",
+
+      "Do not invent, add or extend a refrigerator cabinet, tall cabinet, pantry cabinet or island cabinet when it is not present in IMAGE 1.",
+
+      "Do not apply film to any interior door or door frame visible in the kitchen photograph.",
+
+      "Preserve all room doors and door frames exactly as they appear in IMAGE 1.",
+
+      "Do not modify the countertop, backsplash, wall tiles, sink, faucet, cooktop, hood, appliances, refrigerator, window, wall, floor or ceiling.",
+    ].join(" ");
+  }
+
+  if (
+    targetType === "door"
+  ) {
+    return [
+      "The installation target is the EXISTING DOOR AND DOOR FRAME ONLY.",
+
+      "Apply interior film only to the visible moving door leaf and the surrounding door frame, jamb and casing.",
+
+      "Do not apply film to kitchen cabinets, built-in furniture, walls, floor, ceiling, glass, handles, locks, hinges, switches or other objects.",
+
+      "Preserve the exact door shape, panel design, frame shape, opening direction and hardware.",
+
+      "Do not create an additional door or change the doorway size.",
+    ].join(" ");
+  }
+
+  return [
+    "Apply interior film only to the explicitly identified existing target surfaces.",
+
+    "Do not modify unrelated doors, cabinets, walls or furniture.",
+  ].join(" ");
+}
+
+function getAreaInstruction(
+  areaKey,
+  areaLabel
+) {
   const instructions = {
-    door_leaf:
-      "Apply this film ONLY to the moving door leaf or door panel. Do not apply it to the surrounding frame, jamb, casing, wall, glass, handle, lock, hinge or hardware.",
-
-    door_frame:
-      "Apply this film ONLY to the surrounding door frame, jamb and casing surfaces normally finished with interior film. Do not apply it to the moving door leaf, wall, glass, handle, lock, hinge or hardware.",
-
     kitchen_upper:
-      "Apply this film ONLY to upper wall-mounted kitchen cabinet doors, upper drawer fronts and their visible film-finished cabinet surfaces above the countertop.",
-
-    upper_cabinet:
-      "Apply this film ONLY to upper wall-mounted kitchen cabinet doors and their visible film-finished cabinet surfaces above the countertop.",
+      "Apply this assigned film only to existing visible upper wall-mounted kitchen cabinet doors and their film-finished visible panels above the countertop.",
 
     kitchen_lower:
-      "Apply this film ONLY to lower base kitchen cabinet doors, drawer fronts and visible film-finished cabinet surfaces below the countertop.",
-
-    lower_cabinet:
-      "Apply this film ONLY to lower base cabinet doors, drawer fronts and visible film-finished surfaces below the countertop.",
+      "Apply this assigned film only to existing visible lower base cabinet doors and drawer fronts below the countertop.",
 
     fridge_cabinet:
-      "Apply this film ONLY to the refrigerator cabinet doors and refrigerator enclosure panels. Preserve the refrigerator and its hardware.",
+      "If an actual refrigerator enclosure or refrigerator cabinet is visible, apply this assigned film only to its cabinet doors and film-finished enclosure panels. If it is absent, do nothing.",
 
     tall_cabinet:
-      "Apply this film ONLY to tall cabinet doors and their visible film-finished side panels.",
+      "If an actual tall cabinet is visible, apply this assigned film only to its doors and film-finished panels. If it is absent, do nothing.",
 
     pantry_cabinet:
-      "Apply this film ONLY to pantry cabinet doors and their visible film-finished surfaces.",
+      "If an actual pantry cabinet is visible, apply this assigned film only to its doors and film-finished panels. If it is absent, do nothing.",
 
     island_cabinet:
-      "Apply this film ONLY to island cabinet doors, drawer fronts and visible film-finished side panels. Preserve the countertop.",
+      "If an actual kitchen island cabinet is visible, apply this assigned film only to its cabinet doors, drawer fronts and film-finished side panels. Preserve its countertop. If it is absent, do nothing.",
 
-    island:
-      "Apply this film ONLY to island cabinet doors, drawer fronts and visible film-finished side panels. Preserve the countertop.",
+    door_leaf:
+      "Apply this assigned film only to the existing moving door leaf or door panel. Preserve the handle, lock, hinges and glass.",
+
+    door_frame:
+      "Apply this assigned film only to the existing surrounding door frame, jamb and casing. Do not apply it to the door leaf or wall.",
   };
 
   return (
-    instructions[key] ||
-    `Apply this film ONLY to the area identified as "${label}". Do not apply it to unrelated surfaces.`
+    instructions[areaKey] ||
+    `Apply this assigned film only to the existing visible area identified as "${areaLabel}". If that area is absent, do nothing.`
   );
 }
 
-/*
- * 선택 필름 설명
- */
-function makeFilmDescription(
-  film,
-  imageNumber
-) {
+function getFilmKey(film) {
   return [
-    `REFERENCE IMAGE ${imageNumber} is the actual physical sample for "${film.areaLabel || film.areaKey}".`,
-
-    `Selected product: ${[
-      film.brand,
-      film.productCode,
-    ]
-      .filter(Boolean)
-      .join(" ")}.`,
-
-    film.productName
-      ? `Product name: ${film.productName}.`
-      : "",
-
-    film.texture
-      ? `Material or texture: ${film.texture}.`
-      : "",
-
-    film.colorFamily
-      ? `Color family: ${film.colorFamily}.`
-      : "",
-
-    film.colorDescription
-      ? `Color description: ${film.colorDescription}.`
-      : "",
-
-    film.colorHex
-      ? `Approximate digital color: ${film.colorHex}.`
-      : "",
-
-    getAreaInstruction(film),
-
-    `For "${film.areaLabel || film.areaKey}", REFERENCE IMAGE ${imageNumber} has priority over the text description and HEX value.`,
-
-    "Match the sample's dominant color, undertone, grain, pattern, texture, direction, contrast and material character.",
+    film.productCode,
+    film.sampleImageUrl,
   ]
     .filter(Boolean)
-    .join(" ");
+    .join("|");
 }
 
-/*
- * 샘플 이미지가 없을 때 사용할 필름 설명
- */
-function makeTextOnlyFilmDescription(
+function getFilmDetails(
   film
 ) {
   return [
-    `Target area: ${film.areaLabel || film.areaKey}.`,
-
-    `Selected product: ${[
+    `Selected film: ${[
       film.brand,
       film.productCode,
     ]
@@ -382,7 +446,7 @@ function makeTextOnlyFilmDescription(
       : "",
 
     film.texture
-      ? `Material or texture: ${film.texture}.`
+      ? `Texture or material: ${film.texture}.`
       : "",
 
     film.colorFamily
@@ -394,70 +458,58 @@ function makeTextOnlyFilmDescription(
       : "",
 
     film.colorHex
-      ? `Approximate digital color: ${film.colorHex}.`
+      ? `Approximate color: ${film.colorHex}.`
       : "",
-
-    getAreaInstruction(film),
   ]
     .filter(Boolean)
     .join(" ");
 }
 
-/*
- * 공통 이미지 보존 지시문
- */
 function getPreservationPrompt() {
   return [
     "Create one photorealistic virtual interior-film installation preview.",
 
-    "IMAGE 1 is the customer's original real interior photo and must remain the structural base image.",
+    "IMAGE 1 is the customer's original photograph and must remain the structural base image.",
 
-    "Preserve the original room layout, architecture, camera position, camera angle, perspective, dimensions and proportions.",
+    "Preserve the original room layout, camera angle, perspective, crop, dimensions and proportions.",
 
-    "Preserve the exact number, size, position and shape of all cabinet doors, drawers, panels, door leaves and frames.",
+    "Preserve the exact number, size, position, shape and division of all doors, frames, cabinet doors, drawers and panels.",
 
     "Preserve handles, hinges, locks, rails, glass, appliances, fixtures, switches and all hardware.",
 
-    "Preserve walls, floor, ceiling, countertop, backsplash, sink, faucet, cooktop, hood and appliances unless a surface is explicitly identified as an interior-film target.",
+    "Change only the surface color and material finish of the specified installation targets.",
 
-    "Change only the visible finish of the specifically identified installation surfaces.",
-
-    "Do not add or remove any object.",
+    "Do not add or remove objects.",
 
     "Do not redesign the room or furniture.",
 
-    "Do not change cabinet divisions or door divisions.",
+    "Do not change cabinet divisions, door divisions or hardware.",
 
-    "Do not change the size or position of any object.",
+    "Do not move, enlarge or shrink any object.",
 
-    "Do not replace handles or hardware.",
+    "Do not remove boxes, appliances or objects from the original photograph.",
 
-    "Do not turn solid panels into glass or glass into solid panels.",
+    "Do not clean up, stage or reorganize the room.",
 
-    "Do not mix films assigned to different areas.",
+    "For wood film, preserve realistic grain direction, pattern scale and natural variation.",
 
-    "For wood film, use realistic grain direction, scale and natural variation.",
+    "For solid film, preserve realistic lighting, shadows, edges and reflections.",
 
-    "For stone or marble film, preserve realistic pattern scale and vein character.",
+    "For stone, marble, metal, fabric or leather film, preserve realistic material scale and texture.",
 
-    "For metal film, preserve its directional surface character and realistic sheen.",
-
-    "For solid-color film, maintain a clean, uniform color while preserving realistic lighting, shadows and reflections.",
-
-    "Adapt the film naturally to each surface's perspective, edges, corners, seams, highlights and shadows.",
+    "Adapt the selected film naturally to each target surface's perspective, seams, edges, corners, highlights and shadows.",
 
     "The result must look like the same real room photographed after professional interior-film installation.",
 
-    "Return only one completed photorealistic interior image.",
+    "Return only one completed photorealistic image.",
 
-    "Do not include text, labels, arrows, sample boards, split screens, borders, annotations or watermarks.",
+    "Do not include text, labels, arrows, borders, sample boards, split screens, annotations or watermarks.",
   ].join(" ");
 }
 
-/*
- * OpenAI 오류 메시지 정리
- */
-function getOpenAIError(result) {
+function getOpenAIError(
+  result
+) {
   const message =
     result?.error?.message ||
     result?.message ||
@@ -467,16 +519,17 @@ function getOpenAIError(result) {
     return "OpenAI 이미지 생성 요청에 실패했습니다.";
   }
 
+  const lower =
+    message.toLowerCase();
+
   if (
-    message.toLowerCase().includes(
-      "billing"
-    )
+    lower.includes("billing")
   ) {
     return "OpenAI API 잔액 또는 결제 설정을 확인해주세요.";
   }
 
   if (
-    message.toLowerCase().includes(
+    lower.includes(
       "rate limit"
     )
   ) {
@@ -486,12 +539,14 @@ function getOpenAIError(result) {
   return message;
 }
 
-/*
- * 가상 시공 API
- */
-export async function POST(request) {
+export async function POST(
+  request
+) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    if (
+      !process.env
+        .OPENAI_API_KEY
+    ) {
       return NextResponse.json(
         {
           error:
@@ -509,11 +564,13 @@ export async function POST(request) {
     const image =
       requestData.get("image");
 
-    if (!(image instanceof File)) {
+    if (
+      !(image instanceof File)
+    ) {
       return NextResponse.json(
         {
           error:
-            "가상 시공할 사진이 없습니다.",
+            "가상시공할 사진이 없습니다.",
         },
         {
           status: 400,
@@ -522,7 +579,9 @@ export async function POST(request) {
     }
 
     if (
-      !image.type?.startsWith("image/")
+      !image.type?.startsWith(
+        "image/"
+      )
     ) {
       return NextResponse.json(
         {
@@ -537,7 +596,8 @@ export async function POST(request) {
 
     if (
       !image.size ||
-      image.size > MAX_IMAGE_SIZE
+      image.size >
+        MAX_IMAGE_SIZE
     ) {
       return NextResponse.json(
         {
@@ -550,10 +610,38 @@ export async function POST(request) {
       );
     }
 
-    const primaryFilm =
-      getPrimaryFilm(requestData);
+    const targetType =
+      cleanText(
+        requestData.get(
+          "targetType"
+        ),
+        30
+      );
 
-    if (!primaryFilm.productCode) {
+    if (
+      targetType !==
+        "kitchen" &&
+      targetType !== "door"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "싱크대·주방가구 또는 문·문틀을 선택해주세요.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const primaryFilm =
+      getPrimaryFilm(
+        requestData
+      );
+
+    if (
+      !primaryFilm.productCode
+    ) {
       return NextResponse.json(
         {
           error:
@@ -567,38 +655,122 @@ export async function POST(request) {
 
     const useSplitTone =
       String(
-        requestData.get("useSplitTone") ||
-          ""
+        requestData.get(
+          "useSplitTone"
+        ) || ""
       ) === "true";
 
-    const parsedAreaFilms =
-      useSplitTone
-        ? getAreaFilms(requestData)
-        : [];
+    /*
+     * 단일 컬러여도 부위 목록은 항상 받습니다.
+     * 그래야 싱크대 사진의 문이 변경되는 것을 막을 수 있습니다.
+     */
+    let areaFilms =
+      getAreaFilms(
+        requestData
+      );
+
+    if (!areaFilms.length) {
+      const defaultAreas =
+        targetType === "kitchen"
+          ? [
+              {
+                key:
+                  "kitchen_upper",
+                label: "상부장",
+              },
+              {
+                key:
+                  "kitchen_lower",
+                label: "하부장",
+              },
+              {
+                key:
+                  "fridge_cabinet",
+                label:
+                  "냉장고장",
+              },
+              {
+                key:
+                  "tall_cabinet",
+                label: "키큰장",
+              },
+              {
+                key:
+                  "pantry_cabinet",
+                label:
+                  "팬트리장",
+              },
+              {
+                key:
+                  "island_cabinet",
+                label:
+                  "아일랜드장",
+              },
+            ]
+          : [
+              {
+                key:
+                  "door_leaf",
+                label: "문짝",
+              },
+              {
+                key:
+                  "door_frame",
+                label: "문틀",
+              },
+            ];
+
+      areaFilms =
+        defaultAreas.map(
+          (area) => ({
+            ...primaryFilm,
+            areaKey:
+              area.key,
+            areaLabel:
+              area.label,
+          })
+        );
+    }
 
     /*
-     * 부위별 필름이 정상적으로 전달되면 부위별 목록을 사용하고,
-     * 그렇지 않으면 기본 필름 한 개를 사용합니다.
+     * 동일한 필름은 샘플 이미지를 한 번만 전송합니다.
      */
-    const requestedFilms =
-      useSplitTone &&
-      parsedAreaFilms.length > 0
-        ? parsedAreaFilms
-        : [primaryFilm];
+    const uniqueFilmMap =
+      new Map();
 
-    /*
-     * 동일 제품·샘플을 사용하는 부위가 있어도
-     * 부위 지시문은 각각 유지합니다.
-     */
-    const filmsWithReferences = [];
+    areaFilms.forEach(
+      (film) => {
+        const key =
+          getFilmKey(film);
+
+        if (
+          !uniqueFilmMap.has(
+            key
+          )
+        ) {
+          uniqueFilmMap.set(
+            key,
+            film
+          );
+        }
+      }
+    );
+
+    const uniqueFilms = [
+      ...uniqueFilmMap.values(),
+    ];
+
+    const referenceFilms =
+      [];
 
     for (
       let index = 0;
-      index < requestedFilms.length;
+      index <
+      uniqueFilms.length;
       index += 1
     ) {
       const film =
-        requestedFilms[index];
+        uniqueFilms[index];
 
       const sampleImage =
         await fetchSampleImage(
@@ -607,55 +779,121 @@ export async function POST(request) {
           index + 1
         );
 
-      filmsWithReferences.push({
+      referenceFilms.push({
         ...film,
         sampleImage,
+        imageNumber:
+          sampleImage
+            ? index + 2
+            : null,
       });
+    }
+
+    function findReference(
+      areaFilm
+    ) {
+      const key =
+        getFilmKey(
+          areaFilm
+        );
+
+      return (
+        referenceFilms.find(
+          (film) =>
+            getFilmKey(
+              film
+            ) === key
+        ) || null
+      );
     }
 
     const promptParts = [
       getPreservationPrompt(),
+      getTargetPrompt(
+        targetType
+      ),
     ];
 
-    /*
-     * IMAGE 1은 고객 사진입니다.
-     * 샘플 이미지 번호는 IMAGE 2부터 시작합니다.
-     */
-    let nextImageNumber = 2;
-
-    filmsWithReferences.forEach(
+    referenceFilms.forEach(
       (film) => {
-        if (film.sampleImage) {
+        if (
+          film.sampleImage &&
+          film.imageNumber
+        ) {
           promptParts.push(
-            makeFilmDescription(
-              film,
-              nextImageNumber
+            `REFERENCE IMAGE ${film.imageNumber} is the actual physical sample for ${film.brand} ${film.productCode}.`
+          );
+
+          promptParts.push(
+            getFilmDetails(
+              film
             )
           );
 
-          nextImageNumber += 1;
-        } else {
           promptParts.push(
-            makeTextOnlyFilmDescription(
-              film
-            )
+            `REFERENCE IMAGE ${film.imageNumber} has priority over text descriptions and HEX values for this film.`
           );
         }
       }
     );
 
-    if (
-      useSplitTone &&
-      requestedFilms.length > 1
-    ) {
+    areaFilms.forEach(
+      (film) => {
+        const reference =
+          findReference(film);
+
+        promptParts.push(
+          `Target area: ${
+            film.areaLabel ||
+            film.areaKey
+          }.`
+        );
+
+        promptParts.push(
+          getAreaInstruction(
+            film.areaKey,
+            film.areaLabel
+          )
+        );
+
+        promptParts.push(
+          getFilmDetails(
+            film
+          )
+        );
+
+        if (
+          reference
+            ?.sampleImage &&
+          reference
+            ?.imageNumber
+        ) {
+          promptParts.push(
+            `For ${
+              film.areaLabel ||
+              film.areaKey
+            }, match REFERENCE IMAGE ${reference.imageNumber}.`
+          );
+        }
+      }
+    );
+
+    if (useSplitTone) {
       promptParts.push(
-        "This is a MULTI-FINISH installation. Every selected film must be applied only to its assigned target area. Keep all assigned areas visually distinct and do not swap or blend their finishes."
+        "This is a MULTI-TONE installation. Keep every assigned film restricted to its own target area. Do not swap, blend or mix finishes between different areas."
       );
     } else {
       promptParts.push(
-        "Apply the selected film only to the main clearly refinishable surface requested in the photo, such as cabinet doors, door leaf, door frame, molding or built-in furniture."
+        "This is a UNIFIED-COLOR installation. Apply the same selected film consistently to all existing visible target areas for the selected installation type."
       );
     }
+
+    promptParts.push(
+      targetType ===
+        "kitchen"
+        ? "Final check: kitchen cabinet surfaces may change, but every room door and door frame must remain unchanged."
+        : "Final check: the selected door and door frame may change, but every kitchen cabinet and other piece of furniture must remain unchanged."
+    );
 
     const prompt =
       promptParts
@@ -667,32 +905,31 @@ export async function POST(request) {
 
     openAIForm.append(
       "model",
-      process.env.OPENAI_IMAGE_MODEL ||
+      process.env
+        .OPENAI_IMAGE_MODEL ||
         "gpt-image-1.5"
     );
 
-    /*
-     * IMAGE 1: 고객 원본 사진
-     */
     openAIForm.append(
       "image[]",
       image,
-      image.name || "interior.jpg"
+      image.name ||
+        "interior.jpg"
     );
 
-    /*
-     * IMAGE 2 이후: 실제 필름 샘플
-     */
-    filmsWithReferences.forEach(
+    referenceFilms.forEach(
       (film) => {
-        if (!film.sampleImage) {
+        if (
+          !film.sampleImage
+        ) {
           return;
         }
 
         openAIForm.append(
           "image[]",
           film.sampleImage,
-          film.sampleImage.name
+          film.sampleImage
+            .name
         );
       }
     );
@@ -704,13 +941,15 @@ export async function POST(request) {
 
     openAIForm.append(
       "size",
-      process.env.OPENAI_IMAGE_SIZE ||
+      process.env
+        .OPENAI_IMAGE_SIZE ||
         "1024x1024"
     );
 
     openAIForm.append(
       "quality",
-      process.env.OPENAI_IMAGE_QUALITY ||
+      process.env
+        .OPENAI_IMAGE_QUALITY ||
         "low"
     );
 
@@ -724,59 +963,68 @@ export async function POST(request) {
       "70"
     );
 
-    const response = await fetch(
-      "https://api.openai.com/v1/images/edits",
-      {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: openAIForm,
-        signal: AbortSignal.timeout(55000),
-      }
-    );
+    const response =
+      await fetch(
+        "https://api.openai.com/v1/images/edits",
+        {
+          method: "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+
+          body:
+            openAIForm,
+
+          signal:
+            AbortSignal.timeout(
+              55000
+            ),
+        }
+      );
 
     const result =
       await response
         .json()
-        .catch(() => ({}));
+        .catch(
+          () => ({})
+        );
 
     if (!response.ok) {
       console.error(
-        "가상 시공 OpenAI 오류:",
+        "가상시공 API 오류:",
         result
       );
 
       return NextResponse.json(
         {
           error:
-            getOpenAIError(result),
+            getOpenAIError(
+              result
+            ),
         },
         {
           status:
-            response.status >= 400 &&
-            response.status < 600
+            response.status >=
+              400 &&
+            response.status <
+              600
               ? response.status
               : 502,
         }
       );
     }
 
-    const resultItem =
+    const item =
       result?.data?.[0];
 
     const imageUrl =
-      resultItem?.b64_json
-        ? `data:image/webp;base64,${resultItem.b64_json}`
-        : resultItem?.url;
+      item?.b64_json
+        ? `data:image/webp;base64,${item.b64_json}`
+        : item?.url;
 
     if (!imageUrl) {
-      console.error(
-        "생성 이미지 없음:",
-        result
-      );
-
       return NextResponse.json(
         {
           error:
@@ -791,15 +1039,15 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       imageUrl,
+      targetType,
+      useSplitTone,
       productCode:
         primaryFilm.productCode,
-      useSplitTone:
-        useSplitTone &&
-        requestedFilms.length > 1,
       appliedAreas:
-        requestedFilms.map(
+        areaFilms.map(
           (film) => ({
-            areaKey: film.areaKey,
+            areaKey:
+              film.areaKey,
             areaLabel:
               film.areaLabel,
             productCode:
@@ -807,18 +1055,19 @@ export async function POST(request) {
           })
         ),
       sampleReferenceCount:
-        filmsWithReferences.filter(
+        referenceFilms.filter(
           (film) =>
             Boolean(
               film.sampleImage
             )
         ).length,
       usage:
-        result?.usage || null,
+        result?.usage ||
+        null,
     });
   } catch (error) {
     console.error(
-      "가상 시공 처리 오류:",
+      "가상시공 처리 오류:",
       error
     );
 
@@ -843,11 +1092,11 @@ export async function POST(request) {
       {
         error:
           error?.message ||
-          "가상 시공 이미지 생성 중 오류가 발생했습니다.",
+          "가상시공 이미지 생성 중 오류가 발생했습니다.",
       },
       {
         status: 500,
       }
     );
   }
-    }
+           }
