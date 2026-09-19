@@ -1,222 +1,253 @@
 // app/utils/estimatePrice.js
 
-// ======================================================
-// 인테리어필름 자재 단가에 따른 견적 보정
-//
-// 현재 AI 자동견적은 솔리드 필름 기준.
-//
-// 전체 시공 견적 중:
-// - 인건비 + 기타 비용 = 70%
-// - 필름 자재비 = 30%
-//
-// 자재비 30%에만 선택 필름의 가격 차이를 적용.
-//
-// 솔리드 소비자 기준단가:
-// - 비방염 S = 11,000원/m
-// - 방염 S   = 15,000원/m
-// ======================================================
+/*
+ * =========================================================
+ * 견적 계산 기준
+ * =========================================================
+ *
+ * AI 기본견적은
+ * SOLID 비방염 11,000원/m 기준으로 계산된 견적으로 봅니다.
+ *
+ * 전체 견적 구성:
+ *
+ * 70% = 인건비 + 기타 비용
+ * 30% = 필름 자재비
+ *
+ * 따라서 필름 종류나 방염 여부가 바뀌면
+ * 전체 금액이 아니라 자재비 30%에만
+ * 선택 필름의 단가 차이를 반영합니다.
+ */
 
 export const MATERIAL_COST_RATIO = 0.3;
+
 export const LABOR_OTHER_RATIO = 0.7;
 
-export const SOLID_BASE_PRICE = {
-  non_fire: 11000,
-  fire: 15000,
-};
+/*
+ * 중요:
+ *
+ * 방염을 선택하더라도 기준단가는
+ * SOLID 방염 15,000원이 아닙니다.
+ *
+ * 모든 견적의 기준은
+ * SOLID 비방염 11,000원으로 고정합니다.
+ */
+
+export const SOLID_BASE_PRICE = 11000;
 
 
-// ------------------------------------------------------
-// 선택한 필름의 m당 가격
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 선택 필름 가격 가져오기
+ * =========================================================
+ */
 
 export function getFilmPrice(
-  film,
+  selectedFilm,
   fireType = "non_fire"
 ) {
-  if (!film) {
+  if (!selectedFilm) {
     return 0;
   }
 
   if (fireType === "fire") {
     return Number(
-      film.fire_price_per_meter || 0
+      selectedFilm.fire_price_per_meter || 0
     );
   }
 
   return Number(
-    film.non_fire_price_per_meter || 0
+    selectedFilm.non_fire_price_per_meter || 0
   );
 }
 
 
-// ------------------------------------------------------
-// 솔리드 기준가격
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 기준가격
+ * =========================================================
+ *
+ * 어떤 필름을 선택하든
+ * 어떤 방염 조건을 선택하든
+ *
+ * SOLID 비방염 11,000원 기준입니다.
+ */
 
-export function getSolidBasePrice(
-  fireType = "non_fire"
-) {
-  return Number(
-    SOLID_BASE_PRICE[fireType] ||
-      SOLID_BASE_PRICE.non_fire
-  );
+export function getSolidBasePrice() {
+  return SOLID_BASE_PRICE;
 }
 
 
-// ------------------------------------------------------
-// 해당 제품의 가격정보 존재 여부
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 가격정보 존재 여부
+ * =========================================================
+ */
 
 export function hasFilmPrice(
-  film,
+  selectedFilm,
   fireType = "non_fire"
 ) {
   return (
     getFilmPrice(
-      film,
+      selectedFilm,
       fireType
     ) > 0
   );
 }
 
 
-// ------------------------------------------------------
-// 선택 필름과 솔리드의 가격 배율
-//
-// 예:
-// 비방염 SPW = 19,000원
-// 비방염 솔리드 = 11,000원
-//
-// 19,000 / 11,000 = 약 1.727
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 선택 필름 가격비율
+ * =========================================================
+ *
+ * 예:
+ *
+ * SOLID 비방염
+ * 11,000 / 11,000 = 1.000
+ *
+ * SOLID 방염
+ * 15,000 / 11,000 = 1.364
+ *
+ * RM 비방염
+ * 17,000 / 11,000 = 1.545
+ *
+ * RM 방염
+ * 21,000 / 11,000 = 1.909
+ */
 
 export function getMaterialPriceRatio(
-  film,
+  selectedFilm,
   fireType = "non_fire"
 ) {
-  const filmPrice =
+  const selectedPrice =
     getFilmPrice(
-      film,
+      selectedFilm,
       fireType
     );
 
-  const solidPrice =
-    getSolidBasePrice(
-      fireType
-    );
-
-  if (
-    !filmPrice ||
-    !solidPrice
-  ) {
+  if (!selectedPrice) {
     return 1;
   }
 
   return (
-    filmPrice /
-    solidPrice
+    selectedPrice /
+    SOLID_BASE_PRICE
   );
 }
 
 
-// ------------------------------------------------------
-// 하나의 견적금액 보정
-//
-// 예:
-// 기존견적 = 1,000,000원
-//
-// 70%
-// = 700,000원
-//
-// 자재비 30%
-// = 300,000원
-//
-// SPW 비방염
-// 19,000 / 11,000
-// = 1.727배
-//
-// 보정 자재비
-// 300,000 × 1.727
-// = 약 518,182원
-//
-// 최종
-// = 약 1,218,182원
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 최종 견적 계산
+ * =========================================================
+ *
+ * 계산식:
+ *
+ * 최종견적
+ * =
+ * 기본견적 × 70%
+ * +
+ * 기본견적 × 30%
+ * ×
+ * (선택필름단가 / 11,000)
+ */
 
 export function adjustEstimateByFilm(
   basePrice,
-  film,
+  selectedFilm,
   fireType = "non_fire"
 ) {
-  const base =
-    Number(basePrice || 0);
+  const price = Number(
+    basePrice || 0
+  );
 
-  if (!base) {
-    return 0;
-  }
-
-  // 필름 미선택
-  // → 기존 솔리드 기준 견적 유지
-  if (!film) {
-    return Math.round(base);
-  }
-
-  const filmPrice =
-    getFilmPrice(
-      film,
-      fireType
-    );
-
-  const solidPrice =
-    getSolidBasePrice(
-      fireType
-    );
-
-  // 가격표에 단가가 없는 제품
-  // → 임의 추정하지 않고 기존 견적 유지
   if (
-    !filmPrice ||
-    !solidPrice
+    !price ||
+    !selectedFilm
   ) {
-    return Math.round(base);
+    return Math.round(
+      price / 1000
+    ) * 1000;
   }
+
+  const selectedMaterialPrice =
+    getFilmPrice(
+      selectedFilm,
+      fireType
+    );
+
+  /*
+   * 선택한 조건의 가격정보가 없으면
+   * 기본 AI 견적을 그대로 유지
+   */
+
+  if (!selectedMaterialPrice) {
+    return Math.round(
+      price / 1000
+    ) * 1000;
+  }
+
+  /*
+   * 인건비 + 기타
+   */
 
   const laborAndOther =
-    base *
+    price *
     LABOR_OTHER_RATIO;
 
-  const baseMaterialCost =
-    base *
+  /*
+   * 기본 자재비
+   */
+
+  const materialBase =
+    price *
     MATERIAL_COST_RATIO;
 
-  const materialRatio =
-    filmPrice /
-    solidPrice;
+  /*
+   * SOLID 비방염 11,000원 대비
+   * 선택 필름 가격비율
+   */
 
-  const adjustedMaterialCost =
-    baseMaterialCost *
+  const materialRatio =
+    selectedMaterialPrice /
+    SOLID_BASE_PRICE;
+
+  /*
+   * 조정된 자재비
+   */
+
+  const adjustedMaterial =
+    materialBase *
     materialRatio;
+
+  /*
+   * 최종견적
+   */
 
   const result =
     laborAndOther +
-    adjustedMaterialCost;
+    adjustedMaterial;
 
-  // 기존 견적처럼 천원 단위로 정리
-  return (
-    Math.round(
-      result / 1000
-    ) * 1000
-  );
+  /*
+   * 1,000원 단위 반올림
+   */
+
+  return Math.round(
+    result / 1000
+  ) * 1000;
 }
 
 
-// ------------------------------------------------------
-// min / average / max 견적을 한 번에 보정
-// ------------------------------------------------------
+/*
+ * =========================================================
+ * 견적 범위 한번에 계산
+ * =========================================================
+ */
 
 export function adjustEstimateRange(
   estimate,
-  film,
+  selectedFilm,
   fireType = "non_fire"
 ) {
   if (!estimate) {
@@ -229,22 +260,22 @@ export function adjustEstimateRange(
     min:
       adjustEstimateByFilm(
         estimate.min,
-        film,
-        fireType
-      ),
-
-    average:
-      adjustEstimateByFilm(
-        estimate.average,
-        film,
+        selectedFilm,
         fireType
       ),
 
     max:
       adjustEstimateByFilm(
         estimate.max,
-        film,
+        selectedFilm,
+        fireType
+      ),
+
+    average:
+      adjustEstimateByFilm(
+        estimate.average,
+        selectedFilm,
         fireType
       ),
   };
-}
+    }
