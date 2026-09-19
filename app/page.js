@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -11,6 +12,7 @@ import EstimateResult from "./components/EstimateResult";
 import EstimateTotal from "./components/EstimateTotal";
 import ServiceSelector from "./components/ServiceSelector";
 import FilmPriceSelector from "./components/FilmPriceSelector";
+import FilmAdjustedEstimate from "./components/FilmAdjustedEstimate";
 import LeadForm from "./components/LeadForm";
 
 import useEstimate from "./hooks/useEstimate";
@@ -59,14 +61,15 @@ export default function Home() {
   ] = useState(null);
 
   /*
-   * 기본은 비방염
+   * 기본 시공조건 = 비방염
    */
+
   const [fireType, setFireType] =
     useState("non_fire");
 
   /*
    * =========================================================
-   * 상담 신청
+   * 상담 신청 상태
    * =========================================================
    */
 
@@ -158,10 +161,17 @@ export default function Home() {
    * 필름 선택
    * =========================================================
    *
-   * FilmColorPicker가 가격 컬럼을 아직 전달하지 않는
-   * 경우에도 film_products에서 다시 조회합니다.
+   * FilmColorPicker가 가격정보를 가지고 있으면 그대로 사용.
    *
-   * 고객 화면에는 단가를 표시하지 않습니다.
+   * 가격정보가 없는 경우
+   * film_products에서 해당 제품의
+   *
+   * fire_price_per_meter
+   * non_fire_price_per_meter
+   *
+   * 를 다시 조회합니다.
+   *
+   * 실제 m당 가격은 고객 화면에 표시하지 않습니다.
    */
 
   async function handleFilmSelect(
@@ -188,10 +198,10 @@ export default function Home() {
       ) > 0;
 
     /*
-     * 현재 FilmColorPicker에서
-     * 가격 컬럼을 안 가져오는 경우
-     * DB에서 선택 제품 가격만 추가 조회
+     * FilmColorPicker에서 가격이
+     * 전달되지 않은 경우 DB 재조회
      */
+
     if (!alreadyHasPrice) {
       try {
         let query =
@@ -255,13 +265,18 @@ export default function Home() {
       }
     }
 
+    /*
+     * 가격까지 합쳐진 필름정보 저장
+     */
+
     setSelectedFilm(
       completedFilm
     );
 
     /*
-     * 선택 제품에 비방염 가격이 없고
-     * 방염 가격만 있으면 자동으로 방염 선택
+     * 선택한 제품이
+     * 비방염/방염 중 한 종류만 존재하면
+     * 가능한 조건으로 자동 선택
      */
 
     const hasNonFire =
@@ -293,18 +308,18 @@ export default function Home() {
 
   /*
    * =========================================================
-   * 필름 가격을 반영한 부위별 견적
+   * 선택 필름 적용 부위별 수정견적
    * =========================================================
    *
-   * 기존 AI 견적:
-   * 솔리드 필름 기준
+   * AI 기본견적은 솔리드 필름 기준.
    *
-   * 전체 견적 중:
-   * 70% = 인건비/기타
-   * 30% = 자재비
+   * 견적의
    *
-   * 따라서 자재비 30%만
-   * 선택 필름 가격 비율을 적용합니다.
+   * 70% = 인건비 + 기타
+   * 30% = 필름 자재비
+   *
+   * 자재비 30%에만
+   * 선택 필름의 가격 차이를 적용합니다.
    */
 
   const displayGroups =
@@ -351,7 +366,7 @@ export default function Home() {
 
   /*
    * =========================================================
-   * 필름 가격을 반영한 총 견적
+   * 선택 필름 적용 총 수정견적
    * =========================================================
    */
 
@@ -394,8 +409,8 @@ export default function Home() {
    * 상담 사진 저장
    * =========================================================
    *
-   * 자동견적 실행 때 저장한 사진이 있으면
-   * 다시 업로드하지 않습니다.
+   * 자동견적 단계에서 사진을 이미 저장했다면
+   * 같은 Storage 경로를 그대로 재사용합니다.
    */
 
   async function uploadLeadPhotos() {
@@ -569,15 +584,18 @@ export default function Home() {
 
     try {
       /*
-       * 자동견적 사진경로 재사용
+       * 자동견적 때 저장한
+       * 고객사진 경로 재사용
        */
 
       const customerPhotoPaths =
         await uploadLeadPhotos();
 
       /*
-       * 선택 필름이 있으면
-       * 조정된 견적을 상담 데이터에 저장
+       * 부위별 최종 견적
+       *
+       * 필름을 선택했다면
+       * 수정된 견적이 들어갑니다.
        */
 
       const estimateDetails =
@@ -664,6 +682,10 @@ export default function Home() {
           )
           .join("\n");
 
+      /*
+       * 카테고리
+       */
+
       const categoryText =
         groups
           .map(
@@ -701,10 +723,10 @@ export default function Home() {
         );
 
       /*
-       * 선택 자재 정보
+       * 선택한 필름정보도
+       * 상담 관리자 메모에 저장
        *
-       * 실제 m당 가격은 고객에게 표시하지 않고
-       * 관리자 메모에 제품/방염 여부만 저장합니다.
+       * m당 단가는 고객에게 표시하지 않습니다.
        */
 
       if (selectedFilm) {
@@ -730,6 +752,10 @@ export default function Home() {
           }`
         );
       }
+
+      /*
+       * 상담 저장
+       */
 
       const response =
         await fetch(
@@ -768,8 +794,8 @@ export default function Home() {
                   description,
 
                 /*
-                 * 선택 필름이 있으면
-                 * 자재비 조정 후 최종 견적 저장
+                 * 필름 선택 후 수정된
+                 * 최종 예상견적 저장
                  */
 
                 estimate_min:
@@ -853,9 +879,6 @@ export default function Home() {
    * =========================================================
    * 사진 추가
    * =========================================================
-   *
-   * 새로운 사진을 추가하면
-   * 이전 서비스/필름 선택 상태를 초기화합니다.
    */
 
   async function handleAddImages(
@@ -944,6 +967,7 @@ export default function Home() {
     <main
       style={{
         maxWidth: "720px",
+
         margin: "0 auto",
 
         padding:
@@ -1065,7 +1089,7 @@ export default function Home() {
         }
       />
 
-      {/* 4. 다음 서비스 */}
+      {/* 4. 서비스 선택 */}
 
       <ServiceSelector
         groups={groups}
@@ -1077,20 +1101,22 @@ export default function Home() {
         }
       />
 
-      {/* 5. 가상시공 */}
+      {/* 5. 가상 시공 */}
 
       {groups.length >
         0 &&
         resultMode ===
           "virtual" && (
           <>
+            {/* 필름 선택 */}
+
             <FilmColorPicker
               onSelect={
                 handleFilmSelect
               }
             />
 
-            {/* 필름 선택 후 방염/비방염 */}
+            {/* 방염 / 비방염 */}
 
             <FilmPriceSelector
               selectedFilm={
@@ -1103,6 +1129,30 @@ export default function Home() {
                 setFireType
               }
             />
+
+            {/*
+             * 선택 필름 적용 수정견적
+             *
+             * 가상이미지 생성 버튼보다
+             * 먼저 보여줍니다.
+             */}
+
+            <FilmAdjustedEstimate
+              selectedFilm={
+                selectedFilm
+              }
+              fireType={
+                fireType
+              }
+              baseEstimate={
+                totalEstimate
+              }
+              adjustedEstimate={
+                displayTotalEstimate
+              }
+            />
+
+            {/* 가상 시공 */}
 
             <VirtualInstallPanel
               images={
@@ -1187,4 +1237,4 @@ export default function Home() {
       </div>
     </main>
   );
-  }
+            }
