@@ -30,7 +30,7 @@ import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
 import WorkerManagement from "./WorkerManagement";
 import useSites from "../hooks/useSites";
- useWorkers from "./hooks/useWorkers";
+import useWorkers from "./hooks/useWorkers";
 import {
   getCachedSignedUrl,
   setCachedSignedUrl,
