@@ -1,22 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { supabase } from "../lib/supabase";
 
 import FilmColorPicker from "./FilmColorPicker";
 import VirtualInstallPanel from "./VirtualInstallPanel";
+import VirtualToneSelector from "./components/VirtualToneSelector";
+
 import EstimatePhotoUploader from "./components/EstimatePhotoUploader";
 import EstimateResult from "./components/EstimateResult";
+import EstimateTotal from "./components/EstimateTotal";
 import ServiceSelector from "./components/ServiceSelector";
 import FilmPriceSelector from "./components/FilmPriceSelector";
 import FilmAdjustedEstimate from "./components/FilmAdjustedEstimate";
 import LeadForm from "./components/LeadForm";
-import VirtualToneSelector from "./components/VirtualToneSelector";
 
 import useEstimate from "./hooks/useEstimate";
-import { adjustEstimateByFilm } from "./utils/estimatePrice";
+
+import {
+  adjustEstimateByFilm,
+} from "./utils/estimatePrice";
 
 export default function Home() {
+  /*
+   * =========================================================
+   * AI 자동견적
+   * =========================================================
+   */
+
   const {
     images,
     loading,
@@ -24,71 +36,153 @@ export default function Home() {
     message,
     groups,
     totalEstimate,
+
     usageIdRef,
     estimatePhotoPathsRef,
+
     addImages,
     removeImage,
     handleAnalyze,
+
     readJsonSafely,
   } = useEstimate();
 
-  const [resultMode, setResultMode] = useState("");
-  const [showEstimateDetails, setShowEstimateDetails] =
-    useState(false);
-  const [showFilmPicker, setShowFilmPicker] =
-    useState(true);
-  const [selectedFilm, setSelectedFilm] =
-    useState(null);
+  /*
+   * =========================================================
+   * 화면 상태
+   * =========================================================
+   */
+
+  const [resultMode, setResultMode] =
+    useState("");
+
+  const [
+    selectedFilm,
+    setSelectedFilm,
+  ] = useState(null);
+
+  /*
+   * 기본 시공조건 = 비방염
+   */
+
   const [fireType, setFireType] =
     useState("non_fire");
-  const [useSplitTone, setUseSplitTone] =
-    useState(false);
-  const [areaFilms, setAreaFilms] =
-    useState({});
 
-  const [customerName, setCustomerName] =
-    useState("");
+  /*
+   * 부분 톤 차이
+   */
+
+  const [
+    useSplitTone,
+    setUseSplitTone,
+  ] = useState(false);
+
+  const [
+    areaFilms,
+    setAreaFilms,
+  ] = useState({});
+
+  /*
+   * =========================================================
+   * 상담 신청 상태
+   * =========================================================
+   */
+
+  const [
+    customerName,
+    setCustomerName,
+  ] = useState("");
+
   const [phone, setPhone] =
     useState("");
+
   const [region, setRegion] =
     useState("");
-  const [privacyAgree, setPrivacyAgree] =
-    useState(false);
-  const [leadLoading, setLeadLoading] =
-    useState(false);
-  const [leadComplete, setLeadComplete] =
-    useState(false);
-  const [leadMessage, setLeadMessage] =
-    useState("");
 
-  function handlePhoneChange(value) {
-    const numbers = String(value || "")
-      .replace(/[^0-9]/g, "")
+  const [
+    privacyAgree,
+    setPrivacyAgree,
+  ] = useState(false);
+
+  const [
+    leadLoading,
+    setLeadLoading,
+  ] = useState(false);
+
+  const [
+    leadComplete,
+    setLeadComplete,
+  ] = useState(false);
+
+  const [
+    leadMessage,
+    setLeadMessage,
+  ] = useState("");
+
+  /*
+   * =========================================================
+   * 전화번호 자동 형식
+   * =========================================================
+   */
+
+  function handlePhoneChange(
+    value
+  ) {
+    const numbers = String(
+      value || ""
+    )
+      .replace(
+        /[^0-9]/g,
+        ""
+      )
       .slice(0, 11);
 
-    if (numbers.length <= 3) {
+    if (
+      numbers.length <= 3
+    ) {
       setPhone(numbers);
+
       return;
     }
 
-    if (numbers.length <= 7) {
+    if (
+      numbers.length <= 7
+    ) {
       setPhone(
-        `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+        `${numbers.slice(
+          0,
+          3
+        )}-${numbers.slice(
+          3
+        )}`
       );
+
       return;
     }
 
     setPhone(
-      `${numbers.slice(0, 3)}-${numbers.slice(
+      `${numbers.slice(
+        0,
+        3
+      )}-${numbers.slice(
         3,
         7
       )}-${numbers.slice(7)}`
     );
   }
 
-  async function handleFilmSelect(film) {
+  /*
+   * =========================================================
+   * 필름 선택
+   * =========================================================
+   */
+
+  async function handleFilmSelect(
+    film
+  ) {
     if (!film) {
       setSelectedFilm(null);
+
       return;
     }
 
@@ -97,30 +191,61 @@ export default function Home() {
     };
 
     const alreadyHasPrice =
-      Number(film.fire_price_per_meter || 0) > 0 ||
-      Number(film.non_fire_price_per_meter || 0) > 0;
+      Number(
+        film.fire_price_per_meter ||
+          0
+      ) > 0 ||
+      Number(
+        film.non_fire_price_per_meter ||
+          0
+      ) > 0;
+
+    /*
+     * FilmColorPicker에서 가격이
+     * 전달되지 않은 경우 DB 재조회
+     */
 
     if (!alreadyHasPrice) {
       try {
-        let query = supabase
-          .from("film_products")
-          .select(`
-            id,
-            fire_price_per_meter,
-            non_fire_price_per_meter
-          `);
+        let query =
+          supabase
+            .from(
+              "film_products"
+            )
+            .select(
+              `
+                id,
+                fire_price_per_meter,
+                non_fire_price_per_meter
+              `
+            );
 
         if (film.id) {
-          query = query.eq("id", film.id);
+          query =
+            query.eq(
+              "id",
+              film.id
+            );
         } else {
-          query = query
-            .eq("brand", film.brand)
-            .eq("product_code", film.product_code);
+          query =
+            query
+              .eq(
+                "brand",
+                film.brand
+              )
+              .eq(
+                "product_code",
+                film.product_code
+              );
         }
 
-        const { data, error } = await query
-          .limit(1)
-          .maybeSingle();
+        const {
+          data,
+          error,
+        } =
+          await query
+            .limit(1)
+            .maybeSingle();
 
         if (error) {
           console.error(
@@ -143,339 +268,190 @@ export default function Home() {
       }
     }
 
-    setSelectedFilm(completedFilm);
-    setShowFilmPicker(false);
+    /*
+     * 가격까지 합쳐진 필름정보 저장
+     */
+
+    setSelectedFilm(
+      completedFilm
+    );
+
+    /*
+     * 선택한 제품이
+     * 비방염/방염 중 한 종류만 존재하면
+     * 가능한 조건으로 자동 선택
+     */
 
     const hasNonFire =
       Number(
-        completedFilm.non_fire_price_per_meter || 0
+        completedFilm.non_fire_price_per_meter ||
+          0
       ) > 0;
 
     const hasFire =
       Number(
-        completedFilm.fire_price_per_meter || 0
+        completedFilm.fire_price_per_meter ||
+          0
       ) > 0;
 
-    if (!hasNonFire && hasFire) {
+    if (
+      !hasNonFire &&
+      hasFire
+    ) {
       setFireType("fire");
-    } else if (hasNonFire && !hasFire) {
-      setFireType("non_fire");
-    }
-  }
-
-  function normalizeGroupText(group) {
-    return [
-      group?.key,
-      group?.category,
-      group?.subCategory,
-      group?.sub_category,
-      group?.name,
-      group?.label,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .replace(/\s+/g, "")
-      .toLowerCase();
-  }
-
-  function getAreaKeyForGroup(group) {
-    const text = normalizeGroupText(group);
-
-    if (
-      text.includes("냉장고장") ||
-      text.includes("냉장고")
+    } else if (
+      hasNonFire &&
+      !hasFire
     ) {
-      return "fridge_cabinet";
-    }
-
-    if (
-      text.includes("키큰장") ||
-      text.includes("키높이장") ||
-      text.includes("톨장")
-    ) {
-      return "tall_cabinet";
-    }
-
-    if (
-      text.includes("팬트리") ||
-      text.includes("펜트리")
-    ) {
-      return "pantry_cabinet";
-    }
-
-    if (text.includes("아일랜드")) {
-      return "island_cabinet";
-    }
-
-    if (
-      text.includes("상부장") ||
-      text.includes("상부")
-    ) {
-      return "kitchen_upper";
-    }
-
-    if (
-      text.includes("하부장") ||
-      text.includes("하부")
-    ) {
-      return "kitchen_lower";
-    }
-
-    if (
-      text.includes("문틀") ||
-      text.includes("도어프레임") ||
-      text.includes("doorframe")
-    ) {
-      return "door_frame";
-    }
-
-    if (
-      text.includes("문짝") ||
-      text.includes("도어짝") ||
-      text.includes("doorleaf")
-    ) {
-      return "door_leaf";
-    }
-
-    return "";
-  }
-
-  function getFilmPriceValue(film, type) {
-    if (!film) {
-      return 0;
-    }
-
-    if (type === "fire") {
-      return Number(
-        film.fire_price_per_meter || 0
+      setFireType(
+        "non_fire"
       );
     }
-
-    return Number(
-      film.non_fire_price_per_meter || 0
-    );
   }
 
-  function makeAverageFilm(films) {
-    const validFilms = films.filter(Boolean);
+  /*
+   * =========================================================
+   * 선택 필름 적용 부위별 수정견적
+   * =========================================================
+   */
 
-    if (!validFilms.length) {
-      return selectedFilm;
-    }
-
-    function averagePrice(type) {
-      const prices = validFilms
-        .map((film) =>
-          getFilmPriceValue(film, type)
-        )
-        .filter((price) => price > 0);
-
-      if (!prices.length) {
-        return 0;
+  const displayGroups =
+    groups.map((group) => {
+      if (
+        !group.estimate ||
+        !selectedFilm
+      ) {
+        return group;
       }
 
-      return (
-        prices.reduce(
-          (sum, price) => sum + price,
-          0
-        ) / prices.length
-      );
-    }
+      return {
+        ...group,
 
-    return {
-      ...selectedFilm,
-      fire_price_per_meter:
-        averagePrice("fire"),
-      non_fire_price_per_meter:
-        averagePrice("non_fire"),
-    };
-  }
+        estimate: {
+          ...group.estimate,
 
-  function getKitchenAverageFilm() {
-    const keys = [
-      "kitchen_upper",
-      "kitchen_lower",
-      "fridge_cabinet",
-      "tall_cabinet",
-      "pantry_cabinet",
-      "island_cabinet",
-    ];
+          min:
+            adjustEstimateByFilm(
+              group.estimate
+                .min,
+              selectedFilm,
+              fireType
+            ),
 
-    const films = keys
-      .filter(
-        (key) =>
-          key === "kitchen_upper" ||
-          key === "kitchen_lower" ||
-          areaFilms?.[key]
-      )
-      .map(
-        (key) =>
-          areaFilms?.[key] || selectedFilm
-      );
+          max:
+            adjustEstimateByFilm(
+              group.estimate
+                .max,
+              selectedFilm,
+              fireType
+            ),
 
-    return makeAverageFilm(films);
-  }
+          average:
+            adjustEstimateByFilm(
+              group.estimate
+                .average,
+              selectedFilm,
+              fireType
+            ),
+        },
+      };
+    });
 
-  function getDoorAverageFilm() {
-    return makeAverageFilm([
-      areaFilms?.door_leaf || selectedFilm,
-      areaFilms?.door_frame || selectedFilm,
-    ]);
-  }
-
-  function getFilmForGroup(group) {
-    if (!selectedFilm) {
-      return null;
-    }
-
-    if (!useSplitTone) {
-      return selectedFilm;
-    }
-
-    const areaKey =
-      getAreaKeyForGroup(group);
-
-    if (areaKey && areaFilms?.[areaKey]) {
-      return areaFilms[areaKey];
-    }
-
-    const text =
-      normalizeGroupText(group);
-
-    if (
-      text.includes("싱크대") ||
-      text.includes("주방가구") ||
-      text.includes("주방장")
-    ) {
-      return getKitchenAverageFilm();
-    }
-
-    if (
-      text.includes("문") ||
-      text.includes("도어")
-    ) {
-      const hasDoorOverride =
-        areaFilms?.door_leaf ||
-        areaFilms?.door_frame;
-
-      if (hasDoorOverride) {
-        return getDoorAverageFilm();
-      }
-    }
-
-    return selectedFilm;
-  }
-
-  const displayGroups = groups.map((group) => {
-    if (!group.estimate) {
-      return group;
-    }
-
-    const filmForGroup =
-      getFilmForGroup(group);
-
-    if (!filmForGroup) {
-      return group;
-    }
-
-    return {
-      ...group,
-      estimate: {
-        ...group.estimate,
-        min: adjustEstimateByFilm(
-          group.estimate.min,
-          filmForGroup,
-          fireType
-        ),
-        max: adjustEstimateByFilm(
-          group.estimate.max,
-          filmForGroup,
-          fireType
-        ),
-        average: adjustEstimateByFilm(
-          group.estimate.average,
-          filmForGroup,
-          fireType
-        ),
-      },
-      appliedFilm: filmForGroup,
-    };
-  });
-
-  const estimatedGroups =
-    displayGroups.filter(
-      (group) =>
-        group?.estimate &&
-        Number.isFinite(
-          Number(group.estimate.average)
-        )
-    );
-
-  const hasAdjustedGroups =
-    estimatedGroups.length > 0;
-
-  function sumEstimateField(field) {
-    return estimatedGroups.reduce(
-      (sum, group) =>
-        sum +
-        Number(
-          group.estimate?.[field] || 0
-        ),
-      0
-    );
-  }
+  /*
+   * =========================================================
+   * 선택 필름 적용 총 수정견적
+   * =========================================================
+   */
 
   const displayTotalEstimate =
     totalEstimate
-      ? selectedFilm && hasAdjustedGroups
-        ? {
-            ...totalEstimate,
-            min: sumEstimateField("min"),
-            max: sumEstimateField("max"),
-            average:
-              sumEstimateField("average"),
-          }
-        : {
-            ...totalEstimate,
-          }
+      ? {
+          ...totalEstimate,
+
+          min:
+            selectedFilm
+              ? adjustEstimateByFilm(
+                  totalEstimate.min,
+                  selectedFilm,
+                  fireType
+                )
+              : totalEstimate.min,
+
+          max:
+            selectedFilm
+              ? adjustEstimateByFilm(
+                  totalEstimate.max,
+                  selectedFilm,
+                  fireType
+                )
+              : totalEstimate.max,
+
+          average:
+            selectedFilm
+              ? adjustEstimateByFilm(
+                  totalEstimate.average,
+                  selectedFilm,
+                  fireType
+                )
+              : totalEstimate.average,
+        }
       : null;
+
+  /*
+   * =========================================================
+   * 상담 사진 저장
+   * =========================================================
+   */
 
   async function uploadLeadPhotos() {
     if (
       Array.isArray(
         estimatePhotoPathsRef.current
       ) &&
-      estimatePhotoPathsRef.current.length > 0
+      estimatePhotoPathsRef.current
+        .length > 0
     ) {
-      return estimatePhotoPathsRef.current;
+      return (
+        estimatePhotoPathsRef.current
+      );
     }
 
     const paths = [];
-    const uploadErrors = [];
+
+    const uploadErrors =
+      [];
 
     for (
       let index = 0;
-      index < images.length;
+      index <
+      images.length;
       index += 1
     ) {
       try {
-        const formData = new FormData();
+        const formData =
+          new FormData();
 
         formData.append(
           "image",
           images[index].file
         );
 
-        const response = await fetch(
-          "/api/estimate-photo",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+        const response =
+          await fetch(
+            "/api/estimate-photo",
+            {
+              method:
+                "POST",
+
+              body:
+                formData,
+            }
+          );
 
         const result =
-          await readJsonSafely(response);
+          await readJsonSafely(
+            response
+          );
 
         if (
           !response.ok ||
@@ -488,10 +464,14 @@ export default function Home() {
           );
         }
 
-        paths.push(result.path);
+        paths.push(
+          result.path
+        );
       } catch (error) {
         console.error(
-          `상담 사진 ${index + 1} 저장 실패:`,
+          `상담 사진 ${
+            index + 1
+          } 저장 실패:`,
           error
         );
 
@@ -514,40 +494,67 @@ export default function Home() {
       );
     }
 
-    estimatePhotoPathsRef.current = paths;
+    estimatePhotoPathsRef.current =
+      paths;
+
     return paths;
-             }
-    async function handleLeadSubmit(event) {
+  }
+
+  /*
+   * =========================================================
+   * 상담 신청
+   * =========================================================
+   */
+
+  async function handleLeadSubmit(
+    event
+  ) {
     event?.preventDefault?.();
 
-    if (!displayGroups.length) {
+    if (
+      !displayGroups.length
+    ) {
       setLeadMessage(
         "먼저 사진 AI 분석을 진행해주세요."
       );
+
       return;
     }
 
-    if (!customerName.trim()) {
+    if (
+      !customerName.trim()
+    ) {
       setLeadMessage(
         "이름을 입력해주세요."
       );
+
       return;
     }
 
     const phoneNumbers =
-      phone.replace(/[^0-9]/g, "");
+      phone.replace(
+        /[^0-9]/g,
+        ""
+      );
 
-    if (phoneNumbers.length < 9) {
+    if (
+      phoneNumbers.length <
+      9
+    ) {
       setLeadMessage(
         "연락처를 정확히 입력해주세요."
       );
+
       return;
     }
 
-    if (!region.trim()) {
+    if (
+      !region.trim()
+    ) {
       setLeadMessage(
         "시공 지역을 입력해주세요."
       );
+
       return;
     }
 
@@ -555,92 +562,165 @@ export default function Home() {
       setLeadMessage(
         "개인정보 수집 및 상담 연락에 동의해주세요."
       );
+
       return;
     }
 
     setLeadLoading(true);
+
     setLeadMessage(
       "사진과 상담 신청을 접수하고 있습니다..."
     );
 
     try {
+      /*
+       * 자동견적 때 저장한
+       * 고객사진 경로 재사용
+       */
+
       const customerPhotoPaths =
         await uploadLeadPhotos();
 
+      /*
+       * 부위별 최종 견적
+       */
+
       const estimateDetails =
-        displayGroups.map((group) => ({
-          group_key: group.key,
-          category: group.category,
-          sub_category:
-            group.subCategory,
-          photo_count:
-            group.photos?.length || 0,
-          estimate_min:
-            group.estimate?.min ?? null,
-          estimate_max:
-            group.estimate?.max ?? null,
-          estimate_average:
-            group.estimate?.average ?? null,
-          confidence:
-            group.estimate?.confidence ||
-            "데이터 부족",
-          similar_count:
-            group.estimate?.count || 0,
-        }));
+        displayGroups.map(
+          (group) => ({
+            group_key:
+              group.key,
 
-      const description = groups
-        .map((group, index) => {
-          const descriptions = (
-            group.photos || []
+            category:
+              group.category,
+
+            sub_category:
+              group.subCategory,
+
+            photo_count:
+              group.photos.length,
+
+            estimate_min:
+              group.estimate
+                ?.min ??
+              null,
+
+            estimate_max:
+              group.estimate
+                ?.max ??
+              null,
+
+            estimate_average:
+              group.estimate
+                ?.average ??
+              null,
+
+            confidence:
+              group.estimate
+                ?.confidence ||
+              "데이터 부족",
+
+            similar_count:
+              group.estimate
+                ?.count || 0,
+          })
+        );
+
+      /*
+       * AI 사진 설명
+       */
+
+      const description =
+        groups
+          .map(
+            (
+              group,
+              index
+            ) => {
+              const descriptions =
+                group.photos
+                  .map(
+                    (photo) =>
+                      photo
+                        .analysis
+                        ?.description ||
+                      ""
+                  )
+                  .filter(
+                    Boolean
+                  )
+                  .join(
+                    " / "
+                  );
+
+              return `${
+                index + 1
+              }. ${
+                group.category
+              }${
+                group.subCategory
+                  ? ` · ${group.subCategory}`
+                  : ""
+              } (${
+                group.photos
+                  .length
+              }장): ${descriptions}`;
+            }
           )
-            .map(
-              (photo) =>
-                photo.analysis?.description ||
-                ""
-            )
-            .filter(Boolean)
-            .join(" / ");
+          .join("\n");
 
-          return `${index + 1}. ${
-            group.category
-          }${
-            group.subCategory
-              ? ` · ${group.subCategory}`
-              : ""
-          } (${group.photos?.length || 0}장): ${
-            descriptions
-          }`;
-        })
-        .join("\n");
+      /*
+       * 카테고리
+       */
 
-      const categoryText = groups
-        .map((group) => group.category)
-        .filter(Boolean)
-        .join(", ");
+      const categoryText =
+        groups
+          .map(
+            (group) =>
+              group.category
+          )
+          .filter(Boolean)
+          .join(", ");
+
+      /*
+       * 관리자 메모
+       */
 
       const memoLines =
-        displayGroups.map((group) => {
-          if (!group.estimate) {
-            return `${group.category}: 데이터 부족`;
-          }
+        displayGroups.map(
+          (group) => {
+            if (
+              !group.estimate
+            ) {
+              return `${group.category}: 데이터 부족`;
+            }
 
-          return `${group.category}: ${Number(
-            group.estimate.min
-          ).toLocaleString(
-            "ko-KR"
-          )}~${Number(
-            group.estimate.max
-          ).toLocaleString(
-            "ko-KR"
-          )}원`;
-        });
+            return `${
+              group.category
+            }: ${Number(
+              group.estimate.min
+            ).toLocaleString(
+              "ko-KR"
+            )}~${Number(
+              group.estimate.max
+            ).toLocaleString(
+              "ko-KR"
+            )}원`;
+          }
+        );
+
+      /*
+       * 선택 필름정보도
+       * 상담 관리자 메모에 저장
+       */
 
       if (selectedFilm) {
         memoLines.push("");
 
         memoLines.push(
           `선택 필름: ${
-            selectedFilm.product_code || ""
+            selectedFilm.product_code ||
+            ""
           }${
             selectedFilm.product_name
               ? ` · ${selectedFilm.product_name}`
@@ -650,69 +730,100 @@ export default function Home() {
 
         memoLines.push(
           `필름 조건: ${
-            fireType === "fire"
+            fireType ===
+            "fire"
               ? "방염"
               : "비방염"
           }`
         );
-
-        memoLines.push(
-          `컬러 방식: ${
-            useSplitTone
-              ? "부위별 여러 톤"
-              : "모두 같은 컬러"
-          }`
-        );
       }
 
-      const response = await fetch(
-        "/api/lead",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            customer_name:
-              customerName.trim(),
-            phone: phone.trim(),
-            region: region.trim(),
-            category:
-              categoryText || null,
-            sub_category:
-              groups.length === 1
-                ? groups[0].subCategory
-                : "다중부위",
-            ai_description:
-              description,
-            estimate_min:
-              displayTotalEstimate?.min ??
-              null,
-            estimate_max:
-              displayTotalEstimate?.max ??
-              null,
-            estimate_average:
-              displayTotalEstimate?.average ??
-              null,
-            customer_photo_path:
-              customerPhotoPaths[0] ||
-              null,
-            customer_photo_paths:
-              customerPhotoPaths,
-            estimate_details:
-              estimateDetails,
-            memo: `다중사진 AI 견적\n${memoLines.join(
-              "\n"
-            )}`,
-            usage_id:
-              usageIdRef.current,
-          }),
-        }
-      );
+      /*
+       * 상담 저장
+       */
+
+      const response =
+        await fetch(
+          "/api/lead",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                customer_name:
+                  customerName.trim(),
+
+                phone:
+                  phone.trim(),
+
+                region:
+                  region.trim(),
+
+                category:
+                  categoryText ||
+                  null,
+
+                sub_category:
+                  groups.length ===
+                  1
+                    ? groups[0]
+                        .subCategory
+                    : "다중부위",
+
+                ai_description:
+                  description,
+
+                /*
+                 * 필름 선택 후 수정된
+                 * 최종 예상견적 저장
+                 */
+
+                estimate_min:
+                  displayTotalEstimate
+                    ?.min ??
+                  null,
+
+                estimate_max:
+                  displayTotalEstimate
+                    ?.max ??
+                  null,
+
+                estimate_average:
+                  displayTotalEstimate
+                    ?.average ??
+                  null,
+
+                customer_photo_path:
+                  customerPhotoPaths[
+                    0
+                  ] || null,
+
+                customer_photo_paths:
+                  customerPhotoPaths,
+
+                estimate_details:
+                  estimateDetails,
+
+                memo:
+                  `다중사진 AI 견적\n${memoLines.join(
+                    "\n"
+                  )}`,
+
+                usage_id:
+                  usageIdRef.current,
+              }),
+          }
+        );
 
       const result =
-        await readJsonSafely(response);
+        await readJsonSafely(
+          response
+        );
 
       if (
         !response.ok ||
@@ -724,12 +835,17 @@ export default function Home() {
         );
       }
 
-      setLeadComplete(true);
+      setLeadComplete(
+        true
+      );
+
       setLeadMessage(
         "✅ 상담 신청이 완료되었습니다. 확인 후 연락드리겠습니다."
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        error
+      );
 
       setLeadMessage(
         `❌ 상담 신청 오류: ${
@@ -738,73 +854,196 @@ export default function Home() {
         }`
       );
     } finally {
-      setLeadLoading(false);
+      setLeadLoading(
+        false
+      );
     }
   }
 
-  async function handleAddImages(files) {
+  /*
+   * =========================================================
+   * 사진 추가
+   * =========================================================
+   */
+
+  async function handleAddImages(
+    files
+  ) {
     setResultMode("");
-    setShowEstimateDetails(false);
-    setShowFilmPicker(true);
-    setSelectedFilm(null);
-    setFireType("non_fire");
+
+    setSelectedFilm(
+      null
+    );
+
+    setFireType(
+      "non_fire"
+    );
+
     setUseSplitTone(false);
     setAreaFilms({});
-    setLeadComplete(false);
+
+    setLeadComplete(
+      false
+    );
+
     setLeadMessage("");
 
     await addImages(files);
   }
 
-  function handleRemoveImage(id) {
+  /*
+   * =========================================================
+   * 사진 삭제
+   * =========================================================
+   */
+
+  function handleRemoveImage(
+    id
+  ) {
     setResultMode("");
-    setShowEstimateDetails(false);
-    setShowFilmPicker(true);
-    setSelectedFilm(null);
-    setFireType("non_fire");
+
+    setSelectedFilm(
+      null
+    );
+
+    setFireType(
+      "non_fire"
+    );
+
     setUseSplitTone(false);
     setAreaFilms({});
-    setLeadComplete(false);
+
+    setLeadComplete(
+      false
+    );
+
     setLeadMessage("");
 
     removeImage(id);
   }
 
+  /*
+   * =========================================================
+   * AI 분석 시작
+   * =========================================================
+   */
+
   async function startAnalyze() {
     setResultMode("");
-    setShowEstimateDetails(false);
-    setShowFilmPicker(true);
-    setSelectedFilm(null);
-    setFireType("non_fire");
+
+    setSelectedFilm(
+      null
+    );
+
+    setFireType(
+      "non_fire"
+    );
+
     setUseSplitTone(false);
     setAreaFilms({});
-    setLeadComplete(false);
+
+    setLeadComplete(
+      false
+    );
+
     setLeadMessage("");
 
     await handleAnalyze();
   }
 
+  /*
+   * =========================================================
+   * 화면
+   * =========================================================
+   */
+
   return (
     <main
       style={{
         maxWidth: "720px",
+
         margin: "0 auto",
-        padding: "18px 14px 60px",
-        fontFamily: "Arial, sans-serif",
-        background: "#f8fafc",
-        minHeight: "100vh",
-        boxSizing: "border-box",
-        color: "#111827",
+
+        padding:
+          "28px 18px 70px",
+
+        fontFamily:
+          "Arial, sans-serif",
+
+        background:
+          "#f8fafc",
+
+        minHeight:
+          "100vh",
+
+        boxSizing:
+          "border-box",
+
+        color:
+          "#111827",
       }}
     >
+      <nav
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "8px",
+          marginBottom: "18px",
+        }}
+      >
+        <div
+          style={{
+            padding: "11px",
+            textAlign: "center",
+            borderRadius: "11px",
+            background: "#111827",
+            color: "#ffffff",
+            fontWeight: "800",
+            fontSize: "14px",
+          }}
+        >
+          AI 견적
+        </div>
+
+        <Link
+          href="/samples"
+          style={{
+            padding: "11px",
+            textAlign: "center",
+            textDecoration: "none",
+            border: "1px solid #d1d5db",
+            borderRadius: "11px",
+            background: "#ffffff",
+            color: "#374151",
+            fontWeight: "800",
+            fontSize: "14px",
+          }}
+        >
+          필름 샘플보기
+        </Link>
+      </nav>
+
+      {/* 상단 */}
+
       <div
         style={{
-          display: "inline-block",
-          background: "#111827",
-          color: "#ffffff",
-          padding: "8px 14px",
-          borderRadius: "20px",
-          fontWeight: "bold",
+          display:
+            "inline-block",
+
+          background:
+            "#111827",
+
+          color:
+            "#ffffff",
+
+          padding:
+            "8px 14px",
+
+          borderRadius:
+            "20px",
+
+          fontWeight:
+            "bold",
         }}
       >
         기분좋은공간
@@ -812,9 +1051,15 @@ export default function Home() {
 
       <h1
         style={{
-          marginTop: "12px",
-          marginBottom: "8px",
-          fontSize: "27px",
+          marginTop:
+            "18px",
+
+          marginBottom:
+            "8px",
+
+          fontSize:
+            "32px",
+
           lineHeight: 1.3,
         }}
       >
@@ -824,8 +1069,13 @@ export default function Home() {
       <p
         style={{
           marginTop: 0,
-          color: "#6b7280",
-          fontSize: "15px",
+
+          color:
+            "#6b7280",
+
+          fontSize:
+            "17px",
+
           lineHeight: 1.7,
         }}
       >
@@ -834,293 +1084,112 @@ export default function Home() {
         묶어서 예상견적을 계산합니다.
       </p>
 
+      {/* 1. 사진 등록 */}
+
       <EstimatePhotoUploader
         images={images}
         loading={loading}
-        imageLoading={imageLoading}
+        imageLoading={
+          imageLoading
+        }
         message={message}
-        onAddImages={handleAddImages}
+        onAddImages={
+          handleAddImages
+        }
         onRemoveImage={
           handleRemoveImage
         }
-        onAnalyze={startAnalyze}
+        onAnalyze={
+          startAnalyze
+        }
       />
 
-      {displayTotalEstimate && (
-        <section
-          style={{
-            marginTop: "14px",
-            padding: "17px",
-            border:
-              "1px solid #e5e7eb",
-            borderRadius: "18px",
-            background: "#ffffff",
-            boxShadow:
-              "0 8px 24px rgba(15,23,42,0.06)",
-          }}
-        >
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: "13px",
-              fontWeight: "bold",
-            }}
-          >
-            AI 예상견적
-          </div>
+      {/* 2. AI 분석 결과 */}
 
-          <div
-            style={{
-              marginTop: "4px",
-              fontSize:
-                "clamp(23px, 6vw, 31px)",
-              lineHeight: 1.25,
-              fontWeight: "900",
-              letterSpacing: "-1px",
-            }}
-          >
-            {Number(
-              displayTotalEstimate.min || 0
-            ).toLocaleString("ko-KR")}{" "}
-            ~{" "}
-            {Number(
-              displayTotalEstimate.max || 0
-            ).toLocaleString("ko-KR")}
-            원
-          </div>
+      <EstimateResult
+        groups={
+          displayGroups
+        }
+        imageCount={
+          images.length
+        }
+      />
 
-          <div
-            style={{
-              marginTop: "5px",
-              color: "#6b7280",
-              fontSize: "13px",
-            }}
-          >
-            평균{" "}
-            {Number(
-              displayTotalEstimate.average ||
-                0
-            ).toLocaleString("ko-KR")}
-            원
-            {` · ${displayGroups.length}개 부위 계산 완료`}
-          </div>
+      {/* 3. 총 예상견적 */}
 
-          <button
-            type="button"
-            onClick={() =>
-              setShowEstimateDetails(
-                (value) => !value
-              )
-            }
-            aria-expanded={
-              showEstimateDetails
-            }
-            style={{
-              width: "100%",
-              marginTop: "12px",
-              padding: "11px",
-              border: "none",
-              borderRadius: "11px",
-              background: "#f3f4f6",
-              color: "#374151",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            {showEstimateDetails
-              ? "부위별 견적 닫기 ▲"
-              : `부위별 견적 ${displayGroups.length}개 보기 ▼`}
-          </button>
+      <EstimateTotal
+        totalEstimate={
+          displayTotalEstimate
+        }
+      />
 
-          {showEstimateDetails && (
-            <div
-              style={{
-                marginTop: "8px",
-              }}
-            >
-              <EstimateResult
-                groups={displayGroups}
-                imageCount={
-                  images.length
-                }
-              />
-            </div>
-          )}
-        </section>
-      )}
+      {/* 4. 서비스 선택 */}
 
       <ServiceSelector
         groups={groups}
-        resultMode={resultMode}
-        onChange={setResultMode}
+        resultMode={
+          resultMode
+        }
+        onChange={
+          setResultMode
+        }
       />
 
-      {groups.length > 0 &&
-        resultMode === "virtual" && (
+      {/* 5. 가상 시공 */}
+
+      {groups.length >
+        0 &&
+        resultMode ===
+          "virtual" && (
           <>
-            {selectedFilm &&
-            !showFilmPicker ? (
-              <section
-                style={{
-                  marginTop: "14px",
-                  padding: "14px",
-                  border:
-                    "1px solid #e5e7eb",
-                  borderRadius: "16px",
-                  background: "#ffffff",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "11px",
-                }}
-              >
-                {selectedFilm.sample_image_path ? (
-                  <img
-                    src={
-                      selectedFilm.sample_image_path
-                    }
-                    alt="선택 필름"
-                    style={{
-                      width: "48px",
-                      height: "48px",
-                      objectFit: "cover",
-                      borderRadius: "10px",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "10px",
-                      background:
-                        selectedFilm.color_hex ||
-                        "#f3f4f6",
-                      border:
-                        "1px solid #e5e7eb",
-                    }}
-                  />
-                )}
+            {/* 필름 선택 */}
 
-                <div
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      color: "#6b7280",
-                      fontSize: "12px",
-                    }}
-                  >
-                    적용할 필름
-                  </div>
+            <FilmColorPicker
+              onSelect={
+                handleFilmSelect
+              }
+            />
 
-                  <div
-                    style={{
-                      fontWeight: "bold",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow:
-                        "ellipsis",
-                    }}
-                  >
-                    {[
-                      selectedFilm.brand,
-                      selectedFilm.product_code,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </div>
+            {/* 부분 톤 차이 */}
 
-                  <div
-                    style={{
-                      color: "#6b7280",
-                      fontSize: "12px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow:
-                        "ellipsis",
-                    }}
-                  >
-                    {selectedFilm.color_description ||
-                      selectedFilm.product_name ||
-                      selectedFilm.color_family ||
-                      ""}
-                  </div>
-                </div>
+            <VirtualToneSelector
+              groups={groups}
+              product={selectedFilm}
+              useSplitTone={useSplitTone}
+              onUseSplitToneChange={
+                setUseSplitTone
+              }
+              areaFilms={areaFilms}
+              onAreaFilmsChange={
+                setAreaFilms
+              }
+            />
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowFilmPicker(true)
-                  }
-                  style={{
-                    border: "none",
-                    background:
-                      "transparent",
-                    color: "#5b21b6",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  변경 ›
-                </button>
-              </section>
-            ) : (
-              <div
-                style={{
-                  marginTop: "14px",
-                }}
-              >
-                {selectedFilm && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowFilmPicker(
-                        false
-                      )
-                    }
-                    style={{
-                      width: "100%",
-                      marginBottom: "8px",
-                      padding: "10px",
-                      border:
-                        "1px solid #e5e7eb",
-                      borderRadius: "10px",
-                      background: "#ffffff",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    필름 선택 닫기 ▲
-                  </button>
-                )}
-
-                <FilmColorPicker
-                  value={selectedFilm}
-                  onSelect={
-                    handleFilmSelect
-                  }
-                />
-              </div>
-            )}
+            {/* 방염 / 비방염 */}
 
             <FilmPriceSelector
               selectedFilm={
                 selectedFilm
               }
-              fireType={fireType}
+              fireType={
+                fireType
+              }
               onFireTypeChange={
                 setFireType
               }
             />
 
+            {/*
+             * 선택 필름 적용 수정견적
+             */}
+
             <FilmAdjustedEstimate
               selectedFilm={
                 selectedFilm
               }
-              fireType={fireType}
+              fireType={
+                fireType
+              }
               baseEstimate={
                 totalEstimate
               }
@@ -1128,6 +1197,15 @@ export default function Home() {
                 displayTotalEstimate
               }
             />
+
+            {/*
+             * 가상 시공
+             *
+             * 중요:
+             * AI 분석 결과 groups를 전달해서
+             * 싱크대 / 문·문틀일 때만
+             * 부분 톤 선택 기능을 표시
+             */}
 
             <VirtualInstallPanel
               images={images}
@@ -1141,12 +1219,6 @@ export default function Home() {
               areaFilms={
                 areaFilms
               }
-              onUseSplitToneChange={
-                setUseSplitTone
-              }
-              onAreaFilmsChange={
-                setAreaFilms
-              }
               onRequestDetail={() =>
                 setResultMode(
                   "detail"
@@ -1156,8 +1228,12 @@ export default function Home() {
           </>
         )}
 
-      {groups.length > 0 &&
-        resultMode === "detail" && (
+      {/* 6. 상세견적 상담 */}
+
+      {groups.length >
+        0 &&
+        resultMode ===
+          "detail" && (
           <LeadForm
             customerName={
               customerName
@@ -1194,12 +1270,22 @@ export default function Home() {
           />
         )}
 
+      {/* 하단 */}
+
       <div
         style={{
-          textAlign: "center",
-          marginTop: "35px",
-          color: "#9ca3af",
-          fontSize: "13px",
+          textAlign:
+            "center",
+
+          marginTop:
+            "35px",
+
+          color:
+            "#9ca3af",
+
+          fontSize:
+            "13px",
+
           lineHeight: 1.6,
         }}
       >
@@ -1209,4 +1295,4 @@ export default function Home() {
       </div>
     </main>
   );
-}
+        }
