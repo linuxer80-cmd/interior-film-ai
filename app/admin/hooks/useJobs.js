@@ -2,14 +2,20 @@
 
 import { useState } from "react";
 import { supabase } from "../../../lib/supabase";
-import { JOB_PAGE_SIZE, SIGNED_URL_SECONDS } from "../adminConstants";
+import {
+  JOB_PAGE_SIZE,
+  SIGNED_URL_SECONDS,
+} from "../adminConstants";
 import { sanitizeSearchKeyword } from "../adminUtils";
 import {
   getCachedSignedUrl,
   setCachedSignedUrl,
 } from "../signedUrlCache";
 
-export default function useJobs({ companyId, setPreviewPhoto }) {
+export default function useJobs({
+  companyId,
+  setPreviewPhoto,
+}) {
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsMessage, setJobsMessage] = useState("");
@@ -23,35 +29,59 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
   const [openJobId, setOpenJobId] = useState(null);
 
   const [jobPhotos, setJobPhotos] = useState({});
-  const [jobPhotoLoadingId, setJobPhotoLoadingId] = useState(null);
+  const [jobPhotoLoadingId, setJobPhotoLoadingId] =
+    useState(null);
 
   const [jobPhotoUrls, setJobPhotoUrls] = useState({});
-  const [loadingPhotoId, setLoadingPhotoId] = useState(null);
+  const [loadingPhotoId, setLoadingPhotoId] =
+    useState(null);
 
   const [editingId, setEditingId] = useState(null);
   const [editCategory, setEditCategory] = useState("");
-  const [editSubCategory, setEditSubCategory] = useState("");
+  const [editSubCategory, setEditSubCategory] =
+    useState("");
   const [editCost, setEditCost] = useState("");
   const [editMemo, setEditMemo] = useState("");
 
-  const [editingPhotoId, setEditingPhotoId] = useState(null);
-  const [editPhotoType, setEditPhotoType] = useState("before");
-  const [editPhotoCategory, setEditPhotoCategory] = useState("");
-  const [editPhotoSubCategory, setEditPhotoSubCategory] = useState("");
-  const [editPhotoDescription, setEditPhotoDescription] = useState("");
-  const [photoEditLoading, setPhotoEditLoading] = useState(false);
+  const [editingPhotoId, setEditingPhotoId] =
+    useState(null);
+  const [editPhotoType, setEditPhotoType] =
+    useState("before");
+  const [editPhotoCategory, setEditPhotoCategory] =
+    useState("");
+  const [
+    editPhotoSubCategory,
+    setEditPhotoSubCategory,
+  ] = useState("");
+  const [
+    editPhotoDescription,
+    setEditPhotoDescription,
+  ] = useState("");
+  const [photoEditLoading, setPhotoEditLoading] =
+    useState(false);
 
-  async function loadJobs(page = 1, keyword = jobSearchApplied) {
+  /* =========================================================
+     시공 DB 불러오기
+  ========================================================= */
+
+  async function loadJobs(
+    page = 1,
+    keyword = jobSearchApplied,
+  ) {
     if (!companyId) return;
 
     setJobsLoading(true);
     setJobsMessage("");
 
     try {
-      const from = (page - 1) * JOB_PAGE_SIZE;
-      const to = from + JOB_PAGE_SIZE - 1;
+      const from =
+        (page - 1) * JOB_PAGE_SIZE;
 
-      const safeKeyword = sanitizeSearchKeyword(keyword);
+      const to =
+        from + JOB_PAGE_SIZE - 1;
+
+      const safeKeyword =
+        sanitizeSearchKeyword(keyword);
 
       let query = supabase
         .from("work_items")
@@ -77,7 +107,11 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
         );
       }
 
-      const { data, error, count } = await query
+      const {
+        data,
+        error,
+        count,
+      } = await query
         .order("created_at", {
           ascending: false,
         })
@@ -90,36 +124,71 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
       setJobPage(page);
       setOpenJobId(null);
     } catch (error) {
-      console.error(error);
+      console.error(
+        "시공 DB 불러오기:",
+        error,
+      );
 
       setJobsMessage(
-        `❌ 시공 DB 오류: ${error?.message || "불러오기 실패"}`,
+        `❌ 시공 DB 오류: ${
+          error?.message ||
+          "불러오기 실패"
+        }`,
       );
     } finally {
       setJobsLoading(false);
     }
   }
 
+  /* =========================================================
+     검색
+  ========================================================= */
+
   function searchJobs() {
-    const keyword = sanitizeSearchKeyword(jobSearch);
+    const keyword =
+      sanitizeSearchKeyword(jobSearch);
 
     setJobSearchApplied(keyword);
-    loadJobs(1, keyword);
+
+    loadJobs(
+      1,
+      keyword,
+    );
   }
 
   function clearJobSearch() {
     setJobSearch("");
     setJobSearchApplied("");
-    loadJobs(1, "");
+
+    loadJobs(
+      1,
+      "",
+    );
   }
 
-  async function loadJobPhotos(workItemId) {
-    if (!companyId || !workItemId) return;
+  /* =========================================================
+     시공 사진 목록
+  ========================================================= */
 
-    setJobPhotoLoadingId(workItemId);
+  async function loadJobPhotos(
+    workItemId,
+  ) {
+    if (
+      !companyId ||
+      !workItemId
+    ) {
+      return;
+    }
+
+    setJobPhotoLoadingId(
+      workItemId,
+    );
 
     try {
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from("work_photos")
         .select(
           `
@@ -135,76 +204,143 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
           created_at
         `,
         )
-        .eq("work_item_id", workItemId)
-        .eq("company_id", companyId)
-        .order("created_at", {
-          ascending: true,
-        });
+        .eq(
+          "work_item_id",
+          workItemId,
+        )
+        .eq(
+          "company_id",
+          companyId,
+        )
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          },
+        );
 
       if (error) throw error;
 
-      setJobPhotos((current) => ({
-        ...current,
-        [workItemId]: data || [],
-      }));
+      setJobPhotos(
+        (current) => ({
+          ...current,
+          [workItemId]:
+            data || [],
+        }),
+      );
     } catch (error) {
+      console.error(
+        "시공 사진 목록:",
+        error,
+      );
+
       setJobsMessage(
-        `❌ 사진정보 오류: ${error?.message || "실패"}`,
+        `❌ 사진정보 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
     } finally {
-      setJobPhotoLoadingId(null);
+      setJobPhotoLoadingId(
+        null,
+      );
     }
   }
 
-  async function toggleJobDetail(jobId) {
-    if (openJobId === jobId) {
+  /* =========================================================
+     상세 열기 / 닫기
+  ========================================================= */
+
+  async function toggleJobDetail(
+    jobId,
+  ) {
+    if (
+      openJobId === jobId
+    ) {
       setOpenJobId(null);
       return;
     }
 
     setOpenJobId(jobId);
 
-    if (!jobPhotos[jobId]) {
-      await loadJobPhotos(jobId);
+    if (
+      !jobPhotos[jobId]
+    ) {
+      await loadJobPhotos(
+        jobId,
+      );
     }
   }
 
-  async function loadSingleJobPhoto(photo) {
-    if (!photo?.storage_path) {
+  /* =========================================================
+     사진 Signed URL
+  ========================================================= */
+
+  async function loadSingleJobPhoto(
+    photo,
+  ) {
+    if (
+      !photo?.storage_path
+    ) {
       return null;
     }
 
-    if (jobPhotoUrls[photo.id]) {
-      return jobPhotoUrls[photo.id];
+    if (
+      jobPhotoUrls[
+        photo.id
+      ]
+    ) {
+      return jobPhotoUrls[
+        photo.id
+      ];
     }
 
-    const cachedUrl = getCachedSignedUrl(photo.storage_path);
+    const cachedUrl =
+      getCachedSignedUrl(
+        photo.storage_path,
+      );
 
     if (cachedUrl) {
-      setJobPhotoUrls((current) => ({
-        ...current,
-        [photo.id]: cachedUrl,
-      }));
+      setJobPhotoUrls(
+        (current) => ({
+          ...current,
+          [photo.id]:
+            cachedUrl,
+        }),
+      );
 
       return cachedUrl;
     }
 
-    setLoadingPhotoId(photo.id);
+    setLoadingPhotoId(
+      photo.id,
+    );
 
     try {
-      const { data, error } = await supabase.storage
-        .from("work-photos")
-        .createSignedUrl(
-          photo.storage_path,
-          SIGNED_URL_SECONDS,
-        );
+      const {
+        data,
+        error,
+      } =
+        await supabase.storage
+          .from(
+            "work-photos",
+          )
+          .createSignedUrl(
+            photo.storage_path,
+            SIGNED_URL_SECONDS,
+          );
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      const url = data?.signedUrl;
+      const url =
+        data?.signedUrl;
 
       if (!url) {
-        throw new Error("사진 주소를 만들 수 없습니다.");
+        throw new Error(
+          "사진 주소를 만들 수 없습니다.",
+        );
       }
 
       setCachedSignedUrl(
@@ -213,39 +349,88 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
         SIGNED_URL_SECONDS,
       );
 
-      setJobPhotoUrls((current) => ({
-        ...current,
-        [photo.id]: url,
-      }));
+      setJobPhotoUrls(
+        (current) => ({
+          ...current,
+          [photo.id]:
+            url,
+        }),
+      );
 
       return url;
     } catch (error) {
+      console.error(
+        "시공 사진 Signed URL:",
+        error,
+      );
+
       setJobsMessage(
-        `❌ 사진 오류: ${error?.message || "실패"}`,
+        `❌ 사진 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
 
       return null;
     } finally {
-      setLoadingPhotoId(null);
+      setLoadingPhotoId(
+        null,
+      );
     }
   }
 
-  async function openJobPhoto(photo) {
-    let url = jobPhotoUrls[photo.id];
+  /* =========================================================
+     사진 크게 보기
+  ========================================================= */
+
+  async function openJobPhoto(
+    photo,
+  ) {
+    if (!photo?.id) {
+      return;
+    }
+
+    let url =
+      jobPhotoUrls[
+        photo.id
+      ];
 
     if (!url) {
-      url = await loadSingleJobPhoto(photo);
+      url =
+        await loadSingleJobPhoto(
+          photo,
+        );
     }
 
-    if (url && typeof setPreviewPhoto === "function") {
-      setPreviewPhoto(url);
+    if (
+      url &&
+      typeof setPreviewPhoto ===
+        "function"
+    ) {
+      setPreviewPhoto(
+        url,
+      );
     }
   }
 
-  function startEdit(job) {
-    setEditingId(job.id);
+  /* =========================================================
+     시공 데이터 수정 시작
+  ========================================================= */
 
-    setEditCategory(job.category || "");
+  function startEdit(
+    job,
+  ) {
+    if (!job?.id) {
+      return;
+    }
+
+    setEditingId(
+      job.id,
+    );
+
+    setEditCategory(
+      job.category || "",
+    );
 
     setEditSubCategory(
       job.sub_category ||
@@ -254,52 +439,104 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
     );
 
     setEditCost(
-      job.actual_cost !== null &&
-        job.actual_cost !== undefined
-        ? String(job.actual_cost)
+      job.actual_cost !==
+        null &&
+        job.actual_cost !==
+          undefined
+        ? String(
+            job.actual_cost,
+          )
         : "",
     );
 
-    setEditMemo(job.memo || "");
+    setEditMemo(
+      job.memo || "",
+    );
   }
 
   function cancelEdit() {
     setEditingId(null);
   }
 
-  async function saveJobEdit(jobId) {
-    const cost = Number(
-      String(editCost).replace(/,/g, ""),
-    );
+  /* =========================================================
+     시공 데이터 수정 저장
+  ========================================================= */
 
-    if (!editCategory.trim()) {
-      setJobsMessage("⚠️ 시공 부위를 입력해주세요.");
+  async function saveJobEdit(
+    jobId,
+  ) {
+    const cost =
+      Number(
+        String(
+          editCost,
+        ).replace(
+          /,/g,
+          "",
+        ),
+      );
+
+    if (
+      !editCategory.trim()
+    ) {
+      setJobsMessage(
+        "⚠️ 시공 부위를 입력해주세요.",
+      );
       return;
     }
 
-    if (!Number.isFinite(cost) || cost <= 0) {
-      setJobsMessage("⚠️ 실제 시공금액을 입력해주세요.");
+    if (
+      !Number.isFinite(
+        cost,
+      ) ||
+      cost <= 0
+    ) {
+      setJobsMessage(
+        "⚠️ 실제 시공금액을 입력해주세요.",
+      );
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from("work_items")
+      const {
+        error,
+      } = await supabase
+        .from(
+          "work_items",
+        )
         .update({
-          category: editCategory.trim(),
+          category:
+            editCategory.trim(),
+
           sub_category:
             editSubCategory.trim() ||
             editCategory.trim(),
-          actual_cost: cost,
-          memo: editMemo.trim() || null,
-          updated_at: new Date().toISOString(),
+
+          actual_cost:
+            cost,
+
+          memo:
+            editMemo.trim() ||
+            null,
+
+          updated_at:
+            new Date().toISOString(),
         })
-        .eq("id", jobId)
-        .eq("company_id", companyId);
+        .eq(
+          "id",
+          jobId,
+        )
+        .eq(
+          "company_id",
+          companyId,
+        );
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      setEditingId(null);
+      setEditingId(
+        null,
+      );
 
       setJobsMessage(
         "✅ 시공 데이터가 수정되었습니다.",
@@ -310,17 +547,38 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
         jobSearchApplied,
       );
     } catch (error) {
+      console.error(
+        "시공 데이터 수정:",
+        error,
+      );
+
       setJobsMessage(
-        `❌ 수정 오류: ${error?.message || "실패"}`,
+        `❌ 수정 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
     }
   }
 
-  function startPhotoEdit(photo) {
-    setEditingPhotoId(photo.id);
+  /* =========================================================
+     사진 정보 수정 시작
+  ========================================================= */
+
+  function startPhotoEdit(
+    photo,
+  ) {
+    if (!photo?.id) {
+      return;
+    }
+
+    setEditingPhotoId(
+      photo.id,
+    );
 
     setEditPhotoType(
-      photo.photo_type || "before",
+      photo.photo_type ||
+        "before",
     );
 
     setEditPhotoCategory(
@@ -334,75 +592,145 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
     );
 
     setEditPhotoDescription(
-      photo.ai_description || "",
+      photo.ai_description ||
+        "",
     );
   }
 
   function cancelPhotoEdit() {
-    setEditingPhotoId(null);
+    setEditingPhotoId(
+      null,
+    );
   }
 
-  async function savePhotoEdit(photoId, workItemId) {
-    if (!photoId) return;
+  /* =========================================================
+     사진 정보 수정 저장
+  ========================================================= */
 
-    setPhotoEditLoading(true);
+  async function savePhotoEdit(
+    photoId,
+    workItemId,
+  ) {
+    if (!photoId) {
+      return;
+    }
+
+    setPhotoEditLoading(
+      true,
+    );
+
     setJobsMessage("");
 
     try {
-      const { error } = await supabase
-        .from("work_photos")
+      const {
+        error,
+      } = await supabase
+        .from(
+          "work_photos",
+        )
         .update({
-          photo_type: editPhotoType || "before",
-          category: editPhotoCategory.trim() || null,
+          photo_type:
+            editPhotoType ||
+            "before",
+
+          category:
+            editPhotoCategory.trim() ||
+            null,
+
           sub_category:
             editPhotoSubCategory.trim() ||
             editPhotoCategory.trim() ||
             null,
+
           ai_description:
-            editPhotoDescription.trim() || null,
+            editPhotoDescription.trim() ||
+            null,
         })
-        .eq("id", photoId)
-        .eq("company_id", companyId);
+        .eq(
+          "id",
+          photoId,
+        )
+        .eq(
+          "company_id",
+          companyId,
+        );
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      setEditingPhotoId(null);
+      setEditingPhotoId(
+        null,
+      );
 
       setJobsMessage(
         "✅ 사진 정보가 수정되었습니다.",
       );
 
-      await loadJobPhotos(workItemId);
+      await loadJobPhotos(
+        workItemId,
+      );
     } catch (error) {
-      console.error("사진 수정:", error);
+      console.error(
+        "사진 수정:",
+        error,
+      );
 
       setJobsMessage(
-        `❌ 사진 수정 오류: ${error?.message || "실패"}`,
+        `❌ 사진 수정 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
     } finally {
-      setPhotoEditLoading(false);
+      setPhotoEditLoading(
+        false,
+      );
     }
   }
 
-  async function deletePhoto(photo, workItemId) {
-    if (!photo?.id) return;
+  /* =========================================================
+     사진 삭제
+  ========================================================= */
 
-    const confirmed = window.confirm(
-      "이 사진을 삭제할까요?\n삭제 후 복구할 수 없습니다.",
-    );
+  async function deletePhoto(
+    photo,
+    workItemId,
+  ) {
+    if (!photo?.id) {
+      return;
+    }
 
-    if (!confirmed) return;
+    const confirmed =
+      window.confirm(
+        "이 사진을 삭제할까요?\n삭제 후 복구할 수 없습니다.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
 
     setJobsMessage("");
 
     try {
-      if (photo.storage_path) {
-        const { error: storageError } =
+      if (
+        photo.storage_path
+      ) {
+        const {
+          error:
+            storageError,
+        } =
           await supabase.storage
-            .from("work-photos")
-            .remove([photo.storage_path]);
+            .from(
+              "work-photos",
+            )
+            .remove([
+              photo.storage_path,
+            ]);
 
-        if (storageError) {
+        if (
+          storageError
+        ) {
           console.error(
             "Storage 사진 삭제:",
             storageError,
@@ -410,68 +738,139 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
         }
       }
 
-      const { error } = await supabase
-        .from("work_photos")
+      const {
+        error,
+      } = await supabase
+        .from(
+          "work_photos",
+        )
         .delete()
-        .eq("id", photo.id)
-        .eq("company_id", companyId);
+        .eq(
+          "id",
+          photo.id,
+        )
+        .eq(
+          "company_id",
+          companyId,
+        );
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      setJobPhotoUrls((current) => {
-        const next = { ...current };
-        delete next[photo.id];
-        return next;
-      });
+      setJobPhotoUrls(
+        (current) => {
+          const next = {
+            ...current,
+          };
+
+          delete next[
+            photo.id
+          ];
+
+          return next;
+        },
+      );
 
       setJobsMessage(
         "✅ 사진이 삭제되었습니다.",
       );
 
-      await loadJobPhotos(workItemId);
+      await loadJobPhotos(
+        workItemId,
+      );
     } catch (error) {
-      console.error("사진 삭제:", error);
+      console.error(
+        "사진 삭제:",
+        error,
+      );
 
       setJobsMessage(
-        `❌ 사진 삭제 오류: ${error?.message || "실패"}`,
+        `❌ 사진 삭제 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
     }
   }
 
-  async function deleteJob(job) {
-    if (!job?.id) return;
+  /* =========================================================
+     시공 데이터 삭제
+  ========================================================= */
 
-    const confirmed = window.confirm(
-      `"${job.category || "시공 데이터"}"를 삭제할까요?\n\n연결된 사진도 함께 삭제됩니다.\n삭제 후 복구할 수 없습니다.`,
-    );
+  async function deleteJob(
+    job,
+  ) {
+    if (!job?.id) {
+      return;
+    }
 
-    if (!confirmed) return;
+    const confirmed =
+      window.confirm(
+        `"${job.category || "시공 데이터"}"를 삭제할까요?\n\n연결된 사진도 함께 삭제됩니다.\n삭제 후 복구할 수 없습니다.`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
 
     setJobsMessage("");
 
     try {
-      const { data: photos, error: photoLoadError } =
+      const {
+        data: photos,
+        error:
+          photoLoadError,
+      } =
         await supabase
-          .from("work_photos")
-          .select("id, storage_path")
-          .eq("work_item_id", job.id)
-          .eq("company_id", companyId);
+          .from(
+            "work_photos",
+          )
+          .select(
+            "id, storage_path",
+          )
+          .eq(
+            "work_item_id",
+            job.id,
+          )
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (photoLoadError) {
+      if (
+        photoLoadError
+      ) {
         throw photoLoadError;
       }
 
-      const storagePaths = (photos || [])
-        .map((photo) => photo.storage_path)
-        .filter(Boolean);
+      const storagePaths =
+        (photos || [])
+          .map(
+            (photo) =>
+              photo.storage_path,
+          )
+          .filter(Boolean);
 
-      if (storagePaths.length > 0) {
-        const { error: storageError } =
+      if (
+        storagePaths.length >
+        0
+      ) {
+        const {
+          error:
+            storageError,
+        } =
           await supabase.storage
-            .from("work-photos")
-            .remove(storagePaths);
+            .from(
+              "work-photos",
+            )
+            .remove(
+              storagePaths,
+            );
 
-        if (storageError) {
+        if (
+          storageError
+        ) {
           console.error(
             "시공 사진 Storage 삭제:",
             storageError,
@@ -479,69 +878,119 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
         }
       }
 
-      const { error: photoDeleteError } =
+      const {
+        error:
+          photoDeleteError,
+      } =
         await supabase
-          .from("work_photos")
+          .from(
+            "work_photos",
+          )
           .delete()
-          .eq("work_item_id", job.id)
-          .eq("company_id", companyId);
+          .eq(
+            "work_item_id",
+            job.id,
+          )
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (photoDeleteError) {
+      if (
+        photoDeleteError
+      ) {
         throw photoDeleteError;
       }
 
-      const { error: itemDeleteError } =
+      const {
+        error:
+          itemDeleteError,
+      } =
         await supabase
-          .from("work_items")
+          .from(
+            "work_items",
+          )
           .delete()
-          .eq("id", job.id)
-          .eq("company_id", companyId);
+          .eq(
+            "id",
+            job.id,
+          )
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (itemDeleteError) {
+      if (
+        itemDeleteError
+      ) {
         throw itemDeleteError;
       }
 
-      setOpenJobId(null);
+      setOpenJobId(
+        null,
+      );
 
-      setJobPhotos((current) => {
-        const next = { ...current };
-        delete next[job.id];
-        return next;
-      });
+      setJobPhotos(
+        (current) => {
+          const next = {
+            ...current,
+          };
+
+          delete next[
+            job.id
+          ];
+
+          return next;
+        },
+      );
 
       setJobsMessage(
         "✅ 시공 데이터가 삭제되었습니다.",
       );
 
-      const nextTotal = Math.max(
-        0,
-        jobTotal - 1,
-      );
+      const nextTotal =
+        Math.max(
+          0,
+          jobTotal - 1,
+        );
 
-      const nextTotalPages = Math.max(
-        1,
-        Math.ceil(
-          nextTotal / JOB_PAGE_SIZE,
-        ),
-      );
+      const nextTotalPages =
+        Math.max(
+          1,
+          Math.ceil(
+            nextTotal /
+              JOB_PAGE_SIZE,
+          ),
+        );
 
-      const nextPage = Math.min(
-        jobPage,
-        nextTotalPages,
-      );
+      const nextPage =
+        Math.min(
+          jobPage,
+          nextTotalPages,
+        );
 
       await loadJobs(
         nextPage,
         jobSearchApplied,
       );
     } catch (error) {
-      console.error("시공 데이터 삭제:", error);
+      console.error(
+        "시공 데이터 삭제:",
+        error,
+      );
 
       setJobsMessage(
-        `❌ 삭제 오류: ${error?.message || "실패"}`,
+        `❌ 삭제 오류: ${
+          error?.message ||
+          "실패"
+        }`,
       );
     }
   }
+
+  /* =========================================================
+     외부에서 사용할 값
+  ========================================================= */
 
   return {
     jobs,
@@ -565,39 +1014,55 @@ export default function useJobs({ companyId, setPreviewPhoto }) {
     loadingPhotoId,
 
     editingId,
+
     editCategory,
     setEditCategory,
+
     editSubCategory,
     setEditSubCategory,
+
     editCost,
     setEditCost,
+
     editMemo,
     setEditMemo,
 
     editingPhotoId,
+
     editPhotoType,
     setEditPhotoType,
+
     editPhotoCategory,
     setEditPhotoCategory,
+
     editPhotoSubCategory,
     setEditPhotoSubCategory,
+
     editPhotoDescription,
     setEditPhotoDescription,
+
     photoEditLoading,
 
     loadJobs,
     searchJobs,
     clearJobSearch,
+
     loadJobPhotos,
     toggleJobDetail,
+
+    // JobsTab에서 직접 사용하므로 반드시 반환
+    loadSingleJobPhoto,
     openJobPhoto,
+
     startEdit,
     cancelEdit,
     saveJobEdit,
+
     startPhotoEdit,
     cancelPhotoEdit,
     savePhotoEdit,
+
     deletePhoto,
     deleteJob,
   };
-            }
+          }
