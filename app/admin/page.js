@@ -1898,7 +1898,7 @@ export default function AdminPage() {
                   PROJECT_ID,
                 work_item_id:
                   workItemId,
-                photo_url: null,
+                photo_url:storagePath,
                 storage_path:
                   storagePath,
                 photo_type:
