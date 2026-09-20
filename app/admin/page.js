@@ -469,10 +469,6 @@ export default function AdminPage() {
     let previousRemaining = null;
     let noProgressCount = 0;
 
-    /*
-     * 이번 실행에서 발생한 실제 오류를 보관한다.
-     * 같은 오류가 반복되면 한 번만 표시한다.
-     */
     const collectedErrors = [];
 
     function collectApiErrors(data) {
@@ -508,9 +504,6 @@ export default function AdminPage() {
         }
       }
 
-      /*
-       * 화면이 너무 길어지는 것을 막는다.
-       */
       if (collectedErrors.length > 10) {
         collectedErrors.splice(10);
       }
@@ -575,9 +568,6 @@ export default function AdminPage() {
           );
         }
 
-        /*
-         * API 전체 오류도 화면에 표시한다.
-         */
         if (!response.ok || !data?.success) {
           const apiError =
             data?.error ||
@@ -590,9 +580,6 @@ export default function AdminPage() {
           throw new Error(apiError);
         }
 
-        /*
-         * 사진별 실제 오류 수집
-         */
         collectApiErrors(data);
 
         const total = Number(data.total || 0);
@@ -604,10 +591,6 @@ export default function AdminPage() {
         totalProcessed += processed;
         totalFailed += failed;
 
-        /*
-         * 사용자가 분석 중지 버튼을 누른 상태라면
-         * 현재 API 응답까지만 받고 바로 종료한다.
-         */
         if (structureStopRef.current) {
           setStructureAnalysis({
             total,
@@ -665,9 +648,6 @@ export default function AdminPage() {
           break;
         }
 
-        /*
-         * 실제로 남은 사진이 줄었는지 확인한다.
-         */
         if (
           processed > 0 ||
           previousRemaining === null ||
@@ -680,9 +660,6 @@ export default function AdminPage() {
 
         previousRemaining = remaining;
 
-        /*
-         * 같은 사진에서 계속 실패하면 무한 반복하지 않는다.
-         */
         if (noProgressCount >= 2) {
           setStructureAnalysis((current) => ({
             ...current,
@@ -935,8 +912,7 @@ export default function AdminPage() {
       setLoadingPhotoId(null);
     }
   }
-
-  async function openJobPhoto(photo) {
+    async function openJobPhoto(photo) {
     let url = jobPhotoUrls[photo.id];
 
     if (!url) {
@@ -1047,7 +1023,17 @@ export default function AdminPage() {
         photo.category ||
         "",
     );
-      async function savePhotoEdit(photoId, workItemId) {
+
+    setEditPhotoDescription(
+      photo.ai_description || "",
+    );
+  }
+
+  function cancelPhotoEdit() {
+    setEditingPhotoId(null);
+  }
+
+  async function savePhotoEdit(photoId, workItemId) {
     if (!photoId) return;
 
     setPhotoEditLoading(true);
@@ -1381,10 +1367,6 @@ export default function AdminPage() {
     let workItemId = null;
 
     try {
-      /* -----------------------------------------------------
-         1. work_items 생성
-      ----------------------------------------------------- */
-
       const {
         data: workItem,
         error: workItemError,
@@ -1411,10 +1393,6 @@ export default function AdminPage() {
           "시공 데이터 ID를 생성하지 못했습니다.",
         );
       }
-
-      /* -----------------------------------------------------
-         2. 사진 저장 함수
-      ----------------------------------------------------- */
 
       const savePhoto = async (
         file,
@@ -1602,10 +1580,6 @@ export default function AdminPage() {
         }
       };
 
-      /* -----------------------------------------------------
-         3. 시공 전 사진 저장
-      ----------------------------------------------------- */
-
       for (
         let index = 0;
         index < beforeImages.length;
@@ -1623,10 +1597,6 @@ export default function AdminPage() {
           index,
         );
       }
-
-      /* -----------------------------------------------------
-         4. 시공 후 사진 저장
-      ----------------------------------------------------- */
 
       for (
         let index = 0;
@@ -1646,10 +1616,6 @@ export default function AdminPage() {
         );
       }
 
-      /* -----------------------------------------------------
-         5. 전/후 사진 비교
-      ----------------------------------------------------- */
-
       if (
         beforeImages.length > 0 &&
         afterImages.length > 0
@@ -1666,10 +1632,6 @@ export default function AdminPage() {
           );
         }
       }
-
-      /* -----------------------------------------------------
-         6. 완료
-      ----------------------------------------------------- */
 
       setBeforeImages([]);
       setAfterImages([]);
@@ -1692,10 +1654,6 @@ export default function AdminPage() {
         error,
       );
 
-      /*
-       * work_items는 만들어졌는데 사진 저장 중 실패한 경우
-       * 빈 데이터가 남지 않도록 정리한다.
-       */
       if (workItemId) {
         try {
           const {
@@ -1768,17 +1726,12 @@ export default function AdminPage() {
     try {
       const { count, error } =
         await supabase
-          .from(
-            "customer_leads",
-          )
+          .from("customer_leads")
           .select("id", {
             count: "exact",
             head: true,
           })
-          .eq(
-            "is_read",
-            false,
-          );
+          .eq("is_read", false);
 
       if (error) {
         console.error(
@@ -1797,9 +1750,8 @@ export default function AdminPage() {
         error,
       );
     }
-  }
-
-  /* =========================================================
+      }
+    /* =========================================================
      고객 상담 목록
   ========================================================= */
 
@@ -2285,18 +2237,9 @@ export default function AdminPage() {
       );
     }
   }
-    
 
-    setEditPhotoDescription(
-      photo.ai_description || "",
-    );
-  }
-
-  function cancelPhotoEdit() {
-    setEditingPhotoId(null);
-  }
-    /* =========================================================
-     화면
+  /* =========================================================
+     화면 계산
   ========================================================= */
 
   const totalJobPages =
@@ -2316,6 +2259,10 @@ export default function AdminPage() {
           LEAD_PAGE_SIZE,
       ),
     );
+
+  /* =========================================================
+     화면
+  ========================================================= */
 
   return (
     <main
@@ -2524,7 +2471,6 @@ export default function AdminPage() {
           }
         />
       )}
-
       {/* =====================================================
           시공 등록
       ===================================================== */}
@@ -2743,5 +2689,4 @@ export default function AdminPage() {
       />
     </main>
   );
-      }
-  
+}
