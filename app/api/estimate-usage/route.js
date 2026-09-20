@@ -8,6 +8,7 @@ export async function POST(request) {
     const body = await request.json();
 
     const {
+      company_slug,
       session_id,
       category,
       sub_category,
@@ -17,6 +18,39 @@ export async function POST(request) {
       estimate_average,
       photo_paths,
     } = body || {};
+
+    const normalizedCompanySlug =
+      String(company_slug || "")
+        .trim()
+        .toLowerCase();
+
+    if (!normalizedCompanySlug) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "company_slug가 없습니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (
+      !/^[a-z0-9-]+$/.test(
+        normalizedCompanySlug
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "올바르지 않은 회사 주소입니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
     if (!session_id) {
       return NextResponse.json(
@@ -73,6 +107,50 @@ export async function POST(request) {
       }
     );
 
+    const {
+      data: company,
+      error: companyError,
+    } = await supabase
+      .from("companies")
+      .select("id, slug")
+      .eq(
+        "slug",
+        normalizedCompanySlug
+      )
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (companyError) {
+      console.error(
+        "COMPANY LOOKUP ERROR:",
+        companyError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "회사 정보를 확인하지 못했습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (!company?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "사용할 수 없는 회사 주소입니다.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
     const safePhotoPaths =
       Array.isArray(photo_paths)
         ? photo_paths
@@ -109,6 +187,8 @@ export async function POST(request) {
         : Number(estimate_average);
 
     const insertData = {
+      company_id: company.id,
+
       session_id: String(session_id),
 
       category:
@@ -154,6 +234,7 @@ export async function POST(request) {
       .select(
         `
         id,
+        company_id,
         session_id,
         category,
         sub_category,

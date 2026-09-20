@@ -491,6 +491,9 @@ export default function useEstimate({ companySlug = null } = {}) {
           query_embedding:
             result.embedding,
 
+          company_slug:
+            normalizedCompanySlug,
+
           match_threshold:
             MATCH_THRESHOLD,
 
@@ -837,6 +840,10 @@ export default function useEstimate({ companySlug = null } = {}) {
 
             body:
               JSON.stringify({
+                company_slug:
+                  normalizedCompanySlug ||
+                  null,
+
                 session_id:
                   getSessionId(),
 
