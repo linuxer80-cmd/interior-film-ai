@@ -585,7 +585,6 @@ export default function SamplesPage() {
       setMessage("");
 
       const FETCH_SIZE = 1000;
-
       const selectColumns = [
         "id",
         "brand",
@@ -638,41 +637,21 @@ export default function SamplesPage() {
       }
 
       if (error) {
-        console.error(
-          "필름 샘플 조회 오류:",
-          error
-        );
-
+        console.error("필름 샘플 조회 오류:", error);
         setProducts([]);
-
         setMessage(
-          `필름 샘플을 불러오지 못했습니다. ${
-            error.message || ""
-          }`
+          `필름 샘플을 불러오지 못했습니다. ${error.message || ""}`
         );
       } else {
-        const rows =
-          data || [];
-
+        const rows = data || [];
         setProducts(rows);
 
-        /*
-         * 제조사가 1개뿐이면 자동 선택
-         */
-        const brandList =
-          unique(
-            rows.map(
-              (item) =>
-                item.brand
-            )
-          );
+        const brandList = unique(
+          rows.map((item) => item.brand)
+        );
 
-        if (
-          brandList.length === 1
-        ) {
-          setBrand(
-            brandList[0]
-          );
+        if (brandList.length === 1) {
+          setBrand(brandList[0]);
         }
       }
 
@@ -712,18 +691,8 @@ export default function SamplesPage() {
    * 제조사 목록
    */
   const brands = useMemo(() => {
-    /*
-   * 제조사 목록
-   *
-   * 우선 제조사만 순서를 지정하고,
-   * 이후 새로 등록되는 제조사는
-   * film_products DB에서 자동으로 추가됩니다.
-   */
-  const brands = useMemo(() => {
     const brandList = unique(
-      products.map(
-        (item) => item.brand
-      )
+      products.map((item) => item.brand)
     );
 
     const PRIORITY_BRANDS = [
@@ -733,21 +702,10 @@ export default function SamplesPage() {
     ];
 
     return [...brandList].sort((a, b) => {
-      const aIndex =
-        PRIORITY_BRANDS.indexOf(a);
-
-      const bIndex =
-        PRIORITY_BRANDS.indexOf(b);
-
-      const aPriority =
-        aIndex === -1
-          ? PRIORITY_BRANDS.length
-          : aIndex;
-
-      const bPriority =
-        bIndex === -1
-          ? PRIORITY_BRANDS.length
-          : bIndex;
+      const aIndex = PRIORITY_BRANDS.indexOf(a);
+      const bIndex = PRIORITY_BRANDS.indexOf(b);
+      const aPriority = aIndex === -1 ? PRIORITY_BRANDS.length : aIndex;
+      const bPriority = bIndex === -1 ? PRIORITY_BRANDS.length : bIndex;
 
       if (aPriority !== bPriority) {
         return aPriority - bPriority;
@@ -756,6 +714,7 @@ export default function SamplesPage() {
       return a.localeCompare(b, "ko");
     });
   }, [products]);
+
   /*
    * 선택한 제조사에 실제 존재하는
    * 대분류만 표시
