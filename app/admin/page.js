@@ -29,8 +29,8 @@ import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
 import WorkerManagement from "./WorkerManagement";
-import useSites from "./hooks/useSites";
-import useWorkers from "./hooks/useWorkers";
+import useSites from "../hooks/useSites";
+ useWorkers from "./hooks/useWorkers";
 import {
   getCachedSignedUrl,
   setCachedSignedUrl,
