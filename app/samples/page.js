@@ -584,33 +584,54 @@ export default function SamplesPage() {
       setLoading(true);
       setMessage("");
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("film_products")
-        .select(
-          [
-            "id",
-            "brand",
-            "product_code",
-            "product_name",
-            "category_key",
-            "pattern_line",
-            "color_family",
-            "color_description",
-            "color_hex",
-            "texture",
-            "grade",
-            "wood_species",
-            "tone_family",
-            "sample_image_path",
-            "sort_order",
-          ].join(",")
-        )
-        .eq("is_active", true)
-        .order("brand")
-        .order("sort_order");
+      const FETCH_SIZE = 1000;
+
+      const selectColumns = [
+        "id",
+        "brand",
+        "product_code",
+        "product_name",
+        "category_key",
+        "pattern_line",
+        "color_family",
+        "color_description",
+        "color_hex",
+        "texture",
+        "grade",
+        "wood_species",
+        "tone_family",
+        "sample_image_path",
+        "sort_order",
+      ].join(",");
+
+      let data = [];
+      let error = null;
+      let from = 0;
+
+      while (mounted) {
+        const result = await supabase
+          .from("film_products")
+          .select(selectColumns)
+          .eq("is_active", true)
+          .order("brand", { ascending: true })
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + FETCH_SIZE - 1);
+
+        if (result.error) {
+          error = result.error;
+          break;
+        }
+
+        const rows = result.data || [];
+        data = [...data, ...rows];
+
+        if (rows.length < FETCH_SIZE) {
+          break;
+        }
+
+        from += FETCH_SIZE;
+      }
 
       if (!mounted) {
         return;
