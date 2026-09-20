@@ -2711,7 +2711,32 @@ export default function AdminPage() {
           }
         />
       )}
+      {/* =====================================================
+          현장 관리
+      ===================================================== */}
 
+      {activeTab === "sites" && (
+        <SiteManagementTab
+          sites={sites}
+          sitesLoading={sitesLoading}
+          sitesMessage={sitesMessage}
+          createSite={createSite}
+          updateSiteStatus={updateSiteStatus}
+          selectedSite={selectedSite}
+          openSite={openSite}
+          closeSite={closeSite}
+          workers={workers}
+          workersLoading={workersLoading}
+          workersMessage={workersMessage}
+          loadWorkers={loadWorkers}
+          createWorker={createWorker}
+          updateWorker={updateWorker}
+          setWorkerActive={setWorkerActive}
+          assignSiteWorkers={assignSiteWorkers}
+          loadSiteWorkers={loadSiteWorkers}
+          reloadSites={() => loadSites(companyId)}
+        />
+      )}
       {/* =====================================================
           로그 분석
       ===================================================== */}
