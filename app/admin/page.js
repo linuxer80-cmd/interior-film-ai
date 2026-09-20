@@ -184,7 +184,6 @@ export default function AdminPage() {
   const [usagePhotoLoadingId, setUsagePhotoLoadingId] = useState(null);
 
   function changeTab(tab) {
-  function changeTab(tab) {
   activeTabRef.current = tab;
   setActiveTab(tab);
 
