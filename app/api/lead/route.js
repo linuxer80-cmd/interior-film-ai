@@ -63,6 +63,36 @@ export async function POST(request) {
   try {
     const body = await request.json();
 
+    const companySlug =
+      nullableText(body.company_slug)
+        ?.toLowerCase() || null;
+
+    if (!companySlug) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "company_slug가 없습니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (
+      !/^[a-z0-9-]+$/.test(companySlug)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "올바르지 않은 회사 주소입니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     /* ======================================
        기본 입력값 확인
     ====================================== */
@@ -165,10 +195,58 @@ export async function POST(request) {
       createAdminClient();
 
     /* ======================================
+       URL의 company_slug를 실제 회사 ID로 변환
+       클라이언트가 보낸 company_id는 사용하지 않습니다.
+    ====================================== */
+
+    const {
+      data: company,
+      error: companyError,
+    } = await supabase
+      .from("companies")
+      .select("id, slug")
+      .eq("slug", companySlug)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (companyError) {
+      console.error(
+        "회사 조회 오류:",
+        companyError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "회사 정보를 확인하지 못했습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (!company?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "사용할 수 없는 회사 주소입니다.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    /* ======================================
        고객 상담 저장
     ====================================== */
 
     const leadPayload = {
+      company_id: company.id,
+
       customer_name: customerName,
       phone,
       region,
@@ -225,6 +303,7 @@ export async function POST(request) {
         .select(
           `
           id,
+          company_id,
           customer_name,
           phone,
           region,
@@ -264,6 +343,10 @@ export async function POST(request) {
           converted_to_lead: true,
         })
         .eq("id", usageId)
+        .eq(
+          "company_id",
+          company.id
+        )
         .select("id")
         .maybeSingle();
 
