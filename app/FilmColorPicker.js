@@ -459,6 +459,7 @@ export default function FilmColorPicker({
 
   /*
    * Supabase에서 활성 필름 전체를 불러옵니다.
+   * 1회 1,000개씩 반복 조회해서 전체 제품을 가져옵니다.
    * 가격 관련 필드는 삭제하지 않습니다.
    */
   useEffect(() => {
@@ -469,6 +470,7 @@ export default function FilmColorPicker({
       setMessage("");
 
       const FETCH_SIZE = 1000;
+
       const selectColumns = [
         "id",
         "brand",
@@ -512,6 +514,7 @@ export default function FilmColorPicker({
         }
 
         const rows = result.data || [];
+
         data = [...data, ...rows];
 
         if (rows.length < FETCH_SIZE) {
@@ -809,7 +812,7 @@ export default function FilmColorPicker({
   ]);
 
   /*
-   * 수종·색상군·톤 역시 선택 횟수가 많은 순서로 정렬합니다.
+   * 수종·색상군·톤 역시 선택 횟수가 많은 순으로 정렬합니다.
    */
   const details = useMemo(() => {
     if (!selectedLine) {
@@ -919,7 +922,8 @@ export default function FilmColorPicker({
     return stablePopularitySort(
       filteredProducts,
       (product) =>
-                  product,
+        getSelectionCount(
+          product,
           selectionStats
         )
     );
@@ -1091,8 +1095,7 @@ export default function FilmColorPicker({
   const showResults =
     Boolean(search.trim()) ||
     Boolean(selectedLine && detail);
-
-  return (
+    return (
     <>
       {/* 평소 보이는 압축 카드 */}
       <section
@@ -1838,4 +1841,4 @@ export default function FilmColorPicker({
       )}
     </>
   );
-    }
+      }
