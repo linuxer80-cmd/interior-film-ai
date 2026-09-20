@@ -712,13 +712,50 @@ export default function SamplesPage() {
    * 제조사 목록
    */
   const brands = useMemo(() => {
-    return unique(
+    /*
+   * 제조사 목록
+   *
+   * 우선 제조사만 순서를 지정하고,
+   * 이후 새로 등록되는 제조사는
+   * film_products DB에서 자동으로 추가됩니다.
+   */
+  const brands = useMemo(() => {
+    const brandList = unique(
       products.map(
         (item) => item.brand
       )
     );
-  }, [products]);
 
+    const PRIORITY_BRANDS = [
+      "현대보닥",
+      "영림 인테리어필름",
+      "LX하우시스 베니프",
+    ];
+
+    return [...brandList].sort((a, b) => {
+      const aIndex =
+        PRIORITY_BRANDS.indexOf(a);
+
+      const bIndex =
+        PRIORITY_BRANDS.indexOf(b);
+
+      const aPriority =
+        aIndex === -1
+          ? PRIORITY_BRANDS.length
+          : aIndex;
+
+      const bPriority =
+        bIndex === -1
+          ? PRIORITY_BRANDS.length
+          : bIndex;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      return a.localeCompare(b, "ko");
+    });
+  }, [products]);
   /*
    * 선택한 제조사에 실제 존재하는
    * 대분류만 표시
