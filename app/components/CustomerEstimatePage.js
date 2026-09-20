@@ -1464,19 +1464,3 @@ export default function CustomerEstimatePage({
     </main>
   );
             }
-      <div
-        style={{
-          textAlign: "center",
-          marginTop: "35px",
-          color: "#9ca3af",
-          fontSize: "13px",
-          lineHeight: 1.6,
-        }}
-      >
-        {companyName}
-        <br />
-        {estimateTitle}
-      </div>
-    </main>
-  );
-}
