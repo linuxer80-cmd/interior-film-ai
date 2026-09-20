@@ -1149,7 +1149,8 @@ export default function AdminPage() {
     setJobSearch("");
     setJobSearchApplied("");
     loadJobs(1, "");
-}  async function loadJobPhotos(
+        }
+    async function loadJobPhotos(
     workItemId,
   ) {
     if (!workItemId) return;
@@ -1621,6 +1622,10 @@ export default function AdminPage() {
           "id, storage_path",
         )
         .eq(
+          "company_id",
+          companyId,
+        )
+        .eq(
           "work_item_id",
           job.id,
         );
@@ -1660,6 +1665,10 @@ export default function AdminPage() {
         .from("work_photos")
         .delete()
         .eq(
+          "company_id",
+          companyId,
+        )
+        .eq(
           "work_item_id",
           job.id,
         );
@@ -1673,6 +1682,10 @@ export default function AdminPage() {
       } = await supabase
         .from("work_items")
         .delete()
+        .eq(
+          "company_id",
+          companyId,
+        )
         .eq("id", job.id);
 
       if (itemDeleteError) {
@@ -1890,20 +1903,12 @@ export default function AdminPage() {
       "시공 데이터를 저장하고 있습니다...",
     );
 
+    let workItemId = null;
+
     try {
       /*
-       * =====================================================
-       * 현재 로그인 업체의 기본 프로젝트 확인
-       * =====================================================
-       *
-       * 고정 PROJECT_ID를 사용하지 않는다.
-       *
-       * 현재 company_id에 속한 프로젝트가 있으면
-       * 기존 프로젝트를 그대로 사용한다.
-       *
-       * 프로젝트가 하나도 없는 신규 업체라면
-       * 현재 업체의 company_id로 기본 프로젝트를
-       * 자동 생성한 뒤 사용한다.
+       * 로그인한 업체의 프로젝트를 사용한다.
+       * 기존 프로젝트가 없으면 현재 업체의 프로젝트를 생성한다.
        */
 
       let companyProjectId = null;
@@ -1989,7 +1994,7 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      const workItemId =
+      workItemId =
         workItem?.id;
 
       if (!workItemId) {
@@ -1998,270 +2003,325 @@ export default function AdminPage() {
         );
       }
 
-      const uploadTargets = [
-        ...beforeImages.map(
-          (file) => ({
-            file,
-            photoType:
-              "before",
-          }),
-        ),
-        ...afterImages.map(
-          (file) => ({
-            file,
-            photoType:
-              "after",
-          }),
-        ),
-      ];
-
-      let uploadedCount = 0;
-
-      for (
-        let index = 0;
-        index <
-        uploadTargets.length;
-        index += 1
+      async function savePhoto(
+        file,
+        photoType,
+        index,
       ) {
-        const {
-          file,
-          photoType,
-        } =
-          uploadTargets[index];
+        const resizedFile =
+          await resizeImage(
+            file,
+          );
 
-        setMessage(
-          `사진 ${
-            index + 1
-          }/${
-            uploadTargets.length
-          } 처리 중...`,
-        );
+        let analysis = null;
 
         try {
-          const resizedFile =
-            await resizeImage(
-              file,
+          analysis =
+            await analyzeImage(
+              resizedFile,
             );
+        } catch (
+          analysisError
+        ) {
+          console.error(
+            "사진 AI 분석:",
+            analysisError,
+          );
+        }
 
-          const imageHash =
+        let imageHash = null;
+
+        try {
+          imageHash =
             await getImageHash(
               resizedFile,
             );
+        } catch (
+          hashError
+        ) {
+          console.error(
+            "이미지 해시:",
+            hashError,
+          );
+        }
 
-          const timestamp =
-            Date.now();
+        const description =
+          analysis?.description ||
+          analysis?.ai_description ||
+          "";
 
-          const randomText =
-            Math.random()
-              .toString(36)
-              .slice(2, 10);
+        const tags =
+          Array.isArray(
+            analysis?.tags,
+          )
+            ? analysis.tags
+            : Array.isArray(
+                  analysis?.ai_tags,
+                )
+              ? analysis.ai_tags
+              : [];
 
-          const extension =
-            resizedFile.type ===
-            "image/png"
-              ? "png"
-              : "jpg";
+        let embedding = null;
 
-          const storagePath =
-            `history/${companyId}/${timestamp}-${randomText}.${extension}`;
+        try {
+          const embeddingText =
+            [
+              cleanCategory,
+              cleanMaterial,
+              description,
+              ...tags,
+            ]
+              .filter(Boolean)
+              .join(" ");
 
-          const {
-            error: uploadError,
-          } =
+          if (embeddingText) {
+            embedding =
+              await createEmbedding(
+                embeddingText,
+              );
+          }
+        } catch (
+          embeddingError
+        ) {
+          console.error(
+            "임베딩 생성:",
+            embeddingError,
+          );
+        }
+
+        const originalName =
+          String(
+            resizedFile?.name ||
+              file?.name ||
+              "",
+          );
+
+        const extensionMatch =
+          originalName.match(
+            /\.([a-zA-Z0-9]+)$/,
+          );
+
+        let safeExtension =
+          extensionMatch?.[1]
+            ?.toLowerCase() ||
+          "jpg";
+
+        if (
+          ![
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+          ].includes(
+            safeExtension,
+          )
+        ) {
+          safeExtension =
+            "jpg";
+        }
+
+        const storagePath =
+          `history/${companyId}/${Date.now()}_${workItemId}_${photoType}_${index}.${safeExtension}`;
+
+        const {
+          error: uploadError,
+        } =
+          await supabase.storage
+            .from(
+              "work-photos",
+            )
+            .upload(
+              storagePath,
+              resizedFile,
+              {
+                cacheControl:
+                  "3600",
+                upsert:
+                  false,
+              },
+            );
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const {
+          error: photoInsertError,
+        } = await supabase
+          .from(
+            "work_photos",
+          )
+          .insert({
+            company_id:
+              companyId,
+            project_id:
+              companyProjectId,
+            work_item_id:
+              workItemId,
+            photo_url:
+              storagePath,
+            storage_path:
+              storagePath,
+            photo_type:
+              photoType,
+            category:
+              analysis?.category ||
+              cleanCategory,
+            sub_category:
+              analysis?.sub_category ||
+              cleanCategory,
+            material_id:
+              cleanMaterial ||
+              null,
+            ai_description:
+              description ||
+              null,
+            ai_tags:
+              tags,
+            embedding:
+              embedding,
+            image_hash:
+              imageHash ||
+              null,
+          });
+
+        if (
+          photoInsertError
+        ) {
+          try {
             await supabase.storage
               .from(
                 "work-photos",
               )
-              .upload(
+              .remove([
                 storagePath,
-                resizedFile,
-                {
-                  cacheControl:
-                    "3600",
-                  upsert:
-                    false,
-                  contentType:
-                    resizedFile.type,
-                },
-              );
+              ]);
+          } catch {}
 
-          if (uploadError) {
-            throw uploadError;
-          }
-
-          let analysis =
-            null;
-
-          try {
-            analysis =
-              await analyzeImage(
-                resizedFile,
-              );
-          } catch (error) {
-            console.error(
-              "AI 사진 분석:",
-              error,
-            );
-          }
-
-          let embedding =
-            null;
-
-          try {
-            const embeddingText =
-              [
-                cleanCategory,
-                analysis?.category,
-                analysis?.sub_category,
-                analysis?.description,
-                Array.isArray(
-                  analysis?.tags,
-                )
-                  ? analysis.tags.join(
-                      ", ",
-                    )
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ");
-
-            if (
-              embeddingText
-            ) {
-              embedding =
-                await createEmbedding(
-                  embeddingText,
-                );
-            }
-          } catch (error) {
-            console.error(
-              "임베딩 생성:",
-              error,
-            );
-          }
-
-          const aiCategory =
-            analysis?.category ||
-            cleanCategory;
-
-          const aiSubCategory =
-            analysis?.sub_category ||
-            cleanCategory;
-
-          const aiDescription =
-            analysis?.description ||
-            null;
-
-          const aiTags =
-            Array.isArray(
-              analysis?.tags,
-            )
-              ? analysis.tags
-              : [];
-
-          const {
-            error: photoInsertError,
-          } =
-            await supabase
-              .from(
-                "work_photos",
-              )
-              .insert({
-                company_id:
-                  companyId,
-                project_id:
-                  companyProjectId,
-                work_item_id:
-                  workItemId,
-                photo_url:
-                  storagePath,
-                storage_path:
-                  storagePath,
-                photo_type:
-                  photoType,
-                category:
-                  aiCategory,
-                sub_category:
-                  aiSubCategory,
-                material_id:
-                  cleanMaterial ||
-                  null,
-                ai_description:
-                  aiDescription,
-                ai_tags:
-                  aiTags,
-                embedding:
-                  embedding,
-                image_hash:
-                  imageHash ||
-                  null,
-              });
-
-          if (
-            photoInsertError
-          ) {
-            throw photoInsertError;
-          }
-
-          uploadedCount += 1;
-        } catch (error) {
-          console.error(
-            `사진 ${
-              index + 1
-            } 저장 실패:`,
-            error,
-          );
-
-          throw new Error(
-            `사진 ${
-              index + 1
-            } 저장 실패: ${
-              error?.message ||
-              "알 수 없는 오류"
-            }`,
-          );
+          throw photoInsertError;
         }
+      };
+
+      for (
+        let index = 0;
+        index <
+        beforeImages.length;
+        index += 1
+      ) {
+        await savePhoto(
+          beforeImages[index],
+          "before",
+          index,
+        );
+      }
+
+      for (
+        let index = 0;
+        index <
+        afterImages.length;
+        index += 1
+      ) {
+        await savePhoto(
+          afterImages[index],
+          "after",
+          index,
+        );
       }
 
       /*
-       * 전/후 사진이 모두 있으면
-       * 기존 비교 분석 기능 유지
+       * 전/후 사진 비교 AI
        */
-
       if (
         beforeImages.length >
           0 &&
-        afterImages.length >
-          0
+        afterImages.length > 0
       ) {
         try {
-          await compareMultipleBeforeAfter(
-            beforeImages,
-            afterImages,
-          );
-        } catch (error) {
+          const comparison =
+            await compareMultipleBeforeAfter(
+              beforeImages,
+              afterImages,
+            );
+
+          if (comparison) {
+            const comparisonText =
+              typeof comparison ===
+              "string"
+                ? comparison
+                : comparison?.description ||
+                  comparison?.summary ||
+                  "";
+
+            if (
+              comparisonText
+            ) {
+              const mergedMemo =
+                [
+                  cleanMemo,
+                  comparisonText,
+                ]
+                  .filter(
+                    Boolean,
+                  )
+                  .join("\n");
+
+              const {
+                error:
+                  updateError,
+              } =
+                await supabase
+                  .from(
+                    "work_items",
+                  )
+                  .update({
+                    memo:
+                      mergedMemo ||
+                      null,
+                  })
+                  .eq(
+                    "id",
+                    workItemId,
+                  )
+                  .eq(
+                    "company_id",
+                    companyId,
+                  );
+
+              if (
+                updateError
+              ) {
+                console.error(
+                  "전후 비교 저장:",
+                  updateError,
+                );
+              }
+            }
+          }
+        } catch (
+          compareError
+        ) {
           console.error(
-            "전후 비교 분석:",
-            error,
+            "전후 사진 비교:",
+            compareError,
           );
         }
       }
 
       setMessage(
-        `✅ 시공 등록 완료 · 사진 ${uploadedCount}장 저장`,
+        "✅ 시공 데이터와 사진이 저장되었습니다.",
       );
 
-      setBeforeImages([]);
-      setAfterImages([]);
       setCategory("");
       setActualCost("");
       setMaterial("");
       setMemo("");
 
+      setBeforeImages([]);
+      setAfterImages([]);
+
       await loadJobs(
         1,
-        "",
-        companyId,
+        jobSearchApplied,
       );
 
       setActiveTab(
@@ -2275,17 +2335,105 @@ export default function AdminPage() {
         error,
       );
 
+      /*
+       * 사진 저장 도중 실패한 경우
+       * 생성된 work_item도 정리한다.
+       */
+      if (workItemId) {
+        try {
+          const {
+            data:
+              savedPhotos,
+          } =
+            await supabase
+              .from(
+                "work_photos",
+              )
+              .select(
+                "storage_path",
+              )
+              .eq(
+                "company_id",
+                companyId,
+              )
+              .eq(
+                "work_item_id",
+                workItemId,
+              );
+
+          const paths =
+            (
+              savedPhotos ||
+              []
+            )
+              .map(
+                (photo) =>
+                  photo.storage_path,
+              )
+              .filter(
+                Boolean,
+              );
+
+          if (
+            paths.length >
+            0
+          ) {
+            await supabase.storage
+              .from(
+                "work-photos",
+              )
+              .remove(
+                paths,
+              );
+          }
+
+          await supabase
+            .from(
+              "work_photos",
+            )
+            .delete()
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "work_item_id",
+              workItemId,
+            );
+
+          await supabase
+            .from(
+              "work_items",
+            )
+            .delete()
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "id",
+              workItemId,
+            );
+        } catch (
+          cleanupError
+        ) {
+          console.error(
+            "시공 등록 실패 후 정리:",
+            cleanupError,
+          );
+        }
+      }
+
       setMessage(
-        `❌ 저장 오류: ${
+        `❌ 오류: ${
           error?.message ||
-          "시공 등록에 실패했습니다."
+          "저장에 실패했습니다."
         }`,
       );
     } finally {
       setLoading(false);
     }
-                      }
-  
+                 }
     /* =========================================================
      고객 상담
   ========================================================= */
@@ -3351,4 +3499,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}
+            }
