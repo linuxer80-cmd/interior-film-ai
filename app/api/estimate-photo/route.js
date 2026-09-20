@@ -10,11 +10,11 @@ export const maxDuration = 60;
  *
  * 목적:
  * - 고객 브라우저에서 private Storage로 직접 업로드하지 않음
- * - 서버의 SUPABASE_SERVICE_ROLE_KEY를 사용해서 업로드
- * - 업로드된 Storage 경로를 page.js로 반환
+ * - 서버에서 company_slug를 실제 활성 업체로 확인
+ * - 업체별 Storage 경로로 사진을 분리
  *
  * 저장 위치:
- * work-photos / estimate-usage / 파일명.jpg
+ * work-photos / estimate-usage / 회사ID / 파일명.jpg
  */
 
 function makeFileName() {
@@ -29,10 +29,6 @@ function makeFileName() {
 
 export async function POST(request) {
   try {
-    /*
-     * 1. 환경변수 확인
-     */
-
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -65,13 +61,6 @@ export async function POST(request) {
       );
     }
 
-    /*
-     * 2. Supabase 서버용 클라이언트
-     *
-     * SERVICE ROLE KEY는 이 서버 파일에서만 사용합니다.
-     * page.js 같은 브라우저 코드에는 절대 넣지 않습니다.
-     */
-
     const supabase = createClient(
       supabaseUrl,
       serviceRoleKey,
@@ -83,13 +72,93 @@ export async function POST(request) {
       }
     );
 
+    const formData =
+      await request.formData();
+
+    const companySlug =
+      String(
+        formData.get("company_slug") ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!companySlug) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "company_slug가 없습니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (
+      !/^[a-z0-9-]+$/.test(
+        companySlug
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "올바르지 않은 회사 주소입니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     /*
-     * 3. 고객이 보낸 FormData 읽기
+     * 클라이언트의 company_id는 사용하지 않습니다.
+     * company_slug로 서버가 실제 활성 업체를 확인합니다.
      */
+    const {
+      data: company,
+      error: companyError,
+    } = await supabase
+      .from("companies")
+      .select("id, slug")
+      .eq("slug", companySlug)
+      .eq("is_active", true)
+      .maybeSingle();
 
-    const formData = await request.formData();
+    if (companyError) {
+      console.error(
+        "ESTIMATE PHOTO COMPANY LOOKUP ERROR:",
+        companyError
+      );
 
-    const file = formData.get("image");
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "회사 정보를 확인하지 못했습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (!company?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "사용할 수 없는 회사 주소입니다.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    const file =
+      formData.get("image");
 
     if (!file) {
       return NextResponse.json(
@@ -103,12 +172,9 @@ export async function POST(request) {
       );
     }
 
-    /*
-     * 브라우저 FormData의 File인지 확인
-     */
-
     if (
-      typeof file.arrayBuffer !== "function"
+      typeof file.arrayBuffer !==
+      "function"
     ) {
       return NextResponse.json(
         {
@@ -121,15 +187,6 @@ export async function POST(request) {
         }
       );
     }
-
-    /*
-     * 4. 파일 형식 확인
-     *
-     * 현재 page.js에서 사진을 JPEG로 압축해서 보내므로
-     * image/jpeg가 정상입니다.
-     *
-     * 혹시 다른 이미지 형식이 들어와도 image/*이면 허용합니다.
-     */
 
     const contentType =
       String(file.type || "").trim() ||
@@ -149,14 +206,6 @@ export async function POST(request) {
         }
       );
     }
-
-    /*
-     * 5. 파일 크기 제한
-     *
-     * page.js에서 1200px JPEG로 압축하지만
-     * 비정상적으로 큰 요청을 막기 위해
-     * 서버에서도 10MB 제한을 둡니다.
-     */
 
     const maxFileSize =
       10 * 1024 * 1024;
@@ -192,10 +241,6 @@ export async function POST(request) {
       );
     }
 
-    /*
-     * 6. File → Buffer 변환
-     */
-
     const arrayBuffer =
       await file.arrayBuffer();
 
@@ -215,23 +260,15 @@ export async function POST(request) {
       );
     }
 
-    /*
-     * 7. Storage 저장 경로 생성
-     */
-
     const fileName =
       makeFileName();
 
-    const storagePath =
-      `estimate-usage/${fileName}`;
-
     /*
-     * 8. private work-photos 버킷에 업로드
-     *
-     * Service Role을 사용하므로
-     * 고객 브라우저의 Storage INSERT RLS에
-     * 의존하지 않습니다.
+     * 같은 work-photos 버킷을 사용하되
+     * 회사 ID를 중간 폴더로 넣어 완전히 분리합니다.
      */
+    const storagePath =
+      `estimate-usage/${company.id}/${fileName}`;
 
     const {
       data: uploadData,
@@ -267,25 +304,9 @@ export async function POST(request) {
       );
     }
 
-    /*
-     * 9. 실제 저장된 경로 확인
-     */
-
     const savedPath =
       uploadData?.path ||
       storagePath;
-
-    /*
-     * 10. 성공 응답
-     *
-     * signed URL은 여기서 만들지 않습니다.
-     *
-     * DB에는 Storage 경로만 저장하고,
-     * 관리자 페이지에서 사진 보기 버튼을 눌렀을 때만
-     * signed URL을 생성합니다.
-     *
-     * 이렇게 해야 불필요한 Supabase egress를 줄일 수 있습니다.
-     */
 
     return NextResponse.json({
       success: true,
