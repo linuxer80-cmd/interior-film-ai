@@ -115,74 +115,6 @@ export default function CustomerEstimatePage({
     companySettings?.estimate_description ||
     "여러 시공 부위의 사진을 한 번에 올려주세요. AI가 같은 부위끼리 묶어서 예상견적을 계산합니다.";
 
-  if (tenantLoading) {
-    return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          padding: "24px",
-          background: "#f8fafc",
-          color: "#111827",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ fontWeight: "800" }}>
-          업체 정보를 불러오고 있습니다...
-        </div>
-      </main>
-    );
-  }
-
-  if (tenantError) {
-    return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          padding: "24px",
-          background: "#f8fafc",
-          color: "#111827",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "520px",
-            padding: "22px",
-            border: "1px solid #fecaca",
-            borderRadius: "16px",
-            background: "#ffffff",
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              marginBottom: "8px",
-              fontSize: "18px",
-              fontWeight: "900",
-            }}
-          >
-            업체 페이지를 열 수 없습니다.
-          </div>
-
-          <div
-            style={{
-              color: "#b91c1c",
-              fontSize: "14px",
-              lineHeight: 1.6,
-            }}
-          >
-            {tenantError}
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   /*
    * =========================================================
    * AI 자동견적
@@ -799,7 +731,7 @@ export default function CustomerEstimatePage({
 
       const description =
         groups
-          .map(
+                .map(
             (
               group,
               index
@@ -1123,6 +1055,88 @@ export default function CustomerEstimatePage({
 
   /*
    * =========================================================
+   * 업체 로딩 / 오류
+   *
+   * 중요:
+   * 모든 React Hook 호출 이후에 위치해야 함.
+   * =========================================================
+   */
+
+  if (tenantLoading) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+          background: "#f8fafc",
+          color: "#111827",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: "800",
+          }}
+        >
+          업체 정보를 불러오고 있습니다...
+        </div>
+      </main>
+    );
+  }
+
+  if (tenantError) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+          background: "#f8fafc",
+          color: "#111827",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "520px",
+            padding: "22px",
+            border:
+              "1px solid #fecaca",
+            borderRadius: "16px",
+            background: "#ffffff",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "8px",
+              fontSize: "18px",
+              fontWeight: "900",
+            }}
+          >
+            업체 페이지를 열 수 없습니다.
+          </div>
+
+          <div
+            style={{
+              color: "#b91c1c",
+              fontSize: "14px",
+              lineHeight: 1.6,
+            }}
+          >
+            {tenantError}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * =========================================================
    * 화면
    * =========================================================
    */
@@ -1156,7 +1170,8 @@ export default function CustomerEstimatePage({
       <nav
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns:
+            "1fr 1fr",
           gap: "8px",
           marginBottom: "18px",
         }}
@@ -1181,7 +1196,8 @@ export default function CustomerEstimatePage({
             padding: "11px",
             textAlign: "center",
             textDecoration: "none",
-            border: "1px solid #d1d5db",
+            border:
+              "1px solid #d1d5db",
             borderRadius: "11px",
             background: "#ffffff",
             color: "#374151",
@@ -1323,11 +1339,15 @@ export default function CustomerEstimatePage({
             <VirtualToneSelector
               groups={groups}
               product={selectedFilm}
-              useSplitTone={useSplitTone}
+              useSplitTone={
+                useSplitTone
+              }
               onUseSplitToneChange={
                 setUseSplitTone
               }
-              areaFilms={areaFilms}
+              areaFilms={
+                areaFilms
+              }
               onAreaFilmsChange={
                 setAreaFilms
               }
@@ -1463,4 +1483,4 @@ export default function CustomerEstimatePage({
       </div>
     </main>
   );
-        }
+                  }
