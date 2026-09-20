@@ -603,14 +603,32 @@ export default function AdminPage() {
 
     try {
       while (!structureStopRef.current) {
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        const accessToken =
+          sessionData?.session?.access_token;
+
+        if (!accessToken) {
+          throw new Error(
+            "로그인 세션이 만료되었습니다. 다시 로그인해주세요.",
+          );
+        }
+
         const response = await fetch("/api/analyze-work-structure", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             limit: 3,
-            companyId,
           }),
         });
 
@@ -1764,7 +1782,8 @@ export default function AdminPage() {
             .eq(
               "id",
               workItemId,
-            );
+            )
+            .eq("company_id", companyId);
         } catch (
           cleanupError
         ) {
