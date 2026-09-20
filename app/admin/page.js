@@ -11,7 +11,6 @@ import {
   JOB_PAGE_SIZE,
   LEAD_PAGE_SIZE,
   SIGNED_URL_SECONDS,
-  PROJECT_ID,
 } from "./adminConstants";
 import { resizeImage, getImageHash } from "./imageUtils";
 import {
@@ -35,13 +34,15 @@ import { fetchUsageDashboard } from "./usageDataService";
 export default function AdminPage() {
   const [adminReady, setAdminReady] = useState(false);
   const [currentCompany, setCurrentCompany] = useState(null);
-  const companyId = currentCompany?.company_id || currentCompany?.id || null;
+  const companyId =
+    currentCompany?.company_id || currentCompany?.id || null;
   const companyName = currentCompany?.company_name || "관리자";
 
   const [activeTab, setActiveTab] = useState("jobs");
   const activeTabRef = useRef("jobs");
 
-  const [similarityThreshold, setSimilarityThreshold] = useState(0.65);
+  const [similarityThreshold, setSimilarityThreshold] =
+    useState(0.65);
   const [settingMessage, setSettingMessage] = useState("");
   const [settingLoading, setSettingLoading] = useState(false);
 
@@ -69,7 +70,8 @@ export default function AdminPage() {
   const [openJobId, setOpenJobId] = useState(null);
 
   const [jobPhotos, setJobPhotos] = useState({});
-  const [jobPhotoLoadingId, setJobPhotoLoadingId] = useState(null);
+  const [jobPhotoLoadingId, setJobPhotoLoadingId] =
+    useState(null);
 
   const [jobPhotoUrls, setJobPhotoUrls] = useState({});
   const [loadingPhotoId, setLoadingPhotoId] = useState(null);
@@ -103,8 +105,10 @@ export default function AdminPage() {
   const [editingPhotoId, setEditingPhotoId] = useState(null);
   const [editPhotoType, setEditPhotoType] = useState("before");
   const [editPhotoCategory, setEditPhotoCategory] = useState("");
-  const [editPhotoSubCategory, setEditPhotoSubCategory] = useState("");
-  const [editPhotoDescription, setEditPhotoDescription] = useState("");
+  const [editPhotoSubCategory, setEditPhotoSubCategory] =
+    useState("");
+  const [editPhotoDescription, setEditPhotoDescription] =
+    useState("");
   const [photoEditLoading, setPhotoEditLoading] = useState(false);
 
   const [leads, setLeads] = useState([]);
@@ -120,10 +124,12 @@ export default function AdminPage() {
   const [openLeadId, setOpenLeadId] = useState(null);
 
   const [leadPhotoUrls, setLeadPhotoUrls] = useState({});
-  const [leadPhotoLoadingId, setLeadPhotoLoadingId] = useState(null);
+  const [leadPhotoLoadingId, setLeadPhotoLoadingId] =
+    useState(null);
 
   const [newLeadAlert, setNewLeadAlert] = useState(null);
-  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [notificationEnabled, setNotificationEnabled] =
+    useState(false);
 
   const [usageStats, setUsageStats] = useState({
     today: 0,
@@ -141,7 +147,8 @@ export default function AdminPage() {
 
   const [openUsagePhotoId, setOpenUsagePhotoId] = useState(null);
   const [usagePhotoUrls, setUsagePhotoUrls] = useState({});
-  const [usagePhotoLoadingId, setUsagePhotoLoadingId] = useState(null);
+  const [usagePhotoLoadingId, setUsagePhotoLoadingId] =
+    useState(null);
 
   function changeTab(tab) {
     activeTabRef.current = tab;
@@ -187,7 +194,9 @@ export default function AdminPage() {
           company?.company_id || company?.id || null;
 
         if (!company || !resolvedCompanyId) {
-          throw new Error("로그인 계정에 연결된 회사가 없습니다.");
+          throw new Error(
+            "로그인 계정에 연결된 회사가 없습니다.",
+          );
         }
 
         if (company?.is_active === false) {
@@ -207,7 +216,9 @@ export default function AdminPage() {
         if (!mounted) return;
 
         channel = supabase
-          .channel(`customer-leads-admin-realtime-${resolvedCompanyId}`)
+          .channel(
+            `customer-leads-admin-realtime-${resolvedCompanyId}`,
+          )
           .on(
             "postgres_changes",
             {
@@ -217,7 +228,10 @@ export default function AdminPage() {
               filter: `company_id=eq.${resolvedCompanyId}`,
             },
             (payload) => {
-              handleRealtimeLead(payload.new, resolvedCompanyId);
+              handleRealtimeLead(
+                payload.new,
+                resolvedCompanyId,
+              );
             },
           )
           .subscribe();
@@ -236,7 +250,8 @@ export default function AdminPage() {
         if (mounted) {
           setMessage(
             `❌ 관리자 접속 오류: ${
-              error?.message || "회사 정보를 불러오지 못했습니다."
+              error?.message ||
+              "회사 정보를 불러오지 못했습니다."
             }`,
           );
           setAdminReady(true);
@@ -259,7 +274,10 @@ export default function AdminPage() {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
-  function handleRealtimeLead(lead, scopedCompanyId = companyId) {
+  function handleRealtimeLead(
+    lead,
+    scopedCompanyId = companyId,
+  ) {
     if (
       !lead ||
       !scopedCompanyId ||
@@ -292,7 +310,9 @@ export default function AdminPage() {
         Notification.permission === "granted"
       ) {
         new Notification("🔔 신규 상담이 들어왔습니다.", {
-          body: `${lead.customer_name || "고객"} ${lead.phone || ""}`,
+          body: `${lead.customer_name || "고객"} ${
+            lead.phone || ""
+          }`,
         });
       }
     } catch {}
@@ -305,11 +325,14 @@ export default function AdminPage() {
   async function enableNotifications() {
     try {
       if (!("Notification" in window)) {
-        alert("이 브라우저는 알림 기능을 지원하지 않습니다.");
+        alert(
+          "이 브라우저는 알림 기능을 지원하지 않습니다.",
+        );
         return;
       }
 
-      const permission = await Notification.requestPermission();
+      const permission =
+        await Notification.requestPermission();
 
       if (permission !== "granted") {
         setNotificationEnabled(false);
@@ -324,11 +347,15 @@ export default function AdminPage() {
       });
     } catch (error) {
       console.error(error);
-      alert(`알림 설정 오류: ${error?.message || "실패"}`);
+      alert(
+        `알림 설정 오류: ${error?.message || "실패"}`,
+      );
     }
   }
 
-  async function loadSettings(scopedCompanyId = companyId) {
+  async function loadSettings(
+    scopedCompanyId = companyId,
+  ) {
     try {
       if (!scopedCompanyId) return;
 
@@ -344,7 +371,9 @@ export default function AdminPage() {
         data?.similarity_threshold !== null &&
         data?.similarity_threshold !== undefined
       ) {
-        setSimilarityThreshold(Number(data.similarity_threshold));
+        setSimilarityThreshold(
+          Number(data.similarity_threshold),
+        );
       }
     } catch (error) {
       console.error("설정 불러오기:", error);
@@ -369,7 +398,9 @@ export default function AdminPage() {
       }
 
       if (!companyId) {
-        throw new Error("회사 정보를 확인할 수 없습니다.");
+        throw new Error(
+          "회사 정보를 확인할 수 없습니다.",
+        );
       }
 
       const { error } = await supabase
@@ -389,7 +420,9 @@ export default function AdminPage() {
       );
     } catch (error) {
       setSettingMessage(
-        `❌ 설정 저장 오류: ${error?.message || "실패"}`,
+        `❌ 설정 저장 오류: ${
+          error?.message || "실패"
+        }`,
       );
     } finally {
       setSettingLoading(false);
@@ -415,7 +448,10 @@ export default function AdminPage() {
 
     const cached = usagePhotoUrls[row.id];
 
-    if (Array.isArray(cached) && cached.length > 0) {
+    if (
+      Array.isArray(cached) &&
+      cached.length > 0
+    ) {
       setOpenUsagePhotoId(row.id);
       return;
     }
@@ -426,7 +462,8 @@ export default function AdminPage() {
       const urls = [];
 
       for (const path of paths) {
-        const cachedUrl = getCachedSignedUrl(path);
+        const cachedUrl =
+          getCachedSignedUrl(path);
 
         if (cachedUrl) {
           urls.push({
@@ -436,9 +473,13 @@ export default function AdminPage() {
           continue;
         }
 
-        const { data, error } = await supabase.storage
-          .from("work-photos")
-          .createSignedUrl(path, SIGNED_URL_SECONDS);
+        const { data, error } =
+          await supabase.storage
+            .from("work-photos")
+            .createSignedUrl(
+              path,
+              SIGNED_URL_SECONDS,
+            );
 
         if (error) {
           console.error(
@@ -482,11 +523,15 @@ export default function AdminPage() {
         );
       }
     } catch (error) {
-      console.error("자동견적 사진 보기:", error);
+      console.error(
+        "자동견적 사진 보기:",
+        error,
+      );
 
       setUsageMessage(
         `❌ 자동견적 사진 오류: ${
-          error?.message || "사진을 불러오지 못했습니다."
+          error?.message ||
+          "사진을 불러오지 못했습니다."
         }`,
       );
     } finally {
@@ -500,11 +545,16 @@ export default function AdminPage() {
 
     try {
       if (!companyId) {
-        throw new Error("회사 정보를 확인할 수 없습니다.");
+        throw new Error(
+          "회사 정보를 확인할 수 없습니다.",
+        );
       }
 
       const { stats, recent } =
-        await fetchUsageDashboard(supabase, companyId);
+        await fetchUsageDashboard(
+          supabase,
+          companyId,
+        );
 
       setUsageStats(stats);
       setUsageRecent(recent);
@@ -515,22 +565,28 @@ export default function AdminPage() {
           "⚠️ estimate_usage 조회는 성공했지만 현재 확인되는 자동견적 로그가 없습니다.",
         );
       } else {
-        const recentPhotoCount = recent.filter(
-          (row) => getUsagePhotoPaths(row).length > 0,
-        ).length;
+        const recentPhotoCount =
+          recent.filter(
+            (row) =>
+              getUsagePhotoPaths(row)
+                .length > 0,
+          ).length;
 
         setUsageMessage(
           `✅ 자동견적 전체 ${stats.total.toLocaleString(
             "ko-KR",
-          )}건 · 최근 목록 ${recent.length}건 · 최근 사진 저장 ${
-            recentPhotoCount
-          }건 · 상세상담 전환 ${stats.converted.toLocaleString(
+          )}건 · 최근 목록 ${
+            recent.length
+          }건 · 최근 사진 저장 ${recentPhotoCount}건 · 상세상담 전환 ${stats.converted.toLocaleString(
             "ko-KR",
           )}건`,
         );
       }
     } catch (error) {
-      console.error("사용자 로그 통계 오류:", error);
+      console.error(
+        "사용자 로그 통계 오류:",
+        error,
+      );
 
       setUsageStats({
         today: 0,
@@ -562,13 +618,14 @@ export default function AdminPage() {
   async function runStructureAnalysis() {
     if (structureAnalysis.running) return;
 
-    const confirmed = window.confirm(
-      "기존 시공사진의 구조를 AI로 분석합니다.\n\n" +
-        "기존 카테고리, 금액, 임베딩은 변경하지 않고\n" +
-        "새 구조분석 정보만 저장합니다.\n\n" +
-        "사진 수에 따라 시간이 걸릴 수 있습니다.\n" +
-        "시작할까요?",
-    );
+    const confirmed =
+      window.confirm(
+        "기존 시공사진의 구조를 AI로 분석합니다.\n\n" +
+          "기존 카테고리, 금액, 임베딩은 변경하지 않고\n" +
+          "새 구조분석 정보만 저장합니다.\n\n" +
+          "사진 수에 따라 시간이 걸릴 수 있습니다.\n" +
+          "시작할까요?",
+      );
 
     if (!confirmed) return;
 
@@ -582,9 +639,10 @@ export default function AdminPage() {
     const collectedErrors = [];
 
     function collectApiErrors(data) {
-      const results = Array.isArray(data?.results)
-        ? data.results
-        : [];
+      const results =
+        Array.isArray(data?.results)
+          ? data.results
+          : [];
 
       for (const result of results) {
         if (
@@ -598,11 +656,15 @@ export default function AdminPage() {
           ? String(result.id)
           : "ID 없음";
 
-        const storagePath = result?.storage_path
-          ? String(result.storage_path)
-          : "";
+        const storagePath =
+          result?.storage_path
+            ? String(
+                result.storage_path,
+              )
+            : "";
 
-        const errorText = String(result.error);
+        const errorText =
+          String(result.error);
 
         const text = [
           `사진 ID: ${photoId}`,
@@ -614,19 +676,36 @@ export default function AdminPage() {
           .filter(Boolean)
           .join("\n");
 
-        if (!collectedErrors.includes(text)) {
-          collectedErrors.push(text);
+        if (
+          !collectedErrors.includes(
+            text,
+          )
+        ) {
+          collectedErrors.push(
+            text,
+          );
         }
       }
 
-      if (collectedErrors.length > 10) {
-        collectedErrors.splice(10);
+      if (
+        collectedErrors.length >
+        10
+      ) {
+        collectedErrors.splice(
+          10,
+        );
       }
     }
 
-    function makeErrorMessage(prefix, remaining) {
+    function makeErrorMessage(
+      prefix,
+      remaining,
+    ) {
       const visibleErrors =
-        collectedErrors.slice(0, 3);
+        collectedErrors.slice(
+          0,
+          3,
+        );
 
       let text = prefix;
 
@@ -637,18 +716,28 @@ export default function AdminPage() {
         text += `\n남은 사진 ${remaining}장`;
       }
 
-      if (visibleErrors.length > 0) {
-        text += "\n\n실제 오류:";
+      if (
+        visibleErrors.length >
+        0
+      ) {
+        text +=
+          "\n\n실제 오류:";
 
         visibleErrors.forEach(
           (item, index) => {
-            text += `\n\n${index + 1}. ${item}`;
+            text += `\n\n${
+              index + 1
+            }. ${item}`;
           },
         );
 
-        if (collectedErrors.length > 3) {
+        if (
+          collectedErrors.length >
+          3
+        ) {
           text += `\n\n외 ${
-            collectedErrors.length - 3
+            collectedErrors.length -
+            3
           }개 오류`;
         }
       }
@@ -656,95 +745,140 @@ export default function AdminPage() {
       return text;
     }
 
-    setStructureAnalysis((current) => ({
-      ...current,
-      running: true,
-      finished: false,
-      failed: 0,
-      processed: 0,
-      errors: [],
-      message: "AI 구조분석을 시작합니다...",
-    }));
+    setStructureAnalysis(
+      (current) => ({
+        ...current,
+        running: true,
+        finished: false,
+        failed: 0,
+        processed: 0,
+        errors: [],
+        message:
+          "AI 구조분석을 시작합니다...",
+      }),
+    );
 
     try {
-      while (!structureStopRef.current) {
+      while (
+        !structureStopRef.current
+      ) {
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } =
+          await supabase.auth.getSession();
 
-        if (!session?.access_token) {
+        if (
+          !session?.access_token
+        ) {
           throw new Error(
             "로그인이 만료되었습니다. 다시 로그인해주세요.",
           );
         }
 
-        const response = await fetch(
-          "/api/analyze-work-structure",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
+        const response =
+          await fetch(
+            "/api/analyze-work-structure",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              body:
+                JSON.stringify({
+                  limit: 3,
+                }),
             },
-            body: JSON.stringify({
-              limit: 3,
-            }),
-          },
-        );
+          );
 
         let data;
 
         try {
-          data = await response.json();
+          data =
+            await response.json();
         } catch {
           throw new Error(
             `구조분석 API 응답을 읽을 수 없습니다. HTTP ${response.status}`,
           );
         }
 
-        if (!response.ok || !data?.success) {
+        if (
+          !response.ok ||
+          !data?.success
+        ) {
           const apiError =
             data?.error ||
             `구조분석 API 오류 (${response.status})`;
 
-          if (!collectedErrors.includes(apiError)) {
-            collectedErrors.push(apiError);
+          if (
+            !collectedErrors.includes(
+              apiError,
+            )
+          ) {
+            collectedErrors.push(
+              apiError,
+            );
           }
 
-          throw new Error(apiError);
+          throw new Error(
+            apiError,
+          );
         }
 
         collectApiErrors(data);
 
-        const total = Number(data.total || 0);
-        const completed = Number(
-          data.completed || 0,
-        );
-        const remaining = Number(
-          data.remaining || 0,
-        );
-        const processed = Number(
-          data.processed || 0,
-        );
-        const failed = Number(data.failed || 0);
+        const total =
+          Number(
+            data.total || 0,
+          );
 
-        totalProcessed += processed;
+        const completed =
+          Number(
+            data.completed || 0,
+          );
+
+        const remaining =
+          Number(
+            data.remaining || 0,
+          );
+
+        const processed =
+          Number(
+            data.processed || 0,
+          );
+
+        const failed =
+          Number(
+            data.failed || 0,
+          );
+
+        totalProcessed +=
+          processed;
+
         totalFailed += failed;
 
-        if (structureStopRef.current) {
+        if (
+          structureStopRef.current
+        ) {
           setStructureAnalysis({
             total,
             completed,
             remaining,
-            failed: totalFailed,
-            processed: totalProcessed,
+            failed:
+              totalFailed,
+            processed:
+              totalProcessed,
             running: false,
             finished: false,
-            errors: [...collectedErrors],
-            message: makeErrorMessage(
-              "⏸️ 구조분석을 중지했습니다. 다시 시작하면 남은 사진부터 계속합니다.",
-              remaining,
-            ),
+            errors: [
+              ...collectedErrors,
+            ],
+            message:
+              makeErrorMessage(
+                "⏸️ 구조분석을 중지했습니다. 다시 시작하면 남은 사진부터 계속합니다.",
+                remaining,
+              ),
           });
 
           break;
@@ -754,13 +888,18 @@ export default function AdminPage() {
           total,
           completed,
           remaining,
-          failed: totalFailed,
-          processed: totalProcessed,
+          failed:
+            totalFailed,
+          processed:
+            totalProcessed,
           running: true,
           finished:
-            data.finished === true ||
+            data.finished ===
+              true ||
             remaining === 0,
-          errors: [...collectedErrors],
+          errors: [
+            ...collectedErrors,
+          ],
           message:
             remaining === 0
               ? "✅ 기존 시공사진 구조분석이 완료되었습니다."
@@ -768,7 +907,8 @@ export default function AdminPage() {
         });
 
         if (
-          data.finished === true ||
+          data.finished ===
+            true ||
           remaining === 0
         ) {
           setStructureAnalysis(
@@ -776,7 +916,9 @@ export default function AdminPage() {
               ...current,
               running: false,
               finished: true,
-              errors: [...collectedErrors],
+              errors: [
+                ...collectedErrors,
+              ],
               message:
                 totalFailed > 0
                   ? makeErrorMessage(
@@ -792,35 +934,47 @@ export default function AdminPage() {
 
         if (
           processed > 0 ||
-          previousRemaining === null ||
-          remaining < previousRemaining
+          previousRemaining ===
+            null ||
+          remaining <
+            previousRemaining
         ) {
           noProgressCount = 0;
         } else {
           noProgressCount += 1;
         }
 
-        previousRemaining = remaining;
+        previousRemaining =
+          remaining;
 
-        if (noProgressCount >= 2) {
+        if (
+          noProgressCount >= 2
+        ) {
           setStructureAnalysis(
             (current) => ({
               ...current,
               running: false,
               finished: false,
-              errors: [...collectedErrors],
-              message: makeErrorMessage(
-                "⚠️ 반복 실패로 자동 분석을 중단했습니다.",
-                remaining,
-              ),
+              errors: [
+                ...collectedErrors,
+              ],
+              message:
+                makeErrorMessage(
+                  "⚠️ 반복 실패로 자동 분석을 중단했습니다.",
+                  remaining,
+                ),
             }),
           );
 
           break;
         }
 
-        await new Promise((resolve) =>
-          setTimeout(resolve, 500),
+        await new Promise(
+          (resolve) =>
+            setTimeout(
+              resolve,
+              500,
+            ),
         );
       }
     } catch (error) {
@@ -830,12 +984,17 @@ export default function AdminPage() {
       );
 
       const errorText =
-        error?.message || "실패";
+        error?.message ||
+        "실패";
 
       if (
-        !collectedErrors.includes(errorText)
+        !collectedErrors.includes(
+          errorText,
+        )
       ) {
-        collectedErrors.push(errorText);
+        collectedErrors.push(
+          errorText,
+        );
       }
 
       setStructureAnalysis(
@@ -843,25 +1002,31 @@ export default function AdminPage() {
           ...current,
           running: false,
           finished: false,
-          errors: [...collectedErrors],
-          message: makeErrorMessage(
-            `❌ 구조분석 오류: ${errorText}`,
-            current.remaining,
-          ),
+          errors: [
+            ...collectedErrors,
+          ],
+          message:
+            makeErrorMessage(
+              `❌ 구조분석 오류: ${errorText}`,
+              current.remaining,
+            ),
         }),
       );
     }
   }
 
   function stopStructureAnalysis() {
-    structureStopRef.current = true;
+    structureStopRef.current =
+      true;
 
-    setStructureAnalysis((current) => ({
-      ...current,
-      running: false,
-      message:
-        "⏸️ 구조분석 중지를 요청했습니다. 현재 처리 중인 사진이 끝나면 중지됩니다.",
-    }));
+    setStructureAnalysis(
+      (current) => ({
+        ...current,
+        running: false,
+        message:
+          "⏸️ 구조분석 중지를 요청했습니다. 현재 처리 중인 사진이 끝나면 중지됩니다.",
+      }),
+    );
   }
 
   /* =========================================================
@@ -873,24 +1038,32 @@ export default function AdminPage() {
     keyword = jobSearchApplied,
     scopedCompanyId = companyId,
   ) {
-    if (!scopedCompanyId) return;
+    if (!scopedCompanyId)
+      return;
 
     setJobsLoading(true);
     setJobsMessage("");
 
     try {
       const from =
-        (page - 1) * JOB_PAGE_SIZE;
+        (page - 1) *
+        JOB_PAGE_SIZE;
+
       const to =
-        from + JOB_PAGE_SIZE - 1;
+        from +
+        JOB_PAGE_SIZE -
+        1;
 
       const safeKeyword =
-        sanitizeSearchKeyword(keyword);
+        sanitizeSearchKeyword(
+          keyword,
+        );
 
-      let query = supabase
-        .from("work_items")
-        .select(
-          `
+      let query =
+        supabase
+          .from("work_items")
+          .select(
+            `
           id,
           project_id,
           category,
@@ -899,35 +1072,47 @@ export default function AdminPage() {
           memo,
           created_at
         `,
-          {
-            count: "exact",
-          },
-        )
-        .eq(
-          "company_id",
-          scopedCompanyId,
-        );
+            {
+              count: "exact",
+            },
+          )
+          .eq(
+            "company_id",
+            scopedCompanyId,
+          );
 
       if (safeKeyword) {
-        query = query.or(
-          `category.ilike.%${safeKeyword}%,sub_category.ilike.%${safeKeyword}%,memo.ilike.%${safeKeyword}%`,
-        );
+        query =
+          query.or(
+            `category.ilike.%${safeKeyword}%,sub_category.ilike.%${safeKeyword}%,memo.ilike.%${safeKeyword}%`,
+          );
       }
 
       const {
         data,
         error,
         count,
-      } = await query
-        .order("created_at", {
-          ascending: false,
-        })
-        .range(from, to);
+      } =
+        await query
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            },
+          )
+          .range(
+            from,
+            to,
+          );
 
-      if (error) throw error;
+      if (error)
+        throw error;
 
       setJobs(data || []);
-      setJobTotal(count || 0);
+      setJobTotal(
+        count || 0,
+      );
       setJobPage(page);
       setOpenJobId(null);
     } catch (error) {
@@ -946,57 +1131,89 @@ export default function AdminPage() {
 
   function searchJobs() {
     const keyword =
-      sanitizeSearchKeyword(jobSearch);
+      sanitizeSearchKeyword(
+        jobSearch,
+      );
 
-    setJobSearchApplied(keyword);
-    loadJobs(1, keyword);
+    setJobSearchApplied(
+      keyword,
+    );
+
+    loadJobs(
+      1,
+      keyword,
+    );
   }
 
   function clearJobSearch() {
     setJobSearch("");
     setJobSearchApplied("");
     loadJobs(1, "");
-  }
+}  async function loadJobPhotos(
+    workItemId,
+  ) {
+    if (!workItemId) return;
 
-  async function loadJobPhotos(workItemId) {
-    if (!companyId) return;
-
-    setJobPhotoLoadingId(workItemId);
+    setJobPhotoLoadingId(
+      workItemId,
+    );
 
     try {
-      const { data, error } =
-        await supabase
-          .from("work_photos")
-          .select(
-            `
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("work_photos")
+        .select(
+          `
             id,
             work_item_id,
-            project_id,
+            photo_url,
+            storage_path,
             photo_type,
             category,
             sub_category,
-            storage_path,
+            region,
+            material_id,
+            width_mm,
+            height_mm,
+            area_m2,
             ai_description,
             ai_tags,
             created_at
           `,
-          )
-          .eq("company_id", companyId)
-          .eq(
-            "work_item_id",
-            workItemId,
-          )
-          .order("created_at", {
-            ascending: true,
-          });
+        )
+        .eq(
+          "work_item_id",
+          workItemId,
+        )
+        .eq(
+          "company_id",
+          companyId,
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          },
+        );
 
       if (error) throw error;
 
-      setJobPhotos((current) => ({
-        ...current,
-        [workItemId]: data || [],
-      }));
+      setJobPhotos(
+        (current) => ({
+          ...current,
+          [workItemId]:
+            data || [],
+        }),
+      );
     } catch (error) {
+      console.error(
+        "시공사진:",
+        error,
+      );
+
       setJobsMessage(
         `❌ 사진정보 오류: ${
           error?.message || "실패"
@@ -1620,23 +1837,25 @@ export default function AdminPage() {
 
     if (!companyId) {
       setMessage(
-        "❌ 회사 정보를 확인할 수 없습니다. 다시 로그인해주세요.",
+        "❌ 회사 정보를 확인할 수 없습니다.",
       );
       return;
-          }
-        const cleanCategory =
-      String(category || "").trim();
+    }
+
+    const cleanCategory =
+      category.trim();
 
     const cleanMaterial =
-      String(material || "").trim();
+      material.trim();
 
     const cleanMemo =
-      String(memo || "").trim();
+      memo.trim();
 
     const cost = Number(
-      String(actualCost || "")
-        .replace(/,/g, "")
-        .trim(),
+      String(actualCost).replace(
+        /,/g,
+        "",
+      ),
     );
 
     if (!cleanCategory) {
@@ -1668,26 +1887,100 @@ export default function AdminPage() {
 
     setLoading(true);
     setMessage(
-      "사진을 분석하고 시공 데이터를 저장하고 있습니다...",
+      "시공 데이터를 저장하고 있습니다...",
     );
 
-    let workItemId = null;
-
     try {
+      /*
+       * =====================================================
+       * 현재 로그인 업체의 기본 프로젝트 확인
+       * =====================================================
+       *
+       * 고정 PROJECT_ID를 사용하지 않는다.
+       *
+       * 현재 company_id에 속한 프로젝트가 있으면
+       * 기존 프로젝트를 그대로 사용한다.
+       *
+       * 프로젝트가 하나도 없는 신규 업체라면
+       * 현재 업체의 company_id로 기본 프로젝트를
+       * 자동 생성한 뒤 사용한다.
+       */
+
+      let companyProjectId = null;
+
+      const {
+        data: existingProject,
+        error: projectFindError,
+      } = await supabase
+        .from("projects")
+        .select("id")
+        .eq(
+          "company_id",
+          companyId,
+        )
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          },
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (projectFindError) {
+        throw projectFindError;
+      }
+
+      if (existingProject?.id) {
+        companyProjectId =
+          existingProject.id;
+      } else {
+        const {
+          data: newProject,
+          error: projectCreateError,
+        } = await supabase
+          .from("projects")
+          .insert({
+            company_id:
+              companyId,
+          })
+          .select("id")
+          .single();
+
+        if (projectCreateError) {
+          throw projectCreateError;
+        }
+
+        companyProjectId =
+          newProject?.id ||
+          null;
+      }
+
+      if (!companyProjectId) {
+        throw new Error(
+          "업체 프로젝트를 확인하지 못했습니다.",
+        );
+      }
+
       const {
         data: workItem,
         error: workItemError,
       } = await supabase
         .from("work_items")
         .insert({
-          company_id: companyId,
-          project_id: PROJECT_ID,
-          category: cleanCategory,
+          company_id:
+            companyId,
+          project_id:
+            companyProjectId,
+          category:
+            cleanCategory,
           sub_category:
             cleanCategory,
-          actual_cost: cost,
+          actual_cost:
+            cost,
           memo:
-            cleanMemo || null,
+            cleanMemo ||
+            null,
         })
         .select("id")
         .single();
@@ -1696,88 +1989,84 @@ export default function AdminPage() {
         throw workItemError;
       }
 
-      workItemId =
+      const workItemId =
         workItem?.id;
 
       if (!workItemId) {
         throw new Error(
-          "시공 데이터 ID를 생성하지 못했습니다.",
+          "시공 데이터 ID를 만들지 못했습니다.",
         );
       }
 
-      const savePhoto =
-        async (
+      const uploadTargets = [
+        ...beforeImages.map(
+          (file) => ({
+            file,
+            photoType:
+              "before",
+          }),
+        ),
+        ...afterImages.map(
+          (file) => ({
+            file,
+            photoType:
+              "after",
+          }),
+        ),
+      ];
+
+      let uploadedCount = 0;
+
+      for (
+        let index = 0;
+        index <
+        uploadTargets.length;
+        index += 1
+      ) {
+        const {
           file,
           photoType,
-          index,
-        ) => {
-          if (!file) return;
+        } =
+          uploadTargets[index];
 
-          let resizedFile =
-            file;
+        setMessage(
+          `사진 ${
+            index + 1
+          }/${
+            uploadTargets.length
+          } 처리 중...`,
+        );
 
-          try {
-            resizedFile =
-              await resizeImage(
-                file,
-              );
-          } catch (
-            resizeError
-          ) {
-            console.error(
-              "이미지 리사이즈:",
-              resizeError,
+        try {
+          const resizedFile =
+            await resizeImage(
+              file,
             );
 
-            resizedFile =
-              file;
-          }
-
-          let imageHash =
-            null;
-
-          try {
-            imageHash =
-              await getImageHash(
-                resizedFile,
-              );
-          } catch (
-            hashError
-          ) {
-            console.error(
-              "이미지 해시:",
-              hashError,
+          const imageHash =
+            await getImageHash(
+              resizedFile,
             );
-          }
+
+          const timestamp =
+            Date.now();
+
+          const randomText =
+            Math.random()
+              .toString(36)
+              .slice(2, 10);
 
           const extension =
-            String(
-              resizedFile?.name ||
-                file?.name ||
-                "",
-            )
-              .split(".")
-              .pop()
-              ?.toLowerCase() ||
-            "jpg";
+            resizedFile.type ===
+            "image/png"
+              ? "png"
+              : "jpg";
 
-          const safeExtension =
-            extension === "jpeg"
-              ? "jpg"
-              : extension;
-
-          /*
-           * 중요:
-           * Storage RLS 정책과 맞춰
-           * history/{companyId}/파일명
-           * 구조로 저장한다.
-           */
           const storagePath =
-            `history/${companyId}/${Date.now()}_${workItemId}_${photoType}_${index}.${safeExtension}`;
+            `history/${companyId}/${timestamp}-${randomText}.${extension}`;
 
           const {
-            error:
-              uploadError,
+            error: uploadError,
           } =
             await supabase.storage
               .from(
@@ -1789,11 +2078,10 @@ export default function AdminPage() {
                 {
                   cacheControl:
                     "3600",
-                  upsert: false,
+                  upsert:
+                    false,
                   contentType:
-                    resizedFile.type ||
-                    file.type ||
-                    "image/jpeg",
+                    resizedFile.type,
                 },
               );
 
@@ -1801,56 +2089,20 @@ export default function AdminPage() {
             throw uploadError;
           }
 
-          let aiResult =
+          let analysis =
             null;
 
           try {
-            aiResult =
+            analysis =
               await analyzeImage(
                 resizedFile,
-                photoType,
               );
-          } catch (
-            analysisError
-          ) {
+          } catch (error) {
             console.error(
-              "사진 AI 분석:",
-              analysisError,
+              "AI 사진 분석:",
+              error,
             );
           }
-
-          const aiDescription =
-            String(
-              aiResult?.description ||
-                aiResult?.ai_description ||
-                "",
-            ).trim();
-
-          const aiTags =
-            Array.isArray(
-              aiResult?.tags,
-            )
-              ? aiResult.tags
-              : Array.isArray(
-                    aiResult?.ai_tags,
-                  )
-                ? aiResult.ai_tags
-                : [];
-
-          const detectedCategory =
-            String(
-              aiResult?.category ||
-                cleanCategory,
-            ).trim() ||
-            cleanCategory;
-
-          const detectedSubCategory =
-            String(
-              aiResult?.sub_category ||
-                aiResult?.subcategory ||
-                detectedCategory,
-            ).trim() ||
-            detectedCategory;
 
           let embedding =
             null;
@@ -1858,10 +2110,17 @@ export default function AdminPage() {
           try {
             const embeddingText =
               [
-                detectedCategory,
-                detectedSubCategory,
-                aiDescription,
-                ...aiTags,
+                cleanCategory,
+                analysis?.category,
+                analysis?.sub_category,
+                analysis?.description,
+                Array.isArray(
+                  analysis?.tags,
+                )
+                  ? analysis.tags.join(
+                      ", ",
+                    )
+                  : "",
               ]
                 .filter(Boolean)
                 .join(" ");
@@ -1874,18 +2133,34 @@ export default function AdminPage() {
                   embeddingText,
                 );
             }
-          } catch (
-            embeddingError
-          ) {
+          } catch (error) {
             console.error(
               "임베딩 생성:",
-              embeddingError,
+              error,
             );
           }
 
+          const aiCategory =
+            analysis?.category ||
+            cleanCategory;
+
+          const aiSubCategory =
+            analysis?.sub_category ||
+            cleanCategory;
+
+          const aiDescription =
+            analysis?.description ||
+            null;
+
+          const aiTags =
+            Array.isArray(
+              analysis?.tags,
+            )
+              ? analysis.tags
+              : [];
+
           const {
-            error:
-              photoInsertError,
+            error: photoInsertError,
           } =
             await supabase
               .from(
@@ -1895,169 +2170,98 @@ export default function AdminPage() {
                 company_id:
                   companyId,
                 project_id:
-                  PROJECT_ID,
+                  companyProjectId,
                 work_item_id:
                   workItemId,
-                photo_url:storagePath,
+                photo_url:
+                  storagePath,
                 storage_path:
                   storagePath,
                 photo_type:
                   photoType,
                 category:
-                  detectedCategory,
+                  aiCategory,
                 sub_category:
-                  detectedSubCategory,
+                  aiSubCategory,
                 material_id:
                   cleanMaterial ||
                   null,
                 ai_description:
-                  aiDescription ||
-                  null,
+                  aiDescription,
                 ai_tags:
                   aiTags,
                 embedding:
                   embedding,
                 image_hash:
-                  imageHash,
+                  imageHash ||
+                  null,
               });
 
           if (
             photoInsertError
           ) {
-            try {
-              await supabase.storage
-                .from(
-                  "work-photos",
-                )
-                .remove([
-                  storagePath,
-                ]);
-            } catch {}
-
             throw photoInsertError;
           }
-        };
 
-      for (
-        let index = 0;
-        index <
-        beforeImages.length;
-        index += 1
-      ) {
-        await savePhoto(
-          beforeImages[index],
-          "before",
-          index,
-        );
-      }
+          uploadedCount += 1;
+        } catch (error) {
+          console.error(
+            `사진 ${
+              index + 1
+            } 저장 실패:`,
+            error,
+          );
 
-      for (
-        let index = 0;
-        index <
-        afterImages.length;
-        index += 1
-      ) {
-        await savePhoto(
-          afterImages[index],
-          "after",
-          index,
-        );
+          throw new Error(
+            `사진 ${
+              index + 1
+            } 저장 실패: ${
+              error?.message ||
+              "알 수 없는 오류"
+            }`,
+          );
+        }
       }
 
       /*
-       * 전/후 사진 비교 AI
+       * 전/후 사진이 모두 있으면
+       * 기존 비교 분석 기능 유지
        */
+
       if (
         beforeImages.length >
           0 &&
-        afterImages.length > 0
+        afterImages.length >
+          0
       ) {
         try {
-          const comparison =
-            await compareMultipleBeforeAfter(
-              beforeImages,
-              afterImages,
-            );
-
-          if (comparison) {
-            const comparisonText =
-              typeof comparison ===
-              "string"
-                ? comparison
-                : comparison?.description ||
-                  comparison?.summary ||
-                  "";
-
-            if (
-              comparisonText
-            ) {
-              const mergedMemo =
-                [
-                  cleanMemo,
-                  comparisonText,
-                ]
-                  .filter(
-                    Boolean,
-                  )
-                  .join("\n");
-
-              const {
-                error:
-                  updateError,
-              } =
-                await supabase
-                  .from(
-                    "work_items",
-                  )
-                  .update({
-                    memo:
-                      mergedMemo ||
-                      null,
-                  })
-                  .eq(
-                    "id",
-                    workItemId,
-                  )
-                  .eq(
-                    "company_id",
-                    companyId,
-                  );
-
-              if (
-                updateError
-              ) {
-                console.error(
-                  "전후 비교 저장:",
-                  updateError,
-                );
-              }
-            }
-          }
-        } catch (
-          compareError
-        ) {
+          await compareMultipleBeforeAfter(
+            beforeImages,
+            afterImages,
+          );
+        } catch (error) {
           console.error(
-            "전후 사진 비교:",
-            compareError,
+            "전후 비교 분석:",
+            error,
           );
         }
       }
 
       setMessage(
-        "✅ 시공 데이터와 사진이 저장되었습니다.",
+        `✅ 시공 등록 완료 · 사진 ${uploadedCount}장 저장`,
       );
 
+      setBeforeImages([]);
+      setAfterImages([]);
       setCategory("");
       setActualCost("");
       setMaterial("");
       setMemo("");
 
-      setBeforeImages([]);
-      setAfterImages([]);
-
       await loadJobs(
         1,
-        jobSearchApplied,
+        "",
+        companyId,
       );
 
       setActiveTab(
@@ -2071,107 +2275,18 @@ export default function AdminPage() {
         error,
       );
 
-      /*
-       * 사진 저장 도중 실패한 경우
-       * 생성된 work_item도 정리한다.
-       */
-      if (workItemId) {
-        try {
-          const {
-            data:
-              savedPhotos,
-          } =
-            await supabase
-              .from(
-                "work_photos",
-              )
-              .select(
-                "storage_path",
-              )
-              .eq(
-                "company_id",
-                companyId,
-              )
-              .eq(
-                "work_item_id",
-                workItemId,
-              );
-
-          const paths =
-            (
-              savedPhotos ||
-              []
-            )
-              .map(
-                (photo) =>
-                  photo.storage_path,
-              )
-              .filter(
-                Boolean,
-              );
-
-          if (
-            paths.length >
-            0
-          ) {
-            await supabase.storage
-              .from(
-                "work-photos",
-              )
-              .remove(
-                paths,
-              );
-          }
-
-          await supabase
-            .from(
-              "work_photos",
-            )
-            .delete()
-            .eq(
-              "company_id",
-              companyId,
-            )
-            .eq(
-              "work_item_id",
-              workItemId,
-            );
-
-          await supabase
-            .from(
-              "work_items",
-            )
-            .delete()
-            .eq(
-              "company_id",
-              companyId,
-            )
-            .eq(
-              "id",
-              workItemId,
-            );
-        } catch (
-          cleanupError
-        ) {
-          console.error(
-            "시공 등록 실패 후 정리:",
-            cleanupError,
-          );
-        }
-      }
-
       setMessage(
-        `❌ 오류: ${
+        `❌ 저장 오류: ${
           error?.message ||
-          "저장에 실패했습니다."
+          "시공 등록에 실패했습니다."
         }`,
       );
     } finally {
       setLoading(false);
     }
-  }
-
-  /* =========================================================
+                      }
+  
+    /* =========================================================
      고객 상담
   ========================================================= */
 
@@ -2597,8 +2712,7 @@ export default function AdminPage() {
           .update({
             admin_memo:
               lead.admin_memo ||
-              null,
-          })
+              null,          })
           .eq(
             "id",
             lead.id,
@@ -3237,4 +3351,4 @@ export default function AdminPage() {
       />
     </main>
   );
-        }
+}
