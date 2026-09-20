@@ -1176,7 +1176,11 @@ export default function CustomerEstimatePage({
         </div>
 
         <Link
-          href="/samples"
+          href={
+  companySlug
+    ? `/samples?company=${encodeURIComponent(companySlug)}`
+    : "/samples"
+}
           style={{
             padding: "11px",
             textAlign: "center",
