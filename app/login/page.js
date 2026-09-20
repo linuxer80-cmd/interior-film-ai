@@ -1,23 +1,25 @@
-“use client”;
+"use client";
 
-import { useState } from “react”; import Link from “next/link”; import {
-useRouter } from “next/navigation”; import { supabase } from
-“../../lib/supabase”;
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 
-export default function LoginPage() { const router = useRouter();
+export default function LoginPage() {
+  const router = useRouter();
 
-const [email, setEmail] = useState(““); const [password, setPassword] =
-useState(”“); const [loading, setLoading] = useState(false); const
-[message, setMessage] = useState(”“); const [messageType,
-setMessageType] = useState(”error”);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("error");
 
-async function ensureCompany(user) { if (!user?.id) { throw new
-Error(“사용자 정보를 확인할 수 없습니다.”); }
+  async function ensureCompany(user) {
+    if (!user?.id) {
+      throw new Error("사용자 정보를 확인할 수 없습니다.");
+    }
 
-    const {
-      data: existingProfile,
-      error: profileError,
-    } = await supabase
+    const { data: existingProfile, error: profileError } = await supabase
       .from("profiles")
       .select("id, company_id, name, role, is_active")
       .eq("id", user.id)
@@ -40,21 +42,10 @@ Error(“사용자 정보를 확인할 수 없습니다.”); }
 
     const metadata = user.user_metadata || {};
 
-    const companyName = String(
-      metadata.company_name || ""
-    ).trim();
-
-    const ownerName = String(
-      metadata.owner_name || ""
-    ).trim();
-
-    const phone = String(
-      metadata.phone || ""
-    ).trim();
-
-    const companySlug = String(
-      metadata.company_slug || ""
-    )
+    const companyName = String(metadata.company_name || "").trim();
+    const ownerName = String(metadata.owner_name || "").trim();
+    const phone = String(metadata.phone || "").trim();
+    const companySlug = String(metadata.company_slug || "")
       .trim()
       .toLowerCase();
 
@@ -64,10 +55,7 @@ Error(“사용자 정보를 확인할 수 없습니다.”); }
       );
     }
 
-    const {
-      data: companyId,
-      error: companyError,
-    } = await supabase.rpc(
+    const { data: companyId, error: companyError } = await supabase.rpc(
       "create_my_company",
       {
         p_company_name: companyName,
@@ -78,23 +66,15 @@ Error(“사용자 정보를 확인할 수 없습니다.”); }
     );
 
     if (companyError) {
-      const {
-        data: retryProfile,
-        error: retryError,
-      } = await supabase
+      const { data: retryProfile, error: retryError } = await supabase
         .from("profiles")
         .select("company_id, is_active")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (
-        !retryError &&
-        retryProfile?.company_id
-      ) {
+      if (!retryError && retryProfile?.company_id) {
         if (retryProfile.is_active === false) {
-          throw new Error(
-            "현재 사용이 중지된 업체 계정입니다."
-          );
+          throw new Error("현재 사용이 중지된 업체 계정입니다.");
         }
 
         return {
@@ -107,9 +87,7 @@ Error(“사용자 정보를 확인할 수 없습니다.”); }
     }
 
     if (!companyId) {
-      throw new Error(
-        "업체 정보를 생성하지 못했습니다."
-      );
+      throw new Error("업체 정보를 생성하지 못했습니다.");
     }
 
     return {
@@ -117,10 +95,10 @@ Error(“사용자 정보를 확인할 수 없습니다.”); }
       created: true,
       companyName,
     };
+  }
 
-}
-
-async function handleLogin(event) { event.preventDefault();
+  async function handleLogin(event) {
+    event.preventDefault();
 
     if (loading) return;
 
@@ -142,10 +120,7 @@ async function handleLogin(event) { event.preventDefault();
     setLoading(true);
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
       });
@@ -157,24 +132,18 @@ async function handleLogin(event) { event.preventDefault();
       const user = data?.user;
 
       if (!user) {
-        throw new Error(
-          "로그인 사용자 정보를 확인하지 못했습니다."
-        );
+        throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
       }
 
       const result = await ensureCompany(user);
 
       if (!result?.companyId) {
-        throw new Error(
-          "업체 연결 정보를 확인하지 못했습니다."
-        );
+        throw new Error("업체 연결 정보를 확인하지 못했습니다.");
       }
 
       if (result.created) {
         setMessageType("success");
-        setMessage(
-          `${result.companyName || "업체"} 등록이 완료되었습니다.`
-        );
+        setMessage(`${result.companyName || "업체"} 등록이 완료되었습니다.`);
 
         setTimeout(() => {
           router.replace("/");
@@ -190,21 +159,15 @@ async function handleLogin(event) { event.preventDefault();
       console.error("업체 로그인 오류:", error);
 
       let errorMessage =
-        error?.message ||
-        "로그인 중 오류가 발생했습니다.";
+        error?.message || "로그인 중 오류가 발생했습니다.";
 
       const lowerMessage = errorMessage.toLowerCase();
 
-      if (
-        lowerMessage.includes("invalid login credentials")
-      ) {
-        errorMessage =
-          "이메일 또는 비밀번호가 올바르지 않습니다.";
+      if (lowerMessage.includes("invalid login credentials")) {
+        errorMessage = "이메일 또는 비밀번호가 올바르지 않습니다.";
       }
 
-      if (
-        lowerMessage.includes("email not confirmed")
-      ) {
+      if (lowerMessage.includes("email not confirmed")) {
         errorMessage =
           "이메일 인증이 필요합니다. 가입한 이메일의 인증 메일을 확인해주세요.";
       }
@@ -214,16 +177,40 @@ async function handleLogin(event) { event.preventDefault();
     } finally {
       setLoading(false);
     }
+  }
 
-}
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#f8fafc",
+        color: "#111827",
+        padding: "20px 14px 70px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "520px",
+          margin: "0 auto",
+        }}
+      >
+        <div style={{ marginBottom: "22px" }}>
+          <div
+            style={{
+              display: "inline-block",
+              padding: "6px 11px",
+              borderRadius: "999px",
+              background: "#111827",
+              color: "#ffffff",
+              fontSize: "11px",
+              fontWeight: "800",
+            }}
+          >
+            인테리어필름 AI
+          </div>
 
-return ( <main style={{ minHeight: “100vh”, background: “#f8fafc”,
-color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”,
-}} > <div style={{ width: “100%”, maxWidth: “520px”, margin: “0 auto”,
-}} > <div style={{ marginBottom: “22px” }}> <div style={{ display:
-“inline-block”, padding: “6px 11px”, borderRadius: “999px”, background:
-“#111827”, color: “#ffffff”, fontSize: “11px”, fontWeight: “800”, }} >
-인테리어필름 AI
           <h1
             style={{
               margin: "14px 0 6px",
@@ -262,9 +249,7 @@ color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”
           <input
             type="email"
             value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="example@email.com"
             autoComplete="email"
             autoCapitalize="none"
@@ -276,9 +261,7 @@ color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”
           <input
             type="password"
             value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
+            onChange={(event) => setPassword(event.target.value)}
             placeholder="비밀번호"
             autoComplete="current-password"
             style={inputStyle}
@@ -291,13 +274,9 @@ color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”
                 padding: "12px",
                 borderRadius: "10px",
                 background:
-                  messageType === "success"
-                    ? "#ecfdf5"
-                    : "#fef2f2",
+                  messageType === "success" ? "#ecfdf5" : "#fef2f2",
                 color:
-                  messageType === "success"
-                    ? "#047857"
-                    : "#b91c1c",
+                  messageType === "success" ? "#047857" : "#b91c1c",
                 fontSize: "12px",
                 lineHeight: 1.6,
               }}
@@ -315,15 +294,11 @@ color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”
               padding: "15px",
               border: "none",
               borderRadius: "12px",
-              background: loading
-                ? "#9ca3af"
-                : "#111827",
+              background: loading ? "#9ca3af" : "#111827",
               color: "#ffffff",
               fontSize: "15px",
               fontWeight: "800",
-              cursor: loading
-                ? "default"
-                : "pointer",
+              cursor: loading ? "default" : "pointer",
             }}
           >
             {loading ? "로그인 중..." : "로그인"}
@@ -377,13 +352,33 @@ color: “#111827”, padding: “20px 14px 70px”, boxSizing: “border-box”
         </Link>
       </div>
     </main>
+  );
+}
 
-); }
+function FieldLabel({ children }) {
+  return (
+    <label
+      style={{
+        display: "block",
+        margin: "14px 0 7px",
+        color: "#374151",
+        fontSize: "12px",
+        fontWeight: "800",
+      }}
+    >
+      {children}
+    </label>
+  );
+}
 
-function FieldLabel({ children }) { return ( <label style={{ display:
-“block”, margin: “14px 0 7px”, color: “#374151”, fontSize: “12px”,
-fontWeight: “800”, }} > {children} ); }
-
-const inputStyle = { width: “100%”, boxSizing: “border-box”, padding:
-“13px 12px”, border: “1px solid #d1d5db”, borderRadius: “11px”, outline:
-“none”, background: “#ffffff”, color: “#111827”, fontSize: “14px”, };
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "13px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: "11px",
+  outline: "none",
+  background: "#ffffff",
+  color: "#111827",
+  fontSize: "14px",
+};
