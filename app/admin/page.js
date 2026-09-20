@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import {
   getLeadPhotoPaths,
@@ -33,6 +34,11 @@ import {
 import { fetchUsageDashboard } from "./usageDataService";
 
 export default function AdminPage() {
+  const router = useRouter();
+  const [currentCompany, setCurrentCompany] = useState(null);
+  const [adminReady, setAdminReady] = useState(false);
+  const companyId = currentCompany?.company_id || null;
+  const companyName = currentCompany?.company_name || "업체";
   const [activeTab, setActiveTab] = useState("jobs");
   const activeTabRef = useRef("jobs");
 
@@ -152,6 +158,54 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function checkAdminSession() {
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) throw sessionError;
+
+        if (!sessionData?.session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        const { data, error } = await supabase.rpc("get_my_company");
+        if (error) throw error;
+
+        const company = Array.isArray(data) ? data[0] : null;
+
+        if (!company?.company_id || company.is_active === false) {
+          await supabase.auth.signOut();
+          router.replace("/login");
+          return;
+        }
+
+        if (!cancelled) {
+          setCurrentCompany(company);
+          setAdminReady(true);
+        }
+      } catch (error) {
+        console.error("관리자 로그인 확인:", error);
+        if (!cancelled) {
+          setAdminReady(false);
+          router.replace("/login");
+        }
+      }
+    }
+
+    checkAdminSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!adminReady || !companyId) return;
+
     loadSettings();
     loadJobs(1, "");
     loadUnreadCount();
@@ -164,13 +218,14 @@ export default function AdminPage() {
     }
 
     const channel = supabase
-      .channel("customer-leads-admin-realtime")
+      .channel(`customer-leads-admin-${companyId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "customer_leads",
+          filter: `company_id=eq.${companyId}`,
         },
         (payload) => {
           handleRealtimeLead(payload.new);
@@ -181,7 +236,7 @@ export default function AdminPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [adminReady, companyId]);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
@@ -199,7 +254,7 @@ export default function AdminPage() {
     });
 
     if (typeof document !== "undefined") {
-      document.title = "🔴 신규 상담 | 기분좋은공간";
+      document.title = `🔴 신규 상담 | ${companyName}`;
     }
 
     try {
@@ -239,7 +294,7 @@ export default function AdminPage() {
 
       setNotificationEnabled(true);
 
-      new Notification("기분좋은공간", {
+      new Notification(companyName, {
         body: "신규 상담 알림이 활성화되었습니다.",
       });
     } catch (error) {
@@ -251,9 +306,9 @@ export default function AdminPage() {
   async function loadSettings() {
     try {
       const { data, error } = await supabase
-        .from("app_settings")
+        .from("company_settings")
         .select("similarity_threshold")
-        .eq("id", 1)
+        .eq("company_id", companyId)
         .single();
 
       if (error) throw error;
@@ -281,12 +336,12 @@ export default function AdminPage() {
       }
 
       const { error } = await supabase
-        .from("app_settings")
+        .from("company_settings")
         .update({
           similarity_threshold: threshold,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", 1);
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -394,7 +449,7 @@ export default function AdminPage() {
     setUsageMessage("");
 
     try {
-      const { stats, recent } = await fetchUsageDashboard(supabase);
+      const { stats, recent } = await fetchUsageDashboard(supabase, companyId);
 
       setUsageStats(stats);
       setUsageRecent(recent);
@@ -555,6 +610,7 @@ export default function AdminPage() {
           },
           body: JSON.stringify({
             limit: 3,
+            companyId,
           }),
         });
 
@@ -745,7 +801,8 @@ export default function AdminPage() {
           {
             count: "exact",
           },
-        );
+        )
+        .eq("company_id", companyId);
 
       if (safeKeyword) {
         query = query.or(
@@ -816,6 +873,7 @@ export default function AdminPage() {
         `,
         )
         .eq("work_item_id", workItemId)
+        .eq("company_id", companyId)
         .order("created_at", {
           ascending: true,
         });
@@ -980,7 +1038,8 @@ export default function AdminPage() {
           memo: editMemo.trim() || null,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", jobId);
+        .eq("id", jobId)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -1052,7 +1111,8 @@ export default function AdminPage() {
           ai_description:
             editPhotoDescription.trim() || null,
         })
-        .eq("id", photoId);
+        .eq("id", photoId)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -1109,7 +1169,8 @@ export default function AdminPage() {
       const { error } = await supabase
         .from("work_photos")
         .delete()
-        .eq("id", photo.id);
+        .eq("id", photo.id)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -1155,7 +1216,8 @@ export default function AdminPage() {
         await supabase
           .from("work_photos")
           .select("id, storage_path")
-          .eq("work_item_id", job.id);
+          .eq("work_item_id", job.id)
+          .eq("company_id", companyId);
 
       if (photoLoadError) {
         throw photoLoadError;
@@ -1183,7 +1245,8 @@ export default function AdminPage() {
         await supabase
           .from("work_photos")
           .delete()
-          .eq("work_item_id", job.id);
+          .eq("work_item_id", job.id)
+          .eq("company_id", companyId);
 
       if (photoDeleteError) {
         throw photoDeleteError;
@@ -1193,7 +1256,8 @@ export default function AdminPage() {
         await supabase
           .from("work_items")
           .delete()
-          .eq("id", job.id);
+          .eq("id", job.id)
+          .eq("company_id", companyId);
 
       if (itemDeleteError) {
         throw itemDeleteError;
@@ -1373,6 +1437,7 @@ export default function AdminPage() {
       } = await supabase
         .from("work_items")
         .insert({
+          company_id: companyId,
           project_id: PROJECT_ID,
           category: cleanCategory,
           sub_category: cleanCategory,
@@ -1446,7 +1511,7 @@ export default function AdminPage() {
             : extension;
 
         const storagePath =
-          `history/${Date.now()}_${workItemId}_${photoType}_${index}.${safeExtension}`;
+          `history/${companyId}/${Date.now()}_${workItemId}_${photoType}_${index}.${safeExtension}`;
 
         const { error: uploadError } =
           await supabase.storage
@@ -1545,6 +1610,7 @@ export default function AdminPage() {
         } = await supabase
           .from("work_photos")
           .insert({
+            company_id: companyId,
             project_id: PROJECT_ID,
             work_item_id: workItemId,
             photo_type: photoType,
@@ -1666,7 +1732,8 @@ export default function AdminPage() {
             .eq(
               "work_item_id",
               workItemId,
-            );
+            )
+            .eq("company_id", companyId);
 
           const paths =
             (savedPhotos || [])
@@ -1688,7 +1755,8 @@ export default function AdminPage() {
             .eq(
               "work_item_id",
               workItemId,
-            );
+            )
+            .eq("company_id", companyId);
 
           await supabase
             .from("work_items")
@@ -1731,6 +1799,7 @@ export default function AdminPage() {
             count: "exact",
             head: true,
           })
+          .eq("company_id", companyId)
           .eq("is_read", false);
 
       if (error) {
@@ -1805,7 +1874,8 @@ export default function AdminPage() {
           {
             count: "exact",
           },
-        );
+        )
+        .eq("company_id", companyId);
 
       if (
         filter &&
@@ -1879,7 +1949,8 @@ export default function AdminPage() {
           .eq(
             "id",
             lead.id,
-          );
+          )
+          .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -2070,7 +2141,8 @@ export default function AdminPage() {
           .eq(
             "id",
             leadId,
-          );
+          )
+          .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -2114,7 +2186,8 @@ export default function AdminPage() {
           .eq(
             "id",
             leadId,
-          );
+          )
+          .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -2204,7 +2277,8 @@ export default function AdminPage() {
           .eq(
             "id",
             lead.id,
-          );
+          )
+          .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -2264,6 +2338,25 @@ export default function AdminPage() {
      화면
   ========================================================= */
 
+  if (!adminReady || !companyId) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f8fafc",
+          color: "#6b7280",
+          fontSize: "14px",
+          fontWeight: "700",
+        }}
+      >
+        관리자 계정을 확인하고 있습니다...
+      </main>
+    );
+  }
+
   return (
     <main
       style={{
@@ -2297,7 +2390,7 @@ export default function AdminPage() {
             "8px 0 16px",
         }}
       >
-        기분좋은공간 관리자
+        {companyName} 관리자
       </h1>
 
       <AdminTabs
