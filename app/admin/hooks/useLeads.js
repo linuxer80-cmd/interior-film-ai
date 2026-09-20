@@ -14,6 +14,8 @@ import {
 
 export default function useLeads({
   companyId,
+  companyName = "관리자",
+  activeTabRef,
 }) {
   const [leads, setLeads] = useState([]);
   const [leadsLoading, setLeadsLoading] =
@@ -303,6 +305,7 @@ export default function useLeads({
             path,
             url: cachedUrl,
           });
+
           continue;
         }
 
@@ -324,6 +327,7 @@ export default function useLeads({
             path,
             error,
           );
+
           continue;
         }
 
@@ -533,6 +537,7 @@ export default function useLeads({
       setLeadsMessage(
         "⚠️ 최종 견적금액을 입력해주세요.",
       );
+
       return;
     }
 
@@ -586,8 +591,10 @@ export default function useLeads({
               lead.id
                 ? {
                     ...item,
+
                     final_price:
                       price,
+
                     quote_created_at:
                       quoteCreatedAt,
                   }
@@ -608,14 +615,18 @@ export default function useLeads({
     }
   }
 
+  /*
+   * 신규 상담 실시간 수신 처리
+   */
   function handleRealtimeLead(
     lead,
+    scopedCompanyId = companyId,
   ) {
     if (
       !lead ||
-      !companyId ||
+      !scopedCompanyId ||
       lead.company_id !==
-        companyId
+        scopedCompanyId
     ) {
       return;
     }
@@ -627,15 +638,159 @@ export default function useLeads({
 
     setNewLeadAlert({
       id: lead.id,
+
       customer_name:
         lead.customer_name,
+
       phone:
         lead.phone,
+
       region:
         lead.region,
+
       created_at:
         lead.created_at,
     });
+
+    /*
+     * 브라우저 제목 표시
+     */
+    if (
+      typeof document !==
+      "undefined"
+    ) {
+      document.title =
+        `🔴 신규 상담 | ${companyName}`;
+    }
+
+    /*
+     * 휴대폰 진동
+     */
+    try {
+      navigator.vibrate?.([
+        250,
+        120,
+        250,
+      ]);
+    } catch {}
+
+    /*
+     * 브라우저 알림
+     */
+    try {
+      if (
+        typeof Notification !==
+          "undefined" &&
+        Notification.permission ===
+          "granted"
+      ) {
+        new Notification(
+          "🔔 신규 상담이 들어왔습니다.",
+          {
+            body:
+              `${lead.customer_name || "고객"} ${
+                lead.phone || ""
+              }`,
+          },
+        );
+      }
+    } catch {}
+
+    /*
+     * 현재 상담 탭을 보고 있다면
+     * 즉시 상담목록 갱신
+     */
+    if (
+      activeTabRef?.current ===
+      "leads"
+    ) {
+      loadLeads(
+        1,
+        leadFilter,
+        scopedCompanyId,
+      );
+    }
+  }
+
+  /*
+   * 브라우저 알림 권한 활성화
+   */
+  async function enableNotifications() {
+    try {
+      if (
+        !(
+          "Notification" in
+          window
+        )
+      ) {
+        alert(
+          "이 브라우저는 알림 기능을 지원하지 않습니다.",
+        );
+
+        return;
+      }
+
+      const permission =
+        await Notification.requestPermission();
+
+      if (
+        permission !==
+        "granted"
+      ) {
+        setNotificationEnabled(
+          false,
+        );
+
+        alert(
+          "알림 권한을 허용해주세요.",
+        );
+
+        return;
+      }
+
+      setNotificationEnabled(
+        true,
+      );
+
+      new Notification(
+        companyName,
+        {
+          body:
+            "신규 상담 알림이 활성화되었습니다.",
+        },
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        `알림 설정 오류: ${
+          error?.message ||
+          "실패"
+        }`,
+      );
+    }
+  }
+
+  /*
+   * 관리자 초기화 시 현재 알림 권한 반영
+   */
+  function syncNotificationPermission() {
+    if (
+      typeof Notification !==
+        "undefined" &&
+      Notification.permission ===
+        "granted"
+    ) {
+      setNotificationEnabled(
+        true,
+      );
+
+      return;
+    }
+
+    setNotificationEnabled(
+      false,
+    );
   }
 
   const totalLeadPages =
@@ -680,6 +835,7 @@ export default function useLeads({
 
     loadUnreadCount,
     loadLeads,
+
     toggleLeadDetail,
     loadLeadPhotos,
 
@@ -689,5 +845,7 @@ export default function useLeads({
     saveFinalQuote,
 
     handleRealtimeLead,
+    enableNotifications,
+    syncNotificationPermission,
   };
-          }
+}
