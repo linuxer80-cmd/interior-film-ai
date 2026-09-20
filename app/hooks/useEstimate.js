@@ -17,7 +17,13 @@ import {
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
-export default function useEstimate() {
+export default function useEstimate({
+  companySlug = null,
+} = {}) {
+  const normalizedCompanySlug =
+    String(companySlug || "")
+      .trim()
+      .toLowerCase();
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] =
@@ -377,6 +383,17 @@ export default function useEstimate() {
   async function findSimilarCases(
     group
   ) {
+    if (
+      !normalizedCompanySlug
+    ) {
+      /*
+       * 기존 루트(/)는 당분간 유지하지만,
+       * 업체가 지정되지 않은 상태에서는
+       * 다른 업체의 시공 데이터를 임의로 검색하지 않습니다.
+       */
+      return [];
+    }
+
     const analyses =
       group.photos.map(
         (item) =>
@@ -472,6 +489,9 @@ export default function useEstimate() {
         {
           query_embedding:
             result.embedding,
+
+          company_slug:
+            normalizedCompanySlug,
 
           match_threshold:
             MATCH_THRESHOLD,
@@ -699,6 +719,15 @@ export default function useEstimate() {
           images[index].file
         );
 
+        if (
+          normalizedCompanySlug
+        ) {
+          formData.append(
+            "company_slug",
+            normalizedCompanySlug
+          );
+        }
+
         const response =
           await fetch(
             "/api/estimate-photo",
@@ -801,6 +830,10 @@ export default function useEstimate() {
 
             body:
               JSON.stringify({
+                company_slug:
+                  normalizedCompanySlug ||
+                  null,
+
                 session_id:
                   getSessionId(),
 
