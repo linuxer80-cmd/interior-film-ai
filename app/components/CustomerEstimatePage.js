@@ -2,25 +2,25 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 
-import FilmColorPicker from "./FilmColorPicker";
-import VirtualInstallPanel from "./VirtualInstallPanel";
-import VirtualToneSelector from "./components/VirtualToneSelector";
+import FilmColorPicker from "../FilmColorPicker";
+import VirtualInstallPanel from "../VirtualInstallPanel";
+import VirtualToneSelector from "./VirtualToneSelector";
 
-import EstimatePhotoUploader from "./components/EstimatePhotoUploader";
-import EstimateResult from "./components/EstimateResult";
-import EstimateTotal from "./components/EstimateTotal";
-import ServiceSelector from "./components/ServiceSelector";
-import FilmPriceSelector from "./components/FilmPriceSelector";
-import FilmAdjustedEstimate from "./components/FilmAdjustedEstimate";
-import LeadForm from "./components/LeadForm";
+import EstimatePhotoUploader from "./EstimatePhotoUploader";
+import EstimateResult from "./EstimateResult";
+import EstimateTotal from "./EstimateTotal";
+import ServiceSelector from "./ServiceSelector";
+import FilmPriceSelector from "./FilmPriceSelector";
+import FilmAdjustedEstimate from "./FilmAdjustedEstimate";
+import LeadForm from "./LeadForm";
 
-import useEstimate from "./hooks/useEstimate";
+import useEstimate from "../hooks/useEstimate";
 
 import {
   adjustEstimateByFilm,
-} from "./utils/estimatePrice";
+} from "../utils/estimatePrice";
 
 export default function CustomerEstimatePage({
   companySlug = null,
