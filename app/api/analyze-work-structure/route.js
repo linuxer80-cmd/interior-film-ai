@@ -4,6 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const BUCKET_NAME = "work-photos";
+
+/* =========================================================
+   Supabase
+========================================================= */
+
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -13,9 +19,13 @@ function getSupabase() {
         persistSession: false,
         autoRefreshToken: false,
       },
-    }
+    },
   );
 }
+
+/* =========================================================
+   OpenAI 응답 텍스트 추출
+========================================================= */
 
 function extractOutputText(data) {
   if (
@@ -27,7 +37,9 @@ function extractOutputText(data) {
 
   if (Array.isArray(data?.output)) {
     for (const outputItem of data.output) {
-      if (!Array.isArray(outputItem?.content)) continue;
+      if (!Array.isArray(outputItem?.content)) {
+        continue;
+      }
 
       for (const contentItem of outputItem.content) {
         if (
@@ -42,6 +54,10 @@ function extractOutputText(data) {
 
   return "";
 }
+
+/* =========================================================
+   JSON 파싱
+========================================================= */
 
 function parseJson(text) {
   let cleaned = String(text || "")
@@ -59,70 +75,266 @@ function parseJson(text) {
   ) {
     cleaned = cleaned.slice(
       firstBrace,
-      lastBrace + 1
+      lastBrace + 1,
     );
   }
 
   return JSON.parse(cleaned);
 }
 
-function getPublicImageUrl(photo) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+/* =========================================================
+   Storage 경로 정리
+========================================================= */
 
+function normalizeStoragePath(storagePath) {
+  if (!storagePath) {
+    return "";
+  }
+
+  let path = String(storagePath).trim();
+
+  if (!path) {
+    return "";
+  }
+
+  path = path.replace(/^\/+/, "");
+
+  if (path.startsWith(`${BUCKET_NAME}/`)) {
+    path = path.slice(
+      `${BUCKET_NAME}/`.length,
+    );
+  }
+
+  /*
+   * 혹시 DB에 전체 Supabase Storage URL이
+   * storage_path로 들어간 경우도 처리
+   */
+  const publicMarker =
+    `/storage/v1/object/public/${BUCKET_NAME}/`;
+
+  const signedMarker =
+    `/storage/v1/object/sign/${BUCKET_NAME}/`;
+
+  if (path.includes(publicMarker)) {
+    path =
+      path.split(publicMarker)[1] || "";
+  }
+
+  if (path.includes(signedMarker)) {
+    path =
+      path.split(signedMarker)[1] || "";
+
+    path = path.split("?")[0];
+  }
+
+  try {
+    path = decodeURIComponent(path);
+  } catch {}
+
+  return path.replace(/^\/+/, "");
+}
+
+/* =========================================================
+   Signed URL 생성
+========================================================= */
+
+async function createPhotoSignedUrl(
+  supabase,
+  photo,
+) {
+  const storagePath =
+    normalizeStoragePath(
+      photo?.storage_path,
+    );
+
+  /*
+   * 정상적인 기존 시공사진은
+   * storage_path를 최우선으로 사용한다.
+   */
+  if (storagePath) {
+    const {
+      data,
+      error,
+    } = await supabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(
+        storagePath,
+        300,
+      );
+
+    if (!error && data?.signedUrl) {
+      return {
+        url: data.signedUrl,
+        source: "storage_path",
+        storagePath,
+      };
+    }
+
+    console.error(
+      "Signed URL 생성 실패:",
+      photo?.id,
+      storagePath,
+      error,
+    );
+
+    /*
+     * storage_path가 존재하지만 Signed URL 생성에 실패한 경우
+     * photo_url fallback을 시도할 수 있도록 아래로 진행한다.
+     */
+  }
+
+  /*
+   * 아주 오래된 데이터 등에 storage_path가 없을 수 있으므로
+   * photo_url은 fallback으로만 사용한다.
+   */
   if (photo?.photo_url) {
-    const url = String(photo.photo_url);
+    const photoUrl =
+      String(photo.photo_url).trim();
 
     if (
-      url.startsWith("http://") ||
-      url.startsWith("https://") ||
-      url.startsWith("data:")
+      photoUrl.startsWith("https://") ||
+      photoUrl.startsWith("http://") ||
+      photoUrl.startsWith("data:")
     ) {
-      return url;
+      return {
+        url: photoUrl,
+        source: "photo_url",
+        storagePath,
+      };
     }
   }
 
-  if (!photo?.storage_path || !supabaseUrl) {
-    return null;
+  if (storagePath) {
+    throw new Error(
+      `Storage Signed URL 생성 실패: ${storagePath}`,
+    );
   }
 
-  let path = String(photo.storage_path)
-    .replace(/^\/+/, "");
-
-  if (path.startsWith("work-photos/")) {
-    path = path.slice("work-photos/".length);
-  }
-
-  return `${supabaseUrl}/storage/v1/object/public/work-photos/${path}`;
+  throw new Error(
+    "storage_path와 사용 가능한 photo_url이 없습니다.",
+  );
 }
 
-async function getImageDataUrl(photo) {
-  const imageUrl = getPublicImageUrl(photo);
+/* =========================================================
+   사진 다운로드 → Data URL
+========================================================= */
 
-  if (!imageUrl) {
-    throw new Error("사진 URL을 찾을 수 없습니다.");
+async function getImageDataUrl(
+  supabase,
+  photo,
+) {
+  const imageSource =
+    await createPhotoSignedUrl(
+      supabase,
+      photo,
+    );
+
+  let response;
+
+  try {
+    response = await fetch(
+      imageSource.url,
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      `사진 다운로드 연결 실패: ${
+        error?.message || "fetch 실패"
+      }`,
+    );
   }
-
-  const response = await fetch(imageUrl);
 
   if (!response.ok) {
     throw new Error(
-      `사진 다운로드 실패 (${response.status})`
+      `사진 다운로드 실패 HTTP ${response.status} (${imageSource.source})`,
     );
   }
 
   const contentType =
-    response.headers.get("content-type") ||
-    "image/jpeg";
+    response.headers.get(
+      "content-type",
+    ) || "";
+
+  /*
+   * Storage 오류 페이지나 JSON이
+   * 이미지로 AI에 전달되는 것을 방지
+   */
+  if (
+    contentType &&
+    !contentType
+      .toLowerCase()
+      .startsWith("image/")
+  ) {
+    throw new Error(
+      `사진 파일 형식 오류: ${contentType}`,
+    );
+  }
 
   const arrayBuffer =
     await response.arrayBuffer();
 
-  const base64 =
-    Buffer.from(arrayBuffer).toString("base64");
+  if (!arrayBuffer?.byteLength) {
+    throw new Error(
+      "다운로드된 사진 파일이 비어 있습니다.",
+    );
+  }
 
-  return `data:${contentType};base64,${base64}`;
+  /*
+   * 비정상적으로 큰 파일 방지
+   * 20MB 이상이면 구조분석에서 제외
+   */
+  const maxBytes =
+    20 * 1024 * 1024;
+
+  if (
+    arrayBuffer.byteLength >
+    maxBytes
+  ) {
+    throw new Error(
+      `사진 파일이 너무 큽니다 (${Math.round(
+        arrayBuffer.byteLength /
+          1024 /
+          1024,
+      )}MB)`,
+    );
+  }
+
+  const finalContentType =
+    contentType.startsWith(
+      "image/",
+    )
+      ? contentType
+      : "image/jpeg";
+
+  const base64 =
+    Buffer.from(
+      arrayBuffer,
+    ).toString("base64");
+
+  return {
+    dataUrl:
+      `data:${finalContentType};base64,${base64}`,
+
+    source:
+      imageSource.source,
+
+    storagePath:
+      imageSource.storagePath,
+
+    size:
+      arrayBuffer.byteLength,
+
+    contentType:
+      finalContentType,
+  };
 }
+
+/* =========================================================
+   AI 구조분석 프롬프트
+========================================================= */
 
 function makeInstruction(photo) {
   const existingCategory =
@@ -262,192 +474,480 @@ high
 `;
 }
 
-async function analyzePhoto(photo) {
-  const imageDataUrl =
-    await getImageDataUrl(photo);
+/* =========================================================
+   visual_features 기본 정리
+========================================================= */
+
+function normalizeVisualFeatures(
+  value,
+) {
+  const source =
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+      ? value
+      : {};
+
+  return {
+    object_type:
+      source.object_type ??
+      null,
+
+    object_subtype:
+      source.object_subtype ??
+      null,
+
+    style:
+      source.style ??
+      null,
+
+    layout:
+      source.layout ??
+      null,
+
+    opening_type:
+      source.opening_type ??
+      null,
+
+    panel_count:
+      source.panel_count ??
+      null,
+
+    door_count_estimate:
+      source.door_count_estimate ??
+      null,
+
+    glass:
+      source.glass ??
+      null,
+
+    grid:
+      source.grid ??
+      null,
+
+    frame:
+      source.frame ??
+      null,
+
+    molding:
+      source.molding ??
+      null,
+
+    upper:
+      source.upper ??
+      null,
+
+    lower:
+      source.lower ??
+      null,
+
+    fridge:
+      source.fridge ??
+      null,
+
+    tall:
+      source.tall ??
+      null,
+
+    pantry:
+      source.pantry ??
+      null,
+
+    island:
+      source.island ??
+      null,
+
+    scale:
+      source.scale ??
+      null,
+
+    complexity:
+      source.complexity ??
+      null,
+
+    special_features:
+      Array.isArray(
+        source.special_features,
+      )
+        ? source.special_features
+        : [],
+  };
+}
+
+/* =========================================================
+   한 장 AI 분석
+========================================================= */
+
+async function analyzePhoto(
+  supabase,
+  photo,
+) {
+  const image =
+    await getImageDataUrl(
+      supabase,
+      photo,
+    );
 
   const instruction =
     makeInstruction(photo);
 
-  const response = await fetch(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
 
-      headers: {
-        Authorization:
-          `Bearer ${process.env.OPENAI_API_KEY}`,
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
 
-        "Content-Type":
-          "application/json",
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          model:
+            "gpt-5.6-luna",
+
+          input: [
+            {
+              role: "user",
+
+              content: [
+                {
+                  type:
+                    "input_text",
+
+                  text:
+                    instruction,
+                },
+
+                {
+                  type:
+                    "input_image",
+
+                  image_url:
+                    image.dataUrl,
+                },
+              ],
+            },
+          ],
+        }),
       },
+    );
 
-      body: JSON.stringify({
-        model: "gpt-5.6-luna",
+  let data;
 
-        input: [
-          {
-            role: "user",
-
-            content: [
-              {
-                type: "input_text",
-                text: instruction,
-              },
-              {
-                type: "input_image",
-                image_url: imageDataUrl,
-              },
-            ],
-          },
-        ],
-      }),
-    }
-  );
-
-  const data = await response.json();
+  try {
+    data =
+      await response.json();
+  } catch {
+    throw new Error(
+      `AI 응답 JSON 읽기 실패 (${response.status})`,
+    );
+  }
 
   if (!response.ok) {
     throw new Error(
       data?.error?.message ||
-        "AI 구조분석 요청 실패"
+        `AI 구조분석 요청 실패 (${response.status})`,
     );
   }
 
   const outputText =
-    extractOutputText(data);
+    extractOutputText(
+      data,
+    );
 
   if (!outputText) {
     throw new Error(
-      "AI 구조분석 결과가 없습니다."
+      "AI 구조분석 결과가 없습니다.",
     );
   }
 
-  const result =
-    parseJson(outputText);
+  let result;
+
+  try {
+    result =
+      parseJson(
+        outputText,
+      );
+  } catch (error) {
+    console.error(
+      "구조분석 JSON 파싱 실패:",
+      outputText,
+    );
+
+    throw new Error(
+      `AI 구조분석 JSON 형식 오류: ${
+        error?.message ||
+        "JSON 파싱 실패"
+      }`,
+    );
+  }
 
   if (
     !result ||
-    typeof result !== "object"
+    typeof result !==
+      "object"
   ) {
     throw new Error(
-      "AI 구조분석 결과 형식 오류"
+      "AI 구조분석 결과 형식 오류",
     );
   }
 
-  return result;
+  const visualFeatures =
+    normalizeVisualFeatures(
+      result.visual_features,
+    );
+
+  const estimateSearchText =
+    String(
+      result.estimate_search_text ||
+        "",
+    ).trim();
+
+  if (!estimateSearchText) {
+    throw new Error(
+      "견적 검색용 구조 설명이 없습니다.",
+    );
+  }
+
+  return {
+    visualFeatures,
+    estimateSearchText,
+
+    imageInfo: {
+      source:
+        image.source,
+
+      storagePath:
+        image.storagePath,
+
+      size:
+        image.size,
+
+      contentType:
+        image.contentType,
+    },
+  };
 }
 
-export async function POST(request) {
+/* =========================================================
+   미분석 사진 개수
+========================================================= */
+
+async function getRemainingCount(
+  supabase,
+) {
+  const {
+    count,
+    error,
+  } = await supabase
+    .from("work_photos")
+    .select(
+      "id",
+      {
+        count: "exact",
+        head: true,
+      },
+    )
+    .is(
+      "structure_analyzed_at",
+      null,
+    );
+
+  if (error) {
+    throw error;
+  }
+
+  return Number(
+    count || 0,
+  );
+}
+
+/* =========================================================
+   API
+========================================================= */
+
+export async function POST(
+  request,
+) {
   try {
+    if (
+      !process.env
+        .NEXT_PUBLIC_SUPABASE_URL
+    ) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      );
+    }
+
+    if (
+      !process.env
+        .SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      throw new Error(
+        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      );
+    }
+
+    if (
+      !process.env
+        .OPENAI_API_KEY
+    ) {
+      throw new Error(
+        "OPENAI_API_KEY 환경변수가 없습니다.",
+      );
+    }
+
     const supabase =
       getSupabase();
 
     let body = {};
 
     try {
-      body = await request.json();
+      body =
+        await request.json();
     } catch {
       body = {};
     }
 
     /*
-     * 한 번에 너무 많은 사진을 처리하면
-     * Vercel timeout 위험이 있으므로
-     * 기본 3장씩 처리
+     * page.js에서는 limit 3으로 호출.
+     * Vercel timeout을 피하기 위해
+     * 최대 5장까지만 허용.
      */
     const requestedLimit =
-      Number(body?.limit || 3);
+      Number(
+        body?.limit ||
+          3,
+      );
 
     const limit =
       Math.max(
         1,
         Math.min(
-          requestedLimit,
-          5
-        )
+          Number.isFinite(
+            requestedLimit,
+          )
+            ? Math.floor(
+                requestedLimit,
+              )
+            : 3,
+          5,
+        ),
       );
 
     /*
-     * 전체 사진 수
+     * 한 API 실행에서
+     * 실패 사진 때문에 뒤 사진까지 막히지 않도록
+     * 실제 분석 후보는 limit보다 넉넉하게 조회한다.
+     *
+     * 예:
+     * limit = 3
+     * 최대 15개의 미분석 후보를 보고
+     * 성공 3장이 될 때까지 진행.
      */
+    const candidateLimit =
+      Math.min(
+        Math.max(
+          limit * 5,
+          15,
+        ),
+        30,
+      );
+
+    /* =====================================================
+       전체 사진 수
+    ===================================================== */
+
     const {
       count: total,
       error: totalError,
-    } =
-      await supabase
-        .from("work_photos")
-        .select(
-          "id",
-          {
-            count: "exact",
-            head: true,
-          }
-        );
+    } = await supabase
+      .from("work_photos")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        },
+      );
 
     if (totalError) {
       throw totalError;
     }
 
-    /*
-     * 아직 구조분석하지 않은 사진 수
-     */
-    const {
-      count: remainingBefore,
-      error: remainingError,
-    } =
-      await supabase
-        .from("work_photos")
-        .select(
-          "id",
-          {
-            count: "exact",
-            head: true,
-          }
-        )
-        .is(
-          "structure_analyzed_at",
-          null
-        );
+    const totalCount =
+      Number(
+        total || 0,
+      );
 
-    if (remainingError) {
-      throw remainingError;
+    const remainingBefore =
+      await getRemainingCount(
+        supabase,
+      );
+
+    if (
+      remainingBefore === 0
+    ) {
+      return NextResponse.json({
+        success: true,
+        finished: true,
+
+        total:
+          totalCount,
+
+        completed:
+          totalCount,
+
+        remaining: 0,
+
+        processed: 0,
+        attempted: 0,
+        failed: 0,
+
+        results: [],
+      });
     }
 
-    /*
-     * 분석 대상 조회
-     */
+    /* =====================================================
+       분석 후보 조회
+    ===================================================== */
+
     const {
       data: photos,
       error: photoError,
-    } =
-      await supabase
-        .from("work_photos")
-        .select(`
-          id,
-          photo_url,
-          storage_path,
-          photo_type,
-          category,
-          sub_category,
-          ai_description,
-          ai_tags,
-          visual_features,
-          estimate_search_text,
-          structure_analyzed_at,
-          created_at
-        `)
-        .is(
-          "structure_analyzed_at",
-          null
-        )
-        .order(
-          "created_at",
-          {
-            ascending: true,
-          }
-        )
-        .limit(limit);
+    } = await supabase
+      .from("work_photos")
+      .select(`
+        id,
+        photo_url,
+        storage_path,
+        photo_type,
+        category,
+        sub_category,
+        ai_description,
+        ai_tags,
+        visual_features,
+        estimate_search_text,
+        structure_analyzed_at,
+        created_at
+      `)
+      .is(
+        "structure_analyzed_at",
+        null,
+      )
+      .order(
+        "created_at",
+        {
+          ascending: true,
+        },
+      )
+      .limit(
+        candidateLimit,
+      );
 
     if (photoError) {
       throw photoError;
@@ -462,15 +962,15 @@ export async function POST(request) {
         finished: true,
 
         total:
-          total || 0,
+          totalCount,
 
         completed:
-          total || 0,
+          totalCount,
 
         remaining: 0,
 
         processed: 0,
-
+        attempted: 0,
         failed: 0,
 
         results: [],
@@ -481,58 +981,72 @@ export async function POST(request) {
 
     let processed = 0;
     let failed = 0;
+    let attempted = 0;
 
     /*
-     * 순차 처리
-     *
-     * 동시에 여러 AI 요청을 보내는 것보다
-     * Vercel / OpenAI 오류 관리가 쉬움
+     * 한 요청에서 이미 실패한 사진 ID
+     * 중복 처리 방지
      */
-    for (const photo of photos) {
+    const failedIds =
+      new Set();
+
+    /* =====================================================
+       순차 분석
+    ===================================================== */
+
+    for (
+      const photo of photos
+    ) {
+      /*
+       * 성공한 사진이 요청 limit에 도달하면
+       * 이번 API 실행 종료
+       */
+      if (
+        processed >= limit
+      ) {
+        break;
+      }
+
+      if (
+        failedIds.has(
+          photo.id,
+        )
+      ) {
+        continue;
+      }
+
+      attempted += 1;
+
       try {
         const analysis =
-          await analyzePhoto(photo);
-
-        const visualFeatures =
-          analysis?.visual_features &&
-          typeof analysis.visual_features ===
-            "object"
-            ? analysis.visual_features
-            : {};
-
-        const estimateSearchText =
-          String(
-            analysis?.estimate_search_text ||
-              ""
-          ).trim();
-
-        if (!estimateSearchText) {
-          throw new Error(
-            "견적 검색용 구조 설명이 없습니다."
+          await analyzePhoto(
+            supabase,
+            photo,
           );
-        }
 
         const {
           error: updateError,
-        } =
-          await supabase
-            .from("work_photos")
-            .update({
-              visual_features:
-                visualFeatures,
+        } = await supabase
+          .from(
+            "work_photos",
+          )
+          .update({
+            visual_features:
+              analysis.visualFeatures,
 
-              estimate_search_text:
-                estimateSearchText,
+            estimate_search_text:
+              analysis.estimateSearchText,
 
-              structure_version: 1,
+            structure_version:
+              1,
 
-              structure_analyzed_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              photo.id
-            );
+            structure_analyzed_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            photo.id,
+          );
 
         if (updateError) {
           throw updateError;
@@ -541,8 +1055,11 @@ export async function POST(request) {
         processed += 1;
 
         results.push({
-          id: photo.id,
-          success: true,
+          id:
+            photo.id,
+
+          success:
+            true,
 
           category:
             photo.category,
@@ -550,30 +1067,73 @@ export async function POST(request) {
           sub_category:
             photo.sub_category,
 
+          storage_path:
+            photo.storage_path,
+
+          image_source:
+            analysis
+              .imageInfo
+              .source,
+
+          image_size:
+            analysis
+              .imageInfo
+              .size,
+
           visual_features:
-            visualFeatures,
+            analysis
+              .visualFeatures,
 
           estimate_search_text:
-            estimateSearchText,
+            analysis
+              .estimateSearchText,
         });
       } catch (error) {
         failed += 1;
 
+        failedIds.add(
+          photo.id,
+        );
+
         console.error(
           "Structure analysis failed:",
-          photo.id,
-          error
+          {
+            id:
+              photo.id,
+
+            storage_path:
+              photo.storage_path,
+
+            photo_url:
+              photo.photo_url,
+
+            error:
+              error?.message ||
+              error,
+          },
         );
 
         /*
-         * 실패한 사진은 analyzed_at을
-         * 채우지 않는다.
+         * 실패 사진은 DB를 변경하지 않는다.
          *
-         * 다음 실행에서 다시 시도 가능.
+         * structure_analyzed_at도 null 유지.
+         * 나중에 원인을 수정한 뒤 다시 분석 가능.
          */
         results.push({
-          id: photo.id,
-          success: false,
+          id:
+            photo.id,
+
+          success:
+            false,
+
+          category:
+            photo.category,
+
+          sub_category:
+            photo.sub_category,
+
+          storage_path:
+            photo.storage_path,
 
           error:
             error?.message ||
@@ -582,57 +1142,45 @@ export async function POST(request) {
       }
     }
 
-    /*
-     * 실제 남은 개수 다시 확인
-     */
-    const {
-      count: remainingAfter,
-      error: countError,
-    } =
-      await supabase
-        .from("work_photos")
-        .select(
-          "id",
-          {
-            count: "exact",
-            head: true,
-          }
-        )
-        .is(
-          "structure_analyzed_at",
-          null
-        );
+    /* =====================================================
+       처리 후 실제 남은 사진 수
+    ===================================================== */
 
-    if (countError) {
-      throw countError;
-    }
+    const remainingAfter =
+      await getRemainingCount(
+        supabase,
+      );
 
     const completed =
       Math.max(
         0,
-        Number(total || 0) -
-          Number(
-            remainingAfter || 0
-          )
+        totalCount -
+          remainingAfter,
       );
 
+    /*
+     * 이번 요청에서 성공이 0이고
+     * 후보도 모두 실패했다면
+     * page.js의 반복실패 방지 로직이
+     * 자동으로 멈추게 된다.
+     */
     return NextResponse.json({
       success: true,
 
       finished:
-        Number(
-          remainingAfter || 0
-        ) === 0,
+        remainingAfter === 0,
 
       total:
-        total || 0,
+        totalCount,
 
       completed,
 
       remaining:
-        remainingAfter || 0,
+        remainingAfter,
 
       processed,
+
+      attempted,
 
       failed,
 
@@ -641,7 +1189,7 @@ export async function POST(request) {
   } catch (error) {
     console.error(
       "Analyze work structure API error:",
-      error
+      error,
     );
 
     return NextResponse.json(
@@ -654,7 +1202,7 @@ export async function POST(request) {
       },
       {
         status: 500,
-      }
+      },
     );
   }
-}
+          }
