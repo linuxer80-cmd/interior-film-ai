@@ -215,11 +215,8 @@ export default function AdminPage() {
   } =
     useJobRegister({
       companyId,
-
       similarityThreshold,
-
       loadJobs,
-
       jobSearchApplied,
     });
 
@@ -374,10 +371,6 @@ export default function AdminPage() {
 
     setActiveTab(tab);
 
-    /*
-     * 현장관리
-     * 탭을 열 때만 조회
-     */
     if (
       tab === "sites"
     ) {
@@ -386,20 +379,12 @@ export default function AdminPage() {
       );
     }
 
-    /*
-     * 로그 분석
-     * 탭을 열 때만 조회
-     */
     if (
       tab === "usage"
     ) {
       loadUsageStats();
     }
 
-    /*
-     * 고객 상담
-     * 탭을 열 때만 조회
-     */
     if (
       tab === "leads"
     ) {
@@ -430,11 +415,6 @@ export default function AdminPage() {
     ) {
       return;
     }
-
-    /*
-     * 기존 page.js와 동일하게
-     * 관리자 진입 시 필요한 것만 조회
-     */
 
     loadSettings(
       companyId,
@@ -489,10 +469,6 @@ export default function AdminPage() {
           },
 
           (payload) => {
-            /*
-             * 현재 상담 탭을 보고 있는 경우에는
-             * 새 상담 목록도 즉시 다시 조회
-             */
             handleRealtimeLead(
               payload.new,
               activeTabRef.current ===
@@ -525,25 +501,18 @@ export default function AdminPage() {
         style={{
           minHeight:
             "100vh",
-
           display:
             "flex",
-
           alignItems:
             "center",
-
           justifyContent:
             "center",
-
           background:
             "#f8fafc",
-
           color:
             "#6b7280",
-
           fontSize:
             "14px",
-
           fontWeight:
             "700",
         }}
@@ -562,19 +531,14 @@ export default function AdminPage() {
       style={{
         maxWidth:
           "900px",
-
         margin:
           "0 auto",
-
         padding:
           "16px 14px 80px",
-
         background:
           "#f8fafc",
-
         minHeight:
           "100vh",
-
         color:
           "#111827",
       }}
@@ -603,7 +567,6 @@ export default function AdminPage() {
         style={{
           fontSize:
             "24px",
-
           margin:
             "8px 0 16px",
         }}
@@ -903,77 +866,100 @@ export default function AdminPage() {
       )}
 
       {/* =====================================================
-          현장 관리
+          현장 관리 - 진단 표시 포함
       ===================================================== */}
 
       {activeTab ===
         "sites" && (
-        <SiteManagementTab
-          sites={
-            sites
-          }
-          sitesLoading={
-            sitesLoading
-          }
-          sitesMessage={
-            sitesMessage
-          }
+        <div>
+          <div
+            style={{
+              padding:
+                "12px",
+              marginBottom:
+                "12px",
+              background:
+                "#fef3c7",
+              border:
+                "2px solid #f59e0b",
+              borderRadius:
+                "10px",
+              fontWeight:
+                "900",
+              color:
+                "#92400e",
+            }}
+          >
+            현장관리 렌더링 진입 성공
+          </div>
 
-          createSite={
-            createSite
-          }
+          <SiteManagementTab
+            sites={
+              sites
+            }
+            sitesLoading={
+              sitesLoading
+            }
+            sitesMessage={
+              sitesMessage
+            }
 
-          updateSiteStatus={
-            updateSiteStatus
-          }
+            createSite={
+              createSite
+            }
 
-          selectedSite={
-            selectedSite
-          }
+            updateSiteStatus={
+              updateSiteStatus
+            }
 
-          openSite={
-            openSite
-          }
-          closeSite={
-            closeSite
-          }
+            selectedSite={
+              selectedSite
+            }
 
-          workers={
-            workers
-          }
-          workersLoading={
-            workersLoading
-          }
-          workersMessage={
-            workersMessage
-          }
+            openSite={
+              openSite
+            }
+            closeSite={
+              closeSite
+            }
 
-          loadWorkers={
-            loadWorkers
-          }
-          createWorker={
-            createWorker
-          }
-          updateWorker={
-            updateWorker
-          }
-          setWorkerActive={
-            setWorkerActive
-          }
+            workers={
+              workers
+            }
+            workersLoading={
+              workersLoading
+            }
+            workersMessage={
+              workersMessage
+            }
 
-          assignSiteWorkers={
-            assignSiteWorkers
-          }
-          loadSiteWorkers={
-            loadSiteWorkers
-          }
+            loadWorkers={
+              loadWorkers
+            }
+            createWorker={
+              createWorker
+            }
+            updateWorker={
+              updateWorker
+            }
+            setWorkerActive={
+              setWorkerActive
+            }
 
-          reloadSites={() =>
-            loadSites(
-              companyId,
-            )
-          }
-        />
+            assignSiteWorkers={
+              assignSiteWorkers
+            }
+            loadSiteWorkers={
+              loadSiteWorkers
+            }
+
+            reloadSites={() =>
+              loadSites(
+                companyId,
+              )
+            }
+          />
+        </div>
       )}
 
       {/* =====================================================
@@ -1140,4 +1126,4 @@ export default function AdminPage() {
       />
     </main>
   );
-            }
+          }
