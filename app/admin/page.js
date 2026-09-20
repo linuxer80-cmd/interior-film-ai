@@ -86,6 +86,23 @@ export default function AdminPage() {
   const [loadingPhotoId, setLoadingPhotoId] = useState(null);
 
   /* =========================================================
+     기존 시공사진 AI 구조분석
+  ========================================================= */
+
+  const [structureAnalysis, setStructureAnalysis] = useState({
+    total: 0,
+    completed: 0,
+    remaining: 0,
+    failed: 0,
+    processed: 0,
+    running: false,
+    finished: false,
+    message: "",
+  });
+
+  const structureStopRef = useRef(false);
+
+  /* =========================================================
      시공 수정
   ========================================================= */
 
@@ -147,15 +164,6 @@ export default function AdminPage() {
   const [usageRecent, setUsageRecent] = useState([]);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageMessage, setUsageMessage] = useState("");
-
-  /*
-    자동견적 사진용 상태
-
-    중요:
-    목록을 열었다고 사진 URL을 만들지 않습니다.
-    관리자가 "사진 보기" 버튼을 눌렀을 때만
-    private bucket signed URL을 생성합니다.
-  */
 
   const [openUsagePhotoId, setOpenUsagePhotoId] = useState(null);
   const [usagePhotoUrls, setUsagePhotoUrls] = useState({});
@@ -348,9 +356,7 @@ export default function AdminPage() {
   ========================================================= */
 
   async function toggleUsagePhotos(row) {
-    if (!row?.id) {
-      return;
-    }
+    if (!row?.id) return;
 
     if (openUsagePhotoId === row.id) {
       setOpenUsagePhotoId(null);
@@ -380,11 +386,7 @@ export default function AdminPage() {
         const cachedUrl = getCachedSignedUrl(path);
 
         if (cachedUrl) {
-          urls.push({
-            path,
-            url: cachedUrl,
-          });
-
+          urls.push({ path, url: cachedUrl });
           continue;
         }
 
@@ -393,12 +395,7 @@ export default function AdminPage() {
           .createSignedUrl(path, SIGNED_URL_SECONDS);
 
         if (error) {
-          console.error(
-            "자동견적 사진 Signed URL 오류:",
-            path,
-            error,
-          );
-
+          console.error("자동견적 사진 Signed URL 오류:", path, error);
           continue;
         }
 
@@ -456,8 +453,7 @@ export default function AdminPage() {
     setUsageMessage("");
 
     try {
-      const { stats, recent } =
-        await fetchUsageDashboard(supabase);
+      const { stats, recent } = await fetchUsageDashboard(supabase);
 
       setUsageStats(stats);
       setUsageRecent(recent);
@@ -468,18 +464,14 @@ export default function AdminPage() {
           "⚠️ estimate_usage 조회는 성공했지만 현재 확인되는 자동견적 로그가 없습니다.",
         );
       } else {
-        const recentPhotoCount =
-          recent.filter(
-            (row) =>
-              getUsagePhotoPaths(row).length > 0,
-          ).length;
+        const recentPhotoCount = recent.filter(
+          (row) => getUsagePhotoPaths(row).length > 0,
+        ).length;
 
         setUsageMessage(
           `✅ 자동견적 전체 ${stats.total.toLocaleString(
             "ko-KR",
-          )}건 · 최근 목록 ${
-            recent.length
-          }건 · 최근 사진 저장 ${
+          )}건 · 최근 목록 ${recent.length}건 · 최근 사진 저장 ${
             recentPhotoCount
           }건 · 상세상담 전환 ${stats.converted.toLocaleString(
             "ko-KR",
@@ -487,10 +479,7 @@ export default function AdminPage() {
         );
       }
     } catch (error) {
-      console.error(
-        "사용자 로그 통계 오류:",
-        error,
-      );
+      console.error("사용자 로그 통계 오류:", error);
 
       setUsageStats({
         today: 0,
@@ -513,6 +502,169 @@ export default function AdminPage() {
     } finally {
       setUsageLoading(false);
     }
+  }
+
+  /* =========================================================
+     기존 시공사진 AI 구조분석
+  ========================================================= */
+
+  async function runStructureAnalysis() {
+    if (structureAnalysis.running) return;
+
+    const confirmed = window.confirm(
+      "기존 시공사진의 구조를 AI로 분석합니다.\n\n" +
+        "기존 카테고리, 금액, 임베딩은 변경하지 않고\n" +
+        "새 구조분석 정보만 저장합니다.\n\n" +
+        "사진 수에 따라 시간이 걸릴 수 있습니다.\n" +
+        "시작할까요?",
+    );
+
+    if (!confirmed) return;
+
+    structureStopRef.current = false;
+
+    let totalFailed = 0;
+    let totalProcessed = 0;
+    let previousRemaining = null;
+    let noProgressCount = 0;
+
+    setStructureAnalysis((current) => ({
+      ...current,
+      running: true,
+      finished: false,
+      failed: 0,
+      processed: 0,
+      message: "AI 구조분석을 시작합니다...",
+    }));
+
+    try {
+      while (!structureStopRef.current) {
+        const response = await fetch("/api/analyze-work-structure", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            limit: 3,
+          }),
+        });
+
+        let data;
+
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error(
+            "구조분석 API 응답을 읽을 수 없습니다.",
+          );
+        }
+
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.error ||
+              `구조분석 API 오류 (${response.status})`,
+          );
+        }
+
+        const total = Number(data.total || 0);
+        const completed = Number(data.completed || 0);
+        const remaining = Number(data.remaining || 0);
+        const processed = Number(data.processed || 0);
+        const failed = Number(data.failed || 0);
+
+        totalProcessed += processed;
+        totalFailed += failed;
+
+        setStructureAnalysis({
+          total,
+          completed,
+          remaining,
+          failed: totalFailed,
+          processed: totalProcessed,
+          running: true,
+          finished:
+            data.finished === true ||
+            remaining === 0,
+          message:
+            remaining === 0
+              ? "✅ 기존 시공사진 구조분석이 완료되었습니다."
+              : `AI 구조분석 중... ${completed}/${total}`,
+        });
+
+        if (
+          data.finished === true ||
+          remaining === 0
+        ) {
+          setStructureAnalysis((current) => ({
+            ...current,
+            running: false,
+            finished: true,
+            message:
+              totalFailed > 0
+                ? `✅ 구조분석 완료 · 완료 ${completed}장 · 이번 실행 실패 ${totalFailed}회`
+                : "✅ 기존 시공사진 구조분석이 완료되었습니다.",
+          }));
+
+          break;
+        }
+
+        if (
+          processed > 0 ||
+          previousRemaining === null ||
+          remaining < previousRemaining
+        ) {
+          noProgressCount = 0;
+        } else {
+          noProgressCount += 1;
+        }
+
+        previousRemaining = remaining;
+
+        if (noProgressCount >= 2) {
+          setStructureAnalysis((current) => ({
+            ...current,
+            running: false,
+            finished: false,
+            message:
+              `⚠️ 반복 실패로 자동 분석을 중단했습니다.\n` +
+              `남은 사진 ${remaining}장\n` +
+              "실패한 사진의 Storage 경로나 이미지 상태를 확인한 뒤 다시 실행해주세요.",
+          }));
+
+          break;
+        }
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500),
+        );
+      }
+    } catch (error) {
+      console.error(
+        "시공사진 구조분석:",
+        error,
+      );
+
+      setStructureAnalysis((current) => ({
+        ...current,
+        running: false,
+        finished: false,
+        message:
+          `❌ 구조분석 오류: ${
+            error?.message || "실패"
+          }`,
+      }));
+    }
+  }
+
+  function stopStructureAnalysis() {
+    structureStopRef.current = true;
+
+    setStructureAnalysis((current) => ({
+      ...current,
+      running: false,
+      message:
+        "⏸️ 구조분석을 중지했습니다. 다시 시작하면 남은 사진부터 계속합니다.",
+    }));
   }
 
   /* =========================================================
@@ -592,7 +744,8 @@ export default function AdminPage() {
   function searchJobs() {
     const keyword =
       sanitizeSearchKeyword(jobSearch);
-        setJobSearchApplied(keyword);
+
+    setJobSearchApplied(keyword);
     loadJobs(1, keyword);
   }
 
@@ -747,9 +900,11 @@ export default function AdminPage() {
 
   function startEdit(job) {
     setEditingId(job.id);
+
     setEditCategory(
       job.category || "",
     );
+
     setEditSubCategory(
       job.sub_category ||
         job.category ||
@@ -839,17 +994,21 @@ export default function AdminPage() {
 
   function startPhotoEdit(photo) {
     setEditingPhotoId(photo.id);
+
     setEditPhotoType(
       photo.photo_type || "before",
     );
+
     setEditPhotoCategory(
       photo.category || "",
     );
+
     setEditPhotoSubCategory(
       photo.sub_category ||
         photo.category ||
         "",
     );
+
     setEditPhotoDescription(
       photo.ai_description || "",
     );
@@ -1074,7 +1233,7 @@ export default function AdminPage() {
 
       const { error } = await supabase
         .from("work_items")
-        .delete()
+              .delete()
         .eq("id", job.id);
 
       if (error) throw error;
@@ -1235,7 +1394,8 @@ export default function AdminPage() {
       );
     }
 
-    const storagePath = `history/${projectId}/${workItemId}/${photoType}/${Date.now()}-${crypto.randomUUID()}.jpg`;
+    const storagePath =
+      `history/${projectId}/${workItemId}/${photoType}/${Date.now()}-${crypto.randomUUID()}.jpg`;
 
     const { error: uploadError } =
       await supabase.storage
@@ -1260,7 +1420,9 @@ export default function AdminPage() {
       const { data: publicData } =
         supabase.storage
           .from("work-photos")
-          .getPublicUrl(storagePath);
+          .getPublicUrl(
+            storagePath,
+          );
 
       const photoUrl =
         publicData?.publicUrl ||
@@ -1272,19 +1434,24 @@ export default function AdminPage() {
           .insert({
             work_item_id:
               workItemId,
-            project_id: projectId,
-            photo_type: photoType,
-            category: finalCategory,
+            project_id:
+              projectId,
+            photo_type:
+              photoType,
+            category:
+              finalCategory,
             sub_category:
               finalSubCategory,
             storage_path:
               storagePath,
-            photo_url: photoUrl,
+            photo_url:
+              photoUrl,
             ai_description:
               description,
             ai_tags: tags,
             embedding,
-            image_hash: imageHash,
+            image_hash:
+              imageHash,
           });
 
       if (error) throw error;
@@ -1296,7 +1463,9 @@ export default function AdminPage() {
       try {
         await supabase.storage
           .from("work-photos")
-          .remove([storagePath]);
+          .remove([
+            storagePath,
+          ]);
       } catch {}
 
       throw error;
@@ -1368,20 +1537,25 @@ export default function AdminPage() {
         error,
       } = await supabase
         .from("work_items")
-        .insert({          project_id: PROJECT_ID,
-          category: category.trim(),
+        .insert({
+          project_id:
+            PROJECT_ID,
+          category:
+            category.trim(),
           sub_category:
             category.trim(),
           actual_cost: cost,
           memo:
-            combinedMemo || null,
+            combinedMemo ||
+            null,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      workItemId = workItem.id;
+      workItemId =
+        workItem.id;
 
       setMessage(
         "AI가 시공 전/후 사진을 비교하고 있습니다...",
@@ -1452,7 +1626,8 @@ export default function AdminPage() {
               workItem.id,
             projectId:
               PROJECT_ID,
-            photoType: item.type,
+            photoType:
+              item.type,
             categoryValue:
               category.trim(),
             subCategoryValue:
@@ -1497,7 +1672,10 @@ export default function AdminPage() {
           : `✅ 시공사례 저장 완료!\n사진 ${saved}장 + AI 분석 + 임베딩 저장`,
       );
 
-      await loadJobs(1, "");
+      await loadJobs(
+        1,
+        "",
+      );
     } catch (error) {
       console.error(error);
 
@@ -1550,12 +1728,17 @@ export default function AdminPage() {
     try {
       const { count, error } =
         await supabase
-          .from("customer_leads")
+          .from(
+            "customer_leads",
+          )
           .select("id", {
             count: "exact",
             head: true,
           })
-          .eq("is_read", false);
+          .eq(
+            "is_read",
+            false,
+          );
 
       if (error) {
         console.error(
@@ -1565,7 +1748,9 @@ export default function AdminPage() {
         return;
       }
 
-      setUnreadCount(count || 0);
+      setUnreadCount(
+        count || 0,
+      );
     } catch (error) {
       console.error(
         "미확인 상담 수:",
@@ -1592,7 +1777,9 @@ export default function AdminPage() {
         1;
 
       let query = supabase
-        .from("customer_leads")
+        .from(
+          "customer_leads",
+        )
         .select(
           `
           id,
@@ -1628,10 +1815,11 @@ export default function AdminPage() {
         filter &&
         filter !== "all"
       ) {
-        query = query.eq(
-          "status",
-          filter,
-        );
+        query =
+          query.eq(
+            "status",
+            filter,
+          );
       }
 
       const {
@@ -1639,15 +1827,22 @@ export default function AdminPage() {
         error,
         count,
       } = await query
-        .order("created_at", {
-          ascending: false,
-        })
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          },
+        )
         .range(from, to);
 
       if (error) throw error;
 
-      setLeads(data || []);
-      setLeadTotal(count || 0);
+      setLeads(
+        data || [],
+      );
+      setLeadTotal(
+        count || 0,
+      );
       setLeadPage(page);
     } catch (error) {
       console.error(error);
@@ -1663,40 +1858,54 @@ export default function AdminPage() {
     }
   }
 
-  async function markLeadRead(lead) {
+  async function markLeadRead(
+    lead,
+  ) {
     if (!lead?.id) return;
 
-    if (lead.is_read === true) {
+    if (
+      lead.is_read === true
+    ) {
       return;
     }
 
     try {
       const { error } =
         await supabase
-          .from("customer_leads")
+          .from(
+            "customer_leads",
+          )
           .update({
             is_read: true,
           })
-          .eq("id", lead.id);
+          .eq(
+            "id",
+            lead.id,
+          );
 
       if (error) throw error;
 
-      setLeads((current) =>
-        current.map((item) =>
-          item.id === lead.id
-            ? {
-                ...item,
-                is_read: true,
-              }
-            : item,
-        ),
+      setLeads(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              lead.id
+                ? {
+                    ...item,
+                    is_read:
+                      true,
+                  }
+                : item,
+          ),
       );
 
-      setUnreadCount((current) =>
-        Math.max(
-          0,
-          current - 1,
-        ),
+      setUnreadCount(
+        (current) =>
+          Math.max(
+            0,
+            current - 1,
+          ),
       );
     } catch (error) {
       console.error(
@@ -1709,23 +1918,34 @@ export default function AdminPage() {
   async function toggleLeadDetail(
     lead,
   ) {
-    if (openLeadId === lead.id) {
+    if (
+      openLeadId ===
+      lead.id
+    ) {
       setOpenLeadId(null);
       return;
     }
 
-    setOpenLeadId(lead.id);
+    setOpenLeadId(
+      lead.id,
+    );
 
-    await markLeadRead(lead);
+    await markLeadRead(
+      lead,
+    );
   }
 
   async function loadLeadPhotos(
     lead,
   ) {
     const paths =
-      getLeadPhotoPaths(lead);
+      getLeadPhotoPaths(
+        lead,
+      );
 
-    if (paths.length === 0) {
+    if (
+      paths.length === 0
+    ) {
       setLeadsMessage(
         "⚠️ 저장된 고객 사진이 없습니다.",
       );
@@ -1734,10 +1954,13 @@ export default function AdminPage() {
 
     if (
       Array.isArray(
-        leadPhotoUrls[lead.id],
+        leadPhotoUrls[
+          lead.id
+        ],
       ) &&
-      leadPhotoUrls[lead.id]
-        .length > 0
+      leadPhotoUrls[
+        lead.id
+      ].length > 0
     ) {
       return;
     }
@@ -1749,20 +1972,35 @@ export default function AdminPage() {
     try {
       const urls = [];
 
-      for (const path of paths) {
-        const cachedUrl = getCachedSignedUrl(path);
+      for (
+        const path of paths
+      ) {
+        const cachedUrl =
+          getCachedSignedUrl(
+            path,
+          );
 
         if (cachedUrl) {
           urls.push({
             path,
             url: cachedUrl,
           });
+
           continue;
         }
 
-        const { data, error } = await supabase.storage
-          .from("work-photos")
-          .createSignedUrl(path, SIGNED_URL_SECONDS);
+        const {
+          data,
+          error,
+        } =
+          await supabase.storage
+            .from(
+              "work-photos",
+            )
+            .createSignedUrl(
+              path,
+              SIGNED_URL_SECONDS,
+            );
 
         if (error) {
           console.error(
@@ -1773,8 +2011,9 @@ export default function AdminPage() {
           continue;
         }
 
-        if (data?.signedUrl) {
-          setCachedSignedUrl(path, data.signedUrl, SIGNED_URL_SECONDS);
+        if (
+          data?.signedUrl
+        ) {
           setCachedSignedUrl(
             path,
             data.signedUrl,
@@ -1783,12 +2022,15 @@ export default function AdminPage() {
 
           urls.push({
             path,
-            url: data.signedUrl,
+            url:
+              data.signedUrl,
           });
         }
       }
 
-      if (urls.length === 0) {
+      if (
+        urls.length === 0
+      ) {
         throw new Error(
           "고객 사진을 불러오지 못했습니다.",
         );
@@ -1803,7 +2045,8 @@ export default function AdminPage() {
     } catch (error) {
       setLeadsMessage(
         `❌ 고객 사진 오류: ${
-          error?.message || "실패"
+          error?.message ||
+          "실패"
         }`,
       );
     } finally {
@@ -1820,28 +2063,37 @@ export default function AdminPage() {
     try {
       const { error } =
         await supabase
-          .from("customer_leads")
+          .from(
+            "customer_leads",
+          )
           .update({
             status,
           })
-          .eq("id", leadId);
+          .eq(
+            "id",
+            leadId,
+          );
 
       if (error) throw error;
 
-      setLeads((current) =>
-        current.map((lead) =>
-          lead.id === leadId
-            ? {
-                ...lead,
-                status,
-              }
-            : lead,
-        ),
+      setLeads(
+        (current) =>
+          current.map(
+            (lead) =>
+              lead.id ===
+              leadId
+                ? {
+                    ...lead,
+                    status,
+                  }
+                : lead,
+          ),
       );
     } catch (error) {
       setLeadsMessage(
         `❌ 상태 변경 오류: ${
-          error?.message || "실패"
+          error?.message ||
+          "실패"
         }`,
       );
     }
@@ -1854,12 +2106,17 @@ export default function AdminPage() {
     try {
       const { error } =
         await supabase
-          .from("customer_leads")
+          .from(
+            "customer_leads",
+          )
           .update({
             admin_memo:
               memo || null,
           })
-          .eq("id", leadId);
+          .eq(
+            "id",
+            leadId,
+          );
 
       if (error) throw error;
 
@@ -1869,7 +2126,8 @@ export default function AdminPage() {
     } catch (error) {
       setLeadsMessage(
         `❌ 메모 저장 오류: ${
-          error?.message || "실패"
+          error?.message ||
+          "실패"
         }`,
       );
     }
@@ -1880,15 +2138,19 @@ export default function AdminPage() {
     field,
     value,
   ) {
-    setLeads((current) =>
-      current.map((lead) =>
-        lead.id === leadId
-          ? {
-              ...lead,
-              [field]: value,
-            }
-          : lead,
-      ),
+    setLeads(
+      (current) =>
+        current.map(
+          (lead) =>
+            lead.id ===
+            leadId
+              ? {
+                  ...lead,
+                  [field]:
+                    value,
+                }
+              : lead,
+        ),
     );
   }
 
@@ -1897,12 +2159,18 @@ export default function AdminPage() {
   ) {
     const price = Number(
       String(
-        lead.final_price || "",
-      ).replace(/,/g, ""),
+        lead.final_price ||
+          "",
+      ).replace(
+        /,/g,
+        "",
+      ),
     );
 
     if (
-      !Number.isFinite(price) ||
+      !Number.isFinite(
+        price,
+      ) ||
       price <= 0
     ) {
       setLeadsMessage(
@@ -1917,9 +2185,12 @@ export default function AdminPage() {
 
       const { error } =
         await supabase
-          .from("customer_leads")
+          .from(
+            "customer_leads",
+          )
           .update({
-            final_price: price,
+            final_price:
+              price,
             quote_work_details:
               lead.quote_work_details ||
               null,
@@ -1932,21 +2203,28 @@ export default function AdminPage() {
             quote_created_at:
               quoteCreatedAt,
           })
-          .eq("id", lead.id);
+          .eq(
+            "id",
+            lead.id,
+          );
 
       if (error) throw error;
 
-      setLeads((current) =>
-        current.map((item) =>
-          item.id === lead.id
-            ? {
-                ...item,
-                final_price: price,
-                quote_created_at:
-                  quoteCreatedAt,
-              }
-            : item,
-        ),
+      setLeads(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              lead.id
+                ? {
+                    ...item,
+                    final_price:
+                      price,
+                    quote_created_at:
+                      quoteCreatedAt,
+                  }
+                : item,
+          ),
       );
 
       setLeadsMessage(
@@ -1955,7 +2233,8 @@ export default function AdminPage() {
     } catch (error) {
       setLeadsMessage(
         `❌ 최종 견적 저장 오류: ${
-          error?.message || "실패"
+          error?.message ||
+          "실패"
         }`,
       );
     }
@@ -1965,20 +2244,23 @@ export default function AdminPage() {
      화면
   ========================================================= */
 
-  const totalJobPages = Math.max(
-    1,
-    Math.ceil(
-      jobTotal / JOB_PAGE_SIZE,
-    ),
-  );
+  const totalJobPages =
+    Math.max(
+      1,
+      Math.ceil(
+        jobTotal /
+          JOB_PAGE_SIZE,
+      ),
+    );
 
-  const totalLeadPages = Math.max(
-    1,
-    Math.ceil(
-      leadTotal /
-        LEAD_PAGE_SIZE,
-    ),
-  );
+  const totalLeadPages =
+    Math.max(
+      1,
+      Math.ceil(
+        leadTotal /
+          LEAD_PAGE_SIZE,
+      ),
+    );
 
   return (
     <main
@@ -1987,8 +2269,10 @@ export default function AdminPage() {
         margin: "0 auto",
         padding:
           "16px 14px 80px",
-        background: "#f8fafc",
-        minHeight: "100vh",
+        background:
+          "#f8fafc",
+        minHeight:
+          "100vh",
         color: "#111827",
       }}
     >
@@ -1999,46 +2283,79 @@ export default function AdminPage() {
         setNewLeadAlert={
           setNewLeadAlert
         }
-        changeTab={changeTab}
+        changeTab={
+          changeTab
+        }
       />
 
       <h1
         style={{
           fontSize: "24px",
-          margin: "8px 0 16px",
+          margin:
+            "8px 0 16px",
         }}
       >
         기분좋은공간 관리자
       </h1>
 
       <AdminTabs
-        activeTab={activeTab}
-        changeTab={changeTab}
-        unreadCount={unreadCount}
+        activeTab={
+          activeTab
+        }
+        changeTab={
+          changeTab
+        }
+        unreadCount={
+          unreadCount
+        }
       />
 
       {/* =====================================================
           시공 DB
       ===================================================== */}
 
-      {activeTab === "jobs" && (
+      {activeTab ===
+        "jobs" && (
         <JobsTab
-          jobSearch={jobSearch}
+          jobSearch={
+            jobSearch
+          }
           setJobSearch={
             setJobSearch
           }
-          searchJobs={searchJobs}
+          searchJobs={
+            searchJobs
+          }
           clearJobSearch={
             clearJobSearch
           }
           jobSearchApplied={
             jobSearchApplied
           }
-          jobTotal={jobTotal}
-          jobsMessage={jobsMessage}
-          jobsLoading={jobsLoading}
+          jobTotal={
+            jobTotal
+          }
+          jobsMessage={
+            jobsMessage
+          }
+
+          structureAnalysis={
+            structureAnalysis
+          }
+          runStructureAnalysis={
+            runStructureAnalysis
+          }
+          stopStructureAnalysis={
+            stopStructureAnalysis
+          }
+
+          jobsLoading={
+            jobsLoading
+          }
           jobs={jobs}
-          editingId={editingId}
+          editingId={
+            editingId
+          }
           editCategory={
             editCategory
           }
@@ -2051,28 +2368,42 @@ export default function AdminPage() {
           setEditSubCategory={
             setEditSubCategory
           }
-          editCost={editCost}
+          editCost={
+            editCost
+          }
           setEditCost={
             setEditCost
           }
-          editMemo={editMemo}
+          editMemo={
+            editMemo
+          }
           setEditMemo={
             setEditMemo
           }
           saveJobEdit={
             saveJobEdit
           }
-          cancelEdit={cancelEdit}
-          startEdit={startEdit}
-          deleteJob={deleteJob}
-          openJobId={openJobId}
+          cancelEdit={
+            cancelEdit
+          }
+          startEdit={
+            startEdit
+          }
+          deleteJob={
+            deleteJob
+          }
+          openJobId={
+            openJobId
+          }
           toggleJobDetail={
             toggleJobDetail
           }
           jobPhotoLoadingId={
             jobPhotoLoadingId
           }
-          jobPhotos={jobPhotos}
+          jobPhotos={
+            jobPhotos
+          }
           jobPhotoUrls={
             jobPhotoUrls
           }
@@ -2091,7 +2422,9 @@ export default function AdminPage() {
           startPhotoEdit={
             startPhotoEdit
           }
-          deletePhoto={deletePhoto}
+          deletePhoto={
+            deletePhoto
+          }
           editPhotoType={
             editPhotoType
           }
@@ -2125,11 +2458,15 @@ export default function AdminPage() {
           cancelPhotoEdit={
             cancelPhotoEdit
           }
-          jobPage={jobPage}
+          jobPage={
+            jobPage
+          }
           totalJobPages={
             totalJobPages
           }
-          loadJobs={loadJobs}
+          loadJobs={
+            loadJobs
+          }
         />
       )}
 
@@ -2140,16 +2477,30 @@ export default function AdminPage() {
       {activeTab ===
         "register" && (
         <RegisterTab
-          category={category}
-          setCategory={setCategory}
-          actualCost={actualCost}
+          category={
+            category
+          }
+          setCategory={
+            setCategory
+          }
+          actualCost={
+            actualCost
+          }
           setActualCost={
             setActualCost
           }
-          material={material}
-          setMaterial={setMaterial}
-          memo={memo}
-          setMemo={setMemo}
+          material={
+            material
+          }
+          setMaterial={
+            setMaterial
+          }
+          memo={
+            memo
+          }
+          setMemo={
+            setMemo
+          }
           beforeImages={
             beforeImages
           }
@@ -2162,9 +2513,15 @@ export default function AdminPage() {
           setAfterImages={
             setAfterImages
           }
-          loading={loading}
-          handleSave={handleSave}
-          message={message}
+          loading={
+            loading
+          }
+          handleSave={
+            handleSave
+          }
+          message={
+            message
+          }
           similarityThreshold={
             similarityThreshold
           }
@@ -2187,9 +2544,12 @@ export default function AdminPage() {
           로그 분석
       ===================================================== */}
 
-      {activeTab === "usage" && (
+      {activeTab ===
+        "usage" && (
         <UsageTab
-          usageStats={usageStats}
+          usageStats={
+            usageStats
+          }
           usageMessage={
             usageMessage
           }
@@ -2224,15 +2584,24 @@ export default function AdminPage() {
           고객 상담
       ===================================================== */}
 
-      {activeTab === "leads" && (
+      {activeTab ===
+        "leads" && (
         <LeadsTab
-          leadFilter={leadFilter}
+          leadFilter={
+            leadFilter
+          }
           setLeadFilter={
             setLeadFilter
           }
-          loadLeads={loadLeads}
-          leadTotal={leadTotal}
-          unreadCount={unreadCount}
+          loadLeads={
+            loadLeads
+          }
+          leadTotal={
+            leadTotal
+          }
+          unreadCount={
+            unreadCount
+          }
           notificationEnabled={
             notificationEnabled
           }
@@ -2245,11 +2614,15 @@ export default function AdminPage() {
           leadsLoading={
             leadsLoading
           }
-          leads={leads}
+          leads={
+            leads
+          }
           updateLeadStatus={
             updateLeadStatus
           }
-          openLeadId={openLeadId}
+          openLeadId={
+            openLeadId
+          }
           toggleLeadDetail={
             toggleLeadDetail
           }
@@ -2277,7 +2650,9 @@ export default function AdminPage() {
           setLeadsMessage={
             setLeadsMessage
           }
-          leadPage={leadPage}
+          leadPage={
+            leadPage
+          }
           totalLeadPages={
             totalLeadPages
           }
@@ -2289,11 +2664,15 @@ export default function AdminPage() {
       ===================================================== */}
 
       <PhotoPreviewModal
-        previewPhoto={previewPhoto}
+        previewPhoto={
+          previewPhoto
+        }
         setPreviewPhoto={
           setPreviewPhoto
         }
       />
     </main>
   );
-          }
+            }
+
+      
