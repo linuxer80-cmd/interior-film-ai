@@ -45,6 +45,41 @@ export default function AdminPage() {
   const companyName = currentCompany?.company_name || "업체";
   const [activeTab, setActiveTab] = useState("jobs");
   const activeTabRef = useRef("jobs");
+    /* =========================================================
+     현장 관리
+  ========================================================= */
+
+  const {
+    sites,
+    sitesLoading,
+    sitesMessage,
+    selectedSite,
+    loadSites,
+    createSite,
+    updateSiteStatus,
+    openSite,
+    closeSite,
+  } = useSites({
+    companyId,
+  });
+
+  /* =========================================================
+     시공자 관리
+  ========================================================= */
+
+  const {
+    workers,
+    workersLoading,
+    workersMessage,
+    loadWorkers,
+    createWorker,
+    updateWorker,
+    setWorkerActive,
+    assignSiteWorkers,
+    loadSiteWorkers,
+  } = useWorkers({
+    companyId,
+  });
 
   const [similarityThreshold, setSimilarityThreshold] = useState(0.65);
   const [settingMessage, setSettingMessage] = useState("");
