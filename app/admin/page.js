@@ -184,17 +184,22 @@ export default function AdminPage() {
   const [usagePhotoLoadingId, setUsagePhotoLoadingId] = useState(null);
 
   function changeTab(tab) {
-    activeTabRef.current = tab;
-    setActiveTab(tab);
+  function changeTab(tab) {
+  activeTabRef.current = tab;
+  setActiveTab(tab);
 
-    if (tab === "usage") {
-      loadUsageStats();
-    }
-
-    if (tab === "leads") {
-      loadLeads(1, leadFilter);
-    }
+  if (tab === "sites") {
+    loadSites(companyId);
   }
+
+  if (tab === "usage") {
+    loadUsageStats();
+  }
+
+  if (tab === "leads") {
+    loadLeads(1, leadFilter);
+  }
+}
 
   useEffect(() => {
     let cancelled = false;
