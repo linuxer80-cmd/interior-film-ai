@@ -34,9 +34,22 @@ import { fetchUsageDashboard } from "./usageDataService";
 export default function AdminPage() {
   const [adminReady, setAdminReady] = useState(false);
   const [currentCompany, setCurrentCompany] = useState(null);
+
   const companyId =
     currentCompany?.company_id || currentCompany?.id || null;
-  const companyName = currentCompany?.company_name || "관리자";
+
+  const companyName =
+    currentCompany?.company_name || "관리자";
+
+  const companySlug =
+    currentCompany?.slug || "";
+
+  const customerEstimateUrl =
+    companySlug
+      ? `https://interior-film-ai.vercel.app/estimate/${companySlug}`
+      : "";
+
+  const [copyMessage, setCopyMessage] = useState("");
 
   const [activeTab, setActiveTab] = useState("jobs");
   const activeTabRef = useRef("jobs");
@@ -150,6 +163,39 @@ export default function AdminPage() {
   const [usagePhotoLoadingId, setUsagePhotoLoadingId] =
     useState(null);
 
+  async function copyCustomerEstimateUrl() {
+    if (!customerEstimateUrl) {
+      setCopyMessage("❌ 고객페이지 주소를 확인할 수 없습니다.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(customerEstimateUrl);
+
+      setCopyMessage("✅ 고객페이지 주소가 복사되었습니다.");
+
+      setTimeout(() => {
+        setCopyMessage("");
+      }, 2500);
+    } catch (error) {
+      console.error("고객페이지 주소 복사:", error);
+
+      setCopyMessage(
+        "❌ 주소 복사에 실패했습니다. 주소를 길게 눌러 복사해주세요.",
+      );
+    }
+  }
+
+  function openCustomerEstimatePage() {
+    if (!customerEstimateUrl) return;
+
+    window.open(
+      customerEstimateUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
   function changeTab(tab) {
     activeTabRef.current = tab;
     setActiveTab(tab);
@@ -254,6 +300,7 @@ export default function AdminPage() {
               "회사 정보를 불러오지 못했습니다."
             }`,
           );
+
           setAdminReady(true);
         }
       }
@@ -347,6 +394,7 @@ export default function AdminPage() {
       });
     } catch (error) {
       console.error(error);
+
       alert(
         `알림 설정 오류: ${error?.message || "실패"}`,
       );
@@ -568,8 +616,7 @@ export default function AdminPage() {
         const recentPhotoCount =
           recent.filter(
             (row) =>
-              getUsagePhotoPaths(row)
-                .length > 0,
+              getUsagePhotoPaths(row).length > 0,
           ).length;
 
         setUsageMessage(
@@ -610,8 +657,7 @@ export default function AdminPage() {
       setUsageLoading(false);
     }
   }
-
-  /* =========================================================
+    /* =========================================================
      AI 구조분석
   ========================================================= */
 
@@ -658,9 +704,7 @@ export default function AdminPage() {
 
         const storagePath =
           result?.storage_path
-            ? String(
-                result.storage_path,
-              )
+            ? String(result.storage_path)
             : "";
 
         const errorText =
@@ -677,23 +721,14 @@ export default function AdminPage() {
           .join("\n");
 
         if (
-          !collectedErrors.includes(
-            text,
-          )
+          !collectedErrors.includes(text)
         ) {
-          collectedErrors.push(
-            text,
-          );
+          collectedErrors.push(text);
         }
       }
 
-      if (
-        collectedErrors.length >
-        10
-      ) {
-        collectedErrors.splice(
-          10,
-        );
+      if (collectedErrors.length > 10) {
+        collectedErrors.splice(10);
       }
     }
 
@@ -702,10 +737,7 @@ export default function AdminPage() {
       remaining,
     ) {
       const visibleErrors =
-        collectedErrors.slice(
-          0,
-          3,
-        );
+        collectedErrors.slice(0, 3);
 
       let text = prefix;
 
@@ -716,28 +748,18 @@ export default function AdminPage() {
         text += `\n남은 사진 ${remaining}장`;
       }
 
-      if (
-        visibleErrors.length >
-        0
-      ) {
-        text +=
-          "\n\n실제 오류:";
+      if (visibleErrors.length > 0) {
+        text += "\n\n실제 오류:";
 
         visibleErrors.forEach(
           (item, index) => {
-            text += `\n\n${
-              index + 1
-            }. ${item}`;
+            text += `\n\n${index + 1}. ${item}`;
           },
         );
 
-        if (
-          collectedErrors.length >
-          3
-        ) {
+        if (collectedErrors.length > 3) {
           text += `\n\n외 ${
-            collectedErrors.length -
-            3
+            collectedErrors.length - 3
           }개 오류`;
         }
       }
@@ -767,9 +789,7 @@ export default function AdminPage() {
         } =
           await supabase.auth.getSession();
 
-        if (
-          !session?.access_token
-        ) {
+        if (!session?.access_token) {
           throw new Error(
             "로그인이 만료되었습니다. 다시 로그인해주세요.",
           );
@@ -783,7 +803,8 @@ export default function AdminPage() {
               headers: {
                 "Content-Type":
                   "application/json",
-                Authorization: `Bearer ${session.access_token}`,
+                Authorization:
+                  `Bearer ${session.access_token}`,
               },
               body:
                 JSON.stringify({
@@ -821,41 +842,27 @@ export default function AdminPage() {
             );
           }
 
-          throw new Error(
-            apiError,
-          );
+          throw new Error(apiError);
         }
 
         collectApiErrors(data);
 
         const total =
-          Number(
-            data.total || 0,
-          );
+          Number(data.total || 0);
 
         const completed =
-          Number(
-            data.completed || 0,
-          );
+          Number(data.completed || 0);
 
         const remaining =
-          Number(
-            data.remaining || 0,
-          );
+          Number(data.remaining || 0);
 
         const processed =
-          Number(
-            data.processed || 0,
-          );
+          Number(data.processed || 0);
 
         const failed =
-          Number(
-            data.failed || 0,
-          );
+          Number(data.failed || 0);
 
-        totalProcessed +=
-          processed;
-
+        totalProcessed += processed;
         totalFailed += failed;
 
         if (
@@ -865,10 +872,8 @@ export default function AdminPage() {
             total,
             completed,
             remaining,
-            failed:
-              totalFailed,
-            processed:
-              totalProcessed,
+            failed: totalFailed,
+            processed: totalProcessed,
             running: false,
             finished: false,
             errors: [
@@ -888,14 +893,11 @@ export default function AdminPage() {
           total,
           completed,
           remaining,
-          failed:
-            totalFailed,
-          processed:
-            totalProcessed,
+          failed: totalFailed,
+          processed: totalProcessed,
           running: true,
           finished:
-            data.finished ===
-              true ||
+            data.finished === true ||
             remaining === 0,
           errors: [
             ...collectedErrors,
@@ -907,8 +909,7 @@ export default function AdminPage() {
         });
 
         if (
-          data.finished ===
-            true ||
+          data.finished === true ||
           remaining === 0
         ) {
           setStructureAnalysis(
@@ -934,8 +935,7 @@ export default function AdminPage() {
 
         if (
           processed > 0 ||
-          previousRemaining ===
-            null ||
+          previousRemaining === null ||
           remaining <
             previousRemaining
         ) {
@@ -947,9 +947,7 @@ export default function AdminPage() {
         previousRemaining =
           remaining;
 
-        if (
-          noProgressCount >= 2
-        ) {
+        if (noProgressCount >= 2) {
           setStructureAnalysis(
             (current) => ({
               ...current,
@@ -984,8 +982,7 @@ export default function AdminPage() {
       );
 
       const errorText =
-        error?.message ||
-        "실패";
+        error?.message || "실패";
 
       if (
         !collectedErrors.includes(
@@ -1016,8 +1013,7 @@ export default function AdminPage() {
   }
 
   function stopStructureAnalysis() {
-    structureStopRef.current =
-      true;
+    structureStopRef.current = true;
 
     setStructureAnalysis(
       (current) => ({
@@ -1038,8 +1034,7 @@ export default function AdminPage() {
     keyword = jobSearchApplied,
     scopedCompanyId = companyId,
   ) {
-    if (!scopedCompanyId)
-      return;
+    if (!scopedCompanyId) return;
 
     setJobsLoading(true);
     setJobsMessage("");
@@ -1097,22 +1092,15 @@ export default function AdminPage() {
           .order(
             "created_at",
             {
-              ascending:
-                false,
+              ascending: false,
             },
           )
-          .range(
-            from,
-            to,
-          );
+          .range(from, to);
 
-      if (error)
-        throw error;
+      if (error) throw error;
 
       setJobs(data || []);
-      setJobTotal(
-        count || 0,
-      );
+      setJobTotal(count || 0);
       setJobPage(page);
       setOpenJobId(null);
     } catch (error) {
@@ -1139,18 +1127,16 @@ export default function AdminPage() {
       keyword,
     );
 
-    loadJobs(
-      1,
-      keyword,
-    );
+    loadJobs(1, keyword);
   }
 
   function clearJobSearch() {
     setJobSearch("");
     setJobSearchApplied("");
     loadJobs(1, "");
-        }
-    async function loadJobPhotos(
+  }
+
+  async function loadJobPhotos(
     workItemId,
   ) {
     if (!workItemId) return;
@@ -1195,8 +1181,7 @@ export default function AdminPage() {
         .order(
           "created_at",
           {
-            ascending:
-              true,
+            ascending: true,
           },
         );
 
@@ -1253,10 +1238,12 @@ export default function AdminPage() {
       );
 
     if (cachedUrl) {
-      setJobPhotoUrls((current) => ({
-        ...current,
-        [photo.id]: cachedUrl,
-      }));
+      setJobPhotoUrls(
+        (current) => ({
+          ...current,
+          [photo.id]: cachedUrl,
+        }),
+      );
 
       return cachedUrl;
     }
@@ -1274,7 +1261,8 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      const url = data?.signedUrl;
+      const url =
+        data?.signedUrl;
 
       if (!url) {
         throw new Error(
@@ -1288,10 +1276,12 @@ export default function AdminPage() {
         SIGNED_URL_SECONDS,
       );
 
-      setJobPhotoUrls((current) => ({
-        ...current,
-        [photo.id]: url,
-      }));
+      setJobPhotoUrls(
+        (current) => ({
+          ...current,
+          [photo.id]: url,
+        }),
+      );
 
       return url;
     } catch (error) {
@@ -1343,11 +1333,15 @@ export default function AdminPage() {
     setEditCost(
       job.actual_cost !== null &&
         job.actual_cost !== undefined
-        ? String(job.actual_cost)
+        ? String(
+            job.actual_cost,
+          )
         : "",
     );
 
-    setEditMemo(job.memo || "");
+    setEditMemo(
+      job.memo || "",
+    );
   }
 
   function cancelEdit() {
@@ -1355,12 +1349,15 @@ export default function AdminPage() {
   }
 
   async function saveJobEdit(jobId) {
-    const cost = Number(
-      String(editCost).replace(
-        /,/g,
-        "",
-      ),
-    );
+    const cost =
+      Number(
+        String(
+          editCost,
+        ).replace(
+          /,/g,
+          "",
+        ),
+      );
 
     if (!editCategory.trim()) {
       setJobsMessage(
@@ -1389,14 +1386,18 @@ export default function AdminPage() {
             sub_category:
               editSubCategory.trim() ||
               editCategory.trim(),
-            actual_cost: cost,
+            actual_cost:
+              cost,
             memo:
               editMemo.trim() ||
               null,
             updated_at:
               new Date().toISOString(),
           })
-          .eq("id", jobId)
+          .eq(
+            "id",
+            jobId,
+          )
           .eq(
             "company_id",
             companyId,
@@ -1428,10 +1429,13 @@ export default function AdminPage() {
   ========================================================= */
 
   function startPhotoEdit(photo) {
-    setEditingPhotoId(photo.id);
+    setEditingPhotoId(
+      photo.id,
+    );
 
     setEditPhotoType(
-      photo.photo_type || "before",
+      photo.photo_type ||
+        "before",
     );
 
     setEditPhotoCategory(
@@ -1445,7 +1449,8 @@ export default function AdminPage() {
     );
 
     setEditPhotoDescription(
-      photo.ai_description || "",
+      photo.ai_description ||
+        "",
     );
   }
 
@@ -1481,7 +1486,10 @@ export default function AdminPage() {
               editPhotoDescription.trim() ||
               null,
           })
-          .eq("id", photoId)
+          .eq(
+            "id",
+            photoId,
+          )
           .eq(
             "company_id",
             companyId,
@@ -1537,11 +1545,14 @@ export default function AdminPage() {
       if (photo.storage_path) {
         const {
           error: storageError,
-        } = await supabase.storage
-          .from("work-photos")
-          .remove([
-            photo.storage_path,
-          ]);
+        } =
+          await supabase.storage
+            .from(
+              "work-photos",
+            )
+            .remove([
+              photo.storage_path,
+            ]);
 
         if (storageError) {
           console.error(
@@ -1555,7 +1566,10 @@ export default function AdminPage() {
         await supabase
           .from("work_photos")
           .delete()
-          .eq("id", photo.id)
+          .eq(
+            "id",
+            photo.id,
+          )
           .eq(
             "company_id",
             companyId,
@@ -1569,7 +1583,9 @@ export default function AdminPage() {
             ...current,
           };
 
-          delete next[photo.id];
+          delete next[
+            photo.id
+          ];
 
           return next;
         },
@@ -1615,7 +1631,8 @@ export default function AdminPage() {
     try {
       const {
         data: photos,
-        error: photoLoadError,
+        error:
+          photoLoadError,
       } = await supabase
         .from("work_photos")
         .select(
@@ -1647,9 +1664,14 @@ export default function AdminPage() {
       ) {
         const {
           error: storageError,
-        } = await supabase.storage
-          .from("work-photos")
-          .remove(storagePaths);
+        } =
+          await supabase.storage
+            .from(
+              "work-photos",
+            )
+            .remove(
+              storagePaths,
+            );
 
         if (storageError) {
           console.error(
@@ -1660,7 +1682,8 @@ export default function AdminPage() {
       }
 
       const {
-        error: photoDeleteError,
+        error:
+          photoDeleteError,
       } = await supabase
         .from("work_photos")
         .delete()
@@ -1678,7 +1701,8 @@ export default function AdminPage() {
       }
 
       const {
-        error: itemDeleteError,
+        error:
+          itemDeleteError,
       } = await supabase
         .from("work_items")
         .delete()
@@ -1686,7 +1710,10 @@ export default function AdminPage() {
           "company_id",
           companyId,
         )
-        .eq("id", job.id);
+        .eq(
+          "id",
+          job.id,
+        );
 
       if (itemDeleteError) {
         throw itemDeleteError;
@@ -1700,7 +1727,9 @@ export default function AdminPage() {
             ...current,
           };
 
-          delete next[job.id];
+          delete next[
+            job.id
+          ];
 
           return next;
         },
@@ -1824,7 +1853,8 @@ export default function AdminPage() {
       (current) =>
         current.filter(
           (_, itemIndex) =>
-            itemIndex !== index,
+            itemIndex !==
+            index,
         ),
     );
   }
@@ -1836,7 +1866,8 @@ export default function AdminPage() {
       (current) =>
         current.filter(
           (_, itemIndex) =>
-            itemIndex !== index,
+            itemIndex !==
+            index,
         ),
     );
   }
@@ -1864,12 +1895,15 @@ export default function AdminPage() {
     const cleanMemo =
       memo.trim();
 
-    const cost = Number(
-      String(actualCost).replace(
-        /,/g,
-        "",
-      ),
-    );
+    const cost =
+      Number(
+        String(
+          actualCost,
+        ).replace(
+          /,/g,
+          "",
+        ),
+      );
 
     if (!cleanCategory) {
       setMessage(
@@ -1899,6 +1933,7 @@ export default function AdminPage() {
     }
 
     setLoading(true);
+
     setMessage(
       "시공 데이터를 저장하고 있습니다...",
     );
@@ -1911,11 +1946,14 @@ export default function AdminPage() {
        * 기존 프로젝트가 없으면 현재 업체의 프로젝트를 생성한다.
        */
 
-      let companyProjectId = null;
+      let companyProjectId =
+        null;
 
       const {
-        data: existingProject,
-        error: projectFindError,
+        data:
+          existingProject,
+        error:
+          projectFindError,
       } = await supabase
         .from("projects")
         .select("id")
@@ -1936,13 +1974,17 @@ export default function AdminPage() {
         throw projectFindError;
       }
 
-      if (existingProject?.id) {
+      if (
+        existingProject?.id
+      ) {
         companyProjectId =
           existingProject.id;
       } else {
         const {
-          data: newProject,
-          error: projectCreateError,
+          data:
+            newProject,
+          error:
+            projectCreateError,
         } = await supabase
           .from("projects")
           .insert({
@@ -1952,7 +1994,9 @@ export default function AdminPage() {
           .select("id")
           .single();
 
-        if (projectCreateError) {
+        if (
+          projectCreateError
+        ) {
           throw projectCreateError;
         }
 
@@ -1969,7 +2013,8 @@ export default function AdminPage() {
 
       const {
         data: workItem,
-        error: workItemError,
+        error:
+          workItemError,
       } = await supabase
         .from("work_items")
         .insert({
@@ -1997,8 +2042,7 @@ export default function AdminPage() {
       workItemId =
         workItem?.id;
 
-      if (!workItemId) {
-        throw new Error(
+      if (!workItemId) {        throw new Error(
           "시공 데이터 ID를 만들지 못했습니다.",
         );
       }
@@ -2146,7 +2190,8 @@ export default function AdminPage() {
         }
 
         const {
-          error: photoInsertError,
+          error:
+            photoInsertError,
         } = await supabase
           .from(
             "work_photos",
@@ -2200,7 +2245,7 @@ export default function AdminPage() {
 
           throw photoInsertError;
         }
-      };
+      }
 
       for (
         let index = 0;
@@ -2232,8 +2277,7 @@ export default function AdminPage() {
        * 전/후 사진 비교 AI
        */
       if (
-        beforeImages.length >
-          0 &&
+        beforeImages.length > 0 &&
         afterImages.length > 0
       ) {
         try {
@@ -2252,17 +2296,13 @@ export default function AdminPage() {
                   comparison?.summary ||
                   "";
 
-            if (
-              comparisonText
-            ) {
+            if (comparisonText) {
               const mergedMemo =
                 [
                   cleanMemo,
                   comparisonText,
                 ]
-                  .filter(
-                    Boolean,
-                  )
+                  .filter(Boolean)
                   .join("\n");
 
               const {
@@ -2327,6 +2367,7 @@ export default function AdminPage() {
       setActiveTab(
         "jobs",
       );
+
       activeTabRef.current =
         "jobs";
     } catch (error) {
@@ -2370,21 +2411,16 @@ export default function AdminPage() {
                 (photo) =>
                   photo.storage_path,
               )
-              .filter(
-                Boolean,
-              );
+              .filter(Boolean);
 
           if (
-            paths.length >
-            0
+            paths.length > 0
           ) {
             await supabase.storage
               .from(
                 "work-photos",
               )
-              .remove(
-                paths,
-              );
+              .remove(paths);
           }
 
           await supabase
@@ -2433,8 +2469,9 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-                 }
-    /* =========================================================
+  }
+
+  /* =========================================================
      고객 상담
   ========================================================= */
 
@@ -2607,9 +2644,7 @@ export default function AdminPage() {
       lead.id,
     );
 
-    if (
-      !lead.is_read
-    ) {
+    if (!lead.is_read) {
       try {
         const {
           error,
@@ -2619,8 +2654,7 @@ export default function AdminPage() {
               "customer_leads",
             )
             .update({
-              is_read:
-                true,
+              is_read: true,
             })
             .eq(
               "id",
@@ -2657,9 +2691,7 @@ export default function AdminPage() {
               current - 1,
             ),
         );
-      } catch (
-        error
-      ) {
+      } catch (error) {
         console.error(
           "상담 읽음 처리:",
           error,
@@ -2681,8 +2713,7 @@ export default function AdminPage() {
       );
 
     if (
-      paths.length ===
-      0
+      paths.length === 0
     ) {
       setLeadsMessage(
         "⚠️ 이 상담에는 저장된 사진이 없습니다.",
@@ -2698,8 +2729,7 @@ export default function AdminPage() {
       const urls = [];
 
       for (
-        const path of
-        paths
+        const path of paths
       ) {
         const cachedUrl =
           getCachedSignedUrl(
@@ -2754,8 +2784,7 @@ export default function AdminPage() {
       }
 
       if (
-        urls.length ===
-        0
+        urls.length === 0
       ) {
         throw new Error(
           "사진을 불러올 수 없습니다.",
@@ -2860,7 +2889,8 @@ export default function AdminPage() {
           .update({
             admin_memo:
               lead.admin_memo ||
-              null,          })
+              null,
+          })
           .eq(
             "id",
             lead.id,
@@ -3001,9 +3031,8 @@ export default function AdminPage() {
         }`,
       );
     }
-  }
-
-  /* =========================================================
+              }
+    /* =========================================================
      화면 계산
   ========================================================= */
 
@@ -3086,11 +3115,175 @@ export default function AdminPage() {
           fontSize:
             "24px",
           margin:
-            "8px 0 16px",
+            "8px 0 12px",
         }}
       >
         {companyName} 관리자
       </h1>
+
+      {/* =====================================================
+          회사별 고객 AI 견적 페이지
+      ===================================================== */}
+
+      {customerEstimateUrl && (
+        <section
+          style={{
+            background:
+              "#ffffff",
+            border:
+              "1px solid #e5e7eb",
+            borderRadius:
+              "14px",
+            padding:
+              "14px",
+            marginBottom:
+              "16px",
+            boxShadow:
+              "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
+          <div
+            style={{
+              fontSize:
+                "15px",
+              fontWeight:
+                "700",
+              marginBottom:
+                "8px",
+            }}
+          >
+            고객 AI 견적 페이지
+          </div>
+
+          <div
+            style={{
+              fontSize:
+                "12px",
+              color:
+                "#64748b",
+              marginBottom:
+                "8px",
+            }}
+          >
+            블로그, 홈페이지, 문자, 카카오톡 등에 아래 주소를 게시하세요.
+          </div>
+
+          <div
+            style={{
+              padding:
+                "10px 12px",
+              background:
+                "#f8fafc",
+              border:
+                "1px solid #e2e8f0",
+              borderRadius:
+                "9px",
+              fontSize:
+                "13px",
+              lineHeight:
+                "1.5",
+              wordBreak:
+                "break-all",
+              marginBottom:
+                "10px",
+              userSelect:
+                "all",
+            }}
+          >
+            {customerEstimateUrl}
+          </div>
+
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "1fr 1fr",
+              gap:
+                "8px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={
+                openCustomerEstimatePage
+              }
+              style={{
+                width:
+                  "100%",
+                border:
+                  "none",
+                borderRadius:
+                  "9px",
+                padding:
+                  "11px 8px",
+                background:
+                  "#111827",
+                color:
+                  "#ffffff",
+                fontWeight:
+                  "700",
+                fontSize:
+                  "14px",
+                cursor:
+                  "pointer",
+              }}
+            >
+              고객페이지 열기
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                copyCustomerEstimateUrl
+              }
+              style={{
+                width:
+                  "100%",
+                border:
+                  "1px solid #cbd5e1",
+                borderRadius:
+                  "9px",
+                padding:
+                  "11px 8px",
+                background:
+                  "#ffffff",
+                color:
+                  "#111827",
+                fontWeight:
+                  "700",
+                fontSize:
+                  "14px",
+                cursor:
+                  "pointer",
+              }}
+            >
+              주소 복사
+            </button>
+          </div>
+
+          {copyMessage && (
+            <div
+              style={{
+                marginTop:
+                  "9px",
+                fontSize:
+                  "13px",
+                fontWeight:
+                  "600",
+                color:
+                  copyMessage.startsWith(
+                    "✅",
+                  )
+                    ? "#166534"
+                    : "#b91c1c",
+              }}
+            >
+              {copyMessage}
+            </div>
+          )}
+        </section>
+      )}
 
       <AdminTabs
         activeTab={
@@ -3499,4 +3692,4 @@ export default function AdminPage() {
       />
     </main>
   );
-            }
+}
