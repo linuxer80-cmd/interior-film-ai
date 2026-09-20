@@ -213,8 +213,8 @@ export default function LoginPage() {
       /*
        * 3. 로그인 성공
        *
-       * 아직 업체 전용 대시보드를 만들기 전이므로
-       * 현재는 메인 페이지로 이동한다.
+       * 업체 로그인 성공 후
+       * 관리자 페이지로 이동한다.
        */
       if (result.created) {
         setMessageType("success");
@@ -223,7 +223,7 @@ export default function LoginPage() {
         );
 
         setTimeout(() => {
-          router.replace("/");
+          router.replace("/admin");
           router.refresh();
         }, 1200);
 
@@ -236,7 +236,7 @@ export default function LoginPage() {
       );
 
       setTimeout(() => {
-        router.replace("/");
+        router.replace("/admin");
         router.refresh();
       }, 700);
     } catch (error) {
