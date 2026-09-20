@@ -1,55 +1,170 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+/* =========================================================
+   오늘 날짜
+========================================================= */
 
 function getTodayString() {
   const now = new Date();
 
-  const year = now.getFullYear();
-  const month = String(
-    now.getMonth() + 1,
-  ).padStart(2, "0");
-  const day = String(
-    now.getDate(),
-  ).padStart(2, "0");
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1,
+    ).padStart(
+      2,
+      "0",
+    );
+
+  const day =
+    String(
+      now.getDate(),
+    ).padStart(
+      2,
+      "0",
+    );
 
   return `${year}-${month}-${day}`;
 }
+
+/* =========================================================
+   날짜 + 시간을 ISO로 변환
+
+   예:
+   한국 휴대폰에서
+   2026-09-21 09:00 선택
+   ↓
+   실제 한국시간 09:00을 의미하는 ISO 저장
+
+   timestamptz와 브라우저 표시 시간 불일치 방지
+========================================================= */
 
 function makeDateTime(
   date,
   time,
 ) {
-  if (!date || !time) {
+  if (
+    !date ||
+    !time
+  ) {
     return null;
   }
 
-  return `${date}T${time}:00`;
+  const localDate =
+    new Date(
+      `${date}T${time}:00`,
+    );
+
+  if (
+    Number.isNaN(
+      localDate.getTime(),
+    )
+  ) {
+    return null;
+  }
+
+  return localDate.toISOString();
 }
+
+/* =========================================================
+   기본 폼
+========================================================= */
 
 const initialForm = {
   date: "",
-  start_time: "09:00",
-  end_time: "18:00",
 
-  customer_name: "",
-  customer_phone: "",
+  start_time:
+    "09:00",
 
-  site_name: "",
-  address: "",
-  address_detail: "",
-  region: "",
+  end_time:
+    "18:00",
 
-  work_type: "",
-  work_description: "",
+  customer_name:
+    "",
 
-  contract_amount: "",
-  deposit_amount: "",
+  customer_phone:
+    "",
 
-  source: "phone",
+  site_name:
+    "",
 
-  memo: "",
+  address:
+    "",
+
+  address_detail:
+    "",
+
+  region:
+    "",
+
+  work_type:
+    "",
+
+  work_description:
+    "",
+
+  contract_amount:
+    "",
+
+  deposit_amount:
+    "",
+
+  source:
+    "phone",
+
+  memo:
+    "",
 };
+
+/* =========================================================
+   빈 자재
+========================================================= */
+
+function makeEmptyMaterial() {
+  return {
+    local_id:
+      crypto.randomUUID(),
+
+    film_product_id:
+      null,
+
+    brand:
+      "",
+
+    product_code:
+      "",
+
+    product_name:
+      "",
+
+    quantity:
+      "",
+
+    unit:
+      "m",
+
+    unit_price:
+      "",
+
+    total_price:
+      "",
+
+    memo:
+      "",
+  };
+}
+
+/* =========================================================
+   컴포넌트
+========================================================= */
 
 export default function SiteRegisterModal({
   open,
@@ -57,14 +172,34 @@ export default function SiteRegisterModal({
   createSite,
   loading = false,
 }) {
-  const [form, setForm] =
-    useState(initialForm);
+  const [
+    form,
+    setForm,
+  ] =
+    useState(
+      initialForm,
+    );
 
-  const [localMessage, setLocalMessage] =
+  const [
+    materials,
+    setMaterials,
+  ] =
+    useState([]);
+
+  const [
+    requestPhotos,
+    setRequestPhotos,
+  ] =
+    useState([]);
+
+  const [
+    localMessage,
+    setLocalMessage,
+  ] =
     useState("");
 
   /* =========================================================
-     팝업 열릴 때 기본 날짜 설정
+     팝업 열릴 때 초기화
   ========================================================= */
 
   useEffect(() => {
@@ -74,24 +209,224 @@ export default function SiteRegisterModal({
 
     setForm({
       ...initialForm,
-      date: getTodayString(),
+
+      date:
+        getTodayString(),
     });
+
+    setMaterials([]);
+
+    setRequestPhotos([]);
 
     setLocalMessage("");
   }, [open]);
 
   /* =========================================================
-     입력 변경
+     사진 미리보기 URL
+  ========================================================= */
+
+  const photoPreviews =
+    useMemo(
+      () =>
+        requestPhotos.map(
+          (file) => ({
+            file,
+
+            url:
+              URL.createObjectURL(
+                file,
+              ),
+          }),
+        ),
+      [requestPhotos],
+    );
+
+  useEffect(() => {
+    return () => {
+      photoPreviews.forEach(
+        (item) => {
+          URL.revokeObjectURL(
+            item.url,
+          );
+        },
+      );
+    };
+  }, [photoPreviews]);
+
+  /* =========================================================
+     일반 입력 변경
   ========================================================= */
 
   function updateField(
     field,
     value,
   ) {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setForm(
+      (prev) => ({
+        ...prev,
+
+        [field]:
+          value,
+      }),
+    );
+  }
+
+  /* =========================================================
+     자재 추가
+  ========================================================= */
+
+  function addMaterial() {
+    setMaterials(
+      (prev) => [
+        ...prev,
+        makeEmptyMaterial(),
+      ],
+    );
+  }
+
+  /* =========================================================
+     자재 변경
+  ========================================================= */
+
+  function updateMaterial(
+    localId,
+    field,
+    value,
+  ) {
+    setMaterials(
+      (prev) =>
+        prev.map(
+          (material) => {
+            if (
+              material.local_id !==
+              localId
+            ) {
+              return material;
+            }
+
+            const next = {
+              ...material,
+
+              [field]:
+                value,
+            };
+
+            /*
+             * 수량/단가 입력 시
+             * 총액 자동 계산
+             */
+            if (
+              field ===
+                "quantity" ||
+              field ===
+                "unit_price"
+            ) {
+              const quantity =
+                Number(
+                  field ===
+                    "quantity"
+                    ? value
+                    : next.quantity,
+                );
+
+              const unitPrice =
+                Number(
+                  field ===
+                    "unit_price"
+                    ? value
+                    : next.unit_price,
+                );
+
+              if (
+                Number.isFinite(
+                  quantity,
+                ) &&
+                Number.isFinite(
+                  unitPrice,
+                ) &&
+                quantity >= 0 &&
+                unitPrice >= 0
+              ) {
+                next.total_price =
+                  quantity *
+                  unitPrice;
+              }
+            }
+
+            return next;
+          },
+        ),
+    );
+  }
+
+  /* =========================================================
+     자재 삭제
+  ========================================================= */
+
+  function removeMaterial(
+    localId,
+  ) {
+    setMaterials(
+      (prev) =>
+        prev.filter(
+          (material) =>
+            material.local_id !==
+            localId,
+        ),
+    );
+  }
+
+  /* =========================================================
+     요청사진 선택
+  ========================================================= */
+
+  function handlePhotoFiles(
+    event,
+  ) {
+    const files =
+      Array.from(
+        event.target.files ||
+          [],
+      ).filter(
+        (file) =>
+          file.type.startsWith(
+            "image/",
+          ),
+      );
+
+    if (!files.length) {
+      return;
+    }
+
+    setRequestPhotos(
+      (prev) => [
+        ...prev,
+        ...files,
+      ],
+    );
+
+    /*
+     * 같은 사진을 다시 선택할 수 있도록
+     */
+    event.target.value =
+      "";
+  }
+
+  /* =========================================================
+     요청사진 삭제
+  ========================================================= */
+
+  function removePhoto(
+    index,
+  ) {
+    setRequestPhotos(
+      (prev) =>
+        prev.filter(
+          (_, photoIndex) =>
+            photoIndex !==
+            index,
+        ),
+    );
   }
 
   /* =========================================================
@@ -105,33 +440,51 @@ export default function SiteRegisterModal({
 
     setLocalMessage("");
 
+    /* ---------------------------------------------------------
+       필수값 검사
+    --------------------------------------------------------- */
+
     if (!form.date) {
       setLocalMessage(
         "❌ 시공 날짜를 선택해주세요.",
       );
+
       return;
     }
 
-    if (!form.start_time) {
+    if (
+      !form.start_time
+    ) {
       setLocalMessage(
         "❌ 시작 시간을 입력해주세요.",
       );
+
       return;
     }
 
-    if (!form.customer_name.trim()) {
+    if (
+      !form.customer_name.trim()
+    ) {
       setLocalMessage(
         "❌ 고객명을 입력해주세요.",
       );
+
       return;
     }
 
-    if (!form.address.trim()) {
+    if (
+      !form.address.trim()
+    ) {
       setLocalMessage(
         "❌ 현장 주소를 입력해주세요.",
       );
+
       return;
     }
+
+    /* ---------------------------------------------------------
+       시간 변환
+    --------------------------------------------------------- */
 
     const scheduleStart =
       makeDateTime(
@@ -147,16 +500,77 @@ export default function SiteRegisterModal({
           )
         : null;
 
+    if (!scheduleStart) {
+      setLocalMessage(
+        "❌ 시작 시간을 확인해주세요.",
+      );
+
+      return;
+    }
+
     if (
       scheduleEnd &&
-      new Date(scheduleEnd) <
-        new Date(scheduleStart)
+      new Date(
+        scheduleEnd,
+      ).getTime() <
+        new Date(
+          scheduleStart,
+        ).getTime()
     ) {
       setLocalMessage(
         "❌ 종료 시간은 시작 시간보다 늦어야 합니다.",
       );
+
       return;
     }
+
+    /* ---------------------------------------------------------
+       입력된 자재만 저장
+    --------------------------------------------------------- */
+
+    const cleanMaterials =
+      materials
+        .filter(
+          (material) =>
+            material.product_code.trim() ||
+            material.product_name.trim(),
+        )
+        .map(
+          (material) => ({
+            film_product_id:
+              material.film_product_id ||
+              null,
+
+            brand:
+              material.brand.trim(),
+
+            product_code:
+              material.product_code.trim(),
+
+            product_name:
+              material.product_name.trim(),
+
+            quantity:
+              material.quantity,
+
+            unit:
+              material.unit ||
+              "m",
+
+            unit_price:
+              material.unit_price,
+
+            total_price:
+              material.total_price,
+
+            memo:
+              material.memo.trim(),
+          }),
+        );
+
+    /* ---------------------------------------------------------
+       저장
+    --------------------------------------------------------- */
 
     const result =
       await createSite({
@@ -201,55 +615,147 @@ export default function SiteRegisterModal({
 
         memo:
           form.memo,
+
+        /*
+         * 신규
+         */
+        materials:
+          cleanMaterials,
+
+        request_photos:
+          requestPhotos,
       });
 
-    if (!result?.success) {
+    if (
+      !result?.success
+    ) {
       setLocalMessage(
         `❌ ${
           result?.error ||
           "현장 등록에 실패했습니다."
         }`,
       );
+
       return;
     }
 
     setLocalMessage(
-      "✅ 현장 일정이 등록되었습니다.",
+      `✅ 현장 일정이 등록되었습니다.${
+        cleanMaterials.length
+          ? `\n자재 ${cleanMaterials.length}건 저장`
+          : ""
+      }${
+        requestPhotos.length
+          ? `\n요청사진 ${requestPhotos.length}장 저장`
+          : ""
+      }`,
     );
 
-    setTimeout(() => {
-      onClose();
-    }, 350);
+    setTimeout(
+      () => {
+        onClose();
+      },
+      500,
+    );
   }
+
+  /* =========================================================
+     닫힌 상태
+  ========================================================= */
 
   if (!open) {
     return null;
   }
 
+  /* =========================================================
+     공통 스타일
+  ========================================================= */
+
   const inputStyle = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "11px 12px",
+    width:
+      "100%",
+
+    boxSizing:
+      "border-box",
+
+    padding:
+      "11px 12px",
+
     border:
       "1px solid #cbd5e1",
-    borderRadius: "9px",
-    background: "#ffffff",
-    color: "#111827",
-    fontSize: "14px",
-    outline: "none",
+
+    borderRadius:
+      "9px",
+
+    background:
+      "#ffffff",
+
+    color:
+      "#111827",
+
+    fontSize:
+      "14px",
+
+    outline:
+      "none",
   };
 
   const labelStyle = {
-    display: "block",
-    marginBottom: "6px",
-    color: "#334155",
-    fontSize: "13px",
-    fontWeight: "700",
+    display:
+      "block",
+
+    marginBottom:
+      "6px",
+
+    color:
+      "#334155",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      "700",
   };
 
   const fieldStyle = {
-    marginBottom: "14px",
+    marginBottom:
+      "14px",
   };
+
+  const sectionStyle = {
+    marginBottom:
+      "16px",
+
+    padding:
+      "14px",
+
+    border:
+      "1px solid #e2e8f0",
+
+    borderRadius:
+      "12px",
+
+    background:
+      "#ffffff",
+  };
+
+  const sectionTitleStyle = {
+    marginBottom:
+      "12px",
+
+    fontSize:
+      "15px",
+
+    fontWeight:
+      "800",
+
+    color:
+      "#111827",
+  };
+
+  /* =========================================================
+     화면
+  ========================================================= */
 
   return (
     <div
@@ -259,50 +765,76 @@ export default function SiteRegisterModal({
         }
       }}
       style={{
-        position: "fixed",
+        position:
+          "fixed",
+
         inset: 0,
-        zIndex: 1000,
 
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
+        zIndex:
+          1000,
 
-        padding: "24px 12px",
+        display:
+          "flex",
+
+        alignItems:
+          "flex-start",
+
+        justifyContent:
+          "center",
+
+        padding:
+          "24px 12px",
 
         background:
           "rgba(15, 23, 42, 0.55)",
 
-        overflowY: "auto",
+        overflowY:
+          "auto",
       }}
     >
       <div
-        onClick={(event) =>
+        onClick={(
+          event,
+        ) =>
           event.stopPropagation()
         }
         style={{
-          width: "100%",
-          maxWidth: "620px",
+          width:
+            "100%",
 
-          background: "#ffffff",
+          maxWidth:
+            "620px",
 
-          borderRadius: "16px",
+          background:
+            "#ffffff",
+
+          borderRadius:
+            "16px",
 
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
 
-          overflow: "hidden",
+          overflow:
+            "hidden",
         }}
       >
-        {/* 제목 */}
+        {/* =================================================
+            제목
+        ================================================= */}
 
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
             justifyContent:
               "space-between",
 
-            padding: "16px",
+            padding:
+              "16px",
 
             borderBottom:
               "1px solid #e5e7eb",
@@ -311,9 +843,14 @@ export default function SiteRegisterModal({
           <div>
             <div
               style={{
-                fontSize: "18px",
-                fontWeight: "800",
-                color: "#111827",
+                fontSize:
+                  "18px",
+
+                fontWeight:
+                  "800",
+
+                color:
+                  "#111827",
               }}
             >
               새 현장 / 일정 추가
@@ -321,92 +858,144 @@ export default function SiteRegisterModal({
 
             <div
               style={{
-                marginTop: "4px",
-                fontSize: "12px",
-                color: "#64748b",
+                marginTop:
+                  "4px",
+
+                fontSize:
+                  "12px",
+
+                color:
+                  "#64748b",
               }}
             >
-              전화로 확정된 현장도 바로
-              등록할 수 있습니다.
+              현장정보, 자재, 요청사진을
+              한 번에 등록합니다.
             </div>
           </div>
 
           <button
             type="button"
-            disabled={loading}
-            onClick={onClose}
+            disabled={
+              loading
+            }
+            onClick={
+              onClose
+            }
             style={{
-              border: "none",
+              border:
+                "none",
+
               background:
                 "transparent",
-              fontSize: "25px",
-              lineHeight: 1,
-              cursor: loading
-                ? "default"
-                : "pointer",
-              color: "#64748b",
+
+              fontSize:
+                "25px",
+
+              lineHeight:
+                1,
+
+              cursor:
+                loading
+                  ? "default"
+                  : "pointer",
+
+              color:
+                "#64748b",
             }}
           >
             ×
           </button>
         </div>
 
+        {/* =================================================
+            FORM
+        ================================================= */}
+
         <form
-          onSubmit={handleSubmit}
+          onSubmit={
+            handleSubmit
+          }
           style={{
-            padding: "16px",
+            padding:
+              "16px",
+
+            background:
+              "#f8fafc",
           }}
         >
-          {/* 일정 */}
+          {/* =================================================
+              일정
+          ================================================= */}
 
           <div
-            style={{
-              marginBottom: "16px",
-              padding: "14px",
-              border:
-                "1px solid #e2e8f0",
-              borderRadius: "12px",
-              background: "#f8fafc",
-            }}
+            style={
+              sectionStyle
+            }
           >
             <div
-              style={{
-                marginBottom: "12px",
-                fontSize: "15px",
-                fontWeight: "800",
-              }}
+              style={
+                sectionTitleStyle
+              }
             >
               📅 시공 일정
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 시공 날짜 *
               </label>
 
               <input
                 type="date"
-                value={form.date}
-                onChange={(event) =>
+                value={
+                  form.date
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "date",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
-                style={inputStyle}
+                style={
+                  inputStyle
+                }
               />
             </div>
 
             <div
               style={{
-                display: "grid",
+                display:
+                  "grid",
+
                 gridTemplateColumns:
                   "1fr 1fr",
-                gap: "8px",
+
+                gap:
+                  "8px",
               }}
             >
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   시작 시간 *
                 </label>
 
@@ -415,18 +1004,32 @@ export default function SiteRegisterModal({
                   value={
                     form.start_time
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "start_time",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
 
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   종료 시간
                 </label>
 
@@ -435,49 +1038,63 @@ export default function SiteRegisterModal({
                   value={
                     form.end_time
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "end_time",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
             </div>
           </div>
 
-          {/* 고객 */}
+          {/* =================================================
+              고객 / 현장
+          ================================================= */}
 
           <div
-            style={{
-              marginBottom: "16px",
-              padding: "14px",
-              border:
-                "1px solid #e2e8f0",
-              borderRadius: "12px",
-            }}
+            style={
+              sectionStyle
+            }
           >
             <div
-              style={{
-                marginBottom: "12px",
-                fontSize: "15px",
-                fontWeight: "800",
-              }}
+              style={
+                sectionTitleStyle
+              }
             >
               👤 고객 / 현장
             </div>
 
             <div
               style={{
-                display: "grid",
+                display:
+                  "grid",
+
                 gridTemplateColumns:
                   "1fr 1fr",
-                gap: "8px",
+
+                gap:
+                  "8px",
               }}
             >
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   고객명 *
                 </label>
 
@@ -486,19 +1103,33 @@ export default function SiteRegisterModal({
                   value={
                     form.customer_name
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "customer_name",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="홍길동"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
 
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   전화번호
                 </label>
 
@@ -507,66 +1138,116 @@ export default function SiteRegisterModal({
                   value={
                     form.customer_phone
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "customer_phone",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="010-0000-0000"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 현장명
               </label>
 
               <input
                 type="text"
-                value={form.site_name}
-                onChange={(event) =>
+                value={
+                  form.site_name
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "site_name",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
                 placeholder="예: 검단 ○○아파트"
-                style={inputStyle}
+                style={
+                  inputStyle
+                }
               />
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 주소 *
               </label>
 
               <input
                 type="text"
-                value={form.address}
-                onChange={(event) =>
+                value={
+                  form.address
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "address",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
                 placeholder="현장 주소"
-                style={inputStyle}
+                style={
+                  inputStyle
+                }
               />
             </div>
 
             <div
               style={{
-                display: "grid",
+                display:
+                  "grid",
+
                 gridTemplateColumns:
                   "1fr 1fr",
-                gap: "8px",
+
+                gap:
+                  "8px",
               }}
             >
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   상세주소
                 </label>
 
@@ -575,80 +1256,122 @@ export default function SiteRegisterModal({
                   value={
                     form.address_detail
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "address_detail",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="101동 1001호"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
 
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   지역
                 </label>
 
                 <input
                   type="text"
-                  value={form.region}
-                  onChange={(event) =>
+                  value={
+                    form.region
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "region",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="예: 인천 서구"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
             </div>
           </div>
 
-          {/* 작업 */}
+          {/* =================================================
+              시공 내용
+          ================================================= */}
 
           <div
-            style={{
-              marginBottom: "16px",
-              padding: "14px",
-              border:
-                "1px solid #e2e8f0",
-              borderRadius: "12px",
-            }}
+            style={
+              sectionStyle
+            }
           >
             <div
-              style={{
-                marginBottom: "12px",
-                fontSize: "15px",
-                fontWeight: "800",
-              }}
+              style={
+                sectionTitleStyle
+              }
             >
               🛠️ 시공 내용
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 시공 종류
               </label>
 
               <input
                 type="text"
-                value={form.work_type}
-                onChange={(event) =>
+                value={
+                  form.work_type
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "work_type",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
                 placeholder="예: 싱크대 / 방문 / 문틀"
-                style={inputStyle}
+                style={
+                  inputStyle
+                }
               />
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 상세 작업내용
               </label>
 
@@ -656,53 +1379,757 @@ export default function SiteRegisterModal({
                 value={
                   form.work_description
                 }
-                onChange={(event) =>
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "work_description",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
                 placeholder="예: 싱크대 상하부장, 방문 3개, 문틀 3개"
-                rows={3}
+                rows={
+                  3
+                }
                 style={{
                   ...inputStyle,
-                  resize: "vertical",
+
+                  resize:
+                    "vertical",
                 }}
               />
             </div>
           </div>
 
-          {/* 금액 */}
+          {/* =================================================
+              시공 자재
+          ================================================= */}
 
           <div
-            style={{
-              marginBottom: "16px",
-              padding: "14px",
-              border:
-                "1px solid #e2e8f0",
-              borderRadius: "12px",
-            }}
+            style={
+              sectionStyle
+            }
           >
             <div
               style={{
-                marginBottom: "12px",
-                fontSize: "15px",
-                fontWeight: "800",
+                display:
+                  "flex",
+
+                justifyContent:
+                  "space-between",
+
+                alignItems:
+                  "center",
+
+                gap:
+                  "10px",
+
+                marginBottom:
+                  "12px",
               }}
+            >
+              <div
+                style={{
+                  ...sectionTitleStyle,
+
+                  marginBottom:
+                    0,
+                }}
+              >
+                📦 시공 자재
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  addMaterial
+                }
+                disabled={
+                  loading
+                }
+                style={{
+                  border:
+                    "1px solid #111827",
+
+                  borderRadius:
+                    "8px",
+
+                  padding:
+                    "8px 11px",
+
+                  background:
+                    "#ffffff",
+
+                  color:
+                    "#111827",
+
+                  fontSize:
+                    "12px",
+
+                  fontWeight:
+                    "800",
+
+                  cursor:
+                    "pointer",
+                }}
+              >
+                + 자재 추가
+              </button>
+            </div>
+
+            {materials.length ===
+              0 && (
+              <div
+                style={{
+                  padding:
+                    "14px",
+
+                  border:
+                    "1px dashed #cbd5e1",
+
+                  borderRadius:
+                    "10px",
+
+                  background:
+                    "#f8fafc",
+
+                  color:
+                    "#64748b",
+
+                  fontSize:
+                    "13px",
+
+                  textAlign:
+                    "center",
+                }}
+              >
+                사용할 필름이 정해졌다면
+                자재를 추가해주세요.
+              </div>
+            )}
+
+            {materials.map(
+              (
+                material,
+                index,
+              ) => (
+                <div
+                  key={
+                    material.local_id
+                  }
+                  style={{
+                    marginTop:
+                      "10px",
+
+                    padding:
+                      "12px",
+
+                    border:
+                      "1px solid #e2e8f0",
+
+                    borderRadius:
+                      "10px",
+
+                    background:
+                      "#f8fafc",
+                  }}
+                >
+                  <div
+                    style={{
+                      display:
+                        "flex",
+
+                      alignItems:
+                        "center",
+
+                      justifyContent:
+                        "space-between",
+
+                      marginBottom:
+                        "10px",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        fontSize:
+                          "13px",
+                      }}
+                    >
+                      자재 {index + 1}
+                    </strong>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeMaterial(
+                          material.local_id,
+                        )
+                      }
+                      style={{
+                        border:
+                          "none",
+
+                        background:
+                          "transparent",
+
+                        color:
+                          "#dc2626",
+
+                        fontWeight:
+                          "800",
+
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display:
+                        "grid",
+
+                      gridTemplateColumns:
+                        "1fr 1fr",
+
+                      gap:
+                        "8px",
+                    }}
+                  >
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        제조사
+                      </label>
+
+                      <input
+                        type="text"
+                        value={
+                          material.brand
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "brand",
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        placeholder="예: 현대보닥"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        제품코드
+                      </label>
+
+                      <input
+                        type="text"
+                        value={
+                          material.product_code
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "product_code",
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        placeholder="예: S115"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={
+                      fieldStyle
+                    }
+                  >
+                    <label
+                      style={
+                        labelStyle
+                      }
+                    >
+                      제품명 / 색상
+                    </label>
+
+                    <input
+                      type="text"
+                      value={
+                        material.product_name
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        updateMaterial(
+                          material.local_id,
+                          "product_name",
+                          event
+                            .target
+                            .value,
+                        )
+                      }
+                      placeholder="제품명 또는 색상"
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display:
+                        "grid",
+
+                      gridTemplateColumns:
+                        "2fr 1fr",
+
+                      gap:
+                        "8px",
+                    }}
+                  >
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        예상 사용량
+                      </label>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        value={
+                          material.quantity
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "quantity",
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        placeholder="예: 20"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        단위
+                      </label>
+
+                      <select
+                        value={
+                          material.unit
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "unit",
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        style={
+                          inputStyle
+                        }
+                      >
+                        <option value="m">
+                          m
+                        </option>
+
+                        <option value="m2">
+                          ㎡
+                        </option>
+
+                        <option value="roll">
+                          롤
+                        </option>
+
+                        <option value="ea">
+                          개
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div
+                    style={
+                      fieldStyle
+                    }
+                  >
+                    <label
+                      style={
+                        labelStyle
+                      }
+                    >
+                      자재 메모
+                    </label>
+
+                    <input
+                      type="text"
+                      value={
+                        material.memo
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        updateMaterial(
+                          material.local_id,
+                          "memo",
+                          event
+                            .target
+                            .value,
+                        )
+                      }
+                      placeholder="예: 상부장 사용"
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+
+          {/* =================================================
+              요청사진
+          ================================================= */}
+
+          <div
+            style={
+              sectionStyle
+            }
+          >
+            <div
+              style={
+                sectionTitleStyle
+              }
+            >
+              📷 시공 요청사진
+            </div>
+
+            <label
+              style={{
+                display:
+                  "block",
+
+                padding:
+                  "16px",
+
+                border:
+                  "2px dashed #cbd5e1",
+
+                borderRadius:
+                  "10px",
+
+                background:
+                  "#f8fafc",
+
+                textAlign:
+                  "center",
+
+                cursor:
+                  "pointer",
+              }}
+            >
+              <div
+                style={{
+                  fontSize:
+                    "26px",
+                }}
+              >
+                📷
+              </div>
+
+              <div
+                style={{
+                  marginTop:
+                    "5px",
+
+                  color:
+                    "#111827",
+
+                  fontSize:
+                    "14px",
+
+                  fontWeight:
+                    "800",
+                }}
+              >
+                사진 선택
+              </div>
+
+              <div
+                style={{
+                  marginTop:
+                    "4px",
+
+                  color:
+                    "#64748b",
+
+                  fontSize:
+                    "12px",
+                }}
+              >
+                고객이 보내준 현장사진을
+                여러 장 선택할 수 있습니다.
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={
+                  loading
+                }
+                onChange={
+                  handlePhotoFiles
+                }
+                style={{
+                  display:
+                    "none",
+                }}
+              />
+            </label>
+
+            {photoPreviews.length >
+              0 && (
+              <>
+                <div
+                  style={{
+                    marginTop:
+                      "10px",
+
+                    color:
+                      "#475569",
+
+                    fontSize:
+                      "12px",
+
+                    fontWeight:
+                      "700",
+                  }}
+                >
+                  선택된 사진{" "}
+                  {
+                    photoPreviews.length
+                  }
+                  장
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+
+                    gridTemplateColumns:
+                      "repeat(3, 1fr)",
+
+                    gap:
+                      "8px",
+
+                    marginTop:
+                      "8px",
+                  }}
+                >
+                  {photoPreviews.map(
+                    (
+                      item,
+                      index,
+                    ) => (
+                      <div
+                        key={`${item.file.name}-${index}`}
+                        style={{
+                          position:
+                            "relative",
+
+                          aspectRatio:
+                            "1 / 1",
+
+                          borderRadius:
+                            "9px",
+
+                          overflow:
+                            "hidden",
+
+                          background:
+                            "#e2e8f0",
+                        }}
+                      >
+                        <img
+                          src={
+                            item.url
+                          }
+                          alt={`요청사진 ${
+                            index +
+                            1
+                          }`}
+                          style={{
+                            width:
+                              "100%",
+
+                            height:
+                              "100%",
+
+                            objectFit:
+                              "cover",
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removePhoto(
+                              index,
+                            )
+                          }
+                          style={{
+                            position:
+                              "absolute",
+
+                            top:
+                              "5px",
+
+                            right:
+                              "5px",
+
+                            width:
+                              "28px",
+
+                            height:
+                              "28px",
+
+                            border:
+                              "none",
+
+                            borderRadius:
+                              "50%",
+
+                            background:
+                              "rgba(0,0,0,0.72)",
+
+                            color:
+                              "#ffffff",
+
+                            fontSize:
+                              "16px",
+
+                            fontWeight:
+                              "800",
+
+                            cursor:
+                              "pointer",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* =================================================
+              계약 정보
+          ================================================= */}
+
+          <div
+            style={
+              sectionStyle
+            }
+          >
+            <div
+              style={
+                sectionTitleStyle
+              }
             >
               💰 계약 정보
             </div>
 
             <div
               style={{
-                display: "grid",
+                display:
+                  "grid",
+
                 gridTemplateColumns:
                   "1fr 1fr",
-                gap: "8px",
+
+                gap:
+                  "8px",
               }}
             >
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   계약금액
                 </label>
 
@@ -713,19 +2140,33 @@ export default function SiteRegisterModal({
                   value={
                     form.contract_amount
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "contract_amount",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="1000000"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
 
-              <div style={fieldStyle}>
-                <label style={labelStyle}>
+              <div
+                style={
+                  fieldStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   계약금 / 선금
                 </label>
 
@@ -736,32 +2177,54 @@ export default function SiteRegisterModal({
                   value={
                     form.deposit_amount
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     updateField(
                       "deposit_amount",
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   placeholder="300000"
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
             </div>
 
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                fieldStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 접수 경로
               </label>
 
               <select
-                value={form.source}
-                onChange={(event) =>
+                value={
+                  form.source
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateField(
                     "source",
-                    event.target.value,
+                    event
+                      .target
+                      .value,
                   )
                 }
-                style={inputStyle}
+                style={
+                  inputStyle
+                }
               >
                 <option value="phone">
                   전화
@@ -786,37 +2249,65 @@ export default function SiteRegisterModal({
             </div>
           </div>
 
-          {/* 메모 */}
+          {/* =================================================
+              메모
+          ================================================= */}
 
-          <div style={fieldStyle}>
-            <label style={labelStyle}>
-              현장 메모
-            </label>
+          <div
+            style={
+              sectionStyle
+            }
+          >
+            <div
+              style={
+                sectionTitleStyle
+              }
+            >
+              📝 현장 메모
+            </div>
 
             <textarea
-              value={form.memo}
-              onChange={(event) =>
+              value={
+                form.memo
+              }
+              onChange={(
+                event,
+              ) =>
                 updateField(
                   "memo",
-                  event.target.value,
+                  event
+                    .target
+                    .value,
                 )
               }
               placeholder="예: 지하 2층 주차, 오전 9시 고객 통화 후 입장"
-              rows={3}
+              rows={
+                3
+              }
               style={{
                 ...inputStyle,
-                resize: "vertical",
+
+                resize:
+                  "vertical",
               }}
             />
           </div>
 
+          {/* =================================================
+              결과 메시지
+          ================================================= */}
+
           {localMessage && (
             <div
               style={{
-                marginBottom: "14px",
-                padding: "10px 12px",
+                marginBottom:
+                  "14px",
 
-                borderRadius: "9px",
+                padding:
+                  "10px 12px",
+
+                borderRadius:
+                  "9px",
 
                 background:
                   localMessage.startsWith(
@@ -832,47 +2323,69 @@ export default function SiteRegisterModal({
                     ? "#166534"
                     : "#b91c1c",
 
-                fontSize: "13px",
-                fontWeight: "700",
-                whiteSpace: "pre-wrap",
+                fontSize:
+                  "13px",
+
+                fontWeight:
+                  "700",
+
+                whiteSpace:
+                  "pre-wrap",
               }}
             >
-              {localMessage}
+              {
+                localMessage
+              }
             </div>
           )}
 
-          {/* 버튼 */}
+          {/* =================================================
+              하단 버튼
+          ================================================= */}
 
           <div
             style={{
-              display: "grid",
+              display:
+                "grid",
+
               gridTemplateColumns:
                 "1fr 2fr",
-              gap: "8px",
+
+              gap:
+                "8px",
             }}
           >
             <button
               type="button"
-              disabled={loading}
-              onClick={onClose}
+              disabled={
+                loading
+              }
+              onClick={
+                onClose
+              }
               style={{
                 border:
                   "1px solid #cbd5e1",
 
-                borderRadius: "10px",
+                borderRadius:
+                  "10px",
 
-                padding: "12px",
+                padding:
+                  "12px",
 
                 background:
                   "#ffffff",
 
-                color: "#334155",
+                color:
+                  "#334155",
 
-                fontWeight: "700",
+                fontWeight:
+                  "700",
 
-                cursor: loading
-                  ? "default"
-                  : "pointer",
+                cursor:
+                  loading
+                    ? "default"
+                    : "pointer",
               }}
             >
               취소
@@ -880,25 +2393,34 @@ export default function SiteRegisterModal({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={
+                loading
+              }
               style={{
-                border: "none",
+                border:
+                  "none",
 
-                borderRadius: "10px",
+                borderRadius:
+                  "10px",
 
-                padding: "12px",
+                padding:
+                  "12px",
 
-                background: loading
-                  ? "#94a3b8"
-                  : "#111827",
+                background:
+                  loading
+                    ? "#94a3b8"
+                    : "#111827",
 
-                color: "#ffffff",
+                color:
+                  "#ffffff",
 
-                fontWeight: "800",
+                fontWeight:
+                  "800",
 
-                cursor: loading
-                  ? "default"
-                  : "pointer",
+                cursor:
+                  loading
+                    ? "default"
+                    : "pointer",
               }}
             >
               {loading
@@ -910,4 +2432,4 @@ export default function SiteRegisterModal({
       </div>
     </div>
   );
-}
+        }
