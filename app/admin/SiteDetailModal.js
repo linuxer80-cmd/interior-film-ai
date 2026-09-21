@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
+import SiteCompletedReport from "./SiteCompletedReport";
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
 
 const STATUS_INFO = {
@@ -163,7 +164,7 @@ export default function SiteDetailModal({
          *
          * 현장 등록 단계에서 입력한 자재만 표시합니다.
          * 완료보고의 실제 사용 자재(actual)는
-         * 이후 완료보고 영역에서 별도로 표시할 수 있습니다.
+         * SiteCompletedReport에서 별도로 표시합니다.
          */
 
         const {
@@ -391,12 +392,11 @@ export default function SiteDetailModal({
     }
 
     /*
-     * 완료 저장이 성공하면
-     * 현장 목록은 hook에서 새로고침됩니다.
+     * 완료 저장 성공 후 현장 목록은
+     * hook에서 새로고침됩니다.
      *
      * 현재 selectedSite는 이전 status를
-     * 가지고 있을 수 있으므로 상세창을 닫아
-     * stale 상태가 보이지 않도록 합니다.
+     * 가지고 있을 수 있으므로 상세창을 닫습니다.
      */
 
     setReportOpen(false);
@@ -924,7 +924,7 @@ export default function SiteDetailModal({
         )}
 
         {/* =========================
-            시공 완료 보고
+            시공 완료 보고 작성
         ========================= */}
 
         {site.status !==
@@ -1006,6 +1006,18 @@ export default function SiteDetailModal({
               />
             )}
           </section>
+        )}
+
+        {/* =========================
+            저장된 시공 완료 보고
+        ========================= */}
+
+        {site.status ===
+          "completed" && (
+          <SiteCompletedReport
+            companyId={companyId}
+            site={site}
+          />
         )}
 
         {/* =========================
@@ -1413,4 +1425,4 @@ function StatusButton({
       {children}
     </button>
   );
-      }
+    }
