@@ -9,7 +9,7 @@ const tabs = [
   },
   {
     id: "sites",
-    label: "현장관리",
+    label: "현장 관리",
   },
   {
     id: "usage",
@@ -31,7 +31,7 @@ export default function AdminTabs({
       style={{
         display: "grid",
         gridTemplateColumns:
-          "repeat(5, 1fr)",
+          "repeat(5, minmax(0, 1fr))",
         gap: "6px",
         marginBottom: "18px",
       }}
@@ -72,11 +72,11 @@ export default function AdminTabs({
 
               fontSize: "12px",
 
-              lineHeight: "1.25",
+              cursor: "pointer",
 
               minWidth: 0,
 
-              cursor: "pointer",
+              wordBreak: "keep-all",
             }}
           >
             {tab.label}
