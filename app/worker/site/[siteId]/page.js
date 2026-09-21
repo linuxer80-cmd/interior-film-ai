@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import WorkerRequestPhotos from "./WorkerRequestPhotos";
 
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
@@ -89,12 +90,6 @@ export default function WorkerSiteDetailPage() {
 
       /* =====================================================
          예정 자재 조회
-
-         DB 함수에서:
-         - 로그인한 시공자 확인
-         - 해당 현장 배정 여부 확인
-         - planned 자재만 반환
-         - 단가/금액은 반환하지 않음
       ===================================================== */
 
       const {
@@ -182,12 +177,9 @@ export default function WorkerSiteDetailPage() {
       return String(value);
     }
 
-    return new Intl.NumberFormat(
-      "ko-KR",
-      {
-        maximumFractionDigits: 2,
-      }
-    ).format(number);
+    return new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 2,
+    }).format(number);
   }
 
   /* =========================================================
@@ -576,10 +568,7 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "900",
               }}
             >
-              📅{" "}
-              {formatDateTime(
-                site.schedule_start
-              )}
+              📅 {formatDateTime(site.schedule_start)}
             </div>
 
             {site.schedule_end && (
@@ -591,18 +580,14 @@ export default function WorkerSiteDetailPage() {
                 }}
               >
                 종료 예정{" "}
-                {formatDateTime(
-                  site.schedule_end
-                )}
+                {formatDateTime(site.schedule_end)}
               </div>
             )}
           </div>
 
           <InfoRow
             label="담당"
-            value={getRoleLabel(
-              site.my_role
-            )}
+            value={getRoleLabel(site.my_role)}
           />
 
           <InfoRow
@@ -697,15 +682,12 @@ export default function WorkerSiteDetailPage() {
             </div>
           </div>
 
-          {/* 예정 자재 없음 */}
-
           {materials.length === 0 && (
             <div
               style={{
                 marginTop: "12px",
                 padding: "18px 12px",
-                border:
-                  "1px dashed #cbd5e1",
+                border: "1px dashed #cbd5e1",
                 borderRadius: "10px",
                 background: "#f8fafc",
                 color: "#64748b",
@@ -717,8 +699,6 @@ export default function WorkerSiteDetailPage() {
               등록된 예정 자재가 없습니다.
             </div>
           )}
-
-          {/* 예정 자재 목록 */}
 
           {materials.length > 0 && (
             <div
@@ -735,13 +715,12 @@ export default function WorkerSiteDetailPage() {
                       material.quantity
                     );
 
-                  const quantityText =
-                    [
-                      quantity,
-                      material.unit,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
+                  const quantityText = [
+                    quantity,
+                    material.unit,
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
 
                   return (
                     <div
@@ -753,36 +732,26 @@ export default function WorkerSiteDetailPage() {
                         padding: "14px",
                         border:
                           "1px solid #e2e8f0",
-                        borderRadius:
-                          "11px",
-                        background:
-                          "#f8fafc",
+                        borderRadius: "11px",
+                        background: "#f8fafc",
                       }}
                     >
-                      {/* 브랜드 */}
-
                       {material.brand && (
                         <div
                           style={{
-                            color:
-                              "#64748b",
-                            fontSize:
-                              "11px",
-                            fontWeight:
-                              "800",
+                            color: "#64748b",
+                            fontSize: "11px",
+                            fontWeight: "800",
                           }}
                         >
                           {material.brand}
                         </div>
                       )}
 
-                      {/* 제품코드 / 제품명 */}
-
                       <div
                         style={{
                           display: "flex",
-                          alignItems:
-                            "flex-start",
+                          alignItems: "flex-start",
                           justifyContent:
                             "space-between",
                           gap: "12px",
@@ -800,12 +769,9 @@ export default function WorkerSiteDetailPage() {
                         >
                           <div
                             style={{
-                              color:
-                                "#111827",
-                              fontSize:
-                                "15px",
-                              fontWeight:
-                                "900",
+                              color: "#111827",
+                              fontSize: "15px",
+                              fontWeight: "900",
                               wordBreak:
                                 "break-word",
                             }}
@@ -820,14 +786,10 @@ export default function WorkerSiteDetailPage() {
                               material.product_code && (
                               <div
                                 style={{
-                                  marginTop:
-                                    "3px",
-                                  color:
-                                    "#64748b",
-                                  fontSize:
-                                    "12px",
-                                  fontWeight:
-                                    "700",
+                                  marginTop: "3px",
+                                  color: "#64748b",
+                                  fontSize: "12px",
+                                  fontWeight: "700",
                                   wordBreak:
                                     "break-word",
                                 }}
@@ -839,29 +801,19 @@ export default function WorkerSiteDetailPage() {
                             )}
                         </div>
 
-                        {/* 수량 */}
-
                         {quantityText && (
                           <div
                             style={{
-                              flex:
-                                "0 0 auto",
-                              padding:
-                                "6px 9px",
-                              borderRadius:
-                                "8px",
-                              background:
-                                "#ffffff",
+                              flex: "0 0 auto",
+                              padding: "6px 9px",
+                              borderRadius: "8px",
+                              background: "#ffffff",
                               border:
                                 "1px solid #e2e8f0",
-                              color:
-                                "#111827",
-                              fontSize:
-                                "13px",
-                              fontWeight:
-                                "900",
-                              whiteSpace:
-                                "nowrap",
+                              color: "#111827",
+                              fontSize: "13px",
+                              fontWeight: "900",
+                              whiteSpace: "nowrap",
                             }}
                           >
                             {quantityText}
@@ -869,33 +821,21 @@ export default function WorkerSiteDetailPage() {
                         )}
                       </div>
 
-                      {/* 메모 */}
-
                       {material.memo && (
                         <div
                           style={{
-                            marginTop:
-                              "10px",
-                            padding:
-                              "9px 10px",
-                            borderRadius:
-                              "8px",
-                            background:
-                              "#ffffff",
-                            color:
-                              "#475569",
-                            fontSize:
-                              "12px",
-                            lineHeight:
-                              1.6,
-                            whiteSpace:
-                              "pre-wrap",
-                            wordBreak:
-                              "break-word",
+                            marginTop: "10px",
+                            padding: "9px 10px",
+                            borderRadius: "8px",
+                            background: "#ffffff",
+                            color: "#475569",
+                            fontSize: "12px",
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
                           }}
                         >
-                          메모{" "}
-                          {material.memo}
+                          메모 {material.memo}
                         </div>
                       )}
                     </div>
@@ -913,10 +853,15 @@ export default function WorkerSiteDetailPage() {
               lineHeight: 1.5,
             }}
           >
-            관리자에서 등록한 예정 사용
-            자재입니다.
+            관리자에서 등록한 예정 사용 자재입니다.
           </div>
         </section>
+
+        {/* ===================================================
+            고객 요청사진
+        =================================================== */}
+
+        <WorkerRequestPhotos siteId={siteId} />
 
         {/* ===================================================
             고객 연락
@@ -995,8 +940,7 @@ export default function WorkerSiteDetailPage() {
               lineHeight: 1.7,
             }}
           >
-            다음 단계에서 고객 요청사진,
-            시공사진 및 완료보고 기능을
+            다음 단계에서 시공사진 및 완료보고 기능을
             연결합니다.
           </div>
         </section>
@@ -1017,8 +961,7 @@ export default function WorkerSiteDetailPage() {
             textAlign: "center",
           }}
         >
-          본인에게 배정된 현장 정보만
-          조회할 수 있습니다.
+          본인에게 배정된 현장 정보만 조회할 수 있습니다.
         </div>
       </div>
     </main>
@@ -1029,9 +972,7 @@ export default function WorkerSiteDetailPage() {
    섹션 제목
 ========================================================= */
 
-function SectionTitle({
-  children,
-}) {
+function SectionTitle({ children }) {
   return (
     <div
       style={{
@@ -1092,4 +1033,4 @@ function InfoRow({
       </div>
     </div>
   );
-    }
+              }
