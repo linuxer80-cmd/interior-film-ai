@@ -343,6 +343,14 @@ export default function useSiteWorkReport({
                   site_id:
                     siteId,
 
+                  /*
+                   * 현장 등록 시 자재는
+                   * DB 기본값 planned,
+                   * 완료보고 자재는 actual로 저장
+                   */
+                  material_type:
+                    "actual",
+
                   film_product_id:
                     item.film_product_id ||
                     null,
@@ -388,7 +396,7 @@ export default function useSiteWorkReport({
 
         if (
           rows.length ===
-          0
+            0
         ) {
           return;
         }
@@ -497,7 +505,7 @@ export default function useSiteWorkReport({
 
         if (
           rows.length ===
-          0
+            0
         ) {
           return;
         }
