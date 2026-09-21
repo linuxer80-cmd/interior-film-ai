@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
+import SiteWorkReportReview from "./SiteWorkReportReview";
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
 
 const STATUS_INFO = {
@@ -803,6 +804,14 @@ export default function SiteDetailModal({
         )}
 
         {/* =========================
+            시공자 완료보고 관리자 검수
+        ========================= */}
+
+        <SiteWorkReportReview
+          siteId={site.id}
+        />
+
+        {/* =========================
             현장 상태
         ========================= */}
 
@@ -925,6 +934,7 @@ export default function SiteDetailModal({
               </>
             )}
           </div>
+        )}
         )}
 
         {/* =========================
@@ -1073,6 +1083,11 @@ export default function SiteDetailModal({
     </div>
   );
 }
+
+/* =========================================================
+   예정 자재 카드
+========================================================= */
+
 function MaterialCard({
   material,
   index,
@@ -1230,6 +1245,10 @@ function MaterialCard({
   );
 }
 
+/* =========================================================
+   요청 사진 카드
+========================================================= */
+
 function PhotoCard({
   photo,
   index,
@@ -1324,6 +1343,10 @@ function PhotoCard({
   );
 }
 
+/* =========================================================
+   빈 데이터
+========================================================= */
+
 function EmptyBox({
   text,
 }) {
@@ -1350,6 +1373,10 @@ function EmptyBox({
     </div>
   );
 }
+
+/* =========================================================
+   상세정보 한 줄
+========================================================= */
 
 function DetailRow({
   label,
@@ -1394,6 +1421,10 @@ function DetailRow({
   );
 }
 
+/* =========================================================
+   상태 버튼
+========================================================= */
+
 function StatusButton({
   active,
   onClick,
@@ -1428,4 +1459,4 @@ function StatusButton({
       {children}
     </button>
   );
-  }
+}
