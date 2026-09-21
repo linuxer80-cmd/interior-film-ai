@@ -20,6 +20,64 @@ export default function useWorkers({
   ] = useState("");
 
   /* =========================================================
+     공통
+  ========================================================= */
+
+  function normalizeDailyWage(value) {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return null;
+    }
+
+    const cleanValue = String(value)
+      .replace(/[^\d]/g, "")
+      .trim();
+
+    if (!cleanValue) {
+      return null;
+    }
+
+    const numberValue =
+      Number(cleanValue);
+
+    if (
+      !Number.isFinite(numberValue) ||
+      numberValue < 0
+    ) {
+      return null;
+    }
+
+    return numberValue;
+  }
+
+  function sortWorkers(rows) {
+    return [...(rows || [])].sort(
+      (a, b) => {
+        if (
+          a.is_active !==
+          b.is_active
+        ) {
+          return a.is_active
+            ? -1
+            : 1;
+        }
+
+        return String(
+          a.name || "",
+        ).localeCompare(
+          String(
+            b.name || "",
+          ),
+          "ko",
+        );
+      },
+    );
+  }
+
+  /* =========================================================
      시공자 목록
   ========================================================= */
 
@@ -45,6 +103,7 @@ export default function useWorkers({
             company_id,
             name,
             phone,
+            daily_wage,
             position,
             specialties,
             memo,
@@ -99,6 +158,14 @@ export default function useWorkers({
 
   /* =========================================================
      시공자 등록
+
+     최초 등록:
+     - 이름
+     - 전화번호
+     - 기본 일당
+
+     역할은 여기서 저장하지 않는다.
+     역할은 현장 배정 시 site_workers.role 로 관리한다.
   ========================================================= */
 
   const createWorker = useCallback(
@@ -116,6 +183,16 @@ export default function useWorkers({
           form?.name || "",
         ).trim();
 
+      const phone =
+        String(
+          form?.phone || "",
+        ).trim();
+
+      const dailyWage =
+        normalizeDailyWage(
+          form?.daily_wage,
+        );
+
       if (!name) {
         return {
           success: false,
@@ -124,31 +201,28 @@ export default function useWorkers({
         };
       }
 
+      if (!phone) {
+        return {
+          success: false,
+          error:
+            "전화번호를 입력해주세요.",
+        };
+      }
+
+      if (
+        dailyWage === null
+      ) {
+        return {
+          success: false,
+          error:
+            "기본 일당을 입력해주세요.",
+        };
+      }
+
       setWorkersLoading(true);
       setWorkersMessage("");
 
       try {
-        const specialties =
-          Array.isArray(
-            form?.specialties,
-          )
-            ? form.specialties
-                .map((item) =>
-                  String(
-                    item || "",
-                  ).trim(),
-                )
-                .filter(Boolean)
-            : String(
-                form?.specialties ||
-                  "",
-              )
-                .split(",")
-                .map((item) =>
-                  item.trim(),
-                )
-                .filter(Boolean);
-
         const {
           data,
           error,
@@ -160,28 +234,19 @@ export default function useWorkers({
 
             name,
 
-            phone:
-              String(
-                form?.phone ||
-                  "",
-              ).trim() ||
-              null,
+            phone,
 
-            position:
-              String(
-                form?.position ||
-                  "",
-              ).trim() ||
-              null,
+            daily_wage:
+              dailyWage,
 
-            specialties,
-
-            memo:
-              String(
-                form?.memo ||
-                  "",
-              ).trim() ||
-              null,
+            /*
+             * 기존 컬럼은 DB에 그대로 유지한다.
+             * 역할은 현장 배정에서 정하므로
+             * 신규 시공자 등록 시 사용하지 않는다.
+             */
+            position: null,
+            specialties: [],
+            memo: null,
 
             is_active: true,
           })
@@ -194,27 +259,10 @@ export default function useWorkers({
 
         setWorkers(
           (current) =>
-            [...current, data].sort(
-              (a, b) => {
-                if (
-                  a.is_active !==
-                  b.is_active
-                ) {
-                  return a.is_active
-                    ? -1
-                    : 1;
-                }
-
-                return String(
-                  a.name || "",
-                ).localeCompare(
-                  String(
-                    b.name || "",
-                  ),
-                  "ko",
-                );
-              },
-            ),
+            sortWorkers([
+              ...current,
+              data,
+            ]),
         );
 
         setWorkersMessage(
@@ -252,6 +300,12 @@ export default function useWorkers({
 
   /* =========================================================
      시공자 정보 수정
+
+     이름은 수정하지 않는다.
+
+     수정 가능:
+     - 전화번호
+     - 기본 일당
   ========================================================= */
 
   const updateWorker = useCallback(
@@ -270,16 +324,31 @@ export default function useWorkers({
         };
       }
 
-      const name =
+      const phone =
         String(
-          form?.name || "",
+          form?.phone || "",
         ).trim();
 
-      if (!name) {
+      const dailyWage =
+        normalizeDailyWage(
+          form?.daily_wage,
+        );
+
+      if (!phone) {
         return {
           success: false,
           error:
-            "시공자 이름을 입력해주세요.",
+            "전화번호를 입력해주세요.",
+        };
+      }
+
+      if (
+        dailyWage === null
+      ) {
+        return {
+          success: false,
+          error:
+            "기본 일당을 입력해주세요.",
         };
       }
 
@@ -287,57 +356,16 @@ export default function useWorkers({
       setWorkersMessage("");
 
       try {
-        const specialties =
-          Array.isArray(
-            form?.specialties,
-          )
-            ? form.specialties
-                .map((item) =>
-                  String(
-                    item || "",
-                  ).trim(),
-                )
-                .filter(Boolean)
-            : String(
-                form?.specialties ||
-                  "",
-              )
-                .split(",")
-                .map((item) =>
-                  item.trim(),
-                )
-                .filter(Boolean);
-
         const {
           data,
           error,
         } = await supabase
           .from("workers")
           .update({
-            name,
+            phone,
 
-            phone:
-              String(
-                form?.phone ||
-                  "",
-              ).trim() ||
-              null,
-
-            position:
-              String(
-                form?.position ||
-                  "",
-              ).trim() ||
-              null,
-
-            specialties,
-
-            memo:
-              String(
-                form?.memo ||
-                  "",
-              ).trim() ||
-              null,
+            daily_wage:
+              dailyWage,
 
             updated_at:
               new Date().toISOString(),
@@ -406,6 +434,7 @@ export default function useWorkers({
 
   /* =========================================================
      시공자 활성 / 비활성
+
      기존 현장 기록 보존을 위해 실제 삭제하지 않음
   ========================================================= */
 
@@ -573,7 +602,10 @@ export default function useWorkers({
             String(data);
 
           setWorkersMessage(
-            `✅ ${worker.name || "시공자"} 계정 초대코드가 생성되었습니다.`,
+            `✅ ${
+              worker.name ||
+              "시공자"
+            } 계정 초대코드가 생성되었습니다.`,
           );
 
           return {
@@ -614,6 +646,9 @@ export default function useWorkers({
 
      leader = 책임 팀장 1명
      member = 담당 시공자
+
+     역할은 시공자 기본정보가 아니라
+     현장마다 별도로 지정한다.
   ========================================================= */
 
   const assignSiteWorkers =
@@ -767,6 +802,7 @@ export default function useWorkers({
                 id,
                 name,
                 phone,
+                daily_wage,
                 position
               )
             `);
@@ -841,6 +877,7 @@ export default function useWorkers({
                 id,
                 name,
                 phone,
+                daily_wage,
                 position,
                 specialties,
                 is_active
