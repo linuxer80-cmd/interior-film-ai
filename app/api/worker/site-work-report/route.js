@@ -101,6 +101,7 @@ function getAccessToken(request) {
    Worker 권한 확인
 
    반드시:
+
    auth user
       ↓
    workers.user_id
@@ -108,6 +109,11 @@ function getAccessToken(request) {
    site_workers.worker_id
       ↓
    sites.company_id
+
+   를 모두 확인합니다.
+
+   여기서는 현장 배정 여부까지만 확인합니다.
+   완료보고 작성 권한(leader)은 POST에서 별도로 확인합니다.
 ========================================================= */
 
 async function verifyWorkerSiteAccess({
@@ -187,6 +193,9 @@ async function verifyWorkerSiteAccess({
 
   /* ---------------------------------------------------------
      3. 해당 현장
+
+     로그인 시공자의 company_id와
+     현장의 company_id가 반드시 같아야 합니다.
   --------------------------------------------------------- */
 
   const {
@@ -312,6 +321,16 @@ async function saveWorkReport({
   const completedAt =
     new Date().toISOString();
 
+  /*
+   * 기존 보고서가 있으면 수정합니다.
+   *
+   * 아직 이 completed_at은
+   * "현장 최종 승인"이나
+   * "AI 견적자료 등록"을 의미하지 않습니다.
+   *
+   * 시공자 완료보고 작성 시각으로 사용합니다.
+   */
+
   if (existing?.id) {
     const {
       error,
@@ -350,6 +369,10 @@ async function saveWorkReport({
 
     return existing.id;
   }
+
+  /*
+   * 기존 보고서가 없으면 신규 생성합니다.
+   */
 
   const {
     data,
@@ -396,7 +419,9 @@ async function saveWorkReport({
 /* =========================================================
    기존 actual 자재 제거
 
-   재저장 시 중복되는 것을 방지합니다.
+   완료보고를 다시 저장할 경우
+   같은 실제 사용 자재가 중복 등록되지 않도록
+   기존 actual 자료를 먼저 제거합니다.
 ========================================================= */
 
 async function clearActualMaterials({
@@ -793,7 +818,35 @@ export async function POST(
       worker.company_id;
 
     /* -------------------------------------------------------
-       이미 취소된 현장 방지
+       책임 팀장 권한 확인
+
+       중요:
+       화면에서 버튼을 숨기는 것만으로는 보안이 되지 않습니다.
+
+       API 자체에서 assignment.role === "leader" 를
+       반드시 확인합니다.
+
+       따라서 일반 시공자가 개발자도구나 직접 API 요청으로
+       완료보고를 저장하려고 해도 서버에서 차단됩니다.
+    ------------------------------------------------------- */
+
+    if (
+      assignment.role !== "leader"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "완료보고는 이 현장의 책임 팀장만 제출할 수 있습니다.",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    /* -------------------------------------------------------
+       취소된 현장 방지
     ------------------------------------------------------- */
 
     if (
@@ -805,6 +858,29 @@ export async function POST(
           success: false,
           error:
             "취소된 현장은 완료보고를 저장할 수 없습니다.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+    /* -------------------------------------------------------
+       이미 완료 처리된 현장 방지
+
+       관리자 검수 흐름을 붙이기 전까지
+       완료된 현장을 시공자가 다시 덮어쓰지 못하게 합니다.
+    ------------------------------------------------------- */
+
+    if (
+      site.status ===
+      "completed"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "이미 완료 처리된 현장입니다.",
         },
         {
           status: 409,
@@ -893,10 +969,41 @@ export async function POST(
     /* -------------------------------------------------------
        중요
 
-       아직 여기서는 completed 처리하지 않습니다.
+       여기서는 sites.status = completed 로
+       변경하지 않습니다.
 
-       다음 단계에서 after 완료사진 업로드까지 성공한 후에만
-       status = completed 로 변경합니다.
+       또한 아래 AI 견적용 데이터도 생성하지 않습니다.
+
+       - work_items
+       - work_photos
+       - embedding
+       - AI 이미지 분석
+
+       현재 저장되는 것은:
+
+       - work_reports
+       - site_materials (actual)
+       - site_expenses
+
+       뿐입니다.
+
+       시공 완료사진은 별도의
+       /api/worker/site-photos
+       API에서 site_photos(after)에 저장됩니다.
+
+       이후:
+
+       책임 팀장 완료보고
+          ↓
+       관리자 검수 대기
+          ↓
+       관리자 실제 견적금액 입력
+          ↓
+       관리자 승인
+          ↓
+       그때 AI 견적자료 등록
+
+       순서로 처리합니다.
     ------------------------------------------------------- */
 
     return NextResponse.json(
@@ -928,8 +1035,14 @@ export async function POST(
             savedExpenses.length,
         },
 
+        review_status:
+          "pending_admin_review",
+
+        ai_registered:
+          false,
+
         message:
-          "완료보고 기본정보가 저장되었습니다.",
+          "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
       },
       {
         status: 200,
@@ -975,4 +1088,4 @@ export async function POST(
       },
     );
   }
-        }
+           }
