@@ -1,30 +1,40 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { supabase } from "../../../lib/supabase";
+import {
+  useRef,
+  useState,
+} from "react";
 
-const INITIAL_STRUCTURE_ANALYSIS = {
-  total: 0,
-  completed: 0,
-  remaining: 0,
-  failed: 0,
-  processed: 0,
-  running: false,
-  finished: false,
-  message: "",
-  errors: [],
-};
+import {
+  supabase,
+} from "../../../lib/supabase";
 
 export default function useStructureAnalysis() {
+  /* =========================================================
+     구조분석 상태
+  ========================================================= */
+
   const [
     structureAnalysis,
     setStructureAnalysis,
-  ] = useState(
-    INITIAL_STRUCTURE_ANALYSIS,
-  );
+  ] = useState({
+    total: 0,
+    completed: 0,
+    remaining: 0,
+    failed: 0,
+    processed: 0,
+    running: false,
+    finished: false,
+    message: "",
+    errors: [],
+  });
 
   const structureStopRef =
     useRef(false);
+
+  /* =========================================================
+     AI 구조분석 실행
+  ========================================================= */
 
   async function runStructureAnalysis() {
     if (
@@ -51,12 +61,22 @@ export default function useStructureAnalysis() {
 
     let totalFailed = 0;
     let totalProcessed = 0;
-    let previousRemaining = null;
+
+    let previousRemaining =
+      null;
+
     let noProgressCount = 0;
 
-    const collectedErrors = [];
+    const collectedErrors =
+      [];
 
-    function collectApiErrors(data) {
+    /* =======================================================
+       API 개별 오류 수집
+    ======================================================= */
+
+    function collectApiErrors(
+      data,
+    ) {
       const results =
         Array.isArray(
           data?.results,
@@ -77,7 +97,9 @@ export default function useStructureAnalysis() {
 
         const photoId =
           result?.id
-            ? String(result.id)
+            ? String(
+                result.id,
+              )
             : "ID 없음";
 
         const storagePath =
@@ -88,13 +110,17 @@ export default function useStructureAnalysis() {
             : "";
 
         const errorText =
-          String(result.error);
+          String(
+            result.error,
+          );
 
         const text = [
           `사진 ID: ${photoId}`,
+
           storagePath
             ? `경로: ${storagePath}`
             : "",
+
           `오류: ${errorText}`,
         ]
           .filter(Boolean)
@@ -111,6 +137,11 @@ export default function useStructureAnalysis() {
         }
       }
 
+      /*
+       * 너무 많은 오류가
+       * 화면에 쌓이지 않도록
+       * 최대 10개만 유지
+       */
       if (
         collectedErrors.length >
         10
@@ -120,6 +151,10 @@ export default function useStructureAnalysis() {
         );
       }
     }
+
+    /* =======================================================
+       화면용 오류 메시지 생성
+    ======================================================= */
 
     function makeErrorMessage(
       prefix,
@@ -135,20 +170,25 @@ export default function useStructureAnalysis() {
 
       if (
         remaining !== null &&
-        remaining !== undefined
+        remaining !==
+          undefined
       ) {
         text +=
           `\n남은 사진 ${remaining}장`;
       }
 
       if (
-        visibleErrors.length > 0
+        visibleErrors.length >
+        0
       ) {
         text +=
           "\n\n실제 오류:";
 
         visibleErrors.forEach(
-          (item, index) => {
+          (
+            item,
+            index,
+          ) => {
             text +=
               `\n\n${index + 1}. ${item}`;
           },
@@ -169,57 +209,79 @@ export default function useStructureAnalysis() {
       return text;
     }
 
+    /* =======================================================
+       분석 시작 상태
+    ======================================================= */
+
     setStructureAnalysis(
       (current) => ({
         ...current,
+
         running: true,
         finished: false,
+
         failed: 0,
         processed: 0,
+
         errors: [],
+
         message:
           "AI 구조분석을 시작합니다...",
       }),
     );
 
     try {
+      /* =====================================================
+         API 반복 실행
+      ===================================================== */
+
       while (
         !structureStopRef.current
       ) {
         /*
-         * 현재 로그인 세션의
-         * Access Token을 사용한다.
-         *
-         * 서버 API가 토큰으로
-         * 실제 업체를 판별하므로
-         * companyId를 클라이언트에서
-         * 전달하지 않는다.
+         * 현재 로그인 세션
          */
         const {
-          data: { session },
+          data: sessionData,
+          error: sessionError,
         } =
           await supabase.auth.getSession();
 
         if (
-          !session?.access_token
+          sessionError
+        ) {
+          throw sessionError;
+        }
+
+        const accessToken =
+          sessionData?.session
+            ?.access_token;
+
+        if (
+          !accessToken
         ) {
           throw new Error(
-            "로그인이 만료되었습니다. 다시 로그인해주세요.",
+            "로그인 세션이 만료되었습니다. 다시 로그인해주세요.",
           );
         }
+
+        /* ===================================================
+           구조분석 API 호출
+        =================================================== */
 
         const response =
           await fetch(
             "/api/analyze-work-structure",
             {
-              method: "POST",
+              method:
+                "POST",
 
               headers: {
                 "Content-Type":
                   "application/json",
 
                 Authorization:
-                  `Bearer ${session.access_token}`,
+                  `Bearer ${accessToken}`,
               },
 
               body:
@@ -239,6 +301,10 @@ export default function useStructureAnalysis() {
             `구조분석 API 응답을 읽을 수 없습니다. HTTP ${response.status}`,
           );
         }
+
+        /* ===================================================
+           API 자체 오류
+        =================================================== */
 
         if (
           !response.ok ||
@@ -263,7 +329,17 @@ export default function useStructureAnalysis() {
           );
         }
 
-        collectApiErrors(data);
+        /* ===================================================
+           사진별 오류 수집
+        =================================================== */
+
+        collectApiErrors(
+          data,
+        );
+
+        /* ===================================================
+           진행 상태
+        =================================================== */
 
         const total =
           Number(
@@ -272,17 +348,20 @@ export default function useStructureAnalysis() {
 
         const completed =
           Number(
-            data.completed || 0,
+            data.completed ||
+              0,
           );
 
         const remaining =
           Number(
-            data.remaining || 0,
+            data.remaining ||
+              0,
           );
 
         const processed =
           Number(
-            data.processed || 0,
+            data.processed ||
+              0,
           );
 
         const failed =
@@ -296,14 +375,49 @@ export default function useStructureAnalysis() {
         totalFailed +=
           failed;
 
-        /*
-         * 사용자가 중지 버튼을
-         * 눌렀는지 확인
-         */
+        /* ===================================================
+           사용자가 중지 요청한 경우
+        =================================================== */
+
         if (
           structureStopRef.current
         ) {
-          setStructureAnalysis({
+          setStructureAnalysis(
+            {
+              total,
+              completed,
+              remaining,
+
+              failed:
+                totalFailed,
+
+              processed:
+                totalProcessed,
+
+              running: false,
+              finished: false,
+
+              errors: [
+                ...collectedErrors,
+              ],
+
+              message:
+                makeErrorMessage(
+                  "⏸️ 구조분석을 중지했습니다. 다시 시작하면 남은 사진부터 계속합니다.",
+                  remaining,
+                ),
+            },
+          );
+
+          break;
+        }
+
+        /* ===================================================
+           현재 진행 상태 표시
+        =================================================== */
+
+        setStructureAnalysis(
+          {
             total,
             completed,
             remaining,
@@ -314,57 +428,28 @@ export default function useStructureAnalysis() {
             processed:
               totalProcessed,
 
-            running: false,
-            finished: false,
+            running: true,
+
+            finished:
+              data.finished ===
+                true ||
+              remaining === 0,
 
             errors: [
               ...collectedErrors,
             ],
 
             message:
-              makeErrorMessage(
-                "⏸️ 구조분석을 중지했습니다. 다시 시작하면 남은 사진부터 계속합니다.",
-                remaining,
-              ),
-          });
+              remaining === 0
+                ? "✅ 기존 시공사진 구조분석이 완료되었습니다."
+                : `AI 구조분석 중... ${completed}/${total}`,
+          },
+        );
 
-          break;
-        }
+        /* ===================================================
+           완료
+        =================================================== */
 
-        /*
-         * 현재 진행상황 반영
-         */
-        setStructureAnalysis({
-          total,
-          completed,
-          remaining,
-
-          failed:
-            totalFailed,
-
-          processed:
-            totalProcessed,
-
-          running: true,
-
-          finished:
-            data.finished ===
-              true ||
-            remaining === 0,
-
-          errors: [
-            ...collectedErrors,
-          ],
-
-          message:
-            remaining === 0
-              ? "✅ 기존 시공사진 구조분석이 완료되었습니다."
-              : `AI 구조분석 중... ${completed}/${total}`,
-        });
-
-        /*
-         * 전체 완료
-         */
         if (
           data.finished ===
             true ||
@@ -394,14 +479,13 @@ export default function useStructureAnalysis() {
           break;
         }
 
-        /*
-         * API가 실제로 진행되고
-         * 있는지 확인한다.
-         *
-         * 동일한 remaining이
-         * 반복되면 무한 루프를
-         * 방지하기 위해 중단한다.
-         */
+        /* ===================================================
+           진행 여부 확인
+
+           같은 사진에서 계속 실패하여
+           무한 반복되는 상황 방지
+        =================================================== */
+
         if (
           processed > 0 ||
           previousRemaining ===
@@ -409,16 +493,23 @@ export default function useStructureAnalysis() {
           remaining <
             previousRemaining
         ) {
-          noProgressCount = 0;
+          noProgressCount =
+            0;
         } else {
-          noProgressCount += 1;
+          noProgressCount +=
+            1;
         }
 
         previousRemaining =
           remaining;
 
+        /*
+         * 2회 연속으로
+         * 진행이 없으면 자동 중단
+         */
         if (
-          noProgressCount >= 2
+          noProgressCount >=
+          2
         ) {
           setStructureAnalysis(
             (current) => ({
@@ -443,8 +534,7 @@ export default function useStructureAnalysis() {
         }
 
         /*
-         * 다음 3장 처리 전
-         * 짧게 대기
+         * API 연속 호출 간격
          */
         await new Promise(
           (resolve) =>
@@ -495,6 +585,10 @@ export default function useStructureAnalysis() {
     }
   }
 
+  /* =========================================================
+     구조분석 중지
+  ========================================================= */
+
   function stopStructureAnalysis() {
     structureStopRef.current =
       true;
@@ -511,21 +605,13 @@ export default function useStructureAnalysis() {
     );
   }
 
-  function resetStructureAnalysis() {
-    structureStopRef.current =
-      false;
-
-    setStructureAnalysis(
-      INITIAL_STRUCTURE_ANALYSIS,
-    );
-  }
+  /* =========================================================
+     외부 사용
+  ========================================================= */
 
   return {
     structureAnalysis,
-    setStructureAnalysis,
-
     runStructureAnalysis,
     stopStructureAnalysis,
-    resetStructureAnalysis,
   };
-        }
+                }

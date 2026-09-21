@@ -15,6 +15,7 @@ import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
+import SiteManagementTab from "./SiteManagementTab";
 
 import useAdminCompany from "./hooks/useAdminCompany";
 import useJobs from "./hooks/useJobs";
@@ -23,6 +24,9 @@ import useLeads from "./hooks/useLeads";
 import useUsage from "./hooks/useUsage";
 import useStructureAnalysis from "./hooks/useStructureAnalysis";
 import useCompanySettings from "./hooks/useCompanySettings";
+import useWorkers from "./hooks/useWorkers";
+
+import useSites from "../hooks/useSites";
 
 import {
   JOB_PAGE_SIZE,
@@ -171,6 +175,51 @@ export default function AdminPage() {
     stopStructureAnalysis,
   } =
     useStructureAnalysis();
+
+  /* =========================================================
+     현장 관리
+  ========================================================= */
+
+  const {
+    sites,
+    sitesLoading,
+    sitesMessage,
+
+    selectedSite,
+
+    loadSites,
+    createSite,
+    updateSiteStatus,
+
+    openSite,
+    closeSite,
+  } =
+    useSites({
+      companyId,
+    });
+
+  /* =========================================================
+     시공자 관리
+  ========================================================= */
+
+  const {
+    workers,
+    workersLoading,
+    workersMessage,
+
+    loadWorkers,
+    createWorker,
+    updateWorker,
+    setWorkerActive,
+
+    createWorkerInvite,
+
+    assignSiteWorkers,
+    loadSiteWorkers,
+  } =
+    useWorkers({
+      companyId,
+    });
 
   /* =========================================================
      고객 상담
@@ -331,6 +380,18 @@ export default function AdminPage() {
     setActiveTab(tab);
 
     if (
+      tab === "sites"
+    ) {
+      loadSites(
+        companyId,
+      );
+
+      loadWorkers(
+        companyId,
+      );
+    }
+
+    if (
       tab === "usage"
     ) {
       loadUsageStats();
@@ -363,15 +424,10 @@ export default function AdminPage() {
       const result =
         await initializeCompany();
 
-      if (
-        !mounted
-      ) {
+      if (!mounted) {
         return;
       }
 
-      /*
-       * 로그인 페이지로 이동 중인 경우
-       */
       if (!result) {
         markAdminReady();
         return;
@@ -381,10 +437,6 @@ export default function AdminPage() {
         result.companyId;
 
       try {
-        /*
-         * 서로 독립적인 초기 데이터를
-         * 동시에 불러온다.
-         */
         await Promise.all([
           loadSettings(
             resolvedCompanyId,
@@ -401,9 +453,7 @@ export default function AdminPage() {
           ),
         ]);
 
-        if (
-          !mounted
-        ) {
+        if (!mounted) {
           return;
         }
 
@@ -416,9 +466,7 @@ export default function AdminPage() {
           error,
         );
 
-        if (
-          mounted
-        ) {
+        if (mounted) {
           markAdminReady();
         }
       }
@@ -433,9 +481,6 @@ export default function AdminPage() {
 
   /* =========================================================
      신규 상담 실시간 구독
-
-     companyId가 확정된 뒤 구독한다.
-     업체별 company_id 필터를 유지한다.
   ========================================================= */
 
   useEffect(() => {
@@ -1102,6 +1147,88 @@ export default function AdminPage() {
       )}
 
       {/* =====================================================
+          현장 관리
+      ===================================================== */}
+
+      {activeTab ===
+        "sites" && (
+        <SiteManagementTab
+          companyId={
+            companyId
+          }
+
+          sites={
+            sites
+          }
+          sitesLoading={
+            sitesLoading
+          }
+          sitesMessage={
+            sitesMessage
+          }
+
+          createSite={
+            createSite
+          }
+
+          updateSiteStatus={
+            updateSiteStatus
+          }
+
+          selectedSite={
+            selectedSite
+          }
+
+          openSite={
+            openSite
+          }
+          closeSite={
+            closeSite
+          }
+
+          workers={
+            workers
+          }
+          workersLoading={
+            workersLoading
+          }
+          workersMessage={
+            workersMessage
+          }
+
+          loadWorkers={
+            loadWorkers
+          }
+          createWorker={
+            createWorker
+          }
+          updateWorker={
+            updateWorker
+          }
+          setWorkerActive={
+            setWorkerActive
+          }
+
+          createWorkerInvite={
+            createWorkerInvite
+          }
+
+          assignSiteWorkers={
+            assignSiteWorkers
+          }
+          loadSiteWorkers={
+            loadSiteWorkers
+          }
+
+          reloadSites={() =>
+            loadSites(
+              companyId,
+            )
+          }
+        />
+      )}
+
+      {/* =====================================================
           로그 분석
       ===================================================== */}
 
@@ -1244,4 +1371,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}      
+            }

@@ -57,7 +57,11 @@ function throwResultError(
 
 export async function fetchUsageDashboard(
   supabase,
+  companyId,
 ) {
+  if (!companyId) {
+    throw new Error("업체 정보를 확인할 수 없습니다.");
+  }
   const {
     todayStart,
     sevenDaysStart,
@@ -89,6 +93,7 @@ export async function fetchUsageDashboard(
           created_at
         `,
       )
+      .eq("company_id", companyId)
       .order("created_at", {
         ascending: false,
       })
@@ -97,6 +102,7 @@ export async function fetchUsageDashboard(
     supabase
       .from("estimate_usage")
       .select("session_id")
+      .eq("company_id", companyId)
       .not("session_id", "is", null)
       .limit(5000),
 
@@ -105,7 +111,8 @@ export async function fetchUsageDashboard(
       .select("id", {
         count: "exact",
         head: true,
-      }),
+      })
+      .eq("company_id", companyId),
 
     supabase
       .from("estimate_usage")
@@ -113,6 +120,7 @@ export async function fetchUsageDashboard(
         count: "exact",
         head: true,
       })
+      .eq("company_id", companyId)
       .gte("created_at", todayStart),
 
     supabase
@@ -121,6 +129,7 @@ export async function fetchUsageDashboard(
         count: "exact",
         head: true,
       })
+      .eq("company_id", companyId)
       .gte(
         "created_at",
         sevenDaysStart,
@@ -132,6 +141,7 @@ export async function fetchUsageDashboard(
         count: "exact",
         head: true,
       })
+      .eq("company_id", companyId)
       .eq(
         "converted_to_lead",
         true,
@@ -142,7 +152,8 @@ export async function fetchUsageDashboard(
       .select("id", {
         count: "exact",
         head: true,
-      }),
+      })
+      .eq("company_id", companyId),
   ]);
 
   throwResultError(

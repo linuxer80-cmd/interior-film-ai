@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { LEAD_PAGE_SIZE, SIGNED_URL_SECONDS } from "../adminConstants";
 import { getLeadPhotoPaths } from "../adminUtils";
-import {
-  LEAD_PAGE_SIZE,
-  SIGNED_URL_SECONDS,
-} from "../adminConstants";
 import {
   getCachedSignedUrl,
   setCachedSignedUrl,
@@ -14,130 +11,117 @@ import {
 
 export default function useLeads({
   companyId,
-  companyName = "관리자",
-  activeTabRef,
+  companyName = "업체",
 }) {
   const [leads, setLeads] = useState([]);
-  const [leadsLoading, setLeadsLoading] =
-    useState(false);
-  const [leadsMessage, setLeadsMessage] =
-    useState("");
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsMessage, setLeadsMessage] = useState("");
 
-  const [leadPage, setLeadPage] =
-    useState(1);
-  const [leadTotal, setLeadTotal] =
-    useState(0);
+  const [leadPage, setLeadPage] = useState(1);
+  const [leadTotal, setLeadTotal] = useState(0);
+  const [leadFilter, setLeadFilter] = useState("all");
 
-  const [leadFilter, setLeadFilter] =
-    useState("all");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [openLeadId, setOpenLeadId] = useState(null);
 
-  const [unreadCount, setUnreadCount] =
-    useState(0);
+  const [leadPhotoUrls, setLeadPhotoUrls] = useState({});
+  const [leadPhotoLoadingId, setLeadPhotoLoadingId] = useState(null);
 
-  const [openLeadId, setOpenLeadId] =
-    useState(null);
+  const [newLeadAlert, setNewLeadAlert] = useState(null);
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
 
-  const [leadPhotoUrls, setLeadPhotoUrls] =
-    useState({});
-
-  const [
-    leadPhotoLoadingId,
-    setLeadPhotoLoadingId,
-  ] = useState(null);
-
-  const [newLeadAlert, setNewLeadAlert] =
-    useState(null);
-
-  const [
-    notificationEnabled,
-    setNotificationEnabled,
-  ] = useState(false);
+  /* =========================================================
+     미확인 상담 수
+  ========================================================= */
 
   async function loadUnreadCount(
-    scopedCompanyId = companyId,
+    targetCompanyId = companyId,
   ) {
-    if (!scopedCompanyId) {
-      return;
-    }
+    if (!targetCompanyId) return;
 
     try {
-      const {
-        count,
-        error,
-      } = await supabase
+      const { count, error } = await supabase
         .from("customer_leads")
-        .select("*", {
+        .select("id", {
           count: "exact",
           head: true,
         })
-        .eq(
-          "company_id",
-          scopedCompanyId,
-        )
-        .eq(
-          "is_read",
-          false,
-        );
+        .eq("company_id", targetCompanyId)
+        .eq("is_read", false);
 
       if (error) {
-        throw error;
+        console.error("미확인 상담 수:", error);
+        return;
       }
 
-      setUnreadCount(
-        count || 0,
-      );
+      setUnreadCount(count || 0);
     } catch (error) {
-      console.error(
-        "읽지 않은 상담:",
-        error,
-      );
+      console.error("미확인 상담 수:", error);
     }
   }
+
+  /* =========================================================
+     상담 목록
+  ========================================================= */
 
   async function loadLeads(
     page = 1,
     filter = leadFilter,
-    scopedCompanyId = companyId,
   ) {
-    if (!scopedCompanyId) {
-      return;
-    }
+    if (!companyId) return;
 
     setLeadsLoading(true);
     setLeadsMessage("");
 
     try {
       const from =
-        (page - 1) *
-        LEAD_PAGE_SIZE;
+        (page - 1) * LEAD_PAGE_SIZE;
 
       const to =
-        from +
-        LEAD_PAGE_SIZE -
-        1;
+        from + LEAD_PAGE_SIZE - 1;
 
       let query = supabase
         .from("customer_leads")
         .select(
-          "*",
+          `
+          id,
+          customer_name,
+          phone,
+          region,
+          address,
+          preferred_date,
+          request_text,
+          status,
+          admin_memo,
+          is_read,
+          session_id,
+          usage_id,
+          customer_photo_path,
+          customer_photo_paths,
+          estimate_min,
+          estimate_max,
+          estimate_average,
+          final_price,
+          quote_work_details,
+          quote_material,
+          quote_note,
+          quote_created_at,
+          created_at
+        `,
           {
             count: "exact",
           },
         )
-        .eq(
-          "company_id",
-          scopedCompanyId,
-        );
+        .eq("company_id", companyId);
 
       if (
         filter &&
         filter !== "all"
       ) {
-        query =
-          query.eq(
-            "status",
-            filter,
-          );
+        query = query.eq(
+          "status",
+          filter,
+        );
       }
 
       const {
@@ -145,44 +129,23 @@ export default function useLeads({
         error,
         count,
       } = await query
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          },
-        )
-        .range(
-          from,
-          to,
-        );
+        .order("created_at", {
+          ascending: false,
+        })
+        .range(from, to);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        data || [],
-      );
-
-      setLeadTotal(
-        count || 0,
-      );
-
+      setLeads(data || []);
+      setLeadTotal(count || 0);
       setLeadPage(page);
-
-      await loadUnreadCount(
-        scopedCompanyId,
-      );
     } catch (error) {
-      console.error(
-        "상담 조회:",
-        error,
-      );
+      console.error(error);
 
       setLeadsMessage(
-        `❌ 상담 조회 오류: ${
+        `❌ 상담 목록 오류: ${
           error?.message ||
-          "실패"
+          "불러오기 실패"
         }`,
       );
     } finally {
@@ -190,12 +153,70 @@ export default function useLeads({
     }
   }
 
+  /* =========================================================
+     읽음 처리
+  ========================================================= */
+
+  async function markLeadRead(
+    lead,
+  ) {
+    if (!lead?.id) return;
+
+    if (
+      lead.is_read === true
+    ) {
+      return;
+    }
+
+    try {
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            is_read: true,
+          })
+          .eq("id", lead.id)
+          .eq(
+            "company_id",
+            companyId,
+          );
+
+      if (error) throw error;
+
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === lead.id
+            ? {
+                ...item,
+                is_read: true,
+              }
+            : item,
+        ),
+      );
+
+      setUnreadCount(
+        (current) =>
+          Math.max(
+            0,
+            current - 1,
+          ),
+      );
+    } catch (error) {
+      console.error(
+        "읽음 처리:",
+        error,
+      );
+    }
+  }
+
+  /* =========================================================
+     상담 상세 열기
+  ========================================================= */
+
   async function toggleLeadDetail(
     lead,
   ) {
-    if (!lead?.id) {
-      return;
-    }
+    if (!lead?.id) return;
 
     if (
       openLeadId ===
@@ -209,67 +230,19 @@ export default function useLeads({
       lead.id,
     );
 
-    if (!lead.is_read) {
-      try {
-        const {
-          error,
-        } = await supabase
-          .from(
-            "customer_leads",
-          )
-          .update({
-            is_read: true,
-          })
-          .eq(
-            "id",
-            lead.id,
-          )
-          .eq(
-            "company_id",
-            companyId,
-          );
-
-        if (error) {
-          throw error;
-        }
-
-        setLeads(
-          (current) =>
-            current.map(
-              (item) =>
-                item.id ===
-                lead.id
-                  ? {
-                      ...item,
-                      is_read:
-                        true,
-                    }
-                  : item,
-            ),
-        );
-
-        setUnreadCount(
-          (current) =>
-            Math.max(
-              0,
-              current - 1,
-            ),
-        );
-      } catch (error) {
-        console.error(
-          "상담 읽음 처리:",
-          error,
-        );
-      }
-    }
+    await markLeadRead(
+      lead,
+    );
   }
+
+  /* =========================================================
+     고객 사진
+  ========================================================= */
 
   async function loadLeadPhotos(
     lead,
   ) {
-    if (!lead?.id) {
-      return;
-    }
+    if (!lead?.id) return;
 
     const paths =
       getLeadPhotoPaths(
@@ -280,8 +253,22 @@ export default function useLeads({
       paths.length === 0
     ) {
       setLeadsMessage(
-        "⚠️ 이 상담에는 저장된 사진이 없습니다.",
+        "⚠️ 저장된 고객 사진이 없습니다.",
       );
+
+      return;
+    }
+
+    if (
+      Array.isArray(
+        leadPhotoUrls[
+          lead.id
+        ],
+      ) &&
+      leadPhotoUrls[
+        lead.id
+      ].length > 0
+    ) {
       return;
     }
 
@@ -312,18 +299,19 @@ export default function useLeads({
         const {
           data,
           error,
-        } = await supabase.storage
-          .from(
-            "work-photos",
-          )
-          .createSignedUrl(
-            path,
-            SIGNED_URL_SECONDS,
-          );
+        } =
+          await supabase.storage
+            .from(
+              "work-photos",
+            )
+            .createSignedUrl(
+              path,
+              SIGNED_URL_SECONDS,
+            );
 
         if (error) {
           console.error(
-            "상담 사진 Signed URL:",
+            "고객 사진 Signed URL:",
             path,
             error,
           );
@@ -352,7 +340,7 @@ export default function useLeads({
         urls.length === 0
       ) {
         throw new Error(
-          "사진을 불러올 수 없습니다.",
+          "고객 사진을 불러올 수 없습니다.",
         );
       }
 
@@ -363,11 +351,25 @@ export default function useLeads({
             urls,
         }),
       );
+
+      if (
+        urls.length <
+        paths.length
+      ) {
+        setLeadsMessage(
+          `⚠️ 고객 사진 ${paths.length}장 중 ${urls.length}장만 불러왔습니다.`,
+        );
+      }
     } catch (error) {
+      console.error(
+        "고객 사진:",
+        error,
+      );
+
       setLeadsMessage(
-        `❌ 상담 사진 오류: ${
+        `❌ 고객 사진 오류: ${
           error?.message ||
-          "실패"
+          "불러오기 실패"
         }`,
       );
     } finally {
@@ -376,6 +378,10 @@ export default function useLeads({
       );
     }
   }
+
+  /* =========================================================
+     상담 상태 변경
+  ========================================================= */
 
   async function updateLeadStatus(
     leadId,
@@ -389,48 +395,33 @@ export default function useLeads({
     }
 
     try {
-      const {
-        error,
-      } = await supabase
-        .from(
-          "customer_leads",
-        )
-        .update({
-          status,
-        })
-        .eq(
-          "id",
-          leadId,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            status,
+          })
+          .eq("id", leadId)
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        (current) =>
-          current.map(
-            (lead) =>
-              lead.id ===
-              leadId
-                ? {
-                    ...lead,
-                    status,
-                  }
-                : lead,
-          ),
-      );
-
-      setLeadsMessage(
-        "✅ 상담 상태가 변경되었습니다.",
+      setLeads((current) =>
+        current.map((lead) =>
+          lead.id === leadId
+            ? {
+                ...lead,
+                status,
+              }
+            : lead,
+        ),
       );
     } catch (error) {
       setLeadsMessage(
-        `❌ 상담 상태 변경 오류: ${
+        `❌ 상태 변경 오류: ${
           error?.message ||
           "실패"
         }`,
@@ -438,40 +429,36 @@ export default function useLeads({
     }
   }
 
+  /* =========================================================
+     상담 메모
+  ========================================================= */
+
   async function saveLeadMemo(
-    lead,
+    leadId,
+    memo,
   ) {
     if (
-      !lead?.id ||
+      !leadId ||
       !companyId
     ) {
       return;
     }
 
     try {
-      const {
-        error,
-      } = await supabase
-        .from(
-          "customer_leads",
-        )
-        .update({
-          admin_memo:
-            lead.admin_memo ||
-            null,
-        })
-        .eq(
-          "id",
-          lead.id,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            admin_memo:
+              memo || null,
+          })
+          .eq("id", leadId)
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setLeadsMessage(
         "✅ 상담 메모가 저장되었습니다.",
@@ -486,47 +473,48 @@ export default function useLeads({
     }
   }
 
+  /* =========================================================
+     상담 화면 로컬값 수정
+  ========================================================= */
+
   function updateLeadLocal(
     leadId,
     field,
     value,
   ) {
-    setLeads(
-      (current) =>
-        current.map(
-          (lead) =>
-            lead.id ===
-            leadId
-              ? {
-                  ...lead,
-                  [field]:
-                    value,
-                }
-              : lead,
-        ),
+    setLeads((current) =>
+      current.map((lead) =>
+        lead.id === leadId
+          ? {
+              ...lead,
+              [field]:
+                value,
+            }
+          : lead,
+      ),
     );
   }
+
+  /* =========================================================
+     최종 견적 저장
+  ========================================================= */
 
   async function saveFinalQuote(
     lead,
   ) {
-    if (
-      !lead?.id ||
-      !companyId
-    ) {
+    if (!lead?.id) {
       return;
     }
 
-    const price =
-      Number(
-        String(
-          lead.final_price ||
-            "",
-        ).replace(
-          /,/g,
+    const price = Number(
+      String(
+        lead.final_price ||
           "",
-        ),
-      );
+      ).replace(
+        /,/g,
+        "",
+      ),
+    );
 
     if (
       !Number.isFinite(
@@ -545,61 +533,50 @@ export default function useLeads({
       const quoteCreatedAt =
         new Date().toISOString();
 
-      const {
-        error,
-      } = await supabase
-        .from(
-          "customer_leads",
-        )
-        .update({
-          final_price:
-            price,
+      const { error } =
+        await supabase
+          .from("customer_leads")
+          .update({
+            final_price:
+              price,
 
-          quote_work_details:
-            lead.quote_work_details ||
-            null,
+            quote_work_details:
+              lead.quote_work_details ||
+              null,
 
-          quote_material:
-            lead.quote_material ||
-            null,
+            quote_material:
+              lead.quote_material ||
+              null,
 
-          quote_note:
-            lead.quote_note ||
-            null,
+            quote_note:
+              lead.quote_note ||
+              null,
 
-          quote_created_at:
-            quoteCreatedAt,
-        })
-        .eq(
-          "id",
-          lead.id,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
+            quote_created_at:
+              quoteCreatedAt,
+          })
+          .eq("id", lead.id)
+          .eq(
+            "company_id",
+            companyId,
+          );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setLeads(
-        (current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              lead.id
-                ? {
-                    ...item,
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === lead.id
+            ? {
+                ...item,
 
-                    final_price:
-                      price,
+                final_price:
+                  price,
 
-                    quote_created_at:
-                      quoteCreatedAt,
-                  }
-                : item,
-          ),
+                quote_created_at:
+                  quoteCreatedAt,
+              }
+            : item,
+        ),
       );
 
       setLeadsMessage(
@@ -615,106 +592,10 @@ export default function useLeads({
     }
   }
 
-  /*
-   * 신규 상담 실시간 수신 처리
-   */
-  function handleRealtimeLead(
-    lead,
-    scopedCompanyId = companyId,
-  ) {
-    if (
-      !lead ||
-      !scopedCompanyId ||
-      lead.company_id !==
-        scopedCompanyId
-    ) {
-      return;
-    }
+  /* =========================================================
+     브라우저 알림 활성화
+  ========================================================= */
 
-    setUnreadCount(
-      (current) =>
-        current + 1,
-    );
-
-    setNewLeadAlert({
-      id: lead.id,
-
-      customer_name:
-        lead.customer_name,
-
-      phone:
-        lead.phone,
-
-      region:
-        lead.region,
-
-      created_at:
-        lead.created_at,
-    });
-
-    /*
-     * 브라우저 제목 표시
-     */
-    if (
-      typeof document !==
-      "undefined"
-    ) {
-      document.title =
-        `🔴 신규 상담 | ${companyName}`;
-    }
-
-    /*
-     * 휴대폰 진동
-     */
-    try {
-      navigator.vibrate?.([
-        250,
-        120,
-        250,
-      ]);
-    } catch {}
-
-    /*
-     * 브라우저 알림
-     */
-    try {
-      if (
-        typeof Notification !==
-          "undefined" &&
-        Notification.permission ===
-          "granted"
-      ) {
-        new Notification(
-          "🔔 신규 상담이 들어왔습니다.",
-          {
-            body:
-              `${lead.customer_name || "고객"} ${
-                lead.phone || ""
-              }`,
-          },
-        );
-      }
-    } catch {}
-
-    /*
-     * 현재 상담 탭을 보고 있다면
-     * 즉시 상담목록 갱신
-     */
-    if (
-      activeTabRef?.current ===
-      "leads"
-    ) {
-      loadLeads(
-        1,
-        leadFilter,
-        scopedCompanyId,
-      );
-    }
-  }
-
-  /*
-   * 브라우저 알림 권한 활성화
-   */
   async function enableNotifications() {
     try {
       if (
@@ -771,9 +652,83 @@ export default function useLeads({
     }
   }
 
-  /*
-   * 관리자 초기화 시 현재 알림 권한 반영
-   */
+  /* =========================================================
+     신규 상담 실시간 처리
+  ========================================================= */
+
+  function handleRealtimeLead(
+    lead,
+    isLeadsTabOpen = false,
+  ) {
+    if (!lead) return;
+
+    setUnreadCount(
+      (current) =>
+        current + 1,
+    );
+
+    setNewLeadAlert({
+      id: lead.id,
+      customer_name:
+        lead.customer_name,
+      phone: lead.phone,
+      region: lead.region,
+      created_at:
+        lead.created_at,
+    });
+
+    if (
+      typeof document !==
+      "undefined"
+    ) {
+      document.title =
+        `🔴 신규 상담 | ${companyName}`;
+    }
+
+    try {
+      navigator.vibrate?.([
+        250,
+        120,
+        250,
+      ]);
+    } catch {}
+
+    try {
+      if (
+        typeof Notification !==
+          "undefined" &&
+        Notification.permission ===
+          "granted"
+      ) {
+        new Notification(
+          "🔔 신규 상담이 들어왔습니다.",
+          {
+            body: `${
+              lead.customer_name ||
+              "고객"
+            } ${
+              lead.phone ||
+              ""
+            }`,
+          },
+        );
+      }
+    } catch {}
+
+    if (
+      isLeadsTabOpen
+    ) {
+      loadLeads(
+        1,
+        leadFilter,
+      );
+    }
+  }
+
+  /* =========================================================
+     이미 허용된 브라우저 알림 상태 반영
+  ========================================================= */
+
   function syncNotificationPermission() {
     if (
       typeof Notification !==
@@ -784,14 +739,12 @@ export default function useLeads({
       setNotificationEnabled(
         true,
       );
-
-      return;
     }
-
-    setNotificationEnabled(
-      false,
-    );
   }
+
+  /* =========================================================
+     페이지 수
+  ========================================================= */
 
   const totalLeadPages =
     Math.max(
@@ -802,10 +755,12 @@ export default function useLeads({
       ),
     );
 
+  /* =========================================================
+     외부 사용
+  ========================================================= */
+
   return {
     leads,
-    setLeads,
-
     leadsLoading,
 
     leadsMessage,
@@ -819,10 +774,8 @@ export default function useLeads({
     setLeadFilter,
 
     unreadCount,
-    setUnreadCount,
 
     openLeadId,
-    setOpenLeadId,
 
     leadPhotoUrls,
     leadPhotoLoadingId,
@@ -831,21 +784,24 @@ export default function useLeads({
     setNewLeadAlert,
 
     notificationEnabled,
-    setNotificationEnabled,
 
     loadUnreadCount,
     loadLeads,
 
+    markLeadRead,
     toggleLeadDetail,
+
     loadLeadPhotos,
 
     updateLeadStatus,
+
     saveLeadMemo,
     updateLeadLocal,
     saveFinalQuote,
 
-    handleRealtimeLead,
     enableNotifications,
+
+    handleRealtimeLead,
     syncNotificationPermission,
   };
-}
+          }

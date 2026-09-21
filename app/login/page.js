@@ -21,15 +21,11 @@ export default function LoginPage() {
       throw error;
     }
 
-    if (!data) {
+    if (!data || data.length === 0) {
       return null;
     }
 
-    if (Array.isArray(data)) {
-      return data[0] || null;
-    }
-
-    return data;
+    return data[0];
   }
 
   async function ensureCompany(user) {
@@ -38,97 +34,30 @@ export default function LoginPage() {
     }
 
     /*
-     * ============================================================
-     * 1. 가장 먼저 서버 RPC로 현재 사용자의 회사 확인
-     * ============================================================
+     * 1. 현재 로그인한 사용자의 업체 연결 확인
      *
-     * 이미 회사에 연결된 계정이면
-     * 절대로 create_my_company를 다시 호출하지 않는다.
+     * 브라우저에서 profiles / companies를 직접 조회하지 않고
+     * get_my_company() RPC를 사용한다.
      */
+    const existingCompany = await getMyCompany();
 
-    try {
-      const existingCompany = await getMyCompany();
-
-      if (existingCompany) {
-        const isActive =
-          existingCompany.is_active ??
-          existingCompany.profile_is_active ??
-          existingCompany.company_is_active ??
-          true;
-
-        if (isActive === false) {
-          throw new Error("현재 사용이 중지된 업체 계정입니다.");
-        }
-
-        const companyId =
-          existingCompany.company_id ||
-          existingCompany.id ||
-          null;
-
-        if (companyId) {
-          return {
-            companyId,
-            companyName:
-              existingCompany.company_name ||
-              existingCompany.name ||
-              "",
-            slug:
-              existingCompany.slug ||
-              existingCompany.company_slug ||
-              "",
-            created: false,
-          };
-        }
-      }
-    } catch (rpcError) {
-      console.warn(
-        "get_my_company 확인 실패, profiles 조회로 재확인:",
-        rpcError
-      );
-    }
-
-    /*
-     * ============================================================
-     * 2. profiles 테이블에서도 다시 확인
-     * ============================================================
-     */
-
-    const {
-      data: existingProfile,
-      error: profileError,
-    } = await supabase
-      .from("profiles")
-      .select(
-        "id, company_id, name, role, is_active"
-      )
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    if (existingProfile?.company_id) {
-      if (existingProfile.is_active === false) {
-        throw new Error(
-          "현재 사용이 중지된 업체 계정입니다."
-        );
+    if (existingCompany?.company_id) {
+      if (existingCompany.is_active === false) {
+        throw new Error("현재 사용이 중지된 업체 계정입니다.");
       }
 
       return {
-        companyId: existingProfile.company_id,
-        companyName: "",
-        slug: "",
+        companyId: existingCompany.company_id,
+        companyName: existingCompany.company_name,
+        companySlug: existingCompany.company_slug,
         created: false,
       };
     }
 
     /*
-     * ============================================================
-     * 3. 회사가 없는 신규 가입자만 회사 생성
-     * ============================================================
+     * 2. 아직 업체에 연결되지 않은 신규 가입자라면
+     * Auth metadata에서 가입 정보를 읽는다.
      */
-
     const metadata = user.user_metadata || {};
 
     const companyName = String(
@@ -161,23 +90,17 @@ export default function LoginPage() {
     }
 
     /*
-     * ============================================================
-     * 4. 신규 회사 생성
-     * ============================================================
+     * 3. 신규 업체 생성
      */
-
     const {
       data: companyId,
       error: companyError,
-    } = await supabase.rpc(
-      "create_my_company",
-      {
-        p_company_name: companyName,
-        p_slug: companySlug,
-        p_owner_name: ownerName || null,
-        p_phone: phone || null,
-      }
-    );
+    } = await supabase.rpc("create_my_company", {
+      p_company_name: companyName,
+      p_slug: companySlug,
+      p_owner_name: ownerName || null,
+      p_phone: phone || null,
+    });
 
     /*
      * create_my_company 실행 중
@@ -188,92 +111,47 @@ export default function LoginPage() {
      */
 
     if (companyError) {
-      console.warn(
-        "create_my_company 오류, 회사 연결 상태 재확인:",
-        companyError
-      );
-
       /*
-       * RPC 재확인
+       * RPC 실행 과정에서 이미 업체가 연결되었다는 오류가 발생해도
+       * 실제 연결 여부를 get_my_company()로 다시 확인한다.
        */
+      const retryCompany = await getMyCompany();
 
-      try {
-        const retryCompany = await getMyCompany();
-
-        if (retryCompany) {
-          const retryCompanyId =
-            retryCompany.company_id ||
-            retryCompany.id ||
-            null;
-
-          const retryActive =
-            retryCompany.is_active ??
-            retryCompany.profile_is_active ??
-            retryCompany.company_is_active ??
-            true;
-
-          if (retryActive === false) {
-            throw new Error(
-              "현재 사용이 중지된 업체 계정입니다."
-            );
-          }
-
-          if (retryCompanyId) {
-            return {
-              companyId: retryCompanyId,
-              companyName:
-                retryCompany.company_name ||
-                retryCompany.name ||
-                "",
-              slug:
-                retryCompany.slug ||
-                retryCompany.company_slug ||
-                "",
-              created: false,
-            };
-          }
-        }
-      } catch (retryRpcError) {
-        console.warn(
-          "get_my_company 재확인 실패:",
-          retryRpcError
-        );
-      }
-
-      /*
-       * profiles에서도 마지막으로 확인
-       */
-
-      const {
-        data: retryProfile,
-        error: retryProfileError,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "company_id, is_active"
-        )
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (
-        !retryProfileError &&
-        retryProfile?.company_id
-      ) {
-        if (retryProfile.is_active === false) {
-          throw new Error(
-            "현재 사용이 중지된 업체 계정입니다."
-          );
+      if (retryCompany?.company_id) {
+        if (retryCompany.is_active === false) {
+          throw new Error("현재 사용이 중지된 업체 계정입니다.");
         }
 
         return {
-          companyId: retryProfile.company_id,
-          companyName: "",
-          slug: "",
+          companyId: retryCompany.company_id,
+          companyName: retryCompany.company_name,
+          companySlug: retryCompany.company_slug,
           created: false,
         };
       }
 
       throw companyError;
+    }
+
+    /*
+     * create_my_company()가 UUID를 반환하지 않는 구조여도
+     * 실제 회사 연결을 다시 확인해서 성공 여부를 판단한다.
+     */
+    const createdCompany = await getMyCompany();
+
+    if (createdCompany?.company_id) {
+      if (createdCompany.is_active === false) {
+        throw new Error("현재 사용이 중지된 업체 계정입니다.");
+      }
+
+      return {
+        companyId: createdCompany.company_id,
+        companyName:
+          createdCompany.company_name || companyName,
+        companySlug:
+          createdCompany.company_slug || companySlug,
+        created: true,
+      };
     }
 
     if (!companyId) {
@@ -285,7 +163,7 @@ export default function LoginPage() {
     return {
       companyId,
       companyName,
-      slug: companySlug,
+      companySlug,
       created: true,
     };
   }
@@ -293,7 +171,9 @@ export default function LoginPage() {
   async function handleLogin(event) {
     event.preventDefault();
 
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
     setMessage("");
     setMessageType("error");
@@ -320,18 +200,13 @@ export default function LoginPage() {
 
     try {
       /*
-       * ============================================================
-       * 1. Supabase 로그인
-       * ============================================================
+       * 1. Supabase Auth 로그인
        */
-
-      const {
-        data,
-        error,
-      } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
       if (error) {
         throw error;
@@ -346,13 +221,9 @@ export default function LoginPage() {
       }
 
       /*
-       * ============================================================
-       * 2. 회사 연결 확인
-       * ============================================================
+       * 2. 기존 업체 연결 확인 또는 신규 업체 생성
        */
-
-      const result =
-        await ensureCompany(user);
+      const result = await ensureCompany(user);
 
       if (!result?.companyId) {
         throw new Error(
@@ -361,18 +232,15 @@ export default function LoginPage() {
       }
 
       /*
-       * ============================================================
-       * 3. 신규 회사 생성된 경우
-       * ============================================================
+       * 3. 로그인 성공
+       *
+       * 업체 로그인 성공 후
+       * 관리자 페이지로 이동한다.
        */
-
       if (result.created) {
         setMessageType("success");
-
         setMessage(
-          `${
-            result.companyName || "업체"
-          } 등록이 완료되었습니다. 관리자 페이지로 이동합니다.`
+          `${result.companyName || "업체"} 등록이 완료되었습니다.`
         );
 
         setTimeout(() => {
@@ -383,16 +251,15 @@ export default function LoginPage() {
         return;
       }
 
-      /*
-       * ============================================================
-       * 4. 기존 업체 계정
-       * ============================================================
-       *
-       * 바로 관리자 페이지 이동
-       */
+      setMessageType("success");
+      setMessage(
+        `${result.companyName || "업체"} 계정으로 로그인되었습니다.`
+      );
 
-      router.replace("/admin");
-      router.refresh();
+      setTimeout(() => {
+        router.replace("/admin");
+        router.refresh();
+      }, 700);
     } catch (error) {
       console.error(
         "업체 로그인 오류:",
@@ -404,12 +271,7 @@ export default function LoginPage() {
         "로그인 중 오류가 발생했습니다.";
 
       const lowerMessage =
-        String(errorMessage)
-          .toLowerCase();
-
-      /*
-       * Supabase 로그인 오류 한글 처리
-       */
+        errorMessage.toLowerCase();
 
       if (
         lowerMessage.includes(
@@ -567,9 +429,7 @@ export default function LoginPage() {
             type="email"
             value={email}
             onChange={(event) =>
-              setEmail(
-                event.target.value
-              )
+              setEmail(event.target.value)
             }
             placeholder="example@email.com"
             autoComplete="email"
@@ -586,9 +446,7 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(event) =>
-              setPassword(
-                event.target.value
-              )
+              setPassword(event.target.value)
             }
             placeholder="비밀번호"
             autoComplete="current-password"
@@ -603,13 +461,11 @@ export default function LoginPage() {
                 padding: "12px",
                 borderRadius: "10px",
                 background:
-                  messageType ===
-                  "success"
+                  messageType === "success"
                     ? "#ecfdf5"
                     : "#fef2f2",
                 color:
-                  messageType ===
-                  "success"
+                  messageType === "success"
                     ? "#047857"
                     : "#b91c1c",
                 fontSize: "12px",

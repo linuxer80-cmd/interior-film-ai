@@ -23,6 +23,57 @@ function getSupabase() {
   );
 }
 
+async function getRequestCompanyId(request) {
+  const authHeader = request.headers.get("authorization") || "";
+
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
+  const accessToken = authHeader.slice(7).trim();
+
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
+  const userSupabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    },
+  );
+
+  const { data, error } =
+    await userSupabase.rpc("get_my_company");
+
+  if (error) {
+    throw new Error(
+      `업체 정보 조회 실패: ${error.message || "알 수 없는 오류"}`,
+    );
+  }
+
+  const company = Array.isArray(data) ? data[0] : data;
+
+  if (!company?.company_id) {
+    throw new Error("연결된 업체 정보를 찾을 수 없습니다.");
+  }
+
+  if (company?.is_active === false) {
+    throw new Error("비활성화된 계정입니다.");
+  }
+
+  return company.company_id;
+}
+
 /* =========================================================
    OpenAI 응답 텍스트 추출
 ========================================================= */
@@ -739,6 +790,7 @@ async function analyzePhoto(
 
 async function getRemainingCount(
   supabase,
+  companyId,
 ) {
   const {
     count,
@@ -752,6 +804,7 @@ async function getRemainingCount(
         head: true,
       },
     )
+    .eq("company_id", companyId)
     .is(
       "structure_analyzed_at",
       null,
@@ -803,6 +856,9 @@ export async function POST(
 
     const supabase =
       getSupabase();
+
+    const companyId =
+      await getRequestCompanyId(request);
 
     let body = {};
 
@@ -873,7 +929,8 @@ export async function POST(
           count: "exact",
           head: true,
         },
-      );
+      )
+      .eq("company_id", companyId);
 
     if (totalError) {
       throw totalError;
@@ -887,6 +944,7 @@ export async function POST(
     const remainingBefore =
       await getRemainingCount(
         supabase,
+        companyId,
       );
 
     if (
@@ -935,6 +993,7 @@ export async function POST(
         structure_analyzed_at,
         created_at
       `)
+      .eq("company_id", companyId)
       .is(
         "structure_analyzed_at",
         null,
@@ -1046,6 +1105,10 @@ export async function POST(
           .eq(
             "id",
             photo.id,
+          )
+          .eq(
+            "company_id",
+            companyId,
           );
 
         if (updateError) {
@@ -1149,6 +1212,7 @@ export async function POST(
     const remainingAfter =
       await getRemainingCount(
         supabase,
+        companyId,
       );
 
     const completed =

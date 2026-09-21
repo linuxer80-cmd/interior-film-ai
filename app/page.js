@@ -4,7 +4,6 @@ export default function Home() {
   return (
     <CustomerEstimatePage
       companySlug="gibun"
-      fallbackCompanyName="필름장이"
     />
   );
 }

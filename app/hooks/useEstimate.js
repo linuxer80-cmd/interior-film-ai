@@ -17,13 +17,10 @@ import {
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
-export default function useEstimate({
-  companySlug = null,
-} = {}) {
-  const normalizedCompanySlug =
-    String(companySlug || "")
-      .trim()
-      .toLowerCase();
+export default function useEstimate({ companySlug = null } = {}) {
+  const normalizedCompanySlug = String(companySlug || "")
+    .trim()
+    .toLowerCase();
 
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -398,14 +395,11 @@ export default function useEstimate({
   async function findSimilarCases(
     group
   ) {
-    if (
-      !normalizedCompanySlug
-    ) {
-      /*
-       * 기존 루트(/)는 당분간 유지하지만,
-       * 업체가 지정되지 않은 상태에서는
-       * 다른 업체의 시공 데이터를 임의로 검색하지 않습니다.
-       */
+    /*
+     * 회사 slug가 없으면
+     * 절대로 공용/다른 업체 데이터를 검색하지 않습니다.
+     */
+    if (!normalizedCompanySlug) {
       return [];
     }
 
@@ -495,6 +489,12 @@ export default function useEstimate({
       );
     }
 
+    /*
+     * 중요:
+     * company_slug를 RPC에 전달하여
+     * 해당 업체의 시공 데이터만 검색합니다.
+     */
+
     const {
       data,
       error,
@@ -512,6 +512,9 @@ export default function useEstimate({
             MATCH_THRESHOLD,
 
           match_count: 20,
+
+          company_slug:
+            normalizedCompanySlug,
         }
       );
 
@@ -619,6 +622,7 @@ export default function useEstimate({
          * 유사도가 높은 데이터에
          * 더 큰 가중치를 부여합니다.
          */
+
         const weight =
           similarity *
           similarity;
@@ -672,8 +676,7 @@ export default function useEstimate({
         )
       );
 
-    let confidence =
-      "낮음";
+    let confidence =      "낮음";
 
     if (
       cases.length >= 5 &&
@@ -732,6 +735,12 @@ export default function useEstimate({
           "image",
           images[index].file
         );
+
+        /*
+         * 중요:
+         * 사진 저장 API에도
+         * 현재 업체 slug를 전달합니다.
+         */
 
         if (
           normalizedCompanySlug
@@ -904,6 +913,14 @@ export default function useEstimate({
                   )
                     ? photoPaths
                     : [],
+
+                /*
+                 * 사용기록도 현재 업체에 귀속
+                 */
+
+                company_slug:
+                  normalizedCompanySlug ||
+                  null,
               }),
           }
         );
@@ -939,6 +956,7 @@ export default function useEstimate({
        * 로그 저장 오류가 나도
        * AI 견적 자체는 유지합니다.
        */
+
       return null;
     }
   }
@@ -1056,6 +1074,10 @@ export default function useEstimate({
 
       /*
        * 3. 각 부위 유사사례 검색
+       *
+       * findSimilarCases 내부에서
+       * company_slug 기준으로
+       * 해당 업체 데이터만 검색합니다.
        */
 
       const completedGroups =
@@ -1325,4 +1347,4 @@ export default function useEstimate({
     resetEstimateResults,
     readJsonSafely,
   };
-                }
+  }

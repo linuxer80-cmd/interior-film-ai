@@ -6,6 +6,10 @@ import { supabase } from "../../../lib/supabase";
 export default function useCompanySettings({
   companyId,
 }) {
+  /* =========================================================
+     AI 유사도 설정
+  ========================================================= */
+
   const [
     similarityThreshold,
     setSimilarityThreshold,
@@ -21,17 +25,18 @@ export default function useCompanySettings({
     setSettingLoading,
   ] = useState(false);
 
-  /*
-   * 업체 설정 불러오기
-   */
-  async function loadSettings(
-    scopedCompanyId = companyId,
-  ) {
-    try {
-      if (!scopedCompanyId) {
-        return;
-      }
+  /* =========================================================
+     설정 불러오기
+  ========================================================= */
 
+  async function loadSettings(
+    targetCompanyId = companyId,
+  ) {
+    if (!targetCompanyId) {
+      return;
+    }
+
+    try {
       const {
         data,
         error,
@@ -42,9 +47,9 @@ export default function useCompanySettings({
         )
         .eq(
           "company_id",
-          scopedCompanyId,
+          targetCompanyId,
         )
-        .maybeSingle();
+        .single();
 
       if (error) {
         throw error;
@@ -70,10 +75,18 @@ export default function useCompanySettings({
     }
   }
 
-  /*
-   * AI 유사도 기준 저장
-   */
+  /* =========================================================
+     AI 유사도 기준 저장
+  ========================================================= */
+
   async function saveSimilaritySetting() {
+    if (!companyId) {
+      setSettingMessage(
+        "❌ 업체 정보를 확인할 수 없습니다.",
+      );
+      return;
+    }
+
     setSettingLoading(true);
     setSettingMessage("");
 
@@ -92,12 +105,6 @@ export default function useCompanySettings({
       ) {
         throw new Error(
           "유사도 기준은 0~1 사이 숫자로 입력해주세요.",
-        );
-      }
-
-      if (!companyId) {
-        throw new Error(
-          "회사 정보를 확인할 수 없습니다.",
         );
       }
 
@@ -127,6 +134,11 @@ export default function useCompanySettings({
         )}% 저장 완료`,
       );
     } catch (error) {
+      console.error(
+        "설정 저장:",
+        error,
+      );
+
       setSettingMessage(
         `❌ 설정 저장 오류: ${
           error?.message ||
@@ -137,6 +149,10 @@ export default function useCompanySettings({
       setSettingLoading(false);
     }
   }
+
+  /* =========================================================
+     외부 사용
+  ========================================================= */
 
   return {
     similarityThreshold,
