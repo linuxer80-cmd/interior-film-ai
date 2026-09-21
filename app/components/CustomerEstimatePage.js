@@ -29,6 +29,7 @@ export default function CustomerEstimatePage({
   const [tenantLoading, setTenantLoading] = useState(
     Boolean(companySlug)
   );
+
   const [tenantError, setTenantError] = useState("");
   const [company, setCompany] = useState(null);
   const [companySettings, setCompanySettings] = useState(null);
@@ -210,6 +211,80 @@ export default function CustomerEstimatePage({
     leadMessage,
     setLeadMessage,
   ] = useState("");
+
+  /*
+   * 중요:
+   * 모든 React Hook 호출이 끝난 뒤에만
+   * 로딩/오류 화면을 return 합니다.
+   */
+
+  if (tenantLoading) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+          background: "#f8fafc",
+          color: "#111827",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ fontWeight: "800" }}>
+          업체 정보를 불러오고 있습니다...
+        </div>
+      </main>
+    );
+  }
+
+  if (tenantError) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+          background: "#f8fafc",
+          color: "#111827",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "520px",
+            padding: "22px",
+            border: "1px solid #fecaca",
+            borderRadius: "16px",
+            background: "#ffffff",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "8px",
+              fontSize: "18px",
+              fontWeight: "900",
+            }}
+          >
+            업체 페이지를 열 수 없습니다.
+          </div>
+
+          <div
+            style={{
+              color: "#b91c1c",
+              fontSize: "14px",
+              lineHeight: 1.6,
+            }}
+          >
+            {tenantError}
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   /*
    * =========================================================
@@ -1191,7 +1266,11 @@ export default function CustomerEstimatePage({
         </div>
 
         <Link
-          href="/samples"
+          href={
+  companySlug
+    ? `/samples?company=${encodeURIComponent(companySlug)}`
+    : "/samples"
+}
           style={{
             padding: "11px",
             textAlign: "center",

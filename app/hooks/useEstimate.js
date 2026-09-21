@@ -327,44 +327,58 @@ export default function useEstimate({ companySlug = null } = {}) {
   /*
    * =========================================================
    * Private Storage 이미지 Signed URL
+   * 서버에서 업체 소속을 확인한 뒤 발급
    * =========================================================
    */
 
-  async function getSignedImageUrl(
-    path
-  ) {
+  async function getSignedImageUrl(path) {
     if (!path) {
       return null;
     }
 
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.storage
-          .from(
-            "work-photos"
-          )
-          .createSignedUrl(
-            path,
-            60 * 60
-          );
+    if (!normalizedCompanySlug) {
+      return null;
+    }
 
-      if (error) {
+    try {
+      const response = await fetch(
+        "/api/similar-photo",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            company_slug:
+              normalizedCompanySlug,
+            path,
+          }),
+        }
+      );
+
+      const result =
+        await readJsonSafely(response);
+
+      if (
+        !response.ok ||
+        !result?.success ||
+        !result?.signed_url
+      ) {
         console.error(
-          error
+          "유사 시공사진 URL 생성 실패:",
+          result?.error
         );
 
         return null;
       }
 
-      return (
-        data?.signedUrl ||
-        null
-      );
+      return result.signed_url;
     } catch (error) {
       console.error(
+        "유사 시공사진 URL 생성 오류:",
         error
       );
 
@@ -688,9 +702,8 @@ export default function useEstimate({ companySlug = null } = {}) {
         cases.length,
       confidence,
     };
-  }
-
-  /*
+              }
+    /*
    * =========================================================
    * 자동견적 사진 저장
    * =========================================================
@@ -1110,6 +1123,10 @@ export default function useEstimate({ companySlug = null } = {}) {
         /*
          * 고객 화면에는
          * 가장 유사한 2건을 표시
+         *
+         * getSignedImageUrl은 이제
+         * /api/similar-photo 서버 API를 통해
+         * 업체 소속 확인 후 Signed URL을 받습니다.
          */
 
         const similarItems =

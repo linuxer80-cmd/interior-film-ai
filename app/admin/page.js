@@ -16,7 +16,6 @@ import {
 
 /* =========================================================
    화면 컴포넌트
-========================================================= */
 
 import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
@@ -30,55 +29,6 @@ import SiteManagementTab from "./SiteManagementTab";
 
 /* =========================================================
    관리자 hooks
-========================================================= */
-
-import useAdminCompany from "./hooks/useAdminCompany";
-import useJobs from "./hooks/useJobs";
-import useJobRegister from "./hooks/useJobRegister";
-import useStructureAnalysis from "./hooks/useStructureAnalysis";
-import useCompanySettings from "./hooks/useCompanySettings";
-import useUsage from "./hooks/useUsage";
-import useLeads from "./hooks/useLeads";
-import useWorkers from "./hooks/useWorkers";
-
-/* =========================================================
-   공용 현장 hook
-========================================================= */
-
-import useSites from "../hooks/useSites";
-
-export default function AdminPage() {
-  /* =========================================================
-     관리자 / 업체
-  ========================================================= */
-
-  const {
-    currentCompany,
-    adminReady,
-    companyId,
-    companyName,
-  } = useAdminCompany();
-
-  /* =========================================================
-     탭
-  ========================================================= */
-
-  const [
-    activeTab,
-    setActiveTab,
-  ] = useState("jobs");
-
-  const activeTabRef =
-    useRef("jobs");
-
-  /* =========================================================
-     사진 크게 보기
-  ========================================================= */
-
-  const [
-    previewPhoto,
-    setPreviewPhoto,
-  ] = useState(null);
 
   /* =========================================================
      시공 DB
@@ -386,6 +336,7 @@ export default function AdminPage() {
     ) {
       loadUsageStats();
     }
+  }
 
     if (
       tab === "leads"
@@ -395,7 +346,6 @@ export default function AdminPage() {
         leadFilter,
       );
     }
-  }
 
   /* =========================================================
      activeTab ref 동기화
@@ -537,8 +487,10 @@ export default function AdminPage() {
           "0 auto",
         padding:
           "16px 14px 80px",
+
         background:
           "#f8fafc",
+
         minHeight:
           "100vh",
         color:
@@ -570,7 +522,7 @@ export default function AdminPage() {
           fontSize:
             "24px",
           margin:
-            "8px 0 16px",
+            "8px 0 12px",
         }}
       >
         {companyName} 관리자
@@ -696,6 +648,7 @@ export default function AdminPage() {
           jobPhotos={
             jobPhotos
           }
+
           jobPhotoUrls={
             jobPhotoUrls
           }
@@ -718,8 +671,9 @@ export default function AdminPage() {
           startPhotoEdit={
             startPhotoEdit
           }
-          deletePhoto={
-            deletePhoto
+
+          editingPhotoId={
+            editingPhotoId
           }
 
           editPhotoType={
@@ -1100,7 +1054,7 @@ export default function AdminPage() {
       )}
 
       {/* =====================================================
-          사진 크게 보기
+          사진 확대
       ===================================================== */}
 
       <PhotoPreviewModal
@@ -1113,4 +1067,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}
+              }

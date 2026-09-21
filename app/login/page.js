@@ -78,6 +78,11 @@ export default function LoginPage() {
       .trim()
       .toLowerCase();
 
+    /*
+     * 회원가입 정보가 없는 일반 계정이라면
+     * 자동으로 회사를 만들면 안 된다.
+     */
+
     if (!companyName || !companySlug) {
       throw new Error(
         "업체 가입 정보가 없습니다. 업체 회원가입 페이지에서 가입한 계정인지 확인해주세요."
@@ -96,6 +101,14 @@ export default function LoginPage() {
       p_owner_name: ownerName || null,
       p_phone: phone || null,
     });
+
+    /*
+     * create_my_company 실행 중
+     * 이미 회사에 연결됐다는 오류가 발생할 수 있다.
+     *
+     * 이 경우 실패 처리하지 않고
+     * 다시 회사 연결 상태를 확인한다.
+     */
 
     if (companyError) {
       /*
@@ -142,7 +155,9 @@ export default function LoginPage() {
     }
 
     if (!companyId) {
-      throw new Error("업체 정보를 생성하지 못했습니다.");
+      throw new Error(
+        "업체 정보를 생성하지 못했습니다."
+      );
     }
 
     return {
@@ -163,15 +178,21 @@ export default function LoginPage() {
     setMessage("");
     setMessageType("error");
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = email
+      .trim()
+      .toLowerCase();
 
     if (!cleanEmail) {
-      setMessage("이메일을 입력해주세요.");
+      setMessage(
+        "이메일을 입력해주세요."
+      );
       return;
     }
 
     if (!password) {
-      setMessage("비밀번호를 입력해주세요.");
+      setMessage(
+        "비밀번호를 입력해주세요."
+      );
       return;
     }
 
@@ -225,7 +246,7 @@ export default function LoginPage() {
         setTimeout(() => {
           router.replace("/admin");
           router.refresh();
-        }, 1200);
+        }, 1000);
 
         return;
       }
@@ -240,7 +261,10 @@ export default function LoginPage() {
         router.refresh();
       }, 700);
     } catch (error) {
-      console.error("업체 로그인 오류:", error);
+      console.error(
+        "업체 로그인 오류:",
+        error
+      );
 
       let errorMessage =
         error?.message ||
@@ -265,6 +289,58 @@ export default function LoginPage() {
       ) {
         errorMessage =
           "이메일 인증이 필요합니다. 가입한 이메일의 인증 메일을 확인해주세요.";
+      }
+
+      /*
+       * 이미 회사에 연결된 계정 오류가 발생한 경우
+       * 마지막으로 로그인 상태를 확인해서 관리자 이동 시도
+       */
+
+      if (
+        lowerMessage.includes(
+          "already"
+        ) &&
+        lowerMessage.includes(
+          "company"
+        )
+      ) {
+        try {
+          const company =
+            await getMyCompany();
+
+          if (company) {
+            router.replace("/admin");
+            router.refresh();
+            return;
+          }
+        } catch (finalCheckError) {
+          console.error(
+            "최종 회사 확인 실패:",
+            finalCheckError
+          );
+        }
+      }
+
+      if (
+        errorMessage.includes(
+          "이미 회사에 연결"
+        )
+      ) {
+        try {
+          const company =
+            await getMyCompany();
+
+          if (company) {
+            router.replace("/admin");
+            router.refresh();
+            return;
+          }
+        } catch (finalCheckError) {
+          console.error(
+            "최종 회사 확인 실패:",
+            finalCheckError
+          );
+        }
       }
 
       setMessageType("error");
@@ -337,7 +413,8 @@ export default function LoginPage() {
           onSubmit={handleLogin}
           style={{
             padding: "18px",
-            border: "1px solid #e5e7eb",
+            border:
+              "1px solid #e5e7eb",
             borderRadius: "18px",
             background: "#ffffff",
             boxShadow:
@@ -357,6 +434,7 @@ export default function LoginPage() {
             placeholder="example@email.com"
             autoComplete="email"
             autoCapitalize="none"
+            disabled={loading}
             style={inputStyle}
           />
 
@@ -372,6 +450,7 @@ export default function LoginPage() {
             }
             placeholder="비밀번호"
             autoComplete="current-password"
+            disabled={loading}
             style={inputStyle}
           />
 
@@ -474,7 +553,9 @@ export default function LoginPage() {
   );
 }
 
-function FieldLabel({ children }) {
+function FieldLabel({
+  children,
+}) {
   return (
     <label
       style={{
@@ -494,7 +575,8 @@ const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
   padding: "13px 12px",
-  border: "1px solid #d1d5db",
+  border:
+    "1px solid #d1d5db",
   borderRadius: "11px",
   outline: "none",
   background: "#ffffff",

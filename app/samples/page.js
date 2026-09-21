@@ -249,12 +249,6 @@ function getProductLine(productCode) {
 
 /*
  * 제품의 대분류 찾기
- *
- * LX 등:
- * category_key 사용
- *
- * 기존 현대보닥:
- * 제품번호 prefix 사용
  */
 function getProductCategory(product) {
   const storedCategory = String(
@@ -272,10 +266,6 @@ function getProductCategory(product) {
   return line?.category || "";
 }
 
-/*
- * 제품 라인 이름
- * 상세 팝업에서만 사용
- */
 function getProductLineLabel(product) {
   const storedLine = String(
     product?.pattern_line || ""
@@ -292,9 +282,6 @@ function getProductLineLabel(product) {
   return line?.label || "";
 }
 
-/*
- * 카테고리 한글명
- */
 function getCategoryLabel(categoryKey) {
   return (
     CATEGORIES.find(
@@ -304,9 +291,6 @@ function getCategoryLabel(categoryKey) {
   );
 }
 
-/*
- * 톤 표시
- */
 function getToneLabel(value) {
   const labels = {
     라이트톤: "라이트",
@@ -318,9 +302,6 @@ function getToneLabel(value) {
   return labels[value] || value;
 }
 
-/*
- * 제품 카드 아래 설명
- */
 function getProductDescription(product) {
   return (
     product?.product_name ||
@@ -332,9 +313,6 @@ function getProductDescription(product) {
   );
 }
 
-/*
- * 샘플 이미지
- */
 function SampleImage({
   product,
   large = false,
@@ -369,9 +347,6 @@ function SampleImage({
     );
   }
 
-  /*
-   * 이미지가 없으면 color_hex 표시
-   */
   return (
     <div
       style={{
@@ -391,9 +366,6 @@ function SampleImage({
   );
 }
 
-/*
- * 가로 스크롤 선택 버튼
- */
 function ChipRow({
   items = [],
   value,
@@ -458,9 +430,6 @@ function ChipRow({
   );
 }
 
-/*
- * 필터 제목
- */
 function FilterSection({
   title,
   children,
@@ -487,11 +456,6 @@ function FilterSection({
   );
 }
 
-/*
- * 페이지 번호 생성
- *
- * 현재 페이지 주변 최대 5개 표시
- */
 function getPageNumbers(
   currentPage,
   totalPages
@@ -531,6 +495,31 @@ function getPageNumbers(
 }
 
 export default function SamplesPage() {
+  /*
+   * 현재 업체
+   *
+   * 예:
+   * /samples?company=gibun
+   * /samples?company=film
+   *
+   * window.location은 useEffect 안에서만 사용하므로
+   * Next.js 빌드 시에도 안전합니다.
+   */
+  const [
+    companySlug,
+    setCompanySlug,
+  ] = useState("");
+
+  const [
+    company,
+    setCompany,
+  ] = useState(null);
+
+  const [
+    companyLoading,
+    setCompanyLoading,
+  ] = useState(true);
+
   const [
     products,
     setProducts,
@@ -572,6 +561,101 @@ export default function SamplesPage() {
   ] = useState("");
 
   /*
+   * 업체 정보 불러오기
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCompany() {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const slug = String(
+        params.get("company") || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (cancelled) {
+        return;
+      }
+
+      setCompanySlug(slug);
+
+      if (!slug) {
+        setCompany(null);
+        setCompanyLoading(false);
+        return;
+      }
+
+      setCompanyLoading(true);
+
+      try {
+        const response = await fetch(
+          `/api/public-company?slug=${encodeURIComponent(
+            slug
+          )}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const result =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !result?.success ||
+          !result?.company
+        ) {
+          throw new Error(
+            result?.error ||
+              "업체 정보를 불러오지 못했습니다."
+          );
+        }
+
+        if (!cancelled) {
+          setCompany(
+            result.company
+          );
+        }
+      } catch (error) {
+        console.error(
+          "샘플페이지 업체 정보 조회 오류:",
+          error
+        );
+
+        if (!cancelled) {
+          setCompany(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCompanyLoading(false);
+        }
+      }
+    }
+
+    loadCompany();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const companyName =
+    company?.company_name ||
+    "기분좋은공간";
+
+  const estimateHref =
+    companySlug
+      ? `/estimate/${encodeURIComponent(
+          companySlug
+        )}`
+      : "/";
+
+  /*
    * Supabase에서 제품 불러오기
    *
    * 가격 컬럼은 아예 조회하지 않습니다.
@@ -585,6 +669,7 @@ export default function SamplesPage() {
       setMessage("");
 
       const FETCH_SIZE = 1000;
+
       const selectColumns = [
         "id",
         "brand",
@@ -612,20 +697,37 @@ export default function SamplesPage() {
           .from("film_products")
           .select(selectColumns)
           .eq("is_active", true)
-          .order("brand", { ascending: true })
-          .order("sort_order", { ascending: true })
-          .order("id", { ascending: true })
-          .range(from, from + FETCH_SIZE - 1);
+          .order("brand", {
+            ascending: true,
+          })
+          .order("sort_order", {
+            ascending: true,
+          })
+          .order("id", {
+            ascending: true,
+          })
+          .range(
+            from,
+            from + FETCH_SIZE - 1
+          );
 
         if (result.error) {
           error = result.error;
           break;
         }
 
-        const rows = result.data || [];
-        data = [...data, ...rows];
+        const rows =
+          result.data || [];
 
-        if (rows.length < FETCH_SIZE) {
+        data = [
+          ...data,
+          ...rows,
+        ];
+
+        if (
+          rows.length <
+          FETCH_SIZE
+        ) {
           break;
         }
 
@@ -637,21 +739,38 @@ export default function SamplesPage() {
       }
 
       if (error) {
-        console.error("필름 샘플 조회 오류:", error);
+        console.error(
+          "필름 샘플 조회 오류:",
+          error
+        );
+
         setProducts([]);
+
         setMessage(
-          `필름 샘플을 불러오지 못했습니다. ${error.message || ""}`
+          `필름 샘플을 불러오지 못했습니다. ${
+            error.message || ""
+          }`
         );
       } else {
         const rows = data || [];
+
         setProducts(rows);
 
-        const brandList = unique(
-          rows.map((item) => item.brand)
-        );
+        const brandList =
+          unique(
+            rows.map(
+              (item) =>
+                item.brand
+            )
+          );
 
-        if (brandList.length === 1) {
-          setBrand(brandList[0]);
+        if (
+          brandList.length ===
+          1
+        ) {
+          setBrand(
+            brandList[0]
+          );
         }
       }
 
@@ -692,7 +811,9 @@ export default function SamplesPage() {
    */
   const brands = useMemo(() => {
     const brandList = unique(
-      products.map((item) => item.brand)
+      products.map(
+        (item) => item.brand
+      )
     );
 
     const PRIORITY_BRANDS = [
@@ -701,18 +822,40 @@ export default function SamplesPage() {
       "LX하우시스 베니프",
     ];
 
-    return [...brandList].sort((a, b) => {
-      const aIndex = PRIORITY_BRANDS.indexOf(a);
-      const bIndex = PRIORITY_BRANDS.indexOf(b);
-      const aPriority = aIndex === -1 ? PRIORITY_BRANDS.length : aIndex;
-      const bPriority = bIndex === -1 ? PRIORITY_BRANDS.length : bIndex;
+    return [...brandList].sort(
+      (a, b) => {
+        const aIndex =
+          PRIORITY_BRANDS.indexOf(a);
 
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
+        const bIndex =
+          PRIORITY_BRANDS.indexOf(b);
+
+        const aPriority =
+          aIndex === -1
+            ? PRIORITY_BRANDS.length
+            : aIndex;
+
+        const bPriority =
+          bIndex === -1
+            ? PRIORITY_BRANDS.length
+            : bIndex;
+
+        if (
+          aPriority !==
+          bPriority
+        ) {
+          return (
+            aPriority -
+            bPriority
+          );
+        }
+
+        return a.localeCompare(
+          b,
+          "ko"
+        );
       }
-
-      return a.localeCompare(b, "ko");
-    });
+    );
   }, [products]);
 
   /*
@@ -746,13 +889,6 @@ export default function SamplesPage() {
 
   /*
    * 최종 샘플 목록
-   *
-   * 검색어가 있으면
-   * 제조사/대분류 선택과 상관없이
-   * 전체 DB에서 검색
-   *
-   * 검색어가 없으면
-   * 선택한 제조사 + 대분류만 표시
    */
   const filteredProducts =
     useMemo(() => {
@@ -810,9 +946,6 @@ export default function SamplesPage() {
       search,
     ]);
 
-  /*
-   * 전체 페이지 수
-   */
   const totalPages =
     Math.max(
       1,
@@ -822,19 +955,20 @@ export default function SamplesPage() {
       )
     );
 
-  /*
-   * 현재 페이지가 범위를 벗어나면
-   * 마지막 페이지로 보정
-   */
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
+    if (
+      page >
+      totalPages
+    ) {
+      setPage(
+        totalPages
+      );
     }
-  }, [page, totalPages]);
+  }, [
+    page,
+    totalPages,
+  ]);
 
-  /*
-   * 현재 페이지 제품
-   */
   const pagedProducts =
     useMemo(() => {
       const start =
@@ -856,9 +990,6 @@ export default function SamplesPage() {
       totalPages
     );
 
-  /*
-   * 제조사 선택
-   */
   function chooseBrand(
     nextBrand
   ) {
@@ -869,25 +1000,18 @@ export default function SamplesPage() {
     setSelected(null);
   }
 
-  /*
-   * 대분류 선택
-   *
-   * 선택 즉시 샘플 표시
-   */
   function chooseCategory(
     nextCategory
   ) {
     setCategory(
       nextCategory
     );
+
     setSearch("");
     setPage(1);
     setSelected(null);
   }
 
-  /*
-   * 페이지 이동
-   */
   function movePage(
     nextPage
   ) {
@@ -901,10 +1025,6 @@ export default function SamplesPage() {
 
     setPage(nextPage);
 
-    /*
-     * 페이지 변경 시
-     * 샘플 목록 상단으로 이동
-     */
     setTimeout(() => {
       const element =
         document.getElementById(
@@ -920,9 +1040,6 @@ export default function SamplesPage() {
     }, 10);
   }
 
-  /*
-   * 검색
-   */
   function handleSearch(
     value
   ) {
@@ -973,7 +1090,7 @@ export default function SamplesPage() {
         }}
       >
         <Link
-          href="/"
+          href={estimateHref}
           style={{
             padding:
               "11px 8px",
@@ -1042,7 +1159,9 @@ export default function SamplesPage() {
             "800",
         }}
       >
-        기분좋은공간
+        {companyLoading
+          ? "업체 정보 확인 중..."
+          : companyName}
       </div>
 
       <h1
@@ -1073,48 +1192,35 @@ export default function SamplesPage() {
         선택하면 등록된 필름
         샘플을 확인할 수 있습니다.
       </p>
-
       {/* ===================================
           검색 / 제조사 / 대분류
       =================================== */}
 
       <section
         style={{
-          marginTop:
-            "16px",
-          padding:
-            "14px",
-          border:
-            "1px solid #e5e7eb",
-          borderRadius:
-            "16px",
-          background:
-            "#ffffff",
+          marginTop: "16px",
+          padding: "14px",
+          border: "1px solid #e5e7eb",
+          borderRadius: "16px",
+          background: "#ffffff",
         }}
       >
         {/* 검색 */}
-
         <div
           style={{
-            position:
-              "relative",
+            position: "relative",
           }}
         >
           <span
             aria-hidden="true"
             style={{
-              position:
-                "absolute",
+              position: "absolute",
               left: "12px",
               top: "50%",
-              transform:
-                "translateY(-50%)",
-              color:
-                "#9ca3af",
-              fontSize:
-                "16px",
-              pointerEvents:
-                "none",
+              transform: "translateY(-50%)",
+              color: "#9ca3af",
+              fontSize: "16px",
+              pointerEvents: "none",
             }}
           >
             ⌕
@@ -1123,33 +1229,20 @@ export default function SamplesPage() {
           <input
             type="search"
             value={search}
-            onChange={(
-              event
-            ) =>
-              handleSearch(
-                event.target.value
-              )
+            onChange={(event) =>
+              handleSearch(event.target.value)
             }
             placeholder="제품번호 검색 예: S115, CW111"
             style={{
-              width:
-                "100%",
-              boxSizing:
-                "border-box",
-              padding:
-                "12px 38px 12px 36px",
-              border:
-                "1px solid #d1d5db",
-              borderRadius:
-                "11px",
-              outline:
-                "none",
-              fontSize:
-                "14px",
-              color:
-                "#111827",
-              background:
-                "#ffffff",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px 38px 12px 36px",
+              border: "1px solid #d1d5db",
+              borderRadius: "11px",
+              outline: "none",
+              fontSize: "14px",
+              color: "#111827",
+              background: "#ffffff",
             }}
           />
 
@@ -1161,26 +1254,17 @@ export default function SamplesPage() {
               }
               aria-label="검색어 지우기"
               style={{
-                position:
-                  "absolute",
+                position: "absolute",
                 right: "8px",
                 top: "50%",
-                transform:
-                  "translateY(-50%)",
-                width:
-                  "28px",
-                height:
-                  "28px",
-                border:
-                  "none",
-                borderRadius:
-                  "50%",
-                background:
-                  "#f3f4f6",
-                color:
-                  "#6b7280",
-                cursor:
-                  "pointer",
+                transform: "translateY(-50%)",
+                width: "28px",
+                height: "28px",
+                border: "none",
+                borderRadius: "50%",
+                background: "#f3f4f6",
+                color: "#6b7280",
+                cursor: "pointer",
               }}
             >
               ×
@@ -1189,23 +1273,18 @@ export default function SamplesPage() {
         </div>
 
         {/* 검색 중에는 필터 숨김 */}
-
         {!search.trim() && (
           <>
             <FilterSection title="1. 제조사 선택">
               <ChipRow
                 items={brands.map(
                   (item) => ({
-                    value:
-                      item,
-                    label:
-                      item,
+                    value: item,
+                    label: item,
                   })
                 )}
                 value={brand}
-                onChange={
-                  chooseBrand
-                }
+                onChange={chooseBrand}
               />
             </FilterSection>
 
@@ -1213,18 +1292,12 @@ export default function SamplesPage() {
               <ChipRow
                 items={availableCategories.map(
                   (item) => ({
-                    value:
-                      item.key,
-                    label:
-                      item.label,
+                    value: item.key,
+                    label: item.label,
                   })
                 )}
-                value={
-                  category
-                }
-                onChange={
-                  chooseCategory
-                }
+                value={category}
+                onChange={chooseCategory}
               />
             </FilterSection>
           </>
@@ -1238,18 +1311,13 @@ export default function SamplesPage() {
       {loading && (
         <div
           style={{
-            padding:
-              "40px 0",
-            textAlign:
-              "center",
-            color:
-              "#6b7280",
-            fontSize:
-              "13px",
+            padding: "40px 0",
+            textAlign: "center",
+            color: "#6b7280",
+            fontSize: "13px",
           }}
         >
-          필름 샘플을
-          불러오는 중입니다.
+          필름 샘플을 불러오는 중입니다.
         </div>
       )}
 
@@ -1257,29 +1325,21 @@ export default function SamplesPage() {
           오류
       =================================== */}
 
-      {!loading &&
-        message && (
-          <div
-            style={{
-              marginTop:
-                "15px",
-              padding:
-                "14px",
-              borderRadius:
-                "12px",
-              background:
-                "#fef2f2",
-              color:
-                "#b91c1c",
-              fontSize:
-                "13px",
-              lineHeight:
-                1.5,
-            }}
-          >
-            {message}
-          </div>
-        )}
+      {!loading && message && (
+        <div
+          style={{
+            marginTop: "15px",
+            padding: "14px",
+            borderRadius: "12px",
+            background: "#fef2f2",
+            color: "#b91c1c",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
+          {message}
+        </div>
+      )}
 
       {/* ===================================
           선택 전 안내
@@ -1290,31 +1350,20 @@ export default function SamplesPage() {
         !showResults && (
           <div
             style={{
-              marginTop:
-                "15px",
-              padding:
-                "24px 14px",
-              border:
-                "1px solid #e5e7eb",
-              borderRadius:
-                "14px",
-              background:
-                "#ffffff",
-              color:
-                "#6b7280",
-              textAlign:
-                "center",
-              fontSize:
-                "13px",
-              lineHeight:
-                1.7,
+              marginTop: "15px",
+              padding: "24px 14px",
+              border: "1px solid #e5e7eb",
+              borderRadius: "14px",
+              background: "#ffffff",
+              color: "#6b7280",
+              textAlign: "center",
+              fontSize: "13px",
+              lineHeight: 1.7,
             }}
           >
-            제조사와 대분류를
-            선택하면
+            제조사와 대분류를 선택하면
             <br />
-            등록된 필름 샘플이
-            바로 표시됩니다.
+            등록된 필름 샘플이 바로 표시됩니다.
           </div>
         )}
 
@@ -1328,38 +1377,27 @@ export default function SamplesPage() {
           <section
             id="sample-list"
             style={{
-              scrollMarginTop:
-                "12px",
+              scrollMarginTop: "12px",
             }}
           >
             {/* 결과 제목 */}
-
             <div
               style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "space-between",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
                 gap: "10px",
-                margin:
-                  "18px 2px 10px",
+                margin: "18px 2px 10px",
               }}
             >
               <strong
                 style={{
                   minWidth: 0,
-                  fontSize:
-                    "16px",
-                  color:
-                    "#111827",
-                  whiteSpace:
-                    "nowrap",
-                  overflow:
-                    "hidden",
-                  textOverflow:
-                    "ellipsis",
+                  fontSize: "16px",
+                  color: "#111827",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
                 {search.trim()
@@ -1369,36 +1407,24 @@ export default function SamplesPage() {
 
               <span
                 style={{
-                  flex:
-                    "0 0 auto",
-                  color:
-                    "#6b7280",
-                  fontSize:
-                    "12px",
-                  fontWeight:
-                    "700",
+                  flex: "0 0 auto",
+                  color: "#6b7280",
+                  fontSize: "12px",
+                  fontWeight: "700",
                 }}
               >
-                총{" "}
-                {
-                  filteredProducts.length
-                }
-                개
+                총 {filteredProducts.length}개
               </span>
             </div>
 
             {/* 샘플 4열 */}
-
-            {pagedProducts.length >
-            0 ? (
+            {pagedProducts.length > 0 ? (
               <div
                 style={{
-                  display:
-                    "grid",
+                  display: "grid",
                   gridTemplateColumns:
                     "repeat(4, minmax(0, 1fr))",
-                  gap:
-                    "14px 8px",
+                  gap: "14px 8px",
                 }}
               >
                 {pagedProducts.map(
@@ -1410,80 +1436,51 @@ export default function SamplesPage() {
                       }
                       type="button"
                       onClick={() =>
-                        setSelected(
-                          product
-                        )
+                        setSelected(product)
                       }
                       style={{
-                        minWidth:
-                          0,
-                        padding:
-                          0,
-                        border:
-                          "none",
-                        background:
-                          "transparent",
-                        textAlign:
-                          "left",
-                        cursor:
-                          "pointer",
+                        minWidth: 0,
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
                       }}
                     >
                       <SampleImage
-                        product={
-                          product
-                        }
+                        product={product}
                       />
 
                       <strong
                         style={{
-                          display:
-                            "block",
-                          marginTop:
-                            "5px",
-                          color:
-                            "#111827",
-                          fontSize:
-                            "11px",
-                          lineHeight:
-                            1.2,
-                          whiteSpace:
-                            "nowrap",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
+                          display: "block",
+                          marginTop: "5px",
+                          color: "#111827",
+                          fontSize: "11px",
+                          lineHeight: 1.2,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
-                        {
-                          product.product_code
-                        }
+                        {product.product_code}
                       </strong>
 
                       <span
                         style={{
-                          display:
-                            "block",
-                          marginTop:
-                            "2px",
-                          color:
-                            "#6b7280",
-                          fontSize:
-                            "9px",
-                          lineHeight:
-                            1.25,
-                          whiteSpace:
-                            "nowrap",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
+                          display: "block",
+                          marginTop: "2px",
+                          color: "#6b7280",
+                          fontSize: "9px",
+                          lineHeight: 1.25,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
                         {getProductDescription(
                           product
-                        ) ||
-                          "필름"}
+                        ) || "필름"}
                       </span>
                     </button>
                   )
@@ -1492,18 +1489,13 @@ export default function SamplesPage() {
             ) : (
               <div
                 style={{
-                  padding:
-                    "35px 0",
-                  textAlign:
-                    "center",
-                  color:
-                    "#6b7280",
-                  fontSize:
-                    "13px",
+                  padding: "35px 0",
+                  textAlign: "center",
+                  color: "#6b7280",
+                  fontSize: "13px",
                 }}
               >
-                조건에 맞는
-                샘플이 없습니다.
+                조건에 맞는 샘플이 없습니다.
               </div>
             )}
 
@@ -1515,51 +1507,35 @@ export default function SamplesPage() {
               PAGE_SIZE && (
               <div
                 style={{
-                  display:
-                    "flex",
-                  alignItems:
-                    "center",
-                  justifyContent:
-                    "center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   gap: "6px",
-                  marginTop:
-                    "22px",
-                  flexWrap:
-                    "nowrap",
+                  marginTop: "22px",
+                  flexWrap: "nowrap",
                 }}
               >
                 {/* 이전 */}
-
                 <button
                   type="button"
-                  disabled={
-                    page === 1
-                  }
+                  disabled={page === 1}
                   onClick={() =>
-                    movePage(
-                      page - 1
-                    )
+                    movePage(page - 1)
                   }
                   aria-label="이전 페이지"
                   style={{
-                    width:
-                      "38px",
-                    height:
-                      "38px",
+                    width: "38px",
+                    height: "38px",
                     border:
                       "1px solid #d1d5db",
-                    borderRadius:
-                      "50%",
-                    background:
-                      "#ffffff",
+                    borderRadius: "50%",
+                    background: "#ffffff",
                     color:
                       page === 1
                         ? "#d1d5db"
                         : "#111827",
-                    fontSize:
-                      "20px",
-                    fontWeight:
-                      "700",
+                    fontSize: "20px",
+                    fontWeight: "700",
                     cursor:
                       page === 1
                         ? "default"
@@ -1570,20 +1546,14 @@ export default function SamplesPage() {
                 </button>
 
                 {/* 페이지 번호 */}
-
                 {pageNumbers.map(
-                  (
-                    pageNumber
-                  ) => {
+                  (pageNumber) => {
                     const active =
-                      pageNumber ===
-                      page;
+                      pageNumber === page;
 
                     return (
                       <button
-                        key={
-                          pageNumber
-                        }
+                        key={pageNumber}
                         type="button"
                         onClick={() =>
                           movePage(
@@ -1591,77 +1561,55 @@ export default function SamplesPage() {
                           )
                         }
                         style={{
-                          width:
-                            "38px",
-                          height:
-                            "38px",
-                          border:
-                            active
-                              ? "none"
-                              : "1px solid #d1d5db",
+                          width: "38px",
+                          height: "38px",
+                          border: active
+                            ? "none"
+                            : "1px solid #d1d5db",
                           borderRadius:
                             "50%",
-                          background:
-                            active
-                              ? "#111827"
-                              : "#ffffff",
-                          color:
-                            active
-                              ? "#ffffff"
-                              : "#111827",
-                          fontSize:
-                            "13px",
-                          fontWeight:
-                            "800",
-                          cursor:
-                            "pointer",
+                          background: active
+                            ? "#111827"
+                            : "#ffffff",
+                          color: active
+                            ? "#ffffff"
+                            : "#111827",
+                          fontSize: "13px",
+                          fontWeight: "800",
+                          cursor: "pointer",
                         }}
                       >
-                        {
-                          pageNumber
-                        }
+                        {pageNumber}
                       </button>
                     );
                   }
                 )}
 
                 {/* 다음 */}
-
                 <button
                   type="button"
                   disabled={
-                    page ===
-                    totalPages
+                    page === totalPages
                   }
                   onClick={() =>
-                    movePage(
-                      page + 1
-                    )
+                    movePage(page + 1)
                   }
                   aria-label="다음 페이지"
                   style={{
-                    width:
-                      "38px",
-                    height:
-                      "38px",
+                    width: "38px",
+                    height: "38px",
                     border:
                       "1px solid #d1d5db",
-                    borderRadius:
-                      "50%",
-                    background:
-                      "#ffffff",
+                    borderRadius: "50%",
+                    background: "#ffffff",
                     color:
-                      page ===
-                      totalPages
+                      page === totalPages
                         ? "#d1d5db"
                         : "#111827",
-                    fontSize:
-                      "20px",
-                    fontWeight:
-                      "700",
+                    fontSize: "20px",
+                    fontWeight: "700",
                     cursor:
-                      page ===
-                      totalPages
+                      page === totalPages
                         ? "default"
                         : "pointer",
                   }}
@@ -1672,23 +1620,17 @@ export default function SamplesPage() {
             )}
 
             {/* 페이지 정보 */}
-
             {filteredProducts.length >
               PAGE_SIZE && (
               <div
                 style={{
-                  marginTop:
-                    "9px",
-                  textAlign:
-                    "center",
-                  color:
-                    "#9ca3af",
-                  fontSize:
-                    "10px",
+                  marginTop: "9px",
+                  textAlign: "center",
+                  color: "#9ca3af",
+                  fontSize: "10px",
                 }}
               >
-                {page} /{" "}
-                {totalPages} 페이지
+                {page} / {totalPages} 페이지
               </div>
             )}
           </section>
@@ -1705,104 +1647,72 @@ export default function SamplesPage() {
             setSelected(null)
           }
           style={{
-            position:
-              "fixed",
+            position: "fixed",
             inset: 0,
             zIndex: 9999,
-            padding:
-              "18px",
-            boxSizing:
-              "border-box",
+            padding: "18px",
+            boxSizing: "border-box",
             background:
               "rgba(17,24,39,0.68)",
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="필름 샘플 크게 보기"
-            onClick={(
-              event
-            ) =>
+            onClick={(event) =>
               event.stopPropagation()
             }
             style={{
-              width:
-                "100%",
-              maxWidth:
-                "520px",
-              maxHeight:
-                "92dvh",
-              overflowY:
-                "auto",
-              padding:
-                "14px",
-              boxSizing:
-                "border-box",
-              borderRadius:
-                "19px",
-              background:
-                "#ffffff",
+              width: "100%",
+              maxWidth: "520px",
+              maxHeight: "92dvh",
+              overflowY: "auto",
+              padding: "14px",
+              boxSizing: "border-box",
+              borderRadius: "19px",
+              background: "#ffffff",
               boxShadow:
                 "0 20px 60px rgba(0,0,0,0.30)",
             }}
           >
             {/* 팝업 헤더 */}
-
             <div
               style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
+                display: "flex",
+                alignItems: "center",
                 justifyContent:
                   "space-between",
-                marginBottom:
-                  "10px",
+                marginBottom: "10px",
               }}
             >
               <div
                 style={{
-                  minWidth:
-                    0,
+                  minWidth: 0,
                 }}
               >
                 <div
                   style={{
-                    color:
-                      "#6b7280",
-                    fontSize:
-                      "11px",
-                    fontWeight:
-                      "700",
+                    color: "#6b7280",
+                    fontSize: "11px",
+                    fontWeight: "700",
                   }}
                 >
-                  {
-                    selected.brand
-                  }
+                  {selected.brand}
                 </div>
 
                 <strong
                   style={{
-                    display:
-                      "block",
-                    marginTop:
-                      "2px",
-                    color:
-                      "#111827",
-                    fontSize:
-                      "19px",
+                    display: "block",
+                    marginTop: "2px",
+                    color: "#111827",
+                    fontSize: "19px",
                   }}
                 >
-                  {
-                    selected.product_code
-                  }
+                  {selected.product_code}
                 </strong>
               </div>
 
@@ -1813,26 +1723,16 @@ export default function SamplesPage() {
                 }
                 aria-label="닫기"
                 style={{
-                  flex:
-                    "0 0 auto",
-                  width:
-                    "38px",
-                  height:
-                    "38px",
-                  border:
-                    "none",
-                  borderRadius:
-                    "50%",
-                  background:
-                    "#f3f4f6",
-                  color:
-                    "#111827",
-                  fontSize:
-                    "21px",
-                  lineHeight:
-                    1,
-                  cursor:
-                    "pointer",
+                  flex: "0 0 auto",
+                  width: "38px",
+                  height: "38px",
+                  border: "none",
+                  borderRadius: "50%",
+                  background: "#f3f4f6",
+                  color: "#111827",
+                  fontSize: "21px",
+                  lineHeight: 1,
+                  cursor: "pointer",
                 }}
               >
                 ×
@@ -1840,37 +1740,26 @@ export default function SamplesPage() {
             </div>
 
             {/* 큰 이미지 */}
-
             <SampleImage
-              product={
-                selected
-              }
+              product={selected}
               large
             />
 
             {/* 제품번호 / 이름 */}
-
             <div
               style={{
-                marginTop:
-                  "13px",
+                marginTop: "13px",
               }}
             >
               <strong
                 style={{
-                  display:
-                    "block",
-                  color:
-                    "#111827",
-                  fontSize:
-                    "22px",
-                  lineHeight:
-                    1.25,
+                  display: "block",
+                  color: "#111827",
+                  fontSize: "22px",
+                  lineHeight: 1.25,
                 }}
               >
-                {
-                  selected.product_code
-                }
+                {selected.product_code}
               </strong>
 
               {getProductDescription(
@@ -1878,14 +1767,10 @@ export default function SamplesPage() {
               ) && (
                 <div
                   style={{
-                    marginTop:
-                      "3px",
-                    color:
-                      "#6b7280",
-                    fontSize:
-                      "15px",
-                    fontWeight:
-                      "700",
+                    marginTop: "3px",
+                    color: "#6b7280",
+                    fontSize: "15px",
+                    fontWeight: "700",
                   }}
                 >
                   {getProductDescription(
@@ -1896,27 +1781,20 @@ export default function SamplesPage() {
             </div>
 
             {/* 제품 정보 */}
-
             <div
               style={{
-                marginTop:
-                  "13px",
-                paddingTop:
-                  "12px",
+                marginTop: "13px",
+                paddingTop: "12px",
                 borderTop:
                   "1px solid #e5e7eb",
-                color:
-                  "#4b5563",
-                fontSize:
-                  "13px",
-                lineHeight:
-                  1.8,
+                color: "#4b5563",
+                fontSize: "13px",
+                lineHeight: 1.8,
               }}
             >
               <div
                 style={{
-                  display:
-                    "grid",
+                  display: "grid",
                   gridTemplateColumns:
                     "65px 1fr",
                   gap: "2px 8px",
@@ -1927,9 +1805,7 @@ export default function SamplesPage() {
                 </strong>
 
                 <span>
-                  {
-                    selected.brand
-                  }
+                  {selected.brand}
                 </span>
 
                 <strong>
@@ -1967,9 +1843,7 @@ export default function SamplesPage() {
                     </strong>
 
                     <span>
-                      {
-                        selected.wood_species
-                      }
+                      {selected.wood_species}
                     </span>
                   </>
                 )}
@@ -1981,9 +1855,7 @@ export default function SamplesPage() {
                     </strong>
 
                     <span>
-                      {
-                        selected.color_family
-                      }
+                      {selected.color_family}
                     </span>
                   </>
                 )}
@@ -2006,51 +1878,35 @@ export default function SamplesPage() {
               {selected.color_description && (
                 <div
                   style={{
-                    marginTop:
-                      "8px",
-                    paddingTop:
-                      "8px",
+                    marginTop: "8px",
+                    paddingTop: "8px",
                     borderTop:
                       "1px solid #f3f4f6",
-                    color:
-                      "#6b7280",
+                    color: "#6b7280",
                   }}
                 >
-                  {
-                    selected.color_description
-                  }
+                  {selected.color_description}
                 </div>
               )}
             </div>
 
             {/* 닫기 */}
-
             <button
               type="button"
               onClick={() =>
                 setSelected(null)
               }
               style={{
-                width:
-                  "100%",
-                marginTop:
-                  "15px",
-                padding:
-                  "13px",
-                border:
-                  "none",
-                borderRadius:
-                  "11px",
-                background:
-                  "#111827",
-                color:
-                  "#ffffff",
-                fontSize:
-                  "14px",
-                fontWeight:
-                  "800",
-                cursor:
-                  "pointer",
+                width: "100%",
+                marginTop: "15px",
+                padding: "13px",
+                border: "none",
+                borderRadius: "11px",
+                background: "#111827",
+                color: "#ffffff",
+                fontSize: "14px",
+                fontWeight: "800",
+                cursor: "pointer",
               }}
             >
               닫기
@@ -2060,4 +1916,4 @@ export default function SamplesPage() {
       )}
     </main>
   );
-                     }
+}
