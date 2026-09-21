@@ -7,12 +7,22 @@ import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
 
+/* =========================================================
+   시공자 등록 / 수정 폼
+
+   시공자 기본정보:
+   - 이름
+   - 전화번호
+   - 기본 일당
+
+   역할은 시공자 등록에서 정하지 않는다.
+   현장 배정 시 leader / member 로 지정한다.
+========================================================= */
+
 const EMPTY_FORM = {
   name: "",
   phone: "",
-  position: "",
-  specialties: "",
-  memo: "",
+  daily_wage: "",
 };
 
 export default function WorkerManagement({
@@ -32,34 +42,46 @@ export default function WorkerManagement({
   const [showForm, setShowForm] =
     useState(false);
 
-  const [editingWorker, setEditingWorker] =
-    useState(null);
+  const [
+    editingWorker,
+    setEditingWorker,
+  ] = useState(null);
 
   const [form, setForm] =
     useState(EMPTY_FORM);
 
-  const [localMessage, setLocalMessage] =
-    useState("");
+  const [
+    localMessage,
+    setLocalMessage,
+  ] = useState("");
 
   /* =========================================================
      목록
   ========================================================= */
 
-  const [showInactive, setShowInactive] =
-    useState(false);
+  const [
+    showInactive,
+    setShowInactive,
+  ] = useState(false);
 
   /* =========================================================
      계정 초대
   ========================================================= */
 
-  const [inviteWorker, setInviteWorker] =
-    useState(null);
+  const [
+    inviteWorker,
+    setInviteWorker,
+  ] = useState(null);
 
-  const [inviteUrl, setInviteUrl] =
-    useState("");
+  const [
+    inviteUrl,
+    setInviteUrl,
+  ] = useState("");
 
-  const [inviteMessage, setInviteMessage] =
-    useState("");
+  const [
+    inviteMessage,
+    setInviteMessage,
+  ] = useState("");
 
   const [
     inviteLoadingId,
@@ -70,43 +92,54 @@ export default function WorkerManagement({
      시공자 목록 계산
   ========================================================= */
 
-  const visibleWorkers = useMemo(() => {
-    if (showInactive) {
-      return workers;
-    }
+  const visibleWorkers =
+    useMemo(() => {
+      if (showInactive) {
+        return workers;
+      }
 
-    return workers.filter(
-      (worker) =>
-        worker.is_active !== false,
-    );
-  }, [workers, showInactive]);
-
-  const activeCount = useMemo(
-    () =>
-      workers.filter(
+      return workers.filter(
         (worker) =>
           worker.is_active !== false,
-      ).length,
-    [workers],
-  );
+      );
+    }, [
+      workers,
+      showInactive,
+    ]);
 
-  const inactiveCount = useMemo(
-    () =>
-      workers.filter(
-        (worker) =>
-          worker.is_active === false,
-      ).length,
-    [workers],
-  );
+  const activeCount =
+    useMemo(
+      () =>
+        workers.filter(
+          (worker) =>
+            worker.is_active !==
+            false,
+        ).length,
+      [workers],
+    );
 
-  const linkedCount = useMemo(
-    () =>
-      workers.filter(
-        (worker) =>
-          Boolean(worker.user_id),
-      ).length,
-    [workers],
-  );
+  const inactiveCount =
+    useMemo(
+      () =>
+        workers.filter(
+          (worker) =>
+            worker.is_active ===
+            false,
+        ).length,
+      [workers],
+    );
+
+  const linkedCount =
+    useMemo(
+      () =>
+        workers.filter(
+          (worker) =>
+            Boolean(
+              worker.user_id,
+            ),
+        ).length,
+      [workers],
+    );
 
   /* =========================================================
      입력값 변경
@@ -152,20 +185,15 @@ export default function WorkerManagement({
       phone:
         worker?.phone || "",
 
-      position:
-        worker?.position || "",
-
-      specialties:
-        Array.isArray(
-          worker?.specialties,
-        )
-          ? worker.specialties.join(
-              ", ",
-            )
-          : "",
-
-      memo:
-        worker?.memo || "",
+      daily_wage:
+        worker?.daily_wage ===
+          null ||
+        worker?.daily_wage ===
+          undefined
+          ? ""
+          : String(
+              worker.daily_wage,
+            ),
     });
 
     setLocalMessage("");
@@ -204,7 +232,36 @@ export default function WorkerManagement({
 
     setLocalMessage("");
 
-    if (!form.name.trim()) {
+    const cleanName =
+      String(
+        form?.name || "",
+      ).trim();
+
+    const cleanPhone =
+      String(
+        form?.phone || "",
+      ).trim();
+
+    const cleanDailyWage =
+      String(
+        form?.daily_wage || "",
+      )
+        .replace(
+          /[^\d]/g,
+          "",
+        )
+        .trim();
+
+    /* ---------------------------------------------------------
+       신규 등록에서만 이름 검사
+
+       수정 모드에서는 이름을 변경하지 않는다.
+    --------------------------------------------------------- */
+
+    if (
+      !editingWorker?.id &&
+      !cleanName
+    ) {
       setLocalMessage(
         "❌ 시공자 이름을 입력해주세요.",
       );
@@ -212,10 +269,55 @@ export default function WorkerManagement({
       return;
     }
 
+    if (!cleanPhone) {
+      setLocalMessage(
+        "❌ 전화번호를 입력해주세요.",
+      );
+
+      return;
+    }
+
+    if (!cleanDailyWage) {
+      setLocalMessage(
+        "❌ 기본 일당을 입력해주세요.",
+      );
+
+      return;
+    }
+
+    const wageNumber =
+      Number(cleanDailyWage);
+
+    if (
+      !Number.isFinite(
+        wageNumber,
+      ) ||
+      wageNumber < 0
+    ) {
+      setLocalMessage(
+        "❌ 기본 일당을 확인해주세요.",
+      );
+
+      return;
+    }
+
+    const submitForm = {
+      name: cleanName,
+      phone: cleanPhone,
+      daily_wage:
+        cleanDailyWage,
+    };
+
     try {
       let result;
 
-      if (editingWorker?.id) {
+      /* -------------------------------------------------------
+         수정
+      ------------------------------------------------------- */
+
+      if (
+        editingWorker?.id
+      ) {
         if (
           typeof updateWorker !==
           "function"
@@ -225,12 +327,25 @@ export default function WorkerManagement({
           );
         }
 
+        /*
+         * updateWorker에서는
+         * 이름을 DB에 업데이트하지 않는다.
+         *
+         * 전화번호와 기본 일당만 수정한다.
+         */
+
         result =
           await updateWorker(
             editingWorker.id,
-            form,
+            submitForm,
           );
-      } else {
+      }
+
+      /* -------------------------------------------------------
+         신규 등록
+      ------------------------------------------------------- */
+
+      else {
         if (
           typeof createWorker !==
           "function"
@@ -242,11 +357,13 @@ export default function WorkerManagement({
 
         result =
           await createWorker(
-            form,
+            submitForm,
           );
       }
 
-      if (!result?.success) {
+      if (
+        !result?.success
+      ) {
         setLocalMessage(
           `❌ ${
             result?.error ||
@@ -302,9 +419,10 @@ export default function WorkerManagement({
     const nextActive =
       worker.is_active === false;
 
-    const text = nextActive
-      ? `${worker.name} 시공자를 다시 활성화할까요?`
-      : `${worker.name} 시공자를 비활성화할까요?\n\n과거 현장 기록은 삭제되지 않습니다.`;
+    const text =
+      nextActive
+        ? `${worker.name} 시공자를 다시 활성화할까요?`
+        : `${worker.name} 시공자를 비활성화할까요?\n\n과거 현장 기록은 삭제되지 않습니다.`;
 
     const confirmed =
       window.confirm(text);
@@ -331,7 +449,9 @@ export default function WorkerManagement({
     }
 
     if (worker.user_id) {
-      setInviteWorker(worker);
+      setInviteWorker(
+        worker,
+      );
 
       setInviteUrl("");
 
@@ -343,9 +463,12 @@ export default function WorkerManagement({
     }
 
     if (
-      worker.is_active === false
+      worker.is_active ===
+      false
     ) {
-      setInviteWorker(worker);
+      setInviteWorker(
+        worker,
+      );
 
       setInviteUrl("");
 
@@ -360,7 +483,9 @@ export default function WorkerManagement({
       typeof createWorkerInvite !==
       "function"
     ) {
-      setInviteWorker(worker);
+      setInviteWorker(
+        worker,
+      );
 
       setInviteUrl("");
 
@@ -371,7 +496,9 @@ export default function WorkerManagement({
       return;
     }
 
-    setInviteWorker(worker);
+    setInviteWorker(
+      worker,
+    );
 
     setInviteUrl("");
 
@@ -387,7 +514,9 @@ export default function WorkerManagement({
           worker,
         );
 
-      if (!result?.success) {
+      if (
+        !result?.success
+      ) {
         setInviteMessage(
           `❌ ${
             result?.error ||
@@ -398,7 +527,9 @@ export default function WorkerManagement({
         return;
       }
 
-      if (!result.inviteCode) {
+      if (
+        !result.inviteCode
+      ) {
         setInviteMessage(
           "❌ 초대코드를 확인할 수 없습니다.",
         );
@@ -409,7 +540,8 @@ export default function WorkerManagement({
       const origin =
         typeof window !==
         "undefined"
-          ? window.location.origin
+          ? window.location
+              .origin
           : "";
 
       const url =
@@ -436,7 +568,9 @@ export default function WorkerManagement({
         }`,
       );
     } finally {
-      setInviteLoadingId(null);
+      setInviteLoadingId(
+        null,
+      );
     }
   }
 
@@ -445,7 +579,9 @@ export default function WorkerManagement({
   ========================================================= */
 
   function closeInvite() {
-    if (inviteLoadingId) {
+    if (
+      inviteLoadingId
+    ) {
       return;
     }
 
@@ -609,8 +745,9 @@ export default function WorkerManagement({
                   "12px",
               }}
             >
-              현장에 배정할 팀장과
-              시공자를 관리합니다.
+              시공자를 등록하고
+              계정과 기본 일당을
+              관리합니다.
             </div>
           </div>
 
@@ -782,8 +919,8 @@ export default function WorkerManagement({
                   "13px",
               }}
             >
-              시공자 정보를 불러오는
-              중입니다...
+              시공자 정보를
+              불러오는 중입니다...
             </div>
           )}
 
@@ -849,9 +986,9 @@ export default function WorkerManagement({
                     "12px",
                 }}
               >
-                시공자를 먼저 등록하면
-                현장에 배정할 수
-                있습니다.
+                시공자를 먼저
+                등록하면 현장에
+                배정할 수 있습니다.
               </div>
             </div>
           )}
@@ -980,4 +1117,4 @@ export default function WorkerManagement({
       )}
     </>
   );
-            }
+  }
