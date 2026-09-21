@@ -109,6 +109,8 @@ function getMembers(site) {
 ========================================================= */
 
 export default function SiteManagementTab({
+  companyId,
+
   sites = [],
   sitesLoading = false,
   sitesMessage = "",
@@ -756,12 +758,18 @@ export default function SiteManagementTab({
 
       {selectedSite && (
         <SiteDetailModal
+          companyId={
+            companyId
+          }
+
           site={
             selectedSite
           }
+
           onClose={
             closeSite
           }
+
           updateSiteStatus={
             updateSiteStatus
           }
@@ -769,6 +777,7 @@ export default function SiteManagementTab({
           workers={
             workers
           }
+
           workersLoading={
             workersLoading
           }
@@ -1262,4 +1271,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-}
+              }
