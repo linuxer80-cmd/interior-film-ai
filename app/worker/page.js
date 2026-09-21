@@ -58,10 +58,7 @@ export default function WorkerPage() {
          2. 현재 로그인 계정의 시공자 정보
       ===================================================== */
 
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
+      const { data, error } = await supabase.rpc(
         "get_my_worker"
       );
 
@@ -69,10 +66,9 @@ export default function WorkerPage() {
         throw error;
       }
 
-      const workerData =
-        Array.isArray(data)
-          ? data[0]
-          : data;
+      const workerData = Array.isArray(data)
+        ? data[0]
+        : data;
 
       if (!workerData?.worker_id) {
         await supabase.auth.signOut();
@@ -81,10 +77,7 @@ export default function WorkerPage() {
         return;
       }
 
-      if (
-        workerData.worker_is_active ===
-        false
-      ) {
+      if (workerData.worker_is_active === false) {
         await supabase.auth.signOut();
 
         setMessage(
@@ -131,10 +124,7 @@ export default function WorkerPage() {
     setSitesLoading(true);
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
+      const { data, error } = await supabase.rpc(
         "get_my_assigned_sites"
       );
 
@@ -142,11 +132,7 @@ export default function WorkerPage() {
         throw error;
       }
 
-      setSites(
-        Array.isArray(data)
-          ? data
-          : []
-      );
+      setSites(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(
         "배정 현장 조회 오류:",
@@ -183,78 +169,56 @@ export default function WorkerPage() {
      날짜 표시
   ========================================================= */
 
-  function formatSchedule(
-    value
-  ) {
+  function formatSchedule(value) {
     if (!value) {
       return "-";
     }
 
-    const date =
-      new Date(value);
+    const date = new Date(value);
 
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
+    if (Number.isNaN(date.getTime())) {
       return "-";
     }
 
-    return new Intl.DateTimeFormat(
-      "ko-KR",
-      {
-        timeZone: "Asia/Seoul",
-        month: "long",
-        day: "numeric",
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }
-    ).format(date);
+    return new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      month: "long",
+      day: "numeric",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
   }
 
   /* =========================================================
      시간만 표시
   ========================================================= */
 
-  function formatTime(
-    value
-  ) {
+  function formatTime(value) {
     if (!value) {
       return "";
     }
 
-    const date =
-      new Date(value);
+    const date = new Date(value);
 
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
+    if (Number.isNaN(date.getTime())) {
       return "";
     }
 
-    return new Intl.DateTimeFormat(
-      "ko-KR",
-      {
-        timeZone: "Asia/Seoul",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }
-    ).format(date);
+    return new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
   }
 
   /* =========================================================
      현장 역할
   ========================================================= */
 
-  function getRoleLabel(
-    role
-  ) {
+  function getRoleLabel(role) {
     if (role === "leader") {
       return "책임 팀장";
     }
@@ -266,45 +230,35 @@ export default function WorkerPage() {
      현장 상태
   ========================================================= */
 
-  function getStatusInfo(
-    status
-  ) {
+  function getStatusInfo(status) {
     switch (status) {
       case "in_progress":
         return {
           label: "시공 중",
-          background:
-            "#eff6ff",
-          color:
-            "#1d4ed8",
+          background: "#eff6ff",
+          color: "#1d4ed8",
         };
 
       case "completed":
         return {
           label: "시공 완료",
-          background:
-            "#f0fdf4",
-          color:
-            "#15803d",
+          background: "#f0fdf4",
+          color: "#15803d",
         };
 
       case "cancelled":
         return {
           label: "취소",
-          background:
-            "#fef2f2",
-          color:
-            "#b91c1c",
+          background: "#fef2f2",
+          color: "#b91c1c",
         };
 
       case "scheduled":
       default:
         return {
           label: "시공 예정",
-          background:
-            "#f8fafc",
-          color:
-            "#475569",
+          background: "#f8fafc",
+          color: "#475569",
         };
     }
   }
@@ -313,9 +267,7 @@ export default function WorkerPage() {
      주소 만들기
   ========================================================= */
 
-  function makeAddress(
-    site
-  ) {
+  function makeAddress(site) {
     return [
       site?.address,
       site?.address_detail,
@@ -332,38 +284,20 @@ export default function WorkerPage() {
     return (
       <main
         style={{
-          minHeight:
-            "100vh",
-
-          background:
-            "#f8fafc",
-
-          display:
-            "flex",
-
-          alignItems:
-            "center",
-
-          justifyContent:
-            "center",
-
-          padding:
-            "20px",
-
-          boxSizing:
-            "border-box",
+          minHeight: "100vh",
+          background: "#f8fafc",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "20px",
+          boxSizing: "border-box",
         }}
       >
         <div
           style={{
-            color:
-              "#64748b",
-
-            fontSize:
-              "14px",
-
-            fontWeight:
-              "700",
+            color: "#64748b",
+            fontSize: "14px",
+            fontWeight: "700",
           }}
         >
           시공자 정보를 확인하고 있습니다...
@@ -380,56 +314,29 @@ export default function WorkerPage() {
     return (
       <main
         style={{
-          minHeight:
-            "100vh",
-
-          background:
-            "#f8fafc",
-
-          padding:
-            "20px",
-
-          boxSizing:
-            "border-box",
+          minHeight: "100vh",
+          background: "#f8fafc",
+          padding: "20px",
+          boxSizing: "border-box",
         }}
       >
         <div
           style={{
-            width:
-              "100%",
-
-            maxWidth:
-              "520px",
-
-            margin:
-              "60px auto 0",
-
-            background:
-              "#ffffff",
-
-            border:
-              "1px solid #e2e8f0",
-
-            borderRadius:
-              "16px",
-
-            padding:
-              "22px",
-
-            boxSizing:
-              "border-box",
+            width: "100%",
+            maxWidth: "520px",
+            margin: "60px auto 0",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            padding: "22px",
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
-              fontSize:
-                "18px",
-
-              fontWeight:
-                "900",
-
-              color:
-                "#111827",
+              fontSize: "18px",
+              fontWeight: "900",
+              color: "#111827",
             }}
           >
             시공자 페이지
@@ -437,20 +344,11 @@ export default function WorkerPage() {
 
           <div
             style={{
-              marginTop:
-                "12px",
-
-              color:
-                "#b91c1c",
-
-              fontSize:
-                "14px",
-
-              lineHeight:
-                1.6,
-
-              whiteSpace:
-                "pre-wrap",
+              marginTop: "12px",
+              color: "#b91c1c",
+              fontSize: "14px",
+              lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
             }}
           >
             {message ||
@@ -460,39 +358,19 @@ export default function WorkerPage() {
           <button
             type="button"
             onClick={() => {
-              router.replace(
-                "/worker/login"
-              );
-
+              router.replace("/worker/login");
               router.refresh();
             }}
             style={{
-              width:
-                "100%",
-
-              marginTop:
-                "18px",
-
-              padding:
-                "12px",
-
-              border:
-                "none",
-
-              borderRadius:
-                "10px",
-
-              background:
-                "#111827",
-
-              color:
-                "#ffffff",
-
-              fontWeight:
-                "800",
-
-              cursor:
-                "pointer",
+              width: "100%",
+              marginTop: "18px",
+              padding: "12px",
+              border: "none",
+              borderRadius: "10px",
+              background: "#111827",
+              color: "#ffffff",
+              fontWeight: "800",
+              cursor: "pointer",
             }}
           >
             로그인으로 이동
@@ -509,17 +387,10 @@ export default function WorkerPage() {
   return (
     <main
       style={{
-        minHeight:
-          "100vh",
-
-        background:
-          "#f8fafc",
-
-        color:
-          "#111827",
-
-        paddingBottom:
-          "50px",
+        minHeight: "100vh",
+        background: "#f8fafc",
+        color: "#111827",
+        paddingBottom: "50px",
       }}
     >
       {/* =====================================================
@@ -528,54 +399,29 @@ export default function WorkerPage() {
 
       <header
         style={{
-          background:
-            "#ffffff",
-
-          borderBottom:
-            "1px solid #e2e8f0",
+          background: "#ffffff",
+          borderBottom: "1px solid #e2e8f0",
         }}
       >
         <div
           style={{
-            width:
-              "100%",
-
-            maxWidth:
-              "720px",
-
-            margin:
-              "0 auto",
-
-            padding:
-              "16px",
-
-            boxSizing:
-              "border-box",
-
-            display:
-              "flex",
-
-            alignItems:
-              "center",
-
-            justifyContent:
-              "space-between",
-
-            gap:
-              "12px",
+            width: "100%",
+            maxWidth: "720px",
+            margin: "0 auto",
+            padding: "16px",
+            boxSizing: "border-box",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
           }}
         >
           <div>
             <div
               style={{
-                fontSize:
-                  "12px",
-
-                color:
-                  "#64748b",
-
-                fontWeight:
-                  "700",
+                fontSize: "12px",
+                color: "#64748b",
+                fontWeight: "700",
               }}
             >
               시공자 전용
@@ -583,17 +429,10 @@ export default function WorkerPage() {
 
             <div
               style={{
-                marginTop:
-                  "2px",
-
-                fontSize:
-                  "20px",
-
-                fontWeight:
-                  "900",
-
-                color:
-                  "#111827",
+                marginTop: "2px",
+                fontSize: "20px",
+                fontWeight: "900",
+                color: "#111827",
               }}
             >
               현장 관리
@@ -602,36 +441,17 @@ export default function WorkerPage() {
 
           <button
             type="button"
-            onClick={
-              handleLogout
-            }
+            onClick={handleLogout}
             style={{
-              flex:
-                "0 0 auto",
-
-              border:
-                "1px solid #cbd5e1",
-
-              borderRadius:
-                "9px",
-
-              background:
-                "#ffffff",
-
-              color:
-                "#475569",
-
-              padding:
-                "8px 11px",
-
-              fontSize:
-                "12px",
-
-              fontWeight:
-                "800",
-
-              cursor:
-                "pointer",
+              flex: "0 0 auto",
+              border: "1px solid #cbd5e1",
+              borderRadius: "9px",
+              background: "#ffffff",
+              color: "#475569",
+              padding: "8px 11px",
+              fontSize: "12px",
+              fontWeight: "800",
+              cursor: "pointer",
             }}
           >
             로그아웃
@@ -645,20 +465,11 @@ export default function WorkerPage() {
 
       <div
         style={{
-          width:
-            "100%",
-
-          maxWidth:
-            "720px",
-
-          margin:
-            "0 auto",
-
-          padding:
-            "16px",
-
-          boxSizing:
-            "border-box",
+          width: "100%",
+          maxWidth: "720px",
+          margin: "0 auto",
+          padding: "16px",
+          boxSizing: "border-box",
         }}
       >
         {/* ===================================================
@@ -667,59 +478,30 @@ export default function WorkerPage() {
 
         <section
           style={{
-            background:
-              "#ffffff",
-
-            border:
-              "1px solid #e2e8f0",
-
-            borderRadius:
-              "16px",
-
-            padding:
-              "18px",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            padding: "18px",
           }}
         >
           <div
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              gap:
-                "12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
             }}
           >
             <div
               style={{
-                width:
-                  "48px",
-
-                height:
-                  "48px",
-
-                flex:
-                  "0 0 48px",
-
-                borderRadius:
-                  "50%",
-
-                background:
-                  "#f1f5f9",
-
-                display:
-                  "flex",
-
-                alignItems:
-                  "center",
-
-                justifyContent:
-                  "center",
-
-                fontSize:
-                  "24px",
+                width: "48px",
+                height: "48px",
+                flex: "0 0 48px",
+                borderRadius: "50%",
+                background: "#f1f5f9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "24px",
               }}
             >
               👷
@@ -727,36 +509,24 @@ export default function WorkerPage() {
 
             <div
               style={{
-                minWidth:
-                  0,
+                minWidth: 0,
               }}
             >
               <div
                 style={{
-                  fontSize:
-                    "18px",
-
-                  fontWeight:
-                    "900",
-
-                  color:
-                    "#111827",
+                  fontSize: "18px",
+                  fontWeight: "900",
+                  color: "#111827",
                 }}
               >
-                {worker.worker_name ||
-                  "시공자"}
+                {worker.worker_name || "시공자"}
               </div>
 
               <div
                 style={{
-                  marginTop:
-                    "3px",
-
-                  color:
-                    "#64748b",
-
-                  fontSize:
-                    "13px",
+                  marginTop: "3px",
+                  color: "#64748b",
+                  fontSize: "13px",
                 }}
               >
                 {worker.worker_phone ||
@@ -772,47 +542,26 @@ export default function WorkerPage() {
 
         <section
           style={{
-            marginTop:
-              "14px",
-
-            background:
-              "#ffffff",
-
-            border:
-              "1px solid #e2e8f0",
-
-            borderRadius:
-              "16px",
-
-            padding:
-              "18px",
+            marginTop: "14px",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            padding: "18px",
           }}
         >
           <div
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "space-between",
-
-              gap:
-                "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
             }}
           >
             <div
               style={{
-                fontSize:
-                  "16px",
-
-                fontWeight:
-                  "900",
-
-                color:
-                  "#111827",
+                fontSize: "16px",
+                fontWeight: "900",
+                color: "#111827",
               }}
             >
               📅 내 현장
@@ -820,85 +569,47 @@ export default function WorkerPage() {
 
             <div
               style={{
-                padding:
-                  "5px 9px",
-
-                borderRadius:
-                  "999px",
-
-                background:
-                  "#f1f5f9",
-
-                color:
-                  "#475569",
-
-                fontSize:
-                  "11px",
-
-                fontWeight:
-                  "800",
+                padding: "5px 9px",
+                borderRadius: "999px",
+                background: "#f1f5f9",
+                color: "#475569",
+                fontSize: "11px",
+                fontWeight: "800",
               }}
             >
               {sites.length}건
             </div>
           </div>
 
-          {/* ===============================================
-              현장 로딩
-          =============================================== */}
-
           {sitesLoading && (
             <div
               style={{
-                padding:
-                  "28px 10px",
-
-                textAlign:
-                  "center",
-
-                color:
-                  "#64748b",
-
-                fontSize:
-                  "13px",
+                padding: "28px 10px",
+                textAlign: "center",
+                color: "#64748b",
+                fontSize: "13px",
               }}
             >
               배정된 현장을 불러오는 중입니다...
             </div>
           )}
 
-          {/* ===============================================
-              배정 현장 없음
-          =============================================== */}
-
           {!sitesLoading &&
-            sites.length ===
-              0 && (
+            sites.length === 0 && (
               <div
                 style={{
-                  marginTop:
-                    "16px",
-
-                  padding:
-                    "28px 12px",
-
+                  marginTop: "16px",
+                  padding: "28px 12px",
                   border:
                     "1px dashed #cbd5e1",
-
-                  borderRadius:
-                    "12px",
-
-                  background:
-                    "#f8fafc",
-
-                  textAlign:
-                    "center",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  textAlign: "center",
                 }}
               >
                 <div
                   style={{
-                    fontSize:
-                      "28px",
+                    fontSize: "28px",
                   }}
                 >
                   🏠
@@ -906,17 +617,10 @@ export default function WorkerPage() {
 
                 <div
                   style={{
-                    marginTop:
-                      "8px",
-
-                    color:
-                      "#334155",
-
-                    fontSize:
-                      "14px",
-
-                    fontWeight:
-                      "800",
+                    marginTop: "8px",
+                    color: "#334155",
+                    fontSize: "14px",
+                    fontWeight: "800",
                   }}
                 >
                   배정된 현장이 없습니다.
@@ -924,17 +628,10 @@ export default function WorkerPage() {
 
                 <div
                   style={{
-                    marginTop:
-                      "5px",
-
-                    color:
-                      "#64748b",
-
-                    fontSize:
-                      "12px",
-
-                    lineHeight:
-                      1.6,
+                    marginTop: "5px",
+                    color: "#64748b",
+                    fontSize: "12px",
+                    lineHeight: 1.6,
                   }}
                 >
                   회사 관리자가 현장에
@@ -944,333 +641,267 @@ export default function WorkerPage() {
               </div>
             )}
 
-          {/* ===============================================
-              본인에게 배정된 현장 목록
-          =============================================== */}
-
           {!sitesLoading &&
-            sites.length >
-              0 && (
+            sites.length > 0 && (
               <div
                 style={{
-                  display:
-                    "grid",
-
-                  gap:
-                    "12px",
-
-                  marginTop:
-                    "16px",
+                  display: "grid",
+                  gap: "12px",
+                  marginTop: "16px",
                 }}
               >
-                {sites.map(
-                  (site) => {
-                    const status =
-                      getStatusInfo(
-                        site.site_status
-                      );
+                {sites.map((site) => {
+                  const status =
+                    getStatusInfo(
+                      site.site_status
+                    );
 
-                    const address =
-                      makeAddress(
-                        site
-                      );
+                  const address =
+                    makeAddress(site);
 
-                    return (
-                      <article
-                        key={
-                          site.site_id
-                        }
+                  return (
+                    <article
+                      key={site.site_id}
+                      onClick={() => {
+                        router.push(
+                          `/worker/site/${site.site_id}`
+                        );
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        padding: "15px",
+                        border:
+                          "1px solid #e2e8f0",
+                        borderRadius: "13px",
+                        background: "#ffffff",
+                      }}
+                    >
+                      {/* 상단 */}
+
+                      <div
                         style={{
-                          padding:
-                            "15px",
-
-                          border:
-                            "1px solid #e2e8f0",
-
-                          borderRadius:
-                            "13px",
-
-                          background:
-                            "#ffffff",
+                          display: "flex",
+                          alignItems:
+                            "flex-start",
+                          justifyContent:
+                            "space-between",
+                          gap: "10px",
                         }}
                       >
-                        {/* 상단 */}
-
                         <div
                           style={{
-                            display:
-                              "flex",
-
-                            alignItems:
-                              "flex-start",
-
-                            justifyContent:
-                              "space-between",
-
-                            gap:
-                              "10px",
+                            minWidth: 0,
+                            flex: 1,
                           }}
                         >
                           <div
                             style={{
-                              minWidth:
-                                0,
-
-                              flex:
-                                1,
+                              color: "#111827",
+                              fontSize: "16px",
+                              fontWeight: "900",
+                              wordBreak:
+                                "break-word",
                             }}
                           >
+                            {site.site_name ||
+                              site.customer_name ||
+                              "현장"}
+                          </div>
+
+                          {site.customer_name && (
                             <div
                               style={{
-                                color:
-                                  "#111827",
-
-                                fontSize:
-                                  "16px",
-
-                                fontWeight:
-                                  "900",
-
-                                wordBreak:
-                                  "break-word",
+                                marginTop: "3px",
+                                color: "#64748b",
+                                fontSize: "12px",
                               }}
                             >
-                              {site.site_name ||
-                                site.customer_name ||
-                                "현장"}
-                            </div>
-
-                            {site.customer_name && (
-                              <div
-                                style={{
-                                  marginTop:
-                                    "3px",
-
-                                  color:
-                                    "#64748b",
-
-                                  fontSize:
-                                    "12px",
-                                }}
-                              >
-                                고객{" "}
-                                {
-                                  site.customer_name
-                                }
-                              </div>
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              flex:
-                                "0 0 auto",
-
-                              padding:
-                                "5px 8px",
-
-                              borderRadius:
-                                "999px",
-
-                              background:
-                                status.background,
-
-                              color:
-                                status.color,
-
-                              fontSize:
-                                "11px",
-
-                              fontWeight:
-                                "800",
-                            }}
-                          >
-                            {
-                              status.label
-                            }
-                          </div>
-                        </div>
-
-                        {/* 일정 */}
-
-                        <div
-                          style={{
-                            marginTop:
-                              "13px",
-
-                            padding:
-                              "11px",
-
-                            borderRadius:
-                              "10px",
-
-                            background:
-                              "#f8fafc",
-                          }}
-                        >
-                          <div
-                            style={{
-                              color:
-                                "#111827",
-
-                              fontSize:
-                                "13px",
-
-                              fontWeight:
-                                "800",
-                            }}
-                          >
-                            📅{" "}
-                            {formatSchedule(
-                              site.schedule_start
-                            )}
-                          </div>
-
-                          {site.schedule_end && (
-                            <div
-                              style={{
-                                marginTop:
-                                  "4px",
-
-                                color:
-                                  "#64748b",
-
-                                fontSize:
-                                  "12px",
-                              }}
-                            >
-                              종료 예정{" "}
-                              {formatTime(
-                                site.schedule_end
-                              )}
+                              고객{" "}
+                              {
+                                site.customer_name
+                              }
                             </div>
                           )}
                         </div>
 
-                        {/* 역할 */}
+                        <div
+                          style={{
+                            flex: "0 0 auto",
+                            padding: "5px 8px",
+                            borderRadius:
+                              "999px",
+                            background:
+                              status.background,
+                            color: status.color,
+                            fontSize: "11px",
+                            fontWeight: "800",
+                          }}
+                        >
+                          {status.label}
+                        </div>
+                      </div>
 
-                        <InfoRow
-                          label="담당"
-                          value={
-                            getRoleLabel(
-                              site.worker_role
-                            )
-                          }
-                        />
+                      {/* 일정 */}
 
-                        {/* 지역 */}
+                      <div
+                        style={{
+                          marginTop: "13px",
+                          padding: "11px",
+                          borderRadius: "10px",
+                          background: "#f8fafc",
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: "#111827",
+                            fontSize: "13px",
+                            fontWeight: "800",
+                          }}
+                        >
+                          📅{" "}
+                          {formatSchedule(
+                            site.schedule_start
+                          )}
+                        </div>
 
-                        {site.region && (
-                          <InfoRow
-                            label="지역"
-                            value={
-                              site.region
-                            }
-                          />
-                        )}
-
-                        {/* 주소 */}
-
-                        {address && (
-                          <InfoRow
-                            label="주소"
-                            value={
-                              address
-                            }
-                          />
-                        )}
-
-                        {/* 작업 */}
-
-                        {site.work_type && (
-                          <InfoRow
-                            label="작업"
-                            value={
-                              site.work_type
-                            }
-                          />
-                        )}
-
-                        {/* 작업 설명 */}
-
-                        {site.work_description && (
+                        {site.schedule_end && (
                           <div
                             style={{
-                              marginTop:
-                                "10px",
-
-                              padding:
-                                "10px",
-
-                              borderRadius:
-                                "9px",
-
-                              background:
-                                "#f8fafc",
-
-                              color:
-                                "#475569",
-
-                              fontSize:
-                                "12px",
-
-                              lineHeight:
-                                1.6,
-
-                              whiteSpace:
-                                "pre-wrap",
+                              marginTop: "4px",
+                              color: "#64748b",
+                              fontSize: "12px",
                             }}
                           >
-                            {
-                              site.work_description
-                            }
+                            종료 예정{" "}
+                            {formatTime(
+                              site.schedule_end
+                            )}
                           </div>
                         )}
+                      </div>
+                      {/* 역할 */}
 
-                        {/* 전화 */}
-
-                        {site.customer_phone && (
-                          <a
-                            href={`tel:${site.customer_phone}`}
-                            style={{
-                              display:
-                                "block",
-
-                              marginTop:
-                                "12px",
-
-                              padding:
-                                "11px",
-
-                              borderRadius:
-                                "10px",
-
-                              background:
-                                "#111827",
-
-                              color:
-                                "#ffffff",
-
-                              textAlign:
-                                "center",
-
-                              textDecoration:
-                                "none",
-
-                              fontSize:
-                                "13px",
-
-                              fontWeight:
-                                "800",
-                            }}
-                          >
-                            📞 고객에게 전화
-                          </a>
+                      <InfoRow
+                        label="담당"
+                        value={getRoleLabel(
+                          site.worker_role
                         )}
-                      </article>
-                    );
-                  }
-                )}
+                      />
+
+                      {/* 지역 */}
+
+                      {site.region && (
+                        <InfoRow
+                          label="지역"
+                          value={site.region}
+                        />
+                      )}
+
+                      {/* 주소 */}
+
+                      {address && (
+                        <InfoRow
+                          label="주소"
+                          value={address}
+                        />
+                      )}
+
+                      {/* 작업 */}
+
+                      {site.work_type && (
+                        <InfoRow
+                          label="작업"
+                          value={site.work_type}
+                        />
+                      )}
+
+                      {/* 작업 설명 */}
+
+                      {site.work_description && (
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            padding: "10px",
+                            borderRadius: "9px",
+                            background: "#f8fafc",
+                            color: "#475569",
+                            fontSize: "12px",
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {site.work_description}
+                        </div>
+                      )}
+
+                      {/* 고객 전화 */}
+
+                      {site.customer_phone && (
+                        <a
+                          href={`tel:${site.customer_phone}`}
+                          onClick={(event) => {
+                            /*
+                             * 전화 버튼을 누르면
+                             * 현장 상세페이지로 이동하지 않고
+                             * 전화 기능만 실행
+                             */
+                            event.stopPropagation();
+                          }}
+                          style={{
+                            display: "block",
+                            marginTop: "12px",
+                            padding: "11px",
+                            borderRadius: "10px",
+                            background: "#111827",
+                            color: "#ffffff",
+                            textAlign: "center",
+                            textDecoration: "none",
+                            fontSize: "13px",
+                            fontWeight: "800",
+                          }}
+                        >
+                          📞 고객에게 전화
+                        </a>
+                      )}
+
+                      {/* 상세보기 안내 */}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent:
+                            "space-between",
+                          gap: "10px",
+                          marginTop: "12px",
+                          paddingTop: "11px",
+                          borderTop:
+                            "1px solid #f1f5f9",
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: "#64748b",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                          }}
+                        >
+                          현장 상세정보 보기
+                        </span>
+
+                        <span
+                          style={{
+                            color: "#334155",
+                            fontSize: "16px",
+                            fontWeight: "900",
+                          }}
+                        >
+                          ›
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
         </section>
@@ -1281,29 +912,14 @@ export default function WorkerPage() {
 
         <div
           style={{
-            marginTop:
-              "14px",
-
-            padding:
-              "12px",
-
-            borderRadius:
-              "10px",
-
-            background:
-              "#f1f5f9",
-
-            color:
-              "#64748b",
-
-            fontSize:
-              "11px",
-
-            lineHeight:
-              1.6,
-
-            textAlign:
-              "center",
+            marginTop: "14px",
+            padding: "12px",
+            borderRadius: "10px",
+            background: "#f1f5f9",
+            color: "#64748b",
+            fontSize: "11px",
+            lineHeight: 1.6,
+            textAlign: "center",
           }}
         >
           본인에게 배정된 현장 일정만
@@ -1329,38 +945,20 @@ function InfoRow({
   return (
     <div
       style={{
-        display:
-          "flex",
-
-        alignItems:
-          "flex-start",
-
-        gap:
-          "10px",
-
-        marginTop:
-          "10px",
-
-        fontSize:
-          "12px",
-
-        lineHeight:
-          1.5,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "10px",
+        marginTop: "10px",
+        fontSize: "12px",
+        lineHeight: 1.5,
       }}
     >
       <div
         style={{
-          width:
-            "38px",
-
-          flex:
-            "0 0 38px",
-
-          color:
-            "#94a3b8",
-
-          fontWeight:
-            "700",
+          width: "38px",
+          flex: "0 0 38px",
+          color: "#94a3b8",
+          fontWeight: "700",
         }}
       >
         {label}
@@ -1368,24 +966,15 @@ function InfoRow({
 
       <div
         style={{
-          flex:
-            1,
-
-          minWidth:
-            0,
-
-          color:
-            "#334155",
-
-          fontWeight:
-            "700",
-
-          wordBreak:
-            "break-word",
+          flex: 1,
+          minWidth: 0,
+          color: "#334155",
+          fontWeight: "700",
+          wordBreak: "break-word",
         }}
       >
         {value}
       </div>
     </div>
   );
-              }
+}
