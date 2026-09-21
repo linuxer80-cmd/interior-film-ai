@@ -267,6 +267,8 @@ export default function AdminPage() {
     updateWorker,
     setWorkerActive,
 
+    createWorkerInvite,
+
     assignSiteWorkers,
     loadSiteWorkers,
   } =
@@ -875,6 +877,7 @@ export default function AdminPage() {
           companyId={
             companyId
           }
+
           sites={
             sites
           }
@@ -925,6 +928,10 @@ export default function AdminPage() {
           }
           setWorkerActive={
             setWorkerActive
+          }
+
+          createWorkerInvite={
+            createWorkerInvite
           }
 
           assignSiteWorkers={
@@ -1106,4 +1113,4 @@ export default function AdminPage() {
       />
     </main>
   );
-            }
+}
