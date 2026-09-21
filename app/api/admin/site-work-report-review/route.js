@@ -48,14 +48,18 @@ function getBearerToken(request) {
     return null;
   }
 
-  return authorization.slice(7).trim();
+  const token = authorization
+    .slice(7)
+    .trim();
+
+  return token || null;
 }
 
 /* =========================================================
-   관리자 인증 + 업체 확인
+   관리자 인증
 
-   profiles:
-   - id = auth.users.id
+   profiles
+   - id
    - company_id
    - role
    - is_active
@@ -67,23 +71,33 @@ async function verifyAdmin(
 ) {
   if (!accessToken) {
     return {
-      error: "로그인이 필요합니다.",
+      ok: false,
       status: 401,
+      error: "관리자 로그인이 필요합니다.",
     };
   }
 
   const {
     data: userData,
     error: userError,
-  } = await supabase.auth.getUser(accessToken);
+  } = await supabase.auth.getUser(
+    accessToken
+  );
 
   if (
     userError ||
     !userData?.user?.id
   ) {
+    console.error(
+      "관리자 auth 확인 오류:",
+      userError
+    );
+
     return {
-      error: "로그인 정보를 확인할 수 없습니다.",
+      ok: false,
       status: 401,
+      error:
+        "관리자 로그인 정보를 확인할 수 없습니다.",
     };
   }
 
@@ -112,55 +126,49 @@ async function verifyAdmin(
     );
 
     return {
-      error:
-        "관리자 정보를 확인하지 못했습니다.",
+      ok: false,
       status: 500,
+      error:
+        "관리자 업체 정보를 확인하지 못했습니다.",
     };
   }
 
   if (!profile) {
     return {
-      error:
-        "업체 관리자 정보가 없습니다.",
+      ok: false,
       status: 403,
+      error:
+        "관리자 업체 가입 정보가 없습니다.",
     };
   }
 
   if (profile.is_active === false) {
     return {
+      ok: false,
+      status: 403,
       error:
         "비활성화된 관리자 계정입니다.",
-      status: 403,
     };
   }
 
   if (!profile.company_id) {
     return {
-      error:
-        "관리자 업체 정보가 연결되어 있지 않습니다.",
+      ok: false,
       status: 403,
+      error:
+        "관리자 계정에 업체가 연결되어 있지 않습니다.",
     };
   }
 
-  /*
-   * 현재 앱에서 관리자 role 명칭이
-   * 여러 형태일 가능성을 고려합니다.
-   *
-   * profile이 있고 company_id가 있으며
-   * 활성 계정인 것을 우선 확인합니다.
-   *
-   * 실제 데이터의 role 값이 확정되면
-   * 이후 더 엄격하게 제한할 수 있습니다.
-   */
-
   return {
+    ok: true,
     user,
     profile,
   };
 }
 
 /* =========================================================
-   Private Storage Signed URL
+   Signed URL
 ========================================================= */
 
 async function createSignedPhoto(
@@ -170,6 +178,11 @@ async function createSignedPhoto(
   if (!photo) {
     return null;
   }
+
+  /*
+   * storage_path가 없는 예전 데이터는
+   * photo_url이 있으면 그대로 사용합니다.
+   */
 
   if (!photo.storage_path) {
     return {
@@ -192,7 +205,12 @@ async function createSignedPhoto(
   if (error) {
     console.error(
       "완료보고 사진 signed URL 오류:",
-      error
+      {
+        photoId: photo.id,
+        storagePath:
+          photo.storage_path,
+        error,
+      }
     );
 
     return {
@@ -214,16 +232,24 @@ async function createSignedPhoto(
 
 export async function GET(request) {
   try {
-    const url = new URL(request.url);
+    /* =====================================================
+       1. siteId
+    ===================================================== */
+
+    const url =
+      new URL(request.url);
 
     const siteId =
-      url.searchParams.get("siteId")?.trim();
+      url.searchParams
+        .get("siteId")
+        ?.trim();
 
     if (!siteId) {
       return NextResponse.json(
         {
           success: false,
-          error: "siteId가 필요합니다.",
+          error:
+            "siteId가 필요합니다.",
         },
         {
           status: 400,
@@ -231,15 +257,19 @@ export async function GET(request) {
       );
     }
 
+    /* =====================================================
+       2. Supabase
+    ===================================================== */
+
     const supabase =
       getAdminClient();
 
+    /* =====================================================
+       3. 관리자 인증
+    ===================================================== */
+
     const accessToken =
       getBearerToken(request);
-
-    /* =====================================================
-       1. 관리자 인증
-    ===================================================== */
 
     const authResult =
       await verifyAdmin(
@@ -247,14 +277,17 @@ export async function GET(request) {
         accessToken
       );
 
-    if (authResult.error) {
+    if (!authResult.ok) {
       return NextResponse.json(
         {
           success: false,
-          error: authResult.error,
+          error:
+            authResult.error,
         },
         {
-          status: authResult.status,
+          status:
+            authResult.status ||
+            403,
         }
       );
     }
@@ -268,10 +301,9 @@ export async function GET(request) {
       profile.company_id;
 
     /* =====================================================
-       2. 현장 확인
+       4. 현장 확인
 
-       반드시 관리자 자신의 company_id와
-       현장의 company_id가 같아야 합니다.
+       관리자 회사와 동일한 현장만 허용
     ===================================================== */
 
     const {
@@ -293,13 +325,19 @@ export async function GET(request) {
           status
         `
       )
-      .eq("id", siteId)
-      .eq("company_id", companyId)
+      .eq(
+        "id",
+        siteId
+      )
+      .eq(
+        "company_id",
+        companyId
+      )
       .maybeSingle();
 
     if (siteError) {
       console.error(
-        "검수 현장 조회 오류:",
+        "관리자 검수 현장 조회 오류:",
         siteError
       );
 
@@ -320,7 +358,7 @@ export async function GET(request) {
         {
           success: false,
           error:
-            "현장을 찾을 수 없거나 접근 권한이 없습니다.",
+            "현장을 찾을 수 없거나 이 업체의 현장이 아닙니다.",
         },
         {
           status: 404,
@@ -329,25 +367,65 @@ export async function GET(request) {
     }
 
     /* =====================================================
-       3. 완료보고 조회
+       5. 완료보고 조회
 
-       한 현장에 저장된 완료보고를 조회합니다.
+       중요:
+       maybeSingle()을 사용하지 않습니다.
+
+       혹시 과거 데이터에서 같은 site_id로
+       여러 보고서가 존재하더라도
+       최신 updated_at 기준 1건을 사용합니다.
     ===================================================== */
 
     const {
-      data: report,
+      data: reportRows,
       error: reportError,
     } = await supabase
       .from("work_reports")
-      .select("*")
-      .eq("company_id", companyId)
-      .eq("site_id", siteId)
-      .maybeSingle();
+      .select(
+        `
+          id,
+          company_id,
+          site_id,
+          worker_id,
+          work_region,
+          work_summary,
+          memo,
+          completed_at,
+          created_by,
+          created_at,
+          updated_at,
+          review_status,
+          reviewed_at,
+          reviewed_by,
+          approved_amount,
+          review_memo
+        `
+      )
+      .eq(
+        "company_id",
+        companyId
+      )
+      .eq(
+        "site_id",
+        siteId
+      )
+      .order(
+        "updated_at",
+        {
+          ascending: false,
+        }
+      )
+      .limit(1);
 
     if (reportError) {
       console.error(
-        "완료보고 조회 오류:",
-        reportError
+        "관리자 완료보고 조회 오류:",
+        {
+          siteId,
+          companyId,
+          error: reportError,
+        }
       );
 
       return NextResponse.json(
@@ -362,18 +440,26 @@ export async function GET(request) {
       );
     }
 
-    /*
-     * 아직 시공자가 완료보고를 제출하지 않은 경우
-     */
+    const report =
+      Array.isArray(reportRows) &&
+      reportRows.length > 0
+        ? reportRows[0]
+        : null;
+
+    /* =====================================================
+       6. 보고서 없음
+    ===================================================== */
 
     if (!report) {
       return NextResponse.json({
         success: true,
+
         hasReport: false,
 
         site,
 
         report: null,
+
         worker: null,
 
         materials: [],
@@ -381,14 +467,24 @@ export async function GET(request) {
 
         beforePhotos: [],
         afterPhotos: [],
+
+        review: null,
+
+        permissions: {
+          canReview: false,
+          canApprove: false,
+        },
       });
     }
 
     /* =====================================================
-       4. 보고서 작성 시공자
+       7. 제출 시공자
 
-       worker_id가 null일 수도 있으므로
-       별도 조회합니다.
+       현재 테스트 데이터 중 일부는
+       worker_id가 NULL일 수 있습니다.
+
+       worker_id가 없어도 완료보고 자체는
+       정상적으로 관리자에게 표시합니다.
     ===================================================== */
 
     let worker = null;
@@ -422,15 +518,16 @@ export async function GET(request) {
           workerError
         );
       } else {
-        worker = workerData || null;
+        worker =
+          workerData || null;
       }
     }
 
     /* =====================================================
-       5. 실제 사용 자재
+       8. 실제 사용 자재
 
        planned 제외
-       actual만 조회합니다.
+       actual만 조회
     ===================================================== */
 
     const {
@@ -475,8 +572,11 @@ export async function GET(request) {
 
     if (materialError) {
       console.error(
-        "실제 사용 자재 조회 오류:",
-        materialError
+        "관리자 실제 사용 자재 조회 오류:",
+        {
+          siteId,
+          error: materialError,
+        }
       );
 
       return NextResponse.json(
@@ -492,7 +592,7 @@ export async function GET(request) {
     }
 
     /* =====================================================
-       6. 현장 경비
+       9. 현장 경비
     ===================================================== */
 
     const {
@@ -518,8 +618,11 @@ export async function GET(request) {
 
     if (expenseError) {
       console.error(
-        "현장 경비 조회 오류:",
-        expenseError
+        "관리자 현장 경비 조회 오류:",
+        {
+          siteId,
+          error: expenseError,
+        }
       );
 
       return NextResponse.json(
@@ -535,9 +638,13 @@ export async function GET(request) {
     }
 
     /* =====================================================
-       7. 시공 전 / 완료 사진
+       10. 시공 전 / 완료 사진
 
-       request 사진은 제외합니다.
+       request 사진은 기존 관리자 상세화면에서
+       별도로 표시하므로 제외합니다.
+
+       before = 실제 시공 전
+       after  = 실제 시공 완료
     ===================================================== */
 
     const {
@@ -579,8 +686,11 @@ export async function GET(request) {
 
     if (photoError) {
       console.error(
-        "완료보고 사진 조회 오류:",
-        photoError
+        "관리자 완료보고 사진 조회 오류:",
+        {
+          siteId,
+          error: photoError,
+        }
       );
 
       return NextResponse.json(
@@ -596,7 +706,7 @@ export async function GET(request) {
     }
 
     /* =====================================================
-       8. Signed URL 생성
+       11. Private Storage Signed URL
     ===================================================== */
 
     const signedPhotos =
@@ -610,32 +720,51 @@ export async function GET(request) {
         )
       );
 
+    const validPhotos =
+      signedPhotos.filter(Boolean);
+
     const beforePhotos =
-      signedPhotos.filter(
+      validPhotos.filter(
         (photo) =>
-          photo?.photo_type ===
+          photo.photo_type ===
           "before"
       );
 
     const afterPhotos =
-      signedPhotos.filter(
+      validPhotos.filter(
         (photo) =>
-          photo?.photo_type ===
+          photo.photo_type ===
           "after"
       );
 
     /* =====================================================
-       9. 결과
+       12. 검수 상태
+
+       기존 데이터 보호를 위해
+       값이 없으면 pending으로 처리
+    ===================================================== */
+
+    const reviewStatus =
+      report.review_status ||
+      "pending";
+
+    /* =====================================================
+       13. 응답
     ===================================================== */
 
     return NextResponse.json({
       success: true,
+
       hasReport: true,
 
       site,
 
       report,
 
+      /*
+       * worker_id가 NULL이면 worker는 null입니다.
+       * 이것 때문에 보고서 표시를 막지 않습니다.
+       */
       worker,
 
       materials:
@@ -649,8 +778,7 @@ export async function GET(request) {
 
       review: {
         status:
-          report.review_status ||
-          "pending",
+          reviewStatus,
 
         reviewedAt:
           report.reviewed_at ||
@@ -670,10 +798,26 @@ export async function GET(request) {
       },
 
       permissions: {
-        canReview: true,
+        canReview:
+          reviewStatus ===
+            "pending" ||
+          reviewStatus ===
+            "rejected",
+
         canApprove:
-          report.review_status !==
-          "approved",
+          reviewStatus ===
+          "pending",
+      },
+
+      debug: {
+        siteId,
+        companyId,
+        reportId:
+          report.id,
+        workerId:
+          report.worker_id ||
+          null,
+        reviewStatus,
       },
 
       requestedBy:
@@ -681,13 +825,14 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error(
-      "관리자 완료보고 검수 조회 API 오류:",
+      "관리자 완료보고 검수 API 오류:",
       error
     );
 
     return NextResponse.json(
       {
         success: false,
+
         error:
           error?.message ||
           "완료보고 검수 정보를 불러오지 못했습니다.",
@@ -697,4 +842,4 @@ export async function GET(request) {
       }
     );
   }
-}
+           }
