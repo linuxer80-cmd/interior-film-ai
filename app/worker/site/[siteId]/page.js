@@ -857,3 +857,299 @@ export default function WorkerSiteDetailPage() {
             관리자에서 등록한 예정 사용 자재입니다.
           </div>
         </section>
+        {/* ===================================================
+            고객 요청사진
+        =================================================== */}
+
+        <WorkerRequestPhotos siteId={siteId} />
+
+        {/* ===================================================
+            고객 연락
+        =================================================== */}
+
+        {site.customer_phone && (
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              📞 고객 연락
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "10px",
+                color: "#334155",
+                fontSize: "14px",
+                fontWeight: "800",
+              }}
+            >
+              {site.customer_phone}
+            </div>
+
+            <a
+              href={`tel:${site.customer_phone}`}
+              style={{
+                display: "block",
+                marginTop: "12px",
+                padding: "13px",
+                borderRadius: "10px",
+                background: "#111827",
+                color: "#ffffff",
+                textAlign: "center",
+                textDecoration: "none",
+                fontSize: "14px",
+                fontWeight: "900",
+              }}
+            >
+              📞 고객에게 전화
+            </a>
+          </section>
+        )}
+
+        {/* ===================================================
+            현장 작업 / 완료보고
+
+            권한:
+            leader = 완료보고 작성 가능
+            member = 완료보고 작성 불가
+
+            서버 API에서도 동일하게 leader 권한을
+            다시 검사하므로 화면 조작으로 우회할 수 없습니다.
+        =================================================== */}
+
+        {site.status === "completed" ? (
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #bbf7d0",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              ✅ 시공 완료
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#f0fdf4",
+                color: "#166534",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              이 현장은 시공 완료 처리되었습니다.
+            </div>
+          </section>
+        ) : site.status === "cancelled" ? (
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #fecaca",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              📋 현장 작업
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#fef2f2",
+                color: "#b91c1c",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              취소된 현장에는 완료보고를 등록할 수 없습니다.
+            </div>
+          </section>
+        ) : site.my_role !== "leader" ? (
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              📋 완료보고
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#f8fafc",
+                color: "#64748b",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              완료보고는 이 현장의 책임 팀장이 등록합니다.
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              marginTop: "14px",
+            }}
+          >
+            <WorkerWorkReport
+              siteId={siteId}
+              site={site}
+              onSubmitted={async () => {
+                await loadSiteDetail();
+              }}
+            />
+          </section>
+        )}
+
+        {/* ===================================================
+            완료보고 안내
+
+            시공자가 등록한 완료보고는
+            AI 견적자료로 즉시 등록되지 않습니다.
+
+            관리자 검수
+              ↓
+            실제 견적금액 입력
+              ↓
+            관리자 승인
+              ↓
+            AI 견적자료 등록
+
+            흐름으로 별도 처리합니다.
+        =================================================== */}
+
+        {site.my_role === "leader" &&
+          site.status !== "cancelled" &&
+          site.status !== "completed" && (
+            <div
+              style={{
+                marginTop: "10px",
+                padding: "12px",
+                borderRadius: "10px",
+                border: "1px solid #fde68a",
+                background: "#fffbeb",
+                color: "#92400e",
+                fontSize: "11px",
+                lineHeight: 1.7,
+              }}
+            >
+              제출한 완료보고와 시공사진은 관리자 검수 후
+              처리됩니다. 관리자가 실제 시공금액을 확인하고
+              승인하기 전에는 AI 견적자료로 등록되지 않습니다.
+            </div>
+          )}
+
+        {/* ===================================================
+            보안 안내
+        =================================================== */}
+
+        <div
+          style={{
+            marginTop: "14px",
+            padding: "12px",
+            borderRadius: "10px",
+            background: "#f1f5f9",
+            color: "#64748b",
+            fontSize: "11px",
+            lineHeight: 1.6,
+            textAlign: "center",
+          }}
+        >
+          본인에게 배정된 현장 정보만 조회할 수 있습니다.
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/* =========================================================
+   섹션 제목
+========================================================= */
+
+function SectionTitle({ children }) {
+  return (
+    <div
+      style={{
+        color: "#111827",
+        fontSize: "15px",
+        fontWeight: "900",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* =========================================================
+   정보 한 줄
+========================================================= */
+
+function InfoRow({
+  label,
+  value,
+}) {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "12px",
+        marginTop: "12px",
+        fontSize: "13px",
+        lineHeight: 1.6,
+      }}
+    >
+      <div
+        style={{
+          width: "46px",
+          flex: "0 0 46px",
+          color: "#94a3b8",
+          fontWeight: "700",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          color: "#334155",
+          fontWeight: "800",
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+                }
