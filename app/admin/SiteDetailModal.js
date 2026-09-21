@@ -133,6 +133,19 @@ export default function SiteDetailModal({
   const [reportOpen, setReportOpen] =
     useState(false);
 
+  /*
+   * 시공자 완료보고 존재 여부
+   *
+   * null  = 확인 중 / 조회 오류
+   * false = 시공자 완료보고 없음
+   * true  = 시공자 완료보고 있음
+   *
+   * 시공자 완료보고가 있으면 기존 관리자용
+   * "시공 완료 보고 작성"을 중복으로 표시하지 않습니다.
+   */
+  const [hasWorkerReport, setHasWorkerReport] =
+    useState(null);
+
   const {
     reportSaving,
     reportMessage,
@@ -316,12 +329,14 @@ export default function SiteDetailModal({
   }, [site?.id]);
 
   /*
-   * 현장이 바뀌면 완료보고 입력창과
+   * 현장이 바뀌면 완료보고 입력창,
+   * 시공자 완료보고 확인 상태,
    * 이전 메시지를 초기화합니다.
    */
 
   useEffect(() => {
     setReportOpen(false);
+    setHasWorkerReport(null);
 
     if (
       typeof clearReportMessage === "function"
@@ -809,6 +824,13 @@ export default function SiteDetailModal({
 
         <SiteWorkReportReview
           siteId={site.id}
+          onReportStateChange={({
+            hasReport,
+          }) => {
+            setHasWorkerReport(
+              Boolean(hasReport),
+            );
+          }}
         />
 
         {/* =========================
@@ -938,10 +960,14 @@ export default function SiteDetailModal({
 
         {/* =========================
             시공 완료 보고 작성
+
+            시공자 완료보고가 없는 현장에서만
+            기존 관리자 직접 완료보고를 사용합니다.
         ========================= */}
 
         {site.status !==
-          "completed" && (
+          "completed" &&
+          hasWorkerReport === false && (
           <section
             style={{
               marginTop: "18px",
@@ -1081,8 +1107,7 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-}
-
+              }
 /* =========================================================
    예정 자재 카드
 ========================================================= */
@@ -1458,4 +1483,4 @@ function StatusButton({
       {children}
     </button>
   );
-}
+                }
