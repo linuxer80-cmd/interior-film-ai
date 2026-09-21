@@ -872,6 +872,9 @@ export default function AdminPage() {
       {activeTab ===
         "sites" && (
         <SiteManagementTab
+          companyId={
+            companyId
+          }
           sites={
             sites
           }
