@@ -5,10 +5,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /* =========================================================
-   Supabase Admin
+   Supabase Admin Client
 ========================================================= */
 
-function createAdminClient() {
+function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -17,13 +17,13 @@ function createAdminClient() {
 
   if (!supabaseUrl) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다."
     );
   }
 
   if (!serviceRoleKey) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다."
     );
   }
 
@@ -35,12 +35,12 @@ function createAdminClient() {
         persistSession: false,
         autoRefreshToken: false,
       },
-    },
+    }
   );
 }
 
 /* =========================================================
-   공용
+   공통 유틸
 ========================================================= */
 
 function cleanText(value) {
@@ -51,38 +51,32 @@ function cleanText(value) {
     return null;
   }
 
-  const text =
-    String(value).trim();
+  const text = String(value).trim();
 
   return text || null;
 }
 
 function toNumberOrNull(value) {
   if (
-    value === "" ||
     value === null ||
-    value === undefined
+    value === undefined ||
+    value === ""
   ) {
     return null;
   }
 
-  const number =
-    Number(value);
+  const number = Number(value);
 
-  return Number.isFinite(number)
-    ? number
-    : null;
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return number;
 }
 
-/* =========================================================
-   Bearer Token
-========================================================= */
-
-function getAccessToken(request) {
+function getBearerToken(request) {
   const authorization =
-    request.headers.get(
-      "authorization",
-    ) || "";
+    request.headers.get("authorization") || "";
 
   if (
     !authorization
@@ -92,28 +86,17 @@ function getAccessToken(request) {
     return null;
   }
 
-  return authorization
-    .slice(7)
-    .trim();
+  return authorization.slice(7).trim();
 }
 
 /* =========================================================
-   Worker 권한 확인
+   시공자 + 현장 접근권한 확인
 
-   반드시:
-
-   auth user
-      ↓
-   workers.user_id
-      ↓
-   site_workers.worker_id
-      ↓
-   sites.company_id
-
-   를 모두 확인합니다.
-
-   여기서는 현장 배정 여부까지만 확인합니다.
-   완료보고 작성 권한(leader)은 POST에서 별도로 확인합니다.
+   1. 로그인 사용자 확인
+   2. workers.user_id 확인
+   3. 활성 시공자 확인
+   4. 같은 회사 현장인지 확인
+   5. site_workers 배정 여부 확인
 ========================================================= */
 
 async function verifyWorkerSiteAccess({
@@ -122,161 +105,161 @@ async function verifyWorkerSiteAccess({
   siteId,
 }) {
   if (!accessToken) {
-    throw new Error(
-      "로그인이 필요합니다.",
-    );
+    return {
+      success: false,
+      status: 401,
+      error: "로그인이 필요합니다.",
+    };
   }
-
-  /* ---------------------------------------------------------
-     1. 로그인 사용자
-  --------------------------------------------------------- */
 
   const {
     data: userData,
     error: userError,
-  } =
-    await supabase.auth.getUser(
-      accessToken,
-    );
+  } = await supabase.auth.getUser(
+    accessToken
+  );
 
   if (
     userError ||
     !userData?.user
   ) {
-    throw new Error(
-      "로그인 정보를 확인할 수 없습니다.",
-    );
+    return {
+      success: false,
+      status: 401,
+      error:
+        "로그인 정보를 확인할 수 없습니다.",
+    };
   }
 
-  const user =
-    userData.user;
+  const user = userData.user;
 
-  /* ---------------------------------------------------------
-     2. 시공자 계정
-  --------------------------------------------------------- */
+  /* -------------------------------------------------------
+     시공자 조회
+  ------------------------------------------------------- */
 
   const {
     data: worker,
     error: workerError,
-  } =
-    await supabase
-      .from("workers")
-      .select(
-        `
-          id,
-          company_id,
-          name,
-          phone,
-          user_id,
-          is_active
-        `,
-      )
-      .eq(
-        "user_id",
-        user.id,
-      )
-      .eq(
-        "is_active",
-        true,
-      )
-      .maybeSingle();
+  } = await supabase
+    .from("workers")
+    .select(
+      `
+        id,
+        company_id,
+        name,
+        phone,
+        user_id,
+        is_active
+      `
+    )
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
 
   if (workerError) {
-    throw workerError;
+    return {
+      success: false,
+      status: 500,
+      error:
+        workerError.message ||
+        "시공자 정보를 확인하지 못했습니다.",
+    };
   }
 
-  if (!worker) {
-    throw new Error(
-      "등록된 시공자 계정을 찾을 수 없습니다.",
-    );
+  if (!worker?.id) {
+    return {
+      success: false,
+      status: 403,
+      error:
+        "등록된 활성 시공자 계정이 아닙니다.",
+    };
   }
 
-  /* ---------------------------------------------------------
-     3. 해당 현장
-
-     로그인 시공자의 company_id와
-     현장의 company_id가 반드시 같아야 합니다.
-  --------------------------------------------------------- */
+  /* -------------------------------------------------------
+     현장 조회
+  ------------------------------------------------------- */
 
   const {
     data: site,
     error: siteError,
-  } =
-    await supabase
-      .from("sites")
-      .select(
-        `
-          id,
-          company_id,
-          site_name,
-          customer_name,
-          status
-        `,
-      )
-      .eq(
-        "id",
-        siteId,
-      )
-      .eq(
-        "company_id",
-        worker.company_id,
-      )
-      .maybeSingle();
+  } = await supabase
+    .from("sites")
+    .select(
+      `
+        id,
+        company_id,
+        site_name,
+        customer_name,
+        status
+      `
+    )
+    .eq("id", siteId)
+    .eq("company_id", worker.company_id)
+    .maybeSingle();
 
   if (siteError) {
-    throw siteError;
+    return {
+      success: false,
+      status: 500,
+      error:
+        siteError.message ||
+        "현장 정보를 확인하지 못했습니다.",
+    };
   }
 
-  if (!site) {
-    throw new Error(
-      "현장을 찾을 수 없습니다.",
-    );
+  if (!site?.id) {
+    return {
+      success: false,
+      status: 404,
+      error:
+        "현장을 찾을 수 없습니다.",
+    };
   }
 
-  /* ---------------------------------------------------------
-     4. 현장 배정 확인
-  --------------------------------------------------------- */
+  /* -------------------------------------------------------
+     현장 배정 확인
+  ------------------------------------------------------- */
 
   const {
     data: assignment,
     error: assignmentError,
-  } =
-    await supabase
-      .from("site_workers")
-      .select(
-        `
-          id,
-          role,
-          worker_id,
-          site_id,
-          company_id
-        `,
-      )
-      .eq(
-        "site_id",
-        site.id,
-      )
-      .eq(
-        "worker_id",
-        worker.id,
-      )
-      .eq(
-        "company_id",
-        worker.company_id,
-      )
-      .maybeSingle();
+  } = await supabase
+    .from("site_workers")
+    .select(
+      `
+        id,
+        company_id,
+        site_id,
+        worker_id,
+        role
+      `
+    )
+    .eq("company_id", worker.company_id)
+    .eq("site_id", siteId)
+    .eq("worker_id", worker.id)
+    .maybeSingle();
 
   if (assignmentError) {
-    throw assignmentError;
+    return {
+      success: false,
+      status: 500,
+      error:
+        assignmentError.message ||
+        "현장 배정정보를 확인하지 못했습니다.",
+    };
   }
 
-  if (!assignment) {
-    throw new Error(
-      "이 현장에 배정된 시공자가 아닙니다.",
-    );
+  if (!assignment?.id) {
+    return {
+      success: false,
+      status: 403,
+      error:
+        "본인에게 배정된 현장만 이용할 수 있습니다.",
+    };
   }
 
   return {
+    success: true,
     user,
     worker,
     site,
@@ -285,143 +268,156 @@ async function verifyWorkerSiteAccess({
 }
 
 /* =========================================================
+   기존 완료보고 조회
+========================================================= */
+
+async function getExistingReport({
+  supabase,
+  companyId,
+  siteId,
+}) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("work_reports")
+    .select(
+      `
+        id,
+        company_id,
+        site_id,
+        worker_id,
+        work_region,
+        work_summary,
+        memo,
+        completed_at,
+        created_at,
+        updated_at,
+        review_status,
+        reviewed_at,
+        approved_amount,
+        review_memo
+      `
+    )
+    .eq("company_id", companyId)
+    .eq("site_id", siteId)
+    .order("updated_at", {
+      ascending: false,
+    })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+/* =========================================================
    완료보고 저장
+
+   현장당 기존 report가 있으면 update,
+   없으면 insert.
+
+   하지만 POST 진입 전에
+   pending / approved 중복 제출을 차단한다.
 ========================================================= */
 
 async function saveWorkReport({
   supabase,
   companyId,
   siteId,
+  workerId,
   userId,
   workRegion,
   workSummary,
   memo,
 }) {
+  const now =
+    new Date().toISOString();
+
   const {
     data: existing,
     error: existingError,
-  } =
-    await supabase
-      .from("work_reports")
-      .select("id")
-      .eq(
-        "company_id",
-        companyId,
-      )
-      .eq(
-        "site_id",
-        siteId,
-      )
-      .maybeSingle();
+  } = await supabase
+    .from("work_reports")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("site_id", siteId)
+    .limit(1)
+    .maybeSingle();
 
   if (existingError) {
     throw existingError;
   }
 
-  const completedAt =
-    new Date().toISOString();
+  const payload = {
+    company_id: companyId,
+    site_id: siteId,
+    worker_id: workerId,
+    work_region:
+      cleanText(workRegion),
+    work_summary:
+      cleanText(workSummary),
+    memo:
+      cleanText(memo),
+    completed_at: now,
+    created_by: userId,
+    updated_at: now,
 
-  /*
-   * 기존 보고서가 있으면 수정합니다.
-   *
-   * 아직 이 completed_at은
-   * "현장 최종 승인"이나
-   * "AI 견적자료 등록"을 의미하지 않습니다.
-   *
-   * 시공자 완료보고 작성 시각으로 사용합니다.
-   */
+    // 시공자 제출 직후는 항상 관리자 검수대기
+    review_status: "pending",
+
+    // 이전 검수값 초기화
+    reviewed_at: null,
+    reviewed_by: null,
+    approved_amount: null,
+    review_memo: null,
+  };
 
   if (existing?.id) {
     const {
+      data,
       error,
-    } =
-      await supabase
-        .from("work_reports")
-        .update({
-          work_region:
-            cleanText(
-              workRegion,
-            ),
-
-          work_summary:
-            cleanText(
-              workSummary,
-            ),
-
-          memo:
-            cleanText(memo),
-
-          completed_at:
-            completedAt,
-        })
-        .eq(
-          "id",
-          existing.id,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
+    } = await supabase
+      .from("work_reports")
+      .update(payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
 
     if (error) {
       throw error;
     }
 
-    return existing.id;
+    return data;
   }
-
-  /*
-   * 기존 보고서가 없으면 신규 생성합니다.
-   */
 
   const {
     data,
     error,
-  } =
-    await supabase
-      .from("work_reports")
-      .insert({
-        company_id:
-          companyId,
-
-        site_id:
-          siteId,
-
-        work_region:
-          cleanText(
-            workRegion,
-          ),
-
-        work_summary:
-          cleanText(
-            workSummary,
-          ),
-
-        memo:
-          cleanText(memo),
-
-        completed_at:
-          completedAt,
-
-        created_by:
-          userId,
-      })
-      .select("id")
-      .single();
+  } = await supabase
+    .from("work_reports")
+    .insert({
+      ...payload,
+      created_at: now,
+    })
+    .select("*")
+    .single();
 
   if (error) {
     throw error;
   }
 
-  return data.id;
+  return data;
 }
 
 /* =========================================================
-   기존 actual 자재 제거
+   기존 actual 자재 삭제
 
-   완료보고를 다시 저장할 경우
-   같은 실제 사용 자재가 중복 등록되지 않도록
-   기존 actual 자료를 먼저 제거합니다.
+   보고서 저장 전에 기존 actual 자재를 정리해서
+   같은 현장에 중복 자재가 쌓이지 않도록 한다.
 ========================================================= */
 
 async function clearActualMaterials({
@@ -431,22 +427,12 @@ async function clearActualMaterials({
 }) {
   const {
     error,
-  } =
-    await supabase
-      .from("site_materials")
-      .delete()
-      .eq(
-        "company_id",
-        companyId,
-      )
-      .eq(
-        "site_id",
-        siteId,
-      )
-      .eq(
-        "material_type",
-        "actual",
-      );
+  } = await supabase
+    .from("site_materials")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("site_id", siteId)
+    .eq("material_type", "actual");
 
   if (error) {
     throw error;
@@ -468,113 +454,93 @@ async function saveMaterials({
     !Array.isArray(materials) ||
     materials.length === 0
   ) {
-    return [];
+    return 0;
   }
 
-  const rows =
-    materials
-      .filter(
-        (item) =>
-          cleanText(
-            item?.product_code,
-          ) ||
-          cleanText(
-            item?.product_name,
-          ),
-      )
-      .map((item) => {
-        const quantity =
-          toNumberOrNull(
-            item.quantity,
-          ) ?? 0;
+  const now =
+    new Date().toISOString();
 
-        const unitPrice =
-          toNumberOrNull(
-            item.unit_price,
-          );
+  const rows = materials
+    .map((item) => {
+      const quantity =
+        toNumberOrNull(item?.quantity);
 
-        const totalPrice =
-          unitPrice === null
-            ? null
-            : quantity *
-              unitPrice;
+      const unitPrice =
+        toNumberOrNull(item?.unit_price);
 
-        return {
-          company_id:
-            companyId,
+      let totalPrice = null;
 
-          site_id:
-            siteId,
+      if (
+        quantity !== null &&
+        unitPrice !== null
+      ) {
+        totalPrice =
+          quantity * unitPrice;
+      }
 
-          material_type:
-            "actual",
+      return {
+        company_id: companyId,
+        site_id: siteId,
 
-          film_product_id:
-            item.film_product_id ||
-            null,
+        film_product_id:
+          item?.film_product_id || null,
 
-          brand:
-            cleanText(
-              item.brand,
-            ),
+        brand:
+          cleanText(item?.brand),
 
-          product_code:
-            cleanText(
-              item.product_code,
-            ),
+        product_code:
+          cleanText(item?.product_code),
 
-          product_name:
-            cleanText(
-              item.product_name,
-            ),
+        product_name:
+          cleanText(item?.product_name),
 
-          quantity,
+        quantity,
+        unit:
+          cleanText(item?.unit),
 
-          unit:
-            cleanText(
-              item.unit,
-            ) || "m",
+        unit_price: unitPrice,
+        total_price: totalPrice,
 
-          unit_price:
-            unitPrice,
+        memo:
+          cleanText(item?.memo),
 
-          total_price:
-            totalPrice,
+        created_by: userId,
 
-          memo:
-            cleanText(
-              item.memo,
-            ),
+        created_at: now,
+        updated_at: now,
 
-          created_by:
-            userId,
-        };
-      });
+        material_type: "actual",
+      };
+    })
+    .filter((item) => {
+      return (
+        item.brand ||
+        item.product_code ||
+        item.product_name ||
+        item.quantity !== null ||
+        item.memo
+      );
+    });
 
   if (rows.length === 0) {
-    return [];
+    return 0;
   }
 
   const {
-    data,
     error,
-  } =
-    await supabase
-      .from("site_materials")
-      .insert(rows)
-      .select();
+  } = await supabase
+    .from("site_materials")
+    .insert(rows);
 
   if (error) {
     throw error;
   }
 
-  return data || [];
+  return rows.length;
 }
 
 /* =========================================================
-   기존 경비 제거
-
-   완료보고 재저장 시 중복 방지
+   기존 경비 삭제
 ========================================================= */
 
 async function clearExpenses({
@@ -584,18 +550,11 @@ async function clearExpenses({
 }) {
   const {
     error,
-  } =
-    await supabase
-      .from("site_expenses")
-      .delete()
-      .eq(
-        "company_id",
-        companyId,
-      )
-      .eq(
-        "site_id",
-        siteId,
-      );
+  } = await supabase
+    .from("site_expenses")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("site_id", siteId);
 
   if (error) {
     throw error;
@@ -610,6 +569,7 @@ async function saveExpenses({
   supabase,
   companyId,
   siteId,
+  workerId,
   userId,
   expenses,
 }) {
@@ -617,87 +577,234 @@ async function saveExpenses({
     !Array.isArray(expenses) ||
     expenses.length === 0
   ) {
-    return [];
+    return 0;
   }
 
-  const rows =
-    expenses
-      .filter(
-        (item) =>
-          Number(
-            item?.amount || 0,
-          ) > 0,
-      )
-      .map((item) => ({
-        company_id:
-          companyId,
+  const now =
+    new Date().toISOString();
 
-        site_id:
-          siteId,
+  const allowedTypes = new Set([
+    "parking",
+    "meal",
+    "fuel",
+    "toll",
+    "material",
+    "other",
+  ]);
 
-        expense_type:
-          item.expense_type ||
-          "other",
+  const rows = expenses
+    .map((item) => {
+      const amount =
+        toNumberOrNull(item?.amount);
 
-        amount:
-          Number(
-            item.amount || 0,
-          ),
+      const rawType =
+        cleanText(item?.expense_type);
+
+      const expenseType =
+        allowedTypes.has(rawType)
+          ? rawType
+          : "other";
+
+      return {
+        company_id: companyId,
+        site_id: siteId,
+        worker_id: workerId,
+
+        expense_type: expenseType,
+
+        amount,
 
         description:
-          cleanText(
-            item.description,
-          ),
+          cleanText(item?.description),
 
         expense_date:
-          item.expense_date ||
-          new Date()
-            .toISOString()
-            .slice(0, 10),
+          cleanText(item?.expense_date),
 
-        created_by:
-          userId,
-      }));
+        created_by: userId,
+
+        created_at: now,
+        updated_at: now,
+      };
+    })
+    .filter((item) => {
+      return (
+        item.amount !== null ||
+        item.description
+      );
+    });
 
   if (rows.length === 0) {
-    return [];
+    return 0;
   }
 
   const {
-    data,
     error,
-  } =
-    await supabase
-      .from("site_expenses")
-      .insert(rows)
-      .select();
+  } = await supabase
+    .from("site_expenses")
+    .insert(rows);
 
   if (error) {
     throw error;
   }
 
-  return data || [];
+  return rows.length;
+}
+
+/* =========================================================
+   GET
+   현재 현장의 완료보고 상태 조회
+
+   시공자 화면에서:
+   - report 없음 → 완료보고 폼 표시
+   - pending → 관리자 검수 대기
+   - approved → 관리자 승인 완료
+   - rejected → 보완 필요
+========================================================= */
+
+export async function GET(request) {
+  try {
+    const url =
+      new URL(request.url);
+
+    const siteId =
+      cleanText(
+        url.searchParams.get("siteId")
+      );
+
+    if (!siteId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "siteId가 필요합니다.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const accessToken =
+      getBearerToken(request);
+
+    const supabase =
+      getAdminClient();
+
+    const access =
+      await verifyWorkerSiteAccess({
+        supabase,
+        accessToken,
+        siteId,
+      });
+
+    if (!access.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: access.error,
+        },
+        {
+          status: access.status,
+        }
+      );
+    }
+
+    const {
+      worker,
+      site,
+      assignment,
+    } = access;
+
+    const report =
+      await getExistingReport({
+        supabase,
+        companyId: worker.company_id,
+        siteId,
+      });
+
+    return NextResponse.json({
+      success: true,
+
+      siteId,
+
+      role:
+        assignment.role,
+
+      siteStatus:
+        site.status,
+
+      hasReport:
+        Boolean(report?.id),
+
+      report: report
+        ? {
+            id: report.id,
+
+            worker_id:
+              report.worker_id,
+
+            work_region:
+              report.work_region,
+
+            work_summary:
+              report.work_summary,
+
+            memo:
+              report.memo,
+
+            completed_at:
+              report.completed_at,
+
+            created_at:
+              report.created_at,
+
+            updated_at:
+              report.updated_at,
+
+            review_status:
+              report.review_status ||
+              "pending",
+
+            reviewed_at:
+              report.reviewed_at,
+
+            approved_amount:
+              report.approved_amount,
+
+            review_memo:
+              report.review_memo,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error(
+      "시공자 완료보고 조회 오류:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error?.message ||
+          "완료보고 상태를 확인하지 못했습니다.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
 }
 
 /* =========================================================
    POST
+   책임 팀장 완료보고 저장
 ========================================================= */
 
-export async function POST(
-  request,
-) {
+export async function POST(request) {
   try {
-    const supabase =
-      createAdminClient();
-
-    /* -------------------------------------------------------
-       Token
-    ------------------------------------------------------- */
-
     const accessToken =
-      getAccessToken(
-        request,
-      );
+      getBearerToken(request);
 
     if (!accessToken) {
       return NextResponse.json(
@@ -708,68 +815,37 @@ export async function POST(
         },
         {
           status: 401,
-        },
+        }
       );
     }
 
-    /* -------------------------------------------------------
-       Body
-    ------------------------------------------------------- */
-
-    let body;
-
-    try {
-      body =
-        await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "요청 데이터를 확인할 수 없습니다.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
+    const body =
+      await request.json();
 
     const siteId =
-      cleanText(
-        body?.siteId,
-      );
+      cleanText(body?.siteId);
 
     const workRegion =
-      cleanText(
-        body?.work_region,
-      );
+      cleanText(body?.work_region);
 
     const workSummary =
-      cleanText(
-        body?.work_summary,
-      );
+      cleanText(body?.work_summary);
 
     const memo =
-      cleanText(
-        body?.memo,
-      );
+      cleanText(body?.memo);
 
     const materials =
-      Array.isArray(
-        body?.materials,
-      )
+      Array.isArray(body?.materials)
         ? body.materials
         : [];
 
     const expenses =
-      Array.isArray(
-        body?.expenses,
-      )
+      Array.isArray(body?.expenses)
         ? body.expenses
         : [];
 
     /* -------------------------------------------------------
-       필수값
+       필수값 확인
     ------------------------------------------------------- */
 
     if (!siteId) {
@@ -781,7 +857,7 @@ export async function POST(
         },
         {
           status: 400,
-        },
+        }
       );
     }
 
@@ -790,44 +866,49 @@ export async function POST(
         {
           success: false,
           error:
-            "시공 내용을 입력해주세요.",
+            "실제 시공 내용을 입력해주세요.",
         },
         {
           status: 400,
-        },
+        }
       );
     }
 
+    const supabase =
+      getAdminClient();
+
     /* -------------------------------------------------------
-       시공자 + 현장 배정 검증
+       시공자 + 현장 권한 확인
     ------------------------------------------------------- */
 
-    const {
-      user,
-      worker,
-      site,
-      assignment,
-    } =
+    const access =
       await verifyWorkerSiteAccess({
         supabase,
         accessToken,
         siteId,
       });
 
-    const companyId =
-      worker.company_id;
+    if (!access.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: access.error,
+        },
+        {
+          status: access.status,
+        }
+      );
+    }
+
+    const {
+      user,
+      worker,
+      site,
+      assignment,
+    } = access;
 
     /* -------------------------------------------------------
-       책임 팀장 권한 확인
-
-       중요:
-       화면에서 버튼을 숨기는 것만으로는 보안이 되지 않습니다.
-
-       API 자체에서 assignment.role === "leader" 를
-       반드시 확인합니다.
-
-       따라서 일반 시공자가 개발자도구나 직접 API 요청으로
-       완료보고를 저장하려고 해도 서버에서 차단됩니다.
+       완료보고는 책임 팀장만 제출 가능
     ------------------------------------------------------- */
 
     if (
@@ -841,94 +922,151 @@ export async function POST(
         },
         {
           status: 403,
-        },
+        }
       );
     }
 
     /* -------------------------------------------------------
-       취소된 현장 방지
+       취소 현장 차단
     ------------------------------------------------------- */
 
     if (
-      site.status ===
-      "cancelled"
+      site.status === "cancelled"
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "취소된 현장은 완료보고를 저장할 수 없습니다.",
+            "취소된 현장에는 완료보고를 제출할 수 없습니다.",
         },
         {
           status: 409,
-        },
+        }
       );
     }
 
     /* -------------------------------------------------------
-       이미 완료 처리된 현장 방지
-
-       관리자 검수 흐름을 붙이기 전까지
-       완료된 현장을 시공자가 다시 덮어쓰지 못하게 합니다.
+       기존 completed 현장 차단
     ------------------------------------------------------- */
 
     if (
-      site.status ===
-      "completed"
+      site.status === "completed"
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "이미 완료 처리된 현장입니다.",
+            "이미 시공 완료 처리된 현장입니다.",
         },
         {
           status: 409,
-        },
+        }
       );
     }
 
     /* -------------------------------------------------------
-       1. 완료보고 저장
+       기존 완료보고 확인
+
+       pending:
+       이미 제출 → 재제출 금지
+
+       approved:
+       관리자 승인 완료 → 재제출 금지
+
+       rejected:
+       보완 제출 허용
     ------------------------------------------------------- */
 
-    const reportId =
+    const existingReport =
+      await getExistingReport({
+        supabase,
+        companyId:
+          worker.company_id,
+        siteId,
+      });
+
+    if (
+      existingReport?.id &&
+      existingReport.review_status ===
+        "pending"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "이미 완료보고를 제출했습니다. 관리자 검수를 기다려주세요.",
+          review_status: "pending",
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    if (
+      existingReport?.id &&
+      existingReport.review_status ===
+        "approved"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "이미 관리자 승인이 완료된 현장입니다.",
+          review_status: "approved",
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    /* -------------------------------------------------------
+       완료보고 저장
+    ------------------------------------------------------- */
+
+    const report =
       await saveWorkReport({
         supabase,
 
-        companyId,
+        companyId:
+          worker.company_id,
 
         siteId,
+
+        workerId:
+          worker.id,
 
         userId:
           user.id,
 
         workRegion,
-
         workSummary,
-
         memo,
       });
 
     /* -------------------------------------------------------
-       2. 기존 actual 자재 제거
+       실제 사용 자재 저장
+
+       rejected 후 재제출인 경우에도
+       기존 actual 자재를 지우고 새 값으로 저장
     ------------------------------------------------------- */
 
     await clearActualMaterials({
       supabase,
-      companyId,
+
+      companyId:
+        worker.company_id,
+
       siteId,
     });
 
-    /* -------------------------------------------------------
-       3. actual 자재 저장
-    ------------------------------------------------------- */
-
-    const savedMaterials =
+    const materialCount =
       await saveMaterials({
         supabase,
 
-        companyId,
+        companyId:
+          worker.company_id,
 
         siteId,
 
@@ -939,26 +1077,29 @@ export async function POST(
       });
 
     /* -------------------------------------------------------
-       4. 기존 경비 제거
+       경비 저장
     ------------------------------------------------------- */
 
     await clearExpenses({
       supabase,
-      companyId,
+
+      companyId:
+        worker.company_id,
+
       siteId,
     });
 
-    /* -------------------------------------------------------
-       5. 경비 저장
-    ------------------------------------------------------- */
-
-    const savedExpenses =
+    const expenseCount =
       await saveExpenses({
         supabase,
 
-        companyId,
+        companyId:
+          worker.company_id,
 
         siteId,
+
+        workerId:
+          worker.id,
 
         userId:
           user.id,
@@ -969,123 +1110,57 @@ export async function POST(
     /* -------------------------------------------------------
        중요
 
-       여기서는 sites.status = completed 로
-       변경하지 않습니다.
+       여기서는 sites.status를 completed로 변경하지 않는다.
 
-       또한 아래 AI 견적용 데이터도 생성하지 않습니다.
+       또한:
+       work_items
+       work_photos
+       embedding
+       AI 분석
 
-       - work_items
-       - work_photos
-       - embedding
-       - AI 이미지 분석
+       을 생성하지 않는다.
 
-       현재 저장되는 것은:
-
-       - work_reports
-       - site_materials (actual)
-       - site_expenses
-
-       뿐입니다.
-
-       시공 완료사진은 별도의
-       /api/worker/site-photos
-       API에서 site_photos(after)에 저장됩니다.
-
-       이후:
-
-       책임 팀장 완료보고
-          ↓
-       관리자 검수 대기
-          ↓
-       관리자 실제 견적금액 입력
-          ↓
-       관리자 승인
-          ↓
-       그때 AI 견적자료 등록
-
-       순서로 처리합니다.
+       관리자 검수 + 실제 시공금액 입력 + 승인 후
+       별도 단계에서 AI 견적자료로 등록한다.
     ------------------------------------------------------- */
 
-    return NextResponse.json(
-      {
-        success: true,
+    return NextResponse.json({
+      success: true,
 
-        report_id:
-          reportId,
+      reportId:
+        report.id,
 
-        site_id:
-          site.id,
+      review_status:
+        "pending",
 
-        worker: {
-          id:
-            worker.id,
+      ai_registered:
+        false,
 
-          name:
-            worker.name,
+      role:
+        assignment.role,
 
-          role:
-            assignment.role,
-        },
+      materialCount,
+      expenseCount,
 
-        saved: {
-          materials:
-            savedMaterials.length,
-
-          expenses:
-            savedExpenses.length,
-        },
-
-        review_status:
-          "pending_admin_review",
-
-        ai_registered:
-          false,
-
-        message:
-          "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
-      },
-      {
-        status: 200,
-      },
-    );
+      message:
+        "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
+    });
   } catch (error) {
     console.error(
-      "Worker site work report API error:",
-      error,
+      "시공자 완료보고 저장 오류:",
+      error
     );
-
-    const message =
-      error?.message ||
-      "완료보고 저장 중 오류가 발생했습니다.";
-
-    let status = 500;
-
-    if (
-      message ===
-        "로그인이 필요합니다." ||
-      message ===
-        "로그인 정보를 확인할 수 없습니다."
-    ) {
-      status = 401;
-    } else if (
-      message ===
-        "등록된 시공자 계정을 찾을 수 없습니다." ||
-      message ===
-        "이 현장에 배정된 시공자가 아닙니다." ||
-      message ===
-        "현장을 찾을 수 없습니다."
-    ) {
-      status = 403;
-    }
 
     return NextResponse.json(
       {
         success: false,
-        error: message,
+        error:
+          error?.message ||
+          "완료보고 저장 중 오류가 발생했습니다.",
       },
       {
-        status,
-      },
+        status: 500,
+      }
     );
   }
-           }
+     }
