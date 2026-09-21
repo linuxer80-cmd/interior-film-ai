@@ -200,8 +200,12 @@ export default function SiteDetailModal({
         /*
          * 2. 현장 요청 사진
          *
-         * 현장 등록 단계의 요청사진은
-         * photo_type = before 입니다.
+         * 현장 등록 단계에서 고객이 첨부한 요청사진은
+         * photo_type = request 로 저장합니다.
+         *
+         * request = 고객 요청사진
+         * before  = 실제 시공 전 사진
+         * after   = 실제 시공 완료사진
          */
 
         const {
@@ -220,7 +224,7 @@ export default function SiteDetailModal({
             `,
           )
           .eq("site_id", site.id)
-          .eq("photo_type", "before")
+          .eq("photo_type", "request")
           .order("created_at", {
             ascending: true,
           });
@@ -1069,7 +1073,6 @@ export default function SiteDetailModal({
     </div>
   );
 }
-
 function MaterialCard({
   material,
   index,
@@ -1425,4 +1428,4 @@ function StatusButton({
       {children}
     </button>
   );
-    }
+  }
