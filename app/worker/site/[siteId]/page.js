@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
+import WorkerWorkReport from "./WorkerWorkReport";
 
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
@@ -856,7 +857,6 @@ export default function WorkerSiteDetailPage() {
             관리자에서 등록한 예정 사용 자재입니다.
           </div>
         </section>
-
         {/* ===================================================
             고객 요청사진
         =================================================== */}
@@ -913,37 +913,82 @@ export default function WorkerSiteDetailPage() {
         )}
 
         {/* ===================================================
-            현장 작업
+            현장 작업 / 완료보고
         =================================================== */}
 
-        <section
-          style={{
-            marginTop: "14px",
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "16px",
-            padding: "18px",
-          }}
-        >
-          <SectionTitle>
-            📋 현장 작업
-          </SectionTitle>
-
-          <div
+        {site.status === "completed" ? (
+          <section
             style={{
-              marginTop: "12px",
-              padding: "14px",
-              borderRadius: "10px",
-              background: "#f8fafc",
-              color: "#64748b",
-              fontSize: "12px",
-              lineHeight: 1.7,
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #bbf7d0",
+              borderRadius: "16px",
+              padding: "18px",
             }}
           >
-            다음 단계에서 시공사진 및 완료보고 기능을
-            연결합니다.
-          </div>
-        </section>
+            <SectionTitle>
+              ✅ 시공 완료
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#f0fdf4",
+                color: "#166534",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              이 현장은 시공 완료 처리되었습니다.
+            </div>
+          </section>
+        ) : site.status === "cancelled" ? (
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #fecaca",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              📋 현장 작업
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#fef2f2",
+                color: "#b91c1c",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              취소된 현장에는 완료보고를 등록할 수 없습니다.
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              marginTop: "14px",
+            }}
+          >
+            <WorkerWorkReport
+              siteId={siteId}
+              site={site}
+              onSubmitted={async () => {
+                await loadSiteDetail();
+              }}
+            />
+          </section>
+        )}
 
         {/* ===================================================
             보안 안내
