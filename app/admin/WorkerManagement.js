@@ -18,6 +18,7 @@ export default function WorkerManagement({
   createWorker,
   updateWorker,
   setWorkerActive,
+  createWorkerInvite,
 }) {
   const [showForm, setShowForm] =
     useState(false);
@@ -32,6 +33,18 @@ export default function WorkerManagement({
     useState(EMPTY_FORM);
 
   const [localMessage, setLocalMessage] =
+    useState("");
+
+  const [inviteWorker, setInviteWorker] =
+    useState(null);
+
+  const [inviteUrl, setInviteUrl] =
+    useState("");
+
+  const [inviteLoadingId, setInviteLoadingId] =
+    useState(null);
+
+  const [inviteMessage, setInviteMessage] =
     useState("");
 
   /* =========================================================
@@ -63,6 +76,15 @@ export default function WorkerManagement({
       workers.filter(
         (worker) =>
           worker.is_active === false,
+      ).length,
+    [workers],
+  );
+
+  const linkedCount = useMemo(
+    () =>
+      workers.filter(
+        (worker) =>
+          Boolean(worker.user_id),
       ).length,
     [workers],
   );
@@ -219,6 +241,189 @@ export default function WorkerManagement({
     );
   }
 
+  /* =========================================================
+     계정 초대
+  ========================================================= */
+
+  async function handleCreateInvite(
+    worker,
+  ) {
+    if (
+      !worker?.id ||
+      worker.user_id ||
+      worker.is_active === false
+    ) {
+      return;
+    }
+
+    if (
+      typeof createWorkerInvite !==
+      "function"
+    ) {
+      setInviteMessage(
+        "❌ 계정 초대 기능을 사용할 수 없습니다.",
+      );
+      return;
+    }
+
+    setInviteLoadingId(
+      worker.id,
+    );
+
+    setInviteMessage("");
+    setInviteUrl("");
+    setInviteWorker(worker);
+
+    try {
+      const result =
+        await createWorkerInvite(
+          worker,
+        );
+
+      if (!result?.success) {
+        setInviteMessage(
+          `❌ ${
+            result?.error ||
+            "초대코드 생성에 실패했습니다."
+          }`,
+        );
+        return;
+      }
+
+      if (!result.inviteCode) {
+        setInviteMessage(
+          "❌ 초대코드를 확인할 수 없습니다.",
+        );
+        return;
+      }
+
+      const origin =
+        typeof window !==
+        "undefined"
+          ? window.location.origin
+          : "";
+
+      const url =
+        `${origin}/worker/invite/${result.inviteCode}`;
+
+      setInviteUrl(url);
+
+      setInviteMessage(
+        `✅ ${worker.name} 시공자의 계정 초대 링크가 생성되었습니다.`,
+      );
+    } catch (error) {
+      console.error(
+        "시공자 초대 링크 생성:",
+        error,
+      );
+
+      setInviteMessage(
+        `❌ ${
+          error?.message ||
+          "초대 링크 생성에 실패했습니다."
+        }`,
+      );
+    } finally {
+      setInviteLoadingId(null);
+    }
+  }
+
+  function closeInvite() {
+    if (inviteLoadingId) {
+      return;
+    }
+
+    setInviteWorker(null);
+    setInviteUrl("");
+    setInviteMessage("");
+  }
+
+  async function copyInviteUrl() {
+    if (!inviteUrl) {
+      return;
+    }
+
+    try {
+      if (
+        navigator?.clipboard
+          ?.writeText
+      ) {
+        await navigator.clipboard.writeText(
+          inviteUrl,
+        );
+
+        setInviteMessage(
+          "✅ 초대 링크를 복사했습니다.",
+        );
+
+        return;
+      }
+
+      window.prompt(
+        "아래 초대 링크를 복사해주세요.",
+        inviteUrl,
+      );
+    } catch (error) {
+      console.error(
+        "초대 링크 복사:",
+        error,
+      );
+
+      window.prompt(
+        "아래 초대 링크를 복사해주세요.",
+        inviteUrl,
+      );
+    }
+  }
+
+  async function shareInviteUrl() {
+    if (!inviteUrl) {
+      return;
+    }
+
+    const workerName =
+      inviteWorker?.name ||
+      "시공자";
+
+    const shareText =
+      `${workerName}님, 시공자 계정을 등록해주세요.`;
+
+    try {
+      if (
+        typeof navigator !==
+          "undefined" &&
+        navigator.share
+      ) {
+        await navigator.share({
+          title:
+            "시공자 계정 초대",
+          text:
+            shareText,
+          url:
+            inviteUrl,
+        });
+
+        return;
+      }
+
+      await copyInviteUrl();
+    } catch (error) {
+      if (
+        error?.name ===
+        "AbortError"
+      ) {
+        return;
+      }
+
+      console.error(
+        "초대 링크 공유:",
+        error,
+      );
+
+      await copyInviteUrl();
+    }
+  }
+
   return (
     <>
       <section>
@@ -264,20 +469,13 @@ export default function WorkerManagement({
             onClick={openCreateForm}
             style={{
               flex: "0 0 auto",
-
               border: "none",
-
               borderRadius: "10px",
-
               padding: "10px 13px",
-
               background: "#111827",
-
               color: "#ffffff",
-
               fontSize: "13px",
               fontWeight: "800",
-
               cursor: "pointer",
             }}
           >
@@ -294,7 +492,7 @@ export default function WorkerManagement({
             display: "grid",
 
             gridTemplateColumns:
-              "1fr 1fr",
+              "repeat(3, 1fr)",
 
             gap: "8px",
 
@@ -304,6 +502,11 @@ export default function WorkerManagement({
           <SummaryBox
             label="활성 시공자"
             value={activeCount}
+          />
+
+          <SummaryBox
+            label="계정 연결"
+            value={linkedCount}
           />
 
           <SummaryBox
@@ -480,6 +683,15 @@ export default function WorkerManagement({
               <WorkerCard
                 key={worker.id}
                 worker={worker}
+                inviteLoading={
+                  inviteLoadingId ===
+                  worker.id
+                }
+                onInvite={() =>
+                  handleCreateInvite(
+                    worker,
+                  )
+                }
                 onEdit={() =>
                   openEditForm(
                     worker,
@@ -519,6 +731,38 @@ export default function WorkerManagement({
             handleSubmit
           }
           onClose={closeForm}
+        />
+      )}
+
+      {/* =======================================================
+          계정 초대 모달
+      ======================================================= */}
+
+      {inviteWorker && (
+        <WorkerInviteModal
+          worker={
+            inviteWorker
+          }
+          inviteUrl={
+            inviteUrl
+          }
+          message={
+            inviteMessage
+          }
+          loading={
+            Boolean(
+              inviteLoadingId,
+            )
+          }
+          onCopy={
+            copyInviteUrl
+          }
+          onShare={
+            shareInviteUrl
+          }
+          onClose={
+            closeInvite
+          }
         />
       )}
     </>
@@ -579,11 +823,16 @@ function SummaryBox({
 
 function WorkerCard({
   worker,
+  inviteLoading,
+  onInvite,
   onEdit,
   onActiveChange,
 }) {
   const active =
     worker.is_active !== false;
+
+  const accountLinked =
+    Boolean(worker.user_id);
 
   const specialties =
     Array.isArray(
@@ -627,6 +876,7 @@ function WorkerCard({
         <div
           style={{
             minWidth: 0,
+            flex: "1 1 auto",
           }}
         >
           <div
@@ -718,6 +968,68 @@ function WorkerCard({
             </div>
           )}
 
+          <div
+            style={{
+              marginTop: "8px",
+            }}
+          >
+            {accountLinked ? (
+              <span
+                style={{
+                  display:
+                    "inline-block",
+
+                  padding:
+                    "5px 8px",
+
+                  borderRadius:
+                    "999px",
+
+                  background:
+                    "#f0fdf4",
+
+                  color:
+                    "#166534",
+
+                  fontSize:
+                    "10px",
+
+                  fontWeight:
+                    "800",
+                }}
+              >
+                ✅ 계정 연결됨
+              </span>
+            ) : (
+              <span
+                style={{
+                  display:
+                    "inline-block",
+
+                  padding:
+                    "5px 8px",
+
+                  borderRadius:
+                    "999px",
+
+                  background:
+                    "#fff7ed",
+
+                  color:
+                    "#c2410c",
+
+                  fontSize:
+                    "10px",
+
+                  fontWeight:
+                    "800",
+                }}
+              >
+                계정 미연결
+              </span>
+            )}
+          </div>
+
           {specialties.length >
             0 && (
             <div
@@ -792,8 +1104,88 @@ function WorkerCard({
             gap: "5px",
 
             flex: "0 0 auto",
+
+            minWidth: "82px",
           }}
         >
+          {!accountLinked &&
+            active && (
+            <button
+              type="button"
+              disabled={
+                inviteLoading
+              }
+              onClick={
+                onInvite
+              }
+              style={{
+                padding:
+                  "7px 9px",
+
+                border:
+                  "1px solid #2563eb",
+
+                borderRadius:
+                  "8px",
+
+                background:
+                  inviteLoading
+                    ? "#dbeafe"
+                    : "#eff6ff",
+
+                color:
+                  "#1d4ed8",
+
+                fontSize:
+                  "11px",
+
+                fontWeight:
+                  "800",
+
+                cursor:
+                  inviteLoading
+                    ? "default"
+                    : "pointer",
+              }}
+            >
+              {inviteLoading
+                ? "생성 중..."
+                : "🔗 계정 초대"}
+            </button>
+          )}
+
+          {accountLinked && (
+            <div
+              style={{
+                padding:
+                  "7px 8px",
+
+                border:
+                  "1px solid #bbf7d0",
+
+                borderRadius:
+                  "8px",
+
+                background:
+                  "#f0fdf4",
+
+                color:
+                  "#166534",
+
+                fontSize:
+                  "10px",
+
+                fontWeight:
+                  "800",
+
+                textAlign:
+                  "center",
+              }}
+            >
+              연결 완료
+            </div>
+          )}
+
           <button
             type="button"
             onClick={onEdit}
@@ -866,6 +1258,377 @@ function WorkerCard({
               : "재활성"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   계정 초대 모달
+========================================================= */
+
+function WorkerInviteModal({
+  worker,
+  inviteUrl,
+  message,
+  loading,
+  onCopy,
+  onShare,
+  onClose,
+}) {
+  return (
+    <div
+      onClick={() => {
+        if (!loading) {
+          onClose();
+        }
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1300,
+
+        display: "flex",
+
+        alignItems:
+          "flex-start",
+
+        justifyContent:
+          "center",
+
+        padding: "30px 12px",
+
+        background:
+          "rgba(15,23,42,0.60)",
+
+        overflowY: "auto",
+      }}
+    >
+      <div
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+        style={{
+          width: "100%",
+
+          maxWidth: "500px",
+
+          padding: "16px",
+
+          borderRadius: "15px",
+
+          background: "#ffffff",
+
+          boxShadow:
+            "0 20px 50px rgba(0,0,0,0.20)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+
+            alignItems:
+              "flex-start",
+
+            justifyContent:
+              "space-between",
+
+            gap: "10px",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                color: "#111827",
+
+                fontSize: "17px",
+
+                fontWeight: "900",
+              }}
+            >
+              🔗 시공자 계정 초대
+            </div>
+
+            <div
+              style={{
+                marginTop: "4px",
+
+                color: "#64748b",
+
+                fontSize: "12px",
+              }}
+            >
+              {worker?.name ||
+                "시공자"}
+              님에게 보낼 계정
+              등록 링크입니다.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onClose}
+            style={{
+              border: "none",
+
+              background:
+                "transparent",
+
+              color: "#64748b",
+
+              fontSize: "26px",
+
+              cursor:
+                loading
+                  ? "default"
+                  : "pointer",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {message && (
+          <div
+            style={{
+              marginTop: "14px",
+
+              padding: "10px 12px",
+
+              borderRadius: "9px",
+
+              background:
+                message.startsWith(
+                  "✅",
+                )
+                  ? "#f0fdf4"
+                  : "#fef2f2",
+
+              color:
+                message.startsWith(
+                  "✅",
+                )
+                  ? "#166534"
+                  : "#b91c1c",
+
+              fontSize: "12px",
+
+              fontWeight: "700",
+
+              whiteSpace:
+                "pre-wrap",
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {loading && (
+          <div
+            style={{
+              marginTop: "14px",
+
+              padding: "16px",
+
+              border:
+                "1px solid #e2e8f0",
+
+              borderRadius: "10px",
+
+              color: "#64748b",
+
+              textAlign: "center",
+
+              fontSize: "13px",
+
+              fontWeight: "700",
+            }}
+          >
+            초대 링크를 생성하고
+            있습니다...
+          </div>
+        )}
+
+        {!loading &&
+          inviteUrl && (
+          <>
+            <div
+              style={{
+                marginTop: "14px",
+
+                color: "#334155",
+
+                fontSize: "12px",
+
+                fontWeight: "800",
+              }}
+            >
+              초대 링크
+            </div>
+
+            <div
+              style={{
+                marginTop: "6px",
+
+                padding: "11px",
+
+                border:
+                  "1px solid #cbd5e1",
+
+                borderRadius: "9px",
+
+                background:
+                  "#f8fafc",
+
+                color: "#334155",
+
+                fontSize: "11px",
+
+                lineHeight: "1.5",
+
+                wordBreak:
+                  "break-all",
+
+                userSelect:
+                  "all",
+              }}
+            >
+              {inviteUrl}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+
+                gridTemplateColumns:
+                  "1fr 1fr",
+
+                gap: "8px",
+
+                marginTop: "12px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={onCopy}
+                style={{
+                  padding: "11px",
+
+                  border:
+                    "1px solid #cbd5e1",
+
+                  borderRadius:
+                    "9px",
+
+                  background:
+                    "#ffffff",
+
+                  color:
+                    "#334155",
+
+                  fontSize:
+                    "13px",
+
+                  fontWeight:
+                    "800",
+
+                  cursor:
+                    "pointer",
+                }}
+              >
+                📋 링크 복사
+              </button>
+
+              <button
+                type="button"
+                onClick={onShare}
+                style={{
+                  padding: "11px",
+
+                  border: "none",
+
+                  borderRadius:
+                    "9px",
+
+                  background:
+                    "#2563eb",
+
+                  color:
+                    "#ffffff",
+
+                  fontSize:
+                    "13px",
+
+                  fontWeight:
+                    "800",
+
+                  cursor:
+                    "pointer",
+                }}
+              >
+                📤 공유하기
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: "10px",
+
+                padding: "9px 10px",
+
+                borderRadius: "8px",
+
+                background:
+                  "#fff7ed",
+
+                color: "#9a3412",
+
+                fontSize: "11px",
+
+                lineHeight: "1.5",
+              }}
+            >
+              이 초대 링크는
+              시공자 본인에게만
+              전달해주세요. 초대는
+              7일 후 만료됩니다.
+            </div>
+          </>
+        )}
+
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onClose}
+          style={{
+            width: "100%",
+
+            marginTop: "14px",
+
+            padding: "11px",
+
+            border:
+              "1px solid #cbd5e1",
+
+            borderRadius: "9px",
+
+            background: "#ffffff",
+
+            color: "#475569",
+
+            fontSize: "13px",
+
+            fontWeight: "800",
+
+            cursor:
+              loading
+                ? "default"
+                : "pointer",
+          }}
+        >
+          닫기
+        </button>
       </div>
     </div>
   );
@@ -1328,4 +2091,4 @@ function WorkerFormModal({
       </div>
     </div>
   );
-}
+              }
