@@ -17,6 +17,10 @@ export default function WorkerSiteDetailPage() {
   const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState("");
 
+  // 완료보고 상태
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportStatus, setReportStatus] = useState(null);
+
   /* =========================================================
      최초 실행
   ========================================================= */
@@ -28,6 +32,81 @@ export default function WorkerSiteDetailPage() {
 
     loadSiteDetail();
   }, [siteId]);
+
+  /* =========================================================
+     완료보고 상태 조회
+  ========================================================= */
+
+  async function loadReportStatus() {
+    setReportLoading(true);
+
+    try {
+      const {
+        data: sessionData,
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const accessToken =
+        sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        setReportStatus(null);
+        return;
+      }
+
+      const response = await fetch(
+        `/api/worker/site-work-report?siteId=${encodeURIComponent(
+          siteId
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.error ||
+            "완료보고 상태를 확인하지 못했습니다."
+        );
+      }
+
+      if (!result?.hasReport || !result?.report) {
+        setReportStatus({
+          hasReport: false,
+          report: null,
+        });
+
+        return;
+      }
+
+      setReportStatus({
+        hasReport: true,
+        report: result.report,
+      });
+    } catch (error) {
+      console.error(
+        "완료보고 상태 조회 오류:",
+        error
+      );
+
+      // 완료보고 상태 조회가 실패했다고 해서
+      // 현장 상세 전체를 막지는 않는다.
+      // 단, 중복 제출은 서버 POST에서 다시 차단된다.
+      setReportStatus(null);
+    } finally {
+      setReportLoading(false);
+    }
+  }
 
   /* =========================================================
      현장 상세 + 예정 자재 조회
@@ -79,6 +158,7 @@ export default function WorkerSiteDetailPage() {
       if (!siteData?.site_id) {
         setSite(null);
         setMaterials([]);
+        setReportStatus(null);
 
         setMessage(
           "이 현장을 볼 수 없거나 현재 배정되어 있지 않습니다."
@@ -112,6 +192,12 @@ export default function WorkerSiteDetailPage() {
           ? materialResult
           : []
       );
+
+      /* =====================================================
+         완료보고 상태 조회
+      ===================================================== */
+
+      await loadReportStatus();
     } catch (error) {
       console.error(
         "시공자 현장 상세 조회 오류:",
@@ -120,6 +206,7 @@ export default function WorkerSiteDetailPage() {
 
       setSite(null);
       setMaterials([]);
+      setReportStatus(null);
 
       setMessage(
         `❌ ${
@@ -915,15 +1002,23 @@ export default function WorkerSiteDetailPage() {
         {/* ===================================================
             현장 작업 / 완료보고
 
-            권한:
-            leader = 완료보고 작성 가능
-            member = 완료보고 작성 불가
+            처리 순서:
 
-            서버 API에서도 동일하게 leader 권한을
-            다시 검사하므로 화면 조작으로 우회할 수 없습니다.
+            1. 현장 completed
+            2. 현장 cancelled
+            3. 일반 member
+            4. 완료보고 상태 조회 중
+            5. pending
+            6. approved
+            7. rejected
+            8. 보고서 없음 → leader 작성폼
         =================================================== */}
 
         {site.status === "completed" ? (
+          /* =================================================
+             현장 자체가 시공 완료 상태
+          ================================================= */
+
           <section
             style={{
               marginTop: "14px",
@@ -953,6 +1048,10 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         ) : site.status === "cancelled" ? (
+          /* =================================================
+             취소 현장
+          ================================================= */
+
           <section
             style={{
               marginTop: "14px",
@@ -982,6 +1081,10 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         ) : site.my_role !== "leader" ? (
+          /* =================================================
+             일반 시공자
+          ================================================= */
+
           <section
             style={{
               marginTop: "14px",
@@ -1010,7 +1113,414 @@ export default function WorkerSiteDetailPage() {
               완료보고는 이 현장의 책임 팀장이 등록합니다.
             </div>
           </section>
+        ) : reportLoading ? (
+          /* =================================================
+             완료보고 상태 조회 중
+          ================================================= */
+
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <SectionTitle>
+              📋 완료보고
+            </SectionTitle>
+
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#f8fafc",
+                color: "#64748b",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              완료보고 상태를 확인하고 있습니다...
+            </div>
+          </section>
+        ) : reportStatus?.hasReport &&
+          reportStatus?.report?.review_status === "pending" ? (
+          /* =================================================
+             관리자 검수 대기
+          ================================================= */
+
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #fde68a",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                <SectionTitle>
+                  🟠 완료보고 제출 완료
+                </SectionTitle>
+
+                <div
+                  style={{
+                    marginTop: "5px",
+                    color: "#92400e",
+                    fontSize: "12px",
+                    fontWeight: "900",
+                  }}
+                >
+                  관리자 검수 대기
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: "0 0 auto",
+                  padding: "6px 9px",
+                  borderRadius: "999px",
+                  background: "#fffbeb",
+                  color: "#92400e",
+                  border: "1px solid #fde68a",
+                  fontSize: "10px",
+                  fontWeight: "900",
+                }}
+              >
+                검수 대기
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#fffbeb",
+                color: "#92400e",
+                fontSize: "12px",
+                fontWeight: "700",
+                lineHeight: 1.7,
+              }}
+            >
+              완료보고가 정상적으로 제출되었습니다.
+              <br />
+              관리자가 시공 내용과 사진을 확인하고 있습니다.
+              <br />
+              실제 시공금액 확인 및 승인 전에는 AI
+              견적자료로 등록되지 않습니다.
+            </div>
+
+            {reportStatus?.report?.work_summary && (
+              <div
+                style={{
+                  marginTop: "12px",
+                  padding: "13px",
+                  borderRadius: "10px",
+                  background: "#f8fafc",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#94a3b8",
+                    fontSize: "10px",
+                    fontWeight: "800",
+                  }}
+                >
+                  제출한 시공 내용
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "5px",
+                    color: "#334155",
+                    fontSize: "12px",
+                    fontWeight: "800",
+                    lineHeight: 1.6,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {reportStatus.report.work_summary}
+                </div>
+              </div>
+            )}
+
+            {reportStatus?.report?.completed_at && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  color: "#94a3b8",
+                  fontSize: "10px",
+                  lineHeight: 1.5,
+                }}
+              >
+                제출일시{" "}
+                {formatDateTime(
+                  reportStatus.report.completed_at
+                )}
+              </div>
+            )}
+          </section>
+        ) : reportStatus?.hasReport &&
+          reportStatus?.report?.review_status === "approved" ? (
+          /* =================================================
+             관리자 승인 완료
+          ================================================= */
+
+          <section
+            style={{
+              marginTop: "14px",
+              background: "#ffffff",
+              border: "1px solid #bbf7d0",
+              borderRadius: "16px",
+              padding: "18px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                <SectionTitle>
+                  🟢 완료보고 승인 완료
+                </SectionTitle>
+
+                <div
+                  style={{
+                    marginTop: "5px",
+                    color: "#166534",
+                    fontSize: "12px",
+                    fontWeight: "900",
+                  }}
+                >
+                  관리자 검수 완료
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: "0 0 auto",
+                  padding: "6px 9px",
+                  borderRadius: "999px",
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  border: "1px solid #bbf7d0",
+                  fontSize: "10px",
+                  fontWeight: "900",
+                }}
+              >
+                승인 완료
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: "#f0fdf4",
+                color: "#166534",
+                fontSize: "12px",
+                fontWeight: "800",
+                lineHeight: 1.7,
+              }}
+            >
+              관리자가 완료보고 검수를 완료했습니다.
+            </div>
+
+            {reportStatus?.report?.review_memo && (
+              <div
+                style={{
+                  marginTop: "12px",
+                  padding: "13px",
+                  borderRadius: "10px",
+                  background: "#f8fafc",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#94a3b8",
+                    fontSize: "10px",
+                    fontWeight: "800",
+                  }}
+                >
+                  관리자 메모
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "5px",
+                    color: "#334155",
+                    fontSize: "12px",
+                    lineHeight: 1.6,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {reportStatus.report.review_memo}
+                </div>
+              </div>
+            )}
+
+            {reportStatus?.report?.reviewed_at && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  color: "#94a3b8",
+                  fontSize: "10px",
+                }}
+              >
+                검수일시{" "}
+                {formatDateTime(
+                  reportStatus.report.reviewed_at
+                )}
+              </div>
+            )}
+          </section>
+        ) : reportStatus?.hasReport &&
+          reportStatus?.report?.review_status === "rejected" ? (
+          /* =================================================
+             관리자 보완 요청
+          ================================================= */
+
+          <section
+            style={{
+              marginTop: "14px",
+            }}
+          >
+            <div
+              style={{
+                marginBottom: "12px",
+                background: "#ffffff",
+                border: "1px solid #fecaca",
+                borderRadius: "16px",
+                padding: "18px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <SectionTitle>
+                    🔴 완료보고 보완 필요
+                  </SectionTitle>
+
+                  <div
+                    style={{
+                      marginTop: "5px",
+                      color: "#b91c1c",
+                      fontSize: "12px",
+                      fontWeight: "900",
+                    }}
+                  >
+                    관리자가 보완을 요청했습니다.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "6px 9px",
+                    borderRadius: "999px",
+                    background: "#fef2f2",
+                    color: "#b91c1c",
+                    border: "1px solid #fecaca",
+                    fontSize: "10px",
+                    fontWeight: "900",
+                  }}
+                >
+                  보완 필요
+                </div>
+              </div>
+
+              {reportStatus?.report?.review_memo ? (
+                <div
+                  style={{
+                    marginTop: "14px",
+                    padding: "14px",
+                    borderRadius: "10px",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    lineHeight: 1.7,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  관리자 요청사항
+                  <br />
+                  {reportStatus.report.review_memo}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    marginTop: "14px",
+                    padding: "14px",
+                    borderRadius: "10px",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  완료보고 내용을 확인한 후 다시 제출해주세요.
+                </div>
+              )}
+            </div>
+
+            <WorkerWorkReport
+              siteId={siteId}
+              site={site}
+              onSubmitted={async () => {
+                await loadSiteDetail();
+              }}
+            />
+          </section>
         ) : (
+          /* =================================================
+             완료보고 없음
+
+             책임 팀장에게 작성폼 표시
+          ================================================= */
+
           <section
             style={{
               marginTop: "14px",
@@ -1027,25 +1537,19 @@ export default function WorkerSiteDetailPage() {
         )}
 
         {/* ===================================================
-            완료보고 안내
+            검수 전 안내
 
-            시공자가 등록한 완료보고는
-            AI 견적자료로 즉시 등록되지 않습니다.
+            보고서가 아직 없는 책임 팀장에게만 표시한다.
 
-            관리자 검수
-              ↓
-            실제 견적금액 입력
-              ↓
-            관리자 승인
-              ↓
-            AI 견적자료 등록
-
-            흐름으로 별도 처리합니다.
+            pending 상태에서는 위 검수대기 카드에서
+            이미 안내하므로 중복 표시하지 않는다.
         =================================================== */}
 
         {site.my_role === "leader" &&
           site.status !== "cancelled" &&
-          site.status !== "completed" && (
+          site.status !== "completed" &&
+          !reportLoading &&
+          !reportStatus?.hasReport && (
             <div
               style={{
                 marginTop: "10px",
@@ -1152,4 +1656,4 @@ function InfoRow({
       </div>
     </div>
   );
-                }
+          }
