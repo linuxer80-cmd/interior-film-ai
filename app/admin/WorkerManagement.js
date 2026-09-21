@@ -8,15 +8,18 @@ import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
 
 /* =========================================================
-   시공자 등록 / 수정 폼
+   시공자 기본정보
 
-   시공자 기본정보:
+   회사 관리자가 관리:
    - 이름
    - 전화번호
    - 기본 일당
 
-   역할은 시공자 등록에서 정하지 않는다.
-   현장 배정 시 leader / member 로 지정한다.
+   현장별 역할:
+   - leader
+   - member
+
+   역할은 현장 배정에서 따로 지정한다.
 ========================================================= */
 
 const EMPTY_FORM = {
@@ -222,7 +225,196 @@ export default function WorkerManagement({
   }
 
   /* =========================================================
+     초대 URL 만들기
+  ========================================================= */
+
+  function makeInviteUrl(
+    inviteCode,
+  ) {
+    const origin =
+      typeof window !==
+      "undefined"
+        ? window.location.origin
+        : "";
+
+    if (!origin) {
+      return "";
+    }
+
+    return `${origin}/worker/invite/${inviteCode}`;
+  }
+
+  /* =========================================================
+     초대코드 생성 + 초대 모달 열기
+
+     신규 등록 후에도 사용
+     기존 시공자의 "계정 초대" 버튼에서도 사용
+  ========================================================= */
+
+  async function createInviteForWorker(
+    worker,
+  ) {
+    if (!worker?.id) {
+      return {
+        success: false,
+        error:
+          "시공자 정보를 확인할 수 없습니다.",
+      };
+    }
+
+    setInviteWorker(worker);
+
+    setInviteUrl("");
+
+    setInviteMessage("");
+
+    if (worker.user_id) {
+      setInviteMessage(
+        "✅ 이미 로그인 계정이 연결된 시공자입니다.",
+      );
+
+      return {
+        success: false,
+        alreadyLinked: true,
+      };
+    }
+
+    if (
+      worker.is_active === false
+    ) {
+      setInviteMessage(
+        "❌ 비활성 시공자는 계정을 초대할 수 없습니다.",
+      );
+
+      return {
+        success: false,
+        error:
+          "비활성 시공자입니다.",
+      };
+    }
+
+    if (
+      typeof createWorkerInvite !==
+      "function"
+    ) {
+      setInviteMessage(
+        "❌ 계정 초대 기능을 사용할 수 없습니다.",
+      );
+
+      return {
+        success: false,
+        error:
+          "계정 초대 기능을 사용할 수 없습니다.",
+      };
+    }
+
+    setInviteLoadingId(
+      worker.id,
+    );
+
+    try {
+      const result =
+        await createWorkerInvite(
+          worker,
+        );
+
+      if (!result?.success) {
+        setInviteMessage(
+          `❌ ${
+            result?.error ||
+            "초대코드 생성에 실패했습니다."
+          }`,
+        );
+
+        return {
+          success: false,
+          error:
+            result?.error ||
+            "초대코드 생성에 실패했습니다.",
+        };
+      }
+
+      if (!result.inviteCode) {
+        setInviteMessage(
+          "❌ 초대코드를 확인할 수 없습니다.",
+        );
+
+        return {
+          success: false,
+          error:
+            "초대코드를 확인할 수 없습니다.",
+        };
+      }
+
+      const url =
+        makeInviteUrl(
+          result.inviteCode,
+        );
+
+      if (!url) {
+        setInviteMessage(
+          "❌ 초대 링크 주소를 만들 수 없습니다.",
+        );
+
+        return {
+          success: false,
+          error:
+            "초대 링크 주소를 만들 수 없습니다.",
+        };
+      }
+
+      setInviteUrl(url);
+
+      setInviteMessage(
+        `✅ ${
+          worker.name ||
+          "시공자"
+        } 계정 초대 링크가 생성되었습니다.`,
+      );
+
+      return {
+        success: true,
+        inviteCode:
+          result.inviteCode,
+        inviteUrl: url,
+      };
+    } catch (error) {
+      console.error(
+        "시공자 계정 초대:",
+        error,
+      );
+
+      const message =
+        error?.message ||
+        "초대 링크 생성에 실패했습니다.";
+
+      setInviteMessage(
+        `❌ ${message}`,
+      );
+
+      return {
+        success: false,
+        error: message,
+      };
+    } finally {
+      setInviteLoadingId(
+        null,
+      );
+    }
+  }
+
+  /* =========================================================
      등록 / 수정 저장
+
+     신규:
+     1. 시공자 등록
+     2. 등록 성공
+     3. 초대코드 자동 생성
+     4. 초대 링크 모달 자동 표시
+
+     수정:
+     - 전화번호
+     - 기본 일당
   ========================================================= */
 
   async function handleSubmit(
@@ -253,9 +445,7 @@ export default function WorkerManagement({
         .trim();
 
     /* ---------------------------------------------------------
-       신규 등록에서만 이름 검사
-
-       수정 모드에서는 이름을 변경하지 않는다.
+       신규 등록일 때만 이름 필수
     --------------------------------------------------------- */
 
     if (
@@ -309,11 +499,9 @@ export default function WorkerManagement({
     };
 
     try {
-      let result;
-
-      /* -------------------------------------------------------
-         수정
-      ------------------------------------------------------- */
+      /* =======================================================
+         기존 시공자 수정
+      ======================================================= */
 
       if (
         editingWorker?.id
@@ -327,52 +515,79 @@ export default function WorkerManagement({
           );
         }
 
-        /*
-         * updateWorker에서는
-         * 이름을 DB에 업데이트하지 않는다.
-         *
-         * 전화번호와 기본 일당만 수정한다.
-         */
-
-        result =
+        const result =
           await updateWorker(
             editingWorker.id,
             submitForm,
           );
-      }
 
-      /* -------------------------------------------------------
-         신규 등록
-      ------------------------------------------------------- */
-
-      else {
-        if (
-          typeof createWorker !==
-          "function"
-        ) {
-          throw new Error(
-            "시공자 등록 기능을 사용할 수 없습니다.",
+        if (!result?.success) {
+          setLocalMessage(
+            `❌ ${
+              result?.error ||
+              "수정에 실패했습니다."
+            }`,
           );
+
+          return;
         }
 
-        result =
-          await createWorker(
-            submitForm,
-          );
+        setShowForm(false);
+
+        setEditingWorker(null);
+
+        setForm({
+          ...EMPTY_FORM,
+        });
+
+        setLocalMessage("");
+
+        return;
       }
 
+      /* =======================================================
+         신규 시공자 등록
+      ======================================================= */
+
       if (
-        !result?.success
+        typeof createWorker !==
+        "function"
       ) {
+        throw new Error(
+          "시공자 등록 기능을 사용할 수 없습니다.",
+        );
+      }
+
+      const result =
+        await createWorker(
+          submitForm,
+        );
+
+      if (!result?.success) {
         setLocalMessage(
           `❌ ${
             result?.error ||
-            "저장에 실패했습니다."
+            "시공자 등록에 실패했습니다."
           }`,
         );
 
         return;
       }
+
+      if (!result.worker?.id) {
+        setLocalMessage(
+          "❌ 시공자는 등록되었지만 등록 정보를 확인할 수 없습니다.",
+        );
+
+        return;
+      }
+
+      const newWorker =
+        result.worker;
+
+      /*
+       * 시공자 등록 모달은 닫는다.
+       */
 
       setShowForm(false);
 
@@ -383,6 +598,21 @@ export default function WorkerManagement({
       });
 
       setLocalMessage("");
+
+      /*
+       * 등록 직후 초대 링크 자동 생성.
+       *
+       * 초대 생성이 실패하더라도
+       * 이미 등록된 시공자는 삭제하지 않는다.
+       *
+       * 이후 시공자 카드의
+       * "계정 초대" 버튼으로 다시
+       * 초대 링크를 생성할 수 있다.
+       */
+
+      await createInviteForWorker(
+        newWorker,
+      );
     } catch (error) {
       console.error(
         "시공자 저장:",
@@ -438,140 +668,15 @@ export default function WorkerManagement({
   }
 
   /* =========================================================
-     계정 초대 생성
+     기존 시공자 계정 초대 버튼
   ========================================================= */
 
   async function handleCreateInvite(
     worker,
   ) {
-    if (!worker?.id) {
-      return;
-    }
-
-    if (worker.user_id) {
-      setInviteWorker(
-        worker,
-      );
-
-      setInviteUrl("");
-
-      setInviteMessage(
-        "✅ 이미 로그인 계정이 연결된 시공자입니다.",
-      );
-
-      return;
-    }
-
-    if (
-      worker.is_active ===
-      false
-    ) {
-      setInviteWorker(
-        worker,
-      );
-
-      setInviteUrl("");
-
-      setInviteMessage(
-        "❌ 비활성 시공자는 계정을 초대할 수 없습니다.",
-      );
-
-      return;
-    }
-
-    if (
-      typeof createWorkerInvite !==
-      "function"
-    ) {
-      setInviteWorker(
-        worker,
-      );
-
-      setInviteUrl("");
-
-      setInviteMessage(
-        "❌ 계정 초대 기능을 사용할 수 없습니다.",
-      );
-
-      return;
-    }
-
-    setInviteWorker(
+    await createInviteForWorker(
       worker,
     );
-
-    setInviteUrl("");
-
-    setInviteMessage("");
-
-    setInviteLoadingId(
-      worker.id,
-    );
-
-    try {
-      const result =
-        await createWorkerInvite(
-          worker,
-        );
-
-      if (
-        !result?.success
-      ) {
-        setInviteMessage(
-          `❌ ${
-            result?.error ||
-            "초대코드 생성에 실패했습니다."
-          }`,
-        );
-
-        return;
-      }
-
-      if (
-        !result.inviteCode
-      ) {
-        setInviteMessage(
-          "❌ 초대코드를 확인할 수 없습니다.",
-        );
-
-        return;
-      }
-
-      const origin =
-        typeof window !==
-        "undefined"
-          ? window.location
-              .origin
-          : "";
-
-      const url =
-        `${origin}/worker/invite/${result.inviteCode}`;
-
-      setInviteUrl(url);
-
-      setInviteMessage(
-        `✅ ${
-          worker.name ||
-          "시공자"
-        } 계정 초대 링크가 생성되었습니다.`,
-      );
-    } catch (error) {
-      console.error(
-        "시공자 계정 초대:",
-        error,
-      );
-
-      setInviteMessage(
-        `❌ ${
-          error?.message ||
-          "초대 링크 생성에 실패했습니다."
-        }`,
-      );
-    } finally {
-      setInviteLoadingId(
-        null,
-      );
-    }
   }
 
   /* =========================================================
@@ -579,9 +684,7 @@ export default function WorkerManagement({
   ========================================================= */
 
   function closeInvite() {
-    if (
-      inviteLoadingId
-    ) {
+    if (inviteLoadingId) {
       return;
     }
 
@@ -986,9 +1089,9 @@ export default function WorkerManagement({
                     "12px",
                 }}
               >
-                시공자를 먼저
-                등록하면 현장에
-                배정할 수 있습니다.
+                시공자를 등록하면
+                계정 초대 링크가
+                자동으로 생성됩니다.
               </div>
             </div>
           )}
