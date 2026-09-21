@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 
@@ -9,25 +9,23 @@ export default function WorkerInviteSignup({
 }) {
   const router = useRouter();
 
-  const [email, setEmail] =
-    useState("");
-
-  const [password, setPassword] =
-    useState("");
-
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [
     passwordConfirm,
     setPasswordConfirm,
   ] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
 
-  const [message, setMessage] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState(false);
+  /*
+   * 이메일 인증 후 페이지로 돌아왔을 때
+   * accept_worker_invite가 중복 실행되는 것을 방지
+   */
+  const autoConnectStarted =
+    useRef(false);
 
   /* =========================================================
      초대 연결
@@ -36,7 +34,7 @@ export default function WorkerInviteSignup({
   async function acceptInvite() {
     if (!inviteCode) {
       throw new Error(
-        "초대코드를 확인할 수 없습니다.",
+        "초대코드를 확인할 수 없습니다."
       );
     }
 
@@ -48,7 +46,7 @@ export default function WorkerInviteSignup({
       {
         target_invite_code:
           inviteCode,
-      },
+      }
     );
 
     if (error) {
@@ -57,7 +55,7 @@ export default function WorkerInviteSignup({
 
     if (!data) {
       throw new Error(
-        "시공자 계정 연결에 실패했습니다.",
+        "시공자 계정 연결에 실패했습니다."
       );
     }
 
@@ -65,11 +63,266 @@ export default function WorkerInviteSignup({
   }
 
   /* =========================================================
-     가입
+     이메일 인증 후 자동 연결
+
+     이메일 인증 링크를 누른 뒤
+     /worker/invite/{code} 로 돌아왔을 때:
+
+     1. Supabase 세션 확인
+     2. 로그인된 사용자가 있으면
+     3. 초대 자동 수락
+     4. /worker 이동
+  ========================================================= */
+
+  useEffect(() => {
+    if (!inviteCode) {
+      return;
+    }
+
+    let mounted = true;
+
+    async function checkAuthenticatedReturn() {
+      try {
+        /*
+         * Supabase가 이메일 인증 URL의
+         * 토큰을 처리할 시간을 조금 확보
+         */
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300);
+        });
+
+        if (!mounted) {
+          return;
+        }
+
+        const {
+          data: sessionData,
+          error: sessionError,
+        } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error(
+            "인증 세션 확인:",
+            sessionError
+          );
+
+          return;
+        }
+
+        const session =
+          sessionData?.session;
+
+        /*
+         * 인증 완료 세션이 없으면
+         * 일반 초대 페이지이므로 아무것도 하지 않음
+         */
+        if (!session?.user) {
+          return;
+        }
+
+        if (
+          autoConnectStarted.current
+        ) {
+          return;
+        }
+
+        autoConnectStarted.current = true;
+
+        setLoading(true);
+        setSuccess(true);
+
+        setMessage(
+          "✅ 이메일 확인이 완료되었습니다.\n시공자 계정을 연결하고 있습니다..."
+        );
+
+        await acceptInvite();
+
+        if (!mounted) {
+          return;
+        }
+
+        setMessage(
+          "✅ 이메일 확인 및 시공자 계정 등록이 완료되었습니다.\n시공자 페이지로 이동합니다."
+        );
+
+        setTimeout(() => {
+          router.replace("/worker");
+          router.refresh();
+        }, 800);
+      } catch (error) {
+        console.error(
+          "이메일 인증 후 자동 연결:",
+          error
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * 이미 연결된 초대를 다시 열었을 가능성도 있으므로
+         * 현재 로그인 계정이 실제 worker인지 확인
+         */
+        try {
+          const {
+            data: workerData,
+            error: workerError,
+          } = await supabase.rpc(
+            "get_my_worker"
+          );
+
+          if (!workerError) {
+            const worker =
+              Array.isArray(workerData)
+                ? workerData[0]
+                : workerData;
+
+            if (worker?.worker_id) {
+              setSuccess(true);
+
+              setMessage(
+                "✅ 이미 시공자 계정 연결이 완료되어 있습니다.\n시공자 페이지로 이동합니다."
+              );
+
+              setTimeout(() => {
+                router.replace(
+                  "/worker"
+                );
+
+                router.refresh();
+              }, 800);
+
+              return;
+            }
+          }
+        } catch (
+          workerCheckError
+        ) {
+          console.error(
+            "시공자 연결 상태 확인:",
+            workerCheckError
+          );
+        }
+
+        autoConnectStarted.current =
+          false;
+
+        setSuccess(false);
+
+        setMessage(
+          `❌ ${
+            error?.message ||
+            "이메일 확인 후 계정 연결에 실패했습니다."
+          }\n\n아래에서 가입한 이메일과 비밀번호를 입력한 뒤 '기존 계정으로 연결'을 눌러주세요.`
+        );
+
+        setLoading(false);
+      }
+    }
+
+    checkAuthenticatedReturn();
+
+    /*
+     * 이메일 인증 과정에서 Auth 상태가
+     * 변경되는 경우도 감지
+     */
+
+    const {
+      data: authListener,
+    } =
+      supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (!mounted) {
+            return;
+          }
+
+          if (!session?.user) {
+            return;
+          }
+
+          if (
+            autoConnectStarted.current
+          ) {
+            return;
+          }
+
+          if (
+            event !== "SIGNED_IN" &&
+            event !==
+              "TOKEN_REFRESHED" &&
+            event !==
+              "INITIAL_SESSION"
+          ) {
+            return;
+          }
+
+          autoConnectStarted.current =
+            true;
+
+          try {
+            setLoading(true);
+            setSuccess(true);
+
+            setMessage(
+              "✅ 이메일 확인이 완료되었습니다.\n시공자 계정을 연결하고 있습니다..."
+            );
+
+            await acceptInvite();
+
+            if (!mounted) {
+              return;
+            }
+
+            setMessage(
+              "✅ 시공자 계정 등록이 완료되었습니다.\n시공자 페이지로 이동합니다."
+            );
+
+            setTimeout(() => {
+              router.replace(
+                "/worker"
+              );
+
+              router.refresh();
+            }, 800);
+          } catch (error) {
+            console.error(
+              "인증 상태 변경 후 초대 연결:",
+              error
+            );
+
+            autoConnectStarted.current =
+              false;
+
+            if (mounted) {
+              setSuccess(false);
+
+              setMessage(
+                `❌ ${
+                  error?.message ||
+                  "시공자 계정 연결에 실패했습니다."
+                }`
+              );
+
+              setLoading(false);
+            }
+          }
+        }
+      );
+
+    return () => {
+      mounted = false;
+
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [inviteCode, router]);
+
+  /* =========================================================
+     신규 계정 생성
   ========================================================= */
 
   async function handleSignup(
-    event,
+    event
   ) {
     event.preventDefault();
 
@@ -81,11 +334,11 @@ export default function WorkerInviteSignup({
     setSuccess(false);
 
     const cleanEmail =
-      email.trim();
+      email.trim().toLowerCase();
 
     if (!cleanEmail) {
       setMessage(
-        "❌ 이메일을 입력해주세요.",
+        "❌ 이메일을 입력해주세요."
       );
 
       return;
@@ -93,7 +346,7 @@ export default function WorkerInviteSignup({
 
     if (!password) {
       setMessage(
-        "❌ 비밀번호를 입력해주세요.",
+        "❌ 비밀번호를 입력해주세요."
       );
 
       return;
@@ -101,7 +354,7 @@ export default function WorkerInviteSignup({
 
     if (password.length < 6) {
       setMessage(
-        "❌ 비밀번호는 6자 이상 입력해주세요.",
+        "❌ 비밀번호는 6자 이상 입력해주세요."
       );
 
       return;
@@ -112,7 +365,7 @@ export default function WorkerInviteSignup({
       passwordConfirm
     ) {
       setMessage(
-        "❌ 비밀번호가 서로 다릅니다.",
+        "❌ 비밀번호가 서로 다릅니다."
       );
 
       return;
@@ -120,7 +373,7 @@ export default function WorkerInviteSignup({
 
     if (!inviteCode) {
       setMessage(
-        "❌ 올바른 초대 링크가 아닙니다.",
+        "❌ 올바른 초대 링크가 아닙니다."
       );
 
       return;
@@ -130,10 +383,7 @@ export default function WorkerInviteSignup({
 
     try {
       /* =====================================================
-         혹시 기존 로그인 상태가 있으면 로그아웃
-
-         회사 관리자 계정 등이 로그인된 상태에서
-         초대 링크를 열었을 때 잘못 연결되는 것을 방지
+         관리자 등 기존 로그인 세션 제거
       ===================================================== */
 
       const {
@@ -148,14 +398,22 @@ export default function WorkerInviteSignup({
       }
 
       /* =====================================================
-         시공자 Auth 계정 생성
+         이메일 인증 후 돌아올 주소
+
+         반드시 현재 초대코드를 보존한다.
       ===================================================== */
 
       const redirectUrl =
         typeof window !==
         "undefined"
-          ? `${window.location.origin}/worker/invite/${inviteCode}`
+          ? `${window.location.origin}/worker/invite/${encodeURIComponent(
+              inviteCode
+            )}`
           : undefined;
+
+      /* =====================================================
+         Supabase Auth 계정 생성
+      ===================================================== */
 
       const {
         data: signupData,
@@ -183,58 +441,79 @@ export default function WorkerInviteSignup({
 
       if (!user) {
         throw new Error(
-          "계정을 생성하지 못했습니다.",
+          "계정을 생성하지 못했습니다."
         );
       }
 
       /* =====================================================
-         이메일 확인이 꺼져 있으면
-         signUp 즉시 session이 생김
+         이메일 인증이 꺼져 있는 경우
 
-         → 바로 worker 연결 가능
+         즉시 세션이 생기므로 바로 연결
       ===================================================== */
 
       if (session) {
+        autoConnectStarted.current =
+          true;
+
         await acceptInvite();
 
         setSuccess(true);
 
         setMessage(
-          "✅ 시공자 계정 등록이 완료되었습니다.",
+          "✅ 시공자 계정 등록이 완료되었습니다.\n시공자 페이지로 이동합니다."
         );
 
         setTimeout(() => {
-          router.replace(
-            "/worker",
-          );
-        }, 1000);
+          router.replace("/worker");
+          router.refresh();
+        }, 800);
 
         return;
       }
 
       /* =====================================================
-         이메일 확인이 켜져 있으면 session이 없음
+         이메일 인증 필요
 
-         → 이메일 인증 후 같은 초대 URL로 돌아오게 함
+         여기서는 worker 연결하지 않는다.
+
+         사용자가 이메일의 인증 링크를 누르고
+         실제 이메일 소유 확인이 완료된 뒤 연결한다.
       ===================================================== */
 
       setSuccess(true);
 
       setMessage(
-        "✅ 계정이 생성되었습니다.\n\n이메일로 전송된 인증 메일을 확인해주세요.\n인증 후 이 초대 페이지로 다시 돌아오면 계정 연결을 완료할 수 있습니다.",
+        "📧 인증 이메일을 보냈습니다.\n\n가입한 이메일에서 인증 링크를 눌러 본인 이메일이 맞는지 확인해주세요.\n\n이메일 확인이 완료되면 이 초대 페이지로 돌아와 시공자 계정이 자동으로 연결됩니다."
       );
     } catch (error) {
       console.error(
         "시공자 계정 등록:",
-        error,
+        error
       );
 
-      const errorMessage =
+      let errorMessage =
         error?.message ||
         "시공자 계정 등록에 실패했습니다.";
 
+      const lowerMessage =
+        errorMessage.toLowerCase();
+
+      if (
+        lowerMessage.includes(
+          "already registered"
+        ) ||
+        lowerMessage.includes(
+          "user already registered"
+        )
+      ) {
+        errorMessage =
+          "이미 가입된 이메일입니다. 아래 '기존 계정으로 연결'을 이용해주세요.";
+      }
+
+      setSuccess(false);
+
       setMessage(
-        `❌ ${errorMessage}`,
+        `❌ ${errorMessage}`
       );
     } finally {
       setLoading(false);
@@ -242,9 +521,10 @@ export default function WorkerInviteSignup({
   }
 
   /* =========================================================
-     기존 계정 로그인 후 초대 연결
+     기존 계정으로 연결
 
-     같은 이메일로 이미 Supabase Auth 계정이 있는 경우 사용
+     이미 가입 + 이메일 인증까지 완료된 계정은
+     이 버튼으로 로그인 후 초대와 연결
   ========================================================= */
 
   async function handleExistingAccount() {
@@ -253,11 +533,11 @@ export default function WorkerInviteSignup({
     }
 
     const cleanEmail =
-      email.trim();
+      email.trim().toLowerCase();
 
     if (!cleanEmail) {
       setMessage(
-        "❌ 이메일을 입력해주세요.",
+        "❌ 이메일을 입력해주세요."
       );
 
       return;
@@ -265,7 +545,7 @@ export default function WorkerInviteSignup({
 
     if (!password) {
       setMessage(
-        "❌ 비밀번호를 입력해주세요.",
+        "❌ 비밀번호를 입력해주세요."
       );
 
       return;
@@ -273,7 +553,7 @@ export default function WorkerInviteSignup({
 
     if (!inviteCode) {
       setMessage(
-        "❌ 올바른 초대 링크가 아닙니다.",
+        "❌ 올바른 초대 링크가 아닙니다."
       );
 
       return;
@@ -301,34 +581,66 @@ export default function WorkerInviteSignup({
 
       if (!data?.user) {
         throw new Error(
-          "로그인에 실패했습니다.",
+          "로그인에 실패했습니다."
         );
       }
+
+      /*
+       * onAuthStateChange와 중복 실행 방지
+       */
+      autoConnectStarted.current =
+        true;
 
       await acceptInvite();
 
       setSuccess(true);
 
       setMessage(
-        "✅ 기존 계정과 시공자 정보가 연결되었습니다.",
+        "✅ 이메일 확인 및 시공자 계정 연결이 완료되었습니다.\n시공자 페이지로 이동합니다."
       );
 
       setTimeout(() => {
-        router.replace(
-          "/worker",
-        );
-      }, 1000);
+        router.replace("/worker");
+        router.refresh();
+      }, 800);
     } catch (error) {
       console.error(
         "기존 계정 연결:",
-        error,
+        error
       );
 
+      autoConnectStarted.current =
+        false;
+
+      let errorMessage =
+        error?.message ||
+        "계정 연결에 실패했습니다.";
+
+      const lowerMessage =
+        errorMessage.toLowerCase();
+
+      if (
+        lowerMessage.includes(
+          "email not confirmed"
+        )
+      ) {
+        errorMessage =
+          "아직 이메일 확인이 완료되지 않았습니다. 가입한 이메일에서 인증 링크를 먼저 눌러주세요.";
+      }
+
+      if (
+        lowerMessage.includes(
+          "invalid login credentials"
+        )
+      ) {
+        errorMessage =
+          "이메일 또는 비밀번호가 올바르지 않습니다.";
+      }
+
+      setSuccess(false);
+
       setMessage(
-        `❌ ${
-          error?.message ||
-          "계정 연결에 실패했습니다."
-        }`,
+        `❌ ${errorMessage}`
       );
     } finally {
       setLoading(false);
@@ -345,6 +657,7 @@ export default function WorkerInviteSignup({
         minHeight: "100vh",
         background: "#f8fafc",
         padding: "24px 14px",
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -389,14 +702,13 @@ export default function WorkerInviteSignup({
               marginTop: "7px",
               color: "#64748b",
               fontSize: "13px",
-              lineHeight: "1.6",
+              lineHeight: 1.6,
             }}
           >
-            회사 관리자가 보낸
-            초대 링크입니다.
+            회사 관리자가 보낸 초대 링크입니다.
             <br />
-            로그인에 사용할 계정을
-            등록해주세요.
+            본인 이메일 확인 후 시공자 계정이
+            연결됩니다.
           </div>
         </div>
 
@@ -407,8 +719,7 @@ export default function WorkerInviteSignup({
         <div
           style={{
             padding: "18px",
-            border:
-              "1px solid #e2e8f0",
+            border: "1px solid #e2e8f0",
             borderRadius: "16px",
             background: "#ffffff",
             boxShadow:
@@ -429,24 +740,25 @@ export default function WorkerInviteSignup({
             <input
               type="email"
               autoComplete="email"
+              autoCapitalize="none"
               value={email}
               disabled={loading}
               onChange={(event) =>
                 setEmail(
-                  event.target.value,
+                  event.target.value
                 )
               }
               placeholder="example@email.com"
               style={inputStyle}
             />
 
-            {/* 비밀번호 */}
-
             <div
               style={{
                 height: "14px",
               }}
             />
+
+            {/* 비밀번호 */}
 
             <FieldLabel>
               비밀번호
@@ -459,20 +771,20 @@ export default function WorkerInviteSignup({
               disabled={loading}
               onChange={(event) =>
                 setPassword(
-                  event.target.value,
+                  event.target.value
                 )
               }
               placeholder="6자 이상 입력"
               style={inputStyle}
             />
 
-            {/* 비밀번호 확인 */}
-
             <div
               style={{
                 height: "14px",
               }}
             />
+
+            {/* 비밀번호 확인 */}
 
             <FieldLabel>
               비밀번호 확인
@@ -487,7 +799,7 @@ export default function WorkerInviteSignup({
               disabled={loading}
               onChange={(event) =>
                 setPasswordConfirm(
-                  event.target.value,
+                  event.target.value
                 )
               }
               placeholder="비밀번호 다시 입력"
@@ -500,8 +812,8 @@ export default function WorkerInviteSignup({
               <div
                 style={{
                   marginTop: "15px",
-                  padding: "11px 12px",
-                  borderRadius: "9px",
+                  padding: "12px",
+                  borderRadius: "10px",
 
                   background:
                     success
@@ -515,16 +827,15 @@ export default function WorkerInviteSignup({
 
                   fontSize: "12px",
                   fontWeight: "700",
-                  lineHeight: "1.6",
-                  whiteSpace:
-                    "pre-wrap",
+                  lineHeight: 1.7,
+                  whiteSpace: "pre-wrap",
                 }}
               >
                 {message}
               </div>
             )}
 
-            {/* 신규 계정 생성 */}
+            {/* 신규 가입 */}
 
             <button
               type="submit"
@@ -574,8 +885,7 @@ export default function WorkerInviteSignup({
               style={{
                 flex: 1,
                 height: "1px",
-                background:
-                  "#e2e8f0",
+                background: "#e2e8f0",
               }}
             />
 
@@ -592,8 +902,7 @@ export default function WorkerInviteSignup({
               style={{
                 flex: 1,
                 height: "1px",
-                background:
-                  "#e2e8f0",
+                background: "#e2e8f0",
               }}
             />
           </div>
@@ -607,8 +916,7 @@ export default function WorkerInviteSignup({
             style={{
               width: "100%",
               padding: "12px",
-              border:
-                "1px solid #cbd5e1",
+              border: "1px solid #cbd5e1",
               borderRadius: "10px",
               background: "#ffffff",
               color: "#334155",
@@ -627,19 +935,18 @@ export default function WorkerInviteSignup({
           <div
             style={{
               marginTop: "14px",
-              padding: "10px",
+              padding: "11px",
               borderRadius: "9px",
               background: "#f8fafc",
               color: "#64748b",
               fontSize: "11px",
-              lineHeight: "1.6",
+              lineHeight: 1.7,
             }}
           >
-            이미 계정이 있다면 위에
-            해당 이메일과 비밀번호를
-            입력한 뒤
+            이미 이메일 인증까지 완료한 계정이
+            있다면 위에 이메일과 비밀번호를
+            입력한 뒤{" "}
             <strong>
-              {" "}
               기존 계정으로 연결
             </strong>
             을 눌러주세요.
@@ -647,7 +954,7 @@ export default function WorkerInviteSignup({
         </div>
 
         {/* ===================================================
-            시공자 로그인
+            로그인
         =================================================== */}
 
         <div
@@ -658,23 +965,25 @@ export default function WorkerInviteSignup({
         >
           <button
             type="button"
+            disabled={loading}
             onClick={() =>
               router.push(
-                "/worker/login",
+                "/worker/login"
               )
             }
             style={{
               border: "none",
-              background:
-                "transparent",
+              background: "transparent",
               color: "#475569",
               fontSize: "12px",
               fontWeight: "700",
-              cursor: "pointer",
+              cursor:
+                loading
+                  ? "default"
+                  : "pointer",
             }}
           >
-            이미 등록을 완료했나요?
-            시공자 로그인 →
+            이미 등록을 완료했나요? 시공자 로그인 →
           </button>
         </div>
       </div>
@@ -712,8 +1021,7 @@ const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
   padding: "12px",
-  border:
-    "1px solid #cbd5e1",
+  border: "1px solid #cbd5e1",
   borderRadius: "9px",
   background: "#ffffff",
   color: "#111827",
