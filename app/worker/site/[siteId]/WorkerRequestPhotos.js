@@ -1,385 +1,418 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+"use client";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
+import { supabase } from "../../../../lib/supabase";
 
-const BUCKET_NAME = "work-photos";
-const SIGNED_URL_SECONDS = 1800;
+export default function WorkerRequestPhotos({ siteId }) {
+  const [loading, setLoading] = useState(true);
+  const [photos, setPhotos] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
-/* =========================================================
-   서버 관리자 Supabase
-========================================================= */
+  useEffect(() => {
+    if (!siteId) {
+      setLoading(false);
+      setPhotos([]);
+      return;
+    }
 
-function createAdminClient() {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+    loadRequestPhotos();
+  }, [siteId]);
 
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
+  /* =========================================================
+     고객 요청사진 불러오기
+     서버 API에서 배정 여부 확인 후 Signed URL 생성
+  ========================================================= */
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      "Supabase 서버 환경 변수가 설정되지 않았습니다."
+  async function loadRequestPhotos() {
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      /* -----------------------------------------------------
+         1. 현재 로그인 세션
+      ----------------------------------------------------- */
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const accessToken =
+        session?.access_token;
+
+      if (!accessToken) {
+        throw new Error(
+          "로그인이 필요합니다."
+        );
+      }
+
+      /* -----------------------------------------------------
+         2. 서버 API 호출
+
+         서버에서:
+         - 로그인 사용자 확인
+         - 시공자 확인
+         - 현장 배정 여부 확인
+         - 같은 회사 현장인지 확인
+         - request 사진 조회
+         - Private Storage Signed URL 생성
+      ----------------------------------------------------- */
+
+      const response = await fetch(
+        `/api/worker/site-request-photos?siteId=${encodeURIComponent(
+          siteId
+        )}`,
+        {
+          method: "GET",
+
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+
+          cache: "no-store",
+        }
+      );
+
+      let result = null;
+
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(
+          "사진 서버 응답을 확인할 수 없습니다."
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            "고객 요청사진을 불러오지 못했습니다."
+        );
+      }
+
+      if (!result?.success) {
+        throw new Error(
+          result?.error ||
+            "고객 요청사진을 불러오지 못했습니다."
+        );
+      }
+
+      setPhotos(
+        Array.isArray(result.photos)
+          ? result.photos
+          : []
+      );
+    } catch (error) {
+      console.error(
+        "고객 요청사진 조회 오류:",
+        error
+      );
+
+      setPhotos([]);
+
+      setErrorMessage(
+        error?.message ||
+          "고객 요청사진을 불러오지 못했습니다."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* =========================================================
+     로딩
+  ========================================================= */
+
+  if (loading) {
+    return (
+      <section
+        style={{
+          marginTop: "14px",
+          background: "#ffffff",
+          border: "1px solid #e2e8f0",
+          borderRadius: "16px",
+          padding: "18px",
+        }}
+      >
+        <SectionHeader count={null} />
+
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "18px",
+            borderRadius: "10px",
+            background: "#f8fafc",
+            color: "#64748b",
+            fontSize: "12px",
+            textAlign: "center",
+          }}
+        >
+          고객 요청사진을 불러오고 있습니다...
+        </div>
+      </section>
     );
   }
 
-  return createClient(
-    supabaseUrl,
-    serviceRoleKey,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    }
+  /* =========================================================
+     메인
+  ========================================================= */
+
+  return (
+    <section
+      style={{
+        marginTop: "14px",
+        background: "#ffffff",
+        border: "1px solid #e2e8f0",
+        borderRadius: "16px",
+        padding: "18px",
+      }}
+    >
+      <SectionHeader count={photos.length} />
+
+      {/* 오류 */}
+
+      {errorMessage && (
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "12px",
+            borderRadius: "10px",
+            background: "#fef2f2",
+            color: "#b91c1c",
+            fontSize: "12px",
+            fontWeight: "700",
+            lineHeight: 1.6,
+            wordBreak: "break-word",
+          }}
+        >
+          ❌ {errorMessage}
+
+          <button
+            type="button"
+            onClick={loadRequestPhotos}
+            style={{
+              width: "100%",
+              marginTop: "10px",
+              border: "1px solid #fecaca",
+              borderRadius: "8px",
+              background: "#ffffff",
+              color: "#b91c1c",
+              padding: "9px",
+              fontSize: "12px",
+              fontWeight: "900",
+              cursor: "pointer",
+            }}
+          >
+            다시 불러오기
+          </button>
+        </div>
+      )}
+
+      {/* 사진 없음 */}
+
+      {!errorMessage &&
+        photos.length === 0 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "18px 12px",
+              border:
+                "1px dashed #cbd5e1",
+              borderRadius: "10px",
+              background: "#f8fafc",
+              color: "#64748b",
+              fontSize: "12px",
+              lineHeight: 1.6,
+              textAlign: "center",
+            }}
+          >
+            등록된 고객 요청사진이 없습니다.
+          </div>
+        )}
+
+      {/* 사진 목록 */}
+
+      {!errorMessage &&
+        photos.length > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(2, minmax(0, 1fr))",
+              gap: "10px",
+              marginTop: "12px",
+            }}
+          >
+            {photos.map(
+              (photo, index) => (
+                <PhotoCard
+                  key={
+                    photo.photo_id ||
+                    `${photo.storage_path}-${index}`
+                  }
+                  photo={photo}
+                  index={index}
+                />
+              )
+            )}
+          </div>
+        )}
+
+      <div
+        style={{
+          marginTop: "10px",
+          color: "#94a3b8",
+          fontSize: "10px",
+          lineHeight: 1.5,
+        }}
+      >
+        고객이 요청한 시공 부위 및 현장
+        참고사진입니다.
+      </div>
+    </section>
   );
 }
 
 /* =========================================================
-   Bearer Token
+   섹션 헤더
 ========================================================= */
 
-function getAccessToken(request) {
-  const authorization =
-    request.headers.get("authorization") || "";
+function SectionHeader({ count }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "10px",
+      }}
+    >
+      <div
+        style={{
+          color: "#111827",
+          fontSize: "15px",
+          fontWeight: "900",
+        }}
+      >
+        📷 고객 요청사진
+      </div>
 
-  if (!authorization.startsWith("Bearer ")) {
-    return "";
-  }
-
-  return authorization.slice(7).trim();
+      {count !== null && (
+        <div
+          style={{
+            flex: "0 0 auto",
+            padding: "5px 9px",
+            borderRadius: "999px",
+            background: "#f1f5f9",
+            color: "#475569",
+            fontSize: "11px",
+            fontWeight: "800",
+          }}
+        >
+          {count}장
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* =========================================================
-   GET
+   사진 카드
 ========================================================= */
 
-export async function GET(request) {
-  try {
-    const supabase = createAdminClient();
+function PhotoCard({
+  photo,
+  index,
+}) {
+  const [imageError, setImageError] =
+    useState(false);
 
-    /* =====================================================
-       1. 로그인 토큰 확인
-    ===================================================== */
+  const imageUrl =
+    !imageError &&
+    photo?.signed_url
+      ? photo.signed_url
+      : null;
 
-    const accessToken = getAccessToken(request);
+  return (
+    <div
+      style={{
+        minWidth: 0,
+      }}
+    >
+      {imageUrl ? (
+        <a
+          href={imageUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "block",
+            textDecoration: "none",
+          }}
+        >
+          <img
+            src={imageUrl}
+            alt={
+              photo.description ||
+              `고객 요청사진 ${
+                index + 1
+              }`
+            }
+            onError={() => {
+              setImageError(true);
+            }}
+            style={{
+              display: "block",
+              width: "100%",
+              aspectRatio: "1 / 1",
+              objectFit: "cover",
+              borderRadius: "10px",
+              background: "#f1f5f9",
+              border:
+                "1px solid #e2e8f0",
+            }}
+          />
+        </a>
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            aspectRatio: "1 / 1",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "10px",
+            background: "#f8fafc",
+            border:
+              "1px dashed #cbd5e1",
+            color: "#94a3b8",
+            fontSize: "11px",
+            textAlign: "center",
+            padding: "10px",
+            boxSizing: "border-box",
+          }}
+        >
+          사진을 표시할 수 없습니다.
+        </div>
+      )}
 
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "시공자 로그인이 필요합니다.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    /* =====================================================
-       2. 로그인 사용자 확인
-    ===================================================== */
-
-    const {
-      data: userData,
-      error: userError,
-    } = await supabase.auth.getUser(accessToken);
-
-    if (userError || !userData?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "시공자 로그인 정보를 확인할 수 없습니다.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    const user = userData.user;
-
-    /* =====================================================
-       3. siteId 확인
-    ===================================================== */
-
-    const url = new URL(request.url);
-
-    const siteId =
-      url.searchParams.get("siteId")?.trim();
-
-    if (!siteId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "현장 ID가 없습니다.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    /* =====================================================
-       4. 로그인 계정에 연결된 활성 시공자 확인
-    ===================================================== */
-
-    const {
-      data: worker,
-      error: workerError,
-    } = await supabase
-      .from("workers")
-      .select(
-        `
-          id,
-          company_id,
-          name,
-          is_active
-        `
-      )
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (workerError) {
-      throw workerError;
-    }
-
-    if (!worker?.id || !worker?.company_id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "사용 가능한 시공자 계정을 찾을 수 없습니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    /* =====================================================
-       5. 해당 현장에 실제 배정됐는지 확인
-
-       worker_id + company_id + site_id를 모두 확인합니다.
-    ===================================================== */
-
-    const {
-      data: assignment,
-      error: assignmentError,
-    } = await supabase
-      .from("site_workers")
-      .select("site_id, worker_id, company_id, role")
-      .eq("site_id", siteId)
-      .eq("worker_id", worker.id)
-      .eq("company_id", worker.company_id)
-      .maybeSingle();
-
-    if (assignmentError) {
-      throw assignmentError;
-    }
-
-    if (!assignment?.site_id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "이 현장에 배정된 시공자가 아닙니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    /* =====================================================
-       6. 현장 자체도 같은 회사인지 확인
-    ===================================================== */
-
-    const {
-      data: site,
-      error: siteError,
-    } = await supabase
-      .from("sites")
-      .select("id, company_id")
-      .eq("id", siteId)
-      .eq("company_id", worker.company_id)
-      .maybeSingle();
-
-    if (siteError) {
-      throw siteError;
-    }
-
-    if (!site?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "현장 정보를 확인할 수 없습니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    /* =====================================================
-       7. 고객 요청사진 조회
-
-       site_photos에서
-       해당 회사 + 해당 현장 사진만 조회합니다.
-    ===================================================== */
-
-    const {
-      data: photoRows,
-      error: photoError,
-    } = await supabase
-      .from("site_photos")
-      .select(
-        `
-          id,
-          storage_path,
-          photo_type,
-          description,
-          created_at
-        `
-      )
-      .eq("company_id", worker.company_id)
-      .eq("site_id", siteId)
-      .eq("photo_type", "request")
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (photoError) {
-      throw photoError;
-    }
-
-    if (!photoRows?.length) {
-      return NextResponse.json({
-        success: true,
-        photos: [],
-      });
-    }
-
-    /* =====================================================
-       8. 서버에서 Signed URL 생성
-
-       Service Role은 서버에서만 사용합니다.
-       브라우저에는 Service Role Key가 전달되지 않습니다.
-    ===================================================== */
-
-    const photos = await Promise.all(
-      photoRows.map(async (photo) => {
-        if (!photo.storage_path) {
-          return {
-            photo_id: photo.id,
-            storage_path: null,
-            description:
-              photo.description || null,
-            photo_type:
-              photo.photo_type || "request",
-            created_at:
-              photo.created_at || null,
-            signed_url: null,
-          };
-        }
-
-        try {
-          const {
-            data: signedData,
-            error: signedError,
-          } = await supabase.storage
-            .from(BUCKET_NAME)
-            .createSignedUrl(
-              photo.storage_path,
-              SIGNED_URL_SECONDS
-            );
-
-          if (signedError) {
-            console.error(
-              "시공자 요청사진 Signed URL 오류:",
-              photo.id,
-              photo.storage_path,
-              signedError
-            );
-
-            return {
-              photo_id: photo.id,
-              storage_path:
-                photo.storage_path,
-              description:
-                photo.description || null,
-              photo_type:
-                photo.photo_type || "request",
-              created_at:
-                photo.created_at || null,
-              signed_url: null,
-            };
-          }
-
-          return {
-            photo_id: photo.id,
-            storage_path:
-              photo.storage_path,
-            description:
-              photo.description || null,
-            photo_type:
-              photo.photo_type || "request",
-            created_at:
-              photo.created_at || null,
-            signed_url:
-              signedData?.signedUrl || null,
-          };
-        } catch (error) {
-          console.error(
-            "시공자 요청사진 URL 처리 오류:",
-            photo.id,
-            error
-          );
-
-          return {
-            photo_id: photo.id,
-            storage_path:
-              photo.storage_path,
-            description:
-              photo.description || null,
-            photo_type:
-              photo.photo_type || "request",
-            created_at:
-              photo.created_at || null,
-            signed_url: null,
-          };
-        }
-      })
-    );
-
-    /* =====================================================
-       9. 응답
-    ===================================================== */
-
-    return NextResponse.json({
-      success: true,
-      photos,
-    });
-  } catch (error) {
-    console.error(
-      "시공자 요청사진 API 오류:",
-      error
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error?.message ||
-          "고객 요청사진을 불러오지 못했습니다.",
-      },
-      {
-        status: 500,
-      }
-    );
-  }
-}
+      {photo.description && (
+        <div
+          style={{
+            marginTop: "6px",
+            color: "#64748b",
+            fontSize: "11px",
+            lineHeight: 1.5,
+            wordBreak: "break-word",
+          }}
+        >
+          {photo.description}
+        </div>
+      )}
+    </div>
+  );
+             }
