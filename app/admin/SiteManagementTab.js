@@ -130,6 +130,7 @@ export default function SiteManagementTab({
   createWorker,
   updateWorker,
   setWorkerActive,
+  createWorkerInvite,
 
   assignSiteWorkers,
   loadSiteWorkers,
@@ -563,9 +564,7 @@ export default function SiteManagementTab({
                 "break-word",
             }}
           >
-            {
-              sitesMessage
-            }
+            {sitesMessage}
           </div>
         )}
 
@@ -746,6 +745,9 @@ export default function SiteManagementTab({
             }
             setWorkerActive={
               setWorkerActive
+            }
+            createWorkerInvite={
+              createWorkerInvite
             }
           />
         </WorkerManagerModal>
@@ -1055,9 +1057,7 @@ function SiteCard({
               "800",
           }}
         >
-          {
-            status.label
-          }
+          {status.label}
         </span>
       </div>
 
@@ -1101,9 +1101,7 @@ function SiteCard({
         {site.work_type && (
           <div>
             🛠️{" "}
-            {
-              site.work_type
-            }
+            {site.work_type}
           </div>
         )}
 
@@ -1271,4 +1269,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-              }
+}
