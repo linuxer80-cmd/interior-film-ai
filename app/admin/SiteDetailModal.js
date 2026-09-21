@@ -935,7 +935,6 @@ export default function SiteDetailModal({
             )}
           </div>
         )}
-        )}
 
         {/* =========================
             시공 완료 보고 작성
