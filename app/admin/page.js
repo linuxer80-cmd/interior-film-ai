@@ -866,100 +866,77 @@ export default function AdminPage() {
       )}
 
       {/* =====================================================
-          현장 관리 - 진단 표시 포함
+          현장 관리
       ===================================================== */}
 
       {activeTab ===
         "sites" && (
-        <div>
-          <div
-            style={{
-              padding:
-                "12px",
-              marginBottom:
-                "12px",
-              background:
-                "#fef3c7",
-              border:
-                "2px solid #f59e0b",
-              borderRadius:
-                "10px",
-              fontWeight:
-                "900",
-              color:
-                "#92400e",
-            }}
-          >
-            현장관리 렌더링 진입 성공
-          </div>
+        <SiteManagementTab
+          sites={
+            sites
+          }
+          sitesLoading={
+            sitesLoading
+          }
+          sitesMessage={
+            sitesMessage
+          }
 
-          <SiteManagementTab
-            sites={
-              sites
-            }
-            sitesLoading={
-              sitesLoading
-            }
-            sitesMessage={
-              sitesMessage
-            }
+          createSite={
+            createSite
+          }
 
-            createSite={
-              createSite
-            }
+          updateSiteStatus={
+            updateSiteStatus
+          }
 
-            updateSiteStatus={
-              updateSiteStatus
-            }
+          selectedSite={
+            selectedSite
+          }
 
-            selectedSite={
-              selectedSite
-            }
+          openSite={
+            openSite
+          }
+          closeSite={
+            closeSite
+          }
 
-            openSite={
-              openSite
-            }
-            closeSite={
-              closeSite
-            }
+          workers={
+            workers
+          }
+          workersLoading={
+            workersLoading
+          }
+          workersMessage={
+            workersMessage
+          }
 
-            workers={
-              workers
-            }
-            workersLoading={
-              workersLoading
-            }
-            workersMessage={
-              workersMessage
-            }
+          loadWorkers={
+            loadWorkers
+          }
+          createWorker={
+            createWorker
+          }
+          updateWorker={
+            updateWorker
+          }
+          setWorkerActive={
+            setWorkerActive
+          }
 
-            loadWorkers={
-              loadWorkers
-            }
-            createWorker={
-              createWorker
-            }
-            updateWorker={
-              updateWorker
-            }
-            setWorkerActive={
-              setWorkerActive
-            }
+          assignSiteWorkers={
+            assignSiteWorkers
+          }
+          loadSiteWorkers={
+            loadSiteWorkers
+          }
 
-            assignSiteWorkers={
-              assignSiteWorkers
-            }
-            loadSiteWorkers={
-              loadSiteWorkers
-            }
-
-            reloadSites={() =>
-              loadSites(
-                companyId,
-              )
-            }
-          />
-        </div>
+          reloadSites={() =>
+            loadSites(
+              companyId,
+            )
+          }
+        />
       )}
 
       {/* =====================================================
@@ -1126,4 +1103,4 @@ export default function AdminPage() {
       />
     </main>
   );
-          }
+            }
