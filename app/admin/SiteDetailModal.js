@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
+import SiteWorkReport from "./SiteWorkReport";
+import useSiteWorkReport from "./hooks/useSiteWorkReport";
 
 const STATUS_INFO = {
   scheduled: {
@@ -102,6 +104,8 @@ function getMembers(site) {
 }
 
 export default function SiteDetailModal({
+  companyId,
+
   site,
   onClose,
   updateSiteStatus,
@@ -124,6 +128,19 @@ export default function SiteDetailModal({
   const [detailMessage, setDetailMessage] =
     useState("");
 
+  const [reportOpen, setReportOpen] =
+    useState(false);
+
+  const {
+    reportSaving,
+    reportMessage,
+    submitWorkReport,
+    clearReportMessage,
+  } = useSiteWorkReport({
+    companyId,
+    reloadSites,
+  });
+
   const status =
     STATUS_INFO[site?.status] ||
     STATUS_INFO.scheduled;
@@ -142,8 +159,13 @@ export default function SiteDetailModal({
 
       try {
         /*
-         * 1. 시공 자재
+         * 1. 예정 시공 자재
+         *
+         * 현장 등록 단계에서 입력한 자재만 표시합니다.
+         * 완료보고의 실제 사용 자재(actual)는
+         * 이후 완료보고 영역에서 별도로 표시할 수 있습니다.
          */
+
         const {
           data: materialData,
           error: materialError,
@@ -160,10 +182,12 @@ export default function SiteDetailModal({
               unit_price,
               total_price,
               memo,
+              material_type,
               created_at
             `,
           )
           .eq("site_id", site.id)
+          .eq("material_type", "planned")
           .order("created_at", {
             ascending: true,
           });
@@ -173,11 +197,12 @@ export default function SiteDetailModal({
         }
 
         /*
-         * 2. 현장 사진
+         * 2. 현장 요청 사진
          *
-         * 현재 현장 등록 단계에서 저장하는
-         * 요청사진은 photo_type = before 로 사용.
+         * 현장 등록 단계의 요청사진은
+         * photo_type = before 입니다.
          */
+
         const {
           data: photoData,
           error: photoError,
@@ -204,9 +229,10 @@ export default function SiteDetailModal({
         }
 
         /*
-         * 3. private Storage 사진은
+         * 3. private Storage 사진
          * signed URL 생성
          */
+
         const signedPhotos = await Promise.all(
           (photoData || []).map(
             async (photo) => {
@@ -283,10 +309,38 @@ export default function SiteDetailModal({
     };
   }, [site?.id]);
 
+  /*
+   * 현장이 바뀌면 완료보고 입력창과
+   * 이전 메시지를 초기화합니다.
+   */
+
+  useEffect(() => {
+    setReportOpen(false);
+
+    if (
+      typeof clearReportMessage === "function"
+    ) {
+      clearReportMessage();
+    }
+  }, [
+    site?.id,
+    clearReportMessage,
+  ]);
+
   async function changeStatus(nextStatus) {
     if (
       typeof updateSiteStatus !== "function"
     ) {
+      return;
+    }
+
+    /*
+     * completed는 여기서 직접 변경하지 않습니다.
+     * 완료보고가 모두 정상 저장된 후
+     * useSiteWorkReport에서만 완료 처리합니다.
+     */
+
+    if (nextStatus === "completed") {
       return;
     }
 
@@ -302,6 +356,58 @@ export default function SiteDetailModal({
     ) {
       await reloadSites();
     }
+  }
+
+  function openWorkReport() {
+    if (
+      typeof clearReportMessage === "function"
+    ) {
+      clearReportMessage();
+    }
+
+    setReportOpen(true);
+  }
+
+  function closeWorkReport() {
+    if (reportSaving) {
+      return;
+    }
+
+    setReportOpen(false);
+
+    if (
+      typeof clearReportMessage === "function"
+    ) {
+      clearReportMessage();
+    }
+  }
+
+  async function handleWorkReportSave(payload) {
+    const success =
+      await submitWorkReport(payload);
+
+    if (!success) {
+      return false;
+    }
+
+    /*
+     * 완료 저장이 성공하면
+     * 현장 목록은 hook에서 새로고침됩니다.
+     *
+     * 현재 selectedSite는 이전 status를
+     * 가지고 있을 수 있으므로 상세창을 닫아
+     * stale 상태가 보이지 않도록 합니다.
+     */
+
+    setReportOpen(false);
+
+    if (
+      typeof onClose === "function"
+    ) {
+      onClose();
+    }
+
+    return true;
   }
 
   if (!site) {
@@ -401,12 +507,18 @@ export default function SiteDetailModal({
           <button
             type="button"
             onClick={onClose}
+            disabled={reportSaving}
             style={{
               border: "none",
               background: "transparent",
               fontSize: "26px",
               color: "#64748b",
-              cursor: "pointer",
+              cursor: reportSaving
+                ? "not-allowed"
+                : "pointer",
+              opacity: reportSaving
+                ? 0.5
+                : 1,
             }}
           >
             ×
@@ -551,7 +663,7 @@ export default function SiteDetailModal({
         )}
 
         {/* =========================
-            시공 자재
+            예정 시공 자재
         ========================= */}
 
         {!detailLoading && (
@@ -580,7 +692,7 @@ export default function SiteDetailModal({
                   color: "#111827",
                 }}
               >
-                📦 시공 자재
+                📦 예정 시공 자재
               </div>
 
               <div
@@ -595,7 +707,7 @@ export default function SiteDetailModal({
             </div>
 
             {materials.length === 0 ? (
-              <EmptyBox text="등록된 시공 자재가 없습니다." />
+              <EmptyBox text="등록된 예정 시공 자재가 없습니다." />
             ) : (
               <div
                 style={{
@@ -687,129 +799,260 @@ export default function SiteDetailModal({
         )}
 
         {/* =========================
-            상태 변경
+            현장 상태
         ========================= */}
 
-        <div
-          style={{
-            marginTop: "18px",
-            paddingTop: "14px",
-            borderTop:
-              "1px solid #e5e7eb",
-          }}
-        >
+        {!reportOpen && (
           <div
             style={{
-              marginBottom: "8px",
-              fontSize: "13px",
-              fontWeight: "800",
-              color: "#334155",
+              marginTop: "18px",
+              paddingTop: "14px",
+              borderTop:
+                "1px solid #e5e7eb",
             }}
           >
-            현장 상태
-          </div>
+            <div
+              style={{
+                marginBottom: "8px",
+                fontSize: "13px",
+                fontWeight: "800",
+                color: "#334155",
+              }}
+            >
+              현장 상태
+            </div>
 
-          <div
+            {site.status ===
+            "completed" ? (
+              <div
+                style={{
+                  padding: "12px",
+
+                  border:
+                    "1px solid #bbf7d0",
+
+                  borderRadius: "10px",
+
+                  background: "#f0fdf4",
+
+                  color: "#166534",
+
+                  fontSize: "13px",
+                  fontWeight: "800",
+
+                  textAlign: "center",
+                }}
+              >
+                ✅ 시공 완료된 현장입니다.
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr",
+                    gap: "7px",
+                  }}
+                >
+                  <StatusButton
+                    active={
+                      site.status ===
+                      "scheduled"
+                    }
+                    onClick={() =>
+                      changeStatus(
+                        "scheduled",
+                      )
+                    }
+                  >
+                    시공 예정
+                  </StatusButton>
+
+                  <StatusButton
+                    active={
+                      site.status ===
+                      "in_progress"
+                    }
+                    onClick={() =>
+                      changeStatus(
+                        "in_progress",
+                      )
+                    }
+                  >
+                    시공 중
+                  </StatusButton>
+
+                  <StatusButton
+                    active={
+                      site.status ===
+                      "cancelled"
+                    }
+                    onClick={() =>
+                      changeStatus(
+                        "cancelled",
+                      )
+                    }
+                  >
+                    취소
+                  </StatusButton>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "8px",
+
+                    padding: "10px",
+
+                    borderRadius: "9px",
+
+                    background: "#f8fafc",
+
+                    color: "#64748b",
+
+                    fontSize: "11px",
+                    lineHeight: "1.5",
+                  }}
+                >
+                  시공 완료 상태는 아래
+                  완료보고를 저장하면 자동으로
+                  변경됩니다.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* =========================
+            시공 완료 보고
+        ========================= */}
+
+        {site.status !==
+          "completed" && (
+          <section
             style={{
-              display: "grid",
-              gridTemplateColumns:
-                "1fr 1fr",
-              gap: "7px",
+              marginTop: "18px",
+              paddingTop: "14px",
+              borderTop:
+                "1px solid #e5e7eb",
             }}
           >
-            <StatusButton
-              active={
-                site.status ===
-                "scheduled"
-              }
-              onClick={() =>
-                changeStatus("scheduled")
-              }
-            >
-              시공 예정
-            </StatusButton>
+            {!reportOpen ? (
+              <>
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                >
+                  ✅ 시공 완료 보고
+                </div>
 
-            <StatusButton
-              active={
-                site.status ===
-                "in_progress"
-              }
-              onClick={() =>
-                changeStatus(
-                  "in_progress",
-                )
-              }
-            >
-              시공 중
-            </StatusButton>
+                <div
+                  style={{
+                    marginTop: "5px",
 
-            <StatusButton
-              active={
-                site.status ===
-                "completed"
-              }
-              onClick={() =>
-                changeStatus("completed")
-              }
-            >
-              시공 완료
-            </StatusButton>
+                    fontSize: "12px",
+                    lineHeight: "1.5",
 
-            <StatusButton
-              active={
-                site.status ===
-                "cancelled"
-              }
-              onClick={() =>
-                changeStatus("cancelled")
-              }
-            >
-              취소
-            </StatusButton>
-          </div>
-        </div>
+                    color: "#64748b",
+                  }}
+                >
+                  실제 시공 내용, 사용 자재,
+                  현장 경비와 완료사진을
+                  등록한 후 현장을
+                  완료 처리합니다.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={openWorkReport}
+                  style={{
+                    width: "100%",
+
+                    marginTop: "10px",
+
+                    padding: "12px",
+
+                    border: "none",
+
+                    borderRadius: "10px",
+
+                    background: "#16a34a",
+
+                    color: "#ffffff",
+
+                    fontSize: "13px",
+                    fontWeight: "900",
+
+                    cursor: "pointer",
+                  }}
+                >
+                  ✅ 시공 완료 보고 작성
+                </button>
+              </>
+            ) : (
+              <SiteWorkReport
+                site={site}
+                saving={reportSaving}
+                message={reportMessage}
+                onSave={
+                  handleWorkReportSave
+                }
+                onCancel={
+                  closeWorkReport
+                }
+              />
+            )}
+          </section>
+        )}
 
         {/* =========================
             팀장 / 시공자 배정
         ========================= */}
 
-        <div
-          style={{
-            marginTop: "18px",
-            paddingTop: "14px",
-            borderTop:
-              "1px solid #e5e7eb",
-          }}
-        >
+        {!reportOpen && (
           <div
             style={{
-              marginBottom: "10px",
-              fontSize: "14px",
-              fontWeight: "900",
-              color: "#111827",
+              marginTop: "18px",
+              paddingTop: "14px",
+              borderTop:
+                "1px solid #e5e7eb",
             }}
           >
-            👷 담당 시공자 배정
-          </div>
+            <div
+              style={{
+                marginBottom: "10px",
+                fontSize: "14px",
+                fontWeight: "900",
+                color: "#111827",
+              }}
+            >
+              👷 담당 시공자 배정
+            </div>
 
-          <SiteWorkerAssignment
-            site={site}
-            workers={workers}
-            workersLoading={
-              workersLoading
-            }
-            loadWorkers={loadWorkers}
-            loadSiteWorkers={
-              loadSiteWorkers
-            }
-            assignSiteWorkers={
-              assignSiteWorkers
-            }
-            onSaved={
-              handleAssignmentSaved
-            }
-          />
-        </div>
+            <SiteWorkerAssignment
+              site={site}
+              workers={workers}
+              workersLoading={
+                workersLoading
+              }
+              loadWorkers={
+                loadWorkers
+              }
+              loadSiteWorkers={
+                loadSiteWorkers
+              }
+              assignSiteWorkers={
+                assignSiteWorkers
+              }
+              onSaved={
+                handleAssignmentSaved
+              }
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1170,4 +1413,4 @@ function StatusButton({
       {children}
     </button>
   );
-              }
+      }
