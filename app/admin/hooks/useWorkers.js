@@ -140,9 +140,9 @@ export default function useWorkers({
                 )
                 .filter(Boolean)
             : String(
-                  form?.specialties ||
-                    "",
-                )
+                form?.specialties ||
+                  "",
+              )
                 .split(",")
                 .map((item) =>
                   item.trim(),
@@ -299,9 +299,9 @@ export default function useWorkers({
                 )
                 .filter(Boolean)
             : String(
-                  form?.specialties ||
-                    "",
-                )
+                form?.specialties ||
+                  "",
+              )
                 .split(",")
                 .map((item) =>
                   item.trim(),
@@ -498,6 +498,112 @@ export default function useWorkers({
             success: false,
             error: message,
           };
+        }
+      },
+      [companyId],
+    );
+
+  /* =========================================================
+     시공자 계정 초대
+
+     관리자만 실행
+     DB의 create_worker_invite()가
+     현재 회사와 시공자 소속을 다시 검증한다.
+  ========================================================= */
+
+  const createWorkerInvite =
+    useCallback(
+      async (worker) => {
+        if (
+          !companyId ||
+          !worker?.id
+        ) {
+          return {
+            success: false,
+            error:
+              "시공자 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        if (
+          worker.is_active === false
+        ) {
+          return {
+            success: false,
+            error:
+              "비활성 시공자는 계정을 초대할 수 없습니다.",
+          };
+        }
+
+        if (worker.user_id) {
+          return {
+            success: false,
+            alreadyLinked: true,
+            error:
+              "이미 로그인 계정이 연결된 시공자입니다.",
+          };
+        }
+
+        setWorkersLoading(true);
+        setWorkersMessage("");
+
+        try {
+          const {
+            data,
+            error,
+          } = await supabase.rpc(
+            "create_worker_invite",
+            {
+              target_worker_id:
+                worker.id,
+            },
+          );
+
+          if (error) {
+            throw error;
+          }
+
+          if (!data) {
+            throw new Error(
+              "초대코드를 생성하지 못했습니다.",
+            );
+          }
+
+          const inviteCode =
+            String(data);
+
+          setWorkersMessage(
+            `✅ ${worker.name || "시공자"} 계정 초대코드가 생성되었습니다.`,
+          );
+
+          return {
+            success: true,
+            inviteCode,
+            workerId:
+              worker.id,
+            workerName:
+              worker.name || "",
+          };
+        } catch (error) {
+          console.error(
+            "시공자 계정 초대:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "시공자 계정 초대에 실패했습니다.";
+
+          setWorkersMessage(
+            `❌ ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        } finally {
+          setWorkersLoading(false);
         }
       },
       [companyId],
@@ -797,9 +903,11 @@ export default function useWorkers({
     updateWorker,
     setWorkerActive,
 
+    createWorkerInvite,
+
     assignSiteWorkers,
     loadSiteWorkers,
 
     clearWorkersMessage,
   };
-              }
+          }
