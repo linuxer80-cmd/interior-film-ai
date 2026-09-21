@@ -48,6 +48,13 @@ export default function SiteWorkReportReview({
   async function loadReview() {
     setLoading(true);
     setErrorMessage("");
+    setData(null);
+
+    const controller = new AbortController();
+
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 15000);
 
     try {
       const {
@@ -56,7 +63,12 @@ export default function SiteWorkReportReview({
       } = await supabase.auth.getSession();
 
       if (sessionError) {
-        throw sessionError;
+        throw new Error(
+          `로그인 세션 확인 실패: ${
+            sessionError.message ||
+            "알 수 없는 오류"
+          }`
+        );
       }
 
       const accessToken =
@@ -64,38 +76,89 @@ export default function SiteWorkReportReview({
 
       if (!accessToken) {
         throw new Error(
-          "관리자 로그인이 필요합니다."
+          "관리자 로그인 세션이 없습니다. 다시 로그인해주세요."
         );
       }
 
-      const response = await fetch(
+      const apiUrl =
         `/api/admin/site-work-report-review?siteId=${encodeURIComponent(
           siteId
-        )}`,
+        )}`;
+
+      console.log(
+        "완료보고 검수자료 요청:",
         {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          cache: "no-store",
+          siteId,
+          apiUrl,
         }
       );
 
+      const response = await fetch(
+        apiUrl,
+        {
+          method: "GET",
+
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+
+            Accept:
+              "application/json",
+          },
+
+          cache: "no-store",
+
+          signal:
+            controller.signal,
+        }
+      );
+
+      const responseText =
+        await response.text();
+
       let result = null;
 
-      try {
-        result = await response.json();
-      } catch {
-        result = null;
+      if (responseText) {
+        try {
+          result =
+            JSON.parse(responseText);
+        } catch (parseError) {
+          console.error(
+            "검수 API JSON 변환 오류:",
+            parseError,
+            responseText
+          );
+
+          throw new Error(
+            `서버 응답 형식 오류 (HTTP ${response.status})`
+          );
+        }
       }
 
-      if (
-        !response.ok ||
-        !result?.success
-      ) {
+      console.log(
+        "완료보고 검수자료 응답:",
+        {
+          status:
+            response.status,
+
+          ok:
+            response.ok,
+
+          result,
+        }
+      );
+
+      if (!response.ok) {
         throw new Error(
           result?.error ||
-            "완료보고 검수자료를 불러오지 못했습니다."
+            `완료보고 조회 실패 (HTTP ${response.status})`
+        );
+      }
+
+      if (!result?.success) {
+        throw new Error(
+          result?.error ||
+            "완료보고 검수자료 조회에 실패했습니다."
         );
       }
 
@@ -108,11 +171,21 @@ export default function SiteWorkReportReview({
 
       setData(null);
 
-      setErrorMessage(
-        error?.message ||
-          "완료보고 검수자료를 불러오지 못했습니다."
-      );
+      if (
+        error?.name ===
+        "AbortError"
+      ) {
+        setErrorMessage(
+          "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요."
+        );
+      } else {
+        setErrorMessage(
+          error?.message ||
+            "완료보고 검수자료를 불러오지 못했습니다."
+        );
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }
@@ -786,13 +859,12 @@ export default function SiteWorkReportReview({
           </div>
         )}
       </ReviewBlock>
-
       {/* =====================================================
           현장 경비
       ===================================================== */}
 
       <ReviewBlock
-        title={`💰 현장 경비 · ${expenses.length}건`}
+        title={`💳 현장 경비 · ${expenses.length}건`}
       >
         {expenses.length === 0 ? (
           <EmptyText>
@@ -803,7 +875,7 @@ export default function SiteWorkReportReview({
             <div
               style={{
                 display: "grid",
-                gap: "8px",
+                gap: "9px",
               }}
             >
               {expenses.map(
@@ -811,29 +883,28 @@ export default function SiteWorkReportReview({
                   <div
                     key={
                       expense.id ||
-                      index
+                      `${expense.expense_type}-${index}`
                     }
                     style={{
-                      display: "flex",
-                      alignItems:
-                        "flex-start",
-                      justifyContent:
-                        "space-between",
-                      gap: "12px",
-                      padding: "11px",
-                      borderRadius: "9px",
+                      padding: "12px",
+                      border:
+                        "1px solid #e2e8f0",
+                      borderRadius: "10px",
                       background: "#f8fafc",
                     }}
                   >
                     <div
                       style={{
-                        flex: 1,
-                        minWidth: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent:
+                          "space-between",
+                        gap: "10px",
                       }}
                     >
                       <div
                         style={{
-                          color: "#111827",
+                          color: "#334155",
                           fontSize: "12px",
                           fontWeight: "900",
                         }}
@@ -843,38 +914,47 @@ export default function SiteWorkReportReview({
                         )}
                       </div>
 
-                      {expense.description && (
-                        <div
-                          style={{
-                            marginTop:
-                              "3px",
-                            color:
-                              "#64748b",
-                            fontSize:
-                              "11px",
-                            lineHeight:
-                              1.5,
-                          }}
-                        >
-                          {
-                            expense.description
-                          }
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          color: "#111827",
+                          fontSize: "13px",
+                          fontWeight: "900",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMoney(
+                          expense.amount
+                        )}
+                      </div>
                     </div>
 
-                    <div
-                      style={{
-                        flex: "0 0 auto",
-                        color: "#111827",
-                        fontSize: "12px",
-                        fontWeight: "900",
-                      }}
-                    >
-                      {formatMoney(
-                        expense.amount
-                      )}
-                    </div>
+                    {expense.description && (
+                      <div
+                        style={{
+                          marginTop: "7px",
+                          color: "#64748b",
+                          fontSize: "11px",
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {expense.description}
+                      </div>
+                    )}
+
+                    {expense.expense_date && (
+                      <div
+                        style={{
+                          marginTop: "5px",
+                          color: "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: "700",
+                        }}
+                      >
+                        {expense.expense_date}
+                      </div>
+                    )}
                   </div>
                 )
               )}
@@ -882,89 +962,88 @@ export default function SiteWorkReportReview({
 
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent:
-                  "space-between",
-                gap: "12px",
                 marginTop: "10px",
                 padding: "12px",
                 borderRadius: "10px",
-                background: "#111827",
-                color: "#ffffff",
+                background: "#f8fafc",
+                textAlign: "right",
               }}
             >
-              <div
+              <span
                 style={{
-                  fontSize: "12px",
+                  color: "#64748b",
+                  fontSize: "11px",
                   fontWeight: "800",
                 }}
               >
                 경비 합계
-              </div>
+              </span>
 
-              <div
+              <span
                 style={{
-                  fontSize: "14px",
+                  marginLeft: "8px",
+                  color: "#111827",
+                  fontSize: "15px",
                   fontWeight: "900",
                 }}
               >
-                {formatMoney(
-                  totalExpense
-                )}
-              </div>
+                {formatMoney(totalExpense)}
+              </span>
             </div>
           </>
         )}
       </ReviewBlock>
 
       {/* =====================================================
-          기존 검수결과
+          기존 검수 결과
 
-          pending에서는 아직 없음.
-          approved/rejected 상태가 생긴 후 표시.
+          승인/보완 요청 기능은 다음 단계에서 추가한다.
       ===================================================== */}
 
-      {reviewStatus !== "pending" && (
-        <ReviewBlock title="📝 관리자 검수 결과">
-          <ReviewRow
-            label="상태"
-            value={review.label}
-          />
+      {reviewStatus === "approved" && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "14px",
+            borderRadius: "12px",
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+          }}
+        >
+          <div
+            style={{
+              color: "#166534",
+              fontSize: "13px",
+              fontWeight: "900",
+            }}
+          >
+            🟢 관리자 검수 승인 완료
+          </div>
 
-          {data?.review
-            ?.approvedAmount !== null &&
-            data?.review
-              ?.approvedAmount !==
+          {data?.review?.approvedAmount !==
+            null &&
+            data?.review?.approvedAmount !==
               undefined && (
-              <ReviewRow
-                label="실제금액"
-                value={formatMoney(
-                  data.review
-                    .approvedAmount
+              <div
+                style={{
+                  marginTop: "9px",
+                  color: "#166534",
+                  fontSize: "12px",
+                  fontWeight: "800",
+                }}
+              >
+                실제 시공금액{" "}
+                {formatMoney(
+                  data.review.approvedAmount
                 )}
-              />
+              </div>
             )}
-
-          {data?.review
-            ?.reviewedAt && (
-            <ReviewRow
-              label="검수일"
-              value={formatDateTime(
-                data.review.reviewedAt
-              )}
-            />
-          )}
 
           {data?.review?.memo && (
             <div
               style={{
                 marginTop: "9px",
-                padding: "12px",
-                borderRadius: "10px",
-                background:
-                  review.background,
-                color: review.color,
+                color: "#166534",
                 fontSize: "12px",
                 lineHeight: 1.6,
                 whiteSpace: "pre-wrap",
@@ -974,34 +1053,129 @@ export default function SiteWorkReportReview({
               {data.review.memo}
             </div>
           )}
-        </ReviewBlock>
+
+          {data?.review?.reviewedAt && (
+            <div
+              style={{
+                marginTop: "7px",
+                color: "#15803d",
+                fontSize: "10px",
+                fontWeight: "700",
+              }}
+            >
+              검수일{" "}
+              {formatDateTime(
+                data.review.reviewedAt
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {reviewStatus === "rejected" && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "14px",
+            borderRadius: "12px",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+          }}
+        >
+          <div
+            style={{
+              color: "#b91c1c",
+              fontSize: "13px",
+              fontWeight: "900",
+            }}
+          >
+            🔴 관리자 보완 요청
+          </div>
+
+          {data?.review?.memo ? (
+            <div
+              style={{
+                marginTop: "9px",
+                color: "#7f1d1d",
+                fontSize: "12px",
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {data.review.memo}
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: "9px",
+                color: "#991b1b",
+                fontSize: "12px",
+                lineHeight: 1.6,
+              }}
+            >
+              보완 요청 사유가 등록되지
+              않았습니다.
+            </div>
+          )}
+
+          {data?.review?.reviewedAt && (
+            <div
+              style={{
+                marginTop: "7px",
+                color: "#991b1b",
+                fontSize: "10px",
+                fontWeight: "700",
+              }}
+            >
+              검수일{" "}
+              {formatDateTime(
+                data.review.reviewedAt
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* =====================================================
-          다음 단계 안내
-
-          가짜 승인 버튼은 만들지 않는다.
-          실제 승인 API를 만든 뒤 버튼을 연결한다.
+          현재 단계 안내
       ===================================================== */}
 
       {reviewStatus === "pending" && (
         <div
           style={{
-            marginTop: "14px",
-            padding: "13px",
-            borderRadius: "10px",
-            border: "1px dashed #cbd5e1",
+            marginTop: "16px",
+            padding: "14px",
+            borderRadius: "12px",
             background: "#f8fafc",
-            color: "#64748b",
-            fontSize: "11px",
-            lineHeight: 1.7,
-            textAlign: "center",
+            border: "1px solid #e2e8f0",
           }}
         >
-          검수자료 확인 단계입니다.
-          <br />
-          다음 단계에서 실제 시공금액 입력,
-          보완 요청, 검수 승인 기능을 연결합니다.
+          <div
+            style={{
+              color: "#334155",
+              fontSize: "12px",
+              fontWeight: "900",
+              lineHeight: 1.6,
+            }}
+          >
+            다음 단계에서 실제 시공금액 입력,
+            보완 요청, 검수 승인 기능을
+            연결합니다.
+          </div>
+
+          <div
+            style={{
+              marginTop: "6px",
+              color: "#64748b",
+              fontSize: "11px",
+              lineHeight: 1.6,
+            }}
+          >
+            관리자 승인 전에는 완료사진을
+            AI 유사견적용 시공 DB에 등록하지
+            않습니다.
+          </div>
         </div>
       )}
     </section>
@@ -1019,9 +1193,10 @@ function ReviewBlock({
   return (
     <div
       style={{
-        marginTop: "14px",
-        paddingTop: "14px",
-        borderTop: "1px solid #e2e8f0",
+        marginTop: "16px",
+        paddingTop: "16px",
+        borderTop:
+          "1px solid #e2e8f0",
       }}
     >
       <div
@@ -1048,30 +1223,22 @@ function ReviewRow({
   label,
   value,
 }) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "flex-start",
+        display: "grid",
+        gridTemplateColumns:
+          "80px minmax(0, 1fr)",
         gap: "10px",
-        marginTop: "7px",
-        fontSize: "12px",
-        lineHeight: 1.6,
+        padding: "7px 0",
+        borderBottom:
+          "1px solid #f1f5f9",
       }}
     >
       <div
         style={{
-          width: "62px",
-          flex: "0 0 62px",
-          color: "#94a3b8",
+          color: "#64748b",
+          fontSize: "11px",
           fontWeight: "800",
         }}
       >
@@ -1080,21 +1247,21 @@ function ReviewRow({
 
       <div
         style={{
-          flex: 1,
-          minWidth: 0,
-          color: "#334155",
+          color: "#111827",
+          fontSize: "12px",
           fontWeight: "800",
+          whiteSpace: "pre-wrap",
           wordBreak: "break-word",
         }}
       >
-        {value}
+        {value || "-"}
       </div>
     </div>
   );
 }
 
 /* =========================================================
-   빈 데이터
+   빈 내용
 ========================================================= */
 
 function EmptyText({
@@ -1104,9 +1271,11 @@ function EmptyText({
     <div
       style={{
         padding: "13px",
-        borderRadius: "9px",
+        borderRadius: "10px",
         background: "#f8fafc",
-        color: "#94a3b8",
+        border:
+          "1px dashed #cbd5e1",
+        color: "#64748b",
         fontSize: "11px",
         lineHeight: 1.6,
         textAlign: "center",
@@ -1118,7 +1287,7 @@ function EmptyText({
 }
 
 /* =========================================================
-   사진
+   사진 목록
 ========================================================= */
 
 function PhotoGrid({
@@ -1130,84 +1299,106 @@ function PhotoGrid({
         display: "grid",
         gridTemplateColumns:
           "repeat(2, minmax(0, 1fr))",
-        gap: "8px",
+        gap: "9px",
       }}
     >
       {photos.map(
-        (photo, index) => {
-          const imageUrl =
-            photo?.signed_url ||
-            photo?.photo_url ||
-            "";
-
-          if (!imageUrl) {
-            return null;
-          }
-
-          return (
-            <a
-              key={
-                photo.id ||
-                `${imageUrl}-${index}`
-              }
-              href={imageUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "block",
-                textDecoration: "none",
-              }}
-            >
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  aspectRatio: "1 / 1",
-                  overflow: "hidden",
-                  borderRadius: "10px",
-                  border:
-                    "1px solid #e2e8f0",
-                  background: "#f1f5f9",
-                }}
-              >
-                <img
-                  src={imageUrl}
-                  alt={
-                    photo.photo_type ===
-                    "before"
-                      ? `시공 전 사진 ${
-                          index + 1
-                        }`
-                      : `시공 완료 사진 ${
-                          index + 1
-                        }`
-                  }
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              </div>
-
-              {photo.description && (
-                <div
-                  style={{
-                    marginTop: "4px",
-                    color: "#64748b",
-                    fontSize: "10px",
-                    lineHeight: 1.4,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {photo.description}
-                </div>
-              )}
-            </a>
-          );
-        }
+        (photo, index) => (
+          <PhotoCard
+            key={
+              photo.id ||
+              `${photo.storage_path}-${index}`
+            }
+            photo={photo}
+            index={index}
+          />
+        )
       )}
     </div>
   );
-            }
+}
+
+/* =========================================================
+   사진 카드
+========================================================= */
+
+function PhotoCard({
+  photo,
+  index,
+}) {
+  const imageUrl =
+    photo?.signed_url ||
+    photo?.photo_url ||
+    "";
+
+  if (!imageUrl) {
+    return (
+      <div
+        style={{
+          aspectRatio: "1 / 1",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "10px",
+          border:
+            "1px solid #e2e8f0",
+          borderRadius: "11px",
+          background: "#f8fafc",
+          color: "#94a3b8",
+          fontSize: "11px",
+          fontWeight: "800",
+          textAlign: "center",
+        }}
+      >
+        사진을 불러올 수 없습니다.
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={imageUrl}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        position: "relative",
+        display: "block",
+        aspectRatio: "1 / 1",
+        overflow: "hidden",
+        borderRadius: "11px",
+        border:
+          "1px solid #e2e8f0",
+        background: "#f8fafc",
+      }}
+    >
+      <img
+        src={imageUrl}
+        alt={`시공사진 ${index + 1}`}
+        loading="lazy"
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          left: "6px",
+          bottom: "6px",
+          padding: "3px 6px",
+          borderRadius: "999px",
+          background:
+            "rgba(15, 23, 42, 0.72)",
+          color: "#ffffff",
+          fontSize: "10px",
+          fontWeight: "900",
+        }}
+      >
+        사진 {index + 1}
+      </div>
+    </a>
+  );
+           }
