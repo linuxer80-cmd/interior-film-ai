@@ -205,6 +205,10 @@ export default function useSites({
 
           /* ---------------------------------------------
              site_photos DB 등록
+
+             request = 현장 등록 시 고객이 보내준 시공 요청사진
+             before  = 실제 시공 전 사진
+             after   = 실제 시공 후 사진
           --------------------------------------------- */
 
           const photoRow = {
@@ -215,7 +219,7 @@ export default function useSites({
               siteId,
 
             photo_type:
-              "before",
+              "request",
 
             storage_path:
               storagePath,
@@ -804,4 +808,4 @@ export default function useSites({
 
     clearSitesMessage,
   };
-          }
+    }
