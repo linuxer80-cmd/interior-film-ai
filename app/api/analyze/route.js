@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const AI_MODEL = "gpt-5.6-luna";
 
@@ -18,10 +19,7 @@ function getAdminSupabase() {
   const serviceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (
-    !supabaseUrl ||
-    !serviceRoleKey
-  ) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return null;
   }
 
@@ -39,7 +37,7 @@ function getAdminSupabase() {
 
 /*
  * =========================================================
- * 회사 확인
+ * 업체 조회
  * =========================================================
  */
 
@@ -69,23 +67,22 @@ async function resolveCompanyBySlug(
   const {
     data,
     error,
-  } =
-    await supabase
-      .from("companies")
-      .select(
-        `
-          id,
-          slug,
-          company_name,
-          plan,
-          active
-        `
-      )
-      .eq(
-        "slug",
-        normalizedSlug
-      )
-      .maybeSingle();
+  } = await supabase
+    .from("companies")
+    .select(
+      `
+        id,
+        slug,
+        company_name,
+        subscription_plan,
+        is_active
+      `
+    )
+    .eq(
+      "slug",
+      normalizedSlug
+    )
+    .maybeSingle();
 
   if (error) {
     console.error(
@@ -98,7 +95,7 @@ async function resolveCompanyBySlug(
 
   if (
     !data ||
-    data.active === false
+    data.is_active === false
   ) {
     return null;
   }
@@ -108,13 +105,11 @@ async function resolveCompanyBySlug(
 
 /*
  * =========================================================
- * AI 사진분석 사용량 기록
- *
- * 중요:
- * 사용량 기록 실패가 AI 분석 자체를 실패시키면
- * 고객이 다시 분석하면서 OpenAI 비용이 중복될 수 있으므로
- * 기록 오류는 분석 결과와 분리합니다.
+ * AI 사진 분석 사용량 기록
  * =========================================================
+ *
+ * 사용량 기록에 실패해도
+ * 이미 완료된 AI 분석 자체는 실패시키지 않습니다.
  */
 
 async function recordPhotoAnalysisUsage({
@@ -126,10 +121,6 @@ async function recordPhotoAnalysisUsage({
   afterCount = null,
 }) {
   if (!company?.id) {
-    console.warn(
-      "AI 사진분석 사용량 기록 생략: 회사 정보 없음"
-    );
-
     return false;
   }
 
@@ -153,58 +144,59 @@ async function recordPhotoAnalysisUsage({
 
     const {
       error,
-    } =
-      await supabase
-        .from("usage_events")
-        .insert({
-          company_id:
-            company.id,
+    } = await supabase
+      .from("usage_events")
+      .insert({
+        company_id:
+          company.id,
 
-          event_type:
-            "ai_photo_analysis",
+        event_type:
+          "ai_photo_analysis",
 
-          quantity:
-            safeQuantity,
+        quantity:
+          safeQuantity,
 
-          cost_krw:
-            0,
+        cost_krw: 0,
 
-          provider:
-            "openai",
+        provider:
+          "openai",
 
-          model:
-            AI_MODEL,
+        model:
+          AI_MODEL,
 
-          reference_id:
+        reference_id:
+          null,
+
+        metadata: {
+          company_slug:
+            company.slug ||
             null,
 
-          metadata: {
-            company_slug:
-              company.slug || null,
+          company_name:
+            company.company_name ||
+            null,
 
-            company_name:
-              company.company_name ||
-              null,
+          subscription_plan:
+            company.subscription_plan ||
+            null,
 
-            company_plan:
-              company.plan || null,
+          photo_type:
+            photoType,
 
-            photo_type:
-              photoType,
+          before_count:
+            beforeCount,
 
-            before_count:
-              beforeCount,
+          after_count:
+            afterCount,
 
-            after_count:
-              afterCount,
+          analyzed_photo_count:
+            safeQuantity,
 
-            analyzed_photo_count:
-              safeQuantity,
-
-            openai_usage:
-              openaiUsage || null,
-          },
-        });
+          openai_usage:
+            openaiUsage ||
+            null,
+        },
+      });
 
     if (error) {
       console.error(
@@ -228,7 +220,7 @@ async function recordPhotoAnalysisUsage({
 
 /*
  * =========================================================
- * 파일 → Data URL
+ * 이미지 파일 → Data URL
  * =========================================================
  */
 
@@ -360,8 +352,9 @@ export async function POST(
       formData.get("image");
 
     /*
-     * 현재 고객페이지 업체
+     * 업체 slug
      */
+
     const companySlug =
       String(
         formData.get(
@@ -372,9 +365,10 @@ export async function POST(
         .toLowerCase();
 
     /*
-     * 회사 slug가 전달된 경우
-     * 서버에서 실제 업체인지 확인합니다.
+     * 업체 slug가 전달된 경우
+     * 서버에서 실제 활성 업체인지 확인
      */
+
     let company = null;
 
     if (companySlug) {
@@ -398,8 +392,11 @@ export async function POST(
     }
 
     /*
-     * 다중 비교용
+     * =========================================================
+     * 전후 비교용 이미지
+     * =========================================================
      */
+
     const beforeImages =
       formData.getAll(
         "beforeImages"
@@ -411,8 +408,9 @@ export async function POST(
       );
 
     /*
-     * 기존 단일 비교 방식과의 호환성 유지
+     * 기존 단일 전후 이미지 방식도 지원
      */
+
     const legacyBeforeImage =
       formData.get(
         "beforeImage"
@@ -437,9 +435,9 @@ export async function POST(
       "after"
         ? "after"
         : receivedPhotoType ===
-          "compare"
-        ? "compare"
-        : "before";
+            "compare"
+          ? "compare"
+          : "before";
 
     /*
      * =========================================================
@@ -454,15 +452,19 @@ export async function POST(
         beforeImages.length > 0
           ? beforeImages
           : legacyBeforeImage
-          ? [legacyBeforeImage]
-          : [];
+            ? [
+                legacyBeforeImage,
+              ]
+            : [];
 
       const allAfterImages =
         afterImages.length > 0
           ? afterImages
           : legacyAfterImage
-          ? [legacyAfterImage]
-          : [];
+            ? [
+                legacyAfterImage,
+              ]
+            : [];
 
       if (
         allBeforeImages.length ===
@@ -481,6 +483,10 @@ export async function POST(
           }
         );
       }
+
+      /*
+       * 이미지 Data URL 변환
+       */
 
       const beforeDataUrls =
         await Promise.all(
@@ -502,6 +508,10 @@ export async function POST(
           )
         );
 
+      /*
+       * AI 분석 프롬프트
+       */
+
       const instruction = `
 당신은 인테리어필름 전문 시공 분석가이다.
 
@@ -513,23 +523,36 @@ export async function POST(
 중요:
 사진 수가 서로 다를 수 있다.
 사진 순서가 서로 정확히 대응하지 않을 수 있다.
+
 따라서 사진 1장씩 억지로 짝을 맞추지 말고,
 전체 시공 전 사진 묶음과 전체 시공 후 사진 묶음을 종합적으로 비교하라.
 
 분석 규칙:
 
 1. 여러 장의 사진 전체에서 반복적으로 확인되는 시공 부위를 파악한다.
+
 2. 시공 전 사진 묶음과 시공 후 사진 묶음에서 실제로 확인되는 공통 변화를 분석한다.
+
 3. 색상 변화, 밝기 변화, 표면 정돈감, 공간 통일감, 인테리어 분위기 변화를 설명한다.
+
 4. 문, 문틀, 싱크대, 붙박이장, 신발장, 몰딩 등 실제 사진에서 보이는 시공 부위를 구체적으로 설명한다.
+
 5. 사진 순서가 다르다고 해서 특정 전사진과 특정 후사진을 임의로 같은 물체라고 단정하지 않는다.
+
 6. 사진에서 확인할 수 없는 과거 상태나 시공 내용을 지어내지 않는다.
+
 7. 시공 후 사진은 이미 인테리어필름 시공이 완료된 상태로 판단한다.
+
 8. "시공이 필요하다", "교체가 필요하다", "보수가 필요하다", "시공을 권장한다" 같은 표현은 사용하지 않는다.
+
 9. 전후 차이가 명확하지 않은 부분은 단정하지 않는다.
+
 10. 반드시 자연스러운 한국어만 사용한다.
+
 11. 중국어, 일본어, 한자 혼합 표현을 사용하지 않는다.
+
 12. "质감" 같은 혼합 문자를 절대 사용하지 않고 "질감"처럼 자연스러운 한국어만 사용한다.
+
 13. 고객이 읽었을 때 이해하기 쉬운 설명을 작성한다.
 
 description은
@@ -562,16 +585,23 @@ description은
 }
 `;
 
+      /*
+       * OpenAI 입력 content
+       */
+
       const content = [
         {
           type:
             "input_text",
+
           text:
             instruction,
         },
+
         {
           type:
             "input_text",
+
           text:
             `아래 ${beforeDataUrls.length}장의 이미지는 모두 시공 전 사진이다.`,
         },
@@ -585,13 +615,17 @@ description은
           content.push({
             type:
               "input_text",
+
             text:
-              `시공 전 사진 ${index + 1}`,
+              `시공 전 사진 ${
+                index + 1
+              }`,
           });
 
           content.push({
             type:
               "input_image",
+
             image_url:
               imageUrl,
           });
@@ -601,6 +635,7 @@ description은
       content.push({
         type:
           "input_text",
+
         text:
           `아래 ${afterDataUrls.length}장의 이미지는 모두 시공 후 사진이다.`,
       });
@@ -613,18 +648,26 @@ description은
           content.push({
             type:
               "input_text",
+
             text:
-              `시공 후 사진 ${index + 1}`,
+              `시공 후 사진 ${
+                index + 1
+              }`,
           });
 
           content.push({
             type:
               "input_image",
+
             image_url:
               imageUrl,
           });
         }
       );
+
+      /*
+       * OpenAI 호출
+       */
 
       const openaiResponse =
         await fetch(
@@ -685,6 +728,10 @@ description은
         );
       }
 
+      /*
+       * 결과 텍스트
+       */
+
       const outputText =
         extractOutputText(
           data
@@ -694,6 +741,7 @@ description은
         return NextResponse.json(
           {
             success: false,
+
             error:
               "AI 다중 전후 비교 분석 결과가 없습니다.",
           },
@@ -702,6 +750,10 @@ description은
           }
         );
       }
+
+      /*
+       * JSON 변환
+       */
 
       let analysis;
 
@@ -719,6 +771,7 @@ description은
         return NextResponse.json(
           {
             success: false,
+
             error:
               "AI 다중 전후 비교 결과를 읽지 못했습니다.",
           },
@@ -729,9 +782,13 @@ description은
       }
 
       /*
-       * AI 분석이 실제로 성공한 뒤에만
-       * 사용량을 기록합니다.
+       * =====================================================
+       * 사용량 기록
+       *
+       * AI 분석 성공 이후에만 기록합니다.
+       * =====================================================
        */
+
       const usageRecorded =
         await recordPhotoAnalysisUsage(
           {
@@ -755,6 +812,10 @@ description은
               null,
           }
         );
+
+      /*
+       * 성공
+       */
 
       return NextResponse.json(
         {
@@ -786,6 +847,7 @@ description은
       return NextResponse.json(
         {
           success: false,
+
           error:
             "이미지가 없습니다.",
         },
@@ -794,6 +856,10 @@ description은
         }
       );
     }
+
+    /*
+     * 이미지 변환
+     */
 
     const imageDataUrl =
       await fileToDataUrl(
@@ -805,7 +871,7 @@ description은
 
     /*
      * =========================================================
-     * 시공 후 단일 사진
+     * 시공 후 사진
      * =========================================================
      */
 
@@ -856,15 +922,13 @@ description은
   ]
 }
 `;
-    }
+    } else {
+      /*
+       * =======================================================
+       * 시공 전 사진
+       * =======================================================
+       */
 
-    /*
-     * =========================================================
-     * 시공 전 단일 사진
-     * =========================================================
-     */
-
-    else {
       analysisInstruction = `
 이 사진은 인테리어필름 시공 전 사진이다.
 
@@ -901,6 +965,12 @@ description은
 `;
     }
 
+    /*
+     * =========================================================
+     * OpenAI 단일 사진 분석
+     * =========================================================
+     */
+
     const openaiResponse =
       await fetch(
         "https://api.openai.com/v1/responses",
@@ -934,6 +1004,7 @@ description은
                       text:
                         analysisInstruction,
                     },
+
                     {
                       type:
                         "input_image",
@@ -951,6 +1022,10 @@ description은
     const data =
       await openaiResponse.json();
 
+    /*
+     * OpenAI 오류
+     */
+
     if (
       !openaiResponse.ok
     ) {
@@ -964,7 +1039,8 @@ description은
           success: false,
 
           error:
-            data?.error?.message ||
+            data?.error
+              ?.message ||
             "AI 분석 요청에 실패했습니다.",
         },
         {
@@ -973,6 +1049,10 @@ description은
         }
       );
     }
+
+    /*
+     * 응답 텍스트 추출
+     */
 
     const outputText =
       extractOutputText(
@@ -983,6 +1063,7 @@ description은
       return NextResponse.json(
         {
           success: false,
+
           error:
             "AI 분석 결과가 없습니다.",
         },
@@ -991,6 +1072,10 @@ description은
         }
       );
     }
+
+    /*
+     * JSON 파싱
+     */
 
     let analysis;
 
@@ -1008,6 +1093,7 @@ description은
       return NextResponse.json(
         {
           success: false,
+
           error:
             "AI 분석 결과를 읽지 못했습니다.",
         },
@@ -1019,8 +1105,9 @@ description은
 
     /*
      * =========================================================
-     * 단일 사진 AI 분석 성공
-     * 사용량 1회 기록
+     * AI 분석 사용량 기록
+     *
+     * 단일 사진 1장 성공 = quantity 1
      * =========================================================
      */
 
@@ -1039,11 +1126,18 @@ description은
         }
       );
 
+    /*
+     * 성공 응답
+     */
+
     return NextResponse.json(
       {
         success: true,
+
         photoType,
+
         analysis,
+
         usageRecorded,
       }
     );
@@ -1066,4 +1160,4 @@ description은
       }
     );
   }
-          }
+            }
