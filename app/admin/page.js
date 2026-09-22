@@ -16,6 +16,7 @@ import RegisterTab from "./RegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
+import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
 import useJobs from "./hooks/useJobs";
@@ -606,20 +607,30 @@ export default function AdminPage() {
       />
 
       {/* =====================================================
-          관리자 제목
+          관리자 제목 + 현재 요금제
       ===================================================== */}
 
-      <h1
+      <div
         style={{
-          fontSize:
-            "24px",
-
-          margin:
-            "8px 0 12px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          margin: "8px 0 12px",
         }}
       >
-        {companyName} 관리자
-      </h1>
+        <h1
+          style={{
+            fontSize: "24px",
+            margin: 0,
+            minWidth: 0,
+          }}
+        >
+          {companyName} 관리자
+        </h1>
+
+        <PlanUsageButton />
+      </div>
 
       {/* =====================================================
           관리자 초기화 오류
@@ -1364,4 +1375,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}
+            }
