@@ -3,142 +3,121 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
-import { supabase } from "../../../lib/supabase";
+import { supabase } from "../../lib/supabase";
 
-export default function SuperAdminPlansPage() {
+export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
+  const [changingId, setChangingId] =
+    useState(null);
 
-  const [adminName, setAdminName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
+  const [authorized, setAuthorized] =
+    useState(false);
 
-  const [plans, setPlans] = useState([]);
-  const [forms, setForms] = useState({});
+  const [adminName, setAdminName] =
+    useState("");
 
-  const [savingCode, setSavingCode] = useState(null);
-  const [message, setMessage] = useState("");
+  const [userEmail, setUserEmail] =
+    useState("");
+
+  const [companies, setCompanies] =
+    useState([]);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
 
   /* =========================================================
      슈퍼관리자 확인
   ========================================================= */
 
-  const checkSuperAdmin = useCallback(async () => {
-    const {
-      data: authData,
-      error: authError,
-    } = await supabase.auth.getUser();
+  const checkSuperAdmin =
+    useCallback(async () => {
+      const {
+        data: authData,
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (authError) {
-      throw new Error(
-        `로그인 확인 실패: ${authError.message}`
+      if (authError) {
+        throw new Error(
+          `로그인 확인 실패: ${authError.message}`
+        );
+      }
+
+      const user = authData?.user;
+
+      if (!user?.id) {
+        throw new Error(
+          "로그인이 필요합니다."
+        );
+      }
+
+      setUserEmail(user.email || "");
+
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "get_super_admin_status"
       );
-    }
 
-    const user = authData?.user;
+      if (error) {
+        throw new Error(
+          `슈퍼관리자 확인 실패: ${error.message}`
+        );
+      }
 
-    if (!user?.id) {
-      throw new Error("로그인이 필요합니다.");
-    }
+      const status =
+        Array.isArray(data)
+          ? data[0]
+          : data;
 
-    setUserEmail(user.email || "");
+      if (!status?.is_super_admin) {
+        throw new Error(
+          "슈퍼관리자 권한이 없습니다."
+        );
+      }
 
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
-      "get_super_admin_status"
-    );
+      setAuthorized(true);
 
-    if (error) {
-      throw new Error(
-        `슈퍼관리자 확인 실패: ${error.message}`
+      setAdminName(
+        status?.name ||
+          "슈퍼관리자"
       );
-    }
 
-    const status = Array.isArray(data)
-      ? data[0]
-      : data;
-
-    if (!status?.is_super_admin) {
-      throw new Error(
-        "슈퍼관리자 권한이 없습니다."
-      );
-    }
-
-    setAuthorized(true);
-
-    setAdminName(
-      status?.name || "슈퍼관리자"
-    );
-
-    return true;
-  }, []);
+      return true;
+    }, []);
 
   /* =========================================================
-     요금제 조회
+     전체 회사 조회
   ========================================================= */
 
-  const loadPlans = useCallback(async () => {
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
-      "super_admin_get_subscription_plans"
-    );
-
-    if (error) {
-      throw new Error(
-        `요금제 조회 실패: ${error.message}`
+  const loadCompanies =
+    useCallback(async () => {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "super_admin_get_companies"
       );
-    }
 
-    const list = Array.isArray(data)
-      ? data
-      : [];
+      if (error) {
+        throw new Error(
+          `회사 목록 조회 실패: ${error.message}`
+        );
+      }
 
-    setPlans(list);
-
-    const nextForms = {};
-
-    for (const plan of list) {
-      nextForms[plan.plan_code] = {
-        plan_code: plan.plan_code || "",
-        plan_name: plan.plan_name || "",
-
-        monthly_price_krw:
-          plan.monthly_price_krw ?? 0,
-
-        ai_photo_analysis_limit:
-          plan.ai_photo_analysis_limit ?? 0,
-
-        auto_estimate_limit:
-          plan.auto_estimate_limit ?? 0,
-
-        similar_image_search_limit:
-          plan.similar_image_search_limit ?? 0,
-
-        virtual_remodel_limit:
-          plan.virtual_remodel_limit ?? 0,
-
-        image_upload_limit:
-          plan.image_upload_limit ?? 0,
-
-        storage_mb_limit:
-          plan.storage_mb_limit ?? 0,
-
-        customer_lead_limit:
-          plan.customer_lead_limit ?? 0,
-
-        is_active:
-          plan.is_active !== false,
-      };
-    }
-
-    setForms(nextForms);
-  }, []);
+      setCompanies(
+        Array.isArray(data)
+          ? data
+          : []
+      );
+    }, []);
 
   /* =========================================================
      초기 로딩
@@ -156,10 +135,10 @@ export default function SuperAdminPlansPage() {
 
         if (!alive) return;
 
-        await loadPlans();
+        await loadCompanies();
       } catch (error) {
         console.error(
-          "요금제 관리 초기화:",
+          "슈퍼관리자 초기화:",
           error
         );
 
@@ -187,118 +166,51 @@ export default function SuperAdminPlansPage() {
     };
   }, [
     checkSuperAdmin,
-    loadPlans,
+    loadCompanies,
   ]);
 
   /* =========================================================
-     입력 변경
+     회사 활성 / 정지
   ========================================================= */
 
-  function updateForm(
-    planCode,
-    field,
-    value
+  async function changeCompanyActive(
+    company
   ) {
-    setForms((current) => ({
-      ...current,
+    if (!company?.id) return;
 
-      [planCode]: {
-        ...current[planCode],
-        [field]: value,
-      },
-    }));
-  }
+    const nextActive =
+      !Boolean(company.is_active);
 
-  /* =========================================================
-     숫자 변환
-  ========================================================= */
+    const actionText =
+      nextActive
+        ? "활성화"
+        : "정지";
 
-  function toNumber(value) {
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-      return 0;
-    }
-
-    return Math.max(0, number);
-  }
-
-  /* =========================================================
-     요금제 저장
-
-     다음 단계에서 DB RPC를 정확히 맞춰 생성합니다.
-  ========================================================= */
-
-  async function savePlan(planCode) {
-    const form = forms[planCode];
-
-    if (!form) return;
-
-    if (!form.plan_name?.trim()) {
-      setMessage(
-        "❌ 요금제 이름을 입력해주세요."
+    const confirmed =
+      window.confirm(
+        `${
+          company.company_name ||
+          "회사"
+        }를 ${actionText}할까요?`
       );
 
-      return;
-    }
+    if (!confirmed) return;
 
-    setSavingCode(planCode);
+    setChangingId(company.id);
     setMessage("");
 
     try {
       const {
+        data,
         error,
       } = await supabase.rpc(
-        "super_admin_update_subscription_plan",
+        "super_admin_set_company_active",
         {
-          p_plan_code:
-            form.plan_code,
-
-          p_plan_name:
-            form.plan_name.trim(),
-
-          p_monthly_price_krw:
-            toNumber(
-              form.monthly_price_krw
-            ),
-
-          p_ai_photo_analysis_limit:
-            toNumber(
-              form.ai_photo_analysis_limit
-            ),
-
-          p_auto_estimate_limit:
-            toNumber(
-              form.auto_estimate_limit
-            ),
-
-          p_similar_image_search_limit:
-            toNumber(
-              form.similar_image_search_limit
-            ),
-
-          p_virtual_remodel_limit:
-            toNumber(
-              form.virtual_remodel_limit
-            ),
-
-          p_image_upload_limit:
-            toNumber(
-              form.image_upload_limit
-            ),
-
-          p_storage_mb_limit:
-            toNumber(
-              form.storage_mb_limit
-            ),
-
-          p_customer_lead_limit:
-            toNumber(
-              form.customer_lead_limit
-            ),
+          p_company_id:
+            company.id,
 
           p_is_active:
-            Boolean(form.is_active),
+            nextActive,
         }
       );
 
@@ -306,27 +218,128 @@ export default function SuperAdminPlansPage() {
         throw error;
       }
 
-      await loadPlans();
+      const updated =
+        Array.isArray(data)
+          ? data[0]
+          : data;
+
+      setCompanies(
+        (current) =>
+          current.map((item) =>
+            item.id ===
+            company.id
+              ? {
+                  ...item,
+
+                  is_active:
+                    updated?.is_active ??
+                    nextActive,
+                }
+              : item
+          )
+      );
 
       setMessage(
-        `✅ ${form.plan_name} 요금제를 저장했습니다.`
+        `✅ ${
+          company.company_name
+        } ${
+          nextActive
+            ? "활성화"
+            : "정지"
+        } 완료`
       );
     } catch (error) {
       console.error(
-        "요금제 저장:",
+        "회사 상태 변경:",
         error
       );
 
       setMessage(
-        `❌ 요금제 저장 실패: ${
+        `❌ 회사 상태 변경 실패: ${
           error?.message ||
           "오류가 발생했습니다."
         }`
       );
     } finally {
-      setSavingCode(null);
+      setChangingId(null);
     }
   }
+
+  /* =========================================================
+     회사 상세관리 이동
+  ========================================================= */
+
+  function openCompany(company) {
+    if (!company?.id) return;
+
+    window.location.href =
+      `/super-admin/company/${company.id}`;
+  }
+
+  /* =========================================================
+     요금제 관리 이동
+  ========================================================= */
+
+  function openPlans() {
+    window.location.href =
+      "/super-admin/plans";
+  }
+
+  /* =========================================================
+     검색
+  ========================================================= */
+
+  const filteredCompanies =
+    useMemo(() => {
+      const keyword =
+        search
+          .trim()
+          .toLowerCase();
+
+      if (!keyword) {
+        return companies;
+      }
+
+      return companies.filter(
+        (company) => {
+          const text = [
+            company.company_name,
+            company.slug,
+            company.representative_name,
+            company.phone,
+            company.address,
+            company.subscription_plan,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return text.includes(
+            keyword
+          );
+        }
+      );
+    }, [
+      companies,
+      search,
+    ]);
+
+  /* =========================================================
+     통계
+  ========================================================= */
+
+  const totalCount =
+    companies.length;
+
+  const activeCount =
+    companies.filter(
+      (item) =>
+        item.is_active === true
+    ).length;
+
+  const inactiveCount =
+    totalCount -
+    activeCount;
 
   /* =========================================================
      로딩
@@ -336,17 +349,30 @@ export default function SuperAdminPlansPage() {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.bigIcon}>
-            💳
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
+            🛡️
           </div>
 
-          <div style={styles.loadingTitle}>
-            요금제 불러오는 중...
+          <div
+            style={
+              styles.loadingTitle
+            }
+          >
+            슈퍼관리자 확인 중...
           </div>
 
-          <div style={styles.loadingText}>
-            슈퍼관리자 권한과 요금제 정보를
-            확인하고 있습니다.
+          <div
+            style={
+              styles.loadingText
+            }
+          >
+            관리자 권한과 회사
+            정보를 불러오고
+            있습니다.
           </div>
         </div>
       </main>
@@ -361,33 +387,52 @@ export default function SuperAdminPlansPage() {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.bigIcon}>
+          <div
+            style={
+              styles.deniedIcon
+            }
+          >
             🔒
           </div>
 
-          <h2 style={styles.deniedTitle}>
+          <h2
+            style={
+              styles.deniedTitle
+            }
+          >
             접근할 수 없습니다
           </h2>
 
-          <div style={styles.loadingText}>
-            슈퍼관리자 전용 페이지입니다.
+          <div
+            style={
+              styles.deniedText
+            }
+          >
+            슈퍼관리자 전용
+            페이지입니다.
           </div>
 
           {message && (
-            <div style={styles.errorBox}>
+            <div
+              style={
+                styles.errorBox
+              }
+            >
               {message}
             </div>
           )}
 
           <button
             type="button"
-            style={styles.darkButton}
+            style={
+              styles.homeButton
+            }
             onClick={() => {
               window.location.href =
-                "/super-admin";
+                "/admin";
             }}
           >
-            슈퍼관리자로 돌아가기
+            관리자 페이지로 이동
           </button>
         </div>
       </main>
@@ -402,66 +447,100 @@ export default function SuperAdminPlansPage() {
     <main style={styles.page}>
       <div style={styles.container}>
 
-        {/* 상단 */}
+        {/* 헤더 */}
 
         <div style={styles.header}>
           <div>
-            <div style={styles.badge}>
+            <div
+              style={styles.badge}
+            >
               SUPER ADMIN
             </div>
 
-            <h1 style={styles.title}>
-              💳 요금제 관리
+            <h1
+              style={styles.title}
+            >
+              🛡️ 서비스 관리
             </h1>
 
-            <div style={styles.subtitle}>
-              서비스 전체 요금제의 가격과
-              사용량 한도를 관리합니다.
+            <div
+              style={
+                styles.subtitle
+              }
+            >
+              전체 회사 계정과
+              서비스 요금제를
+              관리합니다.
             </div>
           </div>
 
           <button
             type="button"
-            style={styles.backButton}
+            style={
+              styles.adminButton
+            }
             onClick={() => {
               window.location.href =
-                "/super-admin";
+                "/admin";
             }}
           >
-            ← 업체 관리
+            회사 관리자
           </button>
         </div>
 
         {/* 로그인 정보 */}
 
-        <div style={styles.loginBox}>
+        <div
+          style={
+            styles.loginBox
+          }
+        >
           <div>
-            <div style={styles.smallLabel}>
+            <div
+              style={
+                styles.smallLabel
+              }
+            >
               슈퍼관리자
             </div>
 
-            <div style={styles.adminName}>
+            <div
+              style={
+                styles.adminName
+              }
+            >
               {adminName}
             </div>
           </div>
 
-          <div style={styles.email}>
+          <div
+            style={styles.email}
+          >
             {userEmail}
           </div>
         </div>
 
-        {/* 메뉴 */}
+        {/* =====================================================
+            슈퍼관리자 메뉴
+        ===================================================== */}
 
-        <div style={styles.menuGrid}>
+        <div
+          style={
+            styles.menuGrid
+          }
+        >
           <button
             type="button"
-            style={styles.menuButton}
-            onClick={() => {
-              window.location.href =
-                "/super-admin";
+            style={{
+              ...styles.menuButton,
+              ...styles.menuButtonActive,
             }}
           >
-            <span style={styles.menuIcon}>
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
               🏢
             </span>
 
@@ -472,12 +551,16 @@ export default function SuperAdminPlansPage() {
 
           <button
             type="button"
-            style={{
-              ...styles.menuButton,
-              ...styles.menuButtonActive,
-            }}
+            style={
+              styles.menuButton
+            }
+            onClick={openPlans}
           >
-            <span style={styles.menuIcon}>
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
               💳
             </span>
 
@@ -487,345 +570,409 @@ export default function SuperAdminPlansPage() {
           </button>
         </div>
 
-        {/* 안내 */}
+        {/* 통계 */}
 
-        <div style={styles.noticeBox}>
-          <strong>
-            요금제 공통 설정
-          </strong>
+        <div
+          style={
+            styles.statsGrid
+          }
+        >
+          <StatCard
+            label="전체 회사"
+            value={totalCount}
+          />
 
-          <div style={styles.noticeText}>
-            여기서 변경한 가격과 사용량 한도는
-            해당 요금제를 사용하는 모든 업체에
-            적용됩니다.
-          </div>
+          <StatCard
+            label="활성"
+            value={activeCount}
+          />
 
-          <div style={styles.noticeSubText}>
-            숫자 0은 제한 없음으로 사용하도록
-            현재 사용량 제한 로직과 맞출
-            예정입니다.
-          </div>
+          <StatCard
+            label="정지"
+            value={inactiveCount}
+          />
         </div>
 
-        {/* 메시지 */}
+        {/* 회사 관리 */}
 
-        {message && (
+        <section
+          style={
+            styles.section
+          }
+        >
           <div
-            style={{
-              ...styles.message,
-
-              ...(message.startsWith("❌")
-                ? styles.messageError
-                : styles.messageSuccess),
-            }}
+            style={
+              styles.sectionHeader
+            }
           >
-            {message}
-          </div>
-        )}
+            <div>
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                회사 관리
+              </h2>
 
-        {/* 요금제 */}
-
-        <div style={styles.planList}>
-          {plans.length === 0 ? (
-            <div style={styles.empty}>
-              등록된 요금제가 없습니다.
+              <div
+                style={
+                  styles.sectionDescription
+                }
+              >
+                가입된 회사를
+                조회하고 서비스
+                이용 상태를
+                관리합니다.
+              </div>
             </div>
-          ) : (
-            plans.map((plan) => {
-              const form =
-                forms[plan.plan_code];
 
-              if (!form) {
-                return null;
+            <button
+              type="button"
+              style={
+                styles.refreshButton
               }
+              onClick={
+                async () => {
+                  setMessage("");
 
-              const saving =
-                savingCode ===
-                plan.plan_code;
+                  try {
+                    await loadCompanies();
 
-              return (
-                <PlanCard
-                  key={plan.plan_code}
-                  form={form}
-                  saving={saving}
-                  updateForm={updateForm}
-                  savePlan={savePlan}
-                />
-              );
-            })
+                    setMessage(
+                      "✅ 회사 목록을 새로고침했습니다."
+                    );
+                  } catch (
+                    error
+                  ) {
+                    setMessage(
+                      `❌ ${
+                        error?.message ||
+                        "새로고침 실패"
+                      }`
+                    );
+                  }
+                }
+              }
+            >
+              새로고침
+            </button>
+          </div>
+
+          {/* 검색 */}
+
+          <input
+            type="search"
+            value={search}
+            onChange={(
+              event
+            ) =>
+              setSearch(
+                event.target.value
+              )
+            }
+            placeholder="회사명, 대표자, 전화번호 검색"
+            style={
+              styles.searchInput
+            }
+          />
+
+          {/* 메시지 */}
+
+          {message && (
+            <div
+              style={{
+                ...styles.message,
+
+                ...(message.startsWith(
+                  "❌"
+                )
+                  ? styles.messageError
+                  : styles.messageSuccess),
+              }}
+            >
+              {message}
+            </div>
           )}
-        </div>
+
+          {/* 회사 목록 */}
+
+          <div
+            style={
+              styles.companyList
+            }
+          >
+            {filteredCompanies.length ===
+            0 ? (
+              <div
+                style={
+                  styles.empty
+                }
+              >
+                검색 결과가
+                없습니다.
+              </div>
+            ) : (
+              filteredCompanies.map(
+                (company) => (
+                  <CompanyCard
+                    key={
+                      company.id
+                    }
+                    company={
+                      company
+                    }
+                    changing={
+                      changingId ===
+                      company.id
+                    }
+                    onManage={() =>
+                      openCompany(
+                        company
+                      )
+                    }
+                    onToggle={() =>
+                      changeCompanyActive(
+                        company
+                      )
+                    }
+                  />
+                )
+              )
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
 }
 
 /* =========================================================
-   요금제 카드
+   통계 카드
 ========================================================= */
 
-function PlanCard({
-  form,
-  saving,
-  updateForm,
-  savePlan,
+function StatCard({
+  label,
+  value,
 }) {
-  const code = form.plan_code;
-
   return (
-    <section style={styles.planCard}>
-      <div style={styles.planHeader}>
-        <div>
-          <div style={styles.planCode}>
-            {code}
-          </div>
-
-          <input
-            type="text"
-            value={form.plan_name}
-            onChange={(event) =>
-              updateForm(
-                code,
-                "plan_name",
-                event.target.value
-              )
-            }
-            style={styles.planNameInput}
-          />
-        </div>
-
-        <label style={styles.activeSwitch}>
-          <input
-            type="checkbox"
-            checked={Boolean(
-              form.is_active
-            )}
-            onChange={(event) =>
-              updateForm(
-                code,
-                "is_active",
-                event.target.checked
-              )
-            }
-          />
-
-          <span>
-            {form.is_active
-              ? "활성"
-              : "비활성"}
-          </span>
-        </label>
-      </div>
-
-      {/* 월 요금 */}
-
-      <div style={styles.priceBox}>
-        <div style={styles.priceLabel}>
-          월 이용요금
-        </div>
-
-        <div style={styles.priceRow}>
-          <input
-            type="number"
-            min="0"
-            step="1000"
-            inputMode="numeric"
-            value={
-              form.monthly_price_krw
-            }
-            onChange={(event) =>
-              updateForm(
-                code,
-                "monthly_price_krw",
-                event.target.value
-              )
-            }
-            style={styles.priceInput}
-          />
-
-          <span style={styles.priceUnit}>
-            원 / 월
-          </span>
-        </div>
-      </div>
-
-      {/* 사용량 한도 */}
-
-      <div style={styles.limitTitle}>
-        월 사용량 한도
-      </div>
-
-      <div style={styles.limitGrid}>
-        <LimitInput
-          label="AI 사진분석"
-          unit="회"
-          value={
-            form.ai_photo_analysis_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "ai_photo_analysis_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="자동견적"
-          unit="회"
-          value={
-            form.auto_estimate_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "auto_estimate_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="유사이미지 검색"
-          unit="회"
-          value={
-            form.similar_image_search_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "similar_image_search_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="가상시공"
-          unit="회"
-          value={
-            form.virtual_remodel_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "virtual_remodel_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="이미지 업로드"
-          unit="장"
-          value={
-            form.image_upload_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "image_upload_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="저장용량"
-          unit="MB"
-          value={
-            form.storage_mb_limit
-          }
-          step="0.1"
-          onChange={(value) =>
-            updateForm(
-              code,
-              "storage_mb_limit",
-              value
-            )
-          }
-        />
-
-        <LimitInput
-          label="고객상담"
-          unit="건"
-          value={
-            form.customer_lead_limit
-          }
-          onChange={(value) =>
-            updateForm(
-              code,
-              "customer_lead_limit",
-              value
-            )
-          }
-        />
-      </div>
-
-      <div style={styles.zeroHelp}>
-        0 = 제한 없음
-      </div>
-
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() =>
-          savePlan(code)
+    <div
+      style={
+        styles.statCard
+      }
+    >
+      <div
+        style={
+          styles.statLabel
         }
-        style={{
-          ...styles.saveButton,
-
-          opacity:
-            saving
-              ? 0.6
-              : 1,
-        }}
       >
-        {saving
-          ? "저장 중..."
-          : `${form.plan_name} 저장`}
-      </button>
-    </section>
+        {label}
+      </div>
+
+      <div
+        style={
+          styles.statValue
+        }
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
 /* =========================================================
-   사용량 입력
+   회사 카드
 ========================================================= */
 
-function LimitInput({
+function CompanyCard({
+  company,
+  changing,
+  onToggle,
+  onManage,
+}) {
+  const active =
+    company?.is_active ===
+    true;
+
+  return (
+    <div
+      style={
+        styles.companyCard
+      }
+    >
+      <div
+        style={
+          styles.companyTop
+        }
+      >
+        <div
+          style={{
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={
+              styles.companyNameRow
+            }
+          >
+            <div
+              style={
+                styles.companyName
+              }
+            >
+              {company.company_name ||
+                "회사명 없음"}
+            </div>
+
+            <span
+              style={{
+                ...styles.statusBadge,
+
+                ...(active
+                  ? styles.activeBadge
+                  : styles.inactiveBadge),
+              }}
+            >
+              {active
+                ? "활성"
+                : "정지"}
+            </span>
+          </div>
+
+          {company.slug && (
+            <div
+              style={
+                styles.slug
+              }
+            >
+              /{company.slug}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          disabled={changing}
+          onClick={onToggle}
+          style={{
+            ...styles.toggleButton,
+
+            ...(active
+              ? styles.stopButton
+              : styles.activateButton),
+
+            opacity:
+              changing
+                ? 0.6
+                : 1,
+          }}
+        >
+          {changing
+            ? "처리 중..."
+            : active
+              ? "회사 정지"
+              : "활성화"}
+        </button>
+      </div>
+
+      <div
+        style={
+          styles.divider
+        }
+      />
+
+      <InfoRow
+        label="대표자"
+        value={
+          company.representative_name ||
+          "-"
+        }
+      />
+
+      <InfoRow
+        label="전화번호"
+        value={
+          company.phone ||
+          "-"
+        }
+      />
+
+      <InfoRow
+        label="요금제"
+        value={
+          company.subscription_plan ||
+          "basic"
+        }
+      />
+
+      <InfoRow
+        label="가입일"
+        value={
+          company.created_at
+            ? new Date(
+                company.created_at
+              ).toLocaleDateString(
+                "ko-KR",
+                {
+                  timeZone:
+                    "Asia/Seoul",
+                }
+              )
+            : "-"
+        }
+      />
+
+      {/* 회사 상세관리 */}
+
+      <button
+        type="button"
+        onClick={onManage}
+        style={
+          styles.manageButton
+        }
+      >
+        ⚙️ 회사 관리
+      </button>
+
+      <div
+        style={
+          styles.companyId
+        }
+      >
+        ID: {company.id}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   정보 행
+========================================================= */
+
+function InfoRow({
   label,
-  unit,
   value,
-  onChange,
-  step = "1",
 }) {
   return (
-    <div style={styles.limitItem}>
-      <div style={styles.limitLabel}>
+    <div
+      style={
+        styles.infoRow
+      }
+    >
+      <span
+        style={
+          styles.infoLabel
+        }
+      >
         {label}
-      </div>
+      </span>
 
-      <div style={styles.limitInputRow}>
-        <input
-          type="number"
-          min="0"
-          step={step}
-          inputMode="decimal"
-          value={value}
-          onChange={(event) =>
-            onChange(
-              event.target.value
-            )
-          }
-          style={styles.limitInput}
-        />
-
-        <span style={styles.limitUnit}>
-          {unit}
-        </span>
-      </div>
+      <span
+        style={
+          styles.infoValue
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -839,7 +986,8 @@ const styles = {
     minHeight: "100vh",
     background: "#f3f4f6",
     color: "#111827",
-    padding: "18px 14px 60px",
+    padding:
+      "18px 14px 50px",
   },
 
   container: {
@@ -850,7 +998,8 @@ const styles = {
 
   header: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "flex-start",
     gap: "12px",
     marginBottom: "16px",
@@ -882,8 +1031,9 @@ const styles = {
     lineHeight: 1.5,
   },
 
-  backButton: {
-    border: "1px solid #d1d5db",
+  adminButton: {
+    border:
+      "1px solid #d1d5db",
     borderRadius: "10px",
     background: "#ffffff",
     padding: "10px 12px",
@@ -895,14 +1045,16 @@ const styles = {
 
   loginBox: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "center",
     gap: "12px",
     background: "#ffffff",
     borderRadius: "14px",
     padding: "14px",
-    border: "1px solid #e5e7eb",
-    marginBottom: "12px",
+    border:
+      "1px solid #e5e7eb",
+    marginBottom: "14px",
   },
 
   smallLabel: {
@@ -923,6 +1075,10 @@ const styles = {
     wordBreak: "break-all",
   },
 
+  /* =======================================================
+     슈퍼관리자 메뉴
+  ======================================================= */
+
   menuGrid: {
     display: "grid",
     gridTemplateColumns:
@@ -933,7 +1089,8 @@ const styles = {
 
   menuButton: {
     minHeight: "58px",
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "13px",
     background: "#ffffff",
     color: "#374151",
@@ -956,228 +1113,260 @@ const styles = {
     fontSize: "18px",
   },
 
-  noticeBox: {
-    padding: "14px",
-    borderRadius: "13px",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    color: "#1e3a8a",
-    fontSize: "13px",
-    lineHeight: 1.6,
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3, minmax(0, 1fr))",
+    gap: "8px",
     marginBottom: "14px",
   },
 
-  noticeText: {
-    marginTop: "4px",
+  statCard: {
+    background: "#ffffff",
+    border:
+      "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "14px 10px",
+    textAlign: "center",
   },
 
-  noticeSubText: {
+  statLabel: {
+    fontSize: "12px",
+    color: "#6b7280",
+    fontWeight: 700,
+  },
+
+  statValue: {
     marginTop: "5px",
-    fontSize: "11px",
-    color: "#475569",
+    fontSize: "25px",
+    fontWeight: 900,
+  },
+
+  section: {
+    background: "#ffffff",
+    borderRadius: "16px",
+    padding: "15px",
+    border:
+      "1px solid #e5e7eb",
+  },
+
+  sectionHeader: {
+    display: "flex",
+    justifyContent:
+      "space-between",
+    alignItems: "flex-start",
+    gap: "10px",
+    marginBottom: "13px",
+  },
+
+  sectionTitle: {
+    margin: 0,
+    fontSize: "19px",
+    fontWeight: 900,
+  },
+
+  sectionDescription: {
+    marginTop: "4px",
+    color: "#6b7280",
+    fontSize: "12px",
+    lineHeight: 1.5,
+  },
+
+  refreshButton: {
+    border:
+      "1px solid #d1d5db",
+    background: "#ffffff",
+    borderRadius: "9px",
+    padding: "8px 10px",
+    fontSize: "12px",
+    fontWeight: 800,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+
+  searchInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    minHeight: "44px",
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "10px",
+    padding: "0 12px",
+    fontSize: "14px",
+    outline: "none",
+    marginBottom: "12px",
   },
 
   message: {
-    padding: "11px",
-    borderRadius: "10px",
-    marginBottom: "14px",
+    padding: "10px",
+    borderRadius: "9px",
+    marginBottom: "12px",
     fontSize: "13px",
-    lineHeight: 1.6,
-    wordBreak: "break-word",
+    lineHeight: 1.5,
   },
 
   messageSuccess: {
     background: "#f0fdf4",
     color: "#166534",
-    border: "1px solid #bbf7d0",
+    border:
+      "1px solid #bbf7d0",
   },
 
   messageError: {
     background: "#fef2f2",
     color: "#991b1b",
-    border: "1px solid #fecaca",
+    border:
+      "1px solid #fecaca",
   },
 
-  planList: {
+  companyList: {
     display: "grid",
-    gap: "14px",
+    gap: "10px",
   },
 
-  planCard: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "17px",
-    padding: "16px",
+  companyCard: {
+    border:
+      "1px solid #e5e7eb",
+    borderRadius: "13px",
+    padding: "13px",
+    background: "#fafafa",
   },
 
-  planHeader: {
+  companyTop: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "flex-start",
-    gap: "12px",
-    marginBottom: "14px",
+    gap: "10px",
   },
 
-  planCode: {
-    color: "#9ca3af",
-    fontSize: "10px",
-    fontWeight: 800,
-    marginBottom: "4px",
-    textTransform: "uppercase",
+  companyNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    flexWrap: "wrap",
   },
 
-  planNameInput: {
-    width: "170px",
-    maxWidth: "100%",
-    border: "1px solid #d1d5db",
-    borderRadius: "9px",
-    padding: "9px 10px",
+  companyName: {
     fontSize: "17px",
     fontWeight: 900,
-    boxSizing: "border-box",
+    wordBreak: "break-word",
   },
 
-  activeSwitch: {
-    display: "flex",
-    alignItems: "center",
-    gap: "5px",
-    fontSize: "12px",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-
-  priceBox: {
-    padding: "13px",
-    borderRadius: "12px",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    marginBottom: "16px",
-  },
-
-  priceLabel: {
-    fontSize: "11px",
-    fontWeight: 800,
-    color: "#1d4ed8",
-    marginBottom: "6px",
-  },
-
-  priceRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-
-  priceInput: {
-    width: "150px",
-    maxWidth: "65%",
-    border: "1px solid #93c5fd",
-    borderRadius: "9px",
-    padding: "9px 10px",
-    background: "#ffffff",
-    fontSize: "18px",
-    fontWeight: 900,
-    boxSizing: "border-box",
-  },
-
-  priceUnit: {
-    color: "#1e3a8a",
-    fontSize: "13px",
-    fontWeight: 800,
-  },
-
-  limitTitle: {
-    fontSize: "14px",
-    fontWeight: 900,
-    marginBottom: "9px",
-  },
-
-  limitGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "8px",
-  },
-
-  limitItem: {
-    border: "1px solid #e5e7eb",
-    borderRadius: "11px",
-    padding: "10px",
-    background: "#fafafa",
-    minWidth: 0,
-  },
-
-  limitLabel: {
-    fontSize: "11px",
-    color: "#6b7280",
-    fontWeight: 800,
-    marginBottom: "6px",
-  },
-
-  limitInputRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "5px",
-  },
-
-  limitInput: {
-    width: "100%",
-    minWidth: 0,
-    border: "1px solid #d1d5db",
-    borderRadius: "8px",
-    padding: "8px",
-    fontSize: "14px",
-    fontWeight: 800,
-    boxSizing: "border-box",
-  },
-
-  limitUnit: {
-    flexShrink: 0,
-    color: "#6b7280",
-    fontSize: "11px",
-    fontWeight: 800,
-  },
-
-  zeroHelp: {
-    marginTop: "9px",
+  slug: {
+    marginTop: "3px",
     color: "#9ca3af",
-    fontSize: "10px",
+    fontSize: "11px",
   },
 
-  saveButton: {
-    width: "100%",
-    minHeight: "46px",
-    marginTop: "14px",
+  statusBadge: {
+    padding: "4px 7px",
+    borderRadius: "999px",
+    fontSize: "10px",
+    fontWeight: 900,
+  },
+
+  activeBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+  },
+
+  inactiveBadge: {
+    background: "#fee2e2",
+    color: "#991b1b",
+  },
+
+  toggleButton: {
     border: 0,
-    borderRadius: "11px",
+    borderRadius: "9px",
+    padding: "9px 11px",
+    fontWeight: 900,
+    fontSize: "12px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+
+  stopButton: {
+    background: "#fee2e2",
+    color: "#991b1b",
+  },
+
+  activateButton: {
+    background: "#dcfce7",
+    color: "#166534",
+  },
+
+  divider: {
+    height: "1px",
+    background: "#e5e7eb",
+    margin: "12px 0",
+  },
+
+  infoRow: {
+    display: "flex",
+    justifyContent:
+      "space-between",
+    alignItems: "center",
+    gap: "12px",
+    padding: "4px 0",
+    fontSize: "13px",
+  },
+
+  infoLabel: {
+    color: "#6b7280",
+  },
+
+  infoValue: {
+    fontWeight: 700,
+    textAlign: "right",
+    wordBreak: "break-word",
+  },
+
+  manageButton: {
+    width: "100%",
+    minHeight: "43px",
+    marginTop: "13px",
+    border: 0,
+    borderRadius: "10px",
     background: "#111827",
     color: "#ffffff",
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: 900,
     cursor: "pointer",
+  },
+
+  companyId: {
+    marginTop: "9px",
+    paddingTop: "8px",
+    borderTop:
+      "1px dashed #e5e7eb",
+    color: "#9ca3af",
+    fontSize: "10px",
+    wordBreak: "break-all",
   },
 
   empty: {
-    padding: "40px 10px",
-    background: "#ffffff",
-    borderRadius: "15px",
-    border: "1px solid #e5e7eb",
+    padding: "35px 10px",
     textAlign: "center",
     color: "#9ca3af",
+    fontSize: "14px",
   },
 
   centerBox: {
     width: "100%",
     maxWidth: "420px",
-    margin: "100px auto 0",
+    margin:
+      "100px auto 0",
     background: "#ffffff",
-    border: "1px solid #e5e7eb",
+    border:
+      "1px solid #e5e7eb",
     borderRadius: "18px",
     padding: "28px 20px",
     textAlign: "center",
     boxSizing: "border-box",
   },
 
-  bigIcon: {
+  loadingIcon: {
     fontSize: "40px",
     marginBottom: "10px",
   },
@@ -1194,9 +1383,19 @@ const styles = {
     lineHeight: 1.6,
   },
 
+  deniedIcon: {
+    fontSize: "42px",
+  },
+
   deniedTitle: {
-    margin: "12px 0 5px",
+    margin:
+      "12px 0 5px",
     fontSize: "20px",
+  },
+
+  deniedText: {
+    color: "#6b7280",
+    fontSize: "13px",
   },
 
   errorBox: {
@@ -1207,10 +1406,9 @@ const styles = {
     color: "#991b1b",
     fontSize: "12px",
     lineHeight: 1.5,
-    wordBreak: "break-word",
   },
 
-  darkButton: {
+  homeButton: {
     marginTop: "16px",
     width: "100%",
     minHeight: "44px",
