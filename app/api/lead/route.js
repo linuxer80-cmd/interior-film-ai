@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkUsageLimit,
+  makeUsageLimitError,
+} from "../../utils/serverUsageLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,7 +85,7 @@ function isUuid(value) {
  *
  * 중요:
  * 사용량 기록이 실패해도
- * 고객 상담 신청 자체는 실패 처리하지 않습니다.
+ * 이미 저장된 고객 상담 신청은 실패 처리하지 않습니다.
  * =========================================================
  */
 
@@ -126,6 +130,10 @@ async function recordCustomerLeadUsage({
         metadata: {
           company_slug:
             company.slug ||
+            null,
+
+          subscription_plan:
+            company.subscription_plan ||
             null,
 
           lead_id:
@@ -228,6 +236,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "company_slug가 없습니다.",
         },
@@ -245,6 +254,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "올바르지 않은 회사 주소입니다.",
         },
@@ -279,6 +289,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "고객명을 입력해주세요.",
         },
@@ -292,6 +303,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "전화번호를 입력해주세요.",
         },
@@ -305,6 +317,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "시공 지역을 입력해주세요.",
         },
@@ -378,9 +391,12 @@ export async function POST(request) {
 
     /*
      * =====================================================
-     * URL의 company_slug를 실제 회사 ID로 변환
+     * company_slug → 실제 회사 조회
      *
      * 클라이언트가 보낸 company_id는 사용하지 않습니다.
+     *
+     * 요금제 확인을 위해
+     * subscription_plan도 함께 조회합니다.
      * =====================================================
      */
 
@@ -390,7 +406,13 @@ export async function POST(request) {
     } = await supabase
       .from("companies")
       .select(
-        "id, slug"
+        `
+          id,
+          slug,
+          company_name,
+          subscription_plan,
+          is_active
+        `
       )
       .eq(
         "slug",
@@ -411,6 +433,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "회사 정보를 확인하지 못했습니다.",
         },
@@ -424,6 +447,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "사용할 수 없는 회사 주소입니다.",
         },
@@ -435,7 +459,76 @@ export async function POST(request) {
 
     /*
      * =====================================================
-     * 고객 상담 저장
+     * 고객상담 월 사용량 한도 검사
+     *
+     * 반드시 customer_leads INSERT 전에 검사합니다.
+     *
+     * 예: 체험판 10회
+     *
+     * 0 / 10  → 허용
+     * 9 / 10  → 10번째 상담 허용
+     * 10 / 10 → 다음 상담 차단
+     *
+     * 현재 공통 규칙:
+     * limit <= 0 = 무제한
+     * =====================================================
+     */
+
+    const leadLimitCheck =
+      await checkUsageLimit({
+        company,
+
+        eventType:
+          "customer_lead",
+
+        requestedQuantity: 1,
+
+        supabase,
+      });
+
+    if (!leadLimitCheck.ok) {
+      const errorPayload =
+        makeUsageLimitError(
+          leadLimitCheck
+        );
+
+      /*
+       * 공통 helper가 반환한 HTTP 상태를 기준으로
+       * 실제 한도 초과와 검사 실패를 구분합니다.
+       *
+       * 429 = 사용량 한도 초과
+       * 그 외 = 한도 검사 실패
+       */
+
+      const isLimitReached =
+        Number(
+          leadLimitCheck.status
+        ) === 429;
+
+      return NextResponse.json(
+        {
+          ...errorPayload,
+
+          code:
+            isLimitReached
+              ? "CUSTOMER_LEAD_LIMIT_REACHED"
+              : "CUSTOMER_LEAD_LIMIT_CHECK_FAILED",
+        },
+        {
+          status:
+            leadLimitCheck.status ||
+            (
+              isLimitReached
+                ? 429
+                : 503
+            ),
+        }
+      );
+    }
+
+    /*
+     * =====================================================
+     * 고객 상담 저장 데이터
      * =====================================================
      */
 
@@ -487,7 +580,7 @@ export async function POST(request) {
         customerPhotoPaths,
 
       /*
-       * 관리자 화면의 상태값과 맞춥니다.
+       * 관리자 화면 상태값
        *
        * new
        * contacted
@@ -496,17 +589,29 @@ export async function POST(request) {
        * cancelled
        */
 
-      status: "new",
+      status:
+        "new",
 
       memo:
         nullableText(
           body.memo
         ),
 
-      is_read: false,
+      is_read:
+        false,
 
-      read_at: null,
+      read_at:
+        null,
     };
+
+    /*
+     * =====================================================
+     * customer_leads INSERT
+     *
+     * 여기까지 왔다는 것은
+     * 고객상담 사용량 한도를 통과한 상태입니다.
+     * =====================================================
+     */
 
     const {
       data,
@@ -531,146 +636,3 @@ export async function POST(request) {
         `
       )
       .single();
-
-    if (error) {
-      throw error;
-    }
-
-    /*
-     * =====================================================
-     * 자동견적 사용 ID
-     * =====================================================
-     */
-
-    const usageId =
-      String(
-        body.usage_id || ""
-      ).trim();
-
-    /*
-     * =====================================================
-     * 고객상담 사용량 기록
-     *
-     * customer_leads 저장이 성공한 경우에만
-     * customer_lead +1
-     *
-     * 기록 실패가 상담 신청을 막지 않습니다.
-     * =====================================================
-     */
-
-    const usageRecorded =
-      await recordCustomerLeadUsage(
-        {
-          supabase,
-
-          company,
-
-          lead: data,
-
-          leadPayload,
-
-          usageId,
-        }
-      );
-
-    /*
-     * =====================================================
-     * 자동견적 → 상담 전환 처리
-     * =====================================================
-     */
-
-    let usageConverted =
-      false;
-
-    /*
-     * 상담 저장은 성공했지만
-     * 전환기록 업데이트가 실패하는 경우
-     * 상담 자체는 삭제하지 않습니다.
-     */
-
-    if (
-      usageId &&
-      isUuid(usageId)
-    ) {
-      const {
-        data: updatedUsage,
-        error: usageError,
-      } = await supabase
-        .from(
-          "estimate_usage"
-        )
-        .update({
-          converted_to_lead:
-            true,
-        })
-        .eq(
-          "id",
-          usageId
-        )
-        .eq(
-          "company_id",
-          company.id
-        )
-        .select("id")
-        .maybeSingle();
-
-      if (usageError) {
-        console.error(
-          "자동견적 전환 처리 오류:",
-          usageError
-        );
-      } else if (
-        updatedUsage?.id
-      ) {
-        usageConverted =
-          true;
-      }
-    }
-
-    /*
-     * =====================================================
-     * 성공 응답
-     * =====================================================
-     */
-
-    return NextResponse.json({
-      success: true,
-
-      id:
-        data.id,
-
-      customer_name:
-        data.customer_name,
-
-      customer_photo_path:
-        data.customer_photo_path,
-
-      customer_photo_paths:
-        data.customer_photo_paths ||
-        [],
-
-      usage_converted:
-        usageConverted,
-
-      usageRecorded,
-    });
-  } catch (error) {
-    console.error(
-      "상담 신청 API 오류:",
-      error
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-
-        error:
-          error?.message ||
-          "상담 신청 저장 중 오류가 발생했습니다.",
-      },
-      {
-        status: 500,
-      }
-    );
-  }
-          }
