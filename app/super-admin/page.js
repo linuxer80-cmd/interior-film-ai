@@ -34,9 +34,7 @@ export default function SuperAdminPage() {
     const user = authData?.user;
 
     if (!user?.id) {
-      throw new Error(
-        "로그인이 필요합니다.",
-      );
+      throw new Error("로그인이 필요합니다.");
     }
 
     setUserEmail(user.email || "");
@@ -66,6 +64,7 @@ export default function SuperAdminPage() {
     }
 
     setAuthorized(true);
+
     setAdminName(
       status?.name || "슈퍼관리자",
     );
@@ -170,7 +169,10 @@ export default function SuperAdminPage() {
 
     const confirmed =
       window.confirm(
-        `${company.company_name || "회사"}를 ${actionText}할까요?`,
+        `${
+          company.company_name ||
+          "회사"
+        }를 ${actionText}할까요?`,
       );
 
     if (!confirmed) return;
@@ -207,6 +209,7 @@ export default function SuperAdminPage() {
           item.id === company.id
             ? {
                 ...item,
+
                 is_active:
                   updated?.is_active ??
                   nextActive,
@@ -216,7 +219,9 @@ export default function SuperAdminPage() {
       );
 
       setMessage(
-        `✅ ${company.company_name} ${
+        `✅ ${
+          company.company_name
+        } ${
           nextActive
             ? "활성화"
             : "정지"
@@ -237,6 +242,17 @@ export default function SuperAdminPage() {
     } finally {
       setChangingId(null);
     }
+  }
+
+  /* =========================================================
+     회사 상세관리 이동
+  ========================================================= */
+
+  function openCompany(company) {
+    if (!company?.id) return;
+
+    window.location.href =
+      `/super-admin/company/${company.id}`;
   }
 
   /* =========================================================
@@ -368,6 +384,7 @@ export default function SuperAdminPage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
+
         {/* 헤더 */}
 
         <div style={styles.header}>
@@ -444,7 +461,11 @@ export default function SuperAdminPage() {
                 회사 관리
               </h2>
 
-              <div style={styles.sectionDescription}>
+              <div
+                style={
+                  styles.sectionDescription
+                }
+              >
                 가입된 회사를 조회하고
                 서비스 이용 상태를
                 관리합니다.
@@ -497,6 +518,7 @@ export default function SuperAdminPage() {
             <div
               style={{
                 ...styles.message,
+
                 ...(message.startsWith(
                   "❌",
                 )
@@ -525,6 +547,9 @@ export default function SuperAdminPage() {
                     changing={
                       changingId ===
                       company.id
+                    }
+                    onManage={() =>
+                      openCompany(company)
                     }
                     onToggle={() =>
                       changeCompanyActive(
@@ -571,12 +596,14 @@ function CompanyCard({
   company,
   changing,
   onToggle,
+  onManage,
 }) {
   const active =
     company?.is_active === true;
 
   return (
     <div style={styles.companyCard}>
+
       <div style={styles.companyTop}>
         <div style={{ minWidth: 0 }}>
           <div
@@ -677,6 +704,16 @@ function CompanyCard({
             : "-"
         }
       />
+
+      {/* 회사 상세관리 버튼 */}
+
+      <button
+        type="button"
+        onClick={onManage}
+        style={styles.manageButton}
+      >
+        ⚙️ 회사 관리
+      </button>
 
       <div style={styles.companyId}>
         ID: {company.id}
@@ -1009,6 +1046,21 @@ const styles = {
     fontWeight: 700,
     textAlign: "right",
     wordBreak: "break-word",
+  },
+
+  /* 새로 추가 */
+
+  manageButton: {
+    width: "100%",
+    minHeight: "43px",
+    marginTop: "13px",
+    border: 0,
+    borderRadius: "10px",
+    background: "#111827",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   companyId: {
