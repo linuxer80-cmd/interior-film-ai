@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
+
 import {
   resizeImage,
   getImageHash,
 } from "./imageUtils";
+
 import {
   analyzeImage,
   createEmbedding,
 } from "./aiUtils";
+
 import { PROJECT_ID } from "./adminConstants";
 
 export default function ApprovedWorkAiRegister({
@@ -27,8 +30,9 @@ export default function ApprovedWorkAiRegister({
     return null;
   }
 
-  const reviewStatus =
-    String(report?.review_status || "").trim();
+  const reviewStatus = String(
+    report?.review_status || "",
+  ).trim();
 
   const alreadyRegistered =
     Boolean(report?.ai_registered_at) ||
@@ -47,8 +51,9 @@ export default function ApprovedWorkAiRegister({
     photoType,
     index,
   ) {
-    const storagePath =
-      String(photo?.storage_path || "").trim();
+    const storagePath = String(
+      photo?.storage_path || "",
+    ).trim();
 
     if (!storagePath) {
       throw new Error(
@@ -84,9 +89,7 @@ export default function ApprovedWorkAiRegister({
 
     if (contentType.includes("png")) {
       extension = "png";
-    } else if (
-      contentType.includes("webp")
-    ) {
+    } else if (contentType.includes("webp")) {
       extension = "webp";
     } else if (
       contentType.includes("jpeg") ||
@@ -106,6 +109,12 @@ export default function ApprovedWorkAiRegister({
 
   /* =========================================================
      자재 메모 생성
+
+     저장 형식 예:
+     현대보닥 S245 / 3롤
+     영림 PS001 / 2롤
+
+     현장ID / 완료보고ID는 저장하지 않음
   ========================================================= */
 
   function buildMaterialText() {
@@ -118,32 +127,28 @@ export default function ApprovedWorkAiRegister({
 
     return materials
       .map((item) => {
-        const brand =
-          String(
-            item?.brand || "",
-          ).trim();
+        const brand = String(
+          item?.brand || "",
+        ).trim();
 
-        const productCode =
-          String(
-            item?.product_code || "",
-          ).trim();
+        const productCode = String(
+          item?.product_code || "",
+        ).trim();
 
-        const productName =
-          String(
-            item?.product_name || "",
-          ).trim();
+        const productName = String(
+          item?.product_name || "",
+        ).trim();
 
         const quantity =
           item?.quantity !== null &&
           item?.quantity !== undefined &&
           item?.quantity !== ""
-            ? String(item.quantity)
+            ? String(item.quantity).trim()
             : "";
 
-        const unit =
-          String(
-            item?.unit || "",
-          ).trim();
+        const unit = String(
+          item?.unit || "",
+        ).trim();
 
         const name = [
           brand,
@@ -190,22 +195,18 @@ export default function ApprovedWorkAiRegister({
         index,
       );
 
-    let resizedFile =
-      originalFile;
+    let resizedFile = originalFile;
 
     try {
       resizedFile =
-        await resizeImage(
-          originalFile,
-        );
+        await resizeImage(originalFile);
     } catch (error) {
       console.error(
         "이미지 리사이즈:",
         error,
       );
 
-      resizedFile =
-        originalFile;
+      resizedFile = originalFile;
     }
 
     /* -------------------------------------------------------
@@ -216,9 +217,7 @@ export default function ApprovedWorkAiRegister({
 
     try {
       imageHash =
-        await getImageHash(
-          resizedFile,
-        );
+        await getImageHash(resizedFile);
     } catch (error) {
       console.error(
         "이미지 해시:",
@@ -281,17 +280,14 @@ export default function ApprovedWorkAiRegister({
       );
     }
 
-    const aiDescription =
-      String(
-        aiResult?.description ||
-          aiResult?.ai_description ||
-          "",
-      ).trim();
+    const aiDescription = String(
+      aiResult?.description ||
+        aiResult?.ai_description ||
+        "",
+    ).trim();
 
     let aiTags =
-      Array.isArray(
-        aiResult?.tags,
-      )
+      Array.isArray(aiResult?.tags)
         ? [...aiResult.tags]
         : Array.isArray(
               aiResult?.ai_tags,
@@ -299,15 +295,11 @@ export default function ApprovedWorkAiRegister({
           ? [...aiResult.ai_tags]
           : [];
 
-    if (
-      photoType === "before"
-    ) {
+    if (photoType === "before") {
       aiTags.push("시공전");
     }
 
-    if (
-      photoType === "after"
-    ) {
+    if (photoType === "after") {
       aiTags.push("시공후");
     }
 
@@ -322,16 +314,14 @@ export default function ApprovedWorkAiRegister({
         aiResult?.category ||
           fallbackCategory ||
           "기타",
-      ).trim() ||
-      "기타";
+      ).trim() || "기타";
 
     const detectedSubCategory =
       String(
         aiResult?.sub_category ||
           aiResult?.subcategory ||
           detectedCategory,
-      ).trim() ||
-      detectedCategory;
+      ).trim() || detectedCategory;
 
     /* -------------------------------------------------------
        embedding
@@ -378,9 +368,12 @@ export default function ApprovedWorkAiRegister({
       "jpg";
 
     const safeExtension =
-      ["jpg", "jpeg", "png", "webp"].includes(
-        extension,
-      )
+      [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+      ].includes(extension)
         ? extension === "jpeg"
           ? "jpg"
           : extension
@@ -410,7 +403,7 @@ export default function ApprovedWorkAiRegister({
     }
 
     /* -------------------------------------------------------
-       work_photos
+       work_photos 등록
     ------------------------------------------------------- */
 
     const {
@@ -443,8 +436,7 @@ export default function ApprovedWorkAiRegister({
           null,
 
         ai_description:
-          aiDescription ||
-          null,
+          aiDescription || null,
 
         ai_tags:
           aiTags.length > 0
@@ -452,12 +444,10 @@ export default function ApprovedWorkAiRegister({
             : null,
 
         embedding:
-          embedding ||
-          null,
+          embedding || null,
 
         image_hash:
-          imageHash ||
-          null,
+          imageHash || null,
       });
 
     if (insertError) {
@@ -491,11 +481,14 @@ export default function ApprovedWorkAiRegister({
       return;
     }
 
+    /* -------------------------------------------------------
+       승인금액 확인
+    ------------------------------------------------------- */
+
     const approvedAmount =
       Number(
         String(
-          report?.approved_amount ??
-            "",
+          report?.approved_amount ?? "",
         )
           .replace(/,/g, "")
           .trim(),
@@ -510,8 +503,13 @@ export default function ApprovedWorkAiRegister({
       setMessage(
         "❌ 관리자 승인금액을 확인할 수 없습니다.",
       );
+
       return;
     }
+
+    /* -------------------------------------------------------
+       사진 확인
+    ------------------------------------------------------- */
 
     if (
       beforePhotos.length === 0 &&
@@ -520,6 +518,7 @@ export default function ApprovedWorkAiRegister({
       setMessage(
         "❌ AI 자료로 등록할 시공 사진이 없습니다.",
       );
+
       return;
     }
 
@@ -533,6 +532,7 @@ export default function ApprovedWorkAiRegister({
     }
 
     setLoading(true);
+
     setMessage(
       "AI 견적자료 등록을 준비하고 있습니다...",
     );
@@ -567,8 +567,7 @@ export default function ApprovedWorkAiRegister({
       }
 
       /* =====================================================
-         2. 관리자 업체
-         현재 관리자 페이지와 동일한 get_my_company RPC 사용
+         2. 관리자 업체 확인
       ===================================================== */
 
       const {
@@ -589,9 +588,7 @@ export default function ApprovedWorkAiRegister({
           ? companyData[0]
           : null;
 
-      if (
-        !company?.company_id
-      ) {
+      if (!company?.company_id) {
         throw new Error(
           "관리자 업체 조회 실패: get_my_company 결과에 company_id가 없습니다.",
         );
@@ -629,7 +626,7 @@ export default function ApprovedWorkAiRegister({
           memo,
           ai_registered_at,
           ai_work_item_id
-        `,
+          `,
         )
         .eq(
           "id",
@@ -711,14 +708,19 @@ export default function ApprovedWorkAiRegister({
 
       /* =====================================================
          5. 자재 / 메모
+
+         현장ID 제거
+         완료보고ID 제거
+         시공지역 유지
+         사용자재 + 사용량 유지
+         완료보고 메모 유지
       ===================================================== */
 
       const materialText =
         buildMaterialText();
 
       const memoParts = [
-        latestReport
-          ?.work_region
+        latestReport?.work_region
           ? `시공지역: ${latestReport.work_region}`
           : "",
 
@@ -726,18 +728,15 @@ export default function ApprovedWorkAiRegister({
           ? `사용자재: ${materialText}`
           : "",
 
-        latestReport
-          ?.memo
+        latestReport?.memo
           ? `완료보고: ${latestReport.memo}`
           : "",
-
-        `현장ID: ${siteId}`,
-
-        `완료보고ID: ${latestReport.id}`,
       ].filter(Boolean);
 
       /* =====================================================
          6. work_items 생성
+
+         actual_cost = 관리자 승인금액 유지
       ===================================================== */
 
       setMessage(
@@ -769,9 +768,8 @@ export default function ApprovedWorkAiRegister({
             ),
 
           memo:
-            memoParts.join(
-              "\n",
-            ) || null,
+            memoParts.join("\n") ||
+            null,
         })
         .select("id");
 
@@ -799,7 +797,7 @@ export default function ApprovedWorkAiRegister({
         throw new Error(
           "AI 시공 데이터 ID를 생성하지 못했습니다.",
         );
-        }
+          }
             /* =====================================================
          7. 시공 전 사진
       ===================================================== */
@@ -872,6 +870,10 @@ export default function ApprovedWorkAiRegister({
           savedCount += 1;
         }
       }
+
+      /* =====================================================
+         등록 사진 확인
+      ===================================================== */
 
       if (savedCount === 0) {
         throw new Error(
@@ -947,6 +949,10 @@ export default function ApprovedWorkAiRegister({
           }건입니다. 다른 등록 작업이 먼저 처리되었을 수 있습니다.`,
         );
       }
+
+      /* =====================================================
+         등록 완료
+      ===================================================== */
 
       setMessage(
         `✅ AI 견적자료 등록 완료 · 사진 ${savedCount}장${
@@ -1180,7 +1186,8 @@ export default function ApprovedWorkAiRegister({
             background: "#ffffff",
             fontSize: "13px",
             lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
+            whiteSpace:
+              "pre-wrap",
           }}
         >
           {message}
@@ -1188,4 +1195,4 @@ export default function ApprovedWorkAiRegister({
       )}
     </div>
   );
-  }
+          }
