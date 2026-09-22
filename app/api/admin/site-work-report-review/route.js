@@ -399,9 +399,7 @@ export async function GET(request) {
           reviewed_at,
           reviewed_by,
           approved_amount,
-          review_memo,
-          ai_registered_at,
-          ai_work_item_id
+          review_memo
         `
       )
       .eq(
@@ -844,4 +842,4 @@ export async function GET(request) {
       }
     );
   }
-}
+           }
