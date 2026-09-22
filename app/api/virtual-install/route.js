@@ -64,6 +64,205 @@ async function resolveCompanyBySlug(companySlug) {
   return data;
 }
 
+// ============================================================
+// 가상시공 월 사용 한도 확인
+// ============================================================
+
+async function checkVirtualRemodelLimit(company) {
+  if (!company?.id) {
+    return {
+      allowed: false,
+      error: "업체 정보를 확인할 수 없습니다.",
+    };
+  }
+
+  const supabase = getAdminSupabase();
+
+  if (!supabase) {
+    return {
+      allowed: false,
+      error: "서버 설정을 확인할 수 없습니다.",
+    };
+  }
+
+  const planCode =
+    company.subscription_plan || "basic";
+
+  const {
+    data: plan,
+    error: planError,
+  } = await supabase
+    .from("subscription_plans")
+    .select(
+      "plan_code, plan_name, virtual_remodel_limit, is_active"
+    )
+    .eq("plan_code", planCode)
+    .maybeSingle();
+
+  if (planError) {
+    console.error(
+      "가상시공 요금제 조회 오류:",
+      planError
+    );
+
+    return {
+      allowed: false,
+      error: "요금제 정보를 확인할 수 없습니다.",
+    };
+  }
+
+  if (!plan) {
+    return {
+      allowed: false,
+      error: "등록된 요금제를 찾을 수 없습니다.",
+    };
+  }
+
+  if (plan.is_active === false) {
+    return {
+      allowed: false,
+      error: "현재 사용할 수 없는 요금제입니다.",
+    };
+  }
+
+  const limit =
+    Number(plan.virtual_remodel_limit || 0);
+
+  // 0은 무제한
+  if (limit <= 0) {
+    return {
+      allowed: true,
+      planCode: plan.plan_code,
+      planName:
+        plan.plan_name || plan.plan_code,
+      limit: 0,
+      used: 0,
+      remaining: null,
+      unlimited: true,
+    };
+  }
+
+  // 한국시간 기준 이번 달 시작 / 다음 달 시작
+  const now = new Date();
+
+  const formatter =
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+    });
+
+  const parts =
+    formatter.formatToParts(now);
+
+  const year = Number(
+    parts.find(
+      (part) => part.type === "year"
+    )?.value
+  );
+
+  const month = Number(
+    parts.find(
+      (part) => part.type === "month"
+    )?.value
+  );
+
+  const monthStart = new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      1,
+      -9,
+      0,
+      0,
+      0
+    )
+  );
+
+  const nextMonthStart = new Date(
+    Date.UTC(
+      month === 12 ? year + 1 : year,
+      month === 12 ? 0 : month,
+      1,
+      -9,
+      0,
+      0,
+      0
+    )
+  );
+
+  const {
+    data: usageRows,
+    error: usageError,
+  } = await supabase
+    .from("usage_events")
+    .select("quantity")
+    .eq("company_id", company.id)
+    .eq("event_type", "virtual_remodel")
+    .gte(
+      "created_at",
+      monthStart.toISOString()
+    )
+    .lt(
+      "created_at",
+      nextMonthStart.toISOString()
+    );
+
+  if (usageError) {
+    console.error(
+      "가상시공 사용량 조회 오류:",
+      usageError
+    );
+
+    return {
+      allowed: false,
+      error: "현재 사용량을 확인할 수 없습니다.",
+    };
+  }
+
+  const used = (
+    Array.isArray(usageRows)
+      ? usageRows
+      : []
+  ).reduce(
+    (sum, row) =>
+      sum + Number(row?.quantity || 0),
+    0
+  );
+
+  const remaining =
+    Math.max(0, limit - used);
+
+  if (used >= limit) {
+    return {
+      allowed: false,
+      limitReached: true,
+      planCode: plan.plan_code,
+      planName:
+        plan.plan_name || plan.plan_code,
+      limit,
+      used,
+      remaining: 0,
+      error: `${
+        plan.plan_name || plan.plan_code
+      } 요금제의 이번 달 가상시공 한도(${limit.toLocaleString(
+        "ko-KR"
+      )}회)를 모두 사용했습니다.`,
+    };
+  }
+
+  return {
+    allowed: true,
+    planCode: plan.plan_code,
+    planName:
+      plan.plan_name || plan.plan_code,
+    limit,
+    used,
+    remaining,
+    unlimited: false,
+  };
+}
+
 async function recordVirtualInstallUsage({
   company,
   model,
@@ -101,7 +300,8 @@ async function recordVirtualInstallUsage({
       metadata: {
         company_slug: company.slug,
         company_name: company.company_name,
-        subscription_plan: company.subscription_plan,
+        subscription_plan:
+          company.subscription_plan,
         target_type: targetType,
         split_tone: Boolean(useSplitTone),
         product_code: productCode || null,
@@ -659,8 +859,7 @@ function getOpenAIError(
   }
 
   return message;
-}
-
+        }
 export async function POST(
   request
 ) {
@@ -716,6 +915,59 @@ export async function POST(
         },
         {
           status: 404,
+        }
+      );
+    }
+
+    // ========================================================
+    // 가상시공 요금제 사용 한도 확인
+    // OpenAI API 호출 전에 검사하여 비용 발생을 방지
+    // ========================================================
+
+    const virtualLimit =
+      await checkVirtualRemodelLimit(
+        company
+      );
+
+    if (!virtualLimit.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            virtualLimit.error ||
+            "가상시공 사용 한도를 확인할 수 없습니다.",
+
+          code:
+            virtualLimit.limitReached
+              ? "VIRTUAL_REMODEL_LIMIT_REACHED"
+              : "VIRTUAL_REMODEL_LIMIT_CHECK_FAILED",
+
+          planCode:
+            virtualLimit.planCode ||
+            null,
+
+          planName:
+            virtualLimit.planName ||
+            null,
+
+          used:
+            Number(
+              virtualLimit.used || 0
+            ),
+
+          limit:
+            Number(
+              virtualLimit.limit || 0
+            ),
+
+          remaining:
+            virtualLimit.remaining ??
+            null,
+        },
+        {
+          status:
+            virtualLimit.limitReached
+              ? 429
+              : 503,
         }
       );
     }
@@ -1131,6 +1383,11 @@ export async function POST(
       "70"
     );
 
+    // ========================================================
+    // 실제 OpenAI 이미지 생성
+    // 여기까지 왔다는 것은 요금제 한도가 남아 있다는 뜻입니다.
+    // ========================================================
+
     const response =
       await fetch(
         "https://api.openai.com/v1/images/edits",
@@ -1212,6 +1469,10 @@ export async function POST(
           )
       ).length;
 
+    // ========================================================
+    // 성공한 가상시공만 사용량 +1
+    // ========================================================
+
     const usageRecorded =
       await recordVirtualInstallUsage({
         company,
@@ -1234,6 +1495,7 @@ export async function POST(
       useSplitTone,
       productCode:
         primaryFilm.productCode,
+
       appliedAreas:
         areaFilms.map(
           (film) => ({
@@ -1245,11 +1507,50 @@ export async function POST(
               film.productCode,
           })
         ),
+
       sampleReferenceCount,
+
       usage:
         result?.usage ||
         null,
+
       usageRecorded,
+
+      // 현재 요금제 사용량도 응답
+      planUsage: {
+        planCode:
+          virtualLimit.planCode ||
+          null,
+
+        planName:
+          virtualLimit.planName ||
+          null,
+
+        limit:
+          virtualLimit.limit,
+
+        // 실행 성공했으므로 이번 요청까지 포함
+        used:
+          Number(
+            virtualLimit.used || 0
+          ) + 1,
+
+        remaining:
+          virtualLimit.unlimited
+            ? null
+            : Math.max(
+                0,
+                Number(
+                  virtualLimit.remaining ||
+                    0
+                ) - 1
+              ),
+
+        unlimited:
+          Boolean(
+            virtualLimit.unlimited
+          ),
+      },
     });
   } catch (error) {
     console.error(
@@ -1285,4 +1586,4 @@ export async function POST(
       }
     );
   }
-           }
+      }
