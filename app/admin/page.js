@@ -1,1008 +1,94 @@
 "use client";
 
-import { useState } from "react";
-import { supabase } from "../../../lib/supabase";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import { supabase } from "../../lib/supabase";
+
+import PhotoPreviewModal from "./PhotoPreviewModal";
+import AdminTabs from "./AdminTabs";
+import NewLeadAlert from "./NewLeadAlert";
+import JobsTab from "./JobsTab";
+import RegisterTab from "./RegisterTab";
+import UsageTab from "./UsageTab";
+import LeadsTab from "./LeadsTab";
+import SiteManagementTab from "./SiteManagementTab";
+
+import useAdminCompany from "./hooks/useAdminCompany";
+import useJobs from "./hooks/useJobs";
+import useJobRegister from "./hooks/useJobRegister";
+import useLeads from "./hooks/useLeads";
+import useUsage from "./hooks/useUsage";
+import useStructureAnalysis from "./hooks/useStructureAnalysis";
+import useCompanySettings from "./hooks/useCompanySettings";
+import useWorkers from "./hooks/useWorkers";
+
+import useSites from "../hooks/useSites";
+
 import {
   JOB_PAGE_SIZE,
-  SIGNED_URL_SECONDS,
-} from "../adminConstants";
-import { sanitizeSearchKeyword } from "../adminUtils";
-import {
-  getCachedSignedUrl,
-  setCachedSignedUrl,
-} from "../signedUrlCache";
+} from "./adminConstants";
 
-export default function useJobs({
-  companyId,
-  setPreviewPhoto,
-}) {
-  const [jobs, setJobs] = useState([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [jobsMessage, setJobsMessage] = useState("");
+export default function AdminPage() {
+  /* =========================================================
+     화면 공통 상태
+  ========================================================= */
 
-  const [jobSearch, setJobSearch] = useState("");
-  const [jobSearchApplied, setJobSearchApplied] = useState("");
-
-  const [jobPage, setJobPage] = useState(1);
-  const [jobTotal, setJobTotal] = useState(0);
-
-  const [openJobId, setOpenJobId] = useState(null);
-
-  const [jobPhotos, setJobPhotos] = useState({});
-  const [jobPhotoLoadingId, setJobPhotoLoadingId] =
-    useState(null);
-
-  const [jobPhotoUrls, setJobPhotoUrls] = useState({});
-  const [loadingPhotoId, setLoadingPhotoId] =
-    useState(null);
-
-  const [editingId, setEditingId] = useState(null);
-  const [editCategory, setEditCategory] = useState("");
-  const [editSubCategory, setEditSubCategory] =
-    useState("");
-  const [editCost, setEditCost] = useState("");
-  const [editMemo, setEditMemo] = useState("");
-
-  const [editingPhotoId, setEditingPhotoId] =
-    useState(null);
-  const [editPhotoType, setEditPhotoType] =
-    useState("before");
-  const [editPhotoCategory, setEditPhotoCategory] =
-    useState("");
   const [
-    editPhotoSubCategory,
-    setEditPhotoSubCategory,
-  ] = useState("");
+    activeTab,
+    setActiveTab,
+  ] = useState("jobs");
+
+  const activeTabRef =
+    useRef("jobs");
+
   const [
-    editPhotoDescription,
-    setEditPhotoDescription,
-  ] = useState("");
-  const [photoEditLoading, setPhotoEditLoading] =
-    useState(false);
+    previewPhoto,
+    setPreviewPhoto,
+  ] = useState(null);
 
   /* =========================================================
-     시공 DB 불러오기
+     회사 / 로그인
   ========================================================= */
 
-  async function loadJobs(
-    page = 1,
-    keyword = jobSearchApplied,
-    targetCompanyId = null,
-  ) {
-    const resolvedCompanyId =
-      targetCompanyId || companyId;
+  const companyHook =
+    useAdminCompany();
 
-    if (!resolvedCompanyId) return;
+  const {
+    adminReady,
+    adminError,
 
-    setJobsLoading(true);
-    setJobsMessage("");
+    companyId,
+    companyName,
 
-    try {
-      const from =
-        (page - 1) * JOB_PAGE_SIZE;
+    customerEstimateUrl,
 
-      const to =
-        from + JOB_PAGE_SIZE - 1;
+    copyMessage,
 
-      const safeKeyword =
-        sanitizeSearchKeyword(keyword);
+    initializeCompany,
+    markAdminReady,
 
-      let query = supabase
-        .from("work_items")
-        .select(
-          `
-          id,
-          project_id,
-          category,
-          sub_category,
-          actual_cost,
-          memo,
-          created_at
-        `,
-          {
-            count: "exact",
-          },
-        )
-        .eq(
-          "company_id",
-          resolvedCompanyId,
-        );
-
-      if (safeKeyword) {
-        query = query.or(
-          `category.ilike.%${safeKeyword}%,sub_category.ilike.%${safeKeyword}%,memo.ilike.%${safeKeyword}%`,
-        );
-      }
-
-      const {
-        data,
-        error,
-        count,
-      } = await query
-        .order("created_at", {
-          ascending: false,
-        })
-        .range(from, to);
-
-      if (error) throw error;
-
-      setJobs(data || []);
-      setJobTotal(count || 0);
-      setJobPage(page);
-      setOpenJobId(null);
-    } catch (error) {
-      console.error(
-        "시공 DB 불러오기:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 시공 DB 오류: ${
-          error?.message ||
-          "불러오기 실패"
-        }`,
-      );
-    } finally {
-      setJobsLoading(false);
-    }
-  }
+    copyCustomerEstimateUrl,
+    openCustomerEstimatePage,
+  } = companyHook;
 
   /* =========================================================
-     검색
+     시공 DB
   ========================================================= */
 
-  function searchJobs() {
-    const keyword =
-      sanitizeSearchKeyword(jobSearch);
-
-    setJobSearchApplied(keyword);
-
-    loadJobs(
-      1,
-      keyword,
-    );
-  }
-
-  function clearJobSearch() {
-    setJobSearch("");
-    setJobSearchApplied("");
-
-    loadJobs(
-      1,
-      "",
-    );
-  }
-
-  /* =========================================================
-     시공 사진 목록
-  ========================================================= */
-
-  async function loadJobPhotos(
-    workItemId,
-  ) {
-    if (
-      !companyId ||
-      !workItemId
-    ) {
-      return;
-    }
-
-    setJobPhotoLoadingId(
-      workItemId,
-    );
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("work_photos")
-        .select(
-          `
-          id,
-          work_item_id,
-          project_id,
-          photo_type,
-          category,
-          sub_category,
-          storage_path,
-          ai_description,
-          ai_tags,
-          created_at
-        `,
-        )
-        .eq(
-          "work_item_id",
-          workItemId,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        )
-        .order(
-          "created_at",
-          {
-            ascending: true,
-          },
-        );
-
-      if (error) throw error;
-
-      setJobPhotos(
-        (current) => ({
-          ...current,
-          [workItemId]:
-            data || [],
-        }),
-      );
-    } catch (error) {
-      console.error(
-        "시공 사진 목록:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 사진정보 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-    } finally {
-      setJobPhotoLoadingId(
-        null,
-      );
-    }
-  }
-
-  /* =========================================================
-     상세 열기 / 닫기
-  ========================================================= */
-
-  async function toggleJobDetail(
-    jobId,
-  ) {
-    if (
-      openJobId === jobId
-    ) {
-      setOpenJobId(null);
-      return;
-    }
-
-    setOpenJobId(jobId);
-
-    if (
-      !jobPhotos[jobId]
-    ) {
-      await loadJobPhotos(
-        jobId,
-      );
-    }
-  }
-
-  /* =========================================================
-     사진 Signed URL
-  ========================================================= */
-
-  async function loadSingleJobPhoto(
-    photo,
-  ) {
-    if (
-      !photo?.storage_path
-    ) {
-      return null;
-    }
-
-    if (
-      jobPhotoUrls[
-        photo.id
-      ]
-    ) {
-      return jobPhotoUrls[
-        photo.id
-      ];
-    }
-
-    const cachedUrl =
-      getCachedSignedUrl(
-        photo.storage_path,
-      );
-
-    if (cachedUrl) {
-      setJobPhotoUrls(
-        (current) => ({
-          ...current,
-          [photo.id]:
-            cachedUrl,
-        }),
-      );
-
-      return cachedUrl;
-    }
-
-    setLoadingPhotoId(
-      photo.id,
-    );
-
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.storage
-          .from(
-            "work-photos",
-          )
-          .createSignedUrl(
-            photo.storage_path,
-            SIGNED_URL_SECONDS,
-          );
-
-      if (error) {
-        throw error;
-      }
-
-      const url =
-        data?.signedUrl;
-
-      if (!url) {
-        throw new Error(
-          "사진 주소를 만들 수 없습니다.",
-        );
-      }
-
-      setCachedSignedUrl(
-        photo.storage_path,
-        url,
-        SIGNED_URL_SECONDS,
-      );
-
-      setJobPhotoUrls(
-        (current) => ({
-          ...current,
-          [photo.id]:
-            url,
-        }),
-      );
-
-      return url;
-    } catch (error) {
-      console.error(
-        "시공 사진 Signed URL:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 사진 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-
-      return null;
-    } finally {
-      setLoadingPhotoId(
-        null,
-      );
-    }
-  }
-
-  /* =========================================================
-     사진 크게 보기
-  ========================================================= */
-
-  async function openJobPhoto(
-    photo,
-  ) {
-    if (!photo?.id) {
-      return;
-    }
-
-    let url =
-      jobPhotoUrls[
-        photo.id
-      ];
-
-    if (!url) {
-      url =
-        await loadSingleJobPhoto(
-          photo,
-        );
-    }
-
-    if (
-      url &&
-      typeof setPreviewPhoto ===
-        "function"
-    ) {
-      setPreviewPhoto(
-        url,
-      );
-    }
-  }
-
-  /* =========================================================
-     시공 데이터 수정 시작
-  ========================================================= */
-
-  function startEdit(
-    job,
-  ) {
-    if (!job?.id) {
-      return;
-    }
-
-    setEditingId(
-      job.id,
-    );
-
-    setEditCategory(
-      job.category || "",
-    );
-
-    setEditSubCategory(
-      job.sub_category ||
-        job.category ||
-        "",
-    );
-
-    setEditCost(
-      job.actual_cost !==
-          null &&
-        job.actual_cost !==
-          undefined
-        ? String(
-            job.actual_cost,
-          )
-        : "",
-    );
-
-    setEditMemo(
-      job.memo || "",
-    );
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-  }
-
-  /* =========================================================
-     시공 데이터 수정 저장
-  ========================================================= */
-
-  async function saveJobEdit(
-    jobId,
-  ) {
-    const cost =
-      Number(
-        String(
-          editCost,
-        ).replace(
-          /,/g,
-          "",
-        ),
-      );
-
-    if (
-      !editCategory.trim()
-    ) {
-      setJobsMessage(
-        "⚠️ 시공 부위를 입력해주세요.",
-      );
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        cost,
-      ) ||
-      cost <= 0
-    ) {
-      setJobsMessage(
-        "⚠️ 실제 시공금액을 입력해주세요.",
-      );
-      return;
-    }
-
-    try {
-      const {
-        error,
-      } = await supabase
-        .from(
-          "work_items",
-        )
-        .update({
-          category:
-            editCategory.trim(),
-
-          sub_category:
-            editSubCategory.trim() ||
-            editCategory.trim(),
-
-          actual_cost:
-            cost,
-
-          memo:
-            editMemo.trim() ||
-            null,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          jobId,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      setEditingId(
-        null,
-      );
-
-      setJobsMessage(
-        "✅ 시공 데이터가 수정되었습니다.",
-      );
-
-      await loadJobs(
-        jobPage,
-        jobSearchApplied,
-      );
-    } catch (error) {
-      console.error(
-        "시공 데이터 수정:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 수정 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-    }
-  }
-
-  /* =========================================================
-     사진 정보 수정 시작
-  ========================================================= */
-
-  function startPhotoEdit(
-    photo,
-  ) {
-    if (!photo?.id) {
-      return;
-    }
-
-    setEditingPhotoId(
-      photo.id,
-    );
-
-    setEditPhotoType(
-      photo.photo_type ||
-        "before",
-    );
-
-    setEditPhotoCategory(
-      photo.category || "",
-    );
-
-    setEditPhotoSubCategory(
-      photo.sub_category ||
-        photo.category ||
-        "",
-    );
-
-    setEditPhotoDescription(
-      photo.ai_description ||
-        "",
-    );
-  }
-
-  function cancelPhotoEdit() {
-    setEditingPhotoId(
-      null,
-    );
-  }
-
-  /* =========================================================
-     사진 정보 수정 저장
-  ========================================================= */
-
-  async function savePhotoEdit(
-    photoId,
-    workItemId,
-  ) {
-    if (!photoId) {
-      return;
-    }
-
-    setPhotoEditLoading(
-      true,
-    );
-
-    setJobsMessage("");
-
-    try {
-      const {
-        error,
-      } = await supabase
-        .from(
-          "work_photos",
-        )
-        .update({
-          photo_type:
-            editPhotoType ||
-            "before",
-
-          category:
-            editPhotoCategory.trim() ||
-            null,
-
-          sub_category:
-            editPhotoSubCategory.trim() ||
-            editPhotoCategory.trim() ||
-            null,
-
-          ai_description:
-            editPhotoDescription.trim() ||
-            null,
-        })
-        .eq(
-          "id",
-          photoId,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      setEditingPhotoId(
-        null,
-      );
-
-      setJobsMessage(
-        "✅ 사진 정보가 수정되었습니다.",
-      );
-
-      await loadJobPhotos(
-        workItemId,
-      );
-    } catch (error) {
-      console.error(
-        "사진 수정:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 사진 수정 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-    } finally {
-      setPhotoEditLoading(
-        false,
-      );
-    }
-  }
-    /* =========================================================
-     사진 삭제
-  ========================================================= */
-
-  async function deletePhoto(
-    photo,
-    workItemId,
-  ) {
-    if (!photo?.id) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        "이 사진을 삭제할까요?\n삭제 후 복구할 수 없습니다.",
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setJobsMessage("");
-
-    try {
-      if (
-        photo.storage_path
-      ) {
-        const {
-          error:
-            storageError,
-        } =
-          await supabase.storage
-            .from(
-              "work-photos",
-            )
-            .remove([
-              photo.storage_path,
-            ]);
-
-        if (
-          storageError
-        ) {
-          console.error(
-            "Storage 사진 삭제:",
-            storageError,
-          );
-        }
-      }
-
-      const {
-        error,
-      } = await supabase
-        .from(
-          "work_photos",
-        )
-        .delete()
-        .eq(
-          "id",
-          photo.id,
-        )
-        .eq(
-          "company_id",
-          companyId,
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      setJobPhotoUrls(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          delete next[
-            photo.id
-          ];
-
-          return next;
-        },
-      );
-
-      setJobsMessage(
-        "✅ 사진이 삭제되었습니다.",
-      );
-
-      await loadJobPhotos(
-        workItemId,
-      );
-    } catch (error) {
-      console.error(
-        "사진 삭제:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 사진 삭제 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-    }
-  }
-
-  /* =========================================================
-     시공 데이터 삭제
-  ========================================================= */
-
-  async function deleteJob(
-    job,
-  ) {
-    if (!job?.id) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `"${job.category || "시공 데이터"}"를 삭제할까요?\n\n연결된 사진도 함께 삭제됩니다.\n삭제 후 복구할 수 없습니다.`,
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setJobsMessage("");
-
-    try {
-      const {
-        data: photos,
-        error:
-          photoLoadError,
-      } =
-        await supabase
-          .from(
-            "work_photos",
-          )
-          .select(
-            "id, storage_path",
-          )
-          .eq(
-            "work_item_id",
-            job.id,
-          )
-          .eq(
-            "company_id",
-            companyId,
-          );
-
-      if (
-        photoLoadError
-      ) {
-        throw photoLoadError;
-      }
-
-      const storagePaths =
-        (photos || [])
-          .map(
-            (photo) =>
-              photo.storage_path,
-          )
-          .filter(Boolean);
-
-      if (
-        storagePaths.length >
-        0
-      ) {
-        const {
-          error:
-            storageError,
-        } =
-          await supabase.storage
-            .from(
-              "work-photos",
-            )
-            .remove(
-              storagePaths,
-            );
-
-        if (
-          storageError
-        ) {
-          console.error(
-            "시공 사진 Storage 삭제:",
-            storageError,
-          );
-        }
-      }
-
-      const {
-        error:
-          photoDeleteError,
-      } =
-        await supabase
-          .from(
-            "work_photos",
-          )
-          .delete()
-          .eq(
-            "work_item_id",
-            job.id,
-          )
-          .eq(
-            "company_id",
-            companyId,
-          );
-
-      if (
-        photoDeleteError
-      ) {
-        throw photoDeleteError;
-      }
-
-      const {
-        error:
-          itemDeleteError,
-      } =
-        await supabase
-          .from(
-            "work_items",
-          )
-          .delete()
-          .eq(
-            "id",
-            job.id,
-          )
-          .eq(
-            "company_id",
-            companyId,
-          );
-
-      if (
-        itemDeleteError
-      ) {
-        throw itemDeleteError;
-      }
-
-      setOpenJobId(
-        null,
-      );
-
-      setJobPhotos(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          delete next[
-            job.id
-          ];
-
-          return next;
-        },
-      );
-
-      setJobsMessage(
-        "✅ 시공 데이터가 삭제되었습니다.",
-      );
-
-      const nextTotal =
-        Math.max(
-          0,
-          jobTotal - 1,
-        );
-
-      const nextTotalPages =
-        Math.max(
-          1,
-          Math.ceil(
-            nextTotal /
-              JOB_PAGE_SIZE,
-          ),
-        );
-
-      const nextPage =
-        Math.min(
-          jobPage,
-          nextTotalPages,
-        );
-
-      await loadJobs(
-        nextPage,
-        jobSearchApplied,
-      );
-    } catch (error) {
-      console.error(
-        "시공 데이터 삭제:",
-        error,
-      );
-
-      setJobsMessage(
-        `❌ 삭제 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
-    }
-  }
-
-  /* =========================================================
-     외부에서 사용할 값
-  ========================================================= */
-
-  return {
+  const jobsHook =
+    useJobs({
+      companyId,
+      setPreviewPhoto,
+    });
+
+  const {
     jobs,
     jobsLoading,
     jobsMessage,
-    setJobsMessage,
 
     jobSearch,
     setJobSearch,
@@ -1053,10 +139,8 @@ export default function useJobs({
     searchJobs,
     clearJobSearch,
 
-    loadJobPhotos,
     toggleJobDetail,
 
-    // JobsTab에서 직접 사용하므로 반드시 반환
     loadSingleJobPhoto,
     openJobPhoto,
 
@@ -1070,5 +154,1220 @@ export default function useJobs({
 
     deletePhoto,
     deleteJob,
-  };
-            }
+  } = jobsHook;
+
+  const totalJobPages =
+    Math.max(
+      1,
+      Math.ceil(
+        jobTotal /
+          JOB_PAGE_SIZE,
+      ),
+    );
+
+  /* =========================================================
+     AI 구조분석
+  ========================================================= */
+
+  const {
+    structureAnalysis,
+    runStructureAnalysis,
+    stopStructureAnalysis,
+  } =
+    useStructureAnalysis();
+
+  /* =========================================================
+     현장 관리
+  ========================================================= */
+
+  const {
+    sites,
+    sitesLoading,
+    sitesMessage,
+
+    selectedSite,
+
+    loadSites,
+    createSite,
+    updateSiteStatus,
+
+    openSite,
+    closeSite,
+  } =
+    useSites({
+      companyId,
+    });
+
+  /* =========================================================
+     시공자 관리
+  ========================================================= */
+
+  const {
+    workers,
+    workersLoading,
+    workersMessage,
+
+    loadWorkers,
+    createWorker,
+    updateWorker,
+    setWorkerActive,
+
+    createWorkerInvite,
+
+    assignSiteWorkers,
+    loadSiteWorkers,
+  } =
+    useWorkers({
+      companyId,
+    });
+
+  /* =========================================================
+     고객 상담
+  ========================================================= */
+
+  const leadsHook =
+    useLeads({
+      companyId,
+      companyName,
+      activeTabRef,
+    });
+
+  const {
+    leads,
+    leadsLoading,
+    leadsMessage,
+
+    leadPage,
+    leadTotal,
+    totalLeadPages,
+
+    leadFilter,
+    setLeadFilter,
+
+    unreadCount,
+
+    openLeadId,
+
+    leadPhotoUrls,
+    leadPhotoLoadingId,
+
+    newLeadAlert,
+    setNewLeadAlert,
+
+    notificationEnabled,
+
+    loadUnreadCount,
+    loadLeads,
+
+    toggleLeadDetail,
+    loadLeadPhotos,
+
+    updateLeadStatus,
+    saveLeadMemo,
+    updateLeadLocal,
+    saveFinalQuote,
+
+    handleRealtimeLead,
+    enableNotifications,
+    syncNotificationPermission,
+  } = leadsHook;
+
+  /* =========================================================
+     사용 로그
+  ========================================================= */
+
+  const usageHook =
+    useUsage({
+      companyId,
+    });
+
+  const {
+    usageStats,
+    usageRecent,
+    usageLoading,
+    usageMessage,
+
+    openUsagePhotoId,
+    usagePhotoUrls,
+    usagePhotoLoadingId,
+
+    loadUsageStats,
+    toggleUsagePhotos,
+  } = usageHook;
+
+  /* =========================================================
+     회사 설정
+  ========================================================= */
+
+  const settingsHook =
+    useCompanySettings({
+      companyId,
+    });
+
+  const {
+    similarityThreshold,
+    setSimilarityThreshold,
+
+    settingMessage,
+    settingLoading,
+
+    loadSettings,
+    saveSimilaritySetting,
+  } = settingsHook;
+
+  /* =========================================================
+     시공 등록
+  ========================================================= */
+
+  const registerHook =
+    useJobRegister({
+      companyId,
+
+      loadJobs,
+
+      jobSearchApplied,
+
+      onSaved: () => {
+        activeTabRef.current =
+          "jobs";
+
+        setActiveTab(
+          "jobs",
+        );
+      },
+    });
+
+  const {
+    beforeImages,
+    setBeforeImages,
+
+    afterImages,
+    setAfterImages,
+
+    category,
+    setCategory,
+
+    actualCost,
+    setActualCost,
+
+    material,
+    setMaterial,
+
+    memo,
+    setMemo,
+
+    message,
+
+    loading,
+
+    handleBeforeFiles,
+    handleAfterFiles,
+
+    removeBeforeImage,
+    removeAfterImage,
+
+    handleSave,
+  } = registerHook;
+
+  /* =========================================================
+     탭 변경
+  ========================================================= */
+
+  function changeTab(tab) {
+    activeTabRef.current =
+      tab;
+
+    setActiveTab(tab);
+
+    if (
+      tab === "sites"
+    ) {
+      loadSites(
+        companyId,
+      );
+
+      loadWorkers(
+        companyId,
+      );
+    }
+
+    if (
+      tab === "usage"
+    ) {
+      loadUsageStats();
+    }
+
+    if (
+      tab === "leads"
+    ) {
+      loadLeads(
+        1,
+        leadFilter,
+        companyId,
+      );
+    }
+  }
+
+  useEffect(() => {
+    activeTabRef.current =
+      activeTab;
+  }, [activeTab]);
+
+  /* =========================================================
+     관리자 초기화
+  ========================================================= */
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function initializeAdmin() {
+      const result =
+        await initializeCompany();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!result) {
+        markAdminReady();
+        return;
+      }
+
+      const resolvedCompanyId =
+        result.companyId;
+
+      try {
+        await Promise.all([
+          loadSettings(
+            resolvedCompanyId,
+          ),
+
+          loadJobs(
+            1,
+            "",
+            resolvedCompanyId,
+          ),
+
+          loadUnreadCount(
+            resolvedCompanyId,
+          ),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        syncNotificationPermission();
+
+        markAdminReady();
+      } catch (error) {
+        console.error(
+          "관리자 데이터 초기화:",
+          error,
+        );
+
+        if (mounted) {
+          markAdminReady();
+        }
+      }
+    }
+
+    initializeAdmin();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /* =========================================================
+     신규 상담 실시간 구독
+  ========================================================= */
+
+  useEffect(() => {
+    if (!companyId) {
+      return;
+    }
+
+    const channel =
+      supabase
+        .channel(
+          `customer-leads-admin-realtime-${companyId}`,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event:
+              "INSERT",
+
+            schema:
+              "public",
+
+            table:
+              "customer_leads",
+
+            filter:
+              `company_id=eq.${companyId}`,
+          },
+          (payload) => {
+            handleRealtimeLead(
+              payload.new,
+              companyId,
+            );
+          },
+        )
+        .subscribe();
+
+    return () => {
+      supabase.removeChannel(
+        channel,
+      );
+    };
+  }, [
+    companyId,
+    companyName,
+  ]);
+
+  /* =========================================================
+     관리자 로딩
+  ========================================================= */
+
+  if (!adminReady) {
+    return (
+      <main
+        style={{
+          maxWidth:
+            "900px",
+
+          margin:
+            "0 auto",
+
+          padding:
+            "40px 16px",
+
+          minHeight:
+            "100vh",
+
+          background:
+            "#f8fafc",
+
+          color:
+            "#111827",
+        }}
+      >
+        관리자 정보를 확인하고 있습니다...
+      </main>
+    );
+  }
+
+  /* =========================================================
+     화면
+  ========================================================= */
+
+  return (
+    <main
+      style={{
+        maxWidth:
+          "900px",
+
+        margin:
+          "0 auto",
+
+        padding:
+          "16px 14px 80px",
+
+        background:
+          "#f8fafc",
+
+        minHeight:
+          "100vh",
+
+        color:
+          "#111827",
+      }}
+    >
+      {/* =====================================================
+          신규 상담 알림
+      ===================================================== */}
+
+      <NewLeadAlert
+        newLeadAlert={
+          newLeadAlert
+        }
+        setNewLeadAlert={
+          setNewLeadAlert
+        }
+        changeTab={
+          changeTab
+        }
+      />
+
+      {/* =====================================================
+          관리자 제목
+      ===================================================== */}
+
+      <h1
+        style={{
+          fontSize:
+            "24px",
+
+          margin:
+            "8px 0 12px",
+        }}
+      >
+        {companyName} 관리자
+      </h1>
+
+      {/* =====================================================
+          관리자 초기화 오류
+      ===================================================== */}
+
+      {adminError && (
+        <div
+          style={{
+            padding:
+              "12px",
+
+            marginBottom:
+              "14px",
+
+            borderRadius:
+              "10px",
+
+            border:
+              "1px solid #fecaca",
+
+            background:
+              "#fef2f2",
+
+            color:
+              "#b91c1c",
+
+            fontSize:
+              "13px",
+
+            fontWeight:
+              "600",
+
+            whiteSpace:
+              "pre-wrap",
+          }}
+        >
+          {adminError}
+        </div>
+      )}
+
+      {/* =====================================================
+          회사별 고객 AI 견적 페이지
+      ===================================================== */}
+
+      {customerEstimateUrl && (
+        <section
+          style={{
+            background:
+              "#ffffff",
+
+            border:
+              "1px solid #e5e7eb",
+
+            borderRadius:
+              "14px",
+
+            padding:
+              "14px",
+
+            marginBottom:
+              "16px",
+
+            boxShadow:
+              "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
+          <div
+            style={{
+              fontSize:
+                "15px",
+
+              fontWeight:
+                "700",
+
+              marginBottom:
+                "8px",
+            }}
+          >
+            고객 AI 견적 페이지
+          </div>
+
+          <div
+            style={{
+              fontSize:
+                "12px",
+
+              color:
+                "#64748b",
+
+              marginBottom:
+                "8px",
+            }}
+          >
+            블로그, 홈페이지, 문자, 카카오톡 등에 아래 주소를 게시하세요.
+          </div>
+
+          <div
+            style={{
+              padding:
+                "10px 12px",
+
+              background:
+                "#f8fafc",
+
+              border:
+                "1px solid #e2e8f0",
+
+              borderRadius:
+                "9px",
+
+              fontSize:
+                "13px",
+
+              lineHeight:
+                "1.5",
+
+              wordBreak:
+                "break-all",
+
+              marginBottom:
+                "10px",
+
+              userSelect:
+                "all",
+            }}
+          >
+            {customerEstimateUrl}
+          </div>
+
+          <div
+            style={{
+              display:
+                "grid",
+
+              gridTemplateColumns:
+                "1fr 1fr",
+
+              gap:
+                "8px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={
+                openCustomerEstimatePage
+              }
+              style={{
+                width:
+                  "100%",
+
+                border:
+                  "none",
+
+                borderRadius:
+                  "9px",
+
+                padding:
+                  "11px 8px",
+
+                background:
+                  "#111827",
+
+                color:
+                  "#ffffff",
+
+                fontWeight:
+                  "700",
+
+                fontSize:
+                  "14px",
+
+                cursor:
+                  "pointer",
+              }}
+            >
+              고객페이지 열기
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                copyCustomerEstimateUrl
+              }
+              style={{
+                width:
+                  "100%",
+
+                border:
+                  "1px solid #cbd5e1",
+
+                borderRadius:
+                  "9px",
+
+                padding:
+                  "11px 8px",
+
+                background:
+                  "#ffffff",
+
+                color:
+                  "#111827",
+
+                fontWeight:
+                  "700",
+
+                fontSize:
+                  "14px",
+
+                cursor:
+                  "pointer",
+              }}
+            >
+              주소 복사
+            </button>
+          </div>
+
+          {copyMessage && (
+            <div
+              style={{
+                marginTop:
+                  "9px",
+
+                fontSize:
+                  "13px",
+
+                fontWeight:
+                  "600",
+
+                color:
+                  copyMessage.startsWith(
+                    "✅",
+                  )
+                    ? "#166534"
+                    : "#b91c1c",
+              }}
+            >
+              {copyMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* =====================================================
+          탭
+      ===================================================== */}
+
+      <AdminTabs
+        activeTab={
+          activeTab
+        }
+        changeTab={
+          changeTab
+        }
+        unreadCount={
+          unreadCount
+        }
+      />
+                {/* =====================================================
+          시공 DB
+      ===================================================== */}
+
+      {activeTab ===
+        "jobs" && (
+        <JobsTab
+          jobSearch={
+            jobSearch
+          }
+          setJobSearch={
+            setJobSearch
+          }
+          searchJobs={
+            searchJobs
+          }
+          clearJobSearch={
+            clearJobSearch
+          }
+          jobSearchApplied={
+            jobSearchApplied
+          }
+          jobTotal={
+            jobTotal
+          }
+          jobsMessage={
+            jobsMessage
+          }
+
+          structureAnalysis={
+            structureAnalysis
+          }
+          runStructureAnalysis={
+            runStructureAnalysis
+          }
+          stopStructureAnalysis={
+            stopStructureAnalysis
+          }
+
+          jobsLoading={
+            jobsLoading
+          }
+          jobs={
+            jobs
+          }
+
+          editingId={
+            editingId
+          }
+
+          editCategory={
+            editCategory
+          }
+          setEditCategory={
+            setEditCategory
+          }
+
+          editSubCategory={
+            editSubCategory
+          }
+          setEditSubCategory={
+            setEditSubCategory
+          }
+
+          editCost={
+            editCost
+          }
+          setEditCost={
+            setEditCost
+          }
+
+          editMemo={
+            editMemo
+          }
+          setEditMemo={
+            setEditMemo
+          }
+
+          saveJobEdit={
+            saveJobEdit
+          }
+          cancelEdit={
+            cancelEdit
+          }
+          startEdit={
+            startEdit
+          }
+          deleteJob={
+            deleteJob
+          }
+
+          openJobId={
+            openJobId
+          }
+          toggleJobDetail={
+            toggleJobDetail
+          }
+
+          jobPhotoLoadingId={
+            jobPhotoLoadingId
+          }
+          jobPhotos={
+            jobPhotos
+          }
+
+          jobPhotoUrls={
+            jobPhotoUrls
+          }
+          loadingPhotoId={
+            loadingPhotoId
+          }
+
+          loadSingleJobPhoto={
+            loadSingleJobPhoto
+          }
+          openJobPhoto={
+            openJobPhoto
+          }
+
+          editingPhotoId={
+            editingPhotoId
+          }
+
+          editPhotoType={
+            editPhotoType
+          }
+          setEditPhotoType={
+            setEditPhotoType
+          }
+
+          editPhotoCategory={
+            editPhotoCategory
+          }
+          setEditPhotoCategory={
+            setEditPhotoCategory
+          }
+
+          editPhotoSubCategory={
+            editPhotoSubCategory
+          }
+          setEditPhotoSubCategory={
+            setEditPhotoSubCategory
+          }
+
+          editPhotoDescription={
+            editPhotoDescription
+          }
+          setEditPhotoDescription={
+            setEditPhotoDescription
+          }
+
+          photoEditLoading={
+            photoEditLoading
+          }
+
+          startPhotoEdit={
+            startPhotoEdit
+          }
+          cancelPhotoEdit={
+            cancelPhotoEdit
+          }
+          savePhotoEdit={
+            savePhotoEdit
+          }
+          deletePhoto={
+            deletePhoto
+          }
+
+          jobPage={
+            jobPage
+          }
+          totalJobPages={
+            totalJobPages
+          }
+          loadJobs={
+            loadJobs
+          }
+        />
+      )}
+
+      {/* =====================================================
+          시공 등록
+      ===================================================== */}
+
+      {activeTab ===
+        "register" && (
+        <RegisterTab
+          category={
+            category
+          }
+          setCategory={
+            setCategory
+          }
+
+          actualCost={
+            actualCost
+          }
+          setActualCost={
+            setActualCost
+          }
+
+          material={
+            material
+          }
+          setMaterial={
+            setMaterial
+          }
+
+          memo={
+            memo
+          }
+          setMemo={
+            setMemo
+          }
+
+          beforeImages={
+            beforeImages
+          }
+          setBeforeImages={
+            setBeforeImages
+          }
+
+          afterImages={
+            afterImages
+          }
+          setAfterImages={
+            setAfterImages
+          }
+
+          handleBeforeFiles={
+            handleBeforeFiles
+          }
+          handleAfterFiles={
+            handleAfterFiles
+          }
+
+          removeBeforeImage={
+            removeBeforeImage
+          }
+          removeAfterImage={
+            removeAfterImage
+          }
+
+          loading={
+            loading
+          }
+          handleSave={
+            handleSave
+          }
+          message={
+            message
+          }
+
+          similarityThreshold={
+            similarityThreshold
+          }
+          setSimilarityThreshold={
+            setSimilarityThreshold
+          }
+
+          settingLoading={
+            settingLoading
+          }
+          saveSimilaritySetting={
+            saveSimilaritySetting
+          }
+          settingMessage={
+            settingMessage
+          }
+        />
+      )}
+
+      {/* =====================================================
+          현장 관리
+      ===================================================== */}
+
+      {activeTab ===
+        "sites" && (
+        <SiteManagementTab
+          companyId={
+            companyId
+          }
+
+          sites={
+            sites
+          }
+          sitesLoading={
+            sitesLoading
+          }
+          sitesMessage={
+            sitesMessage
+          }
+
+          createSite={
+            createSite
+          }
+
+          updateSiteStatus={
+            updateSiteStatus
+          }
+
+          selectedSite={
+            selectedSite
+          }
+
+          openSite={
+            openSite
+          }
+          closeSite={
+            closeSite
+          }
+
+          workers={
+            workers
+          }
+          workersLoading={
+            workersLoading
+          }
+          workersMessage={
+            workersMessage
+          }
+
+          loadWorkers={
+            loadWorkers
+          }
+          createWorker={
+            createWorker
+          }
+          updateWorker={
+            updateWorker
+          }
+          setWorkerActive={
+            setWorkerActive
+          }
+
+          createWorkerInvite={
+            createWorkerInvite
+          }
+
+          assignSiteWorkers={
+            assignSiteWorkers
+          }
+          loadSiteWorkers={
+            loadSiteWorkers
+          }
+
+          reloadSites={() =>
+            loadSites(
+              companyId,
+            )
+          }
+        />
+      )}
+
+      {/* =====================================================
+          로그 분석
+      ===================================================== */}
+
+      {activeTab ===
+        "usage" && (
+        <UsageTab
+          usageStats={
+            usageStats
+          }
+          usageMessage={
+            usageMessage
+          }
+          usageLoading={
+            usageLoading
+          }
+          loadUsageStats={
+            loadUsageStats
+          }
+
+          usageRecent={
+            usageRecent
+          }
+
+          usagePhotoUrls={
+            usagePhotoUrls
+          }
+          openUsagePhotoId={
+            openUsagePhotoId
+          }
+          usagePhotoLoadingId={
+            usagePhotoLoadingId
+          }
+          toggleUsagePhotos={
+            toggleUsagePhotos
+          }
+
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+        />
+      )}
+
+      {/* =====================================================
+          고객 상담
+      ===================================================== */}
+
+      {activeTab ===
+        "leads" && (
+        <LeadsTab
+          leadFilter={
+            leadFilter
+          }
+          setLeadFilter={
+            setLeadFilter
+          }
+
+          loadLeads={
+            loadLeads
+          }
+
+          leadTotal={
+            leadTotal
+          }
+          unreadCount={
+            unreadCount
+          }
+
+          notificationEnabled={
+            notificationEnabled
+          }
+          enableNotifications={
+            enableNotifications
+          }
+
+          leadsMessage={
+            leadsMessage
+          }
+          leadsLoading={
+            leadsLoading
+          }
+          leads={
+            leads
+          }
+
+          updateLeadStatus={
+            updateLeadStatus
+          }
+
+          openLeadId={
+            openLeadId
+          }
+          toggleLeadDetail={
+            toggleLeadDetail
+          }
+
+          leadPhotoUrls={
+            leadPhotoUrls
+          }
+          leadPhotoLoadingId={
+            leadPhotoLoadingId
+          }
+          loadLeadPhotos={
+            loadLeadPhotos
+          }
+
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+
+          saveLeadMemo={
+            saveLeadMemo
+          }
+          updateLeadLocal={
+            updateLeadLocal
+          }
+          saveFinalQuote={
+            saveFinalQuote
+          }
+
+          leadPage={
+            leadPage
+          }
+          totalLeadPages={
+            totalLeadPages
+          }
+        />
+      )}
+
+      {/* =====================================================
+          사진 확대
+      ===================================================== */}
+
+      <PhotoPreviewModal
+        previewPhoto={
+          previewPhoto
+        }
+        setPreviewPhoto={
+          setPreviewPhoto
+        }
+      />
+    </main>
+  );
+          }
