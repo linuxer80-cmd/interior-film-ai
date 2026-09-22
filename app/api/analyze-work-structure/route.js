@@ -7,7 +7,7 @@ export const maxDuration = 60;
 const BUCKET_NAME = "work-photos";
 
 /* =========================================================
-   Supabase
+   Supabase Service Role
 ========================================================= */
 
 function getSupabase() {
@@ -23,20 +23,12 @@ function getSupabase() {
   );
 }
 
-async function getRequestCompanyId(request) {
-  const authHeader = request.headers.get("authorization") || "";
+/* =========================================================
+   요청자의 Supabase 클라이언트
+========================================================= */
 
-  if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    throw new Error("로그인이 필요합니다.");
-  }
-
-  const accessToken = authHeader.slice(7).trim();
-
-  if (!accessToken) {
-    throw new Error("로그인이 필요합니다.");
-  }
-
-  const userSupabase = createClient(
+function getUserSupabase(accessToken) {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
@@ -51,27 +43,170 @@ async function getRequestCompanyId(request) {
       },
     },
   );
+}
 
-  const { data, error } =
-    await userSupabase.rpc("get_my_company");
+/* =========================================================
+   슈퍼관리자 확인
+
+   - Bearer 토큰 확인
+   - 로그인 사용자 확인
+   - get_super_admin_status RPC 확인
+========================================================= */
+
+async function requireSuperAdmin(request) {
+  const authHeader =
+    request.headers.get("authorization") || "";
+
+  if (
+    !authHeader
+      .toLowerCase()
+      .startsWith("bearer ")
+  ) {
+    const error =
+      new Error("로그인이 필요합니다.");
+
+    error.status = 401;
+
+    throw error;
+  }
+
+  const accessToken =
+    authHeader.slice(7).trim();
+
+  if (!accessToken) {
+    const error =
+      new Error("로그인이 필요합니다.");
+
+    error.status = 401;
+
+    throw error;
+  }
+
+  const userSupabase =
+    getUserSupabase(accessToken);
+
+  const {
+    data: userData,
+    error: userError,
+  } =
+    await userSupabase.auth.getUser();
+
+  if (
+    userError ||
+    !userData?.user?.id
+  ) {
+    const error =
+      new Error(
+        "로그인 정보를 확인할 수 없습니다.",
+      );
+
+    error.status = 401;
+
+    throw error;
+  }
+
+  const {
+    data: statusData,
+    error: statusError,
+  } =
+    await userSupabase.rpc(
+      "get_super_admin_status",
+    );
+
+  if (statusError) {
+    const error =
+      new Error(
+        `슈퍼관리자 확인 실패: ${
+          statusError.message ||
+          "알 수 없는 오류"
+        }`,
+      );
+
+    error.status = 403;
+
+    throw error;
+  }
+
+  const status =
+    Array.isArray(statusData)
+      ? statusData[0]
+      : statusData;
+
+  if (
+    !status?.is_super_admin
+  ) {
+    const error =
+      new Error(
+        "슈퍼관리자만 구조분석을 실행할 수 있습니다.",
+      );
+
+    error.status = 403;
+
+    throw error;
+  }
+
+  return {
+    user: userData.user,
+    status,
+  };
+}
+
+/* =========================================================
+   회사 확인
+========================================================= */
+
+async function getTargetCompany(
+  supabase,
+  companyId,
+) {
+  if (!companyId) {
+    const error =
+      new Error(
+        "분석할 업체를 선택해주세요.",
+      );
+
+    error.status = 400;
+
+    throw error;
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("companies")
+      .select(`
+        id,
+        company_name,
+        slug,
+        subscription_plan,
+        is_active
+      `)
+      .eq("id", companyId)
+      .maybeSingle();
 
   if (error) {
     throw new Error(
-      `업체 정보 조회 실패: ${error.message || "알 수 없는 오류"}`,
+      `업체 조회 실패: ${
+        error.message ||
+        "알 수 없는 오류"
+      }`,
     );
   }
 
-  const company = Array.isArray(data) ? data[0] : data;
+  if (!data?.id) {
+    const targetError =
+      new Error(
+        "선택한 업체를 찾을 수 없습니다.",
+      );
 
-  if (!company?.company_id) {
-    throw new Error("연결된 업체 정보를 찾을 수 없습니다.");
+    targetError.status = 404;
+
+    throw targetError;
   }
 
-  if (company?.is_active === false) {
-    throw new Error("비활성화된 계정입니다.");
-  }
-
-  return company.company_id;
+  return data;
 }
 
 /* =========================================================
@@ -80,21 +215,35 @@ async function getRequestCompanyId(request) {
 
 function extractOutputText(data) {
   if (
-    typeof data?.output_text === "string" &&
+    typeof data?.output_text ===
+      "string" &&
     data.output_text.trim()
   ) {
     return data.output_text.trim();
   }
 
-  if (Array.isArray(data?.output)) {
-    for (const outputItem of data.output) {
-      if (!Array.isArray(outputItem?.content)) {
+  if (
+    Array.isArray(data?.output)
+  ) {
+    for (
+      const outputItem
+      of data.output
+    ) {
+      if (
+        !Array.isArray(
+          outputItem?.content,
+        )
+      ) {
         continue;
       }
 
-      for (const contentItem of outputItem.content) {
+      for (
+        const contentItem
+        of outputItem.content
+      ) {
         if (
-          typeof contentItem?.text === "string" &&
+          typeof contentItem?.text ===
+            "string" &&
           contentItem.text.trim()
         ) {
           return contentItem.text.trim();
@@ -111,23 +260,28 @@ function extractOutputText(data) {
 ========================================================= */
 
 function parseJson(text) {
-  let cleaned = String(text || "")
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .trim();
+  let cleaned =
+    String(text || "")
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
 
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
+  const firstBrace =
+    cleaned.indexOf("{");
+
+  const lastBrace =
+    cleaned.lastIndexOf("}");
 
   if (
     firstBrace !== -1 &&
     lastBrace !== -1 &&
     lastBrace > firstBrace
   ) {
-    cleaned = cleaned.slice(
-      firstBrace,
-      lastBrace + 1,
-    );
+    cleaned =
+      cleaned.slice(
+        firstBrace,
+        lastBrace + 1,
+      );
   }
 
   return JSON.parse(cleaned);
@@ -137,52 +291,70 @@ function parseJson(text) {
    Storage 경로 정리
 ========================================================= */
 
-function normalizeStoragePath(storagePath) {
+function normalizeStoragePath(
+  storagePath,
+) {
   if (!storagePath) {
     return "";
   }
 
-  let path = String(storagePath).trim();
+  let path =
+    String(storagePath).trim();
 
   if (!path) {
     return "";
   }
 
-  path = path.replace(/^\/+/, "");
+  path =
+    path.replace(/^\/+/, "");
 
-  if (path.startsWith(`${BUCKET_NAME}/`)) {
-    path = path.slice(
-      `${BUCKET_NAME}/`.length,
-    );
+  if (
+    path.startsWith(
+      `${BUCKET_NAME}/`,
+    )
+  ) {
+    path =
+      path.slice(
+        `${BUCKET_NAME}/`.length,
+      );
   }
 
-  /*
-   * 혹시 DB에 전체 Supabase Storage URL이
-   * storage_path로 들어간 경우도 처리
-   */
   const publicMarker =
     `/storage/v1/object/public/${BUCKET_NAME}/`;
 
   const signedMarker =
     `/storage/v1/object/sign/${BUCKET_NAME}/`;
 
-  if (path.includes(publicMarker)) {
+  if (
+    path.includes(publicMarker)
+  ) {
     path =
-      path.split(publicMarker)[1] || "";
+      path.split(
+        publicMarker,
+      )[1] || "";
   }
 
-  if (path.includes(signedMarker)) {
+  if (
+    path.includes(signedMarker)
+  ) {
     path =
-      path.split(signedMarker)[1] || "";
+      path.split(
+        signedMarker,
+      )[1] || "";
 
-    path = path.split("?")[0];
+    path =
+      path.split("?")[0];
   }
 
   try {
-    path = decodeURIComponent(path);
+    path =
+      decodeURIComponent(path);
   } catch {}
 
-  return path.replace(/^\/+/, "");
+  return path.replace(
+    /^\/+/,
+    "",
+  );
 }
 
 /* =========================================================
@@ -198,22 +370,22 @@ async function createPhotoSignedUrl(
       photo?.storage_path,
     );
 
-  /*
-   * 정상적인 기존 시공사진은
-   * storage_path를 최우선으로 사용한다.
-   */
   if (storagePath) {
     const {
       data,
       error,
-    } = await supabase.storage
-      .from(BUCKET_NAME)
-      .createSignedUrl(
-        storagePath,
-        300,
-      );
+    } =
+      await supabase.storage
+        .from(BUCKET_NAME)
+        .createSignedUrl(
+          storagePath,
+          300,
+        );
 
-    if (!error && data?.signedUrl) {
+    if (
+      !error &&
+      data?.signedUrl
+    ) {
       return {
         url: data.signedUrl,
         source: "storage_path",
@@ -227,25 +399,24 @@ async function createPhotoSignedUrl(
       storagePath,
       error,
     );
-
-    /*
-     * storage_path가 존재하지만 Signed URL 생성에 실패한 경우
-     * photo_url fallback을 시도할 수 있도록 아래로 진행한다.
-     */
   }
 
-  /*
-   * 아주 오래된 데이터 등에 storage_path가 없을 수 있으므로
-   * photo_url은 fallback으로만 사용한다.
-   */
   if (photo?.photo_url) {
     const photoUrl =
-      String(photo.photo_url).trim();
+      String(
+        photo.photo_url,
+      ).trim();
 
     if (
-      photoUrl.startsWith("https://") ||
-      photoUrl.startsWith("http://") ||
-      photoUrl.startsWith("data:")
+      photoUrl.startsWith(
+        "https://",
+      ) ||
+      photoUrl.startsWith(
+        "http://",
+      ) ||
+      photoUrl.startsWith(
+        "data:",
+      )
     ) {
       return {
         url: photoUrl,
@@ -283,17 +454,19 @@ async function getImageDataUrl(
   let response;
 
   try {
-    response = await fetch(
-      imageSource.url,
-      {
-        method: "GET",
-        cache: "no-store",
-      },
-    );
+    response =
+      await fetch(
+        imageSource.url,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
   } catch (error) {
     throw new Error(
       `사진 다운로드 연결 실패: ${
-        error?.message || "fetch 실패"
+        error?.message ||
+        "fetch 실패"
       }`,
     );
   }
@@ -309,10 +482,6 @@ async function getImageDataUrl(
       "content-type",
     ) || "";
 
-  /*
-   * Storage 오류 페이지나 JSON이
-   * 이미지로 AI에 전달되는 것을 방지
-   */
   if (
     contentType &&
     !contentType
@@ -327,16 +496,14 @@ async function getImageDataUrl(
   const arrayBuffer =
     await response.arrayBuffer();
 
-  if (!arrayBuffer?.byteLength) {
+  if (
+    !arrayBuffer?.byteLength
+  ) {
     throw new Error(
       "다운로드된 사진 파일이 비어 있습니다.",
     );
   }
 
-  /*
-   * 비정상적으로 큰 파일 방지
-   * 20MB 이상이면 구조분석에서 제외
-   */
   const maxBytes =
     20 * 1024 * 1024;
 
@@ -534,7 +701,8 @@ function normalizeVisualFeatures(
 ) {
   const source =
     value &&
-    typeof value === "object" &&
+    typeof value ===
+      "object" &&
     !Array.isArray(value)
       ? value
       : {};
@@ -565,7 +733,8 @@ function normalizeVisualFeatures(
       null,
 
     door_count_estimate:
-      source.door_count_estimate ??
+      source
+        .door_count_estimate ??
       null,
 
     glass:
@@ -706,9 +875,7 @@ async function analyzePhoto(
   }
 
   const outputText =
-    extractOutputText(
-      data,
-    );
+    extractOutputText(data);
 
   if (!outputText) {
     throw new Error(
@@ -754,7 +921,8 @@ async function analyzePhoto(
 
   const estimateSearchText =
     String(
-      result.estimate_search_text ||
+      result
+        .estimate_search_text ||
         "",
     ).trim();
 
@@ -785,30 +953,30 @@ async function analyzePhoto(
 }
 
 /* =========================================================
-   미분석 사진 개수
+   전체 사진 개수
 ========================================================= */
 
-async function getRemainingCount(
+async function getTotalCount(
   supabase,
   companyId,
 ) {
   const {
     count,
     error,
-  } = await supabase
-    .from("work_photos")
-    .select(
-      "id",
-      {
-        count: "exact",
-        head: true,
-      },
-    )
-    .eq("company_id", companyId)
-    .is(
-      "structure_analyzed_at",
-      null,
-    );
+  } =
+    await supabase
+      .from("work_photos")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        },
+      )
+      .eq(
+        "company_id",
+        companyId,
+      );
 
   if (error) {
     throw error;
@@ -820,7 +988,177 @@ async function getRemainingCount(
 }
 
 /* =========================================================
-   API
+   미분석 사진 개수
+========================================================= */
+
+async function getRemainingCount(
+  supabase,
+  companyId,
+) {
+  const {
+    count,
+    error,
+  } =
+    await supabase
+      .from("work_photos")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        },
+      )
+      .eq(
+        "company_id",
+        companyId,
+      )
+      .is(
+        "structure_analyzed_at",
+        null,
+      );
+
+  if (error) {
+    throw error;
+  }
+
+  return Number(
+    count || 0,
+  );
+}
+
+/* =========================================================
+   GET
+   선택 업체의 구조분석 현황 조회
+
+   /api/analyze-work-structure?company_id=...
+========================================================= */
+
+export async function GET(
+  request,
+) {
+  try {
+    if (
+      !process.env
+        .NEXT_PUBLIC_SUPABASE_URL
+    ) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      );
+    }
+
+    if (
+      !process.env
+        .NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY 환경변수가 없습니다.",
+      );
+    }
+
+    if (
+      !process.env
+        .SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      throw new Error(
+        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      );
+    }
+
+    await requireSuperAdmin(
+      request,
+    );
+
+    const supabase =
+      getSupabase();
+
+    const url =
+      new URL(request.url);
+
+    const companyId =
+      String(
+        url.searchParams.get(
+          "company_id",
+        ) || "",
+      ).trim();
+
+    const company =
+      await getTargetCompany(
+        supabase,
+        companyId,
+      );
+
+    const total =
+      await getTotalCount(
+        supabase,
+        company.id,
+      );
+
+    const remaining =
+      await getRemainingCount(
+        supabase,
+        company.id,
+      );
+
+    const completed =
+      Math.max(
+        0,
+        total - remaining,
+      );
+
+    return NextResponse.json({
+      success: true,
+
+      company: {
+        id:
+          company.id,
+
+        company_name:
+          company.company_name,
+
+        slug:
+          company.slug,
+
+        is_active:
+          company.is_active,
+
+        subscription_plan:
+          company.subscription_plan,
+      },
+
+      total,
+      completed,
+      remaining,
+
+      finished:
+        remaining === 0,
+    });
+  } catch (error) {
+    console.error(
+      "Structure analysis status API error:",
+      error,
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+
+        error:
+          error?.message ||
+          "구조분석 현황 조회 중 오류가 발생했습니다.",
+      },
+      {
+        status:
+          Number(
+            error?.status,
+          ) || 500,
+      },
+    );
+  }
+}
+
+/* =========================================================
+   POST
+   슈퍼관리자 전용 구조분석 실행
 ========================================================= */
 
 export async function POST(
@@ -833,6 +1171,15 @@ export async function POST(
     ) {
       throw new Error(
         "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      );
+    }
+
+    if (
+      !process.env
+        .NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY 환경변수가 없습니다.",
       );
     }
 
@@ -854,11 +1201,12 @@ export async function POST(
       );
     }
 
+    await requireSuperAdmin(
+      request,
+    );
+
     const supabase =
       getSupabase();
-
-    const companyId =
-      await getRequestCompanyId(request);
 
     let body = {};
 
@@ -869,15 +1217,25 @@ export async function POST(
       body = {};
     }
 
+    const companyId =
+      String(
+        body?.company_id ||
+        "",
+      ).trim();
+
+    const company =
+      await getTargetCompany(
+        supabase,
+        companyId,
+      );
+
     /*
-     * page.js에서는 limit 3으로 호출.
-     * Vercel timeout을 피하기 위해
-     * 최대 5장까지만 허용.
+     * 한 요청에서 최대 5장.
+     * 기본은 기존과 동일하게 3장.
      */
     const requestedLimit =
       Number(
-        body?.limit ||
-          3,
+        body?.limit || 3,
       );
 
     const limit =
@@ -896,14 +1254,9 @@ export async function POST(
       );
 
     /*
-     * 한 API 실행에서
-     * 실패 사진 때문에 뒤 사진까지 막히지 않도록
-     * 실제 분석 후보는 limit보다 넉넉하게 조회한다.
-     *
-     * 예:
-     * limit = 3
-     * 최대 15개의 미분석 후보를 보고
-     * 성공 3장이 될 때까지 진행.
+     * 실패 사진 때문에 뒤 사진까지
+     * 처리되지 않는 상황을 줄이기 위해
+     * 실제 후보는 넉넉하게 조회한다.
      */
     const candidateLimit =
       Math.min(
@@ -918,33 +1271,16 @@ export async function POST(
        전체 사진 수
     ===================================================== */
 
-    const {
-      count: total,
-      error: totalError,
-    } = await supabase
-      .from("work_photos")
-      .select(
-        "id",
-        {
-          count: "exact",
-          head: true,
-        },
-      )
-      .eq("company_id", companyId);
-
-    if (totalError) {
-      throw totalError;
-    }
-
     const totalCount =
-      Number(
-        total || 0,
+      await getTotalCount(
+        supabase,
+        company.id,
       );
 
     const remainingBefore =
       await getRemainingCount(
         supabase,
-        companyId,
+        company.id,
       );
 
     if (
@@ -953,6 +1289,14 @@ export async function POST(
       return NextResponse.json({
         success: true,
         finished: true,
+
+        company: {
+          id:
+            company.id,
+
+          company_name:
+            company.company_name,
+        },
 
         total:
           totalCount,
@@ -977,36 +1321,40 @@ export async function POST(
     const {
       data: photos,
       error: photoError,
-    } = await supabase
-      .from("work_photos")
-      .select(`
-        id,
-        photo_url,
-        storage_path,
-        photo_type,
-        category,
-        sub_category,
-        ai_description,
-        ai_tags,
-        visual_features,
-        estimate_search_text,
-        structure_analyzed_at,
-        created_at
-      `)
-      .eq("company_id", companyId)
-      .is(
-        "structure_analyzed_at",
-        null,
-      )
-      .order(
-        "created_at",
-        {
-          ascending: true,
-        },
-      )
-      .limit(
-        candidateLimit,
-      );
+    } =
+      await supabase
+        .from("work_photos")
+        .select(`
+          id,
+          photo_url,
+          storage_path,
+          photo_type,
+          category,
+          sub_category,
+          ai_description,
+          ai_tags,
+          visual_features,
+          estimate_search_text,
+          structure_analyzed_at,
+          created_at
+        `)
+        .eq(
+          "company_id",
+          company.id,
+        )
+        .is(
+          "structure_analyzed_at",
+          null,
+        )
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          },
+        )
+        .limit(
+          candidateLimit,
+        );
 
     if (photoError) {
       throw photoError;
@@ -1019,6 +1367,14 @@ export async function POST(
       return NextResponse.json({
         success: true,
         finished: true,
+
+        company: {
+          id:
+            company.id,
+
+          company_name:
+            company.company_name,
+        },
 
         total:
           totalCount,
@@ -1042,10 +1398,6 @@ export async function POST(
     let failed = 0;
     let attempted = 0;
 
-    /*
-     * 한 요청에서 이미 실패한 사진 ID
-     * 중복 처리 방지
-     */
     const failedIds =
       new Set();
 
@@ -1054,12 +1406,9 @@ export async function POST(
     ===================================================== */
 
     for (
-      const photo of photos
+      const photo
+      of photos
     ) {
-      /*
-       * 성공한 사진이 요청 limit에 도달하면
-       * 이번 API 실행 종료
-       */
       if (
         processed >= limit
       ) {
@@ -1085,31 +1434,35 @@ export async function POST(
 
         const {
           error: updateError,
-        } = await supabase
-          .from(
-            "work_photos",
-          )
-          .update({
-            visual_features:
-              analysis.visualFeatures,
+        } =
+          await supabase
+            .from(
+              "work_photos",
+            )
+            .update({
+              visual_features:
+                analysis
+                  .visualFeatures,
 
-            estimate_search_text:
-              analysis.estimateSearchText,
+              estimate_search_text:
+                analysis
+                  .estimateSearchText,
 
-            structure_version:
-              1,
+              structure_version:
+                1,
 
-            structure_analyzed_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            photo.id,
-          )
-          .eq(
-            "company_id",
-            companyId,
-          );
+              structure_analyzed_at:
+                new Date()
+                  .toISOString(),
+            })
+            .eq(
+              "id",
+              photo.id,
+            )
+            .eq(
+              "company_id",
+              company.id,
+            );
 
         if (updateError) {
           throw updateError;
@@ -1161,6 +1514,9 @@ export async function POST(
         console.error(
           "Structure analysis failed:",
           {
+            company_id:
+              company.id,
+
             id:
               photo.id,
 
@@ -1178,9 +1534,7 @@ export async function POST(
 
         /*
          * 실패 사진은 DB를 변경하지 않는다.
-         *
          * structure_analyzed_at도 null 유지.
-         * 나중에 원인을 수정한 뒤 다시 분석 가능.
          */
         results.push({
           id:
@@ -1206,13 +1560,13 @@ export async function POST(
     }
 
     /* =====================================================
-       처리 후 실제 남은 사진 수
+       처리 후 남은 사진
     ===================================================== */
 
     const remainingAfter =
       await getRemainingCount(
         supabase,
-        companyId,
+        company.id,
       );
 
     const completed =
@@ -1222,17 +1576,19 @@ export async function POST(
           remainingAfter,
       );
 
-    /*
-     * 이번 요청에서 성공이 0이고
-     * 후보도 모두 실패했다면
-     * page.js의 반복실패 방지 로직이
-     * 자동으로 멈추게 된다.
-     */
     return NextResponse.json({
       success: true,
 
       finished:
         remainingAfter === 0,
+
+      company: {
+        id:
+          company.id,
+
+        company_name:
+          company.company_name,
+      },
 
       total:
         totalCount,
@@ -1265,8 +1621,11 @@ export async function POST(
           "기존 시공사진 구조분석 중 오류가 발생했습니다.",
       },
       {
-        status: 500,
+        status:
+          Number(
+            error?.status,
+          ) || 500,
       },
     );
   }
-          }
+           }
