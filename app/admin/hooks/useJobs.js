@@ -67,8 +67,12 @@ export default function useJobs({
   async function loadJobs(
     page = 1,
     keyword = jobSearchApplied,
+    targetCompanyId = null,
   ) {
-    if (!companyId) return;
+    const resolvedCompanyId =
+      targetCompanyId || companyId;
+
+    if (!resolvedCompanyId) return;
 
     setJobsLoading(true);
     setJobsMessage("");
@@ -99,7 +103,10 @@ export default function useJobs({
             count: "exact",
           },
         )
-        .eq("company_id", companyId);
+        .eq(
+          "company_id",
+          resolvedCompanyId,
+        );
 
       if (safeKeyword) {
         query = query.or(
@@ -440,7 +447,7 @@ export default function useJobs({
 
     setEditCost(
       job.actual_cost !==
-        null &&
+          null &&
         job.actual_cost !==
           undefined
         ? String(
@@ -687,9 +694,8 @@ export default function useJobs({
         false,
       );
     }
-  }
-
-  /* =========================================================
+    }
+    /* =========================================================
      사진 삭제
   ========================================================= */
 
@@ -1065,4 +1071,4 @@ export default function useJobs({
     deletePhoto,
     deleteJob,
   };
-          }
+}
