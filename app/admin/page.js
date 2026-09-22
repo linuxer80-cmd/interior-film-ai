@@ -22,7 +22,6 @@ import useJobs from "./hooks/useJobs";
 import useJobRegister from "./hooks/useJobRegister";
 import useLeads from "./hooks/useLeads";
 import useUsage from "./hooks/useUsage";
-import useStructureAnalysis from "./hooks/useStructureAnalysis";
 import useCompanySettings from "./hooks/useCompanySettings";
 import useWorkers from "./hooks/useWorkers";
 
@@ -164,17 +163,6 @@ export default function AdminPage() {
           JOB_PAGE_SIZE,
       ),
     );
-
-  /* =========================================================
-     AI 구조분석
-  ========================================================= */
-
-  const {
-    structureAnalysis,
-    runStructureAnalysis,
-    stopStructureAnalysis,
-  } =
-    useStructureAnalysis();
 
   /* =========================================================
      현장 관리
@@ -481,10 +469,6 @@ export default function AdminPage() {
 
   /* =========================================================
      회사 ID 반영 후 시공 DB 재조회
-
-     initializeCompany()가 companyId state를 갱신한 뒤
-     실제 React 렌더링에 회사 ID가 반영되면 시공 DB를
-     한 번 더 조회한다.
   ========================================================= */
 
   useEffect(() => {
@@ -675,6 +659,7 @@ export default function AdminPage() {
           {adminError}
         </div>
       )}
+
       {/* =====================================================
           회사별 고객 AI 견적 페이지
       ===================================================== */}
@@ -922,16 +907,6 @@ export default function AdminPage() {
             jobsMessage
           }
 
-          structureAnalysis={
-            structureAnalysis
-          }
-          runStructureAnalysis={
-            runStructureAnalysis
-          }
-          stopStructureAnalysis={
-            stopStructureAnalysis
-          }
-
           jobsLoading={
             jobsLoading
           }
@@ -1072,7 +1047,6 @@ export default function AdminPage() {
           }
         />
       )}
-
       {/* =====================================================
           시공 등록
       ===================================================== */}
@@ -1390,4 +1364,4 @@ export default function AdminPage() {
       />
     </main>
   );
-              }
+}
