@@ -201,7 +201,103 @@ export default function AdminPage() {
   /* =========================================================
      시공자 관리
   ========================================================= */
+      {activeTab ===
+        "leads" && (
+        <LeadsTab
+          leadFilter={
+            leadFilter
+          }
+          setLeadFilter={
+            setLeadFilter
+          }
 
+          loadLeads={
+            loadLeads
+          }
+
+          leadTotal={
+            leadTotal
+          }
+          unreadCount={
+            unreadCount
+          }
+
+          notificationEnabled={
+            notificationEnabled
+          }
+          enableNotifications={
+            enableNotifications
+          }
+
+          leadsMessage={
+            leadsMessage
+          }
+          leadsLoading={
+            leadsLoading
+          }
+          leads={
+            leads
+          }
+
+          updateLeadStatus={
+            updateLeadStatus
+          }
+
+          openLeadId={
+            openLeadId
+          }
+          toggleLeadDetail={
+            toggleLeadDetail
+          }
+
+          leadPhotoUrls={
+            leadPhotoUrls
+          }
+          leadPhotoLoadingId={
+            leadPhotoLoadingId
+          }
+          loadLeadPhotos={
+            loadLeadPhotos
+          }
+
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+
+          saveLeadMemo={
+            saveLeadMemo
+          }
+          updateLeadLocal={
+            updateLeadLocal
+          }
+          saveFinalQuote={
+            saveFinalQuote
+          }
+
+          leadPage={
+            leadPage
+          }
+          totalLeadPages={
+            totalLeadPages
+          }
+        />
+      )}
+
+      {/* =====================================================
+          사진 확대
+      ===================================================== */}
+
+      <PhotoPreviewModal
+        previewPhoto={
+          previewPhoto
+        }
+        setPreviewPhoto={
+          setPreviewPhoto
+        }
+      />
+    </main>
+  );
+}
   const {
     workers,
     workersLoading,
