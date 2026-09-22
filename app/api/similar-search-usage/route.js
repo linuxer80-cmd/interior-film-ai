@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkUsageLimit,
+  makeUsageLimitError,
+} from "../../utils/serverUsageLimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -38,6 +42,11 @@ function getAdminSupabase() {
  * POST
  *
  * 유사이미지 검색 1회 사용량 기록
+ *
+ * 추가 기능:
+ * - 업체 요금제 확인
+ * - similar_image_search_limit 확인
+ * - 월 한도 초과 시 기록 차단
  * =========================================================
  */
 
@@ -69,6 +78,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "company_slug가 없습니다.",
         },
@@ -86,6 +96,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "올바르지 않은 회사 주소입니다.",
         },
@@ -108,6 +119,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "Supabase 서버 환경변수를 확인해주세요.",
         },
@@ -123,6 +135,9 @@ export async function POST(request) {
      *
      * 브라우저에서 company_id를 받지 않고
      * company_slug로 서버에서 직접 확인합니다.
+     *
+     * 요금제 한도 확인을 위해
+     * subscription_plan도 함께 조회합니다.
      * =====================================================
      */
 
@@ -131,7 +146,15 @@ export async function POST(request) {
       error: companyError,
     } = await supabase
       .from("companies")
-      .select("id, slug")
+      .select(
+        `
+          id,
+          slug,
+          company_name,
+          subscription_plan,
+          is_active
+        `
+      )
       .eq(
         "slug",
         normalizedCompanySlug
@@ -151,6 +174,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "회사 정보를 확인하지 못했습니다.",
         },
@@ -164,11 +188,73 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "사용할 수 없는 회사 주소입니다.",
         },
         {
           status: 404,
+        }
+      );
+    }
+
+    /*
+     * =====================================================
+     * 유사이미지 검색 월 한도 검사
+     *
+     * 예:
+     *
+     * 체험판 한도 10회
+     *
+     * 0 / 10 → 허용
+     * 9 / 10 → 마지막 1회 허용
+     * 10 / 10 → 차단
+     *
+     * limit <= 0은 무제한입니다.
+     * =====================================================
+     */
+
+    const limitCheck =
+      await checkUsageLimit({
+        company,
+
+        eventType:
+          "similar_image_search",
+
+        requestedQuantity: 1,
+
+        supabase,
+      });
+
+    /*
+     * =====================================================
+     * 한도 초과 또는 한도 확인 실패
+     * =====================================================
+     */
+
+    if (!limitCheck.ok) {
+      const errorPayload =
+        makeUsageLimitError(
+          limitCheck
+        );
+
+      return NextResponse.json(
+        {
+          ...errorPayload,
+
+          code:
+            limitCheck.limitReached
+              ? "SIMILAR_IMAGE_SEARCH_LIMIT_REACHED"
+              : "SIMILAR_IMAGE_SEARCH_LIMIT_CHECK_FAILED",
+        },
+        {
+          status:
+            limitCheck.status ||
+            (
+              limitCheck.limitReached
+                ? 429
+                : 503
+            ),
         }
       );
     }
@@ -229,6 +315,10 @@ export async function POST(request) {
           company_slug:
             company.slug,
 
+          subscription_plan:
+            company.subscription_plan ||
+            null,
+
           category:
             category
               ? String(category)
@@ -249,6 +339,12 @@ export async function POST(request) {
       .select("id")
       .single();
 
+    /*
+     * =====================================================
+     * 사용량 기록 실패
+     * =====================================================
+     */
+
     if (usageError) {
       console.error(
         "SIMILAR SEARCH USAGE INSERT ERROR:",
@@ -258,6 +354,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             usageError.message ||
             "유사이미지 검색 사용량 저장 실패",
@@ -270,6 +367,35 @@ export async function POST(request) {
 
     /*
      * =====================================================
+     * 성공 후 사용량 계산
+     * =====================================================
+     */
+
+    const usedBefore =
+      Number(
+        limitCheck.used || 0
+      );
+
+    const usedAfter =
+      usedBefore + 1;
+
+    const limit =
+      limitCheck.unlimited
+        ? null
+        : Number(
+            limitCheck.limit || 0
+          );
+
+    const remaining =
+      limitCheck.unlimited
+        ? null
+        : Math.max(
+            0,
+            limit - usedAfter
+          );
+
+    /*
+     * =====================================================
      * 성공
      * =====================================================
      */
@@ -278,7 +404,37 @@ export async function POST(request) {
       success: true,
 
       usage_event_id:
-        usageEvent?.id || null,
+        usageEvent?.id ||
+        null,
+
+      planUsage: {
+        event_type:
+          "similar_image_search",
+
+        plan_code:
+          limitCheck.planCode ||
+          company.subscription_plan ||
+          null,
+
+        plan_name:
+          limitCheck.planName ||
+          null,
+
+        used_before:
+          usedBefore,
+
+        used_after:
+          usedAfter,
+
+        limit,
+
+        remaining,
+
+        unlimited:
+          Boolean(
+            limitCheck.unlimited
+          ),
+      },
     });
   } catch (error) {
     console.error(
