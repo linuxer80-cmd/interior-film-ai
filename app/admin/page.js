@@ -50,16 +50,6 @@ export default function AdminPage() {
     setPreviewPhoto,
   ] = useState(null);
 
-  const [dbDebug, setDbDebug] = useState({
-    loading: false,
-    uid: "",
-    companyId: "",
-    companyName: "",
-    directCount: null,
-    directRows: 0,
-    error: "",
-  });
-
   /* =========================================================
      회사 / 로그인
   ========================================================= */
@@ -424,125 +414,6 @@ export default function AdminPage() {
   }, [activeTab]);
 
   /* =========================================================
-     시공 DB 진단
-  ========================================================= */
-
-  async function runDbDebug() {
-    setDbDebug({
-      loading: true,
-      uid: "",
-      companyId: companyId || "",
-      companyName: companyName || "",
-      directCount: null,
-      directRows: 0,
-      error: "",
-    });
-
-    try {
-      const {
-        data: userData,
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw new Error(
-          `로그인 확인 실패: ${userError.message}`,
-        );
-      }
-
-      const uid =
-        userData?.user?.id || "";
-
-      const {
-        data: companyData,
-        error: companyError,
-      } = await supabase.rpc(
-        "get_my_company",
-      );
-
-      if (companyError) {
-        throw new Error(
-          `get_my_company 오류: ${companyError.message}`,
-        );
-      }
-
-      const rpcCompany =
-        Array.isArray(companyData)
-          ? companyData[0]
-          : companyData;
-
-      const resolvedCompanyId =
-        rpcCompany?.id ||
-        rpcCompany?.company_id ||
-        companyId ||
-        "";
-
-      const resolvedCompanyName =
-        rpcCompany?.name ||
-        rpcCompany?.company_name ||
-        companyName ||
-        "";
-
-      if (!resolvedCompanyId) {
-        throw new Error(
-          "회사 ID를 확인할 수 없습니다.",
-        );
-      }
-
-      const {
-        data: directData,
-        error: directError,
-        count: directCount,
-      } = await supabase
-        .from("work_items")
-        .select(
-          "id, category, actual_cost, created_at",
-          {
-            count: "exact",
-          },
-        )
-        .eq(
-          "company_id",
-          resolvedCompanyId,
-        )
-        .limit(5);
-
-      if (directError) {
-        throw new Error(
-          `work_items 직접조회 오류: ${directError.message}`,
-        );
-      }
-
-      setDbDebug({
-        loading: false,
-        uid,
-        companyId:
-          resolvedCompanyId,
-        companyName:
-          resolvedCompanyName,
-        directCount:
-          directCount ?? 0,
-        directRows:
-          directData?.length || 0,
-        error: "",
-      });
-    } catch (error) {
-      console.error(
-        "DB 진단:",
-        error,
-      );
-
-      setDbDebug((current) => ({
-        ...current,
-        loading: false,
-        error:
-          error?.message ||
-          "알 수 없는 오류",
-      }));
-    }
-  }
-
-  /* =========================================================
      관리자 초기화
   ========================================================= */
 
@@ -607,6 +478,26 @@ export default function AdminPage() {
       mounted = false;
     };
   }, []);
+
+  /* =========================================================
+     회사 ID 반영 후 시공 DB 재조회
+
+     initializeCompany()가 companyId state를 갱신한 뒤
+     실제 React 렌더링에 회사 ID가 반영되면 시공 DB를
+     한 번 더 조회한다.
+  ========================================================= */
+
+  useEffect(() => {
+    if (!companyId) {
+      return;
+    }
+
+    loadJobs(
+      1,
+      "",
+      companyId,
+    );
+  }, [companyId]);
 
   /* =========================================================
      신규 상담 실시간 구독
@@ -1002,96 +893,7 @@ export default function AdminPage() {
           unreadCount
         }
       />
-
-      <section
-        style={{
-          margin: "12px 0",
-          padding: "12px",
-          background: "#fff7ed",
-          border: "1px solid #fdba74",
-          borderRadius: "10px",
-          fontSize: "12px",
-          lineHeight: "1.7",
-          wordBreak: "break-all",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: "800",
-            marginBottom: "8px",
-          }}
-        >
-          🔧 시공 DB 진단
-        </div>
-
-        <button
-          type="button"
-          onClick={runDbDebug}
-          disabled={dbDebug.loading}
-          style={{
-            width: "100%",
-            padding: "10px",
-            border: "none",
-            borderRadius: "8px",
-            background: "#111827",
-            color: "#ffffff",
-            fontWeight: "700",
-          }}
-        >
-          {dbDebug.loading
-            ? "확인 중..."
-            : "DB 직접 조회 테스트"}
-        </button>
-
-        <div style={{ marginTop: "10px" }}>
-          로그인 UID:
-          {" "}
-          {dbDebug.uid || "-"}
-        </div>
-
-        <div>
-          회사:
-          {" "}
-          {dbDebug.companyName || "-"}
-        </div>
-
-        <div>
-          회사 ID:
-          {" "}
-          {dbDebug.companyId || "-"}
-        </div>
-
-        <div>
-          work_items 전체:
-          {" "}
-          {dbDebug.directCount === null
-            ? "-"
-            : `${dbDebug.directCount}건`}
-        </div>
-
-        <div>
-          테스트로 받은 데이터:
-          {" "}
-          {dbDebug.directRows}건
-        </div>
-
-        {dbDebug.error && (
-          <div
-            style={{
-              marginTop: "8px",
-              padding: "8px",
-              background: "#fee2e2",
-              borderRadius: "6px",
-              color: "#b91c1c",
-              fontWeight: "700",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            ❌ {dbDebug.error}
-          </div>
-        )}
-      </section>
-      {/* =====================================================
+             {/* =====================================================
           시공 DB
       ===================================================== */}
 
@@ -1492,100 +1294,4 @@ export default function AdminPage() {
           고객 상담
       ===================================================== */}
 
-      {activeTab ===
-        "leads" && (
-        <LeadsTab
-          leadFilter={
-            leadFilter
-          }
-          setLeadFilter={
-            setLeadFilter
-          }
-
-          loadLeads={
-            loadLeads
-          }
-
-          leadTotal={
-            leadTotal
-          }
-          unreadCount={
-            unreadCount
-          }
-
-          notificationEnabled={
-            notificationEnabled
-          }
-          enableNotifications={
-            enableNotifications
-          }
-
-          leadsMessage={
-            leadsMessage
-          }
-          leadsLoading={
-            leadsLoading
-          }
-          leads={
-            leads
-          }
-
-          updateLeadStatus={
-            updateLeadStatus
-          }
-
-          openLeadId={
-            openLeadId
-          }
-          toggleLeadDetail={
-            toggleLeadDetail
-          }
-
-          leadPhotoUrls={
-            leadPhotoUrls
-          }
-          leadPhotoLoadingId={
-            leadPhotoLoadingId
-          }
-          loadLeadPhotos={
-            loadLeadPhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
-
-          saveLeadMemo={
-            saveLeadMemo
-          }
-          updateLeadLocal={
-            updateLeadLocal
-          }
-          saveFinalQuote={
-            saveFinalQuote
-          }
-
-          leadPage={
-            leadPage
-          }
-          totalLeadPages={
-            totalLeadPages
-          }
-        />
-      )}
-
-      {/* =====================================================
-          사진 확대
-      ===================================================== */}
-
-      <PhotoPreviewModal
-        previewPhoto={
-          previewPhoto
-        }
-        setPreviewPhoto={
-          setPreviewPhoto
-        }
-      />
-    </main>
-  );
-                 }
+        
