@@ -803,4 +803,198 @@ export default function SuperAdminCompanyDetailPage() {
               </div>
 
               <div style={styles.infoValue}>
-        {
+                {company?.representative_name || "-"}
+              </div>
+            </div>
+
+            <div style={styles.infoBox}>
+              <div style={styles.infoLabel}>
+                가입일
+              </div>
+
+              <div style={styles.infoValue}>
+                {formatDate(company?.created_at)}
+              </div>
+            </div>
+
+            <div style={styles.infoBox}>
+              <div style={styles.infoLabel}>
+                소속 계정
+              </div>
+
+              <div style={styles.infoValue}>
+                {companyUsers.length}명
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.idText}>
+            회사 ID: {company?.id}
+          </div>
+        </section>
+
+        {/* 회사정보 수정 */}
+
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>
+            회사 정보
+          </h2>
+
+          <p style={styles.cardDescription}>
+            슈퍼관리자가 회사 기본정보와 요금제를 관리합니다.
+          </p>
+
+          <div style={styles.field}>
+            <label style={styles.label}>
+              회사명
+            </label>
+
+            <input
+              type="text"
+              name="company_name"
+              value={form.company_name}
+              onChange={handleChange}
+              style={styles.input}
+              placeholder="회사명"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>
+              대표자
+            </label>
+
+            <input
+              type="text"
+              name="representative_name"
+              value={form.representative_name}
+              onChange={handleChange}
+              style={styles.input}
+              placeholder="대표자명"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>
+              전화번호
+            </label>
+
+            <input
+              type="tel"
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              style={styles.input}
+              placeholder="01012345678"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>
+              주소
+            </label>
+
+            <input
+              type="text"
+              name="address"
+              value={form.address}
+              onChange={handleChange}
+              style={styles.input}
+              placeholder="회사 주소"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>
+              요금제
+            </label>
+
+            <select
+              name="subscription_plan"
+              value={form.subscription_plan}
+              onChange={handleChange}
+              style={styles.select}
+            >
+              <option value="basic">
+                Basic
+              </option>
+
+              <option value="standard">
+                Standard
+              </option>
+
+              <option value="pro">
+                Pro
+              </option>
+
+              <option value="enterprise">
+                Enterprise
+              </option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={saveCompany}
+            disabled={saving}
+            style={
+              saving
+                ? styles.disabledButton
+                : styles.saveButton
+            }
+          >
+            {saving
+              ? "저장 중..."
+              : "회사 정보 저장"}
+          </button>
+        </section>
+
+        {/* 소속 계정 */}
+
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>
+            회사 계정
+          </h2>
+
+          <p style={styles.cardDescription}>
+            이 회사에 연결되어 있는 로그인 계정입니다.
+          </p>
+
+          {companyUsers.length === 0 ? (
+            <div style={styles.empty}>
+              연결된 계정이 없습니다.
+            </div>
+          ) : (
+            companyUsers.map((member) => (
+              <div
+                key={member.user_id}
+                style={styles.userCard}
+              >
+                <div style={styles.userEmail}>
+                  {member.email || "이메일 없음"}
+                </div>
+
+                <div style={styles.userMeta}>
+                  가입일:{" "}
+                  {formatDate(member.created_at)}
+                  <br />
+
+                  최근 로그인:{" "}
+                  {member.last_sign_in_at
+                    ? formatDate(
+                        member.last_sign_in_at
+                      )
+                    : "로그인 기록 없음"}
+                </div>
+
+                <div style={styles.idText}>
+                  User ID: {member.user_id}
+                </div>
+              </div>
+            ))
+          )}
+        </section>
+      </main>
+    </div>
+  );
+          }
