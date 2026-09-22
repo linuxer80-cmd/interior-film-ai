@@ -1,104 +1,123 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { supabase } from "../../lib/supabase";
 
 export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
-  const [changingId, setChangingId] = useState(null);
+  const [changingId, setChangingId] =
+    useState(null);
 
-  const [authorized, setAuthorized] = useState(false);
-  const [adminName, setAdminName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
+  const [authorized, setAuthorized] =
+    useState(false);
 
-  const [companies, setCompanies] = useState([]);
-  const [search, setSearch] = useState("");
-  const [message, setMessage] = useState("");
+  const [adminName, setAdminName] =
+    useState("");
+
+  const [userEmail, setUserEmail] =
+    useState("");
+
+  const [companies, setCompanies] =
+    useState([]);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
 
   /* =========================================================
      슈퍼관리자 확인
   ========================================================= */
 
-  const checkSuperAdmin = useCallback(async () => {
-    const {
-      data: authData,
-      error: authError,
-    } = await supabase.auth.getUser();
+  const checkSuperAdmin =
+    useCallback(async () => {
+      const {
+        data: authData,
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (authError) {
-      throw new Error(
-        `로그인 확인 실패: ${authError.message}`,
+      if (authError) {
+        throw new Error(
+          `로그인 확인 실패: ${authError.message}`
+        );
+      }
+
+      const user = authData?.user;
+
+      if (!user?.id) {
+        throw new Error(
+          "로그인이 필요합니다."
+        );
+      }
+
+      setUserEmail(user.email || "");
+
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "get_super_admin_status"
       );
-    }
 
-    const user = authData?.user;
+      if (error) {
+        throw new Error(
+          `슈퍼관리자 확인 실패: ${error.message}`
+        );
+      }
 
-    if (!user?.id) {
-      throw new Error("로그인이 필요합니다.");
-    }
+      const status =
+        Array.isArray(data)
+          ? data[0]
+          : data;
 
-    setUserEmail(user.email || "");
+      if (!status?.is_super_admin) {
+        throw new Error(
+          "슈퍼관리자 권한이 없습니다."
+        );
+      }
 
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
-      "get_super_admin_status",
-    );
+      setAuthorized(true);
 
-    if (error) {
-      throw new Error(
-        `슈퍼관리자 확인 실패: ${error.message}`,
+      setAdminName(
+        status?.name ||
+          "슈퍼관리자"
       );
-    }
 
-    const status =
-      Array.isArray(data)
-        ? data[0]
-        : data;
-
-    if (!status?.is_super_admin) {
-      throw new Error(
-        "슈퍼관리자 권한이 없습니다.",
-      );
-    }
-
-    setAuthorized(true);
-
-    setAdminName(
-      status?.name || "슈퍼관리자",
-    );
-
-    return true;
-  }, []);
+      return true;
+    }, []);
 
   /* =========================================================
      전체 회사 조회
   ========================================================= */
 
-  const loadCompanies = useCallback(
-    async () => {
+  const loadCompanies =
+    useCallback(async () => {
       const {
         data,
         error,
       } = await supabase.rpc(
-        "super_admin_get_companies",
+        "super_admin_get_companies"
       );
 
       if (error) {
         throw new Error(
-          `회사 목록 조회 실패: ${error.message}`,
+          `회사 목록 조회 실패: ${error.message}`
         );
       }
 
       setCompanies(
         Array.isArray(data)
           ? data
-          : [],
+          : []
       );
-    },
-    [],
-  );
+    }, []);
 
   /* =========================================================
      초기 로딩
@@ -120,7 +139,7 @@ export default function SuperAdminPage() {
       } catch (error) {
         console.error(
           "슈퍼관리자 초기화:",
-          error,
+          error
         );
 
         if (!alive) return;
@@ -131,7 +150,7 @@ export default function SuperAdminPage() {
           `❌ ${
             error?.message ||
             "페이지를 불러오지 못했습니다."
-          }`,
+          }`
         );
       } finally {
         if (alive) {
@@ -155,7 +174,7 @@ export default function SuperAdminPage() {
   ========================================================= */
 
   async function changeCompanyActive(
-    company,
+    company
   ) {
     if (!company?.id) return;
 
@@ -172,7 +191,7 @@ export default function SuperAdminPage() {
         `${
           company.company_name ||
           "회사"
-        }를 ${actionText}할까요?`,
+        }를 ${actionText}할까요?`
       );
 
     if (!confirmed) return;
@@ -192,7 +211,7 @@ export default function SuperAdminPage() {
 
           p_is_active:
             nextActive,
-        },
+        }
       );
 
       if (error) {
@@ -204,18 +223,20 @@ export default function SuperAdminPage() {
           ? data[0]
           : data;
 
-      setCompanies((current) =>
-        current.map((item) =>
-          item.id === company.id
-            ? {
-                ...item,
+      setCompanies(
+        (current) =>
+          current.map((item) =>
+            item.id ===
+            company.id
+              ? {
+                  ...item,
 
-                is_active:
-                  updated?.is_active ??
-                  nextActive,
-              }
-            : item,
-        ),
+                  is_active:
+                    updated?.is_active ??
+                    nextActive,
+                }
+              : item
+          )
       );
 
       setMessage(
@@ -225,19 +246,19 @@ export default function SuperAdminPage() {
           nextActive
             ? "활성화"
             : "정지"
-        } 완료`,
+        } 완료`
       );
     } catch (error) {
       console.error(
         "회사 상태 변경:",
-        error,
+        error
       );
 
       setMessage(
         `❌ 회사 상태 변경 실패: ${
           error?.message ||
           "오류가 발생했습니다."
-        }`,
+        }`
       );
     } finally {
       setChangingId(null);
@@ -253,6 +274,15 @@ export default function SuperAdminPage() {
 
     window.location.href =
       `/super-admin/company/${company.id}`;
+  }
+
+  /* =========================================================
+     요금제 관리 이동
+  ========================================================= */
+
+  function openPlans() {
+    window.location.href =
+      "/super-admin/plans";
   }
 
   /* =========================================================
@@ -285,9 +315,9 @@ export default function SuperAdminPage() {
             .toLowerCase();
 
           return text.includes(
-            keyword,
+            keyword
           );
-        },
+        }
       );
     }, [
       companies,
@@ -304,11 +334,12 @@ export default function SuperAdminPage() {
   const activeCount =
     companies.filter(
       (item) =>
-        item.is_active === true,
+        item.is_active === true
     ).length;
 
   const inactiveCount =
-    totalCount - activeCount;
+    totalCount -
+    activeCount;
 
   /* =========================================================
      로딩
@@ -318,17 +349,30 @@ export default function SuperAdminPage() {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.loadingIcon}>
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
             🛡️
           </div>
 
-          <div style={styles.loadingTitle}>
+          <div
+            style={
+              styles.loadingTitle
+            }
+          >
             슈퍼관리자 확인 중...
           </div>
 
-          <div style={styles.loadingText}>
-            관리자 권한과 회사 정보를
-            불러오고 있습니다.
+          <div
+            style={
+              styles.loadingText
+            }
+          >
+            관리자 권한과 회사
+            정보를 불러오고
+            있습니다.
           </div>
         </div>
       </main>
@@ -343,28 +387,46 @@ export default function SuperAdminPage() {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.deniedIcon}>
+          <div
+            style={
+              styles.deniedIcon
+            }
+          >
             🔒
           </div>
 
-          <h2 style={styles.deniedTitle}>
+          <h2
+            style={
+              styles.deniedTitle
+            }
+          >
             접근할 수 없습니다
           </h2>
 
-          <div style={styles.deniedText}>
+          <div
+            style={
+              styles.deniedText
+            }
+          >
             슈퍼관리자 전용
             페이지입니다.
           </div>
 
           {message && (
-            <div style={styles.errorBox}>
+            <div
+              style={
+                styles.errorBox
+              }
+            >
               {message}
             </div>
           )}
 
           <button
             type="button"
-            style={styles.homeButton}
+            style={
+              styles.homeButton
+            }
             onClick={() => {
               window.location.href =
                 "/admin";
@@ -389,23 +451,34 @@ export default function SuperAdminPage() {
 
         <div style={styles.header}>
           <div>
-            <div style={styles.badge}>
+            <div
+              style={styles.badge}
+            >
               SUPER ADMIN
             </div>
 
-            <h1 style={styles.title}>
+            <h1
+              style={styles.title}
+            >
               🛡️ 서비스 관리
             </h1>
 
-            <div style={styles.subtitle}>
-              전체 회사 계정을
+            <div
+              style={
+                styles.subtitle
+              }
+            >
+              전체 회사 계정과
+              서비스 요금제를
               관리합니다.
             </div>
           </div>
 
           <button
             type="button"
-            style={styles.adminButton}
+            style={
+              styles.adminButton
+            }
             onClick={() => {
               window.location.href =
                 "/admin";
@@ -417,25 +490,93 @@ export default function SuperAdminPage() {
 
         {/* 로그인 정보 */}
 
-        <div style={styles.loginBox}>
+        <div
+          style={
+            styles.loginBox
+          }
+        >
           <div>
-            <div style={styles.smallLabel}>
+            <div
+              style={
+                styles.smallLabel
+              }
+            >
               슈퍼관리자
             </div>
 
-            <div style={styles.adminName}>
+            <div
+              style={
+                styles.adminName
+              }
+            >
               {adminName}
             </div>
           </div>
 
-          <div style={styles.email}>
+          <div
+            style={styles.email}
+          >
             {userEmail}
           </div>
         </div>
 
+        {/* =====================================================
+            슈퍼관리자 메뉴
+        ===================================================== */}
+
+        <div
+          style={
+            styles.menuGrid
+          }
+        >
+          <button
+            type="button"
+            style={{
+              ...styles.menuButton,
+              ...styles.menuButtonActive,
+            }}
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              🏢
+            </span>
+
+            <span>
+              업체 관리
+            </span>
+          </button>
+
+          <button
+            type="button"
+            style={
+              styles.menuButton
+            }
+            onClick={openPlans}
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              💳
+            </span>
+
+            <span>
+              요금제 관리
+            </span>
+          </button>
+        </div>
+
         {/* 통계 */}
 
-        <div style={styles.statsGrid}>
+        <div
+          style={
+            styles.statsGrid
+          }
+        >
           <StatCard
             label="전체 회사"
             value={totalCount}
@@ -454,10 +595,22 @@ export default function SuperAdminPage() {
 
         {/* 회사 관리 */}
 
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
+        <section
+          style={
+            styles.section
+          }
+        >
+          <div
+            style={
+              styles.sectionHeader
+            }
+          >
             <div>
-              <h2 style={styles.sectionTitle}>
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
                 회사 관리
               </h2>
 
@@ -466,33 +619,40 @@ export default function SuperAdminPage() {
                   styles.sectionDescription
                 }
               >
-                가입된 회사를 조회하고
-                서비스 이용 상태를
+                가입된 회사를
+                조회하고 서비스
+                이용 상태를
                 관리합니다.
               </div>
             </div>
 
             <button
               type="button"
-              style={styles.refreshButton}
-              onClick={async () => {
-                setMessage("");
+              style={
+                styles.refreshButton
+              }
+              onClick={
+                async () => {
+                  setMessage("");
 
-                try {
-                  await loadCompanies();
+                  try {
+                    await loadCompanies();
 
-                  setMessage(
-                    "✅ 회사 목록을 새로고침했습니다.",
-                  );
-                } catch (error) {
-                  setMessage(
-                    `❌ ${
-                      error?.message ||
-                      "새로고침 실패"
-                    }`,
-                  );
+                    setMessage(
+                      "✅ 회사 목록을 새로고침했습니다."
+                    );
+                  } catch (
+                    error
+                  ) {
+                    setMessage(
+                      `❌ ${
+                        error?.message ||
+                        "새로고침 실패"
+                      }`
+                    );
+                  }
                 }
-              }}
+              }
             >
               새로고침
             </button>
@@ -503,13 +663,17 @@ export default function SuperAdminPage() {
           <input
             type="search"
             value={search}
-            onChange={(event) =>
+            onChange={(
+              event
+            ) =>
               setSearch(
-                event.target.value,
+                event.target.value
               )
             }
             placeholder="회사명, 대표자, 전화번호 검색"
-            style={styles.searchInput}
+            style={
+              styles.searchInput
+            }
           />
 
           {/* 메시지 */}
@@ -520,7 +684,7 @@ export default function SuperAdminPage() {
                 ...styles.message,
 
                 ...(message.startsWith(
-                  "❌",
+                  "❌"
                 )
                   ? styles.messageError
                   : styles.messageSuccess),
@@ -532,32 +696,47 @@ export default function SuperAdminPage() {
 
           {/* 회사 목록 */}
 
-          <div style={styles.companyList}>
+          <div
+            style={
+              styles.companyList
+            }
+          >
             {filteredCompanies.length ===
             0 ? (
-              <div style={styles.empty}>
-                검색 결과가 없습니다.
+              <div
+                style={
+                  styles.empty
+                }
+              >
+                검색 결과가
+                없습니다.
               </div>
             ) : (
               filteredCompanies.map(
                 (company) => (
                   <CompanyCard
-                    key={company.id}
-                    company={company}
+                    key={
+                      company.id
+                    }
+                    company={
+                      company
+                    }
                     changing={
                       changingId ===
                       company.id
                     }
                     onManage={() =>
-                      openCompany(company)
+                      openCompany(
+                        company
+                      )
                     }
                     onToggle={() =>
                       changeCompanyActive(
-                        company,
+                        company
                       )
                     }
                   />
-                ),
+                )
               )
             )}
           </div>
@@ -576,12 +755,24 @@ function StatCard({
   value,
 }) {
   return (
-    <div style={styles.statCard}>
-      <div style={styles.statLabel}>
+    <div
+      style={
+        styles.statCard
+      }
+    >
+      <div
+        style={
+          styles.statLabel
+        }
+      >
         {label}
       </div>
 
-      <div style={styles.statValue}>
+      <div
+        style={
+          styles.statValue
+        }
+      >
         {value}
       </div>
     </div>
@@ -599,19 +790,35 @@ function CompanyCard({
   onManage,
 }) {
   const active =
-    company?.is_active === true;
+    company?.is_active ===
+    true;
 
   return (
-    <div style={styles.companyCard}>
-
-      <div style={styles.companyTop}>
-        <div style={{ minWidth: 0 }}>
+    <div
+      style={
+        styles.companyCard
+      }
+    >
+      <div
+        style={
+          styles.companyTop
+        }
+      >
+        <div
+          style={{
+            minWidth: 0,
+          }}
+        >
           <div
             style={
               styles.companyNameRow
             }
           >
-            <div style={styles.companyName}>
+            <div
+              style={
+                styles.companyName
+              }
+            >
               {company.company_name ||
                 "회사명 없음"}
             </div>
@@ -632,7 +839,11 @@ function CompanyCard({
           </div>
 
           {company.slug && (
-            <div style={styles.slug}>
+            <div
+              style={
+                styles.slug
+              }
+            >
               /{company.slug}
             </div>
           )}
@@ -663,7 +874,11 @@ function CompanyCard({
         </button>
       </div>
 
-      <div style={styles.divider} />
+      <div
+        style={
+          styles.divider
+        }
+      />
 
       <InfoRow
         label="대표자"
@@ -676,7 +891,8 @@ function CompanyCard({
       <InfoRow
         label="전화번호"
         value={
-          company.phone || "-"
+          company.phone ||
+          "-"
         }
       />
 
@@ -693,29 +909,35 @@ function CompanyCard({
         value={
           company.created_at
             ? new Date(
-                company.created_at,
+                company.created_at
               ).toLocaleDateString(
                 "ko-KR",
                 {
                   timeZone:
                     "Asia/Seoul",
-                },
+                }
               )
             : "-"
         }
       />
 
-      {/* 회사 상세관리 버튼 */}
+      {/* 회사 상세관리 */}
 
       <button
         type="button"
         onClick={onManage}
-        style={styles.manageButton}
+        style={
+          styles.manageButton
+        }
       >
         ⚙️ 회사 관리
       </button>
 
-      <div style={styles.companyId}>
+      <div
+        style={
+          styles.companyId
+        }
+      >
         ID: {company.id}
       </div>
     </div>
@@ -731,12 +953,24 @@ function InfoRow({
   value,
 }) {
   return (
-    <div style={styles.infoRow}>
-      <span style={styles.infoLabel}>
+    <div
+      style={
+        styles.infoRow
+      }
+    >
+      <span
+        style={
+          styles.infoLabel
+        }
+      >
         {label}
       </span>
 
-      <span style={styles.infoValue}>
+      <span
+        style={
+          styles.infoValue
+        }
+      >
         {value}
       </span>
     </div>
@@ -798,7 +1032,8 @@ const styles = {
   },
 
   adminButton: {
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "10px",
     background: "#ffffff",
     padding: "10px 12px",
@@ -838,6 +1073,44 @@ const styles = {
     color: "#6b7280",
     textAlign: "right",
     wordBreak: "break-all",
+  },
+
+  /* =======================================================
+     슈퍼관리자 메뉴
+  ======================================================= */
+
+  menuGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "14px",
+  },
+
+  menuButton: {
+    minHeight: "58px",
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "13px",
+    background: "#ffffff",
+    color: "#374151",
+    fontWeight: 900,
+    fontSize: "13px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
+  },
+
+  menuButtonActive: {
+    background: "#111827",
+    borderColor: "#111827",
+    color: "#ffffff",
+  },
+
+  menuIcon: {
+    fontSize: "18px",
   },
 
   statsGrid: {
@@ -900,7 +1173,8 @@ const styles = {
   },
 
   refreshButton: {
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     background: "#ffffff",
     borderRadius: "9px",
     padding: "8px 10px",
@@ -1048,8 +1322,6 @@ const styles = {
     wordBreak: "break-word",
   },
 
-  /* 새로 추가 */
-
   manageButton: {
     width: "100%",
     minHeight: "43px",
@@ -1083,13 +1355,15 @@ const styles = {
   centerBox: {
     width: "100%",
     maxWidth: "420px",
-    margin: "100px auto 0",
+    margin:
+      "100px auto 0",
     background: "#ffffff",
     border:
       "1px solid #e5e7eb",
     borderRadius: "18px",
     padding: "28px 20px",
     textAlign: "center",
+    boxSizing: "border-box",
   },
 
   loadingIcon: {
