@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkUsageLimit,
+  makeUsageLimitError,
+} from "../../utils/serverUsageLimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -341,7 +345,13 @@ export async function POST(request) {
     } = await supabase
       .from("companies")
       .select(
-        "id, slug"
+        `
+          id,
+          slug,
+          company_name,
+          subscription_plan,
+          is_active
+        `
       )
       .eq(
         "slug",
@@ -388,6 +398,54 @@ export async function POST(request) {
 
     /*
      * =======================================================
+     * 자동견적 월 사용 한도 검사
+     *
+     * 중요:
+     * estimate_usage에 저장하기 전에 검사합니다.
+     *
+     * 한도가 10회이고 이미 10회를 사용했다면
+     * 여기에서 429로 차단합니다.
+     * =======================================================
+     */
+
+    const limitCheck =
+      await checkUsageLimit({
+        company,
+        eventType:
+          "auto_estimate",
+        requestedQuantity: 1,
+        supabase,
+      });
+
+    if (!limitCheck.ok) {
+      const errorPayload =
+        makeUsageLimitError(
+          limitCheck
+        );
+
+      return NextResponse.json(
+        {
+          ...errorPayload,
+
+          code:
+            limitCheck.limitReached
+              ? "AUTO_ESTIMATE_LIMIT_REACHED"
+              : "AUTO_ESTIMATE_LIMIT_CHECK_FAILED",
+        },
+        {
+          status:
+            limitCheck.status ||
+            (
+              limitCheck.limitReached
+                ? 429
+                : 503
+            ),
+        }
+      );
+    }
+
+    /*
+     * =======================================================
      * 사진 경로 정리
      * =======================================================
      */
@@ -403,36 +461,43 @@ export async function POST(request) {
                   path || ""
                 ).trim()
             )
-            .filter(
-              Boolean
-            )
+            .filter(Boolean)
         : [];
 
     /*
+     * 같은 경로 중복 제거
+     */
+
+    const uniquePhotoPaths =
+      [
+        ...new Set(
+          safePhotoPaths
+        ),
+      ];
+
+    /*
      * =======================================================
-     * 사진 수 정리
+     * 숫자값 정리
      * =======================================================
      */
 
     const safePhotoCount =
       Number.isFinite(
-        Number(
-          photo_count
-        )
+        Number(photo_count)
       )
-        ? Number(
-            photo_count
+        ? Math.max(
+            0,
+            Math.round(
+              Number(
+                photo_count
+              )
+            )
           )
-        : safePhotoPaths.length;
-
-    /*
-     * =======================================================
-     * 견적 금액 정리
-     * =======================================================
-     */
+        : 0;
 
     const safeEstimateMin =
-      estimate_min === null ||
+      estimate_min ===
+        null ||
       estimate_min ===
         undefined ||
       estimate_min === ""
@@ -442,7 +507,8 @@ export async function POST(request) {
           );
 
     const safeEstimateMax =
-      estimate_max === null ||
+      estimate_max ===
+        null ||
       estimate_max ===
         undefined ||
       estimate_max === ""
@@ -464,7 +530,7 @@ export async function POST(request) {
 
     /*
      * =======================================================
-     * 기존 estimate_usage 저장 데이터
+     * estimate_usage 저장 데이터
      * =======================================================
      */
 
@@ -519,7 +585,7 @@ export async function POST(request) {
         false,
 
       photo_paths:
-        safePhotoPaths,
+        uniquePhotoPaths,
     };
 
     /*
@@ -554,13 +620,13 @@ export async function POST(request) {
           created_at
         `
       )
-      .single();
-
-    /*
+      .single();    /*
+     * =======================================================
      * estimate_usage 저장 실패
      *
      * 이것은 기존 핵심 로그이므로
      * 실패 응답을 유지합니다.
+     * =======================================================
      */
 
     if (error) {
@@ -653,6 +719,62 @@ export async function POST(request) {
         data.id,
 
       usageRecorded,
+
+      /*
+       * 현재 요금제 사용량도 함께 반환
+       * 나중에 고객 화면에서
+       * "3 / 10회 사용" 표시할 때 사용할 수 있습니다.
+       */
+      planUsage: {
+        event_type:
+          "auto_estimate",
+
+        plan_code:
+          limitCheck.planCode ||
+          company.subscription_plan ||
+          null,
+
+        plan_name:
+          limitCheck.planName ||
+          null,
+
+        used_before:
+          Number(
+            limitCheck.used || 0
+          ),
+
+        used_after:
+          Number(
+            limitCheck.used || 0
+          ) + 1,
+
+        limit:
+          limitCheck.unlimited
+            ? null
+            : Number(
+                limitCheck.limit || 0
+              ),
+
+        unlimited:
+          Boolean(
+            limitCheck.unlimited
+          ),
+
+        remaining:
+          limitCheck.unlimited
+            ? null
+            : Math.max(
+                0,
+                Number(
+                  limitCheck.limit || 0
+                ) -
+                  (
+                    Number(
+                      limitCheck.used || 0
+                    ) + 1
+                  )
+              ),
+      },
 
       data,
     });
