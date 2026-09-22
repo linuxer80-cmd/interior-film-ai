@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkUsageLimit,
+  makeUsageLimitError,
+} from "../../utils/serverUsageLimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -485,6 +489,42 @@ export async function POST(
       }
 
       /*
+       * =====================================================
+       * AI 사진분석 월 한도 검사
+       *
+       * 전후 비교는 실제 분석되는 전체 사진 수만큼 차감
+       * OpenAI 호출 전에 검사합니다.
+       * =====================================================
+       */
+
+      if (company) {
+        const requestedQuantity =
+          allBeforeImages.length +
+          allAfterImages.length;
+
+        const limitCheck =
+          await checkUsageLimit({
+            company,
+            eventType:
+              "ai_photo_analysis",
+            requestedQuantity,
+          });
+
+        if (!limitCheck.ok) {
+          return NextResponse.json(
+            makeUsageLimitError(
+              limitCheck
+            ),
+            {
+              status:
+                limitCheck.status ||
+                429,
+            }
+          );
+        }
+      }
+
+      /*
        * 이미지 Data URL 변환
        */
 
@@ -858,6 +898,37 @@ description은
     }
 
     /*
+     * =========================================================
+     * 단일 AI 사진분석 월 한도 검사
+     *
+     * OpenAI 호출 전에 검사합니다.
+     * =========================================================
+     */
+
+    if (company) {
+      const limitCheck =
+        await checkUsageLimit({
+          company,
+          eventType:
+            "ai_photo_analysis",
+          requestedQuantity: 1,
+        });
+
+      if (!limitCheck.ok) {
+        return NextResponse.json(
+          makeUsageLimitError(
+            limitCheck
+          ),
+          {
+            status:
+              limitCheck.status ||
+              429,
+          }
+        );
+      }
+    }
+
+    /*
      * 이미지 변환
      */
 
@@ -1108,6 +1179,11 @@ description은
      * AI 분석 사용량 기록
      *
      * 단일 사진 1장 성공 = quantity 1
+     *
+     * 중요:
+     * OpenAI 분석이 정상적으로 끝난 뒤에만 기록합니다.
+     * 기록 실패가 발생해도 이미 성공한 AI 분석은
+     * 실패 처리하지 않습니다.
      * =========================================================
      */
 
@@ -1127,7 +1203,9 @@ description은
       );
 
     /*
+     * =========================================================
      * 성공 응답
+     * =========================================================
      */
 
     return NextResponse.json(
@@ -1160,4 +1238,4 @@ description은
       }
     );
   }
-            }
+}
