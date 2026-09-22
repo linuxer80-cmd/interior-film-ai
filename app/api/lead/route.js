@@ -635,4 +635,239 @@ export async function POST(request) {
           created_at
         `
       )
-      .single();
+      .single();    /*
+     * =====================================================
+     * 고객 상담 저장 실패
+     * =====================================================
+     */
+
+    if (error) {
+      console.error(
+        "CUSTOMER LEAD INSERT ERROR:",
+        error
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            error.message ||
+            "상담 신청 저장에 실패했습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    /*
+     * =====================================================
+     * 자동견적 사용 ID
+     * =====================================================
+     */
+
+    const usageId =
+      String(
+        body.usage_id || ""
+      ).trim();
+
+    /*
+     * =====================================================
+     * 고객상담 사용량 기록
+     *
+     * customer_leads 저장이 성공한 경우에만
+     * customer_lead +1
+     *
+     * 사용량 기록 실패가
+     * 이미 성공한 상담 신청을 취소하지는 않습니다.
+     * =====================================================
+     */
+
+    const usageRecorded =
+      await recordCustomerLeadUsage(
+        {
+          supabase,
+
+          company,
+
+          lead:
+            data,
+
+          leadPayload,
+
+          usageId,
+        }
+      );
+
+    /*
+     * =====================================================
+     * 자동견적 → 상담 전환 처리
+     * =====================================================
+     */
+
+    let usageConverted =
+      false;
+
+    /*
+     * 상담 저장은 성공했지만
+     * 전환기록 업데이트가 실패하는 경우
+     * 상담 자체는 삭제하지 않습니다.
+     */
+
+    if (
+      usageId &&
+      isUuid(usageId)
+    ) {
+      const {
+        data: updatedUsage,
+        error: usageError,
+      } = await supabase
+        .from(
+          "estimate_usage"
+        )
+        .update({
+          converted_to_lead:
+            true,
+        })
+        .eq(
+          "id",
+          usageId
+        )
+        .eq(
+          "company_id",
+          company.id
+        )
+        .select(
+          "id"
+        )
+        .maybeSingle();
+
+      if (usageError) {
+        console.error(
+          "자동견적 전환 처리 오류:",
+          usageError
+        );
+      } else if (
+        updatedUsage?.id
+      ) {
+        usageConverted =
+          true;
+      }
+    }
+
+    /*
+     * =====================================================
+     * 고객상담 사용량 계산
+     * =====================================================
+     */
+
+    const usedBefore =
+      Number(
+        leadLimitCheck.used ||
+        0
+      );
+
+    const usedAfter =
+      usedBefore + 1;
+
+    const limit =
+      leadLimitCheck.unlimited
+        ? null
+        : Number(
+            leadLimitCheck.limit ||
+            0
+          );
+
+    const remaining =
+      leadLimitCheck.unlimited
+        ? null
+        : Math.max(
+            0,
+            limit -
+              usedAfter
+          );
+
+    /*
+     * =====================================================
+     * 성공 응답
+     * =====================================================
+     */
+
+    return NextResponse.json({
+      success: true,
+
+      id:
+        data.id,
+
+      customer_name:
+        data.customer_name,
+
+      customer_photo_path:
+        data.customer_photo_path,
+
+      customer_photo_paths:
+        data.customer_photo_paths ||
+        [],
+
+      usage_converted:
+        usageConverted,
+
+      usageRecorded,
+
+      /*
+       * 요금제 사용량
+       *
+       * 나중에 고객 화면에서
+       * "상담 3 / 10회"와 같은 표시에도
+       * 사용할 수 있습니다.
+       */
+      planUsage: {
+        event_type:
+          "customer_lead",
+
+        plan_code:
+          leadLimitCheck.planCode ||
+          company.subscription_plan ||
+          null,
+
+        plan_name:
+          leadLimitCheck.planName ||
+          null,
+
+        used_before:
+          usedBefore,
+
+        used_after:
+          usedAfter,
+
+        limit,
+
+        remaining,
+
+        unlimited:
+          Boolean(
+            leadLimitCheck.unlimited
+          ),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "상담 신청 API 오류:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+
+        error:
+          error?.message ||
+          "상담 신청 저장 중 오류가 발생했습니다.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
