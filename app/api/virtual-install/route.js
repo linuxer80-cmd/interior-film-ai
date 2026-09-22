@@ -64,15 +64,11 @@ async function resolveCompanyBySlug(companySlug) {
   return data;
 }
 
-// ============================================================
-// 가상시공 월 사용 한도 확인
-// ============================================================
-
 async function checkVirtualRemodelLimit(company) {
   if (!company?.id) {
     return {
-      allowed: false,
-      error: "업체 정보를 확인할 수 없습니다.",
+      ok: false,
+      error: "업체 정보가 없습니다.",
     };
   }
 
@@ -80,187 +76,222 @@ async function checkVirtualRemodelLimit(company) {
 
   if (!supabase) {
     return {
-      allowed: false,
-      error: "서버 설정을 확인할 수 없습니다.",
+      ok: false,
+      error: "Supabase 서버 설정이 없습니다.",
     };
   }
 
-  const planCode =
-    company.subscription_plan || "basic";
+  try {
+    const planCode =
+      company.subscription_plan || "basic";
 
-  const {
-    data: plan,
-    error: planError,
-  } = await supabase
-    .from("subscription_plans")
-    .select(
-      "plan_code, plan_name, virtual_remodel_limit, is_active"
-    )
-    .eq("plan_code", planCode)
-    .maybeSingle();
+    const {
+      data: plan,
+      error: planError,
+    } = await supabase
+      .from("subscription_plans")
+      .select(
+        "plan_code, plan_name, virtual_remodel_limit, is_active"
+      )
+      .eq("plan_code", planCode)
+      .maybeSingle();
 
-  if (planError) {
-    console.error(
-      "가상시공 요금제 조회 오류:",
-      planError
+    if (planError) {
+      console.error(
+        "가상시공 요금제 조회 오류:",
+        planError
+      );
+
+      return {
+        ok: false,
+        error:
+          "요금제 정보를 확인할 수 없습니다.",
+      };
+    }
+
+    if (!plan) {
+      return {
+        ok: false,
+        error:
+          "등록된 요금제를 찾을 수 없습니다.",
+      };
+    }
+
+    if (plan.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "현재 사용할 수 없는 요금제입니다.",
+      };
+    }
+
+    const limit = Number(
+      plan.virtual_remodel_limit || 0
     );
 
-    return {
-      allowed: false,
-      error: "요금제 정보를 확인할 수 없습니다.",
-    };
-  }
+    // 0 이하 = 무제한
+    if (limit <= 0) {
+      return {
+        ok: true,
+        planCode: plan.plan_code,
+        planName: plan.plan_name,
+        used: 0,
+        limit: 0,
+        remaining: null,
+        unlimited: true,
+      };
+    }
 
-  if (!plan) {
-    return {
-      allowed: false,
-      error: "등록된 요금제를 찾을 수 없습니다.",
-    };
-  }
+    // 한국시간 기준 현재 월 계산
+    const now = new Date();
 
-  if (plan.is_active === false) {
-    return {
-      allowed: false,
-      error: "현재 사용할 수 없는 요금제입니다.",
-    };
-  }
+    const parts =
+      new Intl.DateTimeFormat(
+        "en-CA",
+        {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+        }
+      ).formatToParts(now);
 
-  const limit =
-    Number(plan.virtual_remodel_limit || 0);
+    const year = Number(
+      parts.find(
+        (item) =>
+          item.type === "year"
+      )?.value
+    );
 
-  // 0은 무제한
-  if (limit <= 0) {
-    return {
-      allowed: true,
-      planCode: plan.plan_code,
-      planName:
-        plan.plan_name || plan.plan_code,
-      limit: 0,
-      used: 0,
-      remaining: null,
-      unlimited: true,
-    };
-  }
+    const month = Number(
+      parts.find(
+        (item) =>
+          item.type === "month"
+      )?.value
+    );
 
-  // 한국시간 기준 이번 달 시작 / 다음 달 시작
-  const now = new Date();
+    // 한국시간 매월 1일 00:00
+    const monthStart =
+      new Date(
+        Date.UTC(
+          year,
+          month - 1,
+          1,
+          -9,
+          0,
+          0,
+          0
+        )
+      );
 
-  const formatter =
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-    });
+    const nextMonthStart =
+      new Date(
+        Date.UTC(
+          month === 12
+            ? year + 1
+            : year,
+          month === 12
+            ? 0
+            : month,
+          1,
+          -9,
+          0,
+          0,
+          0
+        )
+      );
 
-  const parts =
-    formatter.formatToParts(now);
+    const {
+      data: usageRows,
+      error: usageError,
+    } = await supabase
+      .from("usage_events")
+      .select("quantity")
+      .eq(
+        "company_id",
+        company.id
+      )
+      .eq(
+        "event_type",
+        "virtual_remodel"
+      )
+      .gte(
+        "created_at",
+        monthStart.toISOString()
+      )
+      .lt(
+        "created_at",
+        nextMonthStart.toISOString()
+      );
 
-  const year = Number(
-    parts.find(
-      (part) => part.type === "year"
-    )?.value
-  );
+    if (usageError) {
+      console.error(
+        "가상시공 사용량 조회 오류:",
+        usageError
+      );
 
-  const month = Number(
-    parts.find(
-      (part) => part.type === "month"
-    )?.value
-  );
+      return {
+        ok: false,
+        error:
+          "현재 사용량을 확인할 수 없습니다.",
+      };
+    }
 
-  const monthStart = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      1,
-      -9,
-      0,
-      0,
+    const used = (
+      usageRows || []
+    ).reduce(
+      (sum, row) =>
+        sum +
+        Number(
+          row.quantity || 0
+        ),
       0
-    )
-  );
-
-  const nextMonthStart = new Date(
-    Date.UTC(
-      month === 12 ? year + 1 : year,
-      month === 12 ? 0 : month,
-      1,
-      -9,
-      0,
-      0,
-      0
-    )
-  );
-
-  const {
-    data: usageRows,
-    error: usageError,
-  } = await supabase
-    .from("usage_events")
-    .select("quantity")
-    .eq("company_id", company.id)
-    .eq("event_type", "virtual_remodel")
-    .gte(
-      "created_at",
-      monthStart.toISOString()
-    )
-    .lt(
-      "created_at",
-      nextMonthStart.toISOString()
     );
 
-  if (usageError) {
-    console.error(
-      "가상시공 사용량 조회 오류:",
-      usageError
-    );
+    const remaining =
+      Math.max(
+        0,
+        limit - used
+      );
+
+    if (used >= limit) {
+      return {
+        ok: false,
+        limitReached: true,
+        planCode:
+          plan.plan_code,
+        planName:
+          plan.plan_name,
+        used,
+        limit,
+        remaining: 0,
+        error:
+          `${plan.plan_name} 요금제의 이번 달 가상시공 사용 한도(${limit}회)를 모두 사용했습니다.`,
+      };
+    }
 
     return {
-      allowed: false,
-      error: "현재 사용량을 확인할 수 없습니다.",
-    };
-  }
-
-  const used = (
-    Array.isArray(usageRows)
-      ? usageRows
-      : []
-  ).reduce(
-    (sum, row) =>
-      sum + Number(row?.quantity || 0),
-    0
-  );
-
-  const remaining =
-    Math.max(0, limit - used);
-
-  if (used >= limit) {
-    return {
-      allowed: false,
-      limitReached: true,
-      planCode: plan.plan_code,
+      ok: true,
+      planCode:
+        plan.plan_code,
       planName:
-        plan.plan_name || plan.plan_code,
-      limit,
+        plan.plan_name,
       used,
-      remaining: 0,
-      error: `${
-        plan.plan_name || plan.plan_code
-      } 요금제의 이번 달 가상시공 한도(${limit.toLocaleString(
-        "ko-KR"
-      )}회)를 모두 사용했습니다.`,
+      limit,
+      remaining,
+      unlimited: false,
+    };
+  } catch (error) {
+    console.error(
+      "가상시공 한도 확인 오류:",
+      error
+    );
+
+    return {
+      ok: false,
+      error:
+        "가상시공 사용 한도를 확인할 수 없습니다.",
     };
   }
-
-  return {
-    allowed: true,
-    planCode: plan.plan_code,
-    planName:
-      plan.plan_name || plan.plan_code,
-    limit,
-    used,
-    remaining,
-    unlimited: false,
-  };
 }
 
 async function recordVirtualInstallUsage({
@@ -278,7 +309,8 @@ async function recordVirtualInstallUsage({
     return false;
   }
 
-  const supabase = getAdminSupabase();
+  const supabase =
+    getAdminSupabase();
 
   if (!supabase) {
     console.error(
@@ -287,38 +319,72 @@ async function recordVirtualInstallUsage({
     return false;
   }
 
-  const { error } = await supabase
-    .from("usage_events")
-    .insert({
-      company_id: company.id,
-      event_type: "virtual_remodel",
-      quantity: 1,
-      cost_krw: 0,
-      provider: "openai",
-      model: model || null,
-      reference_id: productCode || null,
-      metadata: {
-        company_slug: company.slug,
-        company_name: company.company_name,
-        subscription_plan:
-          company.subscription_plan,
-        target_type: targetType,
-        split_tone: Boolean(useSplitTone),
-        product_code: productCode || null,
-        image_size: size || null,
-        image_quality: quality || null,
-        sample_reference_count: Number(
-          sampleReferenceCount || 0
-        ),
-        openai_usage: openAIUsage || null,
-      },
-    });
+  const { error } =
+    await supabase
+      .from("usage_events")
+      .insert({
+        company_id:
+          company.id,
+
+        event_type:
+          "virtual_remodel",
+
+        quantity: 1,
+        cost_krw: 0,
+        provider: "openai",
+
+        model:
+          model || null,
+
+        reference_id:
+          productCode || null,
+
+        metadata: {
+          company_slug:
+            company.slug,
+
+          company_name:
+            company.company_name,
+
+          subscription_plan:
+            company.subscription_plan,
+
+          target_type:
+            targetType,
+
+          split_tone:
+            Boolean(
+              useSplitTone
+            ),
+
+          product_code:
+            productCode ||
+            null,
+
+          image_size:
+            size || null,
+
+          image_quality:
+            quality || null,
+
+          sample_reference_count:
+            Number(
+              sampleReferenceCount ||
+                0
+            ),
+
+          openai_usage:
+            openAIUsage ||
+            null,
+        },
+      });
 
   if (error) {
     console.error(
       "가상시공 사용량 기록 오류:",
       error
     );
+
     return false;
   }
 
@@ -344,10 +410,11 @@ function cleanText(
 }
 
 function cleanHex(value) {
-  const hex = cleanText(
-    value,
-    20
-  );
+  const hex =
+    cleanText(
+      value,
+      20
+    );
 
   return /^#[0-9a-fA-F]{3,8}$/.test(
     hex
@@ -357,9 +424,10 @@ function cleanHex(value) {
 }
 
 function getAllowedSampleHosts() {
-  const hosts = new Set([
-    "gxtvvzysuhexhpljpswj.supabase.co",
-  ]);
+  const hosts =
+    new Set([
+      "gxtvvzysuhexhpljpswj.supabase.co",
+    ]);
 
   try {
     const supabaseUrl =
@@ -399,7 +467,8 @@ async function fetchSampleImage(
       );
 
     if (
-      url.protocol !== "https:" ||
+      url.protocol !==
+        "https:" ||
       !getAllowedSampleHosts().has(
         url.hostname
       )
@@ -416,7 +485,9 @@ async function fetchSampleImage(
       await fetch(
         url.toString(),
         {
-          cache: "no-store",
+          cache:
+            "no-store",
+
           signal:
             AbortSignal.timeout(
               15000
@@ -437,7 +508,8 @@ async function fetchSampleImage(
     const contentType =
       response.headers.get(
         "content-type"
-      ) || "image/jpeg";
+      ) ||
+      "image/jpeg";
 
     if (
       !contentType.startsWith(
@@ -448,7 +520,8 @@ async function fetchSampleImage(
     }
 
     const arrayBuffer =
-      await response.arrayBuffer();
+      await response
+        .arrayBuffer();
 
     if (
       !arrayBuffer.byteLength ||
@@ -458,20 +531,23 @@ async function fetchSampleImage(
       return null;
     }
 
-    let extension = "jpg";
+    let extension =
+      "jpg";
 
     if (
       contentType.includes(
         "png"
       )
     ) {
-      extension = "png";
+      extension =
+        "png";
     } else if (
       contentType.includes(
         "webp"
       )
     ) {
-      extension = "webp";
+      extension =
+        "webp";
     }
 
     return new File(
@@ -481,7 +557,8 @@ async function fetchSampleImage(
         "sample"
       }.${extension}`,
       {
-        type: contentType,
+        type:
+          contentType,
       }
     );
   } catch (error) {
@@ -500,13 +577,17 @@ function getPrimaryFilm(
 ) {
   return {
     areaKey: "all",
+
     areaLabel:
       "전체 시공 부위",
 
-    brand: cleanText(
-      formData.get("brand"),
-      100
-    ),
+    brand:
+      cleanText(
+        formData.get(
+          "brand"
+        ),
+        100
+      ),
 
     productCode:
       cleanText(
@@ -524,10 +605,13 @@ function getPrimaryFilm(
         200
       ),
 
-    texture: cleanText(
-      formData.get("texture"),
-      100
-    ),
+    texture:
+      cleanText(
+        formData.get(
+          "texture"
+        ),
+        100
+      ),
 
     colorFamily:
       cleanText(
@@ -545,9 +629,12 @@ function getPrimaryFilm(
         300
       ),
 
-    colorHex: cleanHex(
-      formData.get("colorHex")
-    ),
+    colorHex:
+      cleanHex(
+        formData.get(
+          "colorHex"
+        )
+      ),
 
     sampleImageUrl:
       cleanText(
@@ -563,7 +650,9 @@ function getAreaFilms(
   formData
 ) {
   const rawValue =
-    formData.get("areaFilms");
+    formData.get(
+      "areaFilms"
+    );
 
   if (!rawValue) {
     return [];
@@ -572,11 +661,15 @@ function getAreaFilms(
   try {
     const parsed =
       JSON.parse(
-        String(rawValue)
+        String(
+          rawValue
+        )
       );
 
     if (
-      !Array.isArray(parsed)
+      !Array.isArray(
+        parsed
+      )
     ) {
       return [];
     }
@@ -586,66 +679,70 @@ function getAreaFilms(
         0,
         MAX_AREA_FILMS
       )
-      .map((item) => ({
-        areaKey:
-          cleanText(
-            item?.areaKey,
-            100
-          ),
+      .map(
+        (item) => ({
+          areaKey:
+            cleanText(
+              item?.areaKey,
+              100
+            ),
 
-        areaLabel:
-          cleanText(
-            item?.areaLabel,
-            100
-          ),
+          areaLabel:
+            cleanText(
+              item?.areaLabel,
+              100
+            ),
 
-        brand:
-          cleanText(
-            item?.brand,
-            100
-          ),
+          brand:
+            cleanText(
+              item?.brand,
+              100
+            ),
 
-        productCode:
-          cleanText(
-            item?.productCode,
-            100
-          ),
+          productCode:
+            cleanText(
+              item?.productCode,
+              100
+            ),
 
-        productName:
-          cleanText(
-            item?.productName,
-            200
-          ),
+          productName:
+            cleanText(
+              item?.productName,
+              200
+            ),
 
-        texture:
-          cleanText(
-            item?.texture,
-            100
-          ),
+          texture:
+            cleanText(
+              item?.texture,
+              100
+            ),
 
-        colorFamily:
-          cleanText(
-            item?.colorFamily,
-            100
-          ),
+          colorFamily:
+            cleanText(
+              item?.colorFamily,
+              100
+            ),
 
-        colorDescription:
-          cleanText(
-            item?.colorDescription,
-            300
-          ),
+          colorDescription:
+            cleanText(
+              item
+                ?.colorDescription,
+              300
+            ),
 
-        colorHex:
-          cleanHex(
-            item?.colorHex
-          ),
+          colorHex:
+            cleanHex(
+              item?.colorHex
+            ),
 
-        sampleImageUrl:
-          cleanText(
-            item?.sampleImageUrl,
-            2000
-          ),
-      }))
+          sampleImageUrl:
+            cleanText(
+              item
+                ?.sampleImageUrl,
+              2000
+            ),
+        })
+      )
       .filter(
         (item) =>
           item.areaKey &&
@@ -665,7 +762,8 @@ function getTargetPrompt(
   targetType
 ) {
   if (
-    targetType === "kitchen"
+    targetType ===
+    "kitchen"
   ) {
     return [
       "The installation target is KITCHEN CABINETRY ONLY.",
@@ -685,7 +783,8 @@ function getTargetPrompt(
   }
 
   if (
-    targetType === "door"
+    targetType ===
+    "door"
   ) {
     return [
       "The installation target is the EXISTING DOOR AND DOOR FRAME ONLY.",
@@ -738,12 +837,16 @@ function getAreaInstruction(
   };
 
   return (
-    instructions[areaKey] ||
+    instructions[
+      areaKey
+    ] ||
     `Apply this assigned film only to the existing visible area identified as "${areaLabel}". If that area is absent, do nothing.`
   );
 }
 
-function getFilmKey(film) {
+function getFilmKey(
+  film
+) {
   return [
     film.productCode,
     film.sampleImageUrl,
@@ -811,9 +914,7 @@ function getPreservationPrompt() {
 
     "Do not remove boxes, appliances or objects from the original photograph.",
 
-    "Do not clean up, stage or reorganize the room.",
-
-    "For wood film, preserve realistic grain direction, pattern scale and natural variation.",
+    "Do not clean up, stage or reorganize the room.",    "For wood film, preserve realistic grain direction, pattern scale and natural variation.",
 
     "For solid film, preserve realistic lighting, shadows, edges and reflections.",
 
@@ -859,7 +960,8 @@ function getOpenAIError(
   }
 
   return message;
-        }
+}
+
 export async function POST(
   request
 ) {
@@ -919,55 +1021,66 @@ export async function POST(
       );
     }
 
-    // ========================================================
-    // 가상시공 요금제 사용 한도 확인
-    // OpenAI API 호출 전에 검사하여 비용 발생을 방지
-    // ========================================================
+    /*
+     * =========================================================
+     * 요금제별 가상시공 사용 한도 확인
+     * OpenAI 호출 전에 검사하여
+     * 한도 초과 시 API 비용 발생 방지
+     * =========================================================
+     */
 
     const virtualLimit =
       await checkVirtualRemodelLimit(
         company
       );
 
-    if (!virtualLimit.allowed) {
+    if (!virtualLimit.ok) {
+      if (
+        virtualLimit.limitReached
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+
+            error:
+              virtualLimit.error,
+
+            code:
+              "VIRTUAL_REMODEL_LIMIT_REACHED",
+
+            planCode:
+              virtualLimit.planCode,
+
+            planName:
+              virtualLimit.planName,
+
+            used:
+              virtualLimit.used,
+
+            limit:
+              virtualLimit.limit,
+
+            remaining: 0,
+          },
+          {
+            status: 429,
+          }
+        );
+      }
+
       return NextResponse.json(
         {
+          success: false,
+
           error:
             virtualLimit.error ||
-            "가상시공 사용 한도를 확인할 수 없습니다.",
+            "사용 한도를 확인할 수 없습니다.",
 
           code:
-            virtualLimit.limitReached
-              ? "VIRTUAL_REMODEL_LIMIT_REACHED"
-              : "VIRTUAL_REMODEL_LIMIT_CHECK_FAILED",
-
-          planCode:
-            virtualLimit.planCode ||
-            null,
-
-          planName:
-            virtualLimit.planName ||
-            null,
-
-          used:
-            Number(
-              virtualLimit.used || 0
-            ),
-
-          limit:
-            Number(
-              virtualLimit.limit || 0
-            ),
-
-          remaining:
-            virtualLimit.remaining ??
-            null,
+            "VIRTUAL_REMODEL_LIMIT_CHECK_FAILED",
         },
         {
-          status:
-            virtualLimit.limitReached
-              ? 429
-              : 503,
+          status: 503,
         }
       );
     }
@@ -1383,11 +1496,6 @@ export async function POST(
       "70"
     );
 
-    // ========================================================
-    // 실제 OpenAI 이미지 생성
-    // 여기까지 왔다는 것은 요금제 한도가 남아 있다는 뜻입니다.
-    // ========================================================
-
     const response =
       await fetch(
         "https://api.openai.com/v1/images/edits",
@@ -1469,30 +1577,38 @@ export async function POST(
           )
       ).length;
 
-    // ========================================================
-    // 성공한 가상시공만 사용량 +1
-    // ========================================================
-
+    /*
+     * OpenAI 이미지 생성이 성공한 경우에만
+     * 가상시공 사용량 +1
+     */
     const usageRecorded =
       await recordVirtualInstallUsage({
         company,
-        model: openAIModel,
-        size: openAIImageSize,
-        quality: openAIImageQuality,
+        model:
+          openAIModel,
+        size:
+          openAIImageSize,
+        quality:
+          openAIImageQuality,
         targetType,
         useSplitTone,
         productCode:
           primaryFilm.productCode,
         sampleReferenceCount,
         openAIUsage:
-          result?.usage || null,
+          result?.usage ||
+          null,
       });
 
     return NextResponse.json({
       success: true,
+
       imageUrl,
+
       targetType,
+
       useSplitTone,
+
       productCode:
         primaryFilm.productCode,
 
@@ -1501,8 +1617,10 @@ export async function POST(
           (film) => ({
             areaKey:
               film.areaKey,
+
             areaLabel:
               film.areaLabel,
+
             productCode:
               film.productCode,
           })
@@ -1516,34 +1634,31 @@ export async function POST(
 
       usageRecorded,
 
-      // 현재 요금제 사용량도 응답
       planUsage: {
         planCode:
-          virtualLimit.planCode ||
-          null,
+          virtualLimit.planCode,
 
         planName:
-          virtualLimit.planName ||
-          null,
+          virtualLimit.planName,
+
+        usedBefore:
+          virtualLimit.used,
+
+        usedAfter:
+          virtualLimit.unlimited
+            ? virtualLimit.used + 1
+            : virtualLimit.used + 1,
 
         limit:
           virtualLimit.limit,
-
-        // 실행 성공했으므로 이번 요청까지 포함
-        used:
-          Number(
-            virtualLimit.used || 0
-          ) + 1,
 
         remaining:
           virtualLimit.unlimited
             ? null
             : Math.max(
                 0,
-                Number(
-                  virtualLimit.remaining ||
-                    0
-                ) - 1
+                virtualLimit.remaining -
+                  1
               ),
 
         unlimited:
@@ -1586,4 +1701,4 @@ export async function POST(
       }
     );
   }
-      }
+}
