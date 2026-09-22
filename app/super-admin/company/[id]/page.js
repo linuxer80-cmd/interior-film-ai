@@ -29,6 +29,23 @@ export default function SuperAdminCompanyDetailPage() {
   const [company, setCompany] = useState(null);
   const [companyUsers, setCompanyUsers] = useState([]);
 
+  // ============================================================
+  // 이번 달 사용량
+  // ============================================================
+
+  const [usage, setUsage] = useState({
+    ai_photo_analysis: 0,
+    auto_estimate: 0,
+    similar_image_search: 0,
+    virtual_remodel: 0,
+    image_upload: 0,
+    storage_mb: 0,
+    customer_lead: 0,
+    total_cost_krw: 0,
+  });
+
+  const [usageLoading, setUsageLoading] = useState(false);
+
   const [form, setForm] = useState({
     company_name: "",
     representative_name: "",
@@ -55,6 +72,36 @@ export default function SuperAdminCompanyDetailPage() {
     } catch {
       return "-";
     }
+  }
+
+  // ============================================================
+  // 숫자 표시
+  // ============================================================
+
+  function formatNumber(value) {
+    const number = Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+      return "0";
+    }
+
+    return new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 2,
+    }).format(number);
+  }
+
+  // ============================================================
+  // 원화 표시
+  // ============================================================
+
+  function formatWon(value) {
+    const number = Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+      return "₩0";
+    }
+
+    return `₩${Math.round(number).toLocaleString("ko-KR")}`;
   }
 
   // ============================================================
@@ -130,8 +177,7 @@ export default function SuperAdminCompanyDetailPage() {
 
   async function loadCompany() {
     if (!companyId) {
-      setError("회사 ID가 없습니다.");
-      return;
+      throw new Error("회사 ID가 없습니다.");
     }
 
     try {
@@ -162,6 +208,8 @@ export default function SuperAdminCompanyDetailPage() {
         address: row.address || "",
         subscription_plan: row.subscription_plan || "basic",
       });
+
+      return row;
     } catch (err) {
       console.error("회사 조회 오류:", err);
 
@@ -205,6 +253,74 @@ export default function SuperAdminCompanyDetailPage() {
   }
 
   // ============================================================
+  // 이번 달 사용량 조회
+  // ============================================================
+
+  async function loadCompanyUsage() {
+    if (!companyId) return;
+
+    try {
+      setUsageLoading(true);
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "super_admin_get_company_usage",
+        {
+          p_company_id: companyId,
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      const nextUsage = {
+        ai_photo_analysis: 0,
+        auto_estimate: 0,
+        similar_image_search: 0,
+        virtual_remodel: 0,
+        image_upload: 0,
+        storage_mb: 0,
+        customer_lead: 0,
+        total_cost_krw: 0,
+      };
+
+      const rows = Array.isArray(data) ? data : [];
+
+      rows.forEach((row) => {
+        const eventType = row?.event_type;
+
+        if (
+          eventType &&
+          Object.prototype.hasOwnProperty.call(
+            nextUsage,
+            eventType
+          )
+        ) {
+          nextUsage[eventType] += Number(
+            row?.total_quantity || 0
+          );
+        }
+
+        nextUsage.total_cost_krw += Number(
+          row?.total_cost_krw || 0
+        );
+      });
+
+      setUsage(nextUsage);
+    } catch (err) {
+      console.error("회사 사용량 조회 오류:", err);
+
+      throw new Error(
+        err?.message
+          ? `사용량 조회 실패: ${err.message}`
+          : "사용량 정보를 불러오지 못했습니다."
+      );
+    } finally {
+      setUsageLoading(false);
+    }
+  }
+
+  // ============================================================
   // 전체 로드
   // ============================================================
 
@@ -222,12 +338,14 @@ export default function SuperAdminCompanyDetailPage() {
       await Promise.all([
         loadCompany(),
         loadCompanyUsers(),
+        loadCompanyUsage(),
       ]);
     } catch (err) {
       console.error("상세페이지 로드 오류:", err);
 
       setError(
-        err?.message || "회사 정보를 불러오는 중 오류가 발생했습니다."
+        err?.message ||
+          "회사 정보를 불러오는 중 오류가 발생했습니다."
       );
     } finally {
       setLoading(false);
@@ -324,6 +442,57 @@ export default function SuperAdminCompanyDetailPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // ============================================================
+  // 사용량 새로고침
+  // ============================================================
+
+  async function refreshUsage() {
+    try {
+      setError("");
+
+      await loadCompanyUsage();
+
+      showMessage("이번 달 사용량을 새로고침했습니다.");
+    } catch (err) {
+      setError(
+        err?.message ||
+          "사용량 새로고침에 실패했습니다."
+      );
+    }
+  }
+
+  // ============================================================
+  // 사용량 카드
+  // ============================================================
+
+  function UsageItem({
+    icon,
+    label,
+    value,
+    unit,
+  }) {
+    return (
+      <div style={styles.usageItem}>
+        <div style={styles.usageIcon}>
+          {icon}
+        </div>
+
+        <div style={styles.usageContent}>
+          <div style={styles.usageLabel}>
+            {label}
+          </div>
+
+          <div style={styles.usageValue}>
+            {formatNumber(value)}
+            <span style={styles.usageUnit}>
+              {unit}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ============================================================
@@ -488,6 +657,127 @@ export default function SuperAdminCompanyDetailPage() {
       fontSize: "14px",
       fontWeight: "800",
       wordBreak: "break-all",
+    },
+
+    // ============================================================
+    // 사용량 스타일
+    // ============================================================
+
+    usageHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: "12px",
+      marginBottom: "16px",
+    },
+
+    usageRefreshButton: {
+      border: "1px solid #d1d5db",
+      background: "#ffffff",
+      color: "#374151",
+      borderRadius: "10px",
+      padding: "8px 10px",
+      fontSize: "12px",
+      fontWeight: "800",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    },
+
+    usageGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "10px",
+    },
+
+    usageItem: {
+      display: "flex",
+      alignItems: "center",
+      gap: "11px",
+      minWidth: 0,
+      background: "#f8fafc",
+      border: "1px solid #eef2f7",
+      borderRadius: "15px",
+      padding: "14px",
+    },
+
+    usageIcon: {
+      width: "38px",
+      height: "38px",
+      borderRadius: "12px",
+      background: "#ffffff",
+      border: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      fontSize: "18px",
+    },
+
+    usageContent: {
+      minWidth: 0,
+      flex: 1,
+    },
+
+    usageLabel: {
+      color: "#6b7280",
+      fontSize: "11px",
+      fontWeight: "700",
+      marginBottom: "3px",
+    },
+
+    usageValue: {
+      color: "#111827",
+      fontSize: "19px",
+      fontWeight: "900",
+      lineHeight: 1.2,
+    },
+
+    usageUnit: {
+      marginLeft: "3px",
+      color: "#6b7280",
+      fontSize: "11px",
+      fontWeight: "700",
+    },
+
+    costBox: {
+      marginTop: "12px",
+      padding: "18px",
+      borderRadius: "16px",
+      background: "#111827",
+      color: "#ffffff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "12px",
+    },
+
+    costLabel: {
+      fontSize: "13px",
+      color: "#cbd5e1",
+      fontWeight: "700",
+    },
+
+    costDescription: {
+      marginTop: "4px",
+      fontSize: "11px",
+      color: "#94a3b8",
+    },
+
+    costValue: {
+      fontSize: "25px",
+      fontWeight: "900",
+      whiteSpace: "nowrap",
+    },
+
+    usageNotice: {
+      marginTop: "12px",
+      background: "#fffbeb",
+      border: "1px solid #fde68a",
+      color: "#92400e",
+      borderRadius: "12px",
+      padding: "11px",
+      fontSize: "12px",
+      lineHeight: "1.5",
     },
 
     field: {
@@ -685,7 +975,9 @@ export default function SuperAdminCompanyDetailPage() {
       <div style={styles.page}>
         <div style={styles.container}>
           <div style={styles.authCard}>
-            <div style={styles.authIcon}>🔒</div>
+            <div style={styles.authIcon}>
+              🔒
+            </div>
 
             <div style={styles.authTitle}>
               접근할 수 없습니다
@@ -704,7 +996,9 @@ export default function SuperAdminCompanyDetailPage() {
             <button
               type="button"
               style={styles.adminButton}
-              onClick={() => router.push("/admin")}
+              onClick={() =>
+                router.push("/admin")
+              }
             >
               관리자 페이지로 이동
             </button>
@@ -727,7 +1021,9 @@ export default function SuperAdminCompanyDetailPage() {
           <button
             type="button"
             style={styles.backButton}
-            onClick={() => router.push("/super-admin")}
+            onClick={() =>
+              router.push("/super-admin")
+            }
           >
             ←
           </button>
@@ -793,7 +1089,8 @@ export default function SuperAdminCompanyDetailPage() {
               </div>
 
               <div style={styles.infoValue}>
-                {company?.subscription_plan || "basic"}
+                {company?.subscription_plan ||
+                  "basic"}
               </div>
             </div>
 
@@ -803,7 +1100,8 @@ export default function SuperAdminCompanyDetailPage() {
               </div>
 
               <div style={styles.infoValue}>
-                {company?.representative_name || "-"}
+                {company?.representative_name ||
+                  "-"}
               </div>
             </div>
 
@@ -813,7 +1111,9 @@ export default function SuperAdminCompanyDetailPage() {
               </div>
 
               <div style={styles.infoValue}>
-                {formatDate(company?.created_at)}
+                {formatDate(
+                  company?.created_at
+                )}
               </div>
             </div>
 
@@ -833,6 +1133,120 @@ export default function SuperAdminCompanyDetailPage() {
           </div>
         </section>
 
+        {/* =====================================================
+            이번 달 사용량
+        ===================================================== */}
+
+        <section style={styles.card}>
+          <div style={styles.usageHeader}>
+            <div>
+              <h2 style={styles.cardTitle}>
+                이번 달 사용량
+              </h2>
+
+              <p
+                style={{
+                  ...styles.cardDescription,
+                  marginBottom: 0,
+                }}
+              >
+                현재 회사의 월간 서비스 사용량입니다.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              style={styles.usageRefreshButton}
+              disabled={usageLoading}
+              onClick={refreshUsage}
+            >
+              {usageLoading
+                ? "조회 중..."
+                : "새로고침"}
+            </button>
+          </div>
+
+          <div style={styles.usageGrid}>
+            <UsageItem
+              icon="🤖"
+              label="AI 사진분석"
+              value={usage.ai_photo_analysis}
+              unit="회"
+            />
+
+            <UsageItem
+              icon="🧾"
+              label="자동견적"
+              value={usage.auto_estimate}
+              unit="회"
+            />
+
+            <UsageItem
+              icon="🔍"
+              label="유사이미지 검색"
+              value={
+                usage.similar_image_search
+              }
+              unit="회"
+            />
+
+            <UsageItem
+              icon="✨"
+              label="가상시공"
+              value={usage.virtual_remodel}
+              unit="회"
+            />
+
+            <UsageItem
+              icon="🖼️"
+              label="이미지 업로드"
+              value={usage.image_upload}
+              unit="장"
+            />
+
+            <UsageItem
+              icon="💾"
+              label="저장용량"
+              value={usage.storage_mb}
+              unit="MB"
+            />
+
+            <UsageItem
+              icon="💬"
+              label="고객상담"
+              value={usage.customer_lead}
+              unit="건"
+            />
+          </div>
+
+          <div style={styles.costBox}>
+            <div>
+              <div style={styles.costLabel}>
+                이번 달 AI/API 원가
+              </div>
+
+              <div style={styles.costDescription}>
+                서비스 운영자가 실제 부담한
+                API 비용
+              </div>
+            </div>
+
+            <div style={styles.costValue}>
+              {formatWon(
+                usage.total_cost_krw
+              )}
+            </div>
+          </div>
+
+          <div style={styles.usageNotice}>
+            현재 사용량 기록 시스템을 막 구축한
+            상태이므로 기존 과거 사용내역은 자동으로
+            포함되지 않습니다. 앞으로 각 기능의 실제
+            실행 API를 연결하면 사용량이 자동으로
+            누적됩니다.
+          </div>
+        </section>
+
         {/* 회사정보 수정 */}
 
         <section style={styles.card}>
@@ -841,7 +1255,8 @@ export default function SuperAdminCompanyDetailPage() {
           </h2>
 
           <p style={styles.cardDescription}>
-            슈퍼관리자가 회사 기본정보와 요금제를 관리합니다.
+            슈퍼관리자가 회사 기본정보와 요금제를
+            관리합니다.
           </p>
 
           <div style={styles.field}>
@@ -957,7 +1372,8 @@ export default function SuperAdminCompanyDetailPage() {
           </h2>
 
           <p style={styles.cardDescription}>
-            이 회사에 연결되어 있는 로그인 계정입니다.
+            이 회사에 연결되어 있는 로그인
+            계정입니다.
           </p>
 
           {companyUsers.length === 0 ? (
@@ -971,12 +1387,15 @@ export default function SuperAdminCompanyDetailPage() {
                 style={styles.userCard}
               >
                 <div style={styles.userEmail}>
-                  {member.email || "이메일 없음"}
+                  {member.email ||
+                    "이메일 없음"}
                 </div>
 
                 <div style={styles.userMeta}>
                   가입일:{" "}
-                  {formatDate(member.created_at)}
+                  {formatDate(
+                    member.created_at
+                  )}
                   <br />
 
                   최근 로그인:{" "}
@@ -997,4 +1416,4 @@ export default function SuperAdminCompanyDetailPage() {
       </main>
     </div>
   );
-          }
+        }
