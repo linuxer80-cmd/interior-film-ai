@@ -510,6 +510,7 @@ export default function VirtualInstallPanel({
   groups = [],
   useSplitTone = false,
   areaFilms = {},
+  companySlug = null,
   onUseSplitToneChange,
   onAreaFilmsChange,
   onRequestDetail,
@@ -771,6 +772,13 @@ export default function VirtualInstallPanel({
 
   function makeRequestForm() {
     const formData = new FormData();
+
+    if (companySlug) {
+      formData.append(
+        "company_slug",
+        companySlug
+      );
+    }
 
     formData.append(
       "image",
