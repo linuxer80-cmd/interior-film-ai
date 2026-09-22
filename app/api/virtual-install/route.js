@@ -1,7 +1,129 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+function getAdminSupabase() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
+
+async function resolveCompanyBySlug(companySlug) {
+  if (!companySlug) {
+    return null;
+  }
+
+  const supabase = getAdminSupabase();
+
+  if (!supabase) {
+    console.error(
+      "Supabase 서버 환경변수가 없습니다."
+    );
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("companies")
+    .select(
+      "id, company_name, slug, subscription_plan, is_active"
+    )
+    .eq("slug", companySlug)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "가상시공 회사 조회 오류:",
+      error
+    );
+    return null;
+  }
+
+  if (!data || data.is_active === false) {
+    return null;
+  }
+
+  return data;
+}
+
+async function recordVirtualInstallUsage({
+  company,
+  model,
+  size,
+  quality,
+  targetType,
+  useSplitTone,
+  productCode,
+  sampleReferenceCount,
+  openAIUsage,
+}) {
+  if (!company?.id) {
+    return false;
+  }
+
+  const supabase = getAdminSupabase();
+
+  if (!supabase) {
+    console.error(
+      "사용량 기록 실패: Supabase 서버 설정 없음"
+    );
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("usage_events")
+    .insert({
+      company_id: company.id,
+      event_type: "virtual_remodel",
+      quantity: 1,
+      cost_krw: 0,
+      provider: "openai",
+      model: model || null,
+      reference_id: productCode || null,
+      metadata: {
+        company_slug: company.slug,
+        company_name: company.company_name,
+        subscription_plan: company.subscription_plan,
+        target_type: targetType,
+        split_tone: Boolean(useSplitTone),
+        product_code: productCode || null,
+        image_size: size || null,
+        image_quality: quality || null,
+        sample_reference_count: Number(
+          sampleReferenceCount || 0
+        ),
+        openai_usage: openAIUsage || null,
+      },
+    });
+
+  if (error) {
+    console.error(
+      "가상시공 사용량 기록 오류:",
+      error
+    );
+    return false;
+  }
+
+  return true;
+}
 
 const MAX_IMAGE_SIZE =
   10 * 1024 * 1024;
@@ -561,6 +683,43 @@ export async function POST(
     const requestData =
       await request.formData();
 
+    const companySlug =
+      cleanText(
+        requestData.get(
+          "company_slug"
+        ),
+        100
+      );
+
+    if (!companySlug) {
+      return NextResponse.json(
+        {
+          error:
+            "업체 정보가 없습니다. 업체 페이지에서 다시 시도해주세요.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const company =
+      await resolveCompanyBySlug(
+        companySlug
+      );
+
+    if (!company) {
+      return NextResponse.json(
+        {
+          error:
+            "사용 가능한 업체 정보를 찾을 수 없습니다.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
     const image =
       requestData.get("image");
 
@@ -903,11 +1062,24 @@ export async function POST(
     const openAIForm =
       new FormData();
 
-    openAIForm.append(
-      "model",
+    const openAIModel =
       process.env
         .OPENAI_IMAGE_MODEL ||
-        "gpt-image-1.5"
+      "gpt-image-1.5";
+
+    const openAIImageSize =
+      process.env
+        .OPENAI_IMAGE_SIZE ||
+      "1024x1024";
+
+    const openAIImageQuality =
+      process.env
+        .OPENAI_IMAGE_QUALITY ||
+      "low";
+
+    openAIForm.append(
+      "model",
+      openAIModel
     );
 
     openAIForm.append(
@@ -941,16 +1113,12 @@ export async function POST(
 
     openAIForm.append(
       "size",
-      process.env
-        .OPENAI_IMAGE_SIZE ||
-        "1024x1024"
+      openAIImageSize
     );
 
     openAIForm.append(
       "quality",
-      process.env
-        .OPENAI_IMAGE_QUALITY ||
-        "low"
+      openAIImageQuality
     );
 
     openAIForm.append(
@@ -1036,6 +1204,29 @@ export async function POST(
       );
     }
 
+    const sampleReferenceCount =
+      referenceFilms.filter(
+        (film) =>
+          Boolean(
+            film.sampleImage
+          )
+      ).length;
+
+    const usageRecorded =
+      await recordVirtualInstallUsage({
+        company,
+        model: openAIModel,
+        size: openAIImageSize,
+        quality: openAIImageQuality,
+        targetType,
+        useSplitTone,
+        productCode:
+          primaryFilm.productCode,
+        sampleReferenceCount,
+        openAIUsage:
+          result?.usage || null,
+      });
+
     return NextResponse.json({
       success: true,
       imageUrl,
@@ -1054,16 +1245,11 @@ export async function POST(
               film.productCode,
           })
         ),
-      sampleReferenceCount:
-        referenceFilms.filter(
-          (film) =>
-            Boolean(
-              film.sampleImage
-            )
-        ).length,
+      sampleReferenceCount,
       usage:
         result?.usage ||
         null,
+      usageRecorded,
     });
   } catch (error) {
     console.error(
