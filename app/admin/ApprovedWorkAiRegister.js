@@ -542,7 +542,7 @@ export default function ApprovedWorkAiRegister({
 
     try {
       /* =====================================================
-         1. 로그인 사용자
+         1. 로그인 사용자 확인
       ===================================================== */
 
       const {
@@ -552,7 +552,9 @@ export default function ApprovedWorkAiRegister({
         await supabase.auth.getUser();
 
       if (authError) {
-        throw authError;
+        throw new Error(
+          `로그인 확인 실패: ${authError.message}`,
+        );
       }
 
       const user =
@@ -566,56 +568,48 @@ export default function ApprovedWorkAiRegister({
 
       /* =====================================================
          2. 관리자 업체
+         현재 관리자 페이지와 동일한 get_my_company RPC 사용
       ===================================================== */
 
       const {
-        data: profileRows,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "company_id, is_active",
-        )
-        .eq(
-          "id",
-          user.id,
-        )
-        .limit(2);
+        data: companyData,
+        error: companyError,
+      } = await supabase.rpc(
+        "get_my_company",
+      );
 
-      if (profileError) {
+      if (companyError) {
         throw new Error(
-          `관리자 업체 조회 실패: ${profileError.message}`,
+          `관리자 업체 조회 실패: ${companyError.message}`,
+        );
+      }
+
+      const company =
+        Array.isArray(companyData)
+          ? companyData[0]
+          : null;
+
+      if (
+        !company?.company_id
+      ) {
+        throw new Error(
+          "관리자 업체 조회 실패: get_my_company 결과에 company_id가 없습니다.",
         );
       }
 
       if (
-        !profileRows ||
-        profileRows.length !== 1
+        company?.is_active === false
       ) {
         throw new Error(
-          `관리자 업체 조회 실패: profiles 조회 결과가 ${
-            profileRows?.length || 0
-          }건입니다.`,
-        );
-      }
-
-      const profile =
-        profileRows[0];
-
-      if (
-        !profile?.is_active ||
-        !profile?.company_id
-      ) {
-        throw new Error(
-          "관리자 업체 정보를 확인할 수 없습니다.",
+          "비활성화된 관리자 업체입니다.",
         );
       }
 
       companyId =
-        profile.company_id;
+        company.company_id;
 
       /* =====================================================
-         3. 최신 완료보고 재확인
+         3. 승인 완료보고 재확인
       ===================================================== */
 
       const {
@@ -805,7 +799,7 @@ export default function ApprovedWorkAiRegister({
         throw new Error(
           "AI 시공 데이터 ID를 생성하지 못했습니다.",
         );
-          }
+        }
             /* =====================================================
          7. 시공 전 사진
       ===================================================== */
@@ -815,8 +809,7 @@ export default function ApprovedWorkAiRegister({
 
       for (
         let index = 0;
-        index <
-        beforePhotos.length;
+        index < beforePhotos.length;
         index += 1
       ) {
         setMessage(
@@ -838,9 +831,7 @@ export default function ApprovedWorkAiRegister({
               category,
           });
 
-        if (
-          result?.skipped
-        ) {
+        if (result?.skipped) {
           duplicateCount += 1;
         } else {
           savedCount += 1;
@@ -853,8 +844,7 @@ export default function ApprovedWorkAiRegister({
 
       for (
         let index = 0;
-        index <
-        afterPhotos.length;
+        index < afterPhotos.length;
         index += 1
       ) {
         setMessage(
@@ -876,9 +866,7 @@ export default function ApprovedWorkAiRegister({
               category,
           });
 
-        if (
-          result?.skipped
-        ) {
+        if (result?.skipped) {
           duplicateCount += 1;
         } else {
           savedCount += 1;
@@ -1200,4 +1188,4 @@ export default function ApprovedWorkAiRegister({
       )}
     </div>
   );
-          }
+  }
