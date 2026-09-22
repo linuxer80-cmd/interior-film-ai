@@ -1780,12 +1780,6 @@ export default function SuperAdminCompanyDetailPage() {
           </button>
         </section>
 
-      
-
-          <p style={styles.cardDescription}>
-         m.key}
-        
-
     <section style={styles.card}>
           <h2 style={styles.cardTitle}>
             회사 계정
