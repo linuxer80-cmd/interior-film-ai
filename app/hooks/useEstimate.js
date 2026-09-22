@@ -291,6 +291,18 @@ export default function useEstimate({ companySlug = null } = {}) {
       "before"
     );
 
+    /*
+     * 중요:
+     * AI 분석 사용량을 정확한 업체에 귀속하기 위해
+     * 현재 업체 slug를 분석 API에 전달합니다.
+     */
+    if (normalizedCompanySlug) {
+      formData.append(
+        "company_slug",
+        normalizedCompanySlug
+      );
+    }
+
     const response =
       await fetch(
         "/api/analyze",
@@ -512,9 +524,6 @@ export default function useEstimate({ companySlug = null } = {}) {
             MATCH_THRESHOLD,
 
           match_count: 20,
-
-          company_slug:
-            normalizedCompanySlug,
         }
       );
 
@@ -676,7 +685,8 @@ export default function useEstimate({ companySlug = null } = {}) {
         )
       );
 
-    let confidence =      "낮음";
+    let confidence =
+      "낮음";
 
     if (
       cases.length >= 5 &&
@@ -702,8 +712,9 @@ export default function useEstimate({ companySlug = null } = {}) {
         cases.length,
       confidence,
     };
-              }
-    /*
+  }
+
+  /*
    * =========================================================
    * 자동견적 사진 저장
    * =========================================================
@@ -913,14 +924,6 @@ export default function useEstimate({ companySlug = null } = {}) {
                   )
                     ? photoPaths
                     : [],
-
-                /*
-                 * 사용기록도 현재 업체에 귀속
-                 */
-
-                company_slug:
-                  normalizedCompanySlug ||
-                  null,
               }),
           }
         );
@@ -1124,7 +1127,7 @@ export default function useEstimate({ companySlug = null } = {}) {
          * 고객 화면에는
          * 가장 유사한 2건을 표시
          *
-         * getSignedImageUrl은 이제
+         * getSignedImageUrl은
          * /api/similar-photo 서버 API를 통해
          * 업체 소속 확인 후 Signed URL을 받습니다.
          */
@@ -1347,4 +1350,4 @@ export default function useEstimate({ companySlug = null } = {}) {
     resetEstimateResults,
     readJsonSafely,
   };
-  }
+      }
