@@ -17,31 +17,52 @@ import {
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
-export default function useEstimate({ companySlug = null } = {}) {
-  const normalizedCompanySlug = String(companySlug || "")
-    .trim()
-    .toLowerCase();
+export default function useEstimate({
+  companySlug = null,
+} = {}) {
+  const normalizedCompanySlug =
+    String(companySlug || "")
+      .trim()
+      .toLowerCase();
 
-  const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] =
+  const [images, setImages] =
+    useState([]);
+
+  const [loading, setLoading] =
     useState(false);
 
-  const [message, setMessage] = useState("");
+  const [
+    imageLoading,
+    setImageLoading,
+  ] = useState(false);
 
-  const [groups, setGroups] = useState([]);
+  const [message, setMessage] =
+    useState("");
 
-  const [totalEstimate, setTotalEstimate] =
-    useState(null);
+  const [groups, setGroups] =
+    useState([]);
 
-  const usageIdRef = useRef(null);
+  const [
+    totalEstimate,
+    setTotalEstimate,
+  ] = useState(null);
+
+  const usageIdRef =
+    useRef(null);
 
   const estimatePhotoPathsRef =
     useRef([]);
 
+  /*
+   * =========================================================
+   * 세션 ID
+   * =========================================================
+   */
+
   function getSessionId() {
     if (
-      typeof window === "undefined"
+      typeof window ===
+      "undefined"
     ) {
       return makeId();
     }
@@ -55,7 +76,8 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
 
     if (!sessionId) {
-      sessionId = makeId();
+      sessionId =
+        makeId();
 
       window.localStorage.setItem(
         key,
@@ -66,15 +88,31 @@ export default function useEstimate({ companySlug = null } = {}) {
     return sessionId;
   }
 
+  /*
+   * =========================================================
+   * 견적 결과 초기화
+   * =========================================================
+   */
+
   function resetEstimateResults() {
     setGroups([]);
-    setTotalEstimate(null);
 
-    usageIdRef.current = null;
+    setTotalEstimate(
+      null
+    );
+
+    usageIdRef.current =
+      null;
 
     estimatePhotoPathsRef.current =
       [];
   }
+
+  /*
+   * =========================================================
+   * JSON 안전 읽기
+   * =========================================================
+   */
 
   async function readJsonSafely(
     response
@@ -83,7 +121,9 @@ export default function useEstimate({ companySlug = null } = {}) {
       await response.text();
 
     try {
-      return JSON.parse(text);
+      return JSON.parse(
+        text
+      );
     } catch {
       throw new Error(
         text
@@ -98,6 +138,162 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   /*
    * =========================================================
+   * 사용량 사전검사
+   *
+   * 실제 AI / 검색 / 업로드를 시작하기 전에
+   * /api/usage-limit를 호출합니다.
+   *
+   * 이 함수는 사용량을 증가시키지 않습니다.
+   * 현재 사용 가능한지만 확인합니다.
+   * =========================================================
+   */
+
+  async function checkUsageBeforeAction({
+    eventType,
+    quantity = 1,
+  }) {
+    if (
+      !normalizedCompanySlug
+    ) {
+      throw new Error(
+        "회사 정보를 확인할 수 없습니다."
+      );
+    }
+
+    const safeQuantity =
+      Number(quantity);
+
+    if (
+      !Number.isFinite(
+        safeQuantity
+      ) ||
+      safeQuantity <= 0
+    ) {
+      throw new Error(
+        "사용량 확인 수량이 올바르지 않습니다."
+      );
+    }
+
+    const response =
+      await fetch(
+        "/api/usage-limit",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              company_slug:
+                normalizedCompanySlug,
+
+              event_type:
+                eventType,
+
+              requested_quantity:
+                safeQuantity,
+            }),
+        }
+      );
+
+    const result =
+      await readJsonSafely(
+        response
+      );
+
+    if (
+      !response.ok ||
+      !result?.success ||
+      result?.allowed ===
+        false
+    ) {
+      /*
+       * 서버에서 내려준 한도 메시지를
+       * 그대로 고객 화면에 전달합니다.
+       */
+
+      throw new Error(
+        result?.error ||
+          "요금제 사용량 한도를 확인해주세요."
+      );
+    }
+
+    return result;
+  }
+
+  /*
+   * =========================================================
+   * 자동견적 시작 전 핵심 사전검사
+   *
+   * 여기서 막히면:
+   *
+   * - OpenAI 사진분석 호출 안 함
+   * - Embedding 호출 안 함
+   * - Storage 업로드 안 함
+   *
+   * =========================================================
+   */
+
+  async function checkEstimateStartLimits() {
+    /*
+     * 자동견적 자체 1회
+     */
+
+    setMessage(
+      "자동견적 사용 가능 여부를 확인하고 있습니다..."
+    );
+
+    await checkUsageBeforeAction({
+      eventType:
+        "auto_estimate",
+
+      quantity: 1,
+    });
+
+    /*
+     * 선택한 사진 수만큼
+     * AI 사진분석 가능 여부
+     */
+
+    setMessage(
+      "AI 사진분석 사용 가능 여부를 확인하고 있습니다..."
+    );
+
+    await checkUsageBeforeAction({
+      eventType:
+        "ai_photo_analysis",
+
+      quantity:
+        images.length,
+    });
+
+    /*
+     * 선택한 사진 수만큼
+     * 이미지 업로드 가능 여부
+     *
+     * 저장용량 MB는 실제 파일 크기를
+     * /api/estimate-photo가 서버에서 다시 검사합니다.
+     */
+
+    setMessage(
+      "사진 업로드 사용 가능 여부를 확인하고 있습니다..."
+    );
+
+    await checkUsageBeforeAction({
+      eventType:
+        "image_upload",
+
+      quantity:
+        images.length,
+    });
+  }
+
+  /*
+   * =========================================================
    * 사진 추가
    * =========================================================
    */
@@ -105,19 +301,21 @@ export default function useEstimate({ companySlug = null } = {}) {
   async function addImages(
     fileList
   ) {
-    const files = Array.from(
-      fileList || []
-    );
+    const files =
+      Array.from(
+        fileList || []
+      );
 
     if (!files.length) {
       return;
     }
 
-    const remaining = Math.max(
-      0,
-      MAX_IMAGES -
-        images.length
-    );
+    const remaining =
+      Math.max(
+        0,
+        MAX_IMAGES -
+          images.length
+      );
 
     if (remaining <= 0) {
       setMessage(
@@ -133,7 +331,9 @@ export default function useEstimate({ companySlug = null } = {}) {
         remaining
       );
 
-    setImageLoading(true);
+    setImageLoading(
+      true
+    );
 
     setMessage(
       `사진을 준비하고 있습니다... 0/${selected.length}`
@@ -142,7 +342,8 @@ export default function useEstimate({ companySlug = null } = {}) {
     resetEstimateResults();
 
     try {
-      const additions = [];
+      const additions =
+        [];
 
       for (
         let index = 0;
@@ -159,11 +360,14 @@ export default function useEstimate({ companySlug = null } = {}) {
         try {
           const prepared =
             await prepareImage(
-              selected[index]
+              selected[
+                index
+              ]
             );
 
           additions.push({
-            id: makeId(),
+            id:
+              makeId(),
 
             file:
               prepared.file,
@@ -292,11 +496,13 @@ export default function useEstimate({ companySlug = null } = {}) {
     );
 
     /*
-     * 중요:
-     * AI 분석 사용량을 정확한 업체에 귀속하기 위해
-     * 현재 업체 slug를 분석 API에 전달합니다.
+     * AI 사용량을 정확한 업체에 귀속하기 위해
+     * 현재 업체 slug 전달
      */
-    if (normalizedCompanySlug) {
+
+    if (
+      normalizedCompanySlug
+    ) {
       formData.append(
         "company_slug",
         normalizedCompanySlug
@@ -307,8 +513,11 @@ export default function useEstimate({ companySlug = null } = {}) {
       await fetch(
         "/api/analyze",
         {
-          method: "POST",
-          body: formData,
+          method:
+            "POST",
+
+          body:
+            formData,
         }
       );
 
@@ -331,6 +540,7 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     return {
       ...imageItem,
+
       analysis:
         result.analysis,
     };
@@ -339,40 +549,49 @@ export default function useEstimate({ companySlug = null } = {}) {
   /*
    * =========================================================
    * Private Storage 이미지 Signed URL
-   * 서버에서 업체 소속을 확인한 뒤 발급
    * =========================================================
    */
 
-  async function getSignedImageUrl(path) {
+  async function getSignedImageUrl(
+    path
+  ) {
     if (!path) {
       return null;
     }
 
-    if (!normalizedCompanySlug) {
+    if (
+      !normalizedCompanySlug
+    ) {
       return null;
     }
 
     try {
-      const response = await fetch(
-        "/api/similar-photo",
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          "/api/similar-photo",
+          {
+            method:
+              "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          body: JSON.stringify({
-            company_slug:
-              normalizedCompanySlug,
-            path,
-          }),
-        }
-      );
+            body:
+              JSON.stringify({
+                company_slug:
+                  normalizedCompanySlug,
+
+                path,
+              }),
+          }
+        );
 
       const result =
-        await readJsonSafely(response);
+        await readJsonSafely(
+          response
+        );
 
       if (
         !response.ok ||
@@ -409,9 +628,12 @@ export default function useEstimate({ companySlug = null } = {}) {
   ) {
     /*
      * 회사 slug가 없으면
-     * 절대로 공용/다른 업체 데이터를 검색하지 않습니다.
+     * 다른 업체 데이터를 검색하지 않습니다.
      */
-    if (!normalizedCompanySlug) {
+
+    if (
+      !normalizedCompanySlug
+    ) {
       return [];
     }
 
@@ -467,11 +689,20 @@ export default function useEstimate({ companySlug = null } = {}) {
       )}`,
     ].join("\n");
 
+    /*
+     * 유사검색 사전 한도검사는
+     * handleAnalyze에서 전체 그룹 수를 계산한 뒤
+     * 한 번에 먼저 검사합니다.
+     *
+     * 따라서 여기서는 실제 embedding을 실행합니다.
+     */
+
     const response =
       await fetch(
         "/api/embedding",
         {
-          method: "POST",
+          method:
+            "POST",
 
           headers: {
             "Content-Type":
@@ -502,9 +733,8 @@ export default function useEstimate({ companySlug = null } = {}) {
     }
 
     /*
-     * 중요:
      * company_slug를 RPC에 전달하여
-     * 해당 업체의 시공 데이터만 검색합니다.
+     * 해당 업체의 시공 데이터만 검색
      */
 
     const {
@@ -537,49 +767,52 @@ export default function useEstimate({ companySlug = null } = {}) {
      * =========================================================
      * 유사이미지 검색 사용량 기록
      *
-     * 검색 자체가 정상 완료된 경우 1회 기록합니다.
-     * 기록 실패가 실제 견적 기능을 막지는 않습니다.
+     * 실제 검색까지 성공한 경우에만 +1
      * =========================================================
      */
 
-    try {
-      const searchResults =
-        Array.isArray(data)
-          ? data
-          : [];
+    const searchResults =
+      Array.isArray(data)
+        ? data
+        : [];
 
-      const topSimilarity =
-        searchResults.length
-          ? Math.max(
-              ...searchResults.map(
-                (item) =>
-                  Number(
-                    item?.similarity || 0
-                  )
-              )
+    const topSimilarity =
+      searchResults.length
+        ? Math.max(
+            ...searchResults.map(
+              (item) =>
+                Number(
+                  item?.similarity ||
+                    0
+                )
             )
-          : null;
+          )
+        : null;
 
-      const usageResponse =
-        await fetch(
-          "/api/similar-search-usage",
-          {
-            method: "POST",
+    const usageResponse =
+      await fetch(
+        "/api/similar-search-usage",
+        {
+          method:
+            "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
 
-            body: JSON.stringify({
+          body:
+            JSON.stringify({
               company_slug:
                 normalizedCompanySlug,
 
               category:
-                group.category || null,
+                group.category ||
+                null,
 
               sub_category:
-                group.subCategory || null,
+                group.subCategory ||
+                null,
 
               result_count:
                 searchResults.length,
@@ -587,26 +820,36 @@ export default function useEstimate({ companySlug = null } = {}) {
               top_similarity:
                 topSimilarity,
             }),
-          }
-        );
+        }
+      );
 
-      if (!usageResponse.ok) {
-        const usageResult =
-          await readJsonSafely(
-            usageResponse
-          );
+    const usageResult =
+      await readJsonSafely(
+        usageResponse
+      );
 
-        console.error(
-          "유사이미지 검색 사용량 기록 실패:",
-          usageResult?.error
-        );
-      }
-    } catch (usageError) {
-      console.error(
-        "유사이미지 검색 사용량 기록 오류:",
-        usageError
+    /*
+     * 여기서는 기존처럼 조용히 무시하지 않습니다.
+     *
+     * 특히 429라면
+     * 한도 초과 상태이므로 즉시 중단합니다.
+     */
+
+    if (
+      !usageResponse.ok ||
+      !usageResult?.success
+    ) {
+      throw new Error(
+        usageResult?.error ||
+          "유사이미지 검색 사용량을 처리하지 못했습니다."
       );
     }
+
+    /*
+     * =========================================================
+     * 같은 시공부위 + 실제 시공금액이 있는 데이터만 사용
+     * =========================================================
+     */
 
     const filtered = (
       data || []
@@ -634,7 +877,10 @@ export default function useEstimate({ companySlug = null } = {}) {
           );
         }
       )
-      .slice(0, 10);
+      .slice(
+        0,
+        10
+      );
 
     const unique = [];
 
@@ -680,7 +926,8 @@ export default function useEstimate({ companySlug = null } = {}) {
     let weightedCostTotal =
       0;
 
-    let weightTotal = 0;
+    let weightTotal =
+      0;
 
     for (
       const item of cases
@@ -704,14 +951,16 @@ export default function useEstimate({ companySlug = null } = {}) {
       ) {
         /*
          * 유사도가 높은 데이터에
-         * 더 큰 가중치를 부여합니다.
+         * 더 큰 가중치를 부여
          */
 
         const weight =
           similarity *
           similarity;
 
-        weightedCostTotal +=          cost * weight;
+        weightedCostTotal +=
+          cost *
+          weight;
 
         weightTotal +=
           weight;
@@ -782,8 +1031,10 @@ export default function useEstimate({ companySlug = null } = {}) {
       min,
       max,
       average,
+
       count:
         cases.length,
+
       confidence,
     };
   }
@@ -796,7 +1047,9 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   async function uploadEstimatePhotos() {
     const paths = [];
+
     const failed = [];
+
     const uploadErrors =
       [];
 
@@ -818,14 +1071,10 @@ export default function useEstimate({ companySlug = null } = {}) {
 
         formData.append(
           "image",
-          images[index].file
+          images[
+            index
+          ].file
         );
-
-        /*
-         * 중요:
-         * 사진 저장 API에도
-         * 현재 업체 slug를 전달합니다.
-         */
 
         if (
           normalizedCompanySlug
@@ -911,9 +1160,8 @@ export default function useEstimate({ companySlug = null } = {}) {
     }
 
     return paths;
-  }
-
-  /*
+        }
+    /*
    * =========================================================
    * 자동견적 사용 로그
    * =========================================================
@@ -929,7 +1177,8 @@ export default function useEstimate({ companySlug = null } = {}) {
         await fetch(
           "/api/estimate-usage",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -948,9 +1197,7 @@ export default function useEstimate({ companySlug = null } = {}) {
                 category:
                   completedGroups
                     .map(
-                      (
-                        group
-                      ) =>
+                      (group) =>
                         group.category
                     )
                     .filter(
@@ -964,9 +1211,7 @@ export default function useEstimate({ companySlug = null } = {}) {
                 sub_category:
                   completedGroups
                     .map(
-                      (
-                        group
-                      ) =>
+                      (group) =>
                         group.subCategory
                     )
                     .filter(
@@ -1030,8 +1275,10 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
 
       /*
+       * 기존 동작 유지:
+       *
        * 로그 저장 오류가 나도
-       * AI 견적 자체는 유지합니다.
+       * 이미 계산된 AI 견적 결과는 유지합니다.
        */
 
       return null;
@@ -1045,6 +1292,12 @@ export default function useEstimate({ companySlug = null } = {}) {
    */
 
   async function handleAnalyze() {
+    /*
+     * =====================================================
+     * 사진 확인
+     * =====================================================
+     */
+
     if (!images.length) {
       setMessage(
         "사진을 한 장 이상 선택해주세요."
@@ -1053,7 +1306,28 @@ export default function useEstimate({ companySlug = null } = {}) {
       return;
     }
 
-    setLoading(true);
+    /*
+     * =====================================================
+     * 회사 확인
+     *
+     * SaaS 사용량을 정확하게 적용하려면
+     * 업체 slug가 반드시 있어야 합니다.
+     * =====================================================
+     */
+
+    if (
+      !normalizedCompanySlug
+    ) {
+      setMessage(
+        "❌ 회사 정보를 확인할 수 없습니다."
+      );
+
+      return;
+    }
+
+    setLoading(
+      true
+    );
 
     setGroups([]);
 
@@ -1069,7 +1343,30 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     try {
       /*
+       * ===================================================
+       * 0. 자동견적 시작 전 사전 한도검사
+       *
+       * 매우 중요:
+       *
+       * 이 검사가 AI 사진분석보다 먼저 실행됩니다.
+       *
+       * 확인:
+       *
+       * - auto_estimate 1회
+       * - ai_photo_analysis 사진 수
+       * - image_upload 사진 수
+       *
+       * 하나라도 한도 초과라면
+       * 아래 OpenAI 호출까지 내려가지 않습니다.
+       * ===================================================
+       */
+
+      await checkEstimateStartLimits();
+
+      /*
+       * ===================================================
        * 1. 사진별 AI 분석
+       * ===================================================
        */
 
       const analyzedPhotos =
@@ -1094,7 +1391,9 @@ export default function useEstimate({ companySlug = null } = {}) {
       }
 
       /*
+       * ===================================================
        * 2. 같은 시공 부위끼리 그룹화
+       * ===================================================
        */
 
       setMessage(
@@ -1150,11 +1449,48 @@ export default function useEstimate({ companySlug = null } = {}) {
         );
 
       /*
-       * 3. 각 부위 유사사례 검색
+       * ===================================================
+       * 2-1. 유사이미지 검색 사전 한도검사
        *
-       * findSimilarCases 내부에서
-       * company_slug 기준으로
-       * 해당 업체 데이터만 검색합니다.
+       * AI 분석 결과가 나온 후에야
+       * 몇 개의 시공부위 그룹인지 알 수 있습니다.
+       *
+       * 예:
+       *
+       * 사진 4장
+       * → 문 2장
+       * → 싱크대 2장
+       *
+       * 실제 유사검색 = 2회
+       *
+       * 따라서 그룹 수만큼 한 번에 검사합니다.
+       *
+       * 이 검사가 통과해야
+       * /api/embedding 호출을 시작합니다.
+       * ===================================================
+       */
+
+      if (
+        baseGroups.length >
+        0
+      ) {
+        setMessage(
+          "유사 시공사례 검색 가능 여부를 확인하고 있습니다..."
+        );
+
+        await checkUsageBeforeAction({
+          eventType:
+            "similar_image_search",
+
+          quantity:
+            baseGroups.length,
+        });
+      }
+
+      /*
+       * ===================================================
+       * 3. 각 부위 유사사례 검색
+       * ===================================================
        */
 
       const completedGroups =
@@ -1167,7 +1503,9 @@ export default function useEstimate({ companySlug = null } = {}) {
         index += 1
       ) {
         const group =
-          baseGroups[index];
+          baseGroups[
+            index
+          ];
 
         setMessage(
           `유사 시공사례 검색 중... ${
@@ -1178,38 +1516,41 @@ export default function useEstimate({ companySlug = null } = {}) {
         );
 
         let cases = [];
+
         let estimate =
           null;
 
-        try {
-          cases =
-            await findSimilarCases(
-              group
-            );
+        /*
+         * 이전 버전에서는
+         * 유사검색 오류를 console.error만 하고
+         * 다음 단계로 계속 진행했습니다.
+         *
+         * 이제 사용량 제한도 연결되어 있으므로
+         * 429 등의 오류를 조용히 무시하지 않습니다.
+         */
 
-          estimate =
-            calculateEstimate(
-              cases
-            );
-        } catch (error) {
-          console.error(
-            error
+        cases =
+          await findSimilarCases(
+            group
           );
-        }
+
+        estimate =
+          calculateEstimate(
+            cases
+          );
 
         /*
          * 고객 화면에는
-         * 가장 유사한 2건을 표시
-         *
-         * getSignedImageUrl은
-         * /api/similar-photo 서버 API를 통해
-         * 업체 소속 확인 후 Signed URL을 받습니다.
+         * 가장 유사한 2건 표시
          */
 
         const similarItems =
           await Promise.all(
             cases
-              .slice(0, 2)
+              .slice(
+                0,
+                2
+              )
               .map(
                 async (
                   item
@@ -1232,7 +1573,9 @@ export default function useEstimate({ companySlug = null } = {}) {
         completedGroups.push(
           {
             ...group,
+
             similarItems,
+
             estimate,
           }
         );
@@ -1243,7 +1586,9 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
 
       /*
+       * ===================================================
        * 4. 부위별 견적 합산
+       * ===================================================
        */
 
       const validEstimates =
@@ -1299,20 +1644,21 @@ export default function useEstimate({ companySlug = null } = {}) {
           completedGroups.length -
           validEstimates.length;
 
-        calculatedTotal =
-          {
-            min,
-            max,
-            average,
+        calculatedTotal = {
+          min,
 
-            estimatedGroupCount:
-              validEstimates.length,
+          max,
 
-            totalGroupCount:
-              completedGroups.length,
+          average,
 
-            missingCount,
-          };
+          estimatedGroupCount:
+            validEstimates.length,
+
+          totalGroupCount:
+            completedGroups.length,
+
+          missingCount,
+        };
 
         setTotalEstimate(
           calculatedTotal
@@ -1324,7 +1670,17 @@ export default function useEstimate({ companySlug = null } = {}) {
       }
 
       /*
+       * ===================================================
        * 5. 자동견적에 사용된 사진 저장
+       *
+       * 시작 전에 image_upload 한도를
+       * 확인했지만 보안을 위해
+       * /api/estimate-photo에서도
+       * 매 사진마다 서버 한도를 다시 검사합니다.
+       *
+       * 저장용량 MB 역시
+       * /api/estimate-photo가 실제 파일 크기로 검사합니다.
+       * ===================================================
        */
 
       setMessage(
@@ -1335,26 +1691,31 @@ export default function useEstimate({ companySlug = null } = {}) {
         await uploadEstimatePhotos();
 
       /*
+       * ===================================================
        * 6. 자동견적 사용 로그 저장
+       *
+       * /api/estimate-usage에서도
+       * 서버가 auto_estimate 한도를 다시 확인합니다.
+       * ===================================================
        */
 
       setMessage(
         "자동견적 기록을 저장하고 있습니다..."
       );
 
-      await saveEstimateUsage(
-        {
-          completedGroups,
+      await saveEstimateUsage({
+        completedGroups,
 
-          estimate:
-            calculatedTotal,
+        estimate:
+          calculatedTotal,
 
-          photoPaths,
-        }
-      );
+        photoPaths,
+      });
 
       /*
+       * ===================================================
        * 7. 완료 메시지
+       * ===================================================
        */
 
       if (
@@ -1382,17 +1743,27 @@ export default function useEstimate({ companySlug = null } = {}) {
       }
     } catch (error) {
       console.error(
+        "자동견적 실행 오류:",
         error
       );
 
+      /*
+       * 한도 초과도 여기로 들어옵니다.
+       *
+       * 서버가 전달한 실제 메시지를
+       * 고객 화면에 보여줍니다.
+       */
+
       setMessage(
-        `❌ 오류: ${
+        `❌ ${
           error?.message ||
           "분석 중 오류가 발생했습니다."
         }`
       );
     } finally {
-      setLoading(false);
+      setLoading(
+        false
+      );
     }
   }
 
@@ -1404,24 +1775,35 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   return {
     images,
+
     loading,
+
     imageLoading,
+
     message,
+
     groups,
+
     totalEstimate,
 
     usageIdRef,
+
     estimatePhotoPathsRef,
 
     addImages,
+
     removeImage,
+
     handleAnalyze,
 
     setMessage,
+
     setGroups,
+
     setTotalEstimate,
 
     resetEstimateResults,
+
     readJsonSafely,
   };
-}
+        }
