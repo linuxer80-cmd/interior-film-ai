@@ -258,6 +258,11 @@ export default function SuperAdminPage() {
       "/super-admin/plans";
   }
 
+  function openStructureAnalysis() {
+    window.location.href =
+      "/super-admin/structure";
+  }
+
   /* =========================================================
      회사 상세관리 이동
   ========================================================= */
@@ -480,6 +485,20 @@ export default function SuperAdminPage() {
 
             <span>
               요금제 관리
+            </span>
+          </button>
+
+          <button
+            type="button"
+            style={styles.menuButton}
+            onClick={openStructureAnalysis}
+          >
+            <span style={styles.menuIcon}>
+              🛠️
+            </span>
+
+            <span>
+              구조분석 관리
             </span>
           </button>
         </div>
@@ -898,7 +917,7 @@ const styles = {
   menuGrid: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
+      "repeat(3, minmax(0, 1fr))",
     gap: "8px",
     marginBottom: "14px",
   },
@@ -910,13 +929,13 @@ const styles = {
     borderRadius: "14px",
     background: "#ffffff",
     color: "#111827",
-    fontSize: "15px",
+    fontSize: "14px",
     fontWeight: 900,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "8px",
+    gap: "6px",
     WebkitTapHighlightColor:
       "transparent",
     touchAction: "manipulation",
@@ -929,7 +948,7 @@ const styles = {
   },
 
   menuIcon: {
-    fontSize: "19px",
+    fontSize: "18px",
     lineHeight: 1,
   },
 
@@ -987,256 +1006,4 @@ const styles = {
 
   sectionDescription: {
     marginTop: "4px",
-    color: "#6b7280",
-    fontSize: "12px",
-    lineHeight: 1.5,
-  },
-
-  refreshButton: {
-    border: "1px solid #d1d5db",
-    background: "#ffffff",
-    borderRadius: "9px",
-    padding: "8px 10px",
-    fontSize: "12px",
-    fontWeight: 800,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-
-  searchInput: {
-    width: "100%",
-    boxSizing: "border-box",
-    minHeight: "44px",
-    border:
-      "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "0 12px",
-    fontSize: "14px",
-    outline: "none",
-    marginBottom: "12px",
-  },
-
-  message: {
-    padding: "10px",
-    borderRadius: "9px",
-    marginBottom: "12px",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  messageSuccess: {
-    background: "#f0fdf4",
-    color: "#166534",
-    border:
-      "1px solid #bbf7d0",
-  },
-
-  messageError: {
-    background: "#fef2f2",
-    color: "#991b1b",
-    border:
-      "1px solid #fecaca",
-  },
-
-  companyList: {
-    display: "grid",
-    gap: "10px",
-  },
-
-  companyCard: {
-    border:
-      "1px solid #e5e7eb",
-    borderRadius: "13px",
-    padding: "13px",
-    background: "#fafafa",
-  },
-
-  companyTop: {
-    display: "flex",
-    justifyContent:
-      "space-between",
-    alignItems: "flex-start",
-    gap: "10px",
-  },
-
-  companyNameRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "7px",
-    flexWrap: "wrap",
-  },
-
-  companyName: {
-    fontSize: "17px",
-    fontWeight: 900,
-    wordBreak: "break-word",
-  },
-
-  slug: {
-    marginTop: "3px",
-    color: "#9ca3af",
-    fontSize: "11px",
-  },
-
-  statusBadge: {
-    padding: "4px 7px",
-    borderRadius: "999px",
-    fontSize: "10px",
-    fontWeight: 900,
-  },
-
-  activeBadge: {
-    background: "#dcfce7",
-    color: "#166534",
-  },
-
-  inactiveBadge: {
-    background: "#fee2e2",
-    color: "#991b1b",
-  },
-
-  toggleButton: {
-    border: 0,
-    borderRadius: "9px",
-    padding: "9px 11px",
-    fontWeight: 900,
-    fontSize: "12px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-
-  stopButton: {
-    background: "#fee2e2",
-    color: "#991b1b",
-  },
-
-  activateButton: {
-    background: "#dcfce7",
-    color: "#166534",
-  },
-
-  divider: {
-    height: "1px",
-    background: "#e5e7eb",
-    margin: "12px 0",
-  },
-
-  infoRow: {
-    display: "flex",
-    justifyContent:
-      "space-between",
-    alignItems: "center",
-    gap: "12px",
-    padding: "4px 0",
-    fontSize: "13px",
-  },
-
-  infoLabel: {
-    color: "#6b7280",
-  },
-
-  infoValue: {
-    fontWeight: 700,
-    textAlign: "right",
-    wordBreak: "break-word",
-  },
-
-  manageButton: {
-    width: "100%",
-    minHeight: "43px",
-    marginTop: "13px",
-    border: 0,
-    borderRadius: "10px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "13px",
-    fontWeight: 900,
-    cursor: "pointer",
-    WebkitTapHighlightColor:
-      "transparent",
-    touchAction: "manipulation",
-  },
-
-  companyId: {
-    marginTop: "9px",
-    paddingTop: "8px",
-    borderTop:
-      "1px dashed #e5e7eb",
-    color: "#9ca3af",
-    fontSize: "10px",
-    wordBreak: "break-all",
-  },
-
-  empty: {
-    padding: "35px 10px",
-    textAlign: "center",
-    color: "#9ca3af",
-    fontSize: "14px",
-  },
-
-  centerBox: {
-    width: "100%",
-    maxWidth: "420px",
-    margin: "100px auto 0",
-    background: "#ffffff",
-    border:
-      "1px solid #e5e7eb",
-    borderRadius: "18px",
-    padding: "28px 20px",
-    textAlign: "center",
-  },
-
-  loadingIcon: {
-    fontSize: "40px",
-    marginBottom: "10px",
-  },
-
-  loadingTitle: {
-    fontSize: "18px",
-    fontWeight: 900,
-  },
-
-  loadingText: {
-    marginTop: "7px",
-    color: "#6b7280",
-    fontSize: "13px",
-    lineHeight: 1.6,
-  },
-
-  deniedIcon: {
-    fontSize: "42px",
-  },
-
-  deniedTitle: {
-    margin:
-      "12px 0 5px",
-    fontSize: "20px",
-  },
-
-  deniedText: {
-    color: "#6b7280",
-    fontSize: "13px",
-  },
-
-  errorBox: {
-    marginTop: "15px",
-    padding: "10px",
-    borderRadius: "9px",
-    background: "#fef2f2",
-    color: "#991b1b",
-    fontSize: "12px",
-    lineHeight: 1.5,
-  },
-
-  homeButton: {
-    marginTop: "16px",
-    width: "100%",
-    minHeight: "44px",
-    border: 0,
-    borderRadius: "10px",
-    background: "#111827",
-    color: "#ffffff",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-};
+    color:
