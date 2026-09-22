@@ -1486,6 +1486,9 @@ export default function CustomerEstimatePage({
               areaFilms={
                 areaFilms
               }
+              companySlug={
+                companySlug
+              }
               onRequestDetail={() =>
                 setResultMode(
                   "detail"
