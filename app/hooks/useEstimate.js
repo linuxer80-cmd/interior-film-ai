@@ -533,6 +533,81 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
     }
 
+    /*
+     * =========================================================
+     * 유사이미지 검색 사용량 기록
+     *
+     * 검색 자체가 정상 완료된 경우 1회 기록합니다.
+     * 기록 실패가 실제 견적 기능을 막지는 않습니다.
+     * =========================================================
+     */
+
+    try {
+      const searchResults =
+        Array.isArray(data)
+          ? data
+          : [];
+
+      const topSimilarity =
+        searchResults.length
+          ? Math.max(
+              ...searchResults.map(
+                (item) =>
+                  Number(
+                    item?.similarity || 0
+                  )
+              )
+            )
+          : null;
+
+      const usageResponse =
+        await fetch(
+          "/api/similar-search-usage",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              company_slug:
+                normalizedCompanySlug,
+
+              category:
+                group.category || null,
+
+              sub_category:
+                group.subCategory || null,
+
+              result_count:
+                searchResults.length,
+
+              top_similarity:
+                topSimilarity,
+            }),
+          }
+        );
+
+      if (!usageResponse.ok) {
+        const usageResult =
+          await readJsonSafely(
+            usageResponse
+          );
+
+        console.error(
+          "유사이미지 검색 사용량 기록 실패:",
+          usageResult?.error
+        );
+      }
+    } catch (usageError) {
+      console.error(
+        "유사이미지 검색 사용량 기록 오류:",
+        usageError
+      );
+    }
+
     const filtered = (
       data || []
     )
@@ -636,8 +711,7 @@ export default function useEstimate({ companySlug = null } = {}) {
           similarity *
           similarity;
 
-        weightedCostTotal +=
-          cost * weight;
+        weightedCostTotal +=          cost * weight;
 
         weightTotal +=
           weight;
@@ -1350,4 +1424,4 @@ export default function useEstimate({ companySlug = null } = {}) {
     resetEstimateResults,
     readJsonSafely,
   };
-      }
+}
