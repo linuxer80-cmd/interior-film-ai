@@ -201,103 +201,7 @@ export default function AdminPage() {
   /* =========================================================
      시공자 관리
   ========================================================= */
-      {activeTab ===
-        "leads" && (
-        <LeadsTab
-          leadFilter={
-            leadFilter
-          }
-          setLeadFilter={
-            setLeadFilter
-          }
 
-          loadLeads={
-            loadLeads
-          }
-
-          leadTotal={
-            leadTotal
-          }
-          unreadCount={
-            unreadCount
-          }
-
-          notificationEnabled={
-            notificationEnabled
-          }
-          enableNotifications={
-            enableNotifications
-          }
-
-          leadsMessage={
-            leadsMessage
-          }
-          leadsLoading={
-            leadsLoading
-          }
-          leads={
-            leads
-          }
-
-          updateLeadStatus={
-            updateLeadStatus
-          }
-
-          openLeadId={
-            openLeadId
-          }
-          toggleLeadDetail={
-            toggleLeadDetail
-          }
-
-          leadPhotoUrls={
-            leadPhotoUrls
-          }
-          leadPhotoLoadingId={
-            leadPhotoLoadingId
-          }
-          loadLeadPhotos={
-            loadLeadPhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
-
-          saveLeadMemo={
-            saveLeadMemo
-          }
-          updateLeadLocal={
-            updateLeadLocal
-          }
-          saveFinalQuote={
-            saveFinalQuote
-          }
-
-          leadPage={
-            leadPage
-          }
-          totalLeadPages={
-            totalLeadPages
-          }
-        />
-      )}
-
-      {/* =====================================================
-          사진 확대
-      ===================================================== */}
-
-      <PhotoPreviewModal
-        previewPhoto={
-          previewPhoto
-        }
-        setPreviewPhoto={
-          setPreviewPhoto
-        }
-      />
-    </main>
-  );
-}
   const {
     workers,
     workersLoading,
@@ -771,7 +675,6 @@ export default function AdminPage() {
           {adminError}
         </div>
       )}
-
       {/* =====================================================
           회사별 고객 AI 견적 페이지
       ===================================================== */}
@@ -989,7 +892,8 @@ export default function AdminPage() {
           unreadCount
         }
       />
-             {/* =====================================================
+
+      {/* =====================================================
           시공 DB
       ===================================================== */}
 
@@ -1390,4 +1294,100 @@ export default function AdminPage() {
           고객 상담
       ===================================================== */}
 
-        
+      {activeTab ===
+        "leads" && (
+        <LeadsTab
+          leadFilter={
+            leadFilter
+          }
+          setLeadFilter={
+            setLeadFilter
+          }
+
+          loadLeads={
+            loadLeads
+          }
+
+          leadTotal={
+            leadTotal
+          }
+          unreadCount={
+            unreadCount
+          }
+
+          notificationEnabled={
+            notificationEnabled
+          }
+          enableNotifications={
+            enableNotifications
+          }
+
+          leadsMessage={
+            leadsMessage
+          }
+          leadsLoading={
+            leadsLoading
+          }
+          leads={
+            leads
+          }
+
+          updateLeadStatus={
+            updateLeadStatus
+          }
+
+          openLeadId={
+            openLeadId
+          }
+          toggleLeadDetail={
+            toggleLeadDetail
+          }
+
+          leadPhotoUrls={
+            leadPhotoUrls
+          }
+          leadPhotoLoadingId={
+            leadPhotoLoadingId
+          }
+          loadLeadPhotos={
+            loadLeadPhotos
+          }
+
+          setPreviewPhoto={
+            setPreviewPhoto
+          }
+
+          saveLeadMemo={
+            saveLeadMemo
+          }
+          updateLeadLocal={
+            updateLeadLocal
+          }
+          saveFinalQuote={
+            saveFinalQuote
+          }
+
+          leadPage={
+            leadPage
+          }
+          totalLeadPages={
+            totalLeadPages
+          }
+        />
+      )}
+
+      {/* =====================================================
+          사진 확대
+      ===================================================== */}
+
+      <PhotoPreviewModal
+        previewPhoto={
+          previewPhoto
+        }
+        setPreviewPhoto={
+          setPreviewPhoto
+        }
+      />
+    </main>
+  );
+              }
