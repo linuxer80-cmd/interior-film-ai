@@ -569,7 +569,7 @@ export default function ApprovedWorkAiRegister({
       ===================================================== */
 
       const {
-        data: profile,
+        data: profileRows,
         error: profileError,
       } = await supabase
         .from("profiles")
@@ -580,11 +580,27 @@ export default function ApprovedWorkAiRegister({
           "id",
           user.id,
         )
-        .single();
+        .limit(2);
 
       if (profileError) {
-        throw profileError;
+        throw new Error(
+          `관리자 업체 조회 실패: ${profileError.message}`,
+        );
       }
+
+      if (
+        !profileRows ||
+        profileRows.length !== 1
+      ) {
+        throw new Error(
+          `관리자 업체 조회 실패: profiles 조회 결과가 ${
+            profileRows?.length || 0
+          }건입니다.`,
+        );
+      }
+
+      const profile =
+        profileRows[0];
 
       if (
         !profile?.is_active ||
@@ -603,7 +619,7 @@ export default function ApprovedWorkAiRegister({
       ===================================================== */
 
       const {
-        data: latestReport,
+        data: latestReportRows,
         error: reportError,
       } = await supabase
         .from("work_reports")
@@ -633,11 +649,27 @@ export default function ApprovedWorkAiRegister({
           "site_id",
           siteId,
         )
-        .single();
+        .limit(2);
 
       if (reportError) {
-        throw reportError;
+        throw new Error(
+          `완료보고 조회 실패: ${reportError.message}`,
+        );
       }
+
+      if (
+        !latestReportRows ||
+        latestReportRows.length !== 1
+      ) {
+        throw new Error(
+          `완료보고 조회 실패: work_reports 조회 결과가 ${
+            latestReportRows?.length || 0
+          }건입니다.`,
+        );
+      }
+
+      const latestReport =
+        latestReportRows[0];
 
       if (
         latestReport?.review_status !==
@@ -719,7 +751,7 @@ export default function ApprovedWorkAiRegister({
       );
 
       const {
-        data: workItem,
+        data: workItemRows,
         error: workItemError,
       } = await supabase
         .from("work_items")
@@ -747,23 +779,34 @@ export default function ApprovedWorkAiRegister({
               "\n",
             ) || null,
         })
-        .select("id")
-        .single();
+        .select("id");
 
       if (workItemError) {
-        throw workItemError;
+        throw new Error(
+          `work_items 생성 실패: ${workItemError.message}`,
+        );
+      }
+
+      if (
+        !workItemRows ||
+        workItemRows.length !== 1
+      ) {
+        throw new Error(
+          `work_items 생성 실패: 생성 결과가 ${
+            workItemRows?.length || 0
+          }건입니다.`,
+        );
       }
 
       workItemId =
-        workItem?.id;
+        workItemRows[0]?.id;
 
       if (!workItemId) {
         throw new Error(
           "AI 시공 데이터 ID를 생성하지 못했습니다.",
         );
-      }
-
-      /* =====================================================
+          }
+            /* =====================================================
          7. 시공 전 사진
       ===================================================== */
 
@@ -901,7 +944,9 @@ export default function ApprovedWorkAiRegister({
         );
 
       if (linkError) {
-        throw linkError;
+        throw new Error(
+          `완료보고 AI 연결 실패: ${linkError.message}`,
+        );
       }
 
       if (
@@ -909,7 +954,9 @@ export default function ApprovedWorkAiRegister({
         linkedReport.length !== 1
       ) {
         throw new Error(
-          "다른 등록 작업이 먼저 처리되었거나 완료보고 연결에 실패했습니다.",
+          `완료보고 AI 연결 실패: 연결 결과가 ${
+            linkedReport?.length || 0
+          }건입니다. 다른 등록 작업이 먼저 처리되었을 수 있습니다.`,
         );
       }
 
@@ -1153,4 +1200,4 @@ export default function ApprovedWorkAiRegister({
       )}
     </div>
   );
-      }
+          }
