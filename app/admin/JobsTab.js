@@ -2,12 +2,14 @@ import {
   formatDate,
   formatWon,
 } from "./adminUtils";
+
 import {
   inputStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
   sectionStyle,
 } from "./adminStyles";
+
 import PhotoCard from "./PhotoCard";
 import Pagination from "./Pagination";
 
@@ -20,78 +22,66 @@ export default function JobsTab({
   jobTotal,
   jobsMessage,
 
-  structureAnalysis,
-  runStructureAnalysis,
-  stopStructureAnalysis,
-
   jobsLoading,
   jobs,
+
   editingId,
+
   editCategory,
   setEditCategory,
+
   editSubCategory,
   setEditSubCategory,
+
   editCost,
   setEditCost,
+
   editMemo,
   setEditMemo,
+
   saveJobEdit,
   cancelEdit,
   startEdit,
   deleteJob,
+
   openJobId,
   toggleJobDetail,
+
   jobPhotoLoadingId,
   jobPhotos,
+
   jobPhotoUrls,
   loadingPhotoId,
+
   editingPhotoId,
+
   setPreviewPhoto,
   loadSingleJobPhoto,
+
   startPhotoEdit,
   deletePhoto,
+
   editPhotoType,
   setEditPhotoType,
+
   editPhotoCategory,
   setEditPhotoCategory,
+
   editPhotoSubCategory,
   setEditPhotoSubCategory,
+
   editPhotoDescription,
   setEditPhotoDescription,
+
   photoEditLoading,
+
   savePhotoEdit,
   cancelPhotoEdit,
+
   jobPage,
   totalJobPages,
   loadJobs,
 }) {
-  const analysis =
-    structureAnalysis || {
-      total: 0,
-      completed: 0,
-      remaining: 0,
-      failed: 0,
-      processed: 0,
-      running: false,
-      finished: false,
-      message: "",
-    };
-
-  const progress =
-    analysis.total > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            Math.round(
-              (analysis.completed /
-                analysis.total) *
-                100,
-            ),
-          ),
-        )
-      : 0;
-
   return (
     <>
       {/* =====================================================
@@ -122,9 +112,7 @@ export default function JobsTab({
                 event.target.value,
               )
             }
-            onKeyDown={(
-              event,
-            ) => {
+            onKeyDown={(event) => {
               if (
                 event.key ===
                 "Enter"
@@ -194,328 +182,6 @@ export default function JobsTab({
             "ko-KR",
           )}
           건
-        </div>
-      </section>
-
-      {/* =====================================================
-          AI 시공사진 구조분석
-      ===================================================== */}
-
-      <section style={sectionStyle}>
-        <div
-          style={{
-            display: "flex",
-            alignItems:
-              "flex-start",
-            justifyContent:
-              "space-between",
-            gap: "12px",
-          }}
-        >
-          <div>
-            <h3
-              style={{
-                margin:
-                  "0 0 5px",
-                fontSize:
-                  "17px",
-              }}
-            >
-              AI 시공사진 구조분석
-            </h3>
-
-            <div
-              style={{
-                fontSize:
-                  "12px",
-                lineHeight:
-                  1.5,
-                color:
-                  "#6b7280",
-              }}
-            >
-              기존 시공사진의
-              색상이 아닌 구조와
-              형태를 분석합니다.
-            </div>
-          </div>
-
-          {analysis.finished && (
-            <div
-              style={{
-                flexShrink: 0,
-                padding:
-                  "5px 9px",
-                borderRadius:
-                  "999px",
-                background:
-                  "#ecfdf5",
-                color:
-                  "#047857",
-                fontSize:
-                  "11px",
-                fontWeight:
-                  "800",
-              }}
-            >
-              완료
-            </div>
-          )}
-
-          {analysis.running && (
-            <div
-              style={{
-                flexShrink: 0,
-                padding:
-                  "5px 9px",
-                borderRadius:
-                  "999px",
-                background:
-                  "#eff6ff",
-                color:
-                  "#1d4ed8",
-                fontSize:
-                  "11px",
-                fontWeight:
-                  "800",
-              }}
-            >
-              분석 중
-            </div>
-          )}
-        </div>
-
-        {/* 숫자 현황 */}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(4, minmax(0, 1fr))",
-            gap: "6px",
-            marginTop:
-              "14px",
-          }}
-        >
-          <AnalysisStat
-            label="전체"
-            value={
-              analysis.total
-            }
-          />
-
-          <AnalysisStat
-            label="완료"
-            value={
-              analysis.completed
-            }
-          />
-
-          <AnalysisStat
-            label="남음"
-            value={
-              analysis.remaining
-            }
-          />
-
-          <AnalysisStat
-            label="이번 실패"
-            value={
-              analysis.failed
-            }
-          />
-        </div>
-
-        {/* 진행률 */}
-
-        <div
-          style={{
-            marginTop:
-              "14px",
-          }}
-        >
-          <div
-            style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
-              justifyContent:
-                "space-between",
-              gap: "10px",
-              marginBottom:
-                "6px",
-              fontSize:
-                "12px",
-            }}
-          >
-            <span
-              style={{
-                color:
-                  "#6b7280",
-              }}
-            >
-              진행률
-            </span>
-
-            <strong>
-              {progress}%
-            </strong>
-          </div>
-
-          <div
-            style={{
-              width: "100%",
-              height: "9px",
-              borderRadius:
-                "999px",
-              overflow:
-                "hidden",
-              background:
-                "#e5e7eb",
-            }}
-          >
-            <div
-              style={{
-                width: `${progress}%`,
-                height:
-                  "100%",
-                borderRadius:
-                  "999px",
-                background:
-                  "#111827",
-                transition:
-                  "width 0.25s ease",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* 처리 숫자 */}
-
-        {analysis.processed >
-          0 && (
-          <div
-            style={{
-              marginTop:
-                "9px",
-              fontSize:
-                "12px",
-              color:
-                "#6b7280",
-            }}
-          >
-            이번 실행에서{" "}
-            {Number(
-              analysis.processed,
-            ).toLocaleString(
-              "ko-KR",
-            )}
-            장 처리
-          </div>
-        )}
-
-        {/* 메시지 */}
-
-        {analysis.message && (
-          <div
-            style={{
-              marginTop:
-                "12px",
-              padding:
-                "10px 12px",
-              borderRadius:
-                "10px",
-              background:
-                analysis.message.startsWith(
-                  "❌",
-                )
-                  ? "#fef2f2"
-                  : analysis.message.startsWith(
-                        "⚠️",
-                      )
-                    ? "#fffbeb"
-                    : analysis.message.startsWith(
-                          "✅",
-                        )
-                      ? "#ecfdf5"
-                      : "#f8fafc",
-              border:
-                "1px solid #e5e7eb",
-              fontSize:
-                "12px",
-              lineHeight:
-                1.55,
-              whiteSpace:
-                "pre-wrap",
-            }}
-          >
-            {analysis.message}
-          </div>
-        )}
-
-        {/* 버튼 */}
-
-        {!analysis.running ? (
-          <button
-            type="button"
-            onClick={
-              runStructureAnalysis
-            }
-            style={{
-              ...primaryButtonStyle,
-              width: "100%",
-              marginTop:
-                "14px",
-            }}
-          >
-            {analysis.remaining >
-              0 &&
-            analysis.completed >
-              0
-              ? "남은 사진 구조분석 계속"
-              : analysis.finished
-                ? "구조분석 다시 확인"
-                : "기존 사진 구조분석 시작"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={
-              stopStructureAnalysis
-            }
-            style={{
-              ...secondaryButtonStyle,
-              width: "100%",
-              marginTop:
-                "14px",
-              color:
-                "#b45309",
-              borderColor:
-                "#f59e0b",
-            }}
-          >
-            분석 중지
-          </button>
-        )}
-
-        <div
-          style={{
-            marginTop:
-              "10px",
-            fontSize:
-              "11px",
-            lineHeight:
-              1.5,
-            color:
-              "#9ca3af",
-          }}
-        >
-          기존 카테고리,
-          시공금액, 임베딩은
-          변경하지 않습니다.
-          구조분석 결과만 추가
-          저장합니다.
         </div>
       </section>
 
@@ -764,63 +430,6 @@ export default function JobsTab({
         marginTop="14px"
       />
     </>
-  );
-}
-
-/* =========================================================
-   구조분석 숫자 카드
-========================================================= */
-
-function AnalysisStat({
-  label,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        padding:
-          "10px 4px",
-        borderRadius:
-          "10px",
-        background:
-          "#f8fafc",
-        border:
-          "1px solid #e5e7eb",
-        textAlign:
-          "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize:
-            "10px",
-          color:
-            "#6b7280",
-          whiteSpace:
-            "nowrap",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          marginTop:
-            "3px",
-          fontSize:
-            "16px",
-          fontWeight:
-            "800",
-        }}
-      >
-        {Number(
-          value || 0,
-        ).toLocaleString(
-          "ko-KR",
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1112,4 +721,4 @@ function JobSummary({
       </div>
     </>
   );
-            }
+             }
