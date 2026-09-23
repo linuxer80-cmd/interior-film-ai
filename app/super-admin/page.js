@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushSubscriptionStatus,
+  isPushSupported,
+} from "../utils/pushSubscription";
 
 export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
@@ -17,6 +23,11 @@ export default function SuperAdminPage() {
 
   const [notificationUnreadCount, setNotificationUnreadCount] =
     useState(0);
+
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushMessage, setPushMessage] = useState("");
 
   /* =========================================================
      슈퍼관리자 확인
@@ -226,6 +237,113 @@ export default function SuperAdminPage() {
     authorized,
     loadNotificationUnreadCount,
   ]);
+
+  /* =========================================================
+     휴대폰 Push 등록 상태
+  ========================================================= */
+
+  const loadPushStatus = useCallback(async () => {
+    const supported = isPushSupported();
+
+    setPushSupported(supported);
+
+    if (!supported) {
+      setPushEnabled(false);
+      return;
+    }
+
+    try {
+      const status =
+        await getPushSubscriptionStatus();
+
+      setPushEnabled(
+        Boolean(status?.enabled),
+      );
+    } catch (error) {
+      console.error(
+        "Push 상태 확인:",
+        error,
+      );
+
+      setPushEnabled(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authorized) return;
+
+    loadPushStatus();
+  }, [
+    authorized,
+    loadPushStatus,
+  ]);
+
+  async function handleEnablePush() {
+    setPushLoading(true);
+    setPushMessage("");
+
+    try {
+      await enablePushNotifications();
+
+      setPushEnabled(true);
+
+      setPushMessage(
+        "✅ 이 휴대폰의 알림이 켜졌습니다.",
+      );
+    } catch (error) {
+      console.error(
+        "Push 알림 켜기:",
+        error,
+      );
+
+      setPushEnabled(false);
+
+      setPushMessage(
+        `❌ ${
+          error?.message ||
+          "휴대폰 알림 등록에 실패했습니다."
+        }`,
+      );
+    } finally {
+      setPushLoading(false);
+    }
+  }
+
+  async function handleDisablePush() {
+    const confirmed =
+      window.confirm(
+        "이 휴대폰의 슈퍼관리자 Push 알림을 끌까요?",
+      );
+
+    if (!confirmed) return;
+
+    setPushLoading(true);
+    setPushMessage("");
+
+    try {
+      await disablePushNotifications();
+
+      setPushEnabled(false);
+
+      setPushMessage(
+        "✅ 이 휴대폰의 알림을 껐습니다.",
+      );
+    } catch (error) {
+      console.error(
+        "Push 알림 끄기:",
+        error,
+      );
+
+      setPushMessage(
+        `❌ ${
+          error?.message ||
+          "휴대폰 알림 해제에 실패했습니다."
+        }`,
+      );
+    } finally {
+      setPushLoading(false);
+    }
+  }
 
   /* =========================================================
      회사 활성 / 정지
@@ -534,6 +652,72 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
+        {/* 휴대폰 Push 알림 */}
+
+        <div style={styles.pushBox}>
+          <div style={styles.pushInfo}>
+            <div style={styles.pushTitle}>
+              📱 휴대폰 Push 알림
+            </div>
+
+            <div style={styles.pushDescription}>
+              {pushSupported
+                ? pushEnabled
+                  ? "이 휴대폰은 슈퍼관리자 알림을 받을 수 있습니다."
+                  : "앱을 닫아도 신규 업체·결제·만료 등의 알림을 받을 수 있습니다."
+                : "현재 브라우저에서는 Web Push 알림을 지원하지 않습니다."}
+            </div>
+
+            {pushMessage && (
+              <div
+                style={{
+                  ...styles.pushMessage,
+
+                  ...(pushMessage.startsWith(
+                    "❌",
+                  )
+                    ? styles.pushMessageError
+                    : styles.pushMessageSuccess),
+                }}
+              >
+                {pushMessage}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={
+              !pushSupported ||
+              pushLoading
+            }
+            onClick={
+              pushEnabled
+                ? handleDisablePush
+                : handleEnablePush
+            }
+            style={{
+              ...styles.pushButton,
+
+              ...(pushEnabled
+                ? styles.pushButtonEnabled
+                : styles.pushButtonDisabled),
+
+              opacity:
+                !pushSupported ||
+                pushLoading
+                  ? 0.55
+                  : 1,
+            }}
+          >
+            {pushLoading
+              ? "처리 중..."
+              : pushEnabled
+                ? "✅ 알림 켜짐"
+                : "🔔 알림 켜기"}
+          </button>
+        </div>
+
         {/* =====================================================
             슈퍼관리자 메뉴
         ===================================================== */}
@@ -667,8 +851,7 @@ export default function SuperAdminPage() {
                     loadCompanies(),
                     loadNotificationUnreadCount(),
                   ]);
-
-                  setMessage(
+                                    setMessage(
                     "✅ 회사 목록을 새로고침했습니다.",
                   );
                 } catch (error) {
@@ -1025,6 +1208,74 @@ const styles = {
     color: "#6b7280",
     textAlign: "right",
     wordBreak: "break-all",
+  },
+
+  pushBox: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "14px",
+    marginBottom: "14px",
+  },
+
+  pushInfo: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  pushTitle: {
+    fontSize: "14px",
+    fontWeight: 900,
+  },
+
+  pushDescription: {
+    marginTop: "4px",
+    color: "#6b7280",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+
+  pushMessage: {
+    marginTop: "6px",
+    fontSize: "11px",
+    fontWeight: 700,
+  },
+
+  pushMessageSuccess: {
+    color: "#166534",
+  },
+
+  pushMessageError: {
+    color: "#991b1b",
+  },
+
+  pushButton: {
+    flexShrink: 0,
+    minWidth: "104px",
+    minHeight: "40px",
+    border: 0,
+    borderRadius: "10px",
+    padding: "9px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    WebkitTapHighlightColor: "transparent",
+    touchAction: "manipulation",
+  },
+
+  pushButtonDisabled: {
+    background: "#111827",
+    color: "#ffffff",
+  },
+
+  pushButtonEnabled: {
+    background: "#dcfce7",
+    color: "#166534",
   },
 
   /* =========================================================
