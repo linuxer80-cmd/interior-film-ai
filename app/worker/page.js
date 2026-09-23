@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
+import {
+  enablePushNotifications,
+  getPushSubscriptionStatus,
+} from "../utils/pushSubscription";
+
 export default function WorkerPage() {
   const router = useRouter();
 
@@ -14,6 +19,15 @@ export default function WorkerPage() {
   const [sitesLoading, setSitesLoading] = useState(false);
 
   const [message, setMessage] = useState("");
+
+  const [notificationEnabled, setNotificationEnabled] =
+    useState(false);
+
+  const [notificationLoading, setNotificationLoading] =
+    useState(false);
+
+  const [notificationMessage, setNotificationMessage] =
+    useState("");
 
   /* =========================================================
      최초 실행
@@ -28,7 +42,8 @@ export default function WorkerPage() {
 
      1. 로그인 확인
      2. 시공자 계정 확인
-     3. 본인 배정 현장만 조회
+     3. Push 구독 상태 확인
+     4. 본인 배정 현장만 조회
   ========================================================= */
 
   async function loadWorkerPage() {
@@ -59,7 +74,7 @@ export default function WorkerPage() {
       ===================================================== */
 
       const { data, error } = await supabase.rpc(
-        "get_my_worker"
+        "get_my_worker",
       );
 
       if (error) {
@@ -81,7 +96,7 @@ export default function WorkerPage() {
         await supabase.auth.signOut();
 
         setMessage(
-          "현재 사용이 중지된 시공자 계정입니다. 회사 관리자에게 문의해주세요."
+          "현재 사용이 중지된 시공자 계정입니다. 회사 관리자에게 문의해주세요.",
         );
 
         return;
@@ -90,21 +105,27 @@ export default function WorkerPage() {
       setWorker(workerData);
 
       /* =====================================================
-         3. 본인에게 배정된 현장만 조회
+         3. Push 구독 상태 확인
+      ===================================================== */
+
+      await syncNotificationStatus();
+
+      /* =====================================================
+         4. 본인에게 배정된 현장만 조회
       ===================================================== */
 
       await loadAssignedSites();
     } catch (error) {
       console.error(
         "시공자 페이지 로드 오류:",
-        error
+        error,
       );
 
       setMessage(
         `❌ ${
           error?.message ||
           "시공자 정보를 불러오지 못했습니다."
-        }`
+        }`,
       );
     } finally {
       setLoading(false);
@@ -125,7 +146,7 @@ export default function WorkerPage() {
 
     try {
       const { data, error } = await supabase.rpc(
-        "get_my_assigned_sites"
+        "get_my_assigned_sites",
       );
 
       if (error) {
@@ -136,7 +157,7 @@ export default function WorkerPage() {
     } catch (error) {
       console.error(
         "배정 현장 조회 오류:",
-        error
+        error,
       );
 
       setSites([]);
@@ -144,6 +165,83 @@ export default function WorkerPage() {
       throw error;
     } finally {
       setSitesLoading(false);
+    }
+  }
+
+  /* =========================================================
+     Push 구독 상태 확인
+  ========================================================= */
+
+  async function syncNotificationStatus() {
+    try {
+      const status =
+        await getPushSubscriptionStatus();
+
+      const enabled =
+        Boolean(
+          status?.supported &&
+            status?.permission === "granted" &&
+            status?.subscribed,
+        );
+
+      setNotificationEnabled(enabled);
+
+      return enabled;
+    } catch (error) {
+      console.error(
+        "시공자 Push 상태 확인 오류:",
+        error,
+      );
+
+      setNotificationEnabled(false);
+
+      return false;
+    }
+  }
+
+  /* =========================================================
+     Push 알림 활성화
+  ========================================================= */
+
+  async function handleEnableNotifications() {
+    if (notificationLoading) {
+      return;
+    }
+
+    setNotificationLoading(true);
+    setNotificationMessage("");
+
+    try {
+      await enablePushNotifications();
+
+      const enabled =
+        await syncNotificationStatus();
+
+      if (!enabled) {
+        throw new Error(
+          "Push 알림 구독을 확인하지 못했습니다.",
+        );
+      }
+
+      setNotificationMessage(
+        "✅ 현장 알림이 켜졌습니다.",
+      );
+    } catch (error) {
+      console.error(
+        "시공자 Push 활성화 오류:",
+        error,
+      );
+
+      setNotificationEnabled(false);
+
+      setNotificationMessage(
+        `❌ ${
+          error?.message ||
+          "알림을 켜지 못했습니다."
+        }`,
+      );
+    } finally {
+      setNotificationLoading(false);
     }
   }
 
@@ -157,7 +255,7 @@ export default function WorkerPage() {
     } catch (error) {
       console.error(
         "로그아웃 오류:",
-        error
+        error,
       );
     } finally {
       router.replace("/worker/login");
@@ -510,6 +608,7 @@ export default function WorkerPage() {
             <div
               style={{
                 minWidth: 0,
+                flex: 1,
               }}
             >
               <div
@@ -533,6 +632,122 @@ export default function WorkerPage() {
                   "전화번호 없음"}
               </div>
             </div>
+          </div>
+
+          {/* =================================================
+              시공자 Push 알림
+          ================================================= */}
+
+          <div
+            style={{
+              marginTop: "16px",
+              paddingTop: "14px",
+              borderTop: "1px solid #f1f5f9",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div
+                style={{
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                >
+                  🔔 현장 알림
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "3px",
+                    fontSize: "11px",
+                    lineHeight: 1.5,
+                    color: "#64748b",
+                  }}
+                >
+                  새 현장 배정과 일정 알림을
+                  휴대폰으로 받습니다.
+                </div>
+              </div>
+
+              {notificationEnabled ? (
+                <div
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "8px 11px",
+                    borderRadius: "9px",
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    color: "#15803d",
+                    fontSize: "12px",
+                    fontWeight: "900",
+                  }}
+                >
+                  ✓ 알림 켜짐
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={
+                    handleEnableNotifications
+                  }
+                  disabled={
+                    notificationLoading
+                  }
+                  style={{
+                    flex: "0 0 auto",
+                    border: "none",
+                    borderRadius: "9px",
+                    padding: "9px 12px",
+                    background:
+                      notificationLoading
+                        ? "#94a3b8"
+                        : "#111827",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: "900",
+                    cursor:
+                      notificationLoading
+                        ? "default"
+                        : "pointer",
+                  }}
+                >
+                  {notificationLoading
+                    ? "설정 중..."
+                    : "알림 켜기"}
+                </button>
+              )}
+            </div>
+
+            {notificationMessage && (
+              <div
+                style={{
+                  marginTop: "9px",
+                  fontSize: "12px",
+                  lineHeight: 1.5,
+                  fontWeight: "700",
+                  color:
+                    notificationMessage.startsWith(
+                      "✅",
+                    )
+                      ? "#15803d"
+                      : "#b91c1c",
+                }}
+              >
+                {notificationMessage}
+              </div>
+            )}
           </div>
         </section>
 
@@ -653,7 +868,7 @@ export default function WorkerPage() {
                 {sites.map((site) => {
                   const status =
                     getStatusInfo(
-                      site.site_status
+                      site.site_status,
                     );
 
                   const address =
@@ -664,7 +879,7 @@ export default function WorkerPage() {
                       key={site.site_id}
                       onClick={() => {
                         router.push(
-                          `/worker/site/${site.site_id}`
+                          `/worker/site/${site.site_id}`,
                         );
                       }}
                       style={{
@@ -732,7 +947,8 @@ export default function WorkerPage() {
                               "999px",
                             background:
                               status.background,
-                            color: status.color,
+                            color:
+                              status.color,
                             fontSize: "11px",
                             fontWeight: "800",
                           }}
@@ -760,7 +976,7 @@ export default function WorkerPage() {
                         >
                           📅{" "}
                           {formatSchedule(
-                            site.schedule_start
+                            site.schedule_start,
                           )}
                         </div>
 
@@ -774,17 +990,18 @@ export default function WorkerPage() {
                           >
                             종료 예정{" "}
                             {formatTime(
-                              site.schedule_end
+                              site.schedule_end,
                             )}
                           </div>
                         )}
                       </div>
+
                       {/* 역할 */}
 
                       <InfoRow
                         label="담당"
                         value={getRoleLabel(
-                          site.worker_role
+                          site.worker_role,
                         )}
                       />
 
@@ -793,7 +1010,9 @@ export default function WorkerPage() {
                       {site.region && (
                         <InfoRow
                           label="지역"
-                          value={site.region}
+                          value={
+                            site.region
+                          }
                         />
                       )}
 
@@ -811,7 +1030,9 @@ export default function WorkerPage() {
                       {site.work_type && (
                         <InfoRow
                           label="작업"
-                          value={site.work_type}
+                          value={
+                            site.work_type
+                          }
                         />
                       )}
 
@@ -830,7 +1051,9 @@ export default function WorkerPage() {
                             whiteSpace: "pre-wrap",
                           }}
                         >
-                          {site.work_description}
+                          {
+                            site.work_description
+                          }
                         </div>
                       )}
 
@@ -977,4 +1200,4 @@ function InfoRow({
       </div>
     </div>
   );
-}
+          }
