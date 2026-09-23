@@ -15,6 +15,9 @@ export default function SuperAdminPage() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
 
+  const [notificationUnreadCount, setNotificationUnreadCount] =
+    useState(0);
+
   /* =========================================================
      슈퍼관리자 확인
   ========================================================= */
@@ -101,6 +104,40 @@ export default function SuperAdminPage() {
   );
 
   /* =========================================================
+     슈퍼관리자 읽지 않은 알림 개수
+  ========================================================= */
+
+  const loadNotificationUnreadCount =
+    useCallback(async () => {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "get_unread_notification_count",
+      );
+
+      if (error) {
+        console.error(
+          "알림 개수 조회:",
+          error,
+        );
+
+        return;
+      }
+
+      const count =
+        Number(
+          Array.isArray(data)
+            ? data[0]
+            : data,
+        ) || 0;
+
+      setNotificationUnreadCount(
+        count,
+      );
+    }, []);
+
+  /* =========================================================
      초기 로딩
   ========================================================= */
 
@@ -116,7 +153,10 @@ export default function SuperAdminPage() {
 
         if (!alive) return;
 
-        await loadCompanies();
+        await Promise.all([
+          loadCompanies(),
+          loadNotificationUnreadCount(),
+        ]);
       } catch (error) {
         console.error(
           "슈퍼관리자 초기화:",
@@ -148,6 +188,43 @@ export default function SuperAdminPage() {
   }, [
     checkSuperAdmin,
     loadCompanies,
+    loadNotificationUnreadCount,
+  ]);
+
+  /* =========================================================
+     슈퍼관리자 알림 실시간 갱신
+  ========================================================= */
+
+  useEffect(() => {
+    if (!authorized) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(
+        "super-admin-home-notifications-realtime",
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter:
+            "recipient_type=eq.super_admin",
+        },
+        () => {
+          loadNotificationUnreadCount();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [
+    authorized,
+    loadNotificationUnreadCount,
   ]);
 
   /* =========================================================
@@ -261,6 +338,11 @@ export default function SuperAdminPage() {
   function openStructureAnalysis() {
     window.location.href =
       "/super-admin/structure";
+  }
+
+  function openNotifications() {
+    window.location.href =
+      "/super-admin/notifications";
   }
 
   /* =========================================================
@@ -501,6 +583,38 @@ export default function SuperAdminPage() {
               구조분석 관리
             </span>
           </button>
+
+          <button
+            type="button"
+            style={styles.menuButton}
+            onClick={openNotifications}
+          >
+            <span
+              style={
+                styles.notificationMenuIconWrap
+              }
+            >
+              <span style={styles.menuIcon}>
+                🔔
+              </span>
+
+              {notificationUnreadCount > 0 && (
+                <span
+                  style={
+                    styles.notificationBadge
+                  }
+                >
+                  {notificationUnreadCount > 99
+                    ? "99+"
+                    : notificationUnreadCount}
+                </span>
+              )}
+            </span>
+
+            <span>
+              알림
+            </span>
+          </button>
         </div>
 
         {/* 통계 */}
@@ -549,7 +663,10 @@ export default function SuperAdminPage() {
                 setMessage("");
 
                 try {
-                  await loadCompanies();
+                  await Promise.all([
+                    loadCompanies(),
+                    loadNotificationUnreadCount(),
+                  ]);
 
                   setMessage(
                     "✅ 회사 목록을 새로고침했습니다.",
@@ -917,7 +1034,7 @@ const styles = {
   menuGrid: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(3, minmax(0, 1fr))",
+      "repeat(2, minmax(0, 1fr))",
     gap: "8px",
     marginBottom: "14px",
   },
@@ -950,6 +1067,32 @@ const styles = {
   menuIcon: {
     fontSize: "18px",
     lineHeight: 1,
+  },
+
+  notificationMenuIconWrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  notificationBadge: {
+    position: "absolute",
+    top: "-12px",
+    right: "-14px",
+    minWidth: "18px",
+    height: "18px",
+    padding: "0 5px",
+    borderRadius: "999px",
+    background: "#dc2626",
+    color: "#ffffff",
+    fontSize: "10px",
+    fontWeight: 900,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box",
+    border: "2px solid #ffffff",
   },
 
   statsGrid: {
