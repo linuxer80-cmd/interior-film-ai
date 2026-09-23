@@ -178,6 +178,8 @@ export default function AdminPage() {
 
     loadSites,
     createSite,
+
+    updateSiteSchedule,
     updateSiteStatus,
 
     openSite,
@@ -617,7 +619,8 @@ export default function AdminPage() {
           style={{
             background: "#ffffff",
             border: "1px solid #e5e7eb",
-            borderRadius: "14px",            padding: "14px",
+            borderRadius: "14px",
+            padding: "14px",
             marginBottom: "16px",
             boxShadow:
               "0 1px 3px rgba(0,0,0,0.05)",
@@ -1023,6 +1026,10 @@ export default function AdminPage() {
             createSite
           }
 
+          updateSiteSchedule={
+            updateSiteSchedule
+          }
+
           updateSiteStatus={
             updateSiteStatus
           }
@@ -1227,4 +1234,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}
+            }
