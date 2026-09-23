@@ -206,15 +206,108 @@ async function getCompanyAdminUserIds(
 }
 
 /* =========================================================
+   시공자 Push 수신자 조회
+
+   실제 DB 구조:
+   workers.id         = 시공자 ID
+   workers.company_id = 소속 회사
+   workers.user_id    = 로그인 auth 사용자 UUID
+
+   recipient_worker_id가 있는 경우
+   해당 시공자의 user_id만 반환합니다.
+
+   notification에 recipient_user_id가 같이 들어온 경우에도
+   workers 테이블과 대조해서 동일한 계정인지 검증합니다.
+========================================================= */
+
+async function getWorkerUserIds(
+  supabase,
+  notification,
+) {
+  const companyId =
+    cleanText(
+      notification?.company_id,
+    );
+
+  const workerId =
+    cleanText(
+      notification?.recipient_worker_id,
+    );
+
+  const recipientUserId =
+    cleanText(
+      notification?.recipient_user_id,
+    );
+
+  if (!companyId) {
+    throw new Error(
+      "worker 알림에는 company_id가 필요합니다.",
+    );
+  }
+
+  if (!workerId) {
+    throw new Error(
+      "worker 알림에는 recipient_worker_id가 필요합니다.",
+    );
+  }
+
+  let query =
+    supabase
+      .from("workers")
+      .select(
+        "id, company_id, user_id, is_active",
+      )
+      .eq("id", workerId)
+      .eq("company_id", companyId)
+      .eq("is_active", true);
+
+  if (recipientUserId) {
+    query =
+      query.eq(
+        "user_id",
+        recipientUserId,
+      );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await query.maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `시공자 Push 수신자 조회 실패: ${error.message}`,
+    );
+  }
+
+  if (!data) {
+    return [];
+  }
+
+  if (!data.user_id) {
+    return [];
+  }
+
+  return [
+    data.user_id,
+  ];
+}
+
+/* =========================================================
    알림 대상 사용자 결정
 
-   recipient_user_id가 지정되어 있으면
-   해당 사용자에게만 전송.
+   super_admin
+   → 활성 슈퍼관리자
 
-   지정되지 않은 경우:
-   super_admin → 활성 슈퍼관리자 전체
-   company_admin → 해당 회사 활성 owner
-   worker → 현재 기사 계정 구조 미확인으로 발송하지 않음
+   company_admin
+   → 해당 회사 활성 owner
+
+   worker
+   → recipient_worker_id의 workers.user_id
+
+   recipient_user_id가 지정된 경우에도
+   각 역할의 실제 DB 소속을 다시 검증합니다.
 ========================================================= */
 
 async function resolveRecipientUserIds(
@@ -230,6 +323,13 @@ async function resolveRecipientUserIds(
     cleanText(
       notification?.recipient_user_id,
     );
+
+  if (recipientType === "worker") {
+    return await getWorkerUserIds(
+      supabase,
+      notification,
+    );
+  }
 
   if (recipientUserId) {
     if (recipientType === "super_admin") {
@@ -287,10 +387,6 @@ async function resolveRecipientUserIds(
         : [];
     }
 
-    if (recipientType === "worker") {
-      return [];
-    }
-
     return [];
   }
 
@@ -305,10 +401,6 @@ async function resolveRecipientUserIds(
       supabase,
       notification?.company_id,
     );
-  }
-
-  if (recipientType === "worker") {
-    return [];
   }
 
   throw new Error(
@@ -390,11 +482,20 @@ function buildPayload(notification) {
     !url.startsWith("/") ||
     url.startsWith("//")
   ) {
-    url =
+    if (
       notification?.recipient_type ===
       "company_admin"
-        ? "/admin"
-        : "/super-admin/notifications";
+    ) {
+      url = "/admin";
+    } else if (
+      notification?.recipient_type ===
+      "worker"
+    ) {
+      url = "/worker";
+    } else {
+      url =
+        "/super-admin/notifications";
+    }
   }
 
   const notificationId =
@@ -662,37 +763,10 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       4. 기사 알림
+       4. 수신자 사용자 UUID 결정
 
-       worker DB 구조를 아직 확인하지 않았으므로
-       잘못된 사용자에게 보내지 않는다.
-    ------------------------------------------------------- */
-
-    if (
-      recipientType === "worker"
-    ) {
-      await updateNotificationPushStatus({
-        supabase,
-        notification,
-        sent: 0,
-        failed: 0,
-        errorMessage:
-          "기사 Push 수신자 구조가 아직 연결되지 않았습니다.",
-      });
-
-      return json({
-        success: true,
-        skipped: true,
-        recipient_type:
-          recipientType,
-        sent: 0,
-        message:
-          "기사 Push 수신자 구조가 아직 연결되지 않았습니다.",
-      });
-    }
-
-    /* -------------------------------------------------------
-       5. 수신자 사용자 UUID 결정
+       worker도 여기에서
+       workers.user_id를 검증하여 처리
     ------------------------------------------------------- */
 
     const recipientUserIds =
@@ -704,13 +778,23 @@ export async function POST(request) {
     if (
       recipientUserIds.length === 0
     ) {
+      let errorMessage =
+        "Push 수신 사용자를 찾지 못했습니다.";
+
+      if (
+        recipientType ===
+        "worker"
+      ) {
+        errorMessage =
+          "시공자 로그인 계정이 연결되지 않았거나 활성 시공자가 아닙니다.";
+      }
+
       await updateNotificationPushStatus({
         supabase,
         notification,
         sent: 0,
         failed: 0,
-        errorMessage:
-          "Push 수신 사용자를 찾지 못했습니다.",
+        errorMessage,
       });
 
       return json({
@@ -720,12 +804,12 @@ export async function POST(request) {
           recipientType,
         recipient_users: 0,
         message:
-          "Push 수신 사용자를 찾지 못했습니다.",
+          errorMessage,
       });
     }
 
     /* -------------------------------------------------------
-       6. 해당 사용자들의 기기만 조회
+       5. 해당 사용자들의 기기만 조회
     ------------------------------------------------------- */
 
     const subscriptions =
@@ -760,7 +844,7 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       7. Payload 생성
+       6. Payload 생성
     ------------------------------------------------------- */
 
     const payload =
@@ -769,7 +853,7 @@ export async function POST(request) {
       );
 
     /* -------------------------------------------------------
-       8. Push 발송
+       7. Push 발송
     ------------------------------------------------------- */
 
     const result =
@@ -780,7 +864,7 @@ export async function POST(request) {
       });
 
     /* -------------------------------------------------------
-       9. Notification 상태 기록
+       8. Notification 상태 기록
     ------------------------------------------------------- */
 
     await updateNotificationPushStatus({
@@ -791,7 +875,7 @@ export async function POST(request) {
     });
 
     /* -------------------------------------------------------
-       10. 완료
+       9. 완료
     ------------------------------------------------------- */
 
     return json({
@@ -847,4 +931,4 @@ export async function POST(request) {
       500,
     );
   }
-    }
+   }
