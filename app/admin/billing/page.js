@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import { supabase } from "../../../lib/supabase";
+import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
 
 
 function formatPrice(value) {
@@ -146,7 +147,7 @@ export default function BillingPage() {
   ] = useState(null);
 
   /*
-   * prepare API 처리 중
+   * prepare API + Toss 카드등록 처리 중
    */
   const [
     preparingPlan,
@@ -156,7 +157,7 @@ export default function BillingPage() {
   /*
    * prepare API 성공 결과
    *
-   * 아직 실제 결제가 완료된 상태가 아닙니다.
+   * 이 상태는 아직 실제 결제가 완료된 상태가 아닙니다.
    */
   const [
     preparedBilling,
@@ -295,17 +296,20 @@ export default function BillingPage() {
 
   /*
    * =========================================================
-   * 요금제 선택
-   *
-   * 현재 단계:
+   * 요금제 선택 + Toss 카드 자동결제 등록
    *
    * 1. 로그인 세션 확인
    * 2. access_token 확보
    * 3. 서버 prepare API 호출
    * 4. 서버가 업체/요금제/가격 검증
    * 5. billing customer 준비
+   * 6. checkout session 생성
+   * 7. Toss SDK 초기화
+   * 8. 카드 자동결제 등록창 실행
    *
-   * 아직 Toss 결제창은 열지 않습니다.
+   * 중요:
+   * 여기서는 아직 업체 요금제를 변경하지 않습니다.
+   * 실제 최초 결제가 성공한 뒤에만 변경합니다.
    * =========================================================
    */
 
@@ -332,20 +336,21 @@ export default function BillingPage() {
     }
 
     /*
-     * TRIAL은 결제 변경 대상 아님
+     * TRIAL은 신규 가입 체험용
+     * 유료 → TRIAL 변경은 허용하지 않음
      */
     if (
       code === "trial"
     ) {
       alert(
-        "TRIAL 요금제는 체험용 요금제입니다.",
+        "TRIAL 요금제는 신규 가입 체험용 요금제입니다.",
       );
 
       return;
     }
 
     /*
-     * 이미 다른 prepare 요청 처리 중
+     * 중복 클릭 방지
      */
     if (preparingPlan) {
       return;
@@ -364,8 +369,11 @@ export default function BillingPage() {
       );
 
       /*
-       * 현재 로그인 세션 확인
+       * =========================================
+       * 1. 로그인 세션 확인
+       * =========================================
        */
+
       const {
         data: sessionData,
         error: sessionError,
@@ -392,16 +400,20 @@ export default function BillingPage() {
       }
 
       /*
-       * 결제 준비 API
+       * =========================================
+       * 2. 서버 결제 준비
        *
        * 브라우저에서는 plan_code만 보냅니다.
        *
        * company_id
        * 업체 활성 여부
        * 실제 월 가격
+       * customerKey
        *
-       * 위 값들은 서버에서 다시 검증합니다.
+       * 모두 서버에서 확인합니다.
+       * =========================================
        */
+
       const response =
         await fetch(
           "/api/billing/prepare",
@@ -433,9 +445,13 @@ export default function BillingPage() {
         result = null;
       }
 
+      /*
+       * 최신 prepare API 응답은
+       * success가 아니라 ok 사용
+       */
       if (
         !response.ok ||
-        !result?.success
+        !result?.ok
       ) {
         throw new Error(
           result?.error ||
@@ -444,36 +460,182 @@ export default function BillingPage() {
       }
 
       /*
-       * 서버 검증 성공
+       * =========================================
+       * 3. 서버 응답 필수값 검증
+       * =========================================
+       */
+
+      const customerKey =
+        result?.customerKey;
+
+      const checkoutSessionId =
+        result?.checkoutSessionId;
+
+      if (!customerKey) {
+        throw new Error(
+          "결제 고객키를 확인할 수 없습니다.",
+        );
+      }
+
+      if (!checkoutSessionId) {
+        throw new Error(
+          "결제 세션을 확인할 수 없습니다.",
+        );
+      }
+
+      /*
+       * 서버 검증 결과 화면 표시용
        */
       setPreparedBilling(
         result,
       );
 
       /*
-       * 서버에서 다시 검증된
-       * 실제 요금제 코드로 선택 상태 유지
+       * 서버에서 검증한 실제 요금제 코드 사용
+       *
+       * 새 API의 plan_code를 우선 사용하고
+       * 이전 응답 구조도 안전하게 지원
        */
-      if (
-        result?.plan?.code
-      ) {
-        setSelectedPlan(
-          result.plan.code,
-        );
-      }
-    } catch (prepareError) {
-      console.error(
-        "결제 준비 오류:",
-        prepareError,
-      );
+      const preparedPlanCode =
+        result?.plan?.plan_code ||
+        result?.plan?.code ||
+        plan.plan_code;
 
-      setError(
-        prepareError?.message ||
-          "결제 준비 중 오류가 발생했습니다.",
+      setSelectedPlan(
+        preparedPlanCode,
       );
 
       /*
-       * 실패 시 현재 요금제로 선택 상태 복원
+       * =========================================
+       * 4. Toss Client Key 확인
+       * =========================================
+       */
+
+      const clientKey =
+        process.env
+          .NEXT_PUBLIC_TOSS_CLIENT_KEY;
+
+      if (!clientKey) {
+        throw new Error(
+          "Toss 클라이언트 키가 설정되지 않았습니다.",
+        );
+      }
+
+      /*
+       * =========================================
+       * 5. Toss SDK 초기화
+       * =========================================
+       */
+
+      const tossPayments =
+        await loadTossPayments(
+          clientKey,
+        );
+
+      const payment =
+        tossPayments.payment({
+          customerKey,
+        });
+
+      /*
+       * =========================================
+       * 6. 성공/실패 URL 생성
+       *
+       * checkoutSessionId를 같이 전달하여
+       * Toss에서 돌아왔을 때 서버의
+       * 결제 준비 세션과 다시 대조합니다.
+       * =========================================
+       */
+
+      const origin =
+        window.location.origin;
+
+      const successUrl =
+        `${origin}/admin/billing/success` +
+        `?checkoutSessionId=${encodeURIComponent(
+          checkoutSessionId,
+        )}`;
+
+      const failUrl =
+        `${origin}/admin/billing/fail` +
+        `?checkoutSessionId=${encodeURIComponent(
+          checkoutSessionId,
+        )}`;
+
+      /*
+       * =========================================
+       * 7. Toss 카드 자동결제 등록창
+       *
+       * 성공 시 Toss가 successUrl에
+       * authKey와 customerKey를 추가해서
+       * 브라우저를 이동시킵니다.
+       * =========================================
+       */
+
+      const billingAuthOptions = {
+        method: "CARD",
+        successUrl,
+        failUrl,
+      };
+
+      const customerEmail =
+        sessionData?.session
+          ?.user?.email;
+
+      if (customerEmail) {
+        billingAuthOptions.customerEmail =
+          customerEmail;
+      }
+
+      /*
+       * prepare API 응답 구조에 따라
+       * 대표자명이 있으면 전달합니다.
+       *
+       * 없어도 카드 등록에는 문제없습니다.
+       */
+      const customerName =
+        result?.company
+          ?.representative_name ||
+        result?.company
+          ?.name ||
+        result?.company
+          ?.company_name;
+
+      if (customerName) {
+        billingAuthOptions.customerName =
+          customerName;
+      }
+
+      await payment.requestBillingAuth(
+        billingAuthOptions,
+      );
+
+    } catch (prepareError) {
+      console.error(
+        "결제 준비/카드등록 오류:",
+        prepareError,
+      );
+
+      /*
+       * 사용자가 결제창을 직접 닫거나
+       * 취소한 경우
+       */
+      if (
+        prepareError?.code ===
+        "USER_CANCEL"
+      ) {
+        setError(
+          "카드 등록이 취소되었습니다.",
+        );
+      } else {
+        setError(
+          prepareError?.message ||
+            "카드 등록 준비 중 오류가 발생했습니다.",
+        );
+      }
+
+      /*
+       * 실패 시 현재 요금제로 복원
        */
       setSelectedPlan(
         currentPlan?.plan_code ||
@@ -739,7 +901,11 @@ export default function BillingPage() {
               업체:{" "}
               <strong>
                 {preparedBilling
-                  ?.company?.name ||
+                  ?.company
+                  ?.company_name ||
+                  preparedBilling
+                    ?.company
+                    ?.name ||
                   "-"}
               </strong>
             </div>
@@ -749,9 +915,17 @@ export default function BillingPage() {
               <strong>
                 {getPlanLabel(
                   preparedBilling
-                    ?.plan?.code,
+                    ?.plan
+                    ?.plan_code ||
+                    preparedBilling
+                      ?.plan
+                      ?.code,
                   preparedBilling
-                    ?.plan?.name,
+                    ?.plan
+                    ?.plan_name ||
+                    preparedBilling
+                      ?.plan
+                      ?.name,
                 )}
               </strong>
             </div>
@@ -765,6 +939,7 @@ export default function BillingPage() {
                     ?.monthly_price_krw,
                 )}
               </strong>
+
               {Number(
                 preparedBilling
                   ?.plan
@@ -807,8 +982,9 @@ export default function BillingPage() {
               lineHeight: "1.6",
             }}
           >
-            현재는 서버의 결제 준비 단계까지만 확인합니다.
-            아직 카드 등록이나 실제 결제는 실행되지 않습니다.
+            서버에서 업체와 요금제를 확인했습니다.
+            카드 등록을 완료해도 실제 결제가 성공하기 전에는
+            요금제가 변경되지 않습니다.
           </div>
         </section>
       )}
@@ -1119,7 +1295,7 @@ export default function BillingPage() {
                   {isCurrent
                     ? "현재 요금제"
                     : isPreparing
-                      ? "확인 중..."
+                      ? "카드 등록 준비 중..."
                       : isTrial
                         ? "체험 요금제"
                         : `${getPlanLabel(
@@ -1151,10 +1327,12 @@ export default function BillingPage() {
           lineHeight: "1.6",
         }}
       >
-        현재 단계에서는 요금제를 선택하면 서버에서 로그인 사용자,
-        소속 업체, 요금제와 월 결제금액을 다시 확인합니다.
-        카드 등록과 실제 자동결제는 다음 단계에서 연결됩니다.
+        유료 요금제를 선택하면 서버에서 로그인 사용자,
+        소속 업체, 요금제와 월 결제금액을 다시 확인한 뒤
+        카드 자동결제 등록을 진행합니다.
+        카드 등록만으로 요금제가 변경되지는 않으며,
+        실제 최초 결제가 성공한 뒤 유료 요금제가 적용됩니다.
       </div>
     </main>
   );
-            }
+}
