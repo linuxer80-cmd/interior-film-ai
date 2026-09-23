@@ -3,16 +3,48 @@
 import { useEffect, useMemo, useState } from "react";
 import FilmColorPicker from "./FilmColorPicker";
 
+/* =========================================================
+   가상시공 종류
+   - 싱크대 / 문·문틀만 여러 톤 허용
+   - 붙박이장 / 신발장 / 냉장고장 / 기타 장류는 단일 컬러
+========================================================= */
+
 const TARGET_TYPES = [
   {
     key: "kitchen",
     label: "싱크대·주방가구",
     description: "상부장·하부장·냉장고장 등",
+    multiTone: true,
   },
   {
     key: "door",
     label: "문·문틀",
     description: "문짝과 문틀",
+    multiTone: true,
+  },
+  {
+    key: "built_in",
+    label: "붙박이장",
+    description: "붙박이장 전체",
+    multiTone: false,
+  },
+  {
+    key: "shoe_cabinet",
+    label: "신발장",
+    description: "신발장 전체",
+    multiTone: false,
+  },
+  {
+    key: "fridge_cabinet",
+    label: "냉장고장",
+    description: "냉장고장 전체",
+    multiTone: false,
+  },
+  {
+    key: "cabinet",
+    label: "기타 장류",
+    description: "수납장·장식장 등",
+    multiTone: false,
   },
 ];
 
@@ -25,9 +57,26 @@ const TARGET_AREAS = {
     { key: "pantry_cabinet", label: "팬트리장" },
     { key: "island_cabinet", label: "아일랜드장" },
   ],
+
   door: [
     { key: "door_leaf", label: "문짝" },
     { key: "door_frame", label: "문틀" },
+  ],
+
+  built_in: [
+    { key: "built_in", label: "붙박이장" },
+  ],
+
+  shoe_cabinet: [
+    { key: "shoe_cabinet", label: "신발장" },
+  ],
+
+  fridge_cabinet: [
+    { key: "fridge_cabinet", label: "냉장고장" },
+  ],
+
+  cabinet: [
+    { key: "cabinet", label: "수납장" },
   ],
 };
 
@@ -143,45 +192,161 @@ function getAnalysisText(photo, group) {
     .join(" ");
 }
 
+/* =========================================================
+   AI 분석 텍스트 → 가상시공 종류
+
+   중요:
+   "붙박이장 문짝", "신발장 도어", "냉장고장 문짝"처럼
+   문/도어라는 단어가 함께 있어도 가구 종류를 먼저 판정한다.
+========================================================= */
+
 function detectTypeFromText(text) {
-  const kitchenWords = [
-    "싱크대",
-    "주방",
-    "주방가구",
-    "상부장",
-    "하부장",
-    "냉장고장",
-    "키큰장",
-    "키높이장",
-    "팬트리",
-    "펜트리",
-    "아일랜드",
-    "수납장",
-    "cabinet",
-    "kitchen",
-  ];
+  if (!text) {
+    return "";
+  }
 
-  const doorWords = [
-    "방문",
-    "방화문",
-    "중문",
-    "문짝",
-    "문틀",
-    "도어",
-    "도어프레임",
-    "door",
-    "doorframe",
-  ];
+  /* -------------------------
+     1. 붙박이장 최우선
+  ------------------------- */
 
-  const hasKitchen = includesAny(text, kitchenWords);
-  const hasDoor = includesAny(text, doorWords);
+  if (
+    includesAny(text, [
+      "붙박이장",
+      "붙박이",
+      "붙박이장문",
+      "붙박이장문짝",
+      "붙박이장도어",
+      "builtincloset",
+      "built-incloset",
+      "builtincabinet",
+      "built-incabinet",
+      "wardrobe",
+    ])
+  ) {
+    return "built_in";
+  }
 
-  if (hasDoor && !hasKitchen) {
+  /* -------------------------
+     2. 신발장
+  ------------------------- */
+
+  if (
+    includesAny(text, [
+      "신발장",
+      "신발수납장",
+      "신발장문",
+      "신발장문짝",
+      "신발장도어",
+      "shoecabinet",
+      "shoestorage",
+    ])
+  ) {
+    return "shoe_cabinet";
+  }
+
+  /* -------------------------
+     3. 냉장고장
+     싱크대 전체 사진에 포함된 냉장고장은 아래에서
+     kitchen으로 판정될 수 있지만,
+     사진 자체가 냉장고장으로 분석된 경우 우선 분리한다.
+  ------------------------- */
+
+  if (
+    includesAny(text, [
+      "냉장고장",
+      "냉장고수납장",
+      "냉장고장문",
+      "냉장고장문짝",
+      "냉장고장도어",
+      "fridgecabinet",
+      "refrigeratorcabinet",
+    ])
+  ) {
+    return "fridge_cabinet";
+  }
+
+  /* -------------------------
+     4. 싱크대 / 주방가구
+  ------------------------- */
+
+  if (
+    includesAny(text, [
+      "싱크대",
+      "주방",
+      "주방가구",
+      "상부장",
+      "하부장",
+      "키큰장",
+      "키높이장",
+      "팬트리",
+      "펜트리",
+      "아일랜드",
+      "싱크볼",
+      "조리대",
+      "kitchen",
+      "kitchencabinet",
+      "uppercabinet",
+      "lowercabinet",
+    ])
+  ) {
+    return "kitchen";
+  }
+
+  /* -------------------------
+     5. 실제 문 / 문틀
+  ------------------------- */
+
+  if (
+    includesAny(text, [
+      "방문",
+      "방화문",
+      "중문",
+      "현관문",
+      "도어프레임",
+      "문틀",
+      "doorframe",
+      "firedoor",
+      "slidingdoor",
+      "entrancedoor",
+    ])
+  ) {
     return "door";
   }
 
-  if (hasKitchen && !hasDoor) {
-    return "kitchen";
+  /*
+   * '문짝', '도어', 'door'만 있는 경우.
+   * 위의 붙박이장/신발장/냉장고장 판정을 모두 통과한
+   * 뒤에만 일반 문으로 처리한다.
+   */
+
+  if (
+    includesAny(text, [
+      "문짝",
+      "도어",
+      "door",
+    ])
+  ) {
+    return "door";
+  }
+
+  /* -------------------------
+     6. 기타 장류
+  ------------------------- */
+
+  if (
+    includesAny(text, [
+      "수납장",
+      "장식장",
+      "거실장",
+      "서랍장",
+      "옷장",
+      "책장",
+      "cabinet",
+      "storagecabinet",
+      "closet",
+    ])
+  ) {
+    return "cabinet";
   }
 
   return "";
@@ -225,8 +390,13 @@ function detectTargetTypeForImage(
     matchedEntries = [entries[imageIndex]];
   }
 
+  /*
+   * 사진 자체의 분석 결과를 가장 먼저 확인한다.
+   */
+
   const photoText = [
     getAnalysisText(image, null),
+
     ...matchedEntries.map(({ photo }) =>
       getAnalysisText(photo, null)
     ),
@@ -238,8 +408,15 @@ function detectTargetTypeForImage(
     return photoType;
   }
 
+  /*
+   * 사진 분석으로 판단되지 않은 경우
+   * 해당 사진이 속한 그룹 정보를 사용한다.
+   */
+
   const groupText = matchedEntries
-    .map(({ group }) => getAnalysisText(null, group))
+    .map(({ group }) =>
+      getAnalysisText(null, group)
+    )
     .join(" ");
 
   const groupType = detectTypeFromText(groupText);
@@ -247,6 +424,11 @@ function detectTargetTypeForImage(
   if (groupType) {
     return groupType;
   }
+
+  /*
+   * 마지막으로 category / subCategory만 모아서
+   * 다시 한 번 판정한다.
+   */
 
   const priorityText = [
     image?.category,
@@ -257,6 +439,7 @@ function detectTargetTypeForImage(
       photo?.category,
       photo?.subCategory,
       photo?.sub_category,
+
       photo?.analysis?.category,
       photo?.analysis?.subCategory,
       photo?.analysis?.sub_category,
@@ -265,34 +448,7 @@ function detectTargetTypeForImage(
     .filter(Boolean)
     .join(" ");
 
-  if (
-    includesAny(priorityText, [
-      "방문",
-      "방화문",
-      "중문",
-      "문짝",
-      "문틀",
-      "도어",
-      "door",
-    ])
-  ) {
-    return "door";
-  }
-
-  if (
-    includesAny(priorityText, [
-      "싱크대",
-      "주방",
-      "상부장",
-      "하부장",
-      "cabinet",
-      "kitchen",
-    ])
-  ) {
-    return "kitchen";
-  }
-
-  return "";
+  return detectTypeFromText(priorityText);
 }
 
 function makeFilmPayload(area, film) {
@@ -510,7 +666,6 @@ export default function VirtualInstallPanel({
   groups = [],
   useSplitTone = false,
   areaFilms = {},
-  companySlug = null,
   onUseSplitToneChange,
   onAreaFilmsChange,
   onRequestDetail,
@@ -542,7 +697,8 @@ export default function VirtualInstallPanel({
 
   const [message, setMessage] =
     useState("");
-    useEffect(() => {
+
+  useEffect(() => {
     if (!images.length) {
       setSelectedImageId("");
       setTargetType("");
@@ -609,9 +765,22 @@ export default function VirtualInstallPanel({
   ]);
 
   /*
-   * 선택한 사진의 AI 분석 결과만 사용해
-   * 싱크대 또는 문·문틀을 자동 선택합니다.
+   * 현재 선택 종류가 여러 톤을 지원하는지 확인한다.
+   * 싱크대와 문·문틀만 true.
    */
+
+  const supportsMultiTone = useMemo(() => {
+    return (
+      targetType === "kitchen" ||
+      targetType === "door"
+    );
+  }, [targetType]);
+
+  /*
+   * 선택한 사진의 AI 분석 결과만 사용해
+   * 시공 종류를 자동 선택한다.
+   */
+
   useEffect(() => {
     if (
       !selectedImage ||
@@ -631,12 +800,44 @@ export default function VirtualInstallPanel({
         : detectedTargetType
     );
 
+    /*
+     * 사진이 바뀌거나 AI 판정이 바뀌면
+     * 항상 컬러 통일부터 시작한다.
+     */
+
     setColorMode("single");
     onUseSplitToneChange?.(false);
   }, [
     selectedImageId,
     detectedTargetType,
     manualTypeMode,
+  ]);
+
+  /*
+   * 붙박이장/신발장/냉장고장/기타 장류에서는
+   * 외부 상태가 multi로 들어오더라도 single로 강제한다.
+   */
+
+  useEffect(() => {
+    if (!targetType) {
+      return;
+    }
+
+    if (
+      !supportsMultiTone &&
+      colorMode === "multi"
+    ) {
+      setColorMode("single");
+      setLocalAreaFilms({});
+      onUseSplitToneChange?.(false);
+      onAreaFilmsChange?.({});
+    }
+  }, [
+    targetType,
+    supportsMultiTone,
+    colorMode,
+    onUseSplitToneChange,
+    onAreaFilmsChange,
   ]);
 
   useEffect(() => {
@@ -665,6 +866,7 @@ export default function VirtualInstallPanel({
   useEffect(() => {
     if (
       colorMode !== "multi" ||
+      !supportsMultiTone ||
       !product ||
       !targetAreas.length
     ) {
@@ -686,6 +888,7 @@ export default function VirtualInstallPanel({
     });
   }, [
     colorMode,
+    supportsMultiTone,
     product,
     targetAreas,
   ]);
@@ -715,10 +918,12 @@ export default function VirtualInstallPanel({
     setTargetType(type);
     setManualTypeMode(false);
     setColorMode("single");
+    setLocalAreaFilms({});
     setResult(null);
     setMessage("");
 
     onUseSplitToneChange?.(false);
+    onAreaFilmsChange?.({});
   }
 
   function changeTargetType() {
@@ -728,8 +933,13 @@ export default function VirtualInstallPanel({
 
     setManualTypeMode(true);
     setTargetType("");
+    setColorMode("single");
+    setLocalAreaFilms({});
     setResult(null);
     setMessage("");
+
+    onUseSplitToneChange?.(false);
+    onAreaFilmsChange?.({});
   }
 
   function selectManualTargetType(type) {
@@ -740,10 +950,12 @@ export default function VirtualInstallPanel({
     setTargetType(type);
     setManualTypeMode(true);
     setColorMode("single");
+    setLocalAreaFilms({});
     setResult(null);
     setMessage("");
 
     onUseSplitToneChange?.(false);
+    onAreaFilmsChange?.({});
   }
 
   function selectColorMode(mode) {
@@ -751,9 +963,30 @@ export default function VirtualInstallPanel({
       return;
     }
 
+    /*
+     * 싱크대 / 문·문틀이 아니면
+     * 여러 톤 선택 자체를 허용하지 않는다.
+     */
+
+    if (
+      mode === "multi" &&
+      !supportsMultiTone
+    ) {
+      setColorMode("single");
+      setLocalAreaFilms({});
+      onUseSplitToneChange?.(false);
+      onAreaFilmsChange?.({});
+      return;
+    }
+
     setColorMode(mode);
     setResult(null);
     setMessage("");
+
+    if (mode === "single") {
+      setLocalAreaFilms({});
+      onAreaFilmsChange?.({});
+    }
 
     onUseSplitToneChange?.(
       mode === "multi"
@@ -761,6 +994,10 @@ export default function VirtualInstallPanel({
   }
 
   function selectAreaFilm(areaKey, film) {
+    if (!supportsMultiTone) {
+      return;
+    }
+
     const next = {
       ...localAreaFilms,
       [areaKey]: film || product,
@@ -772,13 +1009,6 @@ export default function VirtualInstallPanel({
 
   function makeRequestForm() {
     const formData = new FormData();
-
-    if (companySlug) {
-      formData.append(
-        "company_slug",
-        companySlug
-      );
-    }
 
     formData.append(
       "image",
@@ -824,13 +1054,17 @@ export default function VirtualInstallPanel({
       "colorHex",
       product?.color_hex || ""
     );
-
-    formData.append(
+        formData.append(
       "sampleImageUrl",
       product?.sample_image_path || ""
     );
 
+    /*
+     * 여러 톤은 싱크대 / 문·문틀에서만 허용한다.
+     * 다른 종류에서는 상태가 잘못 들어와도 false로 전송한다.
+     */
     const multiTone =
+      supportsMultiTone &&
       colorMode === "multi";
 
     formData.append(
@@ -852,6 +1086,16 @@ export default function VirtualInstallPanel({
     formData.append(
       "areaFilms",
       JSON.stringify(films)
+    );
+
+    /*
+     * 서버가 일반 단일컬러 종류에서도
+     * 어떤 시공 종류인지 명확하게 알 수 있도록
+     * 사람이 읽을 수 있는 이름도 같이 전달한다.
+     */
+    formData.append(
+      "targetLabel",
+      selectedType?.label || ""
     );
 
     return formData;
@@ -883,7 +1127,13 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    if (colorMode === "multi") {
+    /*
+     * 여러 톤은 싱크대 / 문·문틀에서만 검사한다.
+     */
+    if (
+      supportsMultiTone &&
+      colorMode === "multi"
+    ) {
       const missingArea = targetAreas.find(
         (area) =>
           !localAreaFilms[area.key]
@@ -1032,6 +1282,10 @@ export default function VirtualInstallPanel({
         </div>
       </div>
 
+      {/* =====================================================
+          1. 사진 선택
+      ===================================================== */}
+
       <div
         style={{
           marginTop: "18px",
@@ -1087,8 +1341,8 @@ export default function VirtualInstallPanel({
                 disabled={loading}
                 onClick={() =>
                   selectImage(imageId)
-}
-                            style={{
+                }
+                style={{
                   position: "relative",
                   minWidth: 0,
                   padding: "4px",
@@ -1154,6 +1408,10 @@ export default function VirtualInstallPanel({
         </div>
       </div>
 
+      {/* =====================================================
+          AI가 종류를 못 찾았거나 수동 변경할 때
+      ===================================================== */}
+
       {!targetType && (
         <div
           style={{
@@ -1177,6 +1435,7 @@ export default function VirtualInstallPanel({
               marginBottom: "9px",
               color: "#6b7280",
               fontSize: "12px",
+              lineHeight: 1.5,
             }}
           >
             시공할 종류를 직접 선택해주세요.
@@ -1196,13 +1455,19 @@ export default function VirtualInstallPanel({
                 title={type.label}
                 description={type.description}
                 onSelect={() =>
-                  selectManualTargetType(type.key)
+                  selectManualTargetType(
+                    type.key
+                  )
                 }
               />
             ))}
           </div>
         </div>
       )}
+
+      {/* =====================================================
+          판정 완료
+      ===================================================== */}
 
       {targetType && (
         <>
@@ -1226,7 +1491,9 @@ export default function VirtualInstallPanel({
                   fontWeight: "700",
                 }}
               >
-                AI 자동판정 시공 종류
+                {manualTypeMode
+                  ? "선택한 시공 종류"
+                  : "AI 자동판정 시공 종류"}
               </div>
 
               <div
@@ -1243,6 +1510,7 @@ export default function VirtualInstallPanel({
 
             <button
               type="button"
+              disabled={loading}
               onClick={changeTargetType}
               style={{
                 padding: "8px 11px",
@@ -1252,12 +1520,18 @@ export default function VirtualInstallPanel({
                 color: "#6d28d9",
                 fontSize: "12px",
                 fontWeight: "800",
-                cursor: "pointer",
+                cursor: loading
+                  ? "default"
+                  : "pointer",
               }}
             >
               종류 변경
             </button>
           </div>
+
+          {/* =================================================
+              컬러 방식
+          ================================================= */}
 
           <div
             style={{
@@ -1280,7 +1554,9 @@ export default function VirtualInstallPanel({
               >
                 {targetType === "kitchen"
                   ? "싱크대 시공 부위"
-                  : "문·문틀 시공 부위"}
+                  : targetType === "door"
+                    ? "문·문틀 시공 부위"
+                    : `${selectedType?.label || "선택 부위"} 시공`}
               </strong>
 
               <span
@@ -1293,34 +1569,59 @@ export default function VirtualInstallPanel({
               </span>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "4px",
-                padding: "4px",
-                borderRadius: "12px",
-                background: "#f3f4f6",
-              }}
-            >
-              <ModeButton
-                active={colorMode === "single"}
-                onClick={() =>
-                  selectColorMode("single")
-                }
+            {/* 싱크대 / 문·문틀만 여러 톤 버튼 표시 */}
+
+            {supportsMultiTone ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "4px",
+                  padding: "4px",
+                  borderRadius: "12px",
+                  background: "#f3f4f6",
+                }}
+              >
+                <ModeButton
+                  active={
+                    colorMode === "single"
+                  }
+                  onClick={() =>
+                    selectColorMode("single")
+                  }
+                >
+                  컬러 통일
+                </ModeButton>
+
+                <ModeButton
+                  active={
+                    colorMode === "multi"
+                  }
+                  onClick={() =>
+                    selectColorMode("multi")
+                  }
+                >
+                  여러 톤 사용
+                </ModeButton>
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "11px 12px",
+                  borderRadius: "11px",
+                  background: "#f3f4f6",
+                  color: "#374151",
+                  fontSize: "13px",
+                  fontWeight: "800",
+                }}
               >
                 컬러 통일
-              </ModeButton>
-
-              <ModeButton
-                active={colorMode === "multi"}
-                onClick={() =>
-                  selectColorMode("multi")
-                }
-              >
-                여러 톤 사용
-              </ModeButton>
-            </div>
+              </div>
+            )}
           </div>
+
+          {/* =================================================
+              단일 컬러
+          ================================================= */}
 
           {colorMode === "single" && (
             <div
@@ -1348,94 +1649,116 @@ export default function VirtualInstallPanel({
                   lineHeight: 1.5,
                 }}
               >
-                사진에 실제로 없는 부위는 새로 만들지
-                않고 자동으로 제외합니다.
+                사진에 실제로 존재하는 시공 대상의 형태와
+                구조는 그대로 유지하고 선택한 필름 색상만
+                적용합니다.
               </div>
             </div>
           )}
 
-          {colorMode === "multi" && (
-            <div
-              style={{
-                marginTop: "11px",
-              }}
-            >
-              {targetAreas.map((area) => {
-                const film =
-                  localAreaFilms[area.key] ||
-                  product;
+          {/* =================================================
+              여러 톤
+              싱크대 / 문·문틀에서만 렌더링
+          ================================================= */}
 
-                return (
-                  <div
-                    key={area.key}
-                    style={{
-                      marginBottom: "11px",
-                      padding: "12px",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "13px",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent:
-                          "space-between",
-                        gap: "8px",
-                      }}
-                    >
-                      <strong
-                        style={{
-                          fontSize: "15px",
-                        }}
-                      >
-                        {area.label}
-                      </strong>
-
-                      <span
-                        style={{
-                          maxWidth: "65%",
-                          color: "#6d28d9",
-                          fontSize: "12px",
-                          fontWeight: "800",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {getFilmTitle(film)}
-                      </span>
-                    </div>
-
-                    <FilmColorPicker
-                      value={film}
-                      onSelect={(selectedFilm) =>
-                        selectAreaFilm(
-                          area.key,
-                          selectedFilm || product
-                        )
-                      }
-                    />
-                  </div>
-                );
-              })}
-
+          {supportsMultiTone &&
+            colorMode === "multi" && (
               <div
                 style={{
-                  padding: "10px",
-                  borderRadius: "9px",
-                  background: "#f9fafb",
-                  color: "#6b7280",
-                  fontSize: "11px",
-                  lineHeight: 1.5,
+                  marginTop: "11px",
                 }}
               >
-                사진에 실제로 없는 부위는 새로 만들지
-                않고 자동으로 제외합니다.
+                {targetAreas.map((area) => {
+                  const film =
+                    localAreaFilms[
+                      area.key
+                    ] || product;
+
+                  return (
+                    <div
+                      key={area.key}
+                      style={{
+                        marginBottom: "11px",
+                        padding: "12px",
+                        border:
+                          "1px solid #e5e7eb",
+                        borderRadius: "13px",
+                        background: "#fafafa",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "space-between",
+                          gap: "8px",
+                        }}
+                      >
+                        <strong
+                          style={{
+                            fontSize: "15px",
+                          }}
+                        >
+                          {area.label}
+                        </strong>
+
+                        <span
+                          style={{
+                            maxWidth: "65%",
+                            color: "#6d28d9",
+                            fontSize: "12px",
+                            fontWeight: "800",
+                            whiteSpace:
+                              "nowrap",
+                            overflow:
+                              "hidden",
+                            textOverflow:
+                              "ellipsis",
+                          }}
+                        >
+                          {getFilmTitle(
+                            film
+                          )}
+                        </span>
+                      </div>
+
+                      <FilmColorPicker
+                        value={film}
+                        onSelect={(
+                          selectedFilm
+                        ) =>
+                          selectAreaFilm(
+                            area.key,
+                            selectedFilm ||
+                              product
+                          )
+                        }
+                      />
+                    </div>
+                  );
+                })}
+
+                <div
+                  style={{
+                    padding: "10px",
+                    borderRadius: "9px",
+                    background: "#f9fafb",
+                    color: "#6b7280",
+                    fontSize: "11px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  사진에 실제로 없는 부위는 새로 만들지
+                  않고 자동으로 제외합니다.
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
+          {/* =================================================
+              가상시공 실행
+          ================================================= */}
 
           <button
             type="button"
@@ -1443,7 +1766,9 @@ export default function VirtualInstallPanel({
               loading ||
               !selectedImage
             }
-            onClick={generateVirtualImage}
+            onClick={
+              generateVirtualImage
+            }
             style={{
               width: "100%",
               marginTop: "17px",
@@ -1463,10 +1788,17 @@ export default function VirtualInstallPanel({
           >
             {loading
               ? "가상 시공 중..."
-              : `${selectedType?.label || ""} 가상 시공하기`}
+              : `${
+                  selectedType?.label ||
+                  ""
+                } 가상 시공하기`}
           </button>
         </>
       )}
+
+      {/* =====================================================
+          상태 메시지
+      ===================================================== */}
 
       {message && (
         <div
@@ -1489,6 +1821,10 @@ export default function VirtualInstallPanel({
           {message}
         </div>
       )}
+
+      {/* =====================================================
+          가상시공 결과
+      ===================================================== */}
 
       {result && (
         <div
@@ -1534,7 +1870,9 @@ export default function VirtualInstallPanel({
                 </div>
 
                 <img
-                  src={getImagePreview(result.image)}
+                  src={getImagePreview(
+                    result.image
+                  )}
                   alt="원본"
                   style={{
                     display: "block",
@@ -1583,7 +1921,8 @@ export default function VirtualInstallPanel({
                 width: "100%",
                 marginTop: "10px",
                 padding: "12px",
-                border: "1px solid #d1d5db",
+                border:
+                  "1px solid #d1d5db",
                 borderRadius: "10px",
                 background: "#ffffff",
                 color: "#111827",
@@ -1620,4 +1959,4 @@ export default function VirtualInstallPanel({
       )}
     </section>
   );
-              }
+      }
