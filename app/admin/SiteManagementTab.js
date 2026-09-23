@@ -116,6 +116,7 @@ export default function SiteManagementTab({
   sitesMessage = "",
 
   createSite,
+  updateSiteSchedule,
   updateSiteStatus,
 
   selectedSite,
@@ -772,6 +773,10 @@ export default function SiteManagementTab({
             closeSite
           }
 
+          updateSiteSchedule={
+            updateSiteSchedule
+          }
+
           updateSiteStatus={
             updateSiteStatus
           }
@@ -1269,4 +1274,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-}
+                }
