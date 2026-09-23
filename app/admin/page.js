@@ -516,7 +516,7 @@ export default function AdminPage() {
           (payload) => {
             handleRealtimeLead(
               payload.new,
-              companyId,
+              activeTabRef.current === "leads",
             );
           },
         )
@@ -617,8 +617,7 @@ export default function AdminPage() {
           style={{
             background: "#ffffff",
             border: "1px solid #e5e7eb",
-            borderRadius: "14px",
-            padding: "14px",
+            borderRadius: "14px",            padding: "14px",
             marginBottom: "16px",
             boxShadow:
               "0 1px 3px rgba(0,0,0,0.05)",
@@ -844,7 +843,8 @@ export default function AdminPage() {
           }
           openJobPhoto={
             openJobPhoto
-    }
+          }
+
           editingPhotoId={
             editingPhotoId
           }
@@ -1227,4 +1227,4 @@ export default function AdminPage() {
       />
     </main>
   );
-            }
+}
