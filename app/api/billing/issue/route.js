@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
 import {
   createTossIdempotencyKey,
   issueTossBillingKey,
-} from "../../../../utils/tossBilling";
+} from "../../../utils/tossBilling";
 
 
 export const runtime = "nodejs";
