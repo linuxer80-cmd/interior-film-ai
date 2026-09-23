@@ -34,6 +34,10 @@ const STATUS_INFO = {
 const PHOTO_BUCKET = "work-photos";
 const SIGNED_URL_SECONDS = 1800;
 
+/* =========================================================
+   날짜 표시
+========================================================= */
+
 function formatDateTime(value) {
   if (!value) return "-";
 
@@ -53,6 +57,44 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+/* =========================================================
+   datetime-local 값 변환
+
+   UTC 문자열을 단순 slice 하지 않고
+   브라우저의 로컬 시간 기준으로 변환합니다.
+========================================================= */
+
+function toDateTimeLocalValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const pad = (number) =>
+    String(number).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
+
+/* =========================================================
+   금액 표시
+========================================================= */
+
 function formatWon(value) {
   if (
     value === null ||
@@ -70,6 +112,10 @@ function formatWon(value) {
 
   return `${number.toLocaleString("ko-KR")}원`;
 }
+
+/* =========================================================
+   수량 표시
+========================================================= */
 
 function formatQuantity(value, unit) {
   if (
@@ -89,6 +135,10 @@ function formatQuantity(value, unit) {
   return `${quantity}${unit ? ` ${unit}` : ""}`;
 }
 
+/* =========================================================
+   팀장
+========================================================= */
+
 function getLeader(site) {
   const assignments = site?.site_workers || [];
 
@@ -96,6 +146,10 @@ function getLeader(site) {
     (item) => item.role === "leader",
   );
 }
+
+/* =========================================================
+   일반 시공자
+========================================================= */
 
 function getMembers(site) {
   const assignments = site?.site_workers || [];
@@ -105,11 +159,17 @@ function getMembers(site) {
   );
 }
 
+/* =========================================================
+   현장 상세
+========================================================= */
+
 export default function SiteDetailModal({
   companyId,
 
   site,
   onClose,
+
+  updateSiteSchedule,
   updateSiteStatus,
 
   workers = [],
@@ -133,6 +193,25 @@ export default function SiteDetailModal({
   const [reportOpen, setReportOpen] =
     useState(false);
 
+  /* =======================================================
+     일정 수정
+  ======================================================= */
+
+  const [scheduleEditOpen, setScheduleEditOpen] =
+    useState(false);
+
+  const [scheduleStart, setScheduleStart] =
+    useState("");
+
+  const [scheduleEnd, setScheduleEnd] =
+    useState("");
+
+  const [scheduleSaving, setScheduleSaving] =
+    useState(false);
+
+  const [scheduleMessage, setScheduleMessage] =
+    useState("");
+
   /*
    * 시공자 완료보고 존재 여부
    *
@@ -143,6 +222,7 @@ export default function SiteDetailModal({
    * 시공자 완료보고가 있으면 기존 관리자용
    * "시공 완료 보고 작성"을 중복으로 표시하지 않습니다.
    */
+
   const [hasWorkerReport, setHasWorkerReport] =
     useState(null);
 
@@ -162,6 +242,10 @@ export default function SiteDetailModal({
 
   const leader = getLeader(site);
   const members = getMembers(site);
+
+  /* =======================================================
+     현장 추가정보 로드
+  ======================================================= */
 
   useEffect(() => {
     if (!site?.id) return;
@@ -213,9 +297,6 @@ export default function SiteDetailModal({
 
         /*
          * 2. 현장 요청 사진
-         *
-         * 현장 등록 단계에서 고객이 첨부한 요청사진은
-         * photo_type = request 로 저장합니다.
          *
          * request = 고객 요청사진
          * before  = 실제 시공 전 사진
@@ -328,15 +409,29 @@ export default function SiteDetailModal({
     };
   }, [site?.id]);
 
-  /*
-   * 현장이 바뀌면 완료보고 입력창,
-   * 시공자 완료보고 확인 상태,
-   * 이전 메시지를 초기화합니다.
-   */
+  /* =======================================================
+     현장 변경 시 상태 초기화
+  ======================================================= */
 
   useEffect(() => {
     setReportOpen(false);
     setHasWorkerReport(null);
+
+    setScheduleEditOpen(false);
+    setScheduleSaving(false);
+    setScheduleMessage("");
+
+    setScheduleStart(
+      toDateTimeLocalValue(
+        site?.schedule_start,
+      ),
+    );
+
+    setScheduleEnd(
+      toDateTimeLocalValue(
+        site?.schedule_end,
+      ),
+    );
 
     if (
       typeof clearReportMessage === "function"
@@ -347,6 +442,36 @@ export default function SiteDetailModal({
     site?.id,
     clearReportMessage,
   ]);
+
+  /* =======================================================
+     site 일정 값 변경 시 입력값 동기화
+  ======================================================= */
+
+  useEffect(() => {
+    if (scheduleEditOpen) {
+      return;
+    }
+
+    setScheduleStart(
+      toDateTimeLocalValue(
+        site?.schedule_start,
+      ),
+    );
+
+    setScheduleEnd(
+      toDateTimeLocalValue(
+        site?.schedule_end,
+      ),
+    );
+  }, [
+    site?.schedule_start,
+    site?.schedule_end,
+    scheduleEditOpen,
+  ]);
+
+  /* =======================================================
+     상태 변경
+  ======================================================= */
 
   async function changeStatus(nextStatus) {
     if (
@@ -371,6 +496,188 @@ export default function SiteDetailModal({
     );
   }
 
+  /* =======================================================
+     일정 수정 시작
+  ======================================================= */
+
+  function openScheduleEditor() {
+    setScheduleMessage("");
+
+    setScheduleStart(
+      toDateTimeLocalValue(
+        site?.schedule_start,
+      ),
+    );
+
+    setScheduleEnd(
+      toDateTimeLocalValue(
+        site?.schedule_end,
+      ),
+    );
+
+    setScheduleEditOpen(true);
+  }
+
+  /* =======================================================
+     일정 수정 취소
+  ======================================================= */
+
+  function cancelScheduleEditor() {
+    if (scheduleSaving) {
+      return;
+    }
+
+    setScheduleMessage("");
+
+    setScheduleStart(
+      toDateTimeLocalValue(
+        site?.schedule_start,
+      ),
+    );
+
+    setScheduleEnd(
+      toDateTimeLocalValue(
+        site?.schedule_end,
+      ),
+    );
+
+    setScheduleEditOpen(false);
+  }
+
+  /* =======================================================
+     일정 저장
+  ======================================================= */
+
+  async function saveSchedule() {
+    if (scheduleSaving) {
+      return;
+    }
+
+    if (
+      typeof updateSiteSchedule !== "function"
+    ) {
+      setScheduleMessage(
+        "❌ 일정 변경 기능을 사용할 수 없습니다.",
+      );
+      return;
+    }
+
+    if (!scheduleStart) {
+      setScheduleMessage(
+        "❌ 시작 일시를 입력해주세요.",
+      );
+      return;
+    }
+
+    const startDate =
+      new Date(scheduleStart);
+
+    if (
+      Number.isNaN(
+        startDate.getTime(),
+      )
+    ) {
+      setScheduleMessage(
+        "❌ 시작 일시가 올바르지 않습니다.",
+      );
+      return;
+    }
+
+    let endDate = null;
+
+    if (scheduleEnd) {
+      endDate =
+        new Date(scheduleEnd);
+
+      if (
+        Number.isNaN(
+          endDate.getTime(),
+        )
+      ) {
+        setScheduleMessage(
+          "❌ 종료 일시가 올바르지 않습니다.",
+        );
+        return;
+      }
+
+      if (
+        endDate.getTime() <
+        startDate.getTime()
+      ) {
+        setScheduleMessage(
+          "❌ 종료 일시는 시작 일시보다 빠를 수 없습니다.",
+        );
+        return;
+      }
+    }
+
+    setScheduleSaving(true);
+    setScheduleMessage("");
+
+    try {
+      /*
+       * datetime-local은 브라우저 로컬시간입니다.
+       * ISO 문자열로 변환하여 Supabase timestamptz에 저장합니다.
+       */
+
+      const result =
+        await updateSiteSchedule({
+          siteId: site.id,
+          scheduleStart:
+            startDate.toISOString(),
+          scheduleEnd:
+            endDate
+              ? endDate.toISOString()
+              : null,
+        });
+
+      if (!result?.success) {
+        setScheduleMessage(
+          `❌ ${
+            result?.error ||
+            "일정을 변경하지 못했습니다."
+          }`,
+        );
+        return;
+      }
+
+      setScheduleMessage(
+        "✅ 시공 일정이 변경되었습니다.",
+      );
+
+      setScheduleEditOpen(false);
+
+      /*
+       * 목록도 다시 읽어 site_workers 등
+       * 상세 데이터가 최신 상태를 유지하도록 합니다.
+       */
+
+      if (
+        typeof reloadSites === "function"
+      ) {
+        await reloadSites();
+      }
+    } catch (error) {
+      console.error(
+        "현장 일정 변경 오류:",
+        error,
+      );
+
+      setScheduleMessage(
+        `❌ 일정 변경 오류: ${
+          error?.message ||
+          "알 수 없는 오류"
+        }`,
+      );
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  /* =======================================================
+     시공자 배정 저장 후
+  ======================================================= */
+
   async function handleAssignmentSaved() {
     if (
       typeof reloadSites === "function"
@@ -378,6 +685,10 @@ export default function SiteDetailModal({
       await reloadSites();
     }
   }
+
+  /* =======================================================
+     완료보고
+  ======================================================= */
 
   function openWorkReport() {
     if (
@@ -411,14 +722,6 @@ export default function SiteDetailModal({
       return false;
     }
 
-    /*
-     * 완료 저장 성공 후 현장 목록은
-     * hook에서 새로고침됩니다.
-     *
-     * 현재 selectedSite는 이전 status를
-     * 가지고 있을 수 있으므로 상세창을 닫습니다.
-     */
-
     setReportOpen(false);
 
     if (
@@ -433,6 +736,10 @@ export default function SiteDetailModal({
   if (!site) {
     return null;
   }
+
+  /* =======================================================
+     화면
+  ======================================================= */
 
   return (
     <div
@@ -527,18 +834,27 @@ export default function SiteDetailModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={reportSaving}
+            disabled={
+              reportSaving ||
+              scheduleSaving
+            }
             style={{
               border: "none",
               background: "transparent",
               fontSize: "26px",
               color: "#64748b",
-              cursor: reportSaving
-                ? "not-allowed"
-                : "pointer",
-              opacity: reportSaving
-                ? 0.5
-                : 1,
+
+              cursor:
+                reportSaving ||
+                scheduleSaving
+                  ? "not-allowed"
+                  : "pointer",
+
+              opacity:
+                reportSaving ||
+                scheduleSaving
+                  ? 0.5
+                  : 1,
             }}
           >
             ×
@@ -556,10 +872,316 @@ export default function SiteDetailModal({
         >
           <DetailRow
             label="일정"
-            value={formatDateTime(
-              site.schedule_start,
-            )}
+            value={
+              site.schedule_end
+                ? `${formatDateTime(
+                    site.schedule_start,
+                  )}\n~ ${formatDateTime(
+                    site.schedule_end,
+                  )}`
+                : formatDateTime(
+                    site.schedule_start,
+                  )
+            }
           />
+
+          {/* =========================
+              일정 변경
+          ========================= */}
+
+          {!reportOpen &&
+            site.status !== "completed" && (
+            <div
+              style={{
+                padding: "10px 0 12px",
+                borderBottom:
+                  "1px solid #f1f5f9",
+              }}
+            >
+              {!scheduleEditOpen ? (
+                <button
+                  type="button"
+                  onClick={
+                    openScheduleEditor
+                  }
+                  disabled={scheduleSaving}
+                  style={{
+                    width: "100%",
+
+                    border:
+                      "1px solid #bfdbfe",
+
+                    borderRadius: "9px",
+
+                    padding: "10px",
+
+                    background: "#eff6ff",
+
+                    color: "#1d4ed8",
+
+                    fontSize: "12px",
+                    fontWeight: "900",
+
+                    cursor: "pointer",
+                  }}
+                >
+                  📅 일정 변경
+                </button>
+              ) : (
+                <div
+                  style={{
+                    padding: "12px",
+
+                    border:
+                      "1px solid #bfdbfe",
+
+                    borderRadius: "11px",
+
+                    background: "#f8fbff",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: "900",
+                      color: "#1e3a8a",
+                    }}
+                  >
+                    📅 시공 일정 변경
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: "5px",
+
+                      fontSize: "11px",
+                      lineHeight: "1.5",
+
+                      color: "#64748b",
+                    }}
+                  >
+                    저장하면 배정된 시공자에게
+                    변경된 일정이 알림으로
+                    전달됩니다.
+                  </div>
+
+                  <label
+                    style={{
+                      display: "block",
+                      marginTop: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        marginBottom: "5px",
+
+                        fontSize: "12px",
+                        fontWeight: "800",
+
+                        color: "#334155",
+                      }}
+                    >
+                      시작 일시
+                    </div>
+
+                    <input
+                      type="datetime-local"
+                      value={scheduleStart}
+                      onChange={(event) =>
+                        setScheduleStart(
+                          event.target.value,
+                        )
+                      }
+                      disabled={scheduleSaving}
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+
+                        padding: "10px",
+
+                        border:
+                          "1px solid #cbd5e1",
+
+                        borderRadius: "9px",
+
+                        background: "#ffffff",
+
+                        color: "#111827",
+
+                        fontSize: "14px",
+                      }}
+                    />
+                  </label>
+
+                  <label
+                    style={{
+                      display: "block",
+                      marginTop: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        marginBottom: "5px",
+
+                        fontSize: "12px",
+                        fontWeight: "800",
+
+                        color: "#334155",
+                      }}
+                    >
+                      종료 일시
+                    </div>
+
+                    <input
+                      type="datetime-local"
+                      value={scheduleEnd}
+                      onChange={(event) =>
+                        setScheduleEnd(
+                          event.target.value,
+                        )
+                      }
+                      disabled={scheduleSaving}
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+
+                        padding: "10px",
+
+                        border:
+                          "1px solid #cbd5e1",
+
+                        borderRadius: "9px",
+
+                        background: "#ffffff",
+
+                        color: "#111827",
+
+                        fontSize: "14px",
+                      }}
+                    />
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+
+                      gridTemplateColumns:
+                        "1fr 1fr",
+
+                      gap: "7px",
+
+                      marginTop: "12px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={
+                        cancelScheduleEditor
+                      }
+                      disabled={scheduleSaving}
+                      style={{
+                        border:
+                          "1px solid #cbd5e1",
+
+                        borderRadius: "9px",
+
+                        padding: "10px",
+
+                        background: "#ffffff",
+
+                        color: "#475569",
+
+                        fontSize: "12px",
+                        fontWeight: "800",
+
+                        cursor:
+                          scheduleSaving
+                            ? "not-allowed"
+                            : "pointer",
+
+                        opacity:
+                          scheduleSaving
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      취소
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={saveSchedule}
+                      disabled={scheduleSaving}
+                      style={{
+                        border: "none",
+
+                        borderRadius: "9px",
+
+                        padding: "10px",
+
+                        background: "#2563eb",
+
+                        color: "#ffffff",
+
+                        fontSize: "12px",
+                        fontWeight: "900",
+
+                        cursor:
+                          scheduleSaving
+                            ? "not-allowed"
+                            : "pointer",
+
+                        opacity:
+                          scheduleSaving
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {scheduleSaving
+                        ? "저장 중..."
+                        : "일정 저장"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {scheduleMessage && (
+                <div
+                  style={{
+                    marginTop: "8px",
+
+                    padding: "9px 10px",
+
+                    borderRadius: "8px",
+
+                    background:
+                      scheduleMessage.startsWith(
+                        "✅",
+                      )
+                        ? "#f0fdf4"
+                        : "#fef2f2",
+
+                    color:
+                      scheduleMessage.startsWith(
+                        "✅",
+                      )
+                        ? "#166534"
+                        : "#b91c1c",
+
+                    fontSize: "11px",
+                    fontWeight: "800",
+
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {scheduleMessage}
+                </div>
+              )}
+            </div>
+          )}
 
           <DetailRow
             label="고객"
@@ -1107,7 +1729,8 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-              }
+}
+
 /* =========================================================
    예정 자재 카드
 ========================================================= */
@@ -1483,4 +2106,4 @@ function StatusButton({
       {children}
     </button>
   );
-              }
+        }
