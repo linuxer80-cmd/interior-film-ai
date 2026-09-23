@@ -1,100 +1,134 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "../../../lib/supabase";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-const EMPTY_STATS = {
-  today: 0,
-  seven_days: 0,
-  total: 0,
-  sessions: 0,
-  leads: 0,
-  converted: 0,
-  conversion: 0,
-};
+import { supabase } from "../../lib/supabase";
 
-export default function SuperAdminLogsPage() {
-  const [loading, setLoading] = useState(true);
-  const [statsLoading, setStatsLoading] = useState(false);
+export default function SuperAdminPage() {
+  const [loading, setLoading] =
+    useState(true);
 
-  const [authorized, setAuthorized] = useState(false);
-  const [adminName, setAdminName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
+  const [
+    changingId,
+    setChangingId,
+  ] = useState(null);
 
-  const [companies, setCompanies] = useState([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [
+    authorized,
+    setAuthorized,
+  ] = useState(false);
 
-  const [stats, setStats] = useState(EMPTY_STATS);
-  const [message, setMessage] = useState("");
+  const [
+    adminName,
+    setAdminName,
+  ] = useState("");
+
+  const [
+    userEmail,
+    setUserEmail,
+  ] = useState("");
+
+  const [
+    companies,
+    setCompanies,
+  ] = useState([]);
+
+  const [
+    search,
+    setSearch,
+  ] = useState("");
+
+  const [
+    message,
+    setMessage,
+  ] = useState("");
 
   /* =========================================================
      슈퍼관리자 확인
   ========================================================= */
 
-  const checkSuperAdmin = useCallback(async () => {
-    const {
-      data: authData,
-      error: authError,
-    } = await supabase.auth.getUser();
+  const checkSuperAdmin =
+    useCallback(async () => {
+      const {
+        data: authData,
+        error: authError,
+      } =
+        await supabase.auth.getUser();
 
-    if (authError) {
-      throw new Error(
-        `로그인 확인 실패: ${authError.message}`,
+      if (authError) {
+        throw new Error(
+          `로그인 확인 실패: ${authError.message}`,
+        );
+      }
+
+      const user =
+        authData?.user;
+
+      if (!user?.id) {
+        throw new Error(
+          "로그인이 필요합니다.",
+        );
+      }
+
+      setUserEmail(
+        user.email || "",
       );
-    }
 
-    const user = authData?.user;
-
-    if (!user?.id) {
-      throw new Error("로그인이 필요합니다.");
-    }
-
-    setUserEmail(user.email || "");
-
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
-      "get_super_admin_status",
-    );
-
-    if (error) {
-      throw new Error(
-        `슈퍼관리자 확인 실패: ${error.message}`,
-      );
-    }
-
-    const status =
-      Array.isArray(data)
-        ? data[0]
-        : data;
-
-    if (!status?.is_super_admin) {
-      throw new Error(
-        "슈퍼관리자 권한이 없습니다.",
-      );
-    }
-
-    setAuthorized(true);
-    setAdminName(
-      status?.name || "슈퍼관리자",
-    );
-
-    return true;
-  }, []);
-
-  /* =========================================================
-     회사 목록
-  ========================================================= */
-
-  const loadCompanies = useCallback(
-    async () => {
       const {
         data,
         error,
-      } = await supabase.rpc(
-        "super_admin_get_companies",
+      } =
+        await supabase.rpc(
+          "get_super_admin_status",
+        );
+
+      if (error) {
+        throw new Error(
+          `슈퍼관리자 확인 실패: ${error.message}`,
+        );
+      }
+
+      const status =
+        Array.isArray(data)
+          ? data[0]
+          : data;
+
+      if (
+        !status?.is_super_admin
+      ) {
+        throw new Error(
+          "슈퍼관리자 권한이 없습니다.",
+        );
+      }
+
+      setAuthorized(true);
+
+      setAdminName(
+        status?.name ||
+          "슈퍼관리자",
       );
+
+      return true;
+    }, []);
+
+  /* =========================================================
+     전체 회사 조회
+  ========================================================= */
+
+  const loadCompanies =
+    useCallback(async () => {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "super_admin_get_companies",
+        );
 
       if (error) {
         throw new Error(
@@ -107,87 +141,10 @@ export default function SuperAdminLogsPage() {
           ? data
           : [],
       );
-    },
-    [],
-  );
+    }, []);
 
   /* =========================================================
-     로그 통계
-  ========================================================= */
-
-  const loadStats = useCallback(
-    async (companyId = "") => {
-      setStatsLoading(true);
-      setMessage("");
-
-      try {
-        const {
-          data,
-          error,
-        } = await supabase.rpc(
-          "super_admin_get_estimate_log_stats",
-          {
-            p_company_id:
-              companyId || null,
-          },
-        );
-
-        if (error) {
-          throw new Error(
-            `로그 통계 조회 실패: ${error.message}`,
-          );
-        }
-
-        const row =
-          Array.isArray(data)
-            ? data[0]
-            : data;
-
-        setStats({
-          today:
-            Number(row?.today) || 0,
-
-          seven_days:
-            Number(row?.seven_days) || 0,
-
-          total:
-            Number(row?.total) || 0,
-
-          sessions:
-            Number(row?.sessions) || 0,
-
-          leads:
-            Number(row?.leads) || 0,
-
-          converted:
-            Number(row?.converted) || 0,
-
-          conversion:
-            Number(row?.conversion) || 0,
-        });
-      } catch (error) {
-        console.error(
-          "슈퍼관리자 로그 통계:",
-          error,
-        );
-
-        setStats(EMPTY_STATS);
-
-        setMessage(
-          `❌ ${
-            error?.message ||
-            "로그 통계를 불러오지 못했습니다."
-          }`,
-        );
-      } finally {
-        setStatsLoading(false);
-      }
-    },
-    [],
-  );
-
-  /* =========================================================
-     초기화
+     초기 로딩
   ========================================================= */
 
   useEffect(() => {
@@ -200,20 +157,20 @@ export default function SuperAdminLogsPage() {
       try {
         await checkSuperAdmin();
 
-        if (!alive) return;
+        if (!alive) {
+          return;
+        }
 
         await loadCompanies();
-
-        if (!alive) return;
-
-        await loadStats("");
       } catch (error) {
         console.error(
-          "전체 로그 분석 초기화:",
+          "슈퍼관리자 초기화:",
           error,
         );
 
-        if (!alive) return;
+        if (!alive) {
+          return;
+        }
 
         setAuthorized(false);
 
@@ -238,57 +195,210 @@ export default function SuperAdminLogsPage() {
   }, [
     checkSuperAdmin,
     loadCompanies,
-    loadStats,
   ]);
 
   /* =========================================================
-     선택된 회사
+     회사 활성 / 정지
   ========================================================= */
 
-  const selectedCompany =
-    useMemo(() => {
-      if (!selectedCompanyId) {
-        return null;
+  async function changeCompanyActive(
+    company,
+  ) {
+    if (!company?.id) {
+      return;
+    }
+
+    const nextActive =
+      !Boolean(
+        company.is_active,
+      );
+
+    const actionText =
+      nextActive
+        ? "활성화"
+        : "정지";
+
+    const confirmed =
+      window.confirm(
+        `${
+          company.company_name ||
+          "회사"
+        }를 ${actionText}할까요?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setChangingId(
+      company.id,
+    );
+
+    setMessage("");
+
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "super_admin_set_company_active",
+          {
+            p_company_id:
+              company.id,
+
+            p_is_active:
+              nextActive,
+          },
+        );
+
+      if (error) {
+        throw error;
       }
 
-      return (
-        companies.find(
-          (company) =>
-            company.id ===
-            selectedCompanyId,
-        ) || null
+      const updated =
+        Array.isArray(data)
+          ? data[0]
+          : data;
+
+      setCompanies(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              company.id
+                ? {
+                    ...item,
+
+                    is_active:
+                      updated?.is_active ??
+                      nextActive,
+                  }
+                : item,
+          ),
+      );
+
+      setMessage(
+        `✅ ${
+          company.company_name
+        } ${
+          nextActive
+            ? "활성화"
+            : "정지"
+        } 완료`,
+      );
+    } catch (error) {
+      console.error(
+        "회사 상태 변경:",
+        error,
+      );
+
+      setMessage(
+        `❌ 회사 상태 변경 실패: ${
+          error?.message ||
+          "오류가 발생했습니다."
+        }`,
+      );
+    } finally {
+      setChangingId(null);
+    }
+  }
+
+  /* =========================================================
+     메뉴 이동
+  ========================================================= */
+
+  function openCompanies() {
+    window.location.href =
+      "/super-admin";
+  }
+
+  function openPlans() {
+    window.location.href =
+      "/super-admin/plans";
+  }
+
+  function openStructureAnalysis() {
+    window.location.href =
+      "/super-admin/structure";
+  }
+
+  function openLogs() {
+    window.location.href =
+      "/super-admin/logs";
+  }
+
+  /* =========================================================
+     회사 상세관리 이동
+  ========================================================= */
+
+  function openCompany(
+    company,
+  ) {
+    if (!company?.id) {
+      return;
+    }
+
+    window.location.href =
+      `/super-admin/company/${company.id}`;
+  }
+
+  /* =========================================================
+     검색
+  ========================================================= */
+
+  const filteredCompanies =
+    useMemo(() => {
+      const keyword =
+        search
+          .trim()
+          .toLowerCase();
+
+      if (!keyword) {
+        return companies;
+      }
+
+      return companies.filter(
+        (company) => {
+          const text = [
+            company.company_name,
+            company.slug,
+            company.representative_name,
+            company.phone,
+            company.address,
+            company.subscription_plan,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return text.includes(
+            keyword,
+          );
+        },
       );
     }, [
       companies,
-      selectedCompanyId,
+      search,
     ]);
 
   /* =========================================================
-     회사 선택 변경
+     통계
   ========================================================= */
 
-  async function handleCompanyChange(
-    event,
-  ) {
-    const companyId =
-      event.target.value;
+  const totalCount =
+    companies.length;
 
-    setSelectedCompanyId(
-      companyId,
-    );
+  const activeCount =
+    companies.filter(
+      (item) =>
+        item.is_active ===
+        true,
+    ).length;
 
-    await loadStats(companyId);
-  }
-
-  /* =========================================================
-     새로고침
-  ========================================================= */
-
-  async function refreshStats() {
-    await loadStats(
-      selectedCompanyId,
-    );
-  }
+  const inactiveCount =
+    totalCount -
+    activeCount;
 
   /* =========================================================
      로딩
@@ -296,19 +406,40 @@ export default function SuperAdminLogsPage() {
 
   if (loading) {
     return (
-      <main style={styles.page}>
-        <div style={styles.centerBox}>
-          <div style={styles.loadingIcon}>
-            📊
+      <main
+        style={
+          styles.page
+        }
+      >
+        <div
+          style={
+            styles.centerBox
+          }
+        >
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
+            🛡️
           </div>
 
-          <div style={styles.loadingTitle}>
-            로그 분석을 불러오는 중...
+          <div
+            style={
+              styles.loadingTitle
+            }
+          >
+            슈퍼관리자 확인 중...
           </div>
 
-          <div style={styles.loadingText}>
-            전체 업체의 자동견적과
-            상담 데이터를 집계하고 있습니다.
+          <div
+            style={
+              styles.loadingText
+            }
+          >
+            관리자 권한과 회사
+            정보를 불러오고
+            있습니다.
           </div>
         </div>
       </main>
@@ -321,29 +452,56 @@ export default function SuperAdminLogsPage() {
 
   if (!authorized) {
     return (
-      <main style={styles.page}>
-        <div style={styles.centerBox}>
-          <div style={styles.deniedIcon}>
+      <main
+        style={
+          styles.page
+        }
+      >
+        <div
+          style={
+            styles.centerBox
+          }
+        >
+          <div
+            style={
+              styles.deniedIcon
+            }
+          >
             🔒
           </div>
 
-          <h2 style={styles.deniedTitle}>
+          <h2
+            style={
+              styles.deniedTitle
+            }
+          >
             접근할 수 없습니다
           </h2>
 
-          <div style={styles.deniedText}>
-            슈퍼관리자 전용 페이지입니다.
+          <div
+            style={
+              styles.deniedText
+            }
+          >
+            슈퍼관리자 전용
+            페이지입니다.
           </div>
 
           {message && (
-            <div style={styles.errorBox}>
+            <div
+              style={
+                styles.errorBox
+              }
+            >
               {message}
             </div>
           )}
 
           <button
             type="button"
-            style={styles.homeButton}
+            style={
+              styles.homeButton
+            }
             onClick={() => {
               window.location.href =
                 "/admin";
@@ -361,64 +519,255 @@ export default function SuperAdminLogsPage() {
   ========================================================= */
 
   return (
-    <main style={styles.page}>
-      <div style={styles.container}>
+    <main
+      style={
+        styles.page
+      }
+    >
+      <div
+        style={
+          styles.container
+        }
+      >
 
-        {/* 헤더 */}
+        {/* =====================================================
+            헤더
+        ===================================================== */}
 
-        <div style={styles.header}>
+        <div
+          style={
+            styles.header
+          }
+        >
           <div>
-            <div style={styles.badge}>
+            <div
+              style={
+                styles.badge
+              }
+            >
               SUPER ADMIN
             </div>
 
-            <h1 style={styles.title}>
-              📊 전체 로그 분석
+            <h1
+              style={
+                styles.title
+              }
+            >
+              🛡️ 서비스 관리
             </h1>
 
-            <div style={styles.subtitle}>
-              전체 업체 또는 특정 업체의
-              자동견적과 상담 전환을 확인합니다.
+            <div
+              style={
+                styles.subtitle
+              }
+            >
+              전체 회사 계정과
+              서비스 요금제를
+              관리합니다.
             </div>
           </div>
 
           <button
             type="button"
-            style={styles.backButton}
+            style={
+              styles.adminButton
+            }
             onClick={() => {
               window.location.href =
-                "/super-admin";
+                "/admin";
             }}
           >
-            ← 돌아가기
+            회사 관리자
           </button>
         </div>
 
-        {/* 로그인 정보 */}
+        {/* =====================================================
+            로그인 정보
+        ===================================================== */}
 
-        <div style={styles.loginBox}>
+        <div
+          style={
+            styles.loginBox
+          }
+        >
           <div>
-            <div style={styles.smallLabel}>
+            <div
+              style={
+                styles.smallLabel
+              }
+            >
               슈퍼관리자
             </div>
 
-            <div style={styles.adminName}>
+            <div
+              style={
+                styles.adminName
+              }
+            >
               {adminName}
             </div>
           </div>
 
-          <div style={styles.email}>
+          <div
+            style={
+              styles.email
+            }
+          >
             {userEmail}
           </div>
         </div>
 
-        {/* 조회 대상 */}
+        {/* =====================================================
+            슈퍼관리자 메뉴
+        ===================================================== */}
 
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
+        <div
+          style={
+            styles.menuGrid
+          }
+        >
+          <button
+            type="button"
+            style={{
+              ...styles.menuButton,
+              ...styles.menuButtonActive,
+            }}
+            onClick={
+              openCompanies
+            }
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              🏢
+            </span>
+
+            <span>
+              업체 관리
+            </span>
+          </button>
+
+          <button
+            type="button"
+            style={
+              styles.menuButton
+            }
+            onClick={
+              openPlans
+            }
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              💳
+            </span>
+
+            <span>
+              요금제 관리
+            </span>
+          </button>
+
+          <button
+            type="button"
+            style={
+              styles.menuButton
+            }
+            onClick={
+              openStructureAnalysis
+            }
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              🛠️
+            </span>
+
+            <span>
+              구조분석 관리
+            </span>
+          </button>
+
+          <button
+            type="button"
+            style={
+              styles.menuButton
+            }
+            onClick={
+              openLogs
+            }
+          >
+            <span
+              style={
+                styles.menuIcon
+              }
+            >
+              📊
+            </span>
+
+            <span>
+              전체 로그 분석
+            </span>
+          </button>
+        </div>
+
+        {/* =====================================================
+            회사 통계
+        ===================================================== */}
+
+        <div
+          style={
+            styles.statsGrid
+          }
+        >
+          <StatCard
+            label="전체 회사"
+            value={
+              totalCount
+            }
+          />
+
+          <StatCard
+            label="활성"
+            value={
+              activeCount
+            }
+          />
+
+          <StatCard
+            label="정지"
+            value={
+              inactiveCount
+            }
+          />
+        </div>
+
+        {/* =====================================================
+            회사 관리
+        ===================================================== */}
+
+        <section
+          style={
+            styles.section
+          }
+        >
+          <div
+            style={
+              styles.sectionHeader
+            }
+          >
             <div>
-              <h2 style={styles.sectionTitle}>
-                조회 대상
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                회사 관리
               </h2>
 
               <div
@@ -426,307 +775,369 @@ export default function SuperAdminLogsPage() {
                   styles.sectionDescription
                 }
               >
-                전체 업체 또는 특정 업체를
-                선택할 수 있습니다.
+                가입된 회사를
+                조회하고 서비스
+                이용 상태를
+                관리합니다.
               </div>
             </div>
 
             <button
               type="button"
-              style={styles.refreshButton}
-              disabled={statsLoading}
-              onClick={refreshStats}
+              style={
+                styles.refreshButton
+              }
+              onClick={
+                async () => {
+                  setMessage("");
+
+                  try {
+                    await loadCompanies();
+
+                    setMessage(
+                      "✅ 회사 목록을 새로고침했습니다.",
+                    );
+                  } catch (
+                    error
+                  ) {
+                    setMessage(
+                      `❌ ${
+                        error?.message ||
+                        "새로고침 실패"
+                      }`,
+                    );
+                  }
+                }
+              }
             >
-              {statsLoading
-                ? "조회 중..."
-                : "새로고침"}
+              새로고침
             </button>
           </div>
 
-          <select
-            value={selectedCompanyId}
-            onChange={handleCompanyChange}
-            disabled={statsLoading}
-            style={styles.select}
-          >
-            <option value="">
-              전체 업체
-            </option>
+          {/* 검색 */}
 
-            {companies.map(
-              (company) => (
-                <option
-                  key={company.id}
-                  value={company.id}
-                >
-                  {company.company_name ||
-                    "회사명 없음"}
-                </option>
-              ),
-            )}
-          </select>
+          <input
+            type="search"
+            value={
+              search
+            }
+            onChange={
+              (event) =>
+                setSearch(
+                  event.target.value,
+                )
+            }
+            placeholder="회사명, 대표자, 전화번호 검색"
+            style={
+              styles.searchInput
+            }
+          />
 
-          <div style={styles.targetBox}>
-            <span style={styles.targetLabel}>
-              현재 조회
-            </span>
-
-            <strong>
-              {selectedCompany
-                ? selectedCompany.company_name
-                : "전체 업체"}
-            </strong>
-          </div>
+          {/* 메시지 */}
 
           {message && (
-            <div style={styles.errorMessage}>
+            <div
+              style={{
+                ...styles.message,
+
+                ...(message.startsWith(
+                  "❌",
+                )
+                  ? styles.messageError
+                  : styles.messageSuccess),
+              }}
+            >
               {message}
             </div>
           )}
-        </section>
 
-        {/* 로그 통계 */}
+          {/* 회사 목록 */}
 
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>
-                자동견적 로그
-              </h2>
-
+          <div
+            style={
+              styles.companyList
+            }
+          >
+            {filteredCompanies.length ===
+            0 ? (
               <div
                 style={
-                  styles.sectionDescription
+                  styles.empty
                 }
               >
-                한국시간 기준으로 집계합니다.
+                검색 결과가 없습니다.
               </div>
-            </div>
-          </div>
-
-          <div style={styles.statsGrid}>
-            <LogCard
-              label="오늘 자동견적"
-              value={stats.today}
-              suffix="건"
-              loading={statsLoading}
-            />
-
-            <LogCard
-              label="최근 7일"
-              value={stats.seven_days}
-              suffix="건"
-              loading={statsLoading}
-            />
-
-            <LogCard
-              label="전체 자동견적"
-              value={stats.total}
-              suffix="건"
-              loading={statsLoading}
-            />
-
-            <LogCard
-              label="예상 사용자"
-              value={stats.sessions}
-              suffix="명"
-              loading={statsLoading}
-            />
-
-            <LogCard
-              label="상세 상담"
-              value={stats.leads}
-              suffix="건"
-              loading={statsLoading}
-            />
-
-            <LogCard
-              label="견적→상담 전환"
-              value={stats.converted}
-              suffix="건"
-              loading={statsLoading}
-            />
-          </div>
-
-          <div style={styles.conversionCard}>
-            <div
-              style={
-                styles.conversionLabel
-              }
-            >
-              자동견적 → 상세상담 전환율
-            </div>
-
-            <div
-              style={
-                styles.conversionValue
-              }
-            >
-              {statsLoading
-                ? "..."
-                : `${stats.conversion.toLocaleString(
-                    "ko-KR",
-                  )}%`}
-            </div>
-          </div>
-
-          <div style={styles.summaryBox}>
-            {selectedCompany
-              ? `${selectedCompany.company_name} 기준`
-              : "전체 업체 기준"}
-            {" · "}
-            자동견적{" "}
-            {stats.total.toLocaleString(
-              "ko-KR",
-            )}
-            건
-            {" · "}
-            사용자{" "}
-            {stats.sessions.toLocaleString(
-              "ko-KR",
-            )}
-            명
-            {" · "}
-            상세상담{" "}
-            {stats.leads.toLocaleString(
-              "ko-KR",
-            )}
-            건
-            {" · "}
-            전환{" "}
-            {stats.converted.toLocaleString(
-              "ko-KR",
-            )}
-            건
-          </div>
-        </section>
-
-        {/* 업체별 빠른 확인 */}
-
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>
-                업체 선택
-              </h2>
-
-              <div
-                style={
-                  styles.sectionDescription
-                }
-              >
-                업체를 누르면 해당 업체의
-                로그만 조회합니다.
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.companyGrid}>
-            <button
-              type="button"
-              disabled={statsLoading}
-              style={{
-                ...styles.companyButton,
-
-                ...(!selectedCompanyId
-                  ? styles.companyButtonActive
-                  : {}),
-              }}
-              onClick={async () => {
-                setSelectedCompanyId("");
-                await loadStats("");
-              }}
-            >
-              <span>
-                전체 업체
-              </span>
-
-              <small>
-                {companies.length}개 업체
-              </small>
-            </button>
-
-            {companies.map(
-              (company) => {
-                const active =
-                  selectedCompanyId ===
-                  company.id;
-
-                return (
-                  <button
-                    type="button"
-                    key={company.id}
-                    disabled={statsLoading}
-                    style={{
-                      ...styles.companyButton,
-
-                      ...(active
-                        ? styles.companyButtonActive
-                        : {}),
-                    }}
-                    onClick={async () => {
-                      setSelectedCompanyId(
-                        company.id,
-                      );
-
-                      await loadStats(
-                        company.id,
-                      );
-                    }}
-                  >
-                    <span>
-                      {company.company_name ||
-                        "회사명 없음"}
-                    </span>
-
-                    <small>
-                      {company.is_active
-                        ? "활성"
-                        : "정지"}
-                    </small>
-                  </button>
-                );
-              },
+            ) : (
+              filteredCompanies.map(
+                (
+                  company,
+                ) => (
+                  <CompanyCard
+                    key={
+                      company.id
+                    }
+                    company={
+                      company
+                    }
+                    changing={
+                      changingId ===
+                      company.id
+                    }
+                    onManage={() =>
+                      openCompany(
+                        company,
+                      )
+                    }
+                    onToggle={() =>
+                      changeCompanyActive(
+                        company,
+                      )
+                    }
+                  />
+                ),
+              )
             )}
           </div>
         </section>
-
       </div>
     </main>
   );
 }
 
 /* =========================================================
-   로그 카드
+   통계 카드
 ========================================================= */
 
-function LogCard({
+function StatCard({
   label,
   value,
-  suffix,
-  loading,
 }) {
   return (
-    <div style={styles.statCard}>
-      <div style={styles.statLabel}>
+    <div
+      style={
+        styles.statCard
+      }
+    >
+      <div
+        style={
+          styles.statLabel
+        }
+      >
         {label}
       </div>
 
-      <div style={styles.statValue}>
-        {loading
-          ? "..."
-          : Number(
-              value || 0,
-            ).toLocaleString(
-              "ko-KR",
-            )}
-
-        {!loading && (
-          <span style={styles.statSuffix}>
-            {suffix}
-          </span>
-        )}
+      <div
+        style={
+          styles.statValue
+        }
+      >
+        {value}
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   회사 카드
+========================================================= */
+
+function CompanyCard({
+  company,
+  changing,
+  onToggle,
+  onManage,
+}) {
+  const active =
+    company?.is_active ===
+    true;
+
+  return (
+    <div
+      style={
+        styles.companyCard
+      }
+    >
+
+      <div
+        style={
+          styles.companyTop
+        }
+      >
+        <div
+          style={{
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={
+              styles.companyNameRow
+            }
+          >
+            <div
+              style={
+                styles.companyName
+              }
+            >
+              {company.company_name ||
+                "회사명 없음"}
+            </div>
+
+            <span
+              style={{
+                ...styles.statusBadge,
+
+                ...(active
+                  ? styles.activeBadge
+                  : styles.inactiveBadge),
+              }}
+            >
+              {active
+                ? "활성"
+                : "정지"}
+            </span>
+          </div>
+
+          {company.slug && (
+            <div
+              style={
+                styles.slug
+              }
+            >
+              /{company.slug}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          disabled={
+            changing
+          }
+          onClick={
+            onToggle
+          }
+          style={{
+            ...styles.toggleButton,
+
+            ...(active
+              ? styles.stopButton
+              : styles.activateButton),
+
+            opacity:
+              changing
+                ? 0.6
+                : 1,
+          }}
+        >
+          {changing
+            ? "처리 중..."
+            : active
+              ? "회사 정지"
+              : "활성화"}
+        </button>
+      </div>
+
+      <div
+        style={
+          styles.divider
+        }
+      />
+
+      <InfoRow
+        label="대표자"
+        value={
+          company.representative_name ||
+          "-"
+        }
+      />
+
+      <InfoRow
+        label="전화번호"
+        value={
+          company.phone ||
+          "-"
+        }
+      />
+
+      <InfoRow
+        label="요금제"
+        value={
+          company.subscription_plan ||
+          "basic"
+        }
+      />
+
+      <InfoRow
+        label="가입일"
+        value={
+          company.created_at
+            ? new Date(
+                company.created_at,
+              ).toLocaleDateString(
+                "ko-KR",
+                {
+                  timeZone:
+                    "Asia/Seoul",
+                },
+              )
+            : "-"
+        }
+      />
+
+      {/* 회사 상세관리 버튼 */}
+
+      <button
+        type="button"
+        onClick={
+          onManage
+        }
+        style={
+          styles.manageButton
+        }
+      >
+        ⚙️ 회사 관리
+      </button>
+
+      <div
+        style={
+          styles.companyId
+        }
+      >
+        ID: {company.id}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   정보 행
+========================================================= */
+
+function InfoRow({
+  label,
+  value,
+}) {
+  return (
+    <div
+      style={
+        styles.infoRow
+      }
+    >
+      <span
+        style={
+          styles.infoLabel
+        }
+      >
+        {label}
+      </span>
+
+      <span
+        style={
+          styles.infoValue
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -740,7 +1151,8 @@ const styles = {
     minHeight: "100vh",
     background: "#f3f4f6",
     color: "#111827",
-    padding: "18px 14px 50px",
+    padding:
+      "18px 14px 50px",
   },
 
   container: {
@@ -751,8 +1163,10 @@ const styles = {
 
   header: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
     gap: "12px",
     marginBottom: "16px",
   },
@@ -783,8 +1197,9 @@ const styles = {
     lineHeight: 1.5,
   },
 
-  backButton: {
-    border: "1px solid #d1d5db",
+  adminButton: {
+    border:
+      "1px solid #d1d5db",
     borderRadius: "10px",
     background: "#ffffff",
     padding: "10px 12px",
@@ -796,13 +1211,15 @@ const styles = {
 
   loginBox: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "center",
     gap: "12px",
     background: "#ffffff",
     borderRadius: "14px",
     padding: "14px",
-    border: "1px solid #e5e7eb",
+    border:
+      "1px solid #e5e7eb",
     marginBottom: "14px",
   },
 
@@ -824,18 +1241,93 @@ const styles = {
     wordBreak: "break-all",
   },
 
+  /* =========================================================
+     슈퍼관리자 메뉴
+  ========================================================= */
+
+  menuGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "14px",
+  },
+
+  menuButton: {
+    minHeight: "62px",
+    border:
+      "1px solid #d1d5db",
+    borderRadius: "14px",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent:
+      "center",
+    gap: "6px",
+    WebkitTapHighlightColor:
+      "transparent",
+    touchAction:
+      "manipulation",
+  },
+
+  menuButtonActive: {
+    background: "#111827",
+    color: "#ffffff",
+    borderColor: "#111827",
+  },
+
+  menuIcon: {
+    fontSize: "18px",
+    lineHeight: 1,
+  },
+
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "14px",
+  },
+
+  statCard: {
+    background: "#ffffff",
+    border:
+      "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "14px 10px",
+    textAlign: "center",
+  },
+
+  statLabel: {
+    fontSize: "12px",
+    color: "#6b7280",
+    fontWeight: 700,
+  },
+
+  statValue: {
+    marginTop: "5px",
+    fontSize: "25px",
+    fontWeight: 900,
+  },
+
   section: {
     background: "#ffffff",
     borderRadius: "16px",
     padding: "15px",
-    border: "1px solid #e5e7eb",
-    marginBottom: "14px",
+    border:
+      "1px solid #e5e7eb",
   },
 
   sectionHeader: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
     gap: "10px",
     marginBottom: "13px",
   },
@@ -854,7 +1346,8 @@ const styles = {
   },
 
   refreshButton: {
-    border: "1px solid #d1d5db",
+    border:
+      "1px solid #d1d5db",
     background: "#ffffff",
     borderRadius: "9px",
     padding: "8px 10px",
@@ -864,154 +1357,188 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  select: {
+  searchInput: {
     width: "100%",
-    boxSizing: "border-box",
-    minHeight: "46px",
-    border: "1px solid #d1d5db",
+    boxSizing:
+      "border-box",
+    minHeight: "44px",
+    border:
+      "1px solid #d1d5db",
     borderRadius: "10px",
-    background: "#ffffff",
-    color: "#111827",
     padding: "0 12px",
     fontSize: "14px",
-    fontWeight: 700,
     outline: "none",
+    marginBottom: "12px",
   },
 
-  targetBox: {
-    marginTop: "10px",
-    padding: "10px 12px",
-    borderRadius: "10px",
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "10px",
-    fontSize: "13px",
-  },
-
-  targetLabel: {
-    color: "#64748b",
-  },
-
-  errorMessage: {
-    marginTop: "10px",
+  message: {
     padding: "10px",
     borderRadius: "9px",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#991b1b",
-    fontSize: "12px",
+    marginBottom: "12px",
+    fontSize: "13px",
     lineHeight: 1.5,
   },
 
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "9px",
-  },
-
-  statCard: {
-    minWidth: 0,
-    background: "#f8fafc",
-    border: "1px solid #e5e7eb",
-    borderRadius: "13px",
-    padding: "14px",
-  },
-
-  statLabel: {
-    color: "#6b7280",
-    fontSize: "12px",
-    fontWeight: 700,
-  },
-
-  statValue: {
-    marginTop: "7px",
-    fontSize: "25px",
-    lineHeight: 1.1,
-    fontWeight: 900,
-    wordBreak: "break-word",
-  },
-
-  statSuffix: {
-    marginLeft: "3px",
-    fontSize: "13px",
-    color: "#6b7280",
-    fontWeight: 700,
-  },
-
-  conversionCard: {
-    marginTop: "10px",
-    borderRadius: "14px",
-    background: "#111827",
-    color: "#ffffff",
-    padding: "17px",
-  },
-
-  conversionLabel: {
-    fontSize: "13px",
-    fontWeight: 700,
-    opacity: 0.8,
-  },
-
-  conversionValue: {
-    marginTop: "5px",
-    fontSize: "32px",
-    fontWeight: 900,
-  },
-
-  summaryBox: {
-    marginTop: "10px",
-    padding: "11px",
-    borderRadius: "10px",
+  messageSuccess: {
     background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
     color: "#166534",
-    fontSize: "12px",
-    fontWeight: 700,
-    lineHeight: 1.6,
+    border:
+      "1px solid #bbf7d0",
   },
 
-  companyGrid: {
+  messageError: {
+    background: "#fef2f2",
+    color: "#991b1b",
+    border:
+      "1px solid #fecaca",
+  },
+
+  companyList: {
     display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "8px",
+    gap: "10px",
   },
 
-  companyButton: {
-    minWidth: 0,
-    minHeight: "58px",
-    border: "1px solid #d1d5db",
-    borderRadius: "11px",
-    background: "#ffffff",
-    color: "#111827",
-    padding: "10px",
-    cursor: "pointer",
+  companyCard: {
+    border:
+      "1px solid #e5e7eb",
+    borderRadius: "13px",
+    padding: "13px",
+    background: "#fafafa",
+  },
+
+  companyTop: {
     display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: "3px",
-    textAlign: "left",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
+    gap: "10px",
+  },
+
+  companyNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    flexWrap: "wrap",
+  },
+
+  companyName: {
+    fontSize: "17px",
     fontWeight: 900,
     wordBreak: "break-word",
   },
 
-  companyButtonActive: {
+  slug: {
+    marginTop: "3px",
+    color: "#9ca3af",
+    fontSize: "11px",
+  },
+
+  statusBadge: {
+    padding: "4px 7px",
+    borderRadius: "999px",
+    fontSize: "10px",
+    fontWeight: 900,
+  },
+
+  activeBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+  },
+
+  inactiveBadge: {
+    background: "#fee2e2",
+    color: "#991b1b",
+  },
+
+  toggleButton: {
+    border: 0,
+    borderRadius: "9px",
+    padding: "9px 11px",
+    fontWeight: 900,
+    fontSize: "12px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+
+  stopButton: {
+    background: "#fee2e2",
+    color: "#991b1b",
+  },
+
+  activateButton: {
+    background: "#dcfce7",
+    color: "#166534",
+  },
+
+  divider: {
+    height: "1px",
+    background: "#e5e7eb",
+    margin: "12px 0",
+  },
+
+  infoRow: {
+    display: "flex",
+    justifyContent:
+      "space-between",
+    alignItems: "center",
+    gap: "12px",
+    padding: "4px 0",
+    fontSize: "13px",
+  },
+
+  infoLabel: {
+    color: "#6b7280",
+  },
+
+  infoValue: {
+    fontWeight: 700,
+    textAlign: "right",
+    wordBreak: "break-word",
+  },
+
+  manageButton: {
+    width: "100%",
+    minHeight: "43px",
+    marginTop: "13px",
+    border: 0,
+    borderRadius: "10px",
     background: "#111827",
     color: "#ffffff",
-    borderColor: "#111827",
+    fontSize: "13px",
+    fontWeight: 900,
+    cursor: "pointer",
+    WebkitTapHighlightColor:
+      "transparent",
+    touchAction:
+      "manipulation",
+  },
+
+  companyId: {
+    marginTop: "9px",
+    paddingTop: "8px",
+    borderTop:
+      "1px dashed #e5e7eb",
+    color: "#9ca3af",
+    fontSize: "10px",
+    wordBreak: "break-all",
+  },
+
+  empty: {
+    padding: "35px 10px",
+    textAlign: "center",
+    color: "#9ca3af",
+    fontSize: "14px",
   },
 
   centerBox: {
     width: "100%",
     maxWidth: "420px",
-    margin: "100px auto 0",
+    margin:
+      "100px auto 0",
     background: "#ffffff",
-    border: "1px solid #e5e7eb",
+    border:
+      "1px solid #e5e7eb",
     borderRadius: "18px",
     padding: "28px 20px",
     textAlign: "center",
@@ -1039,7 +1566,8 @@ const styles = {
   },
 
   deniedTitle: {
-    margin: "12px 0 5px",
+    margin:
+      "12px 0 5px",
     fontSize: "20px",
   },
 
