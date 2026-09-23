@@ -12,6 +12,7 @@
     "react": "latest",
     "react-dom": "latest",
     "@supabase/supabase-js": "latest",
+    "@tosspayments/tosspayments-sdk": "latest",
     "web-push": "latest"
   }
 }
