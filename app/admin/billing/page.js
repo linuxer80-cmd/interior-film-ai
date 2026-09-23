@@ -7,6 +7,7 @@ import {
 
 import { supabase } from "../../../lib/supabase";
 
+
 function formatPrice(value) {
   const price = Number(value || 0);
 
@@ -19,7 +20,11 @@ function formatPrice(value) {
   ).format(price)}원`;
 }
 
-function formatLimit(value, unit = "회") {
+
+function formatLimit(
+  value,
+  unit = "회",
+) {
   const number = Number(value || 0);
 
   if (number <= 0) {
@@ -31,13 +36,13 @@ function formatLimit(value, unit = "회") {
   ).format(number)}${unit}`;
 }
 
+
 function normalizePlanCode(value) {
-  return String(
-    value || "",
-  )
+  return String(value || "")
     .trim()
     .toLowerCase();
 }
+
 
 function getPlanLabel(
   planCode,
@@ -68,6 +73,7 @@ function getPlanLabel(
       "PLAN",
   ).toUpperCase();
 }
+
 
 function PlanFeature({
   label,
@@ -112,6 +118,7 @@ function PlanFeature({
   );
 }
 
+
 export default function BillingPage() {
   const [
     loading,
@@ -138,9 +145,29 @@ export default function BillingPage() {
     setSelectedPlan,
   ] = useState(null);
 
+  /*
+   * prepare API 처리 중
+   */
+  const [
+    preparingPlan,
+    setPreparingPlan,
+  ] = useState("");
+
+  /*
+   * prepare API 성공 결과
+   *
+   * 아직 실제 결제가 완료된 상태가 아닙니다.
+   */
+  const [
+    preparedBilling,
+    setPreparedBilling,
+  ] = useState(null);
+
+
   useEffect(() => {
     loadBillingPage();
   }, []);
+
 
   async function loadBillingPage() {
     try {
@@ -233,9 +260,13 @@ export default function BillingPage() {
         current || null,
       );
 
-      setPlans(planRows);
+      setPlans(
+        planRows,
+      );
 
-      if (current?.plan_code) {
+      if (
+        current?.plan_code
+      ) {
         setSelectedPlan(
           current.plan_code,
         );
@@ -255,17 +286,35 @@ export default function BillingPage() {
     }
   }
 
+
   function goBack() {
     window.location.href =
       "/admin";
   }
 
-  function handleSelectPlan(
+
+  /*
+   * =========================================================
+   * 요금제 선택
+   *
+   * 현재 단계:
+   *
+   * 1. 로그인 세션 확인
+   * 2. access_token 확보
+   * 3. 서버 prepare API 호출
+   * 4. 서버가 업체/요금제/가격 검증
+   * 5. billing customer 준비
+   *
+   * 아직 Toss 결제창은 열지 않습니다.
+   * =========================================================
+   */
+
+  async function handleSelectPlan(
     plan,
   ) {
     const code =
       normalizePlanCode(
-        plan.plan_code,
+        plan?.plan_code,
       );
 
     const currentCode =
@@ -273,12 +322,18 @@ export default function BillingPage() {
         currentPlan?.plan_code,
       );
 
+    /*
+     * 현재 요금제
+     */
     if (
       code === currentCode
     ) {
       return;
     }
 
+    /*
+     * TRIAL은 결제 변경 대상 아님
+     */
     if (
       code === "trial"
     ) {
@@ -289,24 +344,150 @@ export default function BillingPage() {
       return;
     }
 
-    setSelectedPlan(
-      plan.plan_code,
-    );
-
     /*
-      다음 단계에서 여기부터
-      Toss Payments 카드 등록 / 결제로 연결합니다.
+     * 이미 다른 prepare 요청 처리 중
+     */
+    if (preparingPlan) {
+      return;
+    }
 
-      지금은 실제 결제를 실행하지 않습니다.
-    */
+    try {
+      setError("");
+      setPreparedBilling(null);
 
-    alert(
-      `${getPlanLabel(
+      setSelectedPlan(
         plan.plan_code,
-        plan.plan_name,
-      )} 요금제를 선택했습니다.\n\n다음 단계에서 결제수단 등록과 연결됩니다.`,
-    );
+      );
+
+      setPreparingPlan(
+        plan.plan_code,
+      );
+
+      /*
+       * 현재 로그인 세션 확인
+       */
+      const {
+        data: sessionData,
+        error: sessionError,
+      } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const accessToken =
+        sessionData?.session
+          ?.access_token;
+
+      if (!accessToken) {
+        alert(
+          "로그인이 만료되었습니다. 다시 로그인해주세요.",
+        );
+
+        window.location.href =
+          "/admin";
+
+        return;
+      }
+
+      /*
+       * 결제 준비 API
+       *
+       * 브라우저에서는 plan_code만 보냅니다.
+       *
+       * company_id
+       * 업체 활성 여부
+       * 실제 월 가격
+       *
+       * 위 값들은 서버에서 다시 검증합니다.
+       */
+      const response =
+        await fetch(
+          "/api/billing/prepare",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify({
+                plan_code:
+                  plan.plan_code,
+              }),
+          },
+        );
+
+      let result = null;
+
+      try {
+        result =
+          await response.json();
+      } catch {
+        result = null;
+      }
+
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
+        throw new Error(
+          result?.error ||
+            "결제 준비에 실패했습니다.",
+        );
+      }
+
+      /*
+       * 서버 검증 성공
+       */
+      setPreparedBilling(
+        result,
+      );
+
+      /*
+       * 서버에서 다시 검증된
+       * 실제 요금제 코드로 선택 상태 유지
+       */
+      if (
+        result?.plan?.code
+      ) {
+        setSelectedPlan(
+          result.plan.code,
+        );
+      }
+    } catch (prepareError) {
+      console.error(
+        "결제 준비 오류:",
+        prepareError,
+      );
+
+      setError(
+        prepareError?.message ||
+          "결제 준비 중 오류가 발생했습니다.",
+      );
+
+      /*
+       * 실패 시 현재 요금제로 선택 상태 복원
+       */
+      setSelectedPlan(
+        currentPlan?.plan_code ||
+          null,
+      );
+
+      setPreparedBilling(
+        null,
+      );
+    } finally {
+      setPreparingPlan("");
+    }
   }
+
 
   if (loading) {
     return (
@@ -327,6 +508,7 @@ export default function BillingPage() {
     );
   }
 
+
   return (
     <main
       style={{
@@ -340,7 +522,9 @@ export default function BillingPage() {
         color: "#111827",
       }}
     >
-      {/* 상단 */}
+      {/* =========================
+          상단
+      ========================= */}
 
       <div
         style={{
@@ -389,7 +573,10 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* 오류 */}
+
+      {/* =========================
+          오류
+      ========================= */}
 
       {error && (
         <div
@@ -433,7 +620,10 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* 현재 요금제 */}
+
+      {/* =========================
+          현재 요금제
+      ========================= */}
 
       {currentPlan && (
         <section
@@ -511,6 +701,123 @@ export default function BillingPage() {
         </section>
       )}
 
+
+      {/* =========================
+          prepare 성공 결과
+      ========================= */}
+
+      {preparedBilling && (
+        <section
+          style={{
+            marginBottom: "18px",
+            padding: "15px",
+            border:
+              "1px solid #bbf7d0",
+            borderRadius: "14px",
+            background: "#f0fdf4",
+          }}
+        >
+          <div
+            style={{
+              color: "#166534",
+              fontSize: "14px",
+              fontWeight: "800",
+              marginBottom: "8px",
+            }}
+          >
+            ✓ 결제 준비 확인 완료
+          </div>
+
+          <div
+            style={{
+              color: "#334155",
+              fontSize: "13px",
+              lineHeight: "1.8",
+            }}
+          >
+            <div>
+              업체:{" "}
+              <strong>
+                {preparedBilling
+                  ?.company?.name ||
+                  "-"}
+              </strong>
+            </div>
+
+            <div>
+              선택 요금제:{" "}
+              <strong>
+                {getPlanLabel(
+                  preparedBilling
+                    ?.plan?.code,
+                  preparedBilling
+                    ?.plan?.name,
+                )}
+              </strong>
+            </div>
+
+            <div>
+              서버 확인 가격:{" "}
+              <strong>
+                {formatPrice(
+                  preparedBilling
+                    ?.plan
+                    ?.monthly_price_krw,
+                )}
+              </strong>
+              {Number(
+                preparedBilling
+                  ?.plan
+                  ?.monthly_price_krw ||
+                  0,
+              ) > 0 && (
+                <span>
+                  {" "}
+                  / 월
+                </span>
+              )}
+            </div>
+
+            <div>
+              결제 고객 준비:{" "}
+              <strong>
+                완료
+              </strong>
+            </div>
+
+            <div>
+              기존 결제수단:{" "}
+              <strong>
+                {preparedBilling
+                  ?.hasPaymentMethod
+                  ? "등록되어 있음"
+                  : "등록 필요"}
+              </strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "10px",
+              paddingTop: "10px",
+              borderTop:
+                "1px solid #bbf7d0",
+              color: "#166534",
+              fontSize: "12px",
+              lineHeight: "1.6",
+            }}
+          >
+            현재는 서버의 결제 준비 단계까지만 확인합니다.
+            아직 카드 등록이나 실제 결제는 실행되지 않습니다.
+          </div>
+        </section>
+      )}
+
+
+      {/* =========================
+          요금제 비교 제목
+      ========================= */}
+
       <div
         style={{
           marginBottom: "12px",
@@ -535,7 +842,10 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* 요금제 카드 */}
+
+      {/* =========================
+          요금제 카드
+      ========================= */}
 
       <div
         style={{
@@ -568,6 +878,16 @@ export default function BillingPage() {
 
             const isTrial =
               code === "trial";
+
+            const isPreparing =
+              normalizePlanCode(
+                preparingPlan,
+              ) === code;
+
+            const anyPreparing =
+              Boolean(
+                preparingPlan,
+              );
 
             return (
               <section
@@ -640,6 +960,9 @@ export default function BillingPage() {
                   )}
                 </div>
 
+
+                {/* 가격 */}
+
                 <div
                   style={{
                     marginBottom:
@@ -674,6 +997,9 @@ export default function BillingPage() {
                     </span>
                   )}
                 </div>
+
+
+                {/* 사용 한도 */}
 
                 <div
                   style={{
@@ -731,10 +1057,14 @@ export default function BillingPage() {
                   />
                 </div>
 
+
+                {/* 선택 버튼 */}
+
                 <button
                   type="button"
                   disabled={
-                    isCurrent
+                    isCurrent ||
+                    anyPreparing
                   }
                   onClick={() =>
                     handleSelectPlan(
@@ -750,42 +1080,63 @@ export default function BillingPage() {
                       "10px",
                     padding:
                       "11px 10px",
+
                     background:
                       isCurrent
                         ? "#e2e8f0"
-                        : isTrial
-                          ? "#f1f5f9"
-                          : "#111827",
+                        : isPreparing
+                          ? "#94a3b8"
+                          : isTrial
+                            ? "#f1f5f9"
+                            : "#111827",
+
                     color:
                       isCurrent
                         ? "#64748b"
                         : isTrial
                           ? "#475569"
                           : "#ffffff",
+
                     fontSize:
                       "13px",
+
                     fontWeight:
                       "800",
+
                     cursor:
-                      isCurrent
+                      isCurrent ||
+                      anyPreparing
                         ? "default"
                         : "pointer",
+
+                    opacity:
+                      anyPreparing &&
+                      !isPreparing
+                        ? 0.6
+                        : 1,
                   }}
                 >
                   {isCurrent
                     ? "현재 요금제"
-                    : isTrial
-                      ? "체험 요금제"
-                      : `${getPlanLabel(
-                          plan.plan_code,
-                          plan.plan_name,
-                        )} 선택`}
+                    : isPreparing
+                      ? "확인 중..."
+                      : isTrial
+                        ? "체험 요금제"
+                        : `${getPlanLabel(
+                            plan.plan_code,
+                            plan.plan_name,
+                          )} 선택`}
                 </button>
               </section>
             );
           },
         )}
       </div>
+
+
+      {/* =========================
+          안내
+      ========================= */}
 
       <div
         style={{
@@ -800,9 +1151,10 @@ export default function BillingPage() {
           lineHeight: "1.6",
         }}
       >
-        결제수단 등록과 자동결제 기능은 다음 단계에서 연결됩니다.
-        현재 화면에서는 실제 결제가 진행되지 않습니다.
+        현재 단계에서는 요금제를 선택하면 서버에서 로그인 사용자,
+        소속 업체, 요금제와 월 결제금액을 다시 확인합니다.
+        카드 등록과 실제 자동결제는 다음 단계에서 연결됩니다.
       </div>
     </main>
   );
-          }
+            }
