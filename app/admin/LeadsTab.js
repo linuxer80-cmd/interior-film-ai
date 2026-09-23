@@ -3,19 +3,23 @@ import {
   formatWon,
   getLeadPhotoPaths,
 } from "./adminUtils";
+
 import {
   inputStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
   sectionStyle,
 } from "./adminStyles";
+
 import {
   STATUS_OPTIONS,
 } from "./adminConstants";
+
 import QuoteSendPanel from "./QuoteSendPanel";
 import Pagination from "./Pagination";
 
 export default function LeadsTab({
+  companyName,
   leadFilter,
   setLeadFilter,
   loadLeads,
@@ -79,7 +83,9 @@ export default function LeadsTab({
         <select
           value={leadFilter}
           onChange={(event) => {
-            const next = event.target.value;
+            const next =
+              event.target.value;
+
             setLeadFilter(next);
             loadLeads(1, next);
           }}
@@ -92,14 +98,16 @@ export default function LeadsTab({
             전체 상담
           </option>
 
-          {STATUS_OPTIONS.map((status) => (
-            <option
-              key={status}
-              value={status}
-            >
-              {status}
-            </option>
-          ))}
+          {STATUS_OPTIONS.map(
+            (status) => (
+              <option
+                key={status}
+                value={status}
+              >
+                {status}
+              </option>
+            ),
+          )}
         </select>
 
         <div
@@ -110,7 +118,9 @@ export default function LeadsTab({
           }}
         >
           총{" "}
-          {leadTotal.toLocaleString("ko-KR")}
+          {leadTotal.toLocaleString(
+            "ko-KR",
+          )}
           건 · 미확인 {unreadCount}건
         </div>
       </section>
@@ -139,6 +149,7 @@ export default function LeadsTab({
           <LeadCard
             key={lead.id}
             lead={lead}
+            companyName={companyName}
             updateLeadStatus={
               updateLeadStatus
             }
@@ -149,18 +160,27 @@ export default function LeadsTab({
               toggleLeadDetail
             }
             photos={
-              leadPhotoUrls[lead.id] || []
+              leadPhotoUrls[lead.id] ||
+              []
             }
             leadPhotoLoadingId={
               leadPhotoLoadingId
             }
-            loadLeadPhotos={loadLeadPhotos}
-            setPreviewPhoto={setPreviewPhoto}
-            saveLeadMemo={saveLeadMemo}
+            loadLeadPhotos={
+              loadLeadPhotos
+            }
+            setPreviewPhoto={
+              setPreviewPhoto
+            }
+            saveLeadMemo={
+              saveLeadMemo
+            }
             updateLeadLocal={
               updateLeadLocal
             }
-            saveFinalQuote={saveFinalQuote}
+            saveFinalQuote={
+              saveFinalQuote
+            }
             setLeadsMessage={
               setLeadsMessage
             }
@@ -174,13 +194,13 @@ export default function LeadsTab({
         onPrevious={() =>
           loadLeads(
             leadPage - 1,
-            leadFilter
+            leadFilter,
           )
         }
         onNext={() =>
           loadLeads(
             leadPage + 1,
-            leadFilter
+            leadFilter,
           )
         }
       />
@@ -190,6 +210,7 @@ export default function LeadsTab({
 
 function LeadCard({
   lead,
+  companyName,
   updateLeadStatus,
   open,
   toggleLeadDetail,
@@ -218,7 +239,8 @@ function LeadCard({
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           gap: "10px",
         }}
       >
@@ -229,8 +251,10 @@ function LeadCard({
               fontWeight: "bold",
             }}
           >
-            {lead.is_read === false && "🔴 "}
-            {lead.customer_name || "고객"}
+            {lead.is_read === false &&
+              "🔴 "}
+            {lead.customer_name ||
+              "고객"}
           </div>
 
           <div
@@ -245,11 +269,14 @@ function LeadCard({
         </div>
 
         <select
-          value={lead.status || "신규문의"}
+          value={
+            lead.status ||
+            "신규문의"
+          }
           onChange={(event) =>
             updateLeadStatus(
               lead.id,
-              event.target.value
+              event.target.value,
             )
           }
           style={{
@@ -260,14 +287,16 @@ function LeadCard({
             background: "#ffffff",
           }}
         >
-          {STATUS_OPTIONS.map((status) => (
-            <option
-              key={status}
-              value={status}
-            >
-              {status}
-            </option>
-          ))}
+          {STATUS_OPTIONS.map(
+            (status) => (
+              <option
+                key={status}
+                value={status}
+              >
+                {status}
+              </option>
+            ),
+          )}
         </select>
       </div>
 
@@ -287,19 +316,22 @@ function LeadCard({
 
         <div>
           <b>희망일:</b>{" "}
-          {lead.preferred_date || "-"}
+          {lead.preferred_date ||
+            "-"}
         </div>
 
         <div>
           <b>AI 평균:</b>{" "}
           {formatWon(
-            lead.estimate_average
+            lead.estimate_average,
           )}
         </div>
 
         <div>
           <b>접수:</b>{" "}
-          {formatDate(lead.created_at)}
+          {formatDate(
+            lead.created_at,
+          )}
         </div>
       </div>
 
@@ -336,18 +368,25 @@ function LeadCard({
           >
             <b>고객 요청</b>
             <br />
-            {lead.request_text || "-"}
+            {lead.request_text ||
+              "-"}
           </div>
 
           <LeadPhotos
             lead={lead}
-            photoPaths={photoPaths}
+            photoPaths={
+              photoPaths
+            }
             photos={photos}
             leadPhotoLoadingId={
               leadPhotoLoadingId
             }
-            loadLeadPhotos={loadLeadPhotos}
-            setPreviewPhoto={setPreviewPhoto}
+            loadLeadPhotos={
+              loadLeadPhotos
+            }
+            setPreviewPhoto={
+              setPreviewPhoto
+            }
           />
 
           <label
@@ -368,7 +407,7 @@ function LeadCard({
             onBlur={(event) =>
               saveLeadMemo(
                 lead.id,
-                event.target.value
+                event.target.value,
               )
             }
             rows={4}
@@ -380,10 +419,15 @@ function LeadCard({
 
           <QuoteForm
             lead={lead}
+            companyName={
+              companyName
+            }
             updateLeadLocal={
               updateLeadLocal
             }
-            saveFinalQuote={saveFinalQuote}
+            saveFinalQuote={
+              saveFinalQuote
+            }
             setLeadsMessage={
               setLeadsMessage
             }
@@ -421,7 +465,8 @@ function LeadPhotos({
       <button
         type="button"
         disabled={
-          leadPhotoLoadingId === lead.id
+          leadPhotoLoadingId ===
+          lead.id
         }
         onClick={() =>
           loadLeadPhotos(lead)
@@ -431,7 +476,8 @@ function LeadPhotos({
           marginTop: "12px",
         }}
       >
-        {leadPhotoLoadingId === lead.id
+        {leadPhotoLoadingId ===
+        lead.id
           ? "사진 불러오는 중..."
           : `📷 고객 사진 보기 (${photoPaths.length})`}
       </button>
@@ -448,29 +494,37 @@ function LeadPhotos({
             marginTop: "10px",
           }}
         >
-          {photos.map((item, index) => (
-            <img
-              key={`${item.path}-${index}`}
-              src={item.url}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              onClick={() =>
-                setPreviewPhoto(item.url)
-              }
-              style={{
-                width: "100%",
-                height:
-                  photos.length === 1
-                    ? "320px"
-                    : "180px",
-                objectFit: "contain",
-                background: "#111827",
-                borderRadius: "10px",
-                cursor: "pointer",
-              }}
-            />
-          ))}
+          {photos.map(
+            (item, index) => (
+              <img
+                key={`${item.path}-${index}`}
+                src={item.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onClick={() =>
+                  setPreviewPhoto(
+                    item.url,
+                  )
+                }
+                style={{
+                  width: "100%",
+                  height:
+                    photos.length ===
+                    1
+                      ? "320px"
+                      : "180px",
+                  objectFit:
+                    "contain",
+                  background:
+                    "#111827",
+                  borderRadius:
+                    "10px",
+                  cursor: "pointer",
+                }}
+              />
+            ),
+          )}
         </div>
       )}
     </>
@@ -479,6 +533,7 @@ function LeadPhotos({
 
 function QuoteForm({
   lead,
+  companyName,
   updateLeadLocal,
   saveFinalQuote,
   setLeadsMessage,
@@ -490,7 +545,8 @@ function QuoteForm({
         padding: "14px",
         borderRadius: "12px",
         background: "#faf7f2",
-        border: "1px solid #e7dfd6",
+        border:
+          "1px solid #e7dfd6",
       }}
     >
       <h3
@@ -502,17 +558,21 @@ function QuoteForm({
         최종 견적
       </h3>
 
-      <label style={quoteLabelStyle}>
+      <label
+        style={quoteLabelStyle}
+      >
         최종 견적금액
       </label>
 
       <input
-        value={lead.final_price || ""}
+        value={
+          lead.final_price || ""
+        }
         onChange={(event) =>
           updateLeadLocal(
             lead.id,
             "final_price",
-            event.target.value
+            event.target.value,
           )
         }
         inputMode="numeric"
@@ -532,23 +592,28 @@ function QuoteForm({
             color: "#5d4037",
           }}
         >
-          {formatWon(lead.final_price)}
+          {formatWon(
+            lead.final_price,
+          )}
         </div>
       )}
 
-      <label style={quoteLabelStyle}>
+      <label
+        style={quoteLabelStyle}
+      >
         시공 내용
       </label>
 
       <textarea
         value={
-          lead.quote_work_details || ""
+          lead.quote_work_details ||
+          ""
         }
         onChange={(event) =>
           updateLeadLocal(
             lead.id,
             "quote_work_details",
-            event.target.value
+            event.target.value,
           )
         }
         rows={4}
@@ -560,17 +625,21 @@ function QuoteForm({
         }}
       />
 
-      <label style={quoteLabelStyle}>
+      <label
+        style={quoteLabelStyle}
+      >
         사용 자재
       </label>
 
       <input
-        value={lead.quote_material || ""}
+        value={
+          lead.quote_material || ""
+        }
         onChange={(event) =>
           updateLeadLocal(
             lead.id,
             "quote_material",
-            event.target.value
+            event.target.value,
           )
         }
         placeholder="예: 현대 L&C 인테리어필름"
@@ -580,17 +649,21 @@ function QuoteForm({
         }}
       />
 
-      <label style={quoteLabelStyle}>
+      <label
+        style={quoteLabelStyle}
+      >
         안내사항
       </label>
 
       <textarea
-        value={lead.quote_note || ""}
+        value={
+          lead.quote_note || ""
+        }
         onChange={(event) =>
           updateLeadLocal(
             lead.id,
             "quote_note",
-            event.target.value
+            event.target.value,
           )
         }
         rows={3}
@@ -625,15 +698,18 @@ function QuoteForm({
         >
           저장:{" "}
           {formatDate(
-            lead.quote_created_at
+            lead.quote_created_at,
           )}
         </div>
       )}
 
       <QuoteSendPanel
-  lead={lead}
-  setLeadsMessage={setLeadsMessage}
-/>
+        lead={lead}
+        companyName={companyName}
+        setLeadsMessage={
+          setLeadsMessage
+        }
+      />
     </div>
   );
 }
