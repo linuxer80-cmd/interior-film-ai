@@ -174,10 +174,6 @@ export default function useSites({
           const storagePath =
             `sites/${companyId}/${siteId}/request/${safeFileName}`;
 
-          /* ---------------------------------------------
-             Storage 업로드
-          --------------------------------------------- */
-
           const {
             error: uploadError,
           } = await supabase.storage
@@ -202,14 +198,6 @@ export default function useSites({
               `요청사진 업로드 실패: ${uploadError.message}`,
             );
           }
-
-          /* ---------------------------------------------
-             site_photos DB 등록
-
-             request = 현장 등록 시 고객이 보내준 시공 요청사진
-             before  = 실제 시공 전 사진
-             after   = 실제 시공 후 사진
-          --------------------------------------------- */
 
           const photoRow = {
             company_id:
@@ -241,11 +229,6 @@ export default function useSites({
             .single();
 
           if (photoError) {
-            /*
-             * Storage에는 올라갔는데
-             * DB 등록이 실패한 경우
-             * 고아 파일을 남기지 않도록 제거
-             */
             await supabase.storage
               .from("work-photos")
               .remove([
@@ -390,11 +373,6 @@ export default function useSites({
 
   /* =========================================================
      현장 등록
-     sites
-       ↓
-     site_materials
-       ↓
-     Storage + site_photos
   ========================================================= */
 
   const createSite = useCallback(
@@ -423,10 +401,6 @@ export default function useSites({
       let createdSite = null;
 
       try {
-        /* =================================================
-           1. 현장 기본정보 저장
-        ================================================= */
-
         const insertData = {
           company_id:
             companyId,
@@ -509,10 +483,6 @@ export default function useSites({
 
         createdSite = data;
 
-        /* =================================================
-           2. 시공 예정 자재 저장
-        ================================================= */
-
         const materials =
           Array.isArray(
             form.materials,
@@ -527,10 +497,6 @@ export default function useSites({
 
             materials,
           });
-
-        /* =================================================
-           3. 시공 요청사진 저장
-        ================================================= */
 
         const requestPhotos =
           Array.isArray(
@@ -547,10 +513,6 @@ export default function useSites({
             files:
               requestPhotos,
           });
-
-        /* =================================================
-           4. 화면 목록 즉시 갱신
-        ================================================= */
 
         const siteForState = {
           ...createdSite,
@@ -602,15 +564,6 @@ export default function useSites({
           error,
         );
 
-        /*
-         * 현장 생성 후 자재/사진 저장 단계에서
-         * 실패한 경우 현장 자체는 유지합니다.
-         *
-         * 실제 현장 일정이 사라지는 것보다
-         * 관리자에게 실패 내용을 보여주고
-         * 추가정보를 다시 입력하는 편이 안전합니다.
-         */
-
         const message =
           error?.message ||
           "현장 등록 중 오류가 발생했습니다.";
@@ -619,10 +572,6 @@ export default function useSites({
           `❌ ${message}`,
         );
 
-        /*
-         * 기본 현장까지 생성된 상태라면
-         * 목록에서 현장이 사라지지 않도록 다시 조회
-         */
         if (createdSite) {
           try {
             await loadSites(
@@ -655,6 +604,195 @@ export default function useSites({
       uploadRequestPhotos,
     ],
   );
+
+  /* =========================================================
+     현장 일정 변경
+  ========================================================= */
+
+  const updateSiteSchedule =
+    useCallback(
+      async ({
+        siteId,
+        scheduleStart,
+        scheduleEnd = null,
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        if (!scheduleStart) {
+          return {
+            success: false,
+            error:
+              "시공 시작 일정을 입력해주세요.",
+          };
+        }
+
+        const startDate =
+          new Date(scheduleStart);
+
+        if (
+          Number.isNaN(
+            startDate.getTime(),
+          )
+        ) {
+          return {
+            success: false,
+            error:
+              "시공 시작 일정이 올바르지 않습니다.",
+          };
+        }
+
+        let normalizedEnd =
+          scheduleEnd || null;
+
+        if (normalizedEnd) {
+          const endDate =
+            new Date(normalizedEnd);
+
+          if (
+            Number.isNaN(
+              endDate.getTime(),
+            )
+          ) {
+            return {
+              success: false,
+              error:
+                "시공 종료 일정이 올바르지 않습니다.",
+            };
+          }
+
+          if (
+            endDate.getTime() <
+            startDate.getTime()
+          ) {
+            return {
+              success: false,
+              error:
+                "종료 일정은 시작 일정보다 빠를 수 없습니다.",
+            };
+          }
+        }
+
+        setSitesMessage("");
+
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("sites")
+            .update({
+              schedule_start:
+                scheduleStart,
+
+              schedule_end:
+                normalizedEnd,
+
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              siteId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .select()
+            .single();
+
+          if (error) {
+            throw error;
+          }
+
+          /*
+           * sites UPDATE가 성공하면
+           * DB에 설치한 일정 변경 트리거가 실행됩니다.
+           *
+           * 일정이 실제로 변경된 경우에만
+           * 배정 시공자 notifications가 생성되고
+           * 기존 Push 시스템으로 전달됩니다.
+           */
+
+          setSites((prev) =>
+            prev
+              .map(
+                (site) =>
+                  site.id === siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    a.schedule_start,
+                  ).getTime() -
+                  new Date(
+                    b.schedule_start,
+                  ).getTime(),
+              ),
+          );
+
+          if (
+            selectedSite?.id ===
+            siteId
+          ) {
+            setSelectedSite(
+              (prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      ...data,
+                    }
+                  : prev,
+            );
+          }
+
+          setSitesMessage(
+            "✅ 시공 일정이 변경되었습니다.",
+          );
+
+          return {
+            success: true,
+            site: data,
+          };
+        } catch (error) {
+          console.error(
+            "현장 일정 변경 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "알 수 없는 오류";
+
+          setSitesMessage(
+            `❌ 일정 변경 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [
+        companyId,
+        selectedSite,
+      ],
+    );
 
   /* =========================================================
      현장 상태 변경
@@ -798,6 +936,8 @@ export default function useSites({
 
     loadSites,
     createSite,
+
+    updateSiteSchedule,
     updateSiteStatus,
 
     saveSiteMaterials,
@@ -808,4 +948,4 @@ export default function useSites({
 
     clearSitesMessage,
   };
-    }
+                   }
