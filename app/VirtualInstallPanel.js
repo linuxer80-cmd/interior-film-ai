@@ -3,12 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import FilmColorPicker from "./FilmColorPicker";
 
-/* =========================================================
-   가상시공 종류
-   - 싱크대 / 문·문틀만 여러 톤 허용
-   - 붙박이장 / 신발장 / 냉장고장 / 기타 장류는 단일 컬러
-========================================================= */
-
 const TARGET_TYPES = [
   {
     key: "kitchen",
@@ -192,23 +186,12 @@ function getAnalysisText(photo, group) {
     .join(" ");
 }
 
-/* =========================================================
-   AI 분석 텍스트 → 가상시공 종류
-
-   중요:
-   "붙박이장 문짝", "신발장 도어", "냉장고장 문짝"처럼
-   문/도어라는 단어가 함께 있어도 가구 종류를 먼저 판정한다.
-========================================================= */
-
 function detectTypeFromText(text) {
   if (!text) {
     return "";
   }
 
-  /* -------------------------
-     1. 붙박이장 최우선
-  ------------------------- */
-
+  // 붙박이장 우선
   if (
     includesAny(text, [
       "붙박이장",
@@ -226,10 +209,7 @@ function detectTypeFromText(text) {
     return "built_in";
   }
 
-  /* -------------------------
-     2. 신발장
-  ------------------------- */
-
+  // 신발장
   if (
     includesAny(text, [
       "신발장",
@@ -244,13 +224,7 @@ function detectTypeFromText(text) {
     return "shoe_cabinet";
   }
 
-  /* -------------------------
-     3. 냉장고장
-     싱크대 전체 사진에 포함된 냉장고장은 아래에서
-     kitchen으로 판정될 수 있지만,
-     사진 자체가 냉장고장으로 분석된 경우 우선 분리한다.
-  ------------------------- */
-
+  // 냉장고장
   if (
     includesAny(text, [
       "냉장고장",
@@ -265,10 +239,7 @@ function detectTypeFromText(text) {
     return "fridge_cabinet";
   }
 
-  /* -------------------------
-     4. 싱크대 / 주방가구
-  ------------------------- */
-
+  // 싱크대/주방가구
   if (
     includesAny(text, [
       "싱크대",
@@ -292,10 +263,7 @@ function detectTypeFromText(text) {
     return "kitchen";
   }
 
-  /* -------------------------
-     5. 실제 문 / 문틀
-  ------------------------- */
-
+  // 실제 문/문틀
   if (
     includesAny(text, [
       "방문",
@@ -313,12 +281,6 @@ function detectTypeFromText(text) {
     return "door";
   }
 
-  /*
-   * '문짝', '도어', 'door'만 있는 경우.
-   * 위의 붙박이장/신발장/냉장고장 판정을 모두 통과한
-   * 뒤에만 일반 문으로 처리한다.
-   */
-
   if (
     includesAny(text, [
       "문짝",
@@ -329,10 +291,7 @@ function detectTypeFromText(text) {
     return "door";
   }
 
-  /* -------------------------
-     6. 기타 장류
-  ------------------------- */
-
+  // 기타 장류
   if (
     includesAny(text, [
       "수납장",
@@ -390,10 +349,6 @@ function detectTargetTypeForImage(
     matchedEntries = [entries[imageIndex]];
   }
 
-  /*
-   * 사진 자체의 분석 결과를 가장 먼저 확인한다.
-   */
-
   const photoText = [
     getAnalysisText(image, null),
 
@@ -408,11 +363,6 @@ function detectTargetTypeForImage(
     return photoType;
   }
 
-  /*
-   * 사진 분석으로 판단되지 않은 경우
-   * 해당 사진이 속한 그룹 정보를 사용한다.
-   */
-
   const groupText = matchedEntries
     .map(({ group }) =>
       getAnalysisText(null, group)
@@ -424,11 +374,6 @@ function detectTargetTypeForImage(
   if (groupType) {
     return groupType;
   }
-
-  /*
-   * 마지막으로 category / subCategory만 모아서
-   * 다시 한 번 판정한다.
-   */
 
   const priorityText = [
     image?.category,
@@ -669,6 +614,7 @@ export default function VirtualInstallPanel({
   onUseSplitToneChange,
   onAreaFilmsChange,
   onRequestDetail,
+  companySlug = "",
 }) {
   const [selectedImageId, setSelectedImageId] =
     useState("");
@@ -764,22 +710,12 @@ export default function VirtualInstallPanel({
     groups,
   ]);
 
-  /*
-   * 현재 선택 종류가 여러 톤을 지원하는지 확인한다.
-   * 싱크대와 문·문틀만 true.
-   */
-
   const supportsMultiTone = useMemo(() => {
     return (
       targetType === "kitchen" ||
       targetType === "door"
     );
   }, [targetType]);
-
-  /*
-   * 선택한 사진의 AI 분석 결과만 사용해
-   * 시공 종류를 자동 선택한다.
-   */
 
   useEffect(() => {
     if (
@@ -800,11 +736,6 @@ export default function VirtualInstallPanel({
         : detectedTargetType
     );
 
-    /*
-     * 사진이 바뀌거나 AI 판정이 바뀌면
-     * 항상 컬러 통일부터 시작한다.
-     */
-
     setColorMode("single");
     onUseSplitToneChange?.(false);
   }, [
@@ -812,11 +743,6 @@ export default function VirtualInstallPanel({
     detectedTargetType,
     manualTypeMode,
   ]);
-
-  /*
-   * 붙박이장/신발장/냉장고장/기타 장류에서는
-   * 외부 상태가 multi로 들어오더라도 single로 강제한다.
-   */
 
   useEffect(() => {
     if (!targetType) {
@@ -963,11 +889,6 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    /*
-     * 싱크대 / 문·문틀이 아니면
-     * 여러 톤 선택 자체를 허용하지 않는다.
-     */
-
     if (
       mode === "multi" &&
       !supportsMultiTone
@@ -1009,6 +930,11 @@ export default function VirtualInstallPanel({
 
   function makeRequestForm() {
     const formData = new FormData();
+
+    formData.append(
+      "company_slug",
+      companySlug || ""
+    );
 
     formData.append(
       "image",
@@ -1054,15 +980,12 @@ export default function VirtualInstallPanel({
       "colorHex",
       product?.color_hex || ""
     );
-        formData.append(
+
+    formData.append(
       "sampleImageUrl",
       product?.sample_image_path || ""
     );
 
-    /*
-     * 여러 톤은 싱크대 / 문·문틀에서만 허용한다.
-     * 다른 종류에서는 상태가 잘못 들어와도 false로 전송한다.
-     */
     const multiTone =
       supportsMultiTone &&
       colorMode === "multi";
@@ -1088,11 +1011,6 @@ export default function VirtualInstallPanel({
       JSON.stringify(films)
     );
 
-    /*
-     * 서버가 일반 단일컬러 종류에서도
-     * 어떤 시공 종류인지 명확하게 알 수 있도록
-     * 사람이 읽을 수 있는 이름도 같이 전달한다.
-     */
     formData.append(
       "targetLabel",
       selectedType?.label || ""
@@ -1127,9 +1045,13 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    /*
-     * 여러 톤은 싱크대 / 문·문틀에서만 검사한다.
-     */
+    if (!companySlug) {
+      setMessage(
+        "❌ 업체 정보를 확인할 수 없습니다. 업체 페이지에서 다시 시도해주세요."
+      );
+      return;
+    }
+
     if (
       supportsMultiTone &&
       colorMode === "multi"
@@ -1282,10 +1204,6 @@ export default function VirtualInstallPanel({
         </div>
       </div>
 
-      {/* =====================================================
-          1. 사진 선택
-      ===================================================== */}
-
       <div
         style={{
           marginTop: "18px",
@@ -1408,10 +1326,6 @@ export default function VirtualInstallPanel({
         </div>
       </div>
 
-      {/* =====================================================
-          AI가 종류를 못 찾았거나 수동 변경할 때
-      ===================================================== */}
-
       {!targetType && (
         <div
           style={{
@@ -1464,11 +1378,6 @@ export default function VirtualInstallPanel({
           </div>
         </div>
       )}
-
-      {/* =====================================================
-          판정 완료
-      ===================================================== */}
-
       {targetType && (
         <>
           <div
@@ -1529,10 +1438,6 @@ export default function VirtualInstallPanel({
             </button>
           </div>
 
-          {/* =================================================
-              컬러 방식
-          ================================================= */}
-
           <div
             style={{
               marginTop: "17px",
@@ -1568,8 +1473,6 @@ export default function VirtualInstallPanel({
                 사진에 있는 부위만 적용
               </span>
             </div>
-
-            {/* 싱크대 / 문·문틀만 여러 톤 버튼 표시 */}
 
             {supportsMultiTone ? (
               <div
@@ -1619,10 +1522,6 @@ export default function VirtualInstallPanel({
             )}
           </div>
 
-          {/* =================================================
-              단일 컬러
-          ================================================= */}
-
           {colorMode === "single" && (
             <div
               style={{
@@ -1656,11 +1555,6 @@ export default function VirtualInstallPanel({
             </div>
           )}
 
-          {/* =================================================
-              여러 톤
-              싱크대 / 문·문틀에서만 렌더링
-          ================================================= */}
-
           {supportsMultiTone &&
             colorMode === "multi" && (
               <div
@@ -1689,8 +1583,7 @@ export default function VirtualInstallPanel({
                       <div
                         style={{
                           display: "flex",
-                          alignItems:
-                            "center",
+                          alignItems: "center",
                           justifyContent:
                             "space-between",
                           gap: "8px",
@@ -1756,10 +1649,6 @@ export default function VirtualInstallPanel({
               </div>
             )}
 
-          {/* =================================================
-              가상시공 실행
-          ================================================= */}
-
           <button
             type="button"
             disabled={
@@ -1796,10 +1685,6 @@ export default function VirtualInstallPanel({
         </>
       )}
 
-      {/* =====================================================
-          상태 메시지
-      ===================================================== */}
-
       {message && (
         <div
           style={{
@@ -1821,10 +1706,6 @@ export default function VirtualInstallPanel({
           {message}
         </div>
       )}
-
-      {/* =====================================================
-          가상시공 결과
-      ===================================================== */}
 
       {result && (
         <div
@@ -1959,4 +1840,4 @@ export default function VirtualInstallPanel({
       )}
     </section>
   );
-      }
+               }
