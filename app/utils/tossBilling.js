@@ -1,6 +1,7 @@
 import crypto from "crypto";
 
-const TOSS_API_BASE_URL = "https://api.tosspayments.com";
+const TOSS_API_BASE_URL =
+  "https://api.tosspayments.com";
 
 /**
  * Toss Secret Key
@@ -9,7 +10,8 @@ const TOSS_API_BASE_URL = "https://api.tosspayments.com";
  * NEXT_PUBLIC_ 접두사를 절대 사용하지 않습니다.
  */
 export function getTossSecretKey() {
-  const secretKey = process.env.TOSS_SECRET_KEY;
+  const secretKey =
+    process.env.TOSS_SECRET_KEY;
 
   if (!secretKey) {
     throw new Error(
@@ -21,18 +23,114 @@ export function getTossSecretKey() {
 }
 
 /**
+ * Toss 테스트 Secret Key 여부
+ *
+ * 현재 사용 중인 키 형식(sk_test_)과
+ * Toss 문서에서 사용하는 테스트 키 형식을
+ * 모두 안전하게 인식합니다.
+ */
+function isTossTestSecretKey(
+  secretKey,
+) {
+  const value =
+    String(
+      secretKey || "",
+    ).trim();
+
+  return (
+    value.startsWith("sk_test_") ||
+    value.startsWith("test_sk_") ||
+    value.startsWith("gsk_test_") ||
+    value.startsWith("test_gsk_")
+  );
+}
+
+/**
+ * 테스트 결제 실패 코드 확인
+ *
+ * 매우 중요한 안전장치:
+ *
+ * 1. Toss 테스트 Secret Key에서만 허용
+ * 2. 테스트 코드 환경변수가 있어야 함
+ * 3. 테스트 대상 orderId 환경변수가 있어야 함
+ * 4. 실제 결제 orderId와 정확히 일치해야 함
+ *
+ * 따라서 일반 정기결제에는
+ * 테스트 실패 헤더가 절대로 추가되지 않습니다.
+ *
+ * 테스트 종료 후에는
+ * TOSS_TEST_FAILURE_CODE
+ * TOSS_TEST_FAILURE_ORDER_ID
+ * 두 환경변수를 삭제합니다.
+ */
+function getTossTestFailureCode({
+  orderId,
+}) {
+  const secretKey =
+    getTossSecretKey();
+
+  if (
+    !isTossTestSecretKey(
+      secretKey,
+    )
+  ) {
+    return null;
+  }
+
+  const testCode =
+    String(
+      process.env
+        .TOSS_TEST_FAILURE_CODE ||
+        "",
+    ).trim();
+
+  const targetOrderId =
+    String(
+      process.env
+        .TOSS_TEST_FAILURE_ORDER_ID ||
+        "",
+    ).trim();
+
+  const currentOrderId =
+    String(
+      orderId || "",
+    ).trim();
+
+  if (
+    !testCode ||
+    !targetOrderId ||
+    !currentOrderId
+  ) {
+    return null;
+  }
+
+  if (
+    targetOrderId !==
+    currentOrderId
+  ) {
+    return null;
+  }
+
+  return testCode;
+}
+
+/**
  * Toss Basic Authorization 생성
  *
  * 공식 규격:
  * Base64("SECRET_KEY:")
  */
 export function getTossAuthorizationHeader() {
-  const secretKey = getTossSecretKey();
+  const secretKey =
+    getTossSecretKey();
 
-  const encoded = Buffer.from(
-    `${secretKey}:`,
-    "utf8",
-  ).toString("base64");
+  const encoded =
+    Buffer.from(
+      `${secretKey}:`,
+      "utf8",
+    ).toString(
+      "base64",
+    );
 
   return `Basic ${encoded}`;
 }
@@ -40,7 +138,8 @@ export function getTossAuthorizationHeader() {
 /**
  * 예측하기 어려운 customerKey 생성
  *
- * 이메일/전화번호/사용자 ID를 customerKey로 직접 사용하지 않습니다.
+ * 이메일/전화번호/사용자 ID를
+ * customerKey로 직접 사용하지 않습니다.
  */
 export function createTossCustomerKey() {
   return crypto.randomUUID();
@@ -66,12 +165,16 @@ export function createTossIdempotencyKey() {
  * Toss API 공통 요청 함수
  *
  * secret key는 이 서버 함수 내부에서만 사용됩니다.
+ *
+ * testCode는 서버 내부에서 검증된 경우에만
+ * 전달됩니다.
  */
 export async function tossApiRequest({
   path,
   method = "POST",
   body,
   idempotencyKey,
+  testCode,
 }) {
   if (
     !path ||
@@ -83,52 +186,88 @@ export async function tossApiRequest({
     );
   }
 
-  const upperMethod = String(
-    method || "POST",
-  ).toUpperCase();
+  const upperMethod =
+    String(
+      method || "POST",
+    ).toUpperCase();
 
   const headers = {
     Authorization:
       getTossAuthorizationHeader(),
-    "Content-Type": "application/json",
+
+    "Content-Type":
+      "application/json",
   };
 
   if (idempotencyKey) {
-    headers["Idempotency-Key"] =
-      idempotencyKey;
+    headers[
+      "Idempotency-Key"
+    ] = idempotencyKey;
+  }
+
+  /*
+   * Toss 테스트 실패 재현용 헤더
+   *
+   * testCode가 서버의 안전조건을
+   * 모두 통과한 경우에만 들어옵니다.
+   */
+  if (testCode) {
+    const secretKey =
+      getTossSecretKey();
+
+    if (
+      isTossTestSecretKey(
+        secretKey,
+      )
+    ) {
+      headers[
+        "TossPayments-Test-Code"
+      ] = testCode;
+    }
   }
 
   let response;
 
   try {
-    response = await fetch(
-      `${TOSS_API_BASE_URL}${path}`,
-      {
-        method: upperMethod,
-        headers,
-        cache: "no-store",
+    response =
+      await fetch(
+        `${TOSS_API_BASE_URL}${path}`,
+        {
+          method:
+            upperMethod,
 
-        ...(body !== undefined
-          ? {
-              body: JSON.stringify(body),
-            }
-          : {}),
-      },
-    );
+          headers,
+
+          cache:
+            "no-store",
+
+          ...(body !==
+          undefined
+            ? {
+                body:
+                  JSON.stringify(
+                    body,
+                  ),
+              }
+            : {}),
+        },
+      );
   } catch (error) {
     console.error(
       "[Toss] network error:",
       error,
     );
 
-    const networkError = new Error(
-      "토스페이먼츠 서버에 연결하지 못했습니다.",
-    );
+    const networkError =
+      new Error(
+        "토스페이먼츠 서버에 연결하지 못했습니다.",
+      );
 
     networkError.code =
       "TOSS_NETWORK_ERROR";
 
-    networkError.status = 502;
+    networkError.status =
+      502;
 
     throw networkError;
   }
@@ -136,34 +275,43 @@ export async function tossApiRequest({
   const rawText =
     await response.text();
 
-  let data = null;
+  let data =
+    null;
 
   if (rawText) {
     try {
-      data = JSON.parse(rawText);
+      data =
+        JSON.parse(
+          rawText,
+        );
     } catch {
       data = {
-        message: rawText,
+        message:
+          rawText,
       };
     }
   }
 
   if (!response.ok) {
     /*
-     * billingKey, authKey 등 민감정보가 포함될 가능성이 있으므로
+     * billingKey, authKey 등
+     * 민감정보가 포함될 가능성이 있으므로
      * 전체 응답 객체를 console.log 하지 않습니다.
      */
     console.error(
       "[Toss] API error:",
       response.status,
-      data?.code || "UNKNOWN_ERROR",
-      data?.message || "요청 실패",
+      data?.code ||
+        "UNKNOWN_ERROR",
+      data?.message ||
+        "요청 실패",
     );
 
-    const tossError = new Error(
-      data?.message ||
-        "토스페이먼츠 요청에 실패했습니다.",
-    );
+    const tossError =
+      new Error(
+        data?.message ||
+          "토스페이먼츠 요청에 실패했습니다.",
+      );
 
     tossError.code =
       data?.code ||
@@ -205,7 +353,8 @@ export async function issueTossBillingKey({
     path:
       "/v1/billing/authorizations/issue",
 
-    method: "POST",
+    method:
+      "POST",
 
     body: {
       authKey,
@@ -245,7 +394,9 @@ export async function payWithTossBillingKey({
   }
 
   const safeAmount =
-    Number(amount);
+    Number(
+      amount,
+    );
 
   if (
     !Number.isInteger(
@@ -272,7 +423,8 @@ export async function payWithTossBillingKey({
 
   const body = {
     customerKey,
-    amount: safeAmount,
+    amount:
+      safeAmount,
     orderId,
     orderName,
   };
@@ -287,15 +439,33 @@ export async function payWithTossBillingKey({
       customerName;
   }
 
-  return tossApiRequest({
-    path: `/v1/billing/${encodeURIComponent(
-      billingKey,
-    )}`,
+  /*
+   * 테스트 실패코드는
+   * 아래 조건을 전부 만족해야 생성됩니다.
+   *
+   * - Toss 테스트 Secret Key
+   * - TOSS_TEST_FAILURE_CODE 존재
+   * - TOSS_TEST_FAILURE_ORDER_ID 존재
+   * - 현재 orderId와 정확히 일치
+   */
+  const testCode =
+    getTossTestFailureCode({
+      orderId,
+    });
 
-    method: "POST",
+  return tossApiRequest({
+    path:
+      `/v1/billing/${encodeURIComponent(
+        billingKey,
+      )}`,
+
+    method:
+      "POST",
 
     body,
 
     idempotencyKey,
+
+    testCode,
   });
 }
