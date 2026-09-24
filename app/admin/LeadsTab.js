@@ -360,17 +360,43 @@ function LeadCard({
           }}
         >
           <div
-            style={{
-              whiteSpace: "pre-wrap",
-              fontSize: "14px",
-              lineHeight: 1.7,
-            }}
-          >
-            <b>고객 요청</b>
-            <br />
-            {lead.request_text ||
-              "-"}
-          </div>
+  style={{
+    whiteSpace: "pre-wrap",
+    fontSize: "14px",
+    lineHeight: 1.7,
+  }}
+>
+  <b>고객 요청</b>
+  <br />
+  {lead.request_text || "-"}
+</div>
+
+{lead.memo && (
+  <div
+    style={{
+      marginTop: "12px",
+      padding: "12px",
+      borderRadius: "10px",
+      background: "#f0f9ff",
+      border: "1px solid #bae6fd",
+      fontSize: "14px",
+      lineHeight: 1.7,
+      whiteSpace: "pre-wrap",
+    }}
+  >
+    <div
+      style={{
+        fontWeight: "bold",
+        marginBottom: "6px",
+        color: "#0369a1",
+      }}
+    >
+      🎨 고객 AI 견적 / 선택 필름
+    </div>
+
+    {lead.memo}
+  </div>
+)}
 
           <LeadPhotos
             lead={lead}
