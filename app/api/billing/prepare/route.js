@@ -79,9 +79,7 @@ function getBearerToken(request) {
 
 /*
  * =========================================================
- * UUID 기반 Toss customerKey 생성
- *
- * 이메일/전화번호처럼 예측 가능한 값을 사용하지 않습니다.
+ * Toss customerKey
  * =========================================================
  */
 
@@ -92,9 +90,7 @@ function createCustomerKey() {
 
 /*
  * =========================================================
- * checkout session 만료시간
- *
- * 현재 기준 30분
+ * Checkout 만료시간
  * =========================================================
  */
 
@@ -119,9 +115,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
      * 1. 로그인 확인
-     * =====================================================
      */
 
     const accessToken =
@@ -177,12 +171,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 2. 요청 데이터
-     *
-     * 브라우저에서는 plan_code만 받습니다.
-     * 금액이나 company_id는 받지 않습니다.
-     * =====================================================
+     * 2. 요청 요금제
      */
 
     let body = null;
@@ -235,11 +224,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 3. 로그인 사용자의 profile 확인
-     *
-     * company_id는 서버가 직접 확인합니다.
-     * =====================================================
+     * 3. Profile
      */
 
     const {
@@ -251,7 +236,8 @@ export async function POST(request) {
         .select(
           `
             id,
-            company_id
+            company_id,
+            is_active
           `,
         )
         .eq(
@@ -290,10 +276,24 @@ export async function POST(request) {
     }
 
 
+    if (
+      profile.is_active === false
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "비활성화된 관리자 계정입니다.",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+
     /*
-     * =====================================================
-     * 4. 업체 확인
-     * =====================================================
+     * 4. 업체
      */
 
     const {
@@ -361,9 +361,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 5. 현재 요금제와 같은지 확인
-     * =====================================================
+     * 5. 현재 플랜과 동일한지 확인
      */
 
     const currentPlanCode =
@@ -393,12 +391,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 6. 요금제 DB 조회
-     *
-     * 가격은 절대로 브라우저 값을 사용하지 않습니다.
-     * subscription_plans가 최종 기준입니다.
-     * =====================================================
+     * 6. 요금제 DB 검증
      */
 
     const {
@@ -462,9 +455,7 @@ export async function POST(request) {
         .toLowerCase();
 
 
-    if (
-      planCode === "trial"
-    ) {
+    if (planCode === "trial") {
       return NextResponse.json(
         {
           ok: false,
@@ -502,9 +493,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 7. 기존 Toss billing customer 확인
-     * =====================================================
+     * 7. 기존 Toss billing customer
      */
 
     const {
@@ -555,9 +544,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 8. billing customer가 없으면 생성
-     * =====================================================
+     * 8. 없으면 생성
      */
 
     if (!billingCustomer) {
@@ -619,9 +606,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 9. 비활성 billing customer라면 다시 활성화
-     * =====================================================
+     * 9. 비활성 customer 재활성화
      */
 
     if (
@@ -662,7 +647,7 @@ export async function POST(request) {
 
       if (activateError) {
         console.error(
-          "[billing/prepare] billing customer activate error:",
+          "[billing/prepare] activate error:",
           activateError,
         );
 
@@ -678,9 +663,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 10. customerKey 확인
-     * =====================================================
+     * 10. customerKey
      */
 
     const customerKey =
@@ -699,11 +682,20 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 11. 만료된 prepared checkout session 정리
-     *
-     * 실제로 만료시간이 지난 prepared만 expired 처리합니다.
-     * =====================================================
+     * 실제 사용할 수 있는 기존 결제수단인지 판단
+     */
+
+    const hasPaymentMethod =
+      Boolean(
+        billingCustomer
+          ?.billing_key,
+      ) &&
+      billingCustomer
+        ?.is_active !== false;
+
+
+    /*
+     * 11. 만료된 prepared 정리
      */
 
     const nowIso =
@@ -743,29 +735,32 @@ export async function POST(request) {
         "[billing/prepare] expired checkout cleanup error:",
         expireError,
       );
-
-      /*
-       * 정리 실패만으로 결제 준비를 막지는 않습니다.
-       */
     }
 
 
     /*
      * =====================================================
-     * 12. checkout session 생성
+     * 12. Checkout 생성
      *
-     * 여기에서:
-     * 회사
-     * customerKey
-     * 선택 요금제
-     * 서버에서 확인한 금액
+     * 중요 변경:
      *
-     * 을 하나로 묶습니다.
+     * 기존 billingKey 있음
+     * → authorized
+     * → 카드등록 생략 가능
+     *
+     * billingKey 없음
+     * → prepared
+     * → Toss 카드등록 필요
      * =====================================================
      */
 
     const expiresAt =
       createCheckoutExpiresAt();
+
+    const checkoutStatus =
+      hasPaymentMethod
+        ? "authorized"
+        : "prepared";
 
 
     const {
@@ -790,7 +785,7 @@ export async function POST(request) {
             amount,
 
           status:
-            "prepared",
+            checkoutStatus,
 
           expires_at:
             expiresAt,
@@ -823,11 +818,7 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
-     * 13. 이벤트 기록
-     *
-     * billingKey는 기록하지 않습니다.
-     * =====================================================
+     * 13. 이벤트
      */
 
     const {
@@ -858,10 +849,10 @@ export async function POST(request) {
               amount,
 
             has_payment_method:
-              Boolean(
-                billingCustomer
-                  .billing_key,
-              ),
+              hasPaymentMethod,
+
+            checkout_status:
+              checkoutStatus,
 
             expires_at:
               expiresAt,
@@ -870,10 +861,6 @@ export async function POST(request) {
 
 
     if (eventError) {
-      /*
-       * 로그 저장 실패 때문에
-       * 결제 준비 자체를 실패시키지는 않습니다.
-       */
       console.error(
         "[billing/prepare] billing event error:",
         eventError,
@@ -882,11 +869,9 @@ export async function POST(request) {
 
 
     /*
-     * =====================================================
      * 14. 브라우저 응답
      *
-     * billingKey는 절대로 반환하지 않습니다.
-     * =====================================================
+     * billingKey는 반환하지 않음
      */
 
     return NextResponse.json(
@@ -895,6 +880,8 @@ export async function POST(request) {
 
         checkoutSessionId:
           checkoutSession.id,
+
+        checkoutStatus,
 
         company: {
           id:
@@ -929,11 +916,34 @@ export async function POST(request) {
 
         customerKey,
 
-        hasPaymentMethod:
-          Boolean(
-            billingCustomer
-              .billing_key,
-          ),
+        hasPaymentMethod,
+
+        paymentMethod:
+          hasPaymentMethod
+            ? {
+                registered:
+                  true,
+
+                card_company:
+                  billingCustomer
+                    .card_company ||
+                  null,
+
+                card_number_masked:
+                  billingCustomer
+                    .card_number_masked ||
+                  null,
+              }
+            : {
+                registered:
+                  false,
+
+                card_company:
+                  null,
+
+                card_number_masked:
+                  null,
+              },
 
         expiresAt,
       },
@@ -966,4 +976,4 @@ export async function POST(request) {
       },
     );
   }
-}
+        }
