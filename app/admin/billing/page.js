@@ -91,6 +91,44 @@ function getPlanLabel(
 }
 
 
+function formatKstDate(
+  value,
+) {
+  if (!value) {
+    return "-";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat(
+    "ko-KR",
+    {
+      timeZone:
+        "Asia/Seoul",
+      year:
+        "numeric",
+      month:
+        "2-digit",
+      day:
+        "2-digit",
+      hour:
+        "2-digit",
+      minute:
+        "2-digit",
+    },
+  ).format(date);
+}
+
+
 function PlanFeature({
   label,
   value,
@@ -99,13 +137,16 @@ function PlanFeature({
   return (
     <div
       style={{
-        display: "flex",
+        display:
+          "flex",
         alignItems:
           "center",
         justifyContent:
           "space-between",
-        gap: "12px",
-        padding: "9px 0",
+        gap:
+          "12px",
+        padding:
+          "9px 0",
         borderBottom:
           "1px solid #f1f5f9",
       }}
@@ -177,6 +218,16 @@ export default function BillingPage() {
     setPreparedBilling,
   ] = useState(null);
 
+  const [
+    canceling,
+    setCanceling,
+  ] = useState(false);
+
+  const [
+    cancellation,
+    setCancellation,
+  ] = useState(null);
+
 
   useEffect(() => {
     loadBillingPage();
@@ -198,11 +249,9 @@ export default function BillingPage() {
           .auth
           .getSession();
 
-
       if (sessionError) {
         throw sessionError;
       }
-
 
       if (
         !sessionData
@@ -213,7 +262,6 @@ export default function BillingPage() {
 
         return;
       }
-
 
       const [
         currentResult,
@@ -257,20 +305,17 @@ export default function BillingPage() {
             ),
         ]);
 
-
       if (
         currentResult.error
       ) {
         throw currentResult.error;
       }
 
-
       if (
         plansResult.error
       ) {
         throw plansResult.error;
       }
-
 
       const current =
         Array.isArray(
@@ -281,7 +326,6 @@ export default function BillingPage() {
           : currentResult
               .data;
 
-
       setCurrentPlan(
         current || null,
       );
@@ -290,7 +334,6 @@ export default function BillingPage() {
         plansResult.data ||
           [],
       );
-
 
       if (
         current
@@ -301,7 +344,6 @@ export default function BillingPage() {
             .plan_code,
         );
       }
-
     } catch (
       loadError
     ) {
@@ -315,7 +357,6 @@ export default function BillingPage() {
           ?.message ||
           "요금제 정보를 불러오지 못했습니다.",
       );
-
     } finally {
       setLoading(
         false,
@@ -327,6 +368,167 @@ export default function BillingPage() {
   function goBack() {
     window.location.href =
       "/admin";
+  }
+
+
+  /*
+   * =========================================================
+   * 구독 취소 예약
+   * =========================================================
+   */
+
+  async function handleCancelSubscription() {
+    if (canceling) {
+      return;
+    }
+
+    const code =
+      normalizePlanCode(
+        currentPlan
+          ?.plan_code,
+      );
+
+    if (
+      !code ||
+      code === "trial"
+    ) {
+      alert(
+        "현재 취소할 유료 구독이 없습니다.",
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `${getPlanLabel(
+          currentPlan
+            ?.plan_code,
+          currentPlan
+            ?.plan_name,
+        )} 요금제 구독을 취소하시겠습니까?\n\n취소 후에도 현재 결제기간이 끝날 때까지 이용할 수 있으며 다음 자동결제부터 중단됩니다.`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCanceling(true);
+      setError("");
+
+      const {
+        data:
+          sessionData,
+        error:
+          sessionError,
+      } =
+        await supabase
+          .auth
+          .getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const accessToken =
+        sessionData
+          ?.session
+          ?.access_token;
+
+      if (!accessToken) {
+        alert(
+          "로그인이 만료되었습니다. 다시 로그인해주세요.",
+        );
+
+        window.location.href =
+          "/admin";
+
+        return;
+      }
+
+      const response =
+        await fetch(
+          "/api/billing/cancel",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify({}),
+          },
+        );
+
+      let result =
+        null;
+
+      try {
+        result =
+          await response.json();
+      } catch {
+        result =
+          null;
+      }
+
+      if (
+        !response.ok ||
+        !result?.ok
+      ) {
+        throw new Error(
+          result?.error ||
+            "구독 취소 예약에 실패했습니다.",
+        );
+      }
+
+      setCancellation(
+        result,
+      );
+
+      if (
+        result
+          ?.alreadyScheduled
+      ) {
+        alert(
+          "이미 구독 취소가 예약되어 있습니다.",
+        );
+      } else if (
+        result
+          ?.alreadyCanceled
+      ) {
+        alert(
+          "이미 취소된 구독입니다.",
+        );
+      } else {
+        alert(
+          "구독 취소가 예약되었습니다.\n현재 결제기간까지는 정상적으로 이용할 수 있습니다.",
+        );
+      }
+    } catch (
+      cancelError
+    ) {
+      console.error(
+        "구독 취소 오류:",
+        cancelError,
+      );
+
+      setError(
+        cancelError
+          ?.message ||
+          "구독 취소 예약 중 오류가 발생했습니다.",
+      );
+    } finally {
+      setCanceling(
+        false,
+      );
+    }
   }
 
 
@@ -362,36 +564,35 @@ export default function BillingPage() {
         },
       );
 
-
-    let result = null;
+    let result =
+      null;
 
     try {
       result =
         await response.json();
     } catch {
-      result = null;
+      result =
+        null;
     }
-
 
     if (
       !response.ok ||
       !result?.ok
     ) {
-      const error =
+      const chargeError =
         new Error(
           result?.error ||
             "결제에 실패했습니다.",
         );
 
-      error.code =
+      chargeError.code =
         result?.code;
 
-      error.retryable =
+      chargeError.retryable =
         result?.retryable;
 
-      throw error;
+      throw chargeError;
     }
-
 
     return result;
   }
@@ -400,19 +601,6 @@ export default function BillingPage() {
   /*
    * =========================================================
    * 요금제 선택
-   *
-   * 등록카드 있음
-   * → prepare
-   * → authorized
-   * → charge
-   *
-   * 등록카드 없음
-   * → prepare
-   * → prepared
-   * → Toss 카드등록
-   * → success
-   * → issue
-   * → charge
    * =========================================================
    */
 
@@ -430,14 +618,12 @@ export default function BillingPage() {
           ?.plan_code,
       );
 
-
     if (
       code ===
       currentCode
     ) {
       return;
     }
-
 
     if (
       code === "trial"
@@ -449,13 +635,11 @@ export default function BillingPage() {
       return;
     }
 
-
     if (
       preparingPlan
     ) {
       return;
     }
-
 
     try {
       setError("");
@@ -472,11 +656,6 @@ export default function BillingPage() {
         plan.plan_code,
       );
 
-
-      /*
-       * 로그인 세션
-       */
-
       const {
         data:
           sessionData,
@@ -487,17 +666,14 @@ export default function BillingPage() {
           .auth
           .getSession();
 
-
       if (sessionError) {
         throw sessionError;
       }
-
 
       const accessToken =
         sessionData
           ?.session
           ?.access_token;
-
 
       if (!accessToken) {
         alert(
@@ -509,11 +685,6 @@ export default function BillingPage() {
 
         return;
       }
-
-
-      /*
-       * 서버 prepare
-       */
 
       const response =
         await fetch(
@@ -538,16 +709,16 @@ export default function BillingPage() {
           },
         );
 
-
-      let result = null;
+      let result =
+        null;
 
       try {
         result =
           await response.json();
       } catch {
-        result = null;
+        result =
+          null;
       }
-
 
       if (
         !response.ok ||
@@ -559,7 +730,6 @@ export default function BillingPage() {
         );
       }
 
-
       const customerKey =
         result
           ?.customerKey;
@@ -568,13 +738,11 @@ export default function BillingPage() {
         result
           ?.checkoutSessionId;
 
-
       if (!customerKey) {
         throw new Error(
           "결제 고객키를 확인할 수 없습니다.",
         );
       }
-
 
       if (
         !checkoutSessionId
@@ -584,11 +752,9 @@ export default function BillingPage() {
         );
       }
 
-
       setPreparedBilling(
         result,
       );
-
 
       const preparedPlanCode =
         result
@@ -599,19 +765,12 @@ export default function BillingPage() {
           ?.code ||
         plan.plan_code;
 
-
       setSelectedPlan(
         preparedPlanCode,
       );
 
-
       /*
-       * =====================================================
-       * 기존 등록카드 있음
-       *
-       * Toss 카드등록창을 다시 열지 않습니다.
-       * 바로 최초 결제 실행
-       * =====================================================
+       * 등록된 카드가 있으면 즉시 결제
        */
 
       if (
@@ -634,7 +793,6 @@ export default function BillingPage() {
             )}을 등록된 카드로 결제하시겠습니까?`,
           );
 
-
         if (!confirmed) {
           setSelectedPlan(
             currentPlan
@@ -649,13 +807,11 @@ export default function BillingPage() {
           return;
         }
 
-
         const chargeResult =
           await chargeExistingCard({
             accessToken,
             checkoutSessionId,
           });
-
 
         alert(
           chargeResult
@@ -664,31 +820,19 @@ export default function BillingPage() {
             : "결제가 완료되었습니다.",
         );
 
-
-        /*
-         * DB의 변경된 플랜을 다시 읽기 위해
-         * 요금제 페이지 새로고침
-         */
-
         window.location.href =
           "/admin/billing";
 
         return;
       }
 
-
       /*
-       * =====================================================
-       * 등록카드 없음
-       *
-       * Toss 카드 자동결제 등록 진행
-       * =====================================================
+       * 등록 카드가 없으면 Toss 카드 등록
        */
 
       const clientKey =
         process.env
           .NEXT_PUBLIC_TOSS_CLIENT_KEY;
-
 
       if (!clientKey) {
         throw new Error(
@@ -696,22 +840,18 @@ export default function BillingPage() {
         );
       }
 
-
       const tossPayments =
         await loadTossPayments(
           clientKey,
         );
-
 
       const payment =
         tossPayments.payment({
           customerKey,
         });
 
-
       const origin =
         window.location.origin;
-
 
       const successUrl =
         `${origin}/admin/billing/success` +
@@ -719,13 +859,11 @@ export default function BillingPage() {
           checkoutSessionId,
         )}`;
 
-
       const failUrl =
         `${origin}/admin/billing/fail` +
         `?checkoutSessionId=${encodeURIComponent(
           checkoutSessionId,
         )}`;
-
 
       const billingAuthOptions = {
         method:
@@ -736,13 +874,11 @@ export default function BillingPage() {
         failUrl,
       };
 
-
       const customerEmail =
         sessionData
           ?.session
           ?.user
           ?.email;
-
 
       if (
         customerEmail
@@ -751,7 +887,6 @@ export default function BillingPage() {
           .customerEmail =
           customerEmail;
       }
-
 
       const customerName =
         result
@@ -764,7 +899,6 @@ export default function BillingPage() {
           ?.company
           ?.company_name;
 
-
       if (
         customerName
       ) {
@@ -773,12 +907,10 @@ export default function BillingPage() {
           customerName;
       }
 
-
       await payment
         .requestBillingAuth(
           billingAuthOptions,
         );
-
     } catch (
       prepareError
     ) {
@@ -786,7 +918,6 @@ export default function BillingPage() {
         "결제 처리 오류:",
         prepareError,
       );
-
 
       if (
         prepareError
@@ -796,7 +927,6 @@ export default function BillingPage() {
         setError(
           "카드 등록이 취소되었습니다.",
         );
-
       } else {
         setError(
           prepareError
@@ -804,7 +934,6 @@ export default function BillingPage() {
             "결제 처리 중 오류가 발생했습니다.",
         );
       }
-
 
       setSelectedPlan(
         currentPlan
@@ -815,7 +944,6 @@ export default function BillingPage() {
       setPreparedBilling(
         null,
       );
-
     } finally {
       setPreparingPlan(
         "",
@@ -846,6 +974,31 @@ export default function BillingPage() {
       </main>
     );
   }
+
+
+  const currentCode =
+    normalizePlanCode(
+      currentPlan
+        ?.plan_code,
+    );
+
+  const isPaidPlan =
+    currentCode &&
+    currentCode !==
+      "trial";
+
+  const cancelScheduled =
+    Boolean(
+      cancellation
+        ?.cancelScheduled ||
+      cancellation
+        ?.alreadyScheduled,
+    );
+
+  const cancellationSubscription =
+    cancellation
+      ?.subscription ||
+    null;
 
 
   return (
@@ -1081,6 +1234,174 @@ export default function BillingPage() {
               )}
             </div>
           </div>
+
+
+          {/* 유료 구독 취소 */}
+
+          {isPaidPlan && (
+            <div
+              style={{
+                marginTop:
+                  "14px",
+                paddingTop:
+                  "13px",
+                borderTop:
+                  "1px solid rgba(255,255,255,0.15)",
+              }}
+            >
+              {cancelScheduled ? (
+                <div
+                  style={{
+                    padding:
+                      "11px 12px",
+                    borderRadius:
+                      "10px",
+                    background:
+                      "rgba(245,158,11,0.16)",
+                    border:
+                      "1px solid rgba(245,158,11,0.45)",
+                    fontSize:
+                      "12px",
+                    lineHeight:
+                      "1.6",
+                  }}
+                >
+                  <strong>
+                    ✓ 구독 취소 예약됨
+                  </strong>
+
+                  <div
+                    style={{
+                      marginTop:
+                        "3px",
+                      opacity:
+                        0.85,
+                    }}
+                  >
+                    {cancellationSubscription
+                      ?.current_period_end
+                      ? `${formatKstDate(
+                          cancellationSubscription
+                            .current_period_end,
+                        )}까지 현재 요금제를 이용할 수 있습니다.`
+                      : "현재 결제기간 종료 후 자동결제가 중단됩니다."}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={
+                    canceling ||
+                    Boolean(
+                      preparingPlan,
+                    )
+                  }
+                  onClick={
+                    handleCancelSubscription
+                  }
+                  style={{
+                    width:
+                      "100%",
+                    border:
+                      "1px solid rgba(255,255,255,0.32)",
+                    borderRadius:
+                      "10px",
+                    padding:
+                      "10px 12px",
+                    background:
+                      "transparent",
+                    color:
+                      "#ffffff",
+                    fontSize:
+                      "12px",
+                    fontWeight:
+                      "700",
+                    cursor:
+                      canceling ||
+                      Boolean(
+                        preparingPlan,
+                      )
+                        ? "default"
+                        : "pointer",
+                    opacity:
+                      canceling ||
+                      Boolean(
+                        preparingPlan,
+                      )
+                        ? 0.6
+                        : 0.9,
+                  }}
+                >
+                  {canceling
+                    ? "취소 예약 처리 중..."
+                    : "구독 취소"}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+
+      {/* 취소 예약 결과 */}
+
+      {cancelScheduled && (
+        <section
+          style={{
+            marginBottom:
+              "18px",
+            padding:
+              "14px",
+            border:
+              "1px solid #fde68a",
+            borderRadius:
+              "14px",
+            background:
+              "#fffbeb",
+            color:
+              "#92400e",
+          }}
+        >
+          <strong
+            style={{
+              fontSize:
+                "14px",
+            }}
+          >
+            구독 취소가 예약되었습니다.
+          </strong>
+
+          <div
+            style={{
+              marginTop:
+                "6px",
+              fontSize:
+                "12px",
+              lineHeight:
+                "1.7",
+            }}
+          >
+            현재 결제기간까지는 기존 요금제를 정상적으로 이용할 수 있습니다.
+            다음 자동결제는 진행되지 않습니다.
+
+            {cancellationSubscription
+              ?.current_period_end && (
+              <div
+                style={{
+                  marginTop:
+                    "5px",
+                }}
+              >
+                이용 종료 예정:{" "}
+                <strong>
+                  {formatKstDate(
+                    cancellationSubscription
+                      .current_period_end,
+                  )}
+                </strong>
+              </div>
+            )}
+          </div>
         </section>
       )}
 
@@ -1177,7 +1498,7 @@ export default function BillingPage() {
       )}
 
 
-      {/* 제목 */}
+      {/* 요금제 비교 제목 */}
 
       <div
         style={{
@@ -1209,7 +1530,7 @@ export default function BillingPage() {
       </div>
 
 
-      {/* 요금제 */}
+      {/* 요금제 목록 */}
 
       <div
         style={{
@@ -1229,7 +1550,7 @@ export default function BillingPage() {
                   .plan_code,
               );
 
-            const currentCode =
+            const currentPlanCode =
               normalizePlanCode(
                 currentPlan
                   ?.plan_code,
@@ -1237,7 +1558,7 @@ export default function BillingPage() {
 
             const isCurrent =
               code ===
-              currentCode;
+              currentPlanCode;
 
             const isSelected =
               normalizePlanCode(
@@ -1257,7 +1578,6 @@ export default function BillingPage() {
               Boolean(
                 preparingPlan,
               );
-
 
             return (
               <section
@@ -1446,7 +1766,8 @@ export default function BillingPage() {
                   type="button"
                   disabled={
                     isCurrent ||
-                    anyPreparing
+                    anyPreparing ||
+                    canceling
                   }
                   onClick={() =>
                     handleSelectPlan(
@@ -1488,13 +1809,17 @@ export default function BillingPage() {
 
                     cursor:
                       isCurrent ||
-                      anyPreparing
+                      anyPreparing ||
+                      canceling
                         ? "default"
                         : "pointer",
 
                     opacity:
-                      anyPreparing &&
-                      !isPreparing
+                      (
+                        anyPreparing &&
+                        !isPreparing
+                      ) ||
+                      canceling
                         ? 0.6
                         : 1,
                   }}
@@ -1546,7 +1871,9 @@ export default function BillingPage() {
         등록된 카드가 있으면 해당 카드로 결제를 진행하고,
         등록된 카드가 없으면 카드 자동결제 등록을 먼저 진행합니다.
         실제 결제가 성공한 뒤에만 유료 요금제가 적용됩니다.
+        유료 구독을 취소하면 현재 결제기간까지 이용할 수 있고,
+        다음 자동결제부터 중단됩니다.
       </div>
     </main>
   );
-            }
+}
