@@ -89,6 +89,11 @@ export const USAGE_LIMITS = {
 /*
  * =========================================================
  * 한국시간 기준 이번 달 범위
+ *
+ * BASIC / PRO / BUSINESS에서 사용합니다.
+ *
+ * TRIAL은 월별 초기화가 없으므로
+ * 이 범위를 사용하지 않습니다.
  * =========================================================
  */
 
@@ -262,6 +267,101 @@ export async function resolveUsageCompany(
 
 /*
  * =========================================================
+ * 사용량 합계 조회
+ *
+ * TRIAL
+ * - 회사의 전체 usage_events 누적
+ * - 월이 바뀌어도 초기화하지 않음
+ * - 유료 구독 후 TRIAL로 복귀해도 과거 사용량 유지
+ *
+ * BASIC / PRO / BUSINESS
+ * - 기존과 동일
+ * - KST 기준 이번 달 사용량
+ * =========================================================
+ */
+
+async function getUsedQuantity({
+  supabase,
+  companyId,
+  eventType,
+  isTrial,
+}) {
+  let query =
+    supabase
+      .from("usage_events")
+      .select("quantity")
+      .eq(
+        "company_id",
+        companyId
+      )
+      .eq(
+        "event_type",
+        eventType
+      );
+
+  /*
+   * TRIAL은 날짜 조건을 넣지 않습니다.
+   *
+   * 즉 회사 생성 이후 기록된 해당 event_type의
+   * usage_events 전체를 합산합니다.
+   */
+
+  if (!isTrial) {
+    const {
+      monthStart,
+      nextMonthStart,
+    } =
+      getCurrentKoreanMonthRange();
+
+    query =
+      query
+        .gte(
+          "created_at",
+          monthStart.toISOString()
+        )
+        .lt(
+          "created_at",
+          nextMonthStart.toISOString()
+        );
+  }
+
+  const {
+    data: usageRows,
+    error: usageError,
+  } = await query;
+
+  if (usageError) {
+    console.error(
+      "USAGE LIMIT LOOKUP ERROR:",
+      usageError
+    );
+
+    return {
+      ok: false,
+      error: usageError,
+      used: 0,
+    };
+  }
+
+  const used =
+    (usageRows || [])
+      .reduce(
+        (sum, row) =>
+          sum +
+          Number(
+            row?.quantity || 0
+          ),
+        0
+      );
+
+  return {
+    ok: true,
+    used,
+  };
+}
+
+/*
+ * =========================================================
  * 요금제 + 사용량 한도 검사
  *
  * requestedQuantity:
@@ -273,6 +373,12 @@ export async function resolveUsageCompany(
  * 가상시공 = 1
  *
  * 0 한도 = 무제한
+ *
+ * TRIAL:
+ * 전체 누적 한도
+ *
+ * BASIC / PRO / BUSINESS:
+ * KST 이번 달 한도
  * =========================================================
  */
 
@@ -318,8 +424,12 @@ export async function checkUsageLimit({
     }
 
     const planCode =
-      company.subscription_plan ||
-      "basic";
+      String(
+        company.subscription_plan ||
+        "basic"
+      )
+        .trim()
+        .toLowerCase();
 
     const {
       data: plan,
@@ -374,6 +484,17 @@ export async function checkUsageLimit({
       };
     }
 
+    const normalizedPlanCode =
+      String(
+        plan.plan_code || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const isTrial =
+      normalizedPlanCode ===
+      "trial";
+
     const limit =
       Number(
         plan[
@@ -410,6 +531,11 @@ export async function checkUsageLimit({
         planName:
           plan.plan_name,
 
+        usagePeriod:
+          isTrial
+            ? "lifetime"
+            : "monthly",
+
         used: 0,
 
         limit: 0,
@@ -420,41 +546,26 @@ export async function checkUsageLimit({
       };
     }
 
-    const {
-      monthStart,
-      nextMonthStart,
-    } =
-      getCurrentKoreanMonthRange();
+    /*
+     * 현재 사용량 조회
+     *
+     * TRIAL:
+     * 전체 누적
+     *
+     * 유료 플랜:
+     * 이번 달
+     */
 
-    const {
-      data: usageRows,
-      error: usageError,
-    } = await supabase
-      .from("usage_events")
-      .select("quantity")
-      .eq(
-        "company_id",
-        company.id
-      )
-      .eq(
-        "event_type",
-        eventType
-      )
-      .gte(
-        "created_at",
-        monthStart.toISOString()
-      )
-      .lt(
-        "created_at",
-        nextMonthStart.toISOString()
-      );
+    const usageResult =
+      await getUsedQuantity({
+        supabase,
+        companyId:
+          company.id,
+        eventType,
+        isTrial,
+      });
 
-    if (usageError) {
-      console.error(
-        "USAGE LIMIT LOOKUP ERROR:",
-        usageError
-      );
-
+    if (!usageResult.ok) {
       return {
         ok: false,
         status: 503,
@@ -464,16 +575,9 @@ export async function checkUsageLimit({
     }
 
     const used =
-      (usageRows || [])
-        .reduce(
-          (sum, row) =>
-            sum +
-            Number(
-              row?.quantity ||
-                0
-            ),
-          0
-        );
+      Number(
+        usageResult.used || 0
+      );
 
     const remaining =
       Math.max(
@@ -485,8 +589,8 @@ export async function checkUsageLimit({
      * 이번 요청까지 포함해서 검사
      *
      * 예:
-     * 20회 한도
-     * 현재 19회
+     * TRIAL 20회 한도
+     * 누적 19회
      * 사진 2장 요청
      *
      * 19 + 2 > 20
@@ -497,6 +601,11 @@ export async function checkUsageLimit({
       used + requested >
       limit
     ) {
+      const periodLabel =
+        isTrial
+          ? "체험기간 누적"
+          : "이번 달";
+
       return {
         ok: false,
 
@@ -521,6 +630,11 @@ export async function checkUsageLimit({
         planName:
           plan.plan_name,
 
+        usagePeriod:
+          isTrial
+            ? "lifetime"
+            : "monthly",
+
         used,
 
         limit,
@@ -530,7 +644,7 @@ export async function checkUsageLimit({
         remaining,
 
         error:
-          `${plan.plan_name} 요금제의 이번 달 ${config.label} 사용 한도(${limit}${config.unit})를 초과합니다. 현재 ${used}${config.unit} 사용, ${remaining}${config.unit} 남았습니다.`,
+          `${plan.plan_name} 요금제의 ${periodLabel} ${config.label} 사용 한도(${limit}${config.unit})를 초과합니다. 현재 ${used}${config.unit} 사용, ${remaining}${config.unit} 남았습니다.`,
       };
     }
 
@@ -553,6 +667,11 @@ export async function checkUsageLimit({
       planName:
         plan.plan_name,
 
+      usagePeriod:
+        isTrial
+          ? "lifetime"
+          : "monthly",
+
       used,
 
       limit,
@@ -565,7 +684,7 @@ export async function checkUsageLimit({
         Math.max(
           0,
           remaining -
-            requested
+          requested
         ),
     };
   } catch (error) {
@@ -592,18 +711,28 @@ export async function checkUsageLimit({
 export function makeUsageLimitError(
   result
 ) {
+  const isTrialLifetime =
+    result?.usagePeriod ===
+    "lifetime";
+
   return {
     success: false,
 
     error:
       result?.error ||
-      "이번 달 사용 한도를 모두 사용했습니다.",
+      (
+        isTrialLifetime
+          ? "TRIAL 체험 사용 한도를 모두 사용했습니다."
+          : "이번 달 사용 한도를 모두 사용했습니다."
+      ),
 
     code:
       result?.code ||
-      (result?.limitReached
-        ? "USAGE_LIMIT_REACHED"
-        : "USAGE_LIMIT_CHECK_FAILED"),
+      (
+        result?.limitReached
+          ? "USAGE_LIMIT_REACHED"
+          : "USAGE_LIMIT_CHECK_FAILED"
+      ),
 
     event_type:
       result?.eventType ||
@@ -615,6 +744,10 @@ export function makeUsageLimitError(
 
     plan_name:
       result?.planName ||
+      null,
+
+    usage_period:
+      result?.usagePeriod ||
       null,
 
     used:
@@ -633,4 +766,4 @@ export function makeUsageLimitError(
     remaining:
       result?.remaining ?? null,
   };
-}
+    }
