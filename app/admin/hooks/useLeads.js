@@ -95,6 +95,7 @@ export default function useLeads({
           address,
           preferred_date,
           request_text,
+          memo,
           status,
           admin_memo,
           is_read,
