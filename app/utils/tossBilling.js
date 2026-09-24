@@ -25,9 +25,9 @@ export function getTossSecretKey() {
 /**
  * Toss 테스트 Secret Key 여부
  *
- * 현재 사용 중인 키 형식(sk_test_)과
- * Toss 문서에서 사용하는 테스트 키 형식을
- * 모두 안전하게 인식합니다.
+ * 기존 동작을 변경하지 않고
+ * 현재 프로젝트에서 사용 중인 테스트 키 형식을
+ * 그대로 판별합니다.
  */
 function isTossTestSecretKey(
   secretKey,
@@ -48,20 +48,16 @@ function isTossTestSecretKey(
 /**
  * 테스트 결제 실패 코드 확인
  *
- * 매우 중요한 안전장치:
+ * 안전조건:
  *
  * 1. Toss 테스트 Secret Key에서만 허용
  * 2. 테스트 코드 환경변수가 있어야 함
  * 3. 테스트 대상 orderId 환경변수가 있어야 함
  * 4. 실제 결제 orderId와 정확히 일치해야 함
  *
- * 따라서 일반 정기결제에는
- * 테스트 실패 헤더가 절대로 추가되지 않습니다.
- *
- * 테스트 종료 후에는
- * TOSS_TEST_FAILURE_CODE
- * TOSS_TEST_FAILURE_ORDER_ID
- * 두 환경변수를 삭제합니다.
+ * 중요:
+ * Secret Key / billingKey / customerKey는
+ * 로그에 절대 출력하지 않습니다.
  */
 function getTossTestFailureCode({
   orderId,
@@ -69,13 +65,10 @@ function getTossTestFailureCode({
   const secretKey =
     getTossSecretKey();
 
-  if (
-    !isTossTestSecretKey(
+  const isTestKey =
+    isTossTestSecretKey(
       secretKey,
-    )
-  ) {
-    return null;
-  }
+    );
 
   const testCode =
     String(
@@ -96,18 +89,72 @@ function getTossTestFailureCode({
       orderId || "",
     ).trim();
 
-  if (
-    !testCode ||
-    !targetOrderId ||
-    !currentOrderId
-  ) {
+  const hasTestCode =
+    Boolean(
+      testCode,
+    );
+
+  const hasTargetOrderId =
+    Boolean(
+      targetOrderId,
+    );
+
+  const hasCurrentOrderId =
+    Boolean(
+      currentOrderId,
+    );
+
+  const orderMatched =
+    Boolean(
+      targetOrderId &&
+        currentOrderId &&
+        targetOrderId ===
+          currentOrderId,
+    );
+
+  const testCodeEnabled =
+    Boolean(
+      isTestKey &&
+        hasTestCode &&
+        hasTargetOrderId &&
+        hasCurrentOrderId &&
+        orderMatched,
+    );
+
+  /**
+   * 진단용 안전 로그
+   *
+   * 민감정보는 출력하지 않습니다.
+   * 실패 테스트가 왜 적용/미적용됐는지만 확인합니다.
+   */
+  console.info(
+    "[Toss Test Failure Diagnostic]",
+    {
+      isTestKey,
+      hasTestCode,
+      hasTargetOrderId,
+      hasCurrentOrderId,
+      orderMatched,
+      testCodeEnabled,
+      orderId:
+        currentOrderId ||
+        null,
+    },
+  );
+
+  if (!isTestKey) {
     return null;
   }
 
   if (
-    targetOrderId !==
-    currentOrderId
+    !hasTestCode ||
+    !hasTargetOrderId ||
+    !hasCurrentOrderId
   ) {
+    return null;
+  }
+
+  if (!orderMatched) {
     return null;
   }
 
@@ -117,7 +164,6 @@ function getTossTestFailureCode({
 /**
  * Toss Basic Authorization 생성
  *
- * 공식 규격:
  * Base64("SECRET_KEY:")
  */
 export function getTossAuthorizationHeader() {
@@ -137,9 +183,6 @@ export function getTossAuthorizationHeader() {
 
 /**
  * 예측하기 어려운 customerKey 생성
- *
- * 이메일/전화번호/사용자 ID를
- * customerKey로 직접 사용하지 않습니다.
  */
 export function createTossCustomerKey() {
   return crypto.randomUUID();
@@ -164,10 +207,10 @@ export function createTossIdempotencyKey() {
 /**
  * Toss API 공통 요청 함수
  *
- * secret key는 이 서버 함수 내부에서만 사용됩니다.
+ * secret key는 서버 내부에서만 사용합니다.
  *
- * testCode는 서버 내부에서 검증된 경우에만
- * 전달됩니다.
+ * testCode는 서버 내부 안전조건을
+ * 통과한 경우에만 전달됩니다.
  */
 export async function tossApiRequest({
   path,
@@ -205,11 +248,11 @@ export async function tossApiRequest({
     ] = idempotencyKey;
   }
 
-  /*
+  /**
    * Toss 테스트 실패 재현용 헤더
    *
-   * testCode가 서버의 안전조건을
-   * 모두 통과한 경우에만 들어옵니다.
+   * testCode가 안전조건을
+   * 모두 통과한 경우에만 추가합니다.
    */
   if (testCode) {
     const secretKey =
@@ -225,6 +268,42 @@ export async function tossApiRequest({
       ] = testCode;
     }
   }
+
+  /**
+   * 실제 Toss 요청 직전 진단.
+   *
+   * 헤더 값 자체는 출력하지 않습니다.
+   */
+  console.info(
+    "[Toss Request Diagnostic]",
+    {
+      pathType:
+        path.startsWith(
+          "/v1/billing/",
+        )
+          ? "billing"
+          : "other",
+
+      method:
+        upperMethod,
+
+      hasIdempotencyKey:
+        Boolean(
+          idempotencyKey,
+        ),
+
+      testHeaderEnabled:
+        Boolean(
+          headers[
+            "TossPayments-Test-Code"
+          ],
+        ),
+
+      orderId:
+        body?.orderId ||
+        null,
+    },
+  );
 
   let response;
 
@@ -292,11 +371,35 @@ export async function tossApiRequest({
     }
   }
 
+  /**
+   * 응답 진단.
+   *
+   * 전체 응답 객체나 민감정보는 출력하지 않습니다.
+   */
+  console.info(
+    "[Toss Response Diagnostic]",
+    {
+      ok:
+        response.ok,
+
+      status:
+        response.status,
+
+      code:
+        data?.code ||
+        null,
+
+      orderId:
+        body?.orderId ||
+        null,
+    },
+  );
+
   if (!response.ok) {
-    /*
+    /**
      * billingKey, authKey 등
      * 민감정보가 포함될 가능성이 있으므로
-     * 전체 응답 객체를 console.log 하지 않습니다.
+     * 전체 응답 객체를 출력하지 않습니다.
      */
     console.error(
       "[Toss] API error:",
@@ -329,7 +432,6 @@ export async function tossApiRequest({
 /**
  * authKey로 빌링키 발급
  *
- * 공식 API:
  * POST /v1/billing/authorizations/issue
  */
 export async function issueTossBillingKey({
@@ -439,9 +541,9 @@ export async function payWithTossBillingKey({
       customerName;
   }
 
-  /*
-   * 테스트 실패코드는
-   * 아래 조건을 전부 만족해야 생성됩니다.
+  /**
+   * 테스트 실패코드는 아래 조건을
+   * 전부 만족해야 생성됩니다.
    *
    * - Toss 테스트 Secret Key
    * - TOSS_TEST_FAILURE_CODE 존재
