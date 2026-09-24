@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   createQuotePreview,
   shareQuoteImage,
+  openCustomerSms,
 } from "./quoteUtils";
 
 export default function QuoteSendPanel({
@@ -129,8 +130,30 @@ export default function QuoteSendPanel({
     }
   }
 
+  function handleOpenCustomerSms() {
+    try {
+      setLeadsMessage?.("");
+
+      openCustomerSms(lead);
+    } catch (error) {
+      console.error(
+        "고객 문자 열기 오류:",
+        error,
+      );
+
+      setLeadsMessage?.(
+        `❌ 고객 문자 열기 오류: ${
+          error?.message || "실패"
+        }`,
+      );
+    }
+  }
+
   const displayCompanyName =
     String(companyName || "").trim();
+
+  const displayPhone =
+    String(lead?.phone || "").trim();
 
   return (
     <div
@@ -229,6 +252,37 @@ export default function QuoteSendPanel({
               : "📤 견적 이미지 전송하기"}
           </button>
 
+          <button
+            type="button"
+            onClick={
+              handleOpenCustomerSms
+            }
+            disabled={!displayPhone}
+            style={{
+              width: "100%",
+              padding: "13px",
+              marginTop: "10px",
+              border:
+                "1px solid #5d4037",
+              borderRadius: "10px",
+              background: "#ffffff",
+              color: "#5d4037",
+              fontSize: "15px",
+              fontWeight: "bold",
+              cursor: displayPhone
+                ? "pointer"
+                : "not-allowed",
+              opacity: displayPhone
+                ? 1
+                : 0.5,
+            }}
+          >
+            📱 고객에게 문자 보내기
+            {displayPhone
+              ? ` · ${displayPhone}`
+              : ""}
+          </button>
+
           <div
             style={{
               marginTop: "8px",
@@ -237,10 +291,11 @@ export default function QuoteSendPanel({
               color: "#78716c",
             }}
           >
-            전송 버튼을 누르면 견적
-            이미지 파일만 공유됩니다.
-            자동 문자 내용은 입력되지
-            않습니다.
+            견적 이미지 전송은 이미지
+            파일을 공유합니다. 고객 문자
+            버튼을 누르면 등록된 고객
+            번호의 문자 작성창이 바로
+            열립니다.
           </div>
         </>
       )}
