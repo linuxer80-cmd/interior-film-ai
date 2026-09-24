@@ -5,12 +5,18 @@ import {
   useState,
 } from "react";
 
-import { supabase } from "../../../lib/supabase";
-import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
+import {
+  supabase,
+} from "../../../lib/supabase";
+
+import {
+  loadTossPayments,
+} from "@tosspayments/tosspayments-sdk";
 
 
 function formatPrice(value) {
-  const price = Number(value || 0);
+  const price =
+    Number(value || 0);
 
   if (price <= 0) {
     return "무료";
@@ -26,7 +32,8 @@ function formatLimit(
   value,
   unit = "회",
 ) {
-  const number = Number(value || 0);
+  const number =
+    Number(value || 0);
 
   if (number <= 0) {
     return "무제한";
@@ -38,8 +45,12 @@ function formatLimit(
 }
 
 
-function normalizePlanCode(value) {
-  return String(value || "")
+function normalizePlanCode(
+  value,
+) {
+  return String(
+    value || "",
+  )
     .trim()
     .toLowerCase();
 }
@@ -50,7 +61,9 @@ function getPlanLabel(
   planName,
 ) {
   const code =
-    normalizePlanCode(planCode);
+    normalizePlanCode(
+      planCode,
+    );
 
   if (code === "trial") {
     return "TRIAL";
@@ -64,7 +77,9 @@ function getPlanLabel(
     return "PRO";
   }
 
-  if (code === "business") {
+  if (
+    code === "business"
+  ) {
     return "BUSINESS";
   }
 
@@ -85,7 +100,8 @@ function PlanFeature({
     <div
       style={{
         display: "flex",
-        alignItems: "center",
+        alignItems:
+          "center",
         justifyContent:
           "space-between",
         gap: "12px",
@@ -96,8 +112,10 @@ function PlanFeature({
     >
       <span
         style={{
-          color: "#64748b",
-          fontSize: "13px",
+          color:
+            "#64748b",
+          fontSize:
+            "13px",
         }}
       >
         {label}
@@ -105,9 +123,12 @@ function PlanFeature({
 
       <strong
         style={{
-          color: "#111827",
-          fontSize: "13px",
-          whiteSpace: "nowrap",
+          color:
+            "#111827",
+          fontSize:
+            "13px",
+          whiteSpace:
+            "nowrap",
         }}
       >
         {formatLimit(
@@ -146,19 +167,11 @@ export default function BillingPage() {
     setSelectedPlan,
   ] = useState(null);
 
-  /*
-   * prepare API + Toss 카드등록 처리 중
-   */
   const [
     preparingPlan,
     setPreparingPlan,
   ] = useState("");
 
-  /*
-   * prepare API 성공 결과
-   *
-   * 이 상태는 아직 실제 결제가 완료된 상태가 아닙니다.
-   */
   const [
     preparedBilling,
     setPreparedBilling,
@@ -176,23 +189,31 @@ export default function BillingPage() {
       setError("");
 
       const {
-        data: sessionData,
-        error: sessionError,
+        data:
+          sessionData,
+        error:
+          sessionError,
       } =
-        await supabase.auth.getSession();
+        await supabase
+          .auth
+          .getSession();
+
 
       if (sessionError) {
         throw sessionError;
       }
 
+
       if (
-        !sessionData?.session
+        !sessionData
+          ?.session
       ) {
         window.location.href =
           "/admin";
 
         return;
       }
+
 
       const [
         currentResult,
@@ -230,10 +251,12 @@ export default function BillingPage() {
             .order(
               "sort_order",
               {
-                ascending: true,
+                ascending:
+                  true,
               },
             ),
         ]);
+
 
       if (
         currentResult.error
@@ -241,49 +264,62 @@ export default function BillingPage() {
         throw currentResult.error;
       }
 
+
       if (
         plansResult.error
       ) {
         throw plansResult.error;
       }
 
+
       const current =
         Array.isArray(
           currentResult.data,
         )
-          ? currentResult.data[0]
-          : currentResult.data;
+          ? currentResult
+              .data[0]
+          : currentResult
+              .data;
 
-      const planRows =
-        plansResult.data || [];
 
       setCurrentPlan(
         current || null,
       );
 
       setPlans(
-        planRows,
+        plansResult.data ||
+          [],
       );
 
+
       if (
-        current?.plan_code
+        current
+          ?.plan_code
       ) {
         setSelectedPlan(
-          current.plan_code,
+          current
+            .plan_code,
         );
       }
-    } catch (loadError) {
+
+    } catch (
+      loadError
+    ) {
       console.error(
         "요금제 페이지 로딩 오류:",
         loadError,
       );
 
       setError(
-        loadError?.message ||
+        loadError
+          ?.message ||
           "요금제 정보를 불러오지 못했습니다.",
       );
+
     } finally {
-      setLoading(false);
+      setLoading(
+        false,
+      );
     }
   }
 
@@ -296,20 +332,87 @@ export default function BillingPage() {
 
   /*
    * =========================================================
-   * 요금제 선택 + Toss 카드 자동결제 등록
+   * 기존 등록 카드로 즉시 결제
+   * =========================================================
+   */
+
+  async function chargeExistingCard({
+    accessToken,
+    checkoutSessionId,
+  }) {
+    const response =
+      await fetch(
+        "/api/billing/charge",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+
+          body:
+            JSON.stringify({
+              checkoutSessionId,
+            }),
+        },
+      );
+
+
+    let result = null;
+
+    try {
+      result =
+        await response.json();
+    } catch {
+      result = null;
+    }
+
+
+    if (
+      !response.ok ||
+      !result?.ok
+    ) {
+      const error =
+        new Error(
+          result?.error ||
+            "결제에 실패했습니다.",
+        );
+
+      error.code =
+        result?.code;
+
+      error.retryable =
+        result?.retryable;
+
+      throw error;
+    }
+
+
+    return result;
+  }
+
+
+  /*
+   * =========================================================
+   * 요금제 선택
    *
-   * 1. 로그인 세션 확인
-   * 2. access_token 확보
-   * 3. 서버 prepare API 호출
-   * 4. 서버가 업체/요금제/가격 검증
-   * 5. billing customer 준비
-   * 6. checkout session 생성
-   * 7. Toss SDK 초기화
-   * 8. 카드 자동결제 등록창 실행
+   * 등록카드 있음
+   * → prepare
+   * → authorized
+   * → charge
    *
-   * 중요:
-   * 여기서는 아직 업체 요금제를 변경하지 않습니다.
-   * 실제 최초 결제가 성공한 뒤에만 변경합니다.
+   * 등록카드 없음
+   * → prepare
+   * → prepared
+   * → Toss 카드등록
+   * → success
+   * → issue
+   * → charge
    * =========================================================
    */
 
@@ -323,22 +426,19 @@ export default function BillingPage() {
 
     const currentCode =
       normalizePlanCode(
-        currentPlan?.plan_code,
+        currentPlan
+          ?.plan_code,
       );
 
-    /*
-     * 현재 요금제
-     */
+
     if (
-      code === currentCode
+      code ===
+      currentCode
     ) {
       return;
     }
 
-    /*
-     * TRIAL은 신규 가입 체험용
-     * 유료 → TRIAL 변경은 허용하지 않음
-     */
+
     if (
       code === "trial"
     ) {
@@ -349,16 +449,20 @@ export default function BillingPage() {
       return;
     }
 
-    /*
-     * 중복 클릭 방지
-     */
-    if (preparingPlan) {
+
+    if (
+      preparingPlan
+    ) {
       return;
     }
 
+
     try {
       setError("");
-      setPreparedBilling(null);
+
+      setPreparedBilling(
+        null,
+      );
 
       setSelectedPlan(
         plan.plan_code,
@@ -368,25 +472,32 @@ export default function BillingPage() {
         plan.plan_code,
       );
 
+
       /*
-       * =========================================
-       * 1. 로그인 세션 확인
-       * =========================================
+       * 로그인 세션
        */
 
       const {
-        data: sessionData,
-        error: sessionError,
+        data:
+          sessionData,
+        error:
+          sessionError,
       } =
-        await supabase.auth.getSession();
+        await supabase
+          .auth
+          .getSession();
+
 
       if (sessionError) {
         throw sessionError;
       }
 
+
       const accessToken =
-        sessionData?.session
+        sessionData
+          ?.session
           ?.access_token;
+
 
       if (!accessToken) {
         alert(
@@ -399,26 +510,17 @@ export default function BillingPage() {
         return;
       }
 
+
       /*
-       * =========================================
-       * 2. 서버 결제 준비
-       *
-       * 브라우저에서는 plan_code만 보냅니다.
-       *
-       * company_id
-       * 업체 활성 여부
-       * 실제 월 가격
-       * customerKey
-       *
-       * 모두 서버에서 확인합니다.
-       * =========================================
+       * 서버 prepare
        */
 
       const response =
         await fetch(
           "/api/billing/prepare",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -436,6 +538,7 @@ export default function BillingPage() {
           },
         );
 
+
       let result = null;
 
       try {
@@ -445,10 +548,7 @@ export default function BillingPage() {
         result = null;
       }
 
-      /*
-       * 최신 prepare API 응답은
-       * success가 아니라 ok 사용
-       */
+
       if (
         !response.ok ||
         !result?.ok
@@ -459,17 +559,15 @@ export default function BillingPage() {
         );
       }
 
-      /*
-       * =========================================
-       * 3. 서버 응답 필수값 검증
-       * =========================================
-       */
 
       const customerKey =
-        result?.customerKey;
+        result
+          ?.customerKey;
 
       const checkoutSessionId =
-        result?.checkoutSessionId;
+        result
+          ?.checkoutSessionId;
+
 
       if (!customerKey) {
         throw new Error(
@@ -477,43 +575,120 @@ export default function BillingPage() {
         );
       }
 
-      if (!checkoutSessionId) {
+
+      if (
+        !checkoutSessionId
+      ) {
         throw new Error(
           "결제 세션을 확인할 수 없습니다.",
         );
       }
 
-      /*
-       * 서버 검증 결과 화면 표시용
-       */
+
       setPreparedBilling(
         result,
       );
 
-      /*
-       * 서버에서 검증한 실제 요금제 코드 사용
-       *
-       * 새 API의 plan_code를 우선 사용하고
-       * 이전 응답 구조도 안전하게 지원
-       */
+
       const preparedPlanCode =
-        result?.plan?.plan_code ||
-        result?.plan?.code ||
+        result
+          ?.plan
+          ?.plan_code ||
+        result
+          ?.plan
+          ?.code ||
         plan.plan_code;
+
 
       setSelectedPlan(
         preparedPlanCode,
       );
 
+
       /*
-       * =========================================
-       * 4. Toss Client Key 확인
-       * =========================================
+       * =====================================================
+       * 기존 등록카드 있음
+       *
+       * Toss 카드등록창을 다시 열지 않습니다.
+       * 바로 최초 결제 실행
+       * =====================================================
+       */
+
+      if (
+        result
+          ?.hasPaymentMethod
+      ) {
+        const confirmed =
+          window.confirm(
+            `${getPlanLabel(
+              result
+                ?.plan
+                ?.plan_code,
+              result
+                ?.plan
+                ?.plan_name,
+            )} 요금제 ${formatPrice(
+              result
+                ?.plan
+                ?.monthly_price_krw,
+            )}을 등록된 카드로 결제하시겠습니까?`,
+          );
+
+
+        if (!confirmed) {
+          setSelectedPlan(
+            currentPlan
+              ?.plan_code ||
+              null,
+          );
+
+          setPreparedBilling(
+            null,
+          );
+
+          return;
+        }
+
+
+        const chargeResult =
+          await chargeExistingCard({
+            accessToken,
+            checkoutSessionId,
+          });
+
+
+        alert(
+          chargeResult
+            ?.alreadyPaid
+            ? "이미 완료된 결제입니다."
+            : "결제가 완료되었습니다.",
+        );
+
+
+        /*
+         * DB의 변경된 플랜을 다시 읽기 위해
+         * 요금제 페이지 새로고침
+         */
+
+        window.location.href =
+          "/admin/billing";
+
+        return;
+      }
+
+
+      /*
+       * =====================================================
+       * 등록카드 없음
+       *
+       * Toss 카드 자동결제 등록 진행
+       * =====================================================
        */
 
       const clientKey =
         process.env
           .NEXT_PUBLIC_TOSS_CLIENT_KEY;
+
 
       if (!clientKey) {
         throw new Error(
@@ -521,34 +696,22 @@ export default function BillingPage() {
         );
       }
 
-      /*
-       * =========================================
-       * 5. Toss SDK 초기화
-       * =========================================
-       */
 
       const tossPayments =
         await loadTossPayments(
           clientKey,
         );
 
+
       const payment =
         tossPayments.payment({
           customerKey,
         });
 
-      /*
-       * =========================================
-       * 6. 성공/실패 URL 생성
-       *
-       * checkoutSessionId를 같이 전달하여
-       * Toss에서 돌아왔을 때 서버의
-       * 결제 준비 세션과 다시 대조합니다.
-       * =========================================
-       */
 
       const origin =
         window.location.origin;
+
 
       const successUrl =
         `${origin}/admin/billing/success` +
@@ -556,97 +719,107 @@ export default function BillingPage() {
           checkoutSessionId,
         )}`;
 
+
       const failUrl =
         `${origin}/admin/billing/fail` +
         `?checkoutSessionId=${encodeURIComponent(
           checkoutSessionId,
         )}`;
 
-      /*
-       * =========================================
-       * 7. Toss 카드 자동결제 등록창
-       *
-       * 성공 시 Toss가 successUrl에
-       * authKey와 customerKey를 추가해서
-       * 브라우저를 이동시킵니다.
-       * =========================================
-       */
 
       const billingAuthOptions = {
-        method: "CARD",
+        method:
+          "CARD",
+
         successUrl,
+
         failUrl,
       };
 
-      const customerEmail =
-        sessionData?.session
-          ?.user?.email;
 
-      if (customerEmail) {
-        billingAuthOptions.customerEmail =
+      const customerEmail =
+        sessionData
+          ?.session
+          ?.user
+          ?.email;
+
+
+      if (
+        customerEmail
+      ) {
+        billingAuthOptions
+          .customerEmail =
           customerEmail;
       }
 
-      /*
-       * prepare API 응답 구조에 따라
-       * 대표자명이 있으면 전달합니다.
-       *
-       * 없어도 카드 등록에는 문제없습니다.
-       */
+
       const customerName =
-        result?.company
+        result
+          ?.company
           ?.representative_name ||
-        result?.company
+        result
+          ?.company
           ?.name ||
-        result?.company
+        result
+          ?.company
           ?.company_name;
 
-      if (customerName) {
-        billingAuthOptions.customerName =
+
+      if (
+        customerName
+      ) {
+        billingAuthOptions
+          .customerName =
           customerName;
       }
 
-      await payment.requestBillingAuth(
-        billingAuthOptions,
-      );
 
-    } catch (prepareError) {
+      await payment
+        .requestBillingAuth(
+          billingAuthOptions,
+        );
+
+    } catch (
+      prepareError
+    ) {
       console.error(
-        "결제 준비/카드등록 오류:",
+        "결제 처리 오류:",
         prepareError,
       );
 
-      /*
-       * 사용자가 결제창을 직접 닫거나
-       * 취소한 경우
-       */
+
       if (
-        prepareError?.code ===
+        prepareError
+          ?.code ===
         "USER_CANCEL"
       ) {
         setError(
           "카드 등록이 취소되었습니다.",
         );
+
       } else {
         setError(
-          prepareError?.message ||
-            "카드 등록 준비 중 오류가 발생했습니다.",
+          prepareError
+            ?.message ||
+            "결제 처리 중 오류가 발생했습니다.",
         );
       }
 
-      /*
-       * 실패 시 현재 요금제로 복원
-       */
+
       setSelectedPlan(
-        currentPlan?.plan_code ||
+        currentPlan
+          ?.plan_code ||
           null,
       );
 
       setPreparedBilling(
         null,
       );
+
     } finally {
-      setPreparingPlan("");
+      setPreparingPlan(
+        "",
+      );
     }
   }
 
@@ -655,14 +828,18 @@ export default function BillingPage() {
     return (
       <main
         style={{
-          maxWidth: "1000px",
-          margin: "0 auto",
-          minHeight: "100vh",
+          maxWidth:
+            "1000px",
+          margin:
+            "0 auto",
+          minHeight:
+            "100vh",
           padding:
             "40px 16px",
           background:
             "#f8fafc",
-          color: "#111827",
+          color:
+            "#111827",
         }}
       >
         요금제 정보를 불러오는 중...
@@ -674,40 +851,54 @@ export default function BillingPage() {
   return (
     <main
       style={{
-        maxWidth: "1000px",
-        margin: "0 auto",
-        minHeight: "100vh",
+        maxWidth:
+          "1000px",
+        margin:
+          "0 auto",
+        minHeight:
+          "100vh",
         padding:
           "18px 14px 80px",
         background:
           "#f8fafc",
-        color: "#111827",
+        color:
+          "#111827",
       }}
     >
-      {/* =========================
-          상단
-      ========================= */}
+      {/* 상단 */}
 
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          marginBottom: "18px",
+          display:
+            "flex",
+          alignItems:
+            "center",
+          gap:
+            "10px",
+          marginBottom:
+            "18px",
         }}
       >
         <button
           type="button"
-          onClick={goBack}
+          onClick={
+            goBack
+          }
           style={{
-            width: "38px",
-            height: "38px",
-            borderRadius: "10px",
+            width:
+              "38px",
+            height:
+              "38px",
+            borderRadius:
+              "10px",
             border:
               "1px solid #cbd5e1",
-            background: "#ffffff",
-            cursor: "pointer",
-            fontSize: "18px",
+            background:
+              "#ffffff",
+            cursor:
+              "pointer",
+            fontSize:
+              "18px",
           }}
         >
           ←
@@ -717,7 +908,8 @@ export default function BillingPage() {
           <h1
             style={{
               margin: 0,
-              fontSize: "23px",
+              fontSize:
+                "23px",
             }}
           >
             요금제
@@ -725,9 +917,12 @@ export default function BillingPage() {
 
           <div
             style={{
-              marginTop: "3px",
-              color: "#64748b",
-              fontSize: "12px",
+              marginTop:
+                "3px",
+              color:
+                "#64748b",
+              fontSize:
+                "12px",
             }}
           >
             이용 중인 요금제를 확인하고 변경할 수 있습니다.
@@ -736,22 +931,27 @@ export default function BillingPage() {
       </div>
 
 
-      {/* =========================
-          오류
-      ========================= */}
+      {/* 오류 */}
 
       {error && (
         <div
           style={{
-            marginBottom: "16px",
-            padding: "13px",
+            marginBottom:
+              "16px",
+            padding:
+              "13px",
             border:
               "1px solid #fecaca",
-            borderRadius: "12px",
-            background: "#fef2f2",
-            color: "#b91c1c",
-            fontSize: "13px",
-            lineHeight: "1.5",
+            borderRadius:
+              "12px",
+            background:
+              "#fef2f2",
+            color:
+              "#b91c1c",
+            fontSize:
+              "13px",
+            lineHeight:
+              "1.5",
           }}
         >
           {error}
@@ -762,19 +962,24 @@ export default function BillingPage() {
               loadBillingPage
             }
             style={{
-              display: "block",
-              marginTop: "10px",
+              display:
+                "block",
+              marginTop:
+                "10px",
               border:
                 "1px solid #fecaca",
-              borderRadius: "8px",
+              borderRadius:
+                "8px",
               padding:
                 "7px 10px",
               background:
                 "#ffffff",
               color:
                 "#b91c1c",
-              fontWeight: "700",
-              cursor: "pointer",
+              fontWeight:
+                "700",
+              cursor:
+                "pointer",
             }}
           >
             다시 불러오기
@@ -783,25 +988,31 @@ export default function BillingPage() {
       )}
 
 
-      {/* =========================
-          현재 요금제
-      ========================= */}
+      {/* 현재 요금제 */}
 
       {currentPlan && (
         <section
           style={{
-            marginBottom: "18px",
-            padding: "15px",
-            borderRadius: "14px",
-            background: "#111827",
-            color: "#ffffff",
+            marginBottom:
+              "18px",
+            padding:
+              "15px",
+            borderRadius:
+              "14px",
+            background:
+              "#111827",
+            color:
+              "#ffffff",
           }}
         >
           <div
             style={{
-              fontSize: "11px",
-              opacity: 0.7,
-              marginBottom: "4px",
+              fontSize:
+                "11px",
+              opacity:
+                0.7,
+              marginBottom:
+                "4px",
             }}
           >
             현재 이용 중
@@ -809,49 +1020,59 @@ export default function BillingPage() {
 
           <div
             style={{
-              display: "flex",
+              display:
+                "flex",
               justifyContent:
                 "space-between",
               alignItems:
                 "flex-end",
-              gap: "12px",
+              gap:
+                "12px",
             }}
           >
             <strong
               style={{
-                fontSize: "21px",
+                fontSize:
+                  "21px",
               }}
             >
               {getPlanLabel(
-                currentPlan.plan_code,
-                currentPlan.plan_name,
+                currentPlan
+                  .plan_code,
+                currentPlan
+                  .plan_name,
               )}
             </strong>
 
             <div
               style={{
-                textAlign: "right",
+                textAlign:
+                  "right",
               }}
             >
               <strong
                 style={{
-                  fontSize: "17px",
+                  fontSize:
+                    "17px",
                 }}
               >
                 {formatPrice(
-                  currentPlan.monthly_price_krw,
+                  currentPlan
+                    .monthly_price_krw,
                 )}
               </strong>
 
               {Number(
-                currentPlan.monthly_price_krw ||
+                currentPlan
+                  .monthly_price_krw ||
                   0,
               ) > 0 && (
                 <span
                   style={{
                     fontSize:
                       "11px",
-                    opacity: 0.7,
+                    opacity:
+                      0.7,
                   }}
                 >
                   {" "}
@@ -864,27 +1085,33 @@ export default function BillingPage() {
       )}
 
 
-      {/* =========================
-          prepare 성공 결과
-      ========================= */}
+      {/* 결제 준비 결과 */}
 
       {preparedBilling && (
         <section
           style={{
-            marginBottom: "18px",
-            padding: "15px",
+            marginBottom:
+              "18px",
+            padding:
+              "15px",
             border:
               "1px solid #bbf7d0",
-            borderRadius: "14px",
-            background: "#f0fdf4",
+            borderRadius:
+              "14px",
+            background:
+              "#f0fdf4",
           }}
         >
           <div
             style={{
-              color: "#166534",
-              fontSize: "14px",
-              fontWeight: "800",
-              marginBottom: "8px",
+              color:
+                "#166534",
+              fontSize:
+                "14px",
+              fontWeight:
+                "800",
+              marginBottom:
+                "8px",
             }}
           >
             ✓ 결제 준비 확인 완료
@@ -892,9 +1119,12 @@ export default function BillingPage() {
 
           <div
             style={{
-              color: "#334155",
-              fontSize: "13px",
-              lineHeight: "1.8",
+              color:
+                "#334155",
+              fontSize:
+                "13px",
+              lineHeight:
+                "1.8",
             }}
           >
             <div>
@@ -903,9 +1133,6 @@ export default function BillingPage() {
                 {preparedBilling
                   ?.company
                   ?.company_name ||
-                  preparedBilling
-                    ?.company
-                    ?.name ||
                   "-"}
               </strong>
             </div>
@@ -916,22 +1143,16 @@ export default function BillingPage() {
                 {getPlanLabel(
                   preparedBilling
                     ?.plan
-                    ?.plan_code ||
-                    preparedBilling
-                      ?.plan
-                      ?.code,
+                    ?.plan_code,
                   preparedBilling
                     ?.plan
-                    ?.plan_name ||
-                    preparedBilling
-                      ?.plan
-                      ?.name,
+                    ?.plan_name,
                 )}
               </strong>
             </div>
 
             <div>
-              서버 확인 가격:{" "}
+              결제금액:{" "}
               <strong>
                 {formatPrice(
                   preparedBilling
@@ -939,69 +1160,35 @@ export default function BillingPage() {
                     ?.monthly_price_krw,
                 )}
               </strong>
-
-              {Number(
-                preparedBilling
-                  ?.plan
-                  ?.monthly_price_krw ||
-                  0,
-              ) > 0 && (
-                <span>
-                  {" "}
-                  / 월
-                </span>
-              )}
+              {" / 월"}
             </div>
 
             <div>
-              결제 고객 준비:{" "}
-              <strong>
-                완료
-              </strong>
-            </div>
-
-            <div>
-              기존 결제수단:{" "}
+              결제수단:{" "}
               <strong>
                 {preparedBilling
                   ?.hasPaymentMethod
-                  ? "등록되어 있음"
-                  : "등록 필요"}
+                  ? "등록된 카드 사용"
+                  : "카드 등록 필요"}
               </strong>
             </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: "10px",
-              paddingTop: "10px",
-              borderTop:
-                "1px solid #bbf7d0",
-              color: "#166534",
-              fontSize: "12px",
-              lineHeight: "1.6",
-            }}
-          >
-            서버에서 업체와 요금제를 확인했습니다.
-            카드 등록을 완료해도 실제 결제가 성공하기 전에는
-            요금제가 변경되지 않습니다.
           </div>
         </section>
       )}
 
 
-      {/* =========================
-          요금제 비교 제목
-      ========================= */}
+      {/* 제목 */}
 
       <div
         style={{
-          marginBottom: "12px",
+          marginBottom:
+            "12px",
         }}
       >
         <strong
           style={{
-            fontSize: "16px",
+            fontSize:
+              "16px",
           }}
         >
           요금제 비교
@@ -1009,9 +1196,12 @@ export default function BillingPage() {
 
         <div
           style={{
-            marginTop: "4px",
-            color: "#64748b",
-            fontSize: "12px",
+            marginTop:
+              "4px",
+            color:
+              "#64748b",
+            fontSize:
+              "12px",
           }}
         >
           표시되는 가격과 이용 한도는 현재 설정된 요금제 기준입니다.
@@ -1019,28 +1209,30 @@ export default function BillingPage() {
       </div>
 
 
-      {/* =========================
-          요금제 카드
-      ========================= */}
+      {/* 요금제 */}
 
       <div
         style={{
-          display: "grid",
+          display:
+            "grid",
           gridTemplateColumns:
             "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "12px",
+          gap:
+            "12px",
         }}
       >
         {plans.map(
           (plan) => {
             const code =
               normalizePlanCode(
-                plan.plan_code,
+                plan
+                  .plan_code,
               );
 
             const currentCode =
               normalizePlanCode(
-                currentPlan?.plan_code,
+                currentPlan
+                  ?.plan_code,
               );
 
             const isCurrent =
@@ -1053,7 +1245,8 @@ export default function BillingPage() {
               ) === code;
 
             const isTrial =
-              code === "trial";
+              code ===
+              "trial";
 
             const isPreparing =
               normalizePlanCode(
@@ -1065,26 +1258,33 @@ export default function BillingPage() {
                 preparingPlan,
               );
 
+
             return (
               <section
                 key={
-                  plan.plan_code
+                  plan
+                    .plan_code
                 }
                 style={{
-                  display: "flex",
+                  display:
+                    "flex",
                   flexDirection:
                     "column",
                   background:
                     "#ffffff",
+
                   border:
                     isCurrent
                       ? "2px solid #111827"
                       : isSelected
                         ? "2px solid #2563eb"
                         : "1px solid #e2e8f0",
+
                   borderRadius:
                     "16px",
-                  padding: "16px",
+                  padding:
+                    "16px",
+
                   boxShadow:
                     "0 1px 3px rgba(15,23,42,0.05)",
                 }}
@@ -1097,7 +1297,8 @@ export default function BillingPage() {
                       "center",
                     justifyContent:
                       "space-between",
-                    gap: "8px",
+                    gap:
+                      "8px",
                     marginBottom:
                       "10px",
                   }}
@@ -1109,8 +1310,10 @@ export default function BillingPage() {
                     }}
                   >
                     {getPlanLabel(
-                      plan.plan_code,
-                      plan.plan_name,
+                      plan
+                        .plan_code,
+                      plan
+                        .plan_name,
                     )}
                   </strong>
 
@@ -1137,8 +1340,6 @@ export default function BillingPage() {
                 </div>
 
 
-                {/* 가격 */}
-
                 <div
                   style={{
                     marginBottom:
@@ -1152,12 +1353,14 @@ export default function BillingPage() {
                     }}
                   >
                     {formatPrice(
-                      plan.monthly_price_krw,
+                      plan
+                        .monthly_price_krw,
                     )}
                   </strong>
 
                   {Number(
-                    plan.monthly_price_krw ||
+                    plan
+                      .monthly_price_krw ||
                       0,
                   ) > 0 && (
                     <span
@@ -1175,8 +1378,6 @@ export default function BillingPage() {
                 </div>
 
 
-                {/* 사용 한도 */}
-
                 <div
                   style={{
                     flex: 1,
@@ -1185,42 +1386,48 @@ export default function BillingPage() {
                   <PlanFeature
                     label="AI 사진분석"
                     value={
-                      plan.ai_photo_analysis_limit
+                      plan
+                        .ai_photo_analysis_limit
                     }
                   />
 
                   <PlanFeature
                     label="자동견적"
                     value={
-                      plan.auto_estimate_limit
+                      plan
+                        .auto_estimate_limit
                     }
                   />
 
                   <PlanFeature
                     label="유사 이미지 검색"
                     value={
-                      plan.similar_image_search_limit
+                      plan
+                        .similar_image_search_limit
                     }
                   />
 
                   <PlanFeature
                     label="가상시공"
                     value={
-                      plan.virtual_remodel_limit
+                      plan
+                        .virtual_remodel_limit
                     }
                   />
 
                   <PlanFeature
                     label="사진 업로드"
                     value={
-                      plan.image_upload_limit
+                      plan
+                        .image_upload_limit
                     }
                   />
 
                   <PlanFeature
                     label="저장공간"
                     value={
-                      plan.storage_mb_limit
+                      plan
+                        .storage_mb_limit
                     }
                     unit="MB"
                   />
@@ -1228,13 +1435,12 @@ export default function BillingPage() {
                   <PlanFeature
                     label="고객상담"
                     value={
-                      plan.customer_lead_limit
+                      plan
+                        .customer_lead_limit
                     }
                   />
                 </div>
 
-
-                {/* 선택 버튼 */}
 
                 <button
                   type="button"
@@ -1248,10 +1454,12 @@ export default function BillingPage() {
                     )
                   }
                   style={{
-                    width: "100%",
+                    width:
+                      "100%",
                     marginTop:
                       "15px",
-                    border: "none",
+                    border:
+                      "none",
                     borderRadius:
                       "10px",
                     padding:
@@ -1275,7 +1483,6 @@ export default function BillingPage() {
 
                     fontSize:
                       "13px",
-
                     fontWeight:
                       "800",
 
@@ -1295,12 +1502,14 @@ export default function BillingPage() {
                   {isCurrent
                     ? "현재 요금제"
                     : isPreparing
-                      ? "카드 등록 준비 중..."
+                      ? "결제 처리 중..."
                       : isTrial
                         ? "체험 요금제"
                         : `${getPlanLabel(
-                            plan.plan_code,
-                            plan.plan_name,
+                            plan
+                              .plan_code,
+                            plan
+                              .plan_name,
                           )} 선택`}
                 </button>
               </section>
@@ -1310,29 +1519,34 @@ export default function BillingPage() {
       </div>
 
 
-      {/* =========================
-          안내
-      ========================= */}
+      {/* 안내 */}
 
       <div
         style={{
-          marginTop: "18px",
-          padding: "13px",
+          marginTop:
+            "18px",
+          padding:
+            "13px",
           border:
             "1px solid #e2e8f0",
-          borderRadius: "12px",
-          background: "#ffffff",
-          color: "#64748b",
-          fontSize: "12px",
-          lineHeight: "1.6",
+          borderRadius:
+            "12px",
+          background:
+            "#ffffff",
+          color:
+            "#64748b",
+          fontSize:
+            "12px",
+          lineHeight:
+            "1.6",
         }}
       >
         유료 요금제를 선택하면 서버에서 로그인 사용자,
-        소속 업체, 요금제와 월 결제금액을 다시 확인한 뒤
-        카드 자동결제 등록을 진행합니다.
-        카드 등록만으로 요금제가 변경되지는 않으며,
-        실제 최초 결제가 성공한 뒤 유료 요금제가 적용됩니다.
+        소속 업체, 요금제와 월 결제금액을 다시 확인합니다.
+        등록된 카드가 있으면 해당 카드로 결제를 진행하고,
+        등록된 카드가 없으면 카드 자동결제 등록을 먼저 진행합니다.
+        실제 결제가 성공한 뒤에만 유료 요금제가 적용됩니다.
       </div>
     </main>
   );
-}
+            }
