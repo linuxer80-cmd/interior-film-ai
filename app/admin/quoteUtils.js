@@ -13,7 +13,11 @@ function cleanText(value, fallback = "") {
    Canvas 줄바꿈
 ========================================================= */
 
-export function wrapCanvasText(ctx, text, maxWidth) {
+export function wrapCanvasText(
+  ctx,
+  text,
+  maxWidth,
+) {
   const words = String(text || "")
     .split(/\s+/)
     .filter(Boolean);
@@ -27,7 +31,8 @@ export function wrapCanvasText(ctx, text, maxWidth) {
       : word;
 
     if (
-      ctx.measureText(test).width > maxWidth &&
+      ctx.measureText(test).width >
+        maxWidth &&
       current
     ) {
       lines.push(current);
@@ -41,7 +46,9 @@ export function wrapCanvasText(ctx, text, maxWidth) {
     lines.push(current);
   }
 
-  return lines.length ? lines : [""];
+  return lines.length
+    ? lines
+    : [""];
 }
 
 /* =========================================================
@@ -54,7 +61,10 @@ export async function createQuoteBlob(
   representativeName = "",
 ) {
   const resolvedCompanyName =
-    cleanText(companyName, "인테리어필름");
+    cleanText(
+      companyName,
+      "인테리어필름",
+    );
 
   const resolvedRepresentativeName =
     cleanText(representativeName);
@@ -65,7 +75,8 @@ export async function createQuoteBlob(
   canvas.width = 1080;
   canvas.height = 1500;
 
-  const ctx = canvas.getContext("2d");
+  const ctx =
+    canvas.getContext("2d");
 
   if (!ctx) {
     throw new Error(
@@ -74,7 +85,9 @@ export async function createQuoteBlob(
   }
 
   /* 배경 */
+
   ctx.fillStyle = "#f7f4ef";
+
   ctx.fillRect(
     0,
     0,
@@ -83,7 +96,9 @@ export async function createQuoteBlob(
   );
 
   /* 상단 */
+
   ctx.fillStyle = "#5d4037";
+
   ctx.fillRect(
     0,
     0,
@@ -109,6 +124,7 @@ export async function createQuoteBlob(
   );
 
   ctx.font = "30px sans-serif";
+
   ctx.fillText(
     "인테리어필름 최종 견적서",
     70,
@@ -118,8 +134,10 @@ export async function createQuoteBlob(
   let y = 290;
 
   /* 고객 정보 */
+
   ctx.fillStyle = "#111827";
   ctx.font = "bold 32px sans-serif";
+
   ctx.fillText(
     "고객 정보",
     70,
@@ -163,7 +181,9 @@ export async function createQuoteBlob(
   y += 70;
 
   /* 시공 내용 */
+
   ctx.font = "bold 32px sans-serif";
+
   ctx.fillText(
     "시공 내용",
     70,
@@ -195,7 +215,9 @@ export async function createQuoteBlob(
   y += 35;
 
   /* 사용 자재 */
+
   ctx.font = "bold 32px sans-serif";
+
   ctx.fillText(
     "사용 자재",
     70,
@@ -214,7 +236,9 @@ export async function createQuoteBlob(
       900,
     );
 
-  for (const line of materialLines) {
+  for (
+    const line of materialLines
+  ) {
     ctx.fillText(
       line,
       70,
@@ -227,6 +251,7 @@ export async function createQuoteBlob(
   y += 45;
 
   /* 최종 금액 */
+
   ctx.fillStyle = "#5d4037";
 
   ctx.fillRect(
@@ -237,7 +262,8 @@ export async function createQuoteBlob(
   );
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 31px sans-serif";
+  ctx.font =
+    "bold 31px sans-serif";
 
   ctx.fillText(
     "최종 견적금액",
@@ -245,7 +271,9 @@ export async function createQuoteBlob(
     y + 58,
   );
 
-  ctx.font = "bold 46px sans-serif";
+  ctx.font =
+    "bold 46px sans-serif";
+
   ctx.textAlign = "right";
 
   ctx.fillText(
@@ -261,8 +289,10 @@ export async function createQuoteBlob(
   y += 220;
 
   /* 안내사항 */
+
   ctx.fillStyle = "#111827";
-  ctx.font = "bold 30px sans-serif";
+  ctx.font =
+    "bold 30px sans-serif";
 
   ctx.fillText(
     "안내사항",
@@ -282,7 +312,9 @@ export async function createQuoteBlob(
       900,
     );
 
-  for (const line of noteLines) {
+  for (
+    const line of noteLines
+  ) {
     ctx.fillText(
       line,
       70,
@@ -293,6 +325,7 @@ export async function createQuoteBlob(
   }
 
   /* 하단 */
+
   ctx.fillStyle = "#78716c";
   ctx.font = "23px sans-serif";
 
@@ -316,6 +349,7 @@ export async function createQuoteBlob(
   );
 
   /* Blob 생성 */
+
   return await new Promise(
     (resolve, reject) => {
       canvas.toBlob(
@@ -378,7 +412,9 @@ export async function createQuotePreview(
 
   return {
     blob,
-    url: URL.createObjectURL(blob),
+    url: URL.createObjectURL(
+      blob,
+    ),
   };
 }
 
@@ -394,10 +430,15 @@ async function convertQuoteBlobToPng(
     await createImageBitmap(blob);
 
   const canvas =
-    document.createElement("canvas");
+    document.createElement(
+      "canvas",
+    );
 
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  canvas.width =
+    bitmap.width;
+
+  canvas.height =
+    bitmap.height;
 
   const context =
     canvas.getContext("2d");
@@ -531,6 +572,54 @@ export function makeQuoteFile(
 }
 
 /* =========================================================
+   견적 이미지 강제 저장
+========================================================= */
+
+export function downloadQuoteImage(
+  blob,
+  lead,
+  companyName = "",
+) {
+  if (!blob) {
+    throw new Error(
+      "먼저 견적서를 만들어주세요.",
+    );
+  }
+
+  const file =
+    makeQuoteFile(
+      blob,
+      lead,
+      companyName,
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const anchor =
+    document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = file.name;
+
+  document.body.appendChild(
+    anchor,
+  );
+
+  anchor.click();
+  anchor.remove();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 3000);
+
+  return {
+    downloaded: true,
+    fileName: file.name,
+  };
+}
+
+/* =========================================================
    이미지 파일만 공유
    문자 본문 없음
 ========================================================= */
@@ -564,7 +653,8 @@ export async function shareQuoteImage(
       /*
        * 중요:
        * title / text를 넣지 않습니다.
-       * 공유되는 데이터는 견적 이미지 파일뿐입니다.
+       * 공유되는 데이터는
+       * 견적 이미지 파일뿐입니다.
        */
       await navigator.share({
         files: [file],
@@ -581,25 +671,12 @@ export async function shareQuoteImage(
    * 파일 공유를 지원하지 않는 브라우저에서는
    * 이미지만 저장합니다.
    */
-  const url =
-    URL.createObjectURL(blob);
 
-  const anchor =
-    document.createElement("a");
-
-  anchor.href = url;
-  anchor.download = file.name;
-
-  document.body.appendChild(
-    anchor,
+  downloadQuoteImage(
+    blob,
+    lead,
+    companyName,
   );
-
-  anchor.click();
-  anchor.remove();
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 1000);
 
   return {
     shared: false,
@@ -608,8 +685,7 @@ export async function shareQuoteImage(
 }
 
 /* =========================================================
-   기존 함수명 호환
-   문자 본문은 넣지 않음
+   고객 문자 바로 열기
 ========================================================= */
 
 export function openCustomerSms(
@@ -626,17 +702,16 @@ export function openCustomerSms(
   }
 
   /*
-   * 기존 코드가 이 함수를 호출하더라도
-   * 문자 본문은 절대 넣지 않습니다.
+   * 문자 본문은 넣지 않고
+   * 고객 전화번호만 지정합니다.
    */
+
   window.location.href =
     `sms:${phone}`;
 }
 
 /* =========================================================
    기존 shareQuote 호환
-   문자 작성 대신 이미지 공유는 blob이 필요하므로
-   이 함수에서는 자동 문자를 만들지 않음
 ========================================================= */
 
 export async function shareQuote(
@@ -663,4 +738,4 @@ export async function shareQuote(
   setLeadsMessage?.(
     "⚠️ 견적서 이미지를 먼저 만든 후 이미지 전송 버튼을 이용해주세요.",
   );
-}
+     }
