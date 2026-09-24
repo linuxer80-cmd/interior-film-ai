@@ -44,12 +44,14 @@ function verifyCronSecret(request) {
     throw new Error("CRON_SECRET 환경변수가 없습니다.");
   }
 
-  const authorization = request.headers.get("authorization") || "";
+  const authorization =
+    request.headers.get("authorization") || "";
+
   return authorization === `Bearer ${cronSecret}`;
 }
 
 /* =========================================================
-   날짜 유틸
+   날짜
 ========================================================= */
 
 function addOneMonthClamped(dateValue) {
@@ -63,7 +65,7 @@ function addOneMonthClamped(dateValue) {
   const second = source.getUTCSeconds();
   const millisecond = source.getUTCMilliseconds();
 
-  const targetFirst = new Date(
+  const target = new Date(
     Date.UTC(
       year,
       month + 1,
@@ -77,20 +79,27 @@ function addOneMonthClamped(dateValue) {
 
   const lastDay = new Date(
     Date.UTC(
-      targetFirst.getUTCFullYear(),
-      targetFirst.getUTCMonth() + 1,
+      target.getUTCFullYear(),
+      target.getUTCMonth() + 1,
       0,
     ),
   ).getUTCDate();
 
-  targetFirst.setUTCDate(Math.min(day, lastDay));
+  target.setUTCDate(
+    Math.min(day, lastDay),
+  );
 
-  return targetFirst;
+  return target;
 }
 
 function addHours(dateValue, hours) {
   const date = new Date(dateValue);
-  date.setTime(date.getTime() + hours * 60 * 60 * 1000);
+
+  date.setTime(
+    date.getTime() +
+      hours * 60 * 60 * 1000,
+  );
+
   return date;
 }
 
@@ -99,221 +108,42 @@ function addHours(dateValue, hours) {
 ========================================================= */
 
 function createBillingStamp(nextBillingAt) {
-  const billingDate = new Date(nextBillingAt);
+  const billingDate =
+    new Date(nextBillingAt);
 
   return [
     billingDate.getUTCFullYear(),
-    String(billingDate.getUTCMonth() + 1).padStart(2, "0"),
-    String(billingDate.getUTCDate()).padStart(2, "0"),
-    String(billingDate.getUTCHours()).padStart(2, "0"),
-    String(billingDate.getUTCMinutes()).padStart(2, "0"),
+    String(
+      billingDate.getUTCMonth() + 1,
+    ).padStart(2, "0"),
+    String(
+      billingDate.getUTCDate(),
+    ).padStart(2, "0"),
+    String(
+      billingDate.getUTCHours(),
+    ).padStart(2, "0"),
+    String(
+      billingDate.getUTCMinutes(),
+    ).padStart(2, "0"),
   ].join("");
 }
 
-function createRenewalOrderId(subscriptionId, nextBillingAt, retryNumber = 0) {
-  const stamp = createBillingStamp(nextBillingAt);
+function createRenewalOrderId(
+  subscriptionId,
+  nextBillingAt,
+  retryNumber = 0,
+) {
+  const stamp =
+    createBillingStamp(nextBillingAt);
 
   if (retryNumber > 0) {
-    return `renew_${subscriptionId}_${stamp}_retry${retryNumber}`;
+    return (
+      `renew_${subscriptionId}_${stamp}` +
+      `_retry${retryNumber}`
+    );
   }
 
   return `renew_${subscriptionId}_${stamp}`;
-}
-
-/* =========================================================
-   알림
-========================================================= */
-
-async function createPaymentNotifications({
-  admin,
-  company,
-  plan,
-  payment,
-  success,
-  errorMessage = "",
-  retryNumber = 0,
-  finalFailure = false,
-}) {
-  try {
-    const { data: owners, error: ownerError } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("company_id", company.id)
-      .eq("role", "owner")
-      .eq("is_active", true);
-
-    if (ownerError) {
-      console.error("[billing/renew] owner lookup error:", ownerError);
-    }
-
-    for (const owner of owners || []) {
-      const suffix =
-        retryNumber > 0 ? `:retry${retryNumber}` : ":initial";
-
-      const dedupeKey = success
-        ? `renewal_success:${payment.order_id}:${owner.id}${suffix}`
-        : `renewal_failed:${payment.order_id}:${owner.id}${suffix}`;
-
-      let title;
-      let message;
-
-      if (success) {
-        title =
-          retryNumber > 0
-            ? "💳 재결제가 완료되었습니다."
-            : "💳 정기결제가 완료되었습니다.";
-
-        message =
-          `${plan.plan_name} 요금제 ` +
-          `${Number(payment.amount_krw).toLocaleString("ko-KR")}원 ` +
-          `${retryNumber > 0 ? "재결제" : "정기결제"}가 완료되었습니다.`;
-      } else if (finalFailure) {
-        title = "🚨 정기결제 최종 실패";
-
-        message =
-          `${plan.plan_name} 요금제 자동 재결제가 ` +
-          `${MAX_RETRY_COUNT}회 모두 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}` +
-          "\n결제수단을 확인해 주세요.";
-      } else if (retryNumber > 0) {
-        title = `🚨 정기결제 재시도 ${retryNumber}회 실패`;
-
-        message =
-          `${plan.plan_name} 요금제 재결제에 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}` +
-          (retryNumber < MAX_RETRY_COUNT
-            ? `\n약 ${RETRY_DELAY_HOURS}시간 후 다시 시도합니다.`
-            : "");
-      } else {
-        title = "🚨 정기결제에 실패했습니다.";
-
-        message =
-          `${plan.plan_name} 요금제 정기결제에 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}` +
-          `\n약 ${RETRY_DELAY_HOURS}시간 후 자동으로 다시 시도합니다.`;
-      }
-
-      const { error: notificationError } = await admin
-        .from("notifications")
-        .insert({
-          company_id: company.id,
-          recipient_type: "company_admin",
-          recipient_user_id: owner.id,
-          recipient_worker_id: null,
-          type: success ? "payment_success" : "payment_failed",
-          priority: success ? "success" : "critical",
-          title,
-          message,
-          link: "/admin/billing",
-          reference_type: "payment",
-          reference_id: payment.id,
-          dedupe_key: dedupeKey,
-          is_read: false,
-          push_sent: false,
-        });
-
-      if (notificationError && notificationError.code !== "23505") {
-        console.error(
-          "[billing/renew] company notification error:",
-          notificationError,
-        );
-      }
-    }
-
-    const { data: superAdmins, error: superAdminError } = await admin
-      .from("super_admins")
-      .select("user_id")
-      .eq("is_active", true);
-
-    if (superAdminError) {
-      console.error(
-        "[billing/renew] super admin lookup error:",
-        superAdminError,
-      );
-    }
-
-    for (const superAdmin of superAdmins || []) {
-      const suffix =
-        retryNumber > 0 ? `:retry${retryNumber}` : ":initial";
-
-      const dedupeKey = success
-        ? `renewal_success:${payment.order_id}:super_admin:${superAdmin.user_id}${suffix}`
-        : `renewal_failed:${payment.order_id}:super_admin:${superAdmin.user_id}${suffix}`;
-
-      let title;
-      let message;
-
-      if (success) {
-        title =
-          retryNumber > 0
-            ? "💳 업체 재결제 완료"
-            : "💳 업체 정기결제 완료";
-
-        message =
-          `${company.company_name}\n` +
-          `${plan.plan_name} ` +
-          `${Number(payment.amount_krw).toLocaleString("ko-KR")}원 ` +
-          `${retryNumber > 0 ? "재결제" : "정기결제"}가 완료되었습니다.`;
-      } else if (finalFailure) {
-        title = "🚨 업체 정기결제 최종 실패";
-
-        message =
-          `${company.company_name}\n` +
-          `${plan.plan_name} 자동 재결제가 ` +
-          `${MAX_RETRY_COUNT}회 모두 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}`;
-      } else if (retryNumber > 0) {
-        title = `🚨 업체 재결제 ${retryNumber}회 실패`;
-
-        message =
-          `${company.company_name}\n` +
-          `${plan.plan_name} 재결제에 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}` +
-          (retryNumber < MAX_RETRY_COUNT
-            ? `\n약 ${RETRY_DELAY_HOURS}시간 후 다시 시도합니다.`
-            : "");
-      } else {
-        title = "🚨 업체 정기결제 실패";
-
-        message =
-          `${company.company_name}\n` +
-          `${plan.plan_name} 정기결제에 실패했습니다.` +
-          `${errorMessage ? `\n${errorMessage}` : ""}` +
-          `\n약 ${RETRY_DELAY_HOURS}시간 후 자동 재시도합니다.`;
-      }
-
-      const { error: notificationError } = await admin
-        .from("notifications")
-        .insert({
-          company_id: company.id,
-          recipient_type: "super_admin",
-          recipient_user_id: superAdmin.user_id,
-          recipient_worker_id: null,
-          type: success ? "payment_success" : "payment_failed",
-          priority: success ? "success" : "critical",
-          title,
-          message,
-          link: "/super-admin/billing",
-          reference_type: "payment",
-          reference_id: payment.id,
-          dedupe_key: dedupeKey,
-          is_read: false,
-          push_sent: false,
-        });
-
-      if (notificationError && notificationError.code !== "23505") {
-        console.error(
-          "[billing/renew] super notification error:",
-          notificationError,
-        );
-      }
-    }
-  } catch (error) {
-    /*
-     * 알림 오류 때문에 실제 결제 결과를 실패 처리하지 않습니다.
-     */
-    console.error("[billing/renew] notification error:", error);
-  }
 }
 
 /* =========================================================
@@ -329,20 +159,32 @@ async function createBillingEvent({
   eventData,
 }) {
   try {
-    const { error } = await admin.from("billing_events").insert({
-      company_id: companyId,
-      subscription_id: subscriptionId || null,
-      payment_id: paymentId || null,
-      event_type: eventType,
-      provider: "toss",
-      event_data: eventData || {},
-    });
+    const { error } =
+      await admin
+        .from("billing_events")
+        .insert({
+          company_id: companyId,
+          subscription_id:
+            subscriptionId || null,
+          payment_id:
+            paymentId || null,
+          event_type: eventType,
+          provider: "toss",
+          event_data:
+            eventData || {},
+        });
 
     if (error) {
-      console.error("[billing/renew] billing event error:", error);
+      console.error(
+        "[billing/renew] billing event error:",
+        error,
+      );
     }
   } catch (error) {
-    console.error("[billing/renew] billing event exception:", error);
+    console.error(
+      "[billing/renew] billing event exception:",
+      error,
+    );
   }
 }
 
@@ -350,24 +192,32 @@ async function createBillingEvent({
    회사
 ========================================================= */
 
-async function getCompany(admin, companyId) {
-  const { data, error } = await admin
-    .from("companies")
-    .select(`
-      id,
-      company_name,
-      subscription_plan,
-      is_active
-    `)
-    .eq("id", companyId)
-    .maybeSingle();
+async function getCompany(
+  admin,
+  companyId,
+) {
+  const { data, error } =
+    await admin
+      .from("companies")
+      .select(`
+        id,
+        company_name,
+        subscription_plan,
+        is_active
+      `)
+      .eq("id", companyId)
+      .maybeSingle();
 
   if (error) {
-    throw new Error("업체 정보를 확인하지 못했습니다.");
+    throw new Error(
+      "업체 정보를 확인하지 못했습니다.",
+    );
   }
 
   if (!data) {
-    throw new Error("업체를 찾을 수 없습니다.");
+    throw new Error(
+      "업체를 찾을 수 없습니다.",
+    );
   }
 
   return data;
@@ -377,25 +227,39 @@ async function getCompany(admin, companyId) {
    요금제
 ========================================================= */
 
-async function getPlan(admin, planCode) {
-  const { data, error } = await admin
-    .from("subscription_plans")
-    .select(`
-      plan_code,
-      plan_name,
-      monthly_price_krw,
-      is_active
-    `)
-    .ilike("plan_code", planCode)
-    .eq("is_active", true)
-    .maybeSingle();
+async function getPlan(
+  admin,
+  planCode,
+) {
+  const { data, error } =
+    await admin
+      .from("subscription_plans")
+      .select(`
+        plan_code,
+        plan_name,
+        monthly_price_krw,
+        is_active
+      `)
+      .ilike(
+        "plan_code",
+        planCode,
+      )
+      .eq(
+        "is_active",
+        true,
+      )
+      .maybeSingle();
 
   if (error) {
-    throw new Error("요금제 정보를 확인하지 못했습니다.");
+    throw new Error(
+      "요금제 정보를 확인하지 못했습니다.",
+    );
   }
 
   if (!data) {
-    throw new Error("사용 가능한 요금제를 찾을 수 없습니다.");
+    throw new Error(
+      "사용 가능한 요금제를 찾을 수 없습니다.",
+    );
   }
 
   return data;
@@ -405,27 +269,45 @@ async function getPlan(admin, planCode) {
    결제수단
 ========================================================= */
 
-async function getBillingCustomer(admin, companyId) {
-  const { data, error } = await admin
-    .from("billing_customers")
-    .select(`
-      id,
-      company_id,
-      provider,
-      customer_key,
-      billing_key,
-      is_active
-    `)
-    .eq("company_id", companyId)
-    .eq("provider", "toss")
-    .maybeSingle();
+async function getBillingCustomer(
+  admin,
+  companyId,
+) {
+  const { data, error } =
+    await admin
+      .from("billing_customers")
+      .select(`
+        id,
+        company_id,
+        provider,
+        customer_key,
+        billing_key,
+        is_active
+      `)
+      .eq(
+        "company_id",
+        companyId,
+      )
+      .eq(
+        "provider",
+        "toss",
+      )
+      .maybeSingle();
 
   if (error) {
-    throw new Error("결제수단 정보를 확인하지 못했습니다.");
+    throw new Error(
+      "결제수단 정보를 확인하지 못했습니다.",
+    );
   }
 
-  if (!data || !data.billing_key || data.is_active === false) {
-    throw new Error("등록된 결제수단이 없습니다.");
+  if (
+    !data ||
+    !data.billing_key ||
+    data.is_active === false
+  ) {
+    throw new Error(
+      "등록된 결제수단이 없습니다.",
+    );
   }
 
   return data;
@@ -435,22 +317,594 @@ async function getBillingCustomer(admin, companyId) {
    Payment 조회
 ========================================================= */
 
-async function getPaymentByOrderId(admin, orderId) {
-  const { data, error } = await admin
-    .from("payments")
-    .select("*")
-    .eq("order_id", orderId)
-    .maybeSingle();
+async function getPaymentByOrderId(
+  admin,
+  orderId,
+) {
+  const { data, error } =
+    await admin
+      .from("payments")
+      .select("*")
+      .eq(
+        "order_id",
+        orderId,
+      )
+      .maybeSingle();
 
   if (error) {
-    throw new Error("기존 정기결제 기록을 확인하지 못했습니다.");
+    throw new Error(
+      "기존 정기결제 기록을 확인하지 못했습니다.",
+    );
   }
 
   return data;
 }
 
 /* =========================================================
-   Pending Payment 생성
+   결제 알림
+========================================================= */
+
+async function createPaymentNotifications({
+  admin,
+  company,
+  plan,
+  payment,
+  success,
+  errorMessage = "",
+  retryNumber = 0,
+  finalFailure = false,
+}) {
+  try {
+    const {
+      data: owners,
+      error: ownerError,
+    } =
+      await admin
+        .from("profiles")
+        .select("id")
+        .eq(
+          "company_id",
+          company.id,
+        )
+        .eq(
+          "role",
+          "owner",
+        )
+        .eq(
+          "is_active",
+          true,
+        );
+
+    if (ownerError) {
+      console.error(
+        "[billing/renew] owner lookup error:",
+        ownerError,
+      );
+    }
+
+    for (
+      const owner of owners || []
+    ) {
+      const suffix =
+        retryNumber > 0
+          ? `:retry${retryNumber}`
+          : ":initial";
+
+      const dedupeKey =
+        success
+          ? `renewal_success:${payment.order_id}:${owner.id}${suffix}`
+          : `renewal_failed:${payment.order_id}:${owner.id}${suffix}`;
+
+      let title;
+      let message;
+
+      if (success) {
+        title =
+          retryNumber > 0
+            ? "💳 재결제가 완료되었습니다."
+            : "💳 정기결제가 완료되었습니다.";
+
+        message =
+          `${plan.plan_name} 요금제 ` +
+          `${Number(
+            payment.amount_krw,
+          ).toLocaleString(
+            "ko-KR",
+          )}원 ` +
+          `${
+            retryNumber > 0
+              ? "재결제"
+              : "정기결제"
+          }가 완료되었습니다.`;
+      } else if (finalFailure) {
+        title =
+          "🚨 정기결제 최종 실패";
+
+        message =
+          `${plan.plan_name} 요금제 자동 재결제가 ` +
+          `${MAX_RETRY_COUNT}회 모두 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }` +
+          "\n결제수단을 확인해 주세요.";
+      } else if (
+        retryNumber > 0
+      ) {
+        title =
+          `🚨 정기결제 재시도 ${retryNumber}회 실패`;
+
+        message =
+          `${plan.plan_name} 요금제 재결제에 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }` +
+          (
+            retryNumber <
+            MAX_RETRY_COUNT
+              ? `\n약 ${RETRY_DELAY_HOURS}시간 후 다시 시도합니다.`
+              : ""
+          );
+      } else {
+        title =
+          "🚨 정기결제에 실패했습니다.";
+
+        message =
+          `${plan.plan_name} 요금제 정기결제에 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }` +
+          `\n약 ${RETRY_DELAY_HOURS}시간 후 자동으로 다시 시도합니다.`;
+      }
+
+      const {
+        error:
+          notificationError,
+      } =
+        await admin
+          .from(
+            "notifications",
+          )
+          .insert({
+            company_id:
+              company.id,
+
+            recipient_type:
+              "company_admin",
+
+            recipient_user_id:
+              owner.id,
+
+            recipient_worker_id:
+              null,
+
+            type:
+              success
+                ? "payment_success"
+                : "payment_failed",
+
+            priority:
+              success
+                ? "success"
+                : "critical",
+
+            title,
+            message,
+
+            link:
+              "/admin/billing",
+
+            reference_type:
+              "payment",
+
+            reference_id:
+              payment.id,
+
+            dedupe_key:
+              dedupeKey,
+
+            is_read:
+              false,
+
+            push_sent:
+              false,
+          });
+
+      if (
+        notificationError &&
+        notificationError.code !==
+          "23505"
+      ) {
+        console.error(
+          "[billing/renew] company notification error:",
+          notificationError,
+        );
+      }
+    }
+
+    const {
+      data: superAdmins,
+      error: superAdminError,
+    } =
+      await admin
+        .from("super_admins")
+        .select("user_id")
+        .eq(
+          "is_active",
+          true,
+        );
+
+    if (superAdminError) {
+      console.error(
+        "[billing/renew] super admin lookup error:",
+        superAdminError,
+      );
+    }
+
+    for (
+      const superAdmin of
+        superAdmins || []
+    ) {
+      const suffix =
+        retryNumber > 0
+          ? `:retry${retryNumber}`
+          : ":initial";
+
+      const dedupeKey =
+        success
+          ? `renewal_success:${payment.order_id}:super_admin:${superAdmin.user_id}${suffix}`
+          : `renewal_failed:${payment.order_id}:super_admin:${superAdmin.user_id}${suffix}`;
+
+      let title;
+      let message;
+
+      if (success) {
+        title =
+          retryNumber > 0
+            ? "💳 업체 재결제 완료"
+            : "💳 업체 정기결제 완료";
+
+        message =
+          `${company.company_name}\n` +
+          `${plan.plan_name} ` +
+          `${Number(
+            payment.amount_krw,
+          ).toLocaleString(
+            "ko-KR",
+          )}원 ` +
+          `${
+            retryNumber > 0
+              ? "재결제"
+              : "정기결제"
+          }가 완료되었습니다.`;
+      } else if (
+        finalFailure
+      ) {
+        title =
+          "🚨 업체 정기결제 최종 실패";
+
+        message =
+          `${company.company_name}\n` +
+          `${plan.plan_name} 자동 재결제가 ` +
+          `${MAX_RETRY_COUNT}회 모두 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }`;
+      } else if (
+        retryNumber > 0
+      ) {
+        title =
+          `🚨 업체 재결제 ${retryNumber}회 실패`;
+
+        message =
+          `${company.company_name}\n` +
+          `${plan.plan_name} 재결제에 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }` +
+          (
+            retryNumber <
+            MAX_RETRY_COUNT
+              ? `\n약 ${RETRY_DELAY_HOURS}시간 후 다시 시도합니다.`
+              : ""
+          );
+      } else {
+        title =
+          "🚨 업체 정기결제 실패";
+
+        message =
+          `${company.company_name}\n` +
+          `${plan.plan_name} 정기결제에 실패했습니다.` +
+          `${
+            errorMessage
+              ? `\n${errorMessage}`
+              : ""
+          }` +
+          `\n약 ${RETRY_DELAY_HOURS}시간 후 자동 재시도합니다.`;
+      }
+
+      const {
+        error:
+          notificationError,
+      } =
+        await admin
+          .from(
+            "notifications",
+          )
+          .insert({
+            company_id:
+              company.id,
+
+            recipient_type:
+              "super_admin",
+
+            recipient_user_id:
+              superAdmin.user_id,
+
+            recipient_worker_id:
+              null,
+
+            type:
+              success
+                ? "payment_success"
+                : "payment_failed",
+
+            priority:
+              success
+                ? "success"
+                : "critical",
+
+            title,
+            message,
+
+            link:
+              "/super-admin/billing",
+
+            reference_type:
+              "payment",
+
+            reference_id:
+              payment.id,
+
+            dedupe_key:
+              dedupeKey,
+
+            is_read:
+              false,
+
+            push_sent:
+              false,
+          });
+
+      if (
+        notificationError &&
+        notificationError.code !==
+          "23505"
+      ) {
+        console.error(
+          "[billing/renew] super notification error:",
+          notificationError,
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "[billing/renew] notification error:",
+      error,
+    );
+  }
+}
+
+/* =========================================================
+   취소 완료 알림
+========================================================= */
+
+async function createCancellationExpiredNotifications({
+  admin,
+  company,
+  subscription,
+}) {
+  try {
+    const {
+      data: owners,
+      error: ownerError,
+    } =
+      await admin
+        .from("profiles")
+        .select("id")
+        .eq(
+          "company_id",
+          company.id,
+        )
+        .eq(
+          "role",
+          "owner",
+        )
+        .eq(
+          "is_active",
+          true,
+        );
+
+    if (ownerError) {
+      console.error(
+        "[billing/renew] cancellation owner lookup error:",
+        ownerError,
+      );
+    }
+
+    for (
+      const owner of owners || []
+    ) {
+      const {
+        error:
+          notificationError,
+      } =
+        await admin
+          .from(
+            "notifications",
+          )
+          .insert({
+            company_id:
+              company.id,
+
+            recipient_type:
+              "company_admin",
+
+            recipient_user_id:
+              owner.id,
+
+            recipient_worker_id:
+              null,
+
+            type:
+              "subscription_canceled",
+
+            priority:
+              "warning",
+
+            title:
+              "구독이 종료되었습니다.",
+
+            message:
+              "유료 구독 이용기간이 종료되어 TRIAL 요금제로 전환되었습니다. 기존 데이터는 그대로 유지되며 TRIAL 누적 사용 한도가 적용됩니다.",
+
+            link:
+              "/admin/billing",
+
+            reference_type:
+              "subscription",
+
+            reference_id:
+              subscription.id,
+
+            dedupe_key:
+              `subscription_canceled:${subscription.id}:${owner.id}`,
+
+            is_read:
+              false,
+
+            push_sent:
+              false,
+          });
+
+      if (
+        notificationError &&
+        notificationError.code !==
+          "23505"
+      ) {
+        console.error(
+          "[billing/renew] cancellation company notification error:",
+          notificationError,
+        );
+      }
+    }
+
+    const {
+      data: superAdmins,
+      error: superAdminError,
+    } =
+      await admin
+        .from("super_admins")
+        .select("user_id")
+        .eq(
+          "is_active",
+          true,
+        );
+
+    if (superAdminError) {
+      console.error(
+        "[billing/renew] cancellation super admin lookup error:",
+        superAdminError,
+      );
+    }
+
+    for (
+      const superAdmin of
+        superAdmins || []
+    ) {
+      const {
+        error:
+          notificationError,
+      } =
+        await admin
+          .from(
+            "notifications",
+          )
+          .insert({
+            company_id:
+              company.id,
+
+            recipient_type:
+              "super_admin",
+
+            recipient_user_id:
+              superAdmin.user_id,
+
+            recipient_worker_id:
+              null,
+
+            type:
+              "subscription_canceled",
+
+            priority:
+              "warning",
+
+            title:
+              "업체 구독 종료",
+
+            message:
+              `${company.company_name}\n` +
+              "유료 구독 이용기간이 종료되어 TRIAL 요금제로 전환되었습니다.",
+
+            link:
+              "/super-admin/billing",
+
+            reference_type:
+              "subscription",
+
+            reference_id:
+              subscription.id,
+
+            dedupe_key:
+              `subscription_canceled:${subscription.id}:super_admin:${superAdmin.user_id}`,
+
+            is_read:
+              false,
+
+            push_sent:
+              false,
+          });
+
+      if (
+        notificationError &&
+        notificationError.code !==
+          "23505"
+      ) {
+        console.error(
+          "[billing/renew] cancellation super notification error:",
+          notificationError,
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "[billing/renew] cancellation notification error:",
+      error,
+    );
+  }
+}
+
+/* =========================================================
+   Pending Payment
 ========================================================= */
 
 async function getOrCreatePendingPayment({
@@ -462,40 +916,79 @@ async function getOrCreatePendingPayment({
   orderId,
   retryNumber,
 }) {
-  const existingPayment = await getPaymentByOrderId(admin, orderId);
+  const existingPayment =
+    await getPaymentByOrderId(
+      admin,
+      orderId,
+    );
 
   if (existingPayment) {
     return {
-      payment: existingPayment,
+      payment:
+        existingPayment,
       existing: true,
     };
   }
 
-  const { data, error } = await admin
-    .from("payments")
-    .insert({
-      company_id: company.id,
-      subscription_id: subscription.id,
-      provider: "toss",
-      order_id: orderId,
-      payment_key: null,
-      plan_code: plan.plan_code,
-      amount_krw: amount,
-      status: "pending",
-      payment_type: "renewal",
-      failure_code: null,
-      failure_message: null,
-      paid_at: null,
-      metadata: {
-        source: "automatic_renewal",
-        subscription_id: subscription.id,
-        scheduled_billing_at: subscription.next_billing_at,
-        is_retry: retryNumber > 0,
-        retry_number: retryNumber,
-      },
-    })
-    .select("*")
-    .single();
+  const { data, error } =
+    await admin
+      .from("payments")
+      .insert({
+        company_id:
+          company.id,
+
+        subscription_id:
+          subscription.id,
+
+        provider:
+          "toss",
+
+        order_id:
+          orderId,
+
+        payment_key:
+          null,
+
+        plan_code:
+          plan.plan_code,
+
+        amount_krw:
+          amount,
+
+        status:
+          "pending",
+
+        payment_type:
+          "renewal",
+
+        failure_code:
+          null,
+
+        failure_message:
+          null,
+
+        paid_at:
+          null,
+
+        metadata: {
+          source:
+            "automatic_renewal",
+
+          subscription_id:
+            subscription.id,
+
+          scheduled_billing_at:
+            subscription.next_billing_at,
+
+          is_retry:
+            retryNumber > 0,
+
+          retry_number:
+            retryNumber,
+        },
+      })
+      .select("*")
+      .single();
 
   if (!error) {
     return {
@@ -504,28 +997,35 @@ async function getOrCreatePendingPayment({
     };
   }
 
-  /*
-   * 동시에 Cron 두 개가 실행됐을 때
-   * payments.order_id UNIQUE가 마지막 방어선입니다.
-   */
-  if (error.code === "23505") {
-    const concurrentPayment = await getPaymentByOrderId(admin, orderId);
+  if (
+    error.code === "23505"
+  ) {
+    const concurrentPayment =
+      await getPaymentByOrderId(
+        admin,
+        orderId,
+      );
 
     if (!concurrentPayment) {
-      throw new Error("정기결제 중복 요청을 확인하지 못했습니다.");
+      throw new Error(
+        "정기결제 중복 요청을 확인하지 못했습니다.",
+      );
     }
 
     return {
-      payment: concurrentPayment,
+      payment:
+        concurrentPayment,
       existing: true,
     };
   }
 
-  throw new Error("정기결제 기록을 생성하지 못했습니다.");
+  throw new Error(
+    "정기결제 기록을 생성하지 못했습니다.",
+  );
 }
 
 /* =========================================================
-   성공 후 구독 갱신
+   성공 처리
 ========================================================= */
 
 async function completeSuccessfulRenewal({
@@ -537,100 +1037,222 @@ async function completeSuccessfulRenewal({
   tossPayment,
   retryNumber,
 }) {
-  const amount = Number(plan.monthly_price_krw);
+  const amount =
+    Number(
+      plan.monthly_price_krw,
+    );
 
-  const paymentKey = tossPayment?.paymentKey || null;
-  const paidAt = tossPayment?.approvedAt || new Date().toISOString();
+  const paymentKey =
+    tossPayment?.paymentKey ||
+    null;
 
-  const periodStart = new Date(paidAt);
-  const periodEnd = addOneMonthClamped(periodStart);
+  const paidAt =
+    tossPayment?.approvedAt ||
+    new Date().toISOString();
 
-  /*
-   * 결제 성공 시 past_due 여부와 관계없이 active 복구.
-   * 재시도 상태도 전부 초기화.
-   */
-  const { data: updatedSubscription, error: subscriptionUpdateError } =
+  const periodStart =
+    new Date(paidAt);
+
+  const periodEnd =
+    addOneMonthClamped(
+      periodStart,
+    );
+
+  const {
+    data:
+      updatedSubscription,
+
+    error:
+      subscriptionUpdateError,
+  } =
     await admin
       .from("subscriptions")
       .update({
-        plan_code: plan.plan_code,
-        status: "active",
-        monthly_price_krw: amount,
-        current_period_start: periodStart.toISOString(),
-        current_period_end: periodEnd.toISOString(),
-        next_billing_at: periodEnd.toISOString(),
-        cancel_at_period_end: false,
-        canceled_at: null,
-        payment_retry_count: 0,
-        last_payment_retry_at: null,
-        next_payment_retry_at: null,
-        updated_at: new Date().toISOString(),
+        plan_code:
+          plan.plan_code,
+
+        status:
+          "active",
+
+        monthly_price_krw:
+          amount,
+
+        current_period_start:
+          periodStart.toISOString(),
+
+        current_period_end:
+          periodEnd.toISOString(),
+
+        next_billing_at:
+          periodEnd.toISOString(),
+
+        cancel_at_period_end:
+          false,
+
+        canceled_at:
+          null,
+
+        payment_retry_count:
+          0,
+
+        last_payment_retry_at:
+          null,
+
+        next_payment_retry_at:
+          null,
+
+        updated_at:
+          new Date().toISOString(),
       })
-      .eq("id", subscription.id)
-      .eq("company_id", company.id)
+      .eq(
+        "id",
+        subscription.id,
+      )
+      .eq(
+        "company_id",
+        company.id,
+      )
       .select("*")
       .single();
 
-  if (subscriptionUpdateError) {
-    throw new Error("정기결제 후 구독기간을 갱신하지 못했습니다.");
+  if (
+    subscriptionUpdateError
+  ) {
+    throw new Error(
+      "정기결제 후 구독기간을 갱신하지 못했습니다.",
+    );
   }
 
-  const { data: paidPayment, error: paidPaymentError } = await admin
-    .from("payments")
-    .update({
-      subscription_id: updatedSubscription.id,
-      payment_key: paymentKey,
-      status: "paid",
-      failure_code: null,
-      failure_message: null,
-      paid_at: paidAt,
-      metadata: {
-        source: "automatic_renewal",
-        subscription_id: subscription.id,
-        scheduled_billing_at: subscription.next_billing_at,
-        is_retry: retryNumber > 0,
-        retry_number: retryNumber,
-        toss_status: tossPayment?.status || null,
-        method: tossPayment?.method || null,
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", paymentRow.id)
-    .select("*")
-    .single();
+  const {
+    data: paidPayment,
+    error:
+      paidPaymentError,
+  } =
+    await admin
+      .from("payments")
+      .update({
+        subscription_id:
+          updatedSubscription.id,
 
-  if (paidPaymentError) {
-    throw new Error("정기결제 성공 기록을 저장하지 못했습니다.");
+        payment_key:
+          paymentKey,
+
+        status:
+          "paid",
+
+        failure_code:
+          null,
+
+        failure_message:
+          null,
+
+        paid_at:
+          paidAt,
+
+        metadata: {
+          source:
+            "automatic_renewal",
+
+          subscription_id:
+            subscription.id,
+
+          scheduled_billing_at:
+            subscription.next_billing_at,
+
+          is_retry:
+            retryNumber > 0,
+
+          retry_number:
+            retryNumber,
+
+          toss_status:
+            tossPayment?.status ||
+            null,
+
+          method:
+            tossPayment?.method ||
+            null,
+        },
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        paymentRow.id,
+      )
+      .select("*")
+      .single();
+
+  if (
+    paidPaymentError
+  ) {
+    throw new Error(
+      "정기결제 성공 기록을 저장하지 못했습니다.",
+    );
   }
 
-  const { error: companyPlanError } = await admin
-    .from("companies")
-    .update({
-      subscription_plan: plan.plan_code,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", company.id);
+  const {
+    error:
+      companyPlanError,
+  } =
+    await admin
+      .from("companies")
+      .update({
+        subscription_plan:
+          plan.plan_code,
 
-  if (companyPlanError) {
-    throw new Error("업체 요금제를 동기화하지 못했습니다.");
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        company.id,
+      );
+
+  if (
+    companyPlanError
+  ) {
+    throw new Error(
+      "업체 요금제를 동기화하지 못했습니다.",
+    );
   }
 
   await createBillingEvent({
     admin,
-    companyId: company.id,
-    subscriptionId: updatedSubscription.id,
-    paymentId: paidPayment.id,
+
+    companyId:
+      company.id,
+
+    subscriptionId:
+      updatedSubscription.id,
+
+    paymentId:
+      paidPayment.id,
+
     eventType:
       retryNumber > 0
         ? "renewal_retry_payment_succeeded"
         : "renewal_payment_succeeded",
+
     eventData: {
-      order_id: paidPayment.order_id,
-      plan_code: plan.plan_code,
-      amount_krw: amount,
-      retry_number: retryNumber,
-      previous_billing_at: subscription.next_billing_at,
-      next_billing_at: updatedSubscription.next_billing_at,
+      order_id:
+        paidPayment.order_id,
+
+      plan_code:
+        plan.plan_code,
+
+      amount_krw:
+        amount,
+
+      retry_number:
+        retryNumber,
+
+      previous_billing_at:
+        subscription.next_billing_at,
+
+      next_billing_at:
+        updatedSubscription.next_billing_at,
     },
   });
 
@@ -638,7 +1260,8 @@ async function completeSuccessfulRenewal({
     admin,
     company,
     plan,
-    payment: paidPayment,
+    payment:
+      paidPayment,
     success: true,
     retryNumber,
   });
@@ -647,15 +1270,33 @@ async function completeSuccessfulRenewal({
     ok: true,
     renewed: true,
     retryNumber,
-    companyId: company.id,
-    companyName: company.company_name,
-    subscriptionId: updatedSubscription.id,
-    paymentId: paidPayment.id,
-    orderId: paidPayment.order_id,
-    planCode: plan.plan_code,
-    amount: paidPayment.amount_krw,
-    paidAt: paidPayment.paid_at,
-    nextBillingAt: updatedSubscription.next_billing_at,
+
+    companyId:
+      company.id,
+
+    companyName:
+      company.company_name,
+
+    subscriptionId:
+      updatedSubscription.id,
+
+    paymentId:
+      paidPayment.id,
+
+    orderId:
+      paidPayment.order_id,
+
+    planCode:
+      plan.plan_code,
+
+    amount:
+      paidPayment.amount_krw,
+
+    paidAt:
+      paidPayment.paid_at,
+
+    nextBillingAt:
+      updatedSubscription.next_billing_at,
   };
 }
 
@@ -673,82 +1314,159 @@ async function saveDefiniteFailure({
   orderId,
   retryNumber,
 }) {
-  const now = new Date();
+  const now =
+    new Date();
 
-  const { data: failedPayment, error: failedPaymentError } = await admin
-    .from("payments")
-    .update({
-      status: "failed",
-      failure_code: error?.code || "RENEWAL_PAYMENT_FAILED",
-      failure_message: error?.message || "정기결제에 실패했습니다.",
-      updated_at: now.toISOString(),
-    })
-    .eq("id", paymentRow.id)
-    .eq("status", "pending")
-    .select("*")
-    .maybeSingle();
+  const {
+    data: failedPayment,
+    error:
+      failedPaymentError,
+  } =
+    await admin
+      .from("payments")
+      .update({
+        status:
+          "failed",
 
-  if (failedPaymentError) {
-    throw new Error("결제 실패 기록을 저장하지 못했습니다.");
+        failure_code:
+          error?.code ||
+          "RENEWAL_PAYMENT_FAILED",
+
+        failure_message:
+          error?.message ||
+          "정기결제에 실패했습니다.",
+
+        updated_at:
+          now.toISOString(),
+      })
+      .eq(
+        "id",
+        paymentRow.id,
+      )
+      .eq(
+        "status",
+        "pending",
+      )
+      .select("*")
+      .maybeSingle();
+
+  if (
+    failedPaymentError
+  ) {
+    throw new Error(
+      "결제 실패 기록을 저장하지 못했습니다.",
+    );
   }
 
-  const savedPayment = failedPayment || paymentRow;
+  const savedPayment =
+    failedPayment ||
+    paymentRow;
 
-  /*
-   * 최초 결제 실패:
-   * retry_count는 아직 0.
-   * 24시간 후 retry1 예약.
-   *
-   * 재시도 실패:
-   * retry_count = 실제 실행한 재시도 횟수.
-   */
-  const newRetryCount = retryNumber;
+  const newRetryCount =
+    retryNumber;
 
-  const finalFailure = retryNumber >= MAX_RETRY_COUNT;
+  const finalFailure =
+    retryNumber >=
+    MAX_RETRY_COUNT;
 
-  const nextRetryAt = finalFailure
-    ? null
-    : addHours(now, RETRY_DELAY_HOURS).toISOString();
+  const nextRetryAt =
+    finalFailure
+      ? null
+      : addHours(
+          now,
+          RETRY_DELAY_HOURS,
+        ).toISOString();
 
   const subscriptionUpdate = {
-    status: "past_due",
-    payment_retry_count: newRetryCount,
-    next_payment_retry_at: nextRetryAt,
-    updated_at: now.toISOString(),
+    status:
+      "past_due",
+
+    payment_retry_count:
+      newRetryCount,
+
+    next_payment_retry_at:
+      nextRetryAt,
+
+    updated_at:
+      now.toISOString(),
   };
 
-  if (retryNumber > 0) {
-    subscriptionUpdate.last_payment_retry_at = now.toISOString();
+  if (
+    retryNumber > 0
+  ) {
+    subscriptionUpdate.last_payment_retry_at =
+      now.toISOString();
   }
 
-  const { error: subscriptionError } = await admin
-    .from("subscriptions")
-    .update(subscriptionUpdate)
-    .eq("id", subscription.id);
+  const {
+    error:
+      subscriptionError,
+  } =
+    await admin
+      .from("subscriptions")
+      .update(
+        subscriptionUpdate,
+      )
+      .eq(
+        "id",
+        subscription.id,
+      );
 
-  if (subscriptionError) {
-    throw new Error("결제 실패 후 구독 상태를 저장하지 못했습니다.");
+  if (
+    subscriptionError
+  ) {
+    throw new Error(
+      "결제 실패 후 구독 상태를 저장하지 못했습니다.",
+    );
   }
 
   await createBillingEvent({
     admin,
-    companyId: company.id,
-    subscriptionId: subscription.id,
-    paymentId: savedPayment.id,
-    eventType: finalFailure
-      ? "renewal_retry_exhausted"
-      : retryNumber > 0
-        ? "renewal_retry_payment_failed"
-        : "renewal_payment_failed",
+
+    companyId:
+      company.id,
+
+    subscriptionId:
+      subscription.id,
+
+    paymentId:
+      savedPayment.id,
+
+    eventType:
+      finalFailure
+        ? "renewal_retry_exhausted"
+        : retryNumber > 0
+          ? "renewal_retry_payment_failed"
+          : "renewal_payment_failed",
+
     eventData: {
-      order_id: orderId,
-      plan_code: plan.plan_code,
-      amount_krw: Number(plan.monthly_price_krw),
-      retry_number: retryNumber,
-      max_retry_count: MAX_RETRY_COUNT,
-      next_payment_retry_at: nextRetryAt,
-      error_code: error?.code || "RENEWAL_PAYMENT_FAILED",
-      error_message: error?.message || "정기결제에 실패했습니다.",
+      order_id:
+        orderId,
+
+      plan_code:
+        plan.plan_code,
+
+      amount_krw:
+        Number(
+          plan.monthly_price_krw,
+        ),
+
+      retry_number:
+        retryNumber,
+
+      max_retry_count:
+        MAX_RETRY_COUNT,
+
+      next_payment_retry_at:
+        nextRetryAt,
+
+      error_code:
+        error?.code ||
+        "RENEWAL_PAYMENT_FAILED",
+
+      error_message:
+        error?.message ||
+        "정기결제에 실패했습니다.",
     },
   });
 
@@ -756,23 +1474,35 @@ async function saveDefiniteFailure({
     admin,
     company,
     plan,
-    payment: savedPayment,
-    success: false,
-    errorMessage: error?.message || "정기결제에 실패했습니다.",
+
+    payment:
+      savedPayment,
+
+    success:
+      false,
+
+    errorMessage:
+      error?.message ||
+      "정기결제에 실패했습니다.",
+
     retryNumber,
     finalFailure,
   });
 
   return {
-    payment: savedPayment,
+    payment:
+      savedPayment,
+
     finalFailure,
     nextRetryAt,
-    retryCount: newRetryCount,
+
+    retryCount:
+      newRetryCount,
   };
 }
 
 /* =========================================================
-   한 구독 결제 처리
+   한 구독 결제
 ========================================================= */
 
 async function renewOneSubscription({
@@ -784,101 +1514,182 @@ async function renewOneSubscription({
   let plan = null;
   let paymentRow = null;
 
-  /*
-   * active = 최초 정기결제
-   * past_due = 자동 재시도
-   */
-  const isRetry = subscription.status === "past_due";
+  const isRetry =
+    subscription.status ===
+    "past_due";
 
-  const previousRetryCount = Number(subscription.payment_retry_count || 0);
+  const previousRetryCount =
+    Number(
+      subscription
+        .payment_retry_count ||
+        0,
+    );
 
-  /*
-   * past_due라면 이번 실행이 몇 번째 재시도인지 계산.
-   */
-  const retryNumber = isRetry ? previousRetryCount + 1 : 0;
+  const retryNumber =
+    isRetry
+      ? previousRetryCount + 1
+      : 0;
 
-  if (isRetry && retryNumber > MAX_RETRY_COUNT) {
+  if (
+    isRetry &&
+    retryNumber >
+      MAX_RETRY_COUNT
+  ) {
     return {
       ok: false,
       skipped: true,
-      reason: "retry_exhausted",
-      companyId: subscription.company_id,
-      subscriptionId: subscription.id,
-      retryCount: previousRetryCount,
+
+      reason:
+        "retry_exhausted",
+
+      companyId:
+        subscription.company_id,
+
+      subscriptionId:
+        subscription.id,
+
+      retryCount:
+        previousRetryCount,
     };
   }
 
-  const orderId = createRenewalOrderId(
-    subscription.id,
-    subscription.next_billing_at,
-    retryNumber,
-  );
+  const orderId =
+    createRenewalOrderId(
+      subscription.id,
+      subscription.next_billing_at,
+      retryNumber,
+    );
 
-  company = await getCompany(admin, subscription.company_id);
+  company =
+    await getCompany(
+      admin,
+      subscription.company_id,
+    );
 
-  if (company.is_active === false) {
+  if (
+    company.is_active ===
+    false
+  ) {
     return {
       ok: false,
       skipped: true,
-      reason: "inactive_company",
-      companyId: company.id,
-      companyName: company.company_name,
+
+      reason:
+        "inactive_company",
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
     };
   }
 
-  plan = await getPlan(admin, subscription.plan_code);
+  plan =
+    await getPlan(
+      admin,
+      subscription.plan_code,
+    );
 
-  if (String(plan.plan_code).toLowerCase() === "trial") {
+  if (
+    String(
+      plan.plan_code,
+    ).toLowerCase() ===
+    "trial"
+  ) {
     return {
       ok: false,
       skipped: true,
-      reason: "trial_plan",
-      companyId: company.id,
-      companyName: company.company_name,
+
+      reason:
+        "trial_plan",
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
     };
   }
 
-  const amount = Number(plan.monthly_price_krw);
+  const amount =
+    Number(
+      plan.monthly_price_krw,
+    );
 
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error("요금제 금액이 올바르지 않습니다.");
+  if (
+    !Number.isInteger(
+      amount,
+    ) ||
+    amount <= 0
+  ) {
+    throw new Error(
+      "요금제 금액이 올바르지 않습니다.",
+    );
   }
 
-  const billingCustomer = await getBillingCustomer(admin, company.id);
+  const billingCustomer =
+    await getBillingCustomer(
+      admin,
+      company.id,
+    );
 
-  const existingPayment = await getPaymentByOrderId(admin, orderId);
+  const existingPayment =
+    await getPaymentByOrderId(
+      admin,
+      orderId,
+    );
 
-  /*
-   * 동일 재시도 주문이 이미 성공했다면 절대 재청구하지 않음.
-   */
-  if (existingPayment?.status === "paid") {
+  if (
+    existingPayment?.status ===
+    "paid"
+  ) {
     return {
       ok: true,
       skipped: true,
       alreadyPaid: true,
-      reason: "already_paid",
+
+      reason:
+        "already_paid",
+
       retryNumber,
-      companyId: company.id,
-      companyName: company.company_name,
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
       orderId,
-      paymentId: existingPayment.id,
+
+      paymentId:
+        existingPayment.id,
     };
   }
 
-  /*
-   * 동일 retry 주문이 확정 실패했다면 같은 order_id로
-   * Toss에 다시 보내지 않습니다.
-   */
-  if (existingPayment?.status === "failed") {
+  if (
+    existingPayment?.status ===
+    "failed"
+  ) {
     return {
       ok: false,
       skipped: true,
-      reason: "already_failed",
+
+      reason:
+        "already_failed",
+
       retryNumber,
-      companyId: company.id,
-      companyName: company.company_name,
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
       orderId,
-      paymentId: existingPayment.id,
+
+      paymentId:
+        existingPayment.id,
     };
   }
 
@@ -889,88 +1700,156 @@ async function renewOneSubscription({
       eligible: true,
       isRetry,
       retryNumber,
-      companyId: company.id,
-      companyName: company.company_name,
-      subscriptionId: subscription.id,
-      planCode: plan.plan_code,
-      planName: plan.plan_name,
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
+      subscriptionId:
+        subscription.id,
+
+      planCode:
+        plan.plan_code,
+
+      planName:
+        plan.plan_name,
+
       amount,
-      nextBillingAt: subscription.next_billing_at,
-      nextPaymentRetryAt: subscription.next_payment_retry_at || null,
+
+      nextBillingAt:
+        subscription.next_billing_at,
+
+      nextPaymentRetryAt:
+        subscription.next_payment_retry_at ||
+        null,
+
       orderId,
-      hasBillingKey: true,
+
+      hasBillingKey:
+        true,
     };
   }
 
-  const paymentResult = await getOrCreatePendingPayment({
-    admin,
-    subscription,
-    company,
-    plan,
-    amount,
-    orderId,
-    retryNumber,
-  });
+  const paymentResult =
+    await getOrCreatePendingPayment({
+      admin,
+      subscription,
+      company,
+      plan,
+      amount,
+      orderId,
+      retryNumber,
+    });
 
-  paymentRow = paymentResult.payment;
+  paymentRow =
+    paymentResult.payment;
 
-  if (paymentRow.status === "paid") {
+  if (
+    paymentRow.status ===
+    "paid"
+  ) {
     return {
       ok: true,
       skipped: true,
       alreadyPaid: true,
-      reason: "already_paid",
+
+      reason:
+        "already_paid",
+
       retryNumber,
-      companyId: company.id,
-      companyName: company.company_name,
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
       orderId,
-      paymentId: paymentRow.id,
+
+      paymentId:
+        paymentRow.id,
     };
   }
 
-  if (paymentRow.status === "failed") {
+  if (
+    paymentRow.status ===
+    "failed"
+  ) {
     return {
       ok: false,
       skipped: true,
-      reason: "already_failed",
+
+      reason:
+        "already_failed",
+
       retryNumber,
-      companyId: company.id,
-      companyName: company.company_name,
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
       orderId,
-      paymentId: paymentRow.id,
+
+      paymentId:
+        paymentRow.id,
     };
   }
 
-  /*
-   * 재시도를 실제 실행하기 직전에도 last retry 기록.
-   * Toss 호출 전에 기록해 실행 시점을 추적합니다.
-   */
   if (isRetry) {
-    const { error: retryStartError } = await admin
-      .from("subscriptions")
-      .update({
-        last_payment_retry_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", subscription.id);
+    const {
+      error:
+        retryStartError,
+    } =
+      await admin
+        .from(
+          "subscriptions",
+        )
+        .update({
+          last_payment_retry_at:
+            new Date().toISOString(),
 
-    if (retryStartError) {
-      throw new Error("재결제 실행 정보를 저장하지 못했습니다.");
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          subscription.id,
+        );
+
+    if (
+      retryStartError
+    ) {
+      throw new Error(
+        "재결제 실행 정보를 저장하지 못했습니다.",
+      );
     }
   }
 
   try {
-    const tossPayment = await payWithTossBillingKey({
-      billingKey: billingCustomer.billing_key,
-      customerKey: billingCustomer.customer_key,
-      amount,
-      orderId,
-      orderName:
-        retryNumber > 0
-          ? `${plan.plan_name} 월 정기구독 재결제`
-          : `${plan.plan_name} 월 정기구독`,
-      idempotencyKey: orderId,
-    });
+    const tossPayment =
+      await payWithTossBillingKey({
+        billingKey:
+          billingCustomer.billing_key,
+
+        customerKey:
+          billingCustomer.customer_key,
+
+        amount,
+
+        orderId,
+
+        orderName:
+          retryNumber > 0
+            ? `${plan.plan_name} 월 정기구독 재결제`
+            : `${plan.plan_name} 월 정기구독`,
+
+        idempotencyKey:
+          orderId,
+      });
 
     return await completeSuccessfulRenewal({
       admin,
@@ -982,48 +1861,78 @@ async function renewOneSubscription({
       retryNumber,
     });
   } catch (error) {
-    const errorStatus = Number(error?.status);
+    const errorStatus =
+      Number(
+        error?.status,
+      );
 
-    /*
-     * Toss 4xx만 확정 실패.
-     * 5xx / network는 승인 여부가 불명확할 수 있으므로
-     * 기존과 동일하게 pending 유지.
-     */
     const definiteFailure =
       errorStatus >= 400 &&
       errorStatus < 500;
 
-    if (paymentRow?.id && definiteFailure) {
+    if (
+      paymentRow?.id &&
+      definiteFailure
+    ) {
       try {
-        const failureResult = await saveDefiniteFailure({
-          admin,
-          subscription,
-          company,
-          plan,
-          paymentRow,
-          error,
-          orderId,
-          retryNumber,
-        });
+        const failureResult =
+          await saveDefiniteFailure({
+            admin,
+            subscription,
+            company,
+            plan,
+            paymentRow,
+            error,
+            orderId,
+            retryNumber,
+          });
 
-        paymentRow = failureResult.payment;
+        paymentRow =
+          failureResult.payment;
 
         return {
           ok: false,
-          retryable: !failureResult.finalFailure,
-          finalFailure: failureResult.finalFailure,
+
+          retryable:
+            !failureResult.finalFailure,
+
+          finalFailure:
+            failureResult.finalFailure,
+
           retryNumber,
-          retryCount: failureResult.retryCount,
-          nextPaymentRetryAt: failureResult.nextRetryAt,
-          companyId: company.id,
-          companyName: company.company_name,
-          subscriptionId: subscription.id,
-          paymentId: paymentRow?.id || null,
+
+          retryCount:
+            failureResult.retryCount,
+
+          nextPaymentRetryAt:
+            failureResult.nextRetryAt,
+
+          companyId:
+            company.id,
+
+          companyName:
+            company.company_name,
+
+          subscriptionId:
+            subscription.id,
+
+          paymentId:
+            paymentRow?.id ||
+            null,
+
           orderId,
-          error: error?.message || "정기결제에 실패했습니다.",
-          code: error?.code || "RENEWAL_CHARGE_ERROR",
+
+          error:
+            error?.message ||
+            "정기결제에 실패했습니다.",
+
+          code:
+            error?.code ||
+            "RENEWAL_CHARGE_ERROR",
         };
-      } catch (failureSaveError) {
+      } catch (
+        failureSaveError
+      ) {
         console.error(
           "[billing/renew] failure save error:",
           failureSaveError,
@@ -1032,37 +1941,68 @@ async function renewOneSubscription({
         return {
           ok: false,
           retryable: false,
-          companyId: company.id,
-          companyName: company.company_name,
-          subscriptionId: subscription.id,
-          paymentId: paymentRow?.id || null,
+
+          companyId:
+            company.id,
+
+          companyName:
+            company.company_name,
+
+          subscriptionId:
+            subscription.id,
+
+          paymentId:
+            paymentRow?.id ||
+            null,
+
           orderId,
+
           error:
             failureSaveError?.message ||
             "결제 실패 상태 저장 중 오류가 발생했습니다.",
-          code: "RENEWAL_FAILURE_SAVE_ERROR",
+
+          code:
+            "RENEWAL_FAILURE_SAVE_ERROR",
         };
       }
     }
 
-    /*
-     * 여기부터는 5xx / network 등 결과 불확실.
-     * payment는 pending 유지.
-     */
-    if (!definiteFailure && paymentRow?.id) {
+    if (
+      !definiteFailure &&
+      paymentRow?.id
+    ) {
       await createBillingEvent({
         admin,
-        companyId: company.id,
-        subscriptionId: subscription.id,
-        paymentId: paymentRow.id,
-        eventType: "renewal_payment_result_uncertain",
+
+        companyId:
+          company.id,
+
+        subscriptionId:
+          subscription.id,
+
+        paymentId:
+          paymentRow.id,
+
+        eventType:
+          "renewal_payment_result_uncertain",
+
         eventData: {
-          order_id: orderId,
-          plan_code: plan.plan_code,
-          amount_krw: amount,
-          retry_number: retryNumber,
+          order_id:
+            orderId,
+
+          plan_code:
+            plan.plan_code,
+
+          amount_krw:
+            amount,
+
+          retry_number:
+            retryNumber,
+
           error_code:
-            error?.code || "RENEWAL_RESULT_UNCERTAIN",
+            error?.code ||
+            "RENEWAL_RESULT_UNCERTAIN",
+
           error_message:
             error?.message ||
             "정기결제 결과를 확인하지 못했습니다.",
@@ -1072,54 +2012,398 @@ async function renewOneSubscription({
 
     return {
       ok: false,
-      retryable: !definiteFailure,
-      resultUncertain: !definiteFailure,
+
+      retryable:
+        !definiteFailure,
+
+      resultUncertain:
+        !definiteFailure,
+
       retryNumber,
-      companyId: company?.id || subscription.company_id,
-      companyName: company?.company_name || null,
-      subscriptionId: subscription.id,
-      paymentId: paymentRow?.id || null,
+
+      companyId:
+        company?.id ||
+        subscription.company_id,
+
+      companyName:
+        company?.company_name ||
+        null,
+
+      subscriptionId:
+        subscription.id,
+
+      paymentId:
+        paymentRow?.id ||
+        null,
+
       orderId,
-      error: definiteFailure
-        ? error?.message || "정기결제에 실패했습니다."
-        : "정기결제 결과를 확인하지 못했습니다.",
-      code: error?.code || "RENEWAL_CHARGE_ERROR",
+
+      error:
+        definiteFailure
+          ? error?.message ||
+            "정기결제에 실패했습니다."
+          : "정기결제 결과를 확인하지 못했습니다.",
+
+      code:
+        error?.code ||
+        "RENEWAL_CHARGE_ERROR",
     };
   }
-      }
+}
+
 /* =========================================================
-   active 결제 대상 조회
+   취소 예약 만료 대상
 ========================================================= */
 
-async function getDueActiveSubscriptions(admin, now) {
-  const { data, error } = await admin
-    .from("subscriptions")
-    .select(`
-      id,
-      company_id,
-      plan_code,
-      status,
-      monthly_price_krw,
-      started_at,
-      current_period_start,
-      current_period_end,
-      next_billing_at,
-      cancel_at_period_end,
-      canceled_at,
-      payment_retry_count,
-      last_payment_retry_at,
-      next_payment_retry_at,
-      created_at,
-      updated_at
-    `)
-    .eq("status", "active")
-    .eq("cancel_at_period_end", false)
-    .not("next_billing_at", "is", null)
-    .lte("next_billing_at", now.toISOString())
-    .order("next_billing_at", {
-      ascending: true,
-    })
-    .limit(BATCH_LIMIT);
+async function getDueCancellationSubscriptions(
+  admin,
+  now,
+) {
+  const { data, error } =
+    await admin
+      .from("subscriptions")
+      .select(`
+        id,
+        company_id,
+        plan_code,
+        status,
+        monthly_price_krw,
+        started_at,
+        current_period_start,
+        current_period_end,
+        next_billing_at,
+        cancel_at_period_end,
+        canceled_at,
+        payment_retry_count,
+        last_payment_retry_at,
+        next_payment_retry_at,
+        created_at,
+        updated_at
+      `)
+      .in(
+        "status",
+        [
+          "active",
+          "past_due",
+        ],
+      )
+      .eq(
+        "cancel_at_period_end",
+        true,
+      )
+      .not(
+        "current_period_end",
+        "is",
+        null,
+      )
+      .lte(
+        "current_period_end",
+        now.toISOString(),
+      )
+      .order(
+        "current_period_end",
+        {
+          ascending: true,
+        },
+      )
+      .limit(
+        BATCH_LIMIT,
+      );
+
+  if (error) {
+    throw new Error(
+      `구독 취소 만료 대상 조회 실패: ${error.message}`,
+    );
+  }
+
+  return data || [];
+}
+
+/* =========================================================
+   취소 예약 만료 처리
+========================================================= */
+
+async function expireCanceledSubscription({
+  admin,
+  subscription,
+  dryRun,
+}) {
+  const company =
+    await getCompany(
+      admin,
+      subscription.company_id,
+    );
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      eligible: true,
+
+      action:
+        "cancel_subscription",
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
+      subscriptionId:
+        subscription.id,
+
+      previousPlanCode:
+        subscription.plan_code,
+
+      nextPlanCode:
+        "trial",
+
+      currentPeriodEnd:
+        subscription.current_period_end,
+    };
+  }
+
+  const now =
+    new Date();
+
+  const {
+    data:
+      updatedSubscription,
+
+    error:
+      subscriptionError,
+  } =
+    await admin
+      .from("subscriptions")
+      .update({
+        status:
+          "canceled",
+
+        cancel_at_period_end:
+          false,
+
+        canceled_at:
+          now.toISOString(),
+
+        next_billing_at:
+          null,
+
+        payment_retry_count:
+          0,
+
+        last_payment_retry_at:
+          null,
+
+        next_payment_retry_at:
+          null,
+
+        updated_at:
+          now.toISOString(),
+      })
+      .eq(
+        "id",
+        subscription.id,
+      )
+      .eq(
+        "company_id",
+        company.id,
+      )
+      .eq(
+        "cancel_at_period_end",
+        true,
+      )
+      .in(
+        "status",
+        [
+          "active",
+          "past_due",
+        ],
+      )
+      .select("*")
+      .maybeSingle();
+
+  if (
+    subscriptionError
+  ) {
+    throw new Error(
+      `구독 종료 상태 저장 실패: ${subscriptionError.message}`,
+    );
+  }
+
+  if (
+    !updatedSubscription
+  ) {
+    return {
+      ok: true,
+      skipped: true,
+
+      reason:
+        "already_processed",
+
+      action:
+        "cancel_subscription",
+
+      companyId:
+        company.id,
+
+      companyName:
+        company.company_name,
+
+      subscriptionId:
+        subscription.id,
+    };
+  }
+
+  const {
+    error:
+      companyError,
+  } =
+    await admin
+      .from("companies")
+      .update({
+        subscription_plan:
+          "trial",
+
+        updated_at:
+          now.toISOString(),
+      })
+      .eq(
+        "id",
+        company.id,
+      );
+
+  if (companyError) {
+    throw new Error(
+      `구독은 종료되었지만 업체 TRIAL 전환에 실패했습니다: ${companyError.message}`,
+    );
+  }
+
+  await createBillingEvent({
+    admin,
+
+    companyId:
+      company.id,
+
+    subscriptionId:
+      updatedSubscription.id,
+
+    paymentId:
+      null,
+
+    eventType:
+      "subscription_canceled",
+
+    eventData: {
+      previous_plan_code:
+        subscription.plan_code,
+
+      next_plan_code:
+        "trial",
+
+      current_period_end:
+        subscription.current_period_end,
+
+      canceled_at:
+        updatedSubscription.canceled_at,
+
+      usage_policy:
+        "trial_lifetime_cumulative",
+    },
+  });
+
+  await createCancellationExpiredNotifications({
+    admin,
+    company,
+
+    subscription:
+      updatedSubscription,
+  });
+
+  return {
+    ok: true,
+    canceled: true,
+
+    action:
+      "cancel_subscription",
+
+    companyId:
+      company.id,
+
+    companyName:
+      company.company_name,
+
+    subscriptionId:
+      updatedSubscription.id,
+
+    previousPlanCode:
+      subscription.plan_code,
+
+    nextPlanCode:
+      "trial",
+
+    canceledAt:
+      updatedSubscription.canceled_at,
+
+    currentPeriodEnd:
+      updatedSubscription.current_period_end,
+  };
+}
+
+/* =========================================================
+   active 정기결제 대상
+========================================================= */
+
+async function getDueActiveSubscriptions(
+  admin,
+  now,
+) {
+  const { data, error } =
+    await admin
+      .from("subscriptions")
+      .select(`
+        id,
+        company_id,
+        plan_code,
+        status,
+        monthly_price_krw,
+        started_at,
+        current_period_start,
+        current_period_end,
+        next_billing_at,
+        cancel_at_period_end,
+        canceled_at,
+        payment_retry_count,
+        last_payment_retry_at,
+        next_payment_retry_at,
+        created_at,
+        updated_at
+      `)
+      .eq(
+        "status",
+        "active",
+      )
+      .eq(
+        "cancel_at_period_end",
+        false,
+      )
+      .not(
+        "next_billing_at",
+        "is",
+        null,
+      )
+      .lte(
+        "next_billing_at",
+        now.toISOString(),
+      )
+      .order(
+        "next_billing_at",
+        {
+          ascending: true,
+        },
+      )
+      .limit(
+        BATCH_LIMIT,
+      );
 
   if (error) {
     throw new Error(
@@ -1131,40 +2415,69 @@ async function getDueActiveSubscriptions(admin, now) {
 }
 
 /* =========================================================
-   past_due 재결제 대상 조회
+   past_due 재결제 대상
 ========================================================= */
 
-async function getDueRetrySubscriptions(admin, now) {
-  const { data, error } = await admin
-    .from("subscriptions")
-    .select(`
-      id,
-      company_id,
-      plan_code,
-      status,
-      monthly_price_krw,
-      started_at,
-      current_period_start,
-      current_period_end,
-      next_billing_at,
-      cancel_at_period_end,
-      canceled_at,
-      payment_retry_count,
-      last_payment_retry_at,
-      next_payment_retry_at,
-      created_at,
-      updated_at
-    `)
-    .eq("status", "past_due")
-    .eq("cancel_at_period_end", false)
-    .not("next_billing_at", "is", null)
-    .not("next_payment_retry_at", "is", null)
-    .lt("payment_retry_count", MAX_RETRY_COUNT)
-    .lte("next_payment_retry_at", now.toISOString())
-    .order("next_payment_retry_at", {
-      ascending: true,
-    })
-    .limit(BATCH_LIMIT);
+async function getDueRetrySubscriptions(
+  admin,
+  now,
+) {
+  const { data, error } =
+    await admin
+      .from("subscriptions")
+      .select(`
+        id,
+        company_id,
+        plan_code,
+        status,
+        monthly_price_krw,
+        started_at,
+        current_period_start,
+        current_period_end,
+        next_billing_at,
+        cancel_at_period_end,
+        canceled_at,
+        payment_retry_count,
+        last_payment_retry_at,
+        next_payment_retry_at,
+        created_at,
+        updated_at
+      `)
+      .eq(
+        "status",
+        "past_due",
+      )
+      .eq(
+        "cancel_at_period_end",
+        false,
+      )
+      .not(
+        "next_billing_at",
+        "is",
+        null,
+      )
+      .not(
+        "next_payment_retry_at",
+        "is",
+        null,
+      )
+      .lt(
+        "payment_retry_count",
+        MAX_RETRY_COUNT,
+      )
+      .lte(
+        "next_payment_retry_at",
+        now.toISOString(),
+      )
+      .order(
+        "next_payment_retry_at",
+        {
+          ascending: true,
+        },
+      )
+      .limit(
+        BATCH_LIMIT,
+      );
 
   if (error) {
     throw new Error(
@@ -1176,54 +2489,94 @@ async function getDueRetrySubscriptions(admin, now) {
 }
 
 /* =========================================================
-   대상 병합
+   결제 대상 병합
 ========================================================= */
 
-function mergeSubscriptions(activeSubscriptions, retrySubscriptions) {
-  const map = new Map();
+function mergeSubscriptions(
+  activeSubscriptions,
+  retrySubscriptions,
+) {
+  const map =
+    new Map();
 
-  for (const subscription of activeSubscriptions || []) {
-    map.set(subscription.id, subscription);
+  for (
+    const subscription of
+      activeSubscriptions || []
+  ) {
+    map.set(
+      subscription.id,
+      subscription,
+    );
   }
 
-  for (const subscription of retrySubscriptions || []) {
-    map.set(subscription.id, subscription);
+  for (
+    const subscription of
+      retrySubscriptions || []
+  ) {
+    map.set(
+      subscription.id,
+      subscription,
+    );
   }
 
-  /*
-   * 재결제 대상이 먼저 처리되도록 정렬.
-   * 그 다음 결제 예정시각 순서.
-   */
-  return Array.from(map.values())
-    .sort((a, b) => {
-      const aTime =
-        a.status === "past_due"
-          ? new Date(a.next_payment_retry_at || 0).getTime()
-          : new Date(a.next_billing_at || 0).getTime();
+  return Array.from(
+    map.values(),
+  )
+    .sort(
+      (a, b) => {
+        const aTime =
+          a.status ===
+          "past_due"
+            ? new Date(
+                a.next_payment_retry_at ||
+                  0,
+              ).getTime()
+            : new Date(
+                a.next_billing_at ||
+                  0,
+              ).getTime();
 
-      const bTime =
-        b.status === "past_due"
-          ? new Date(b.next_payment_retry_at || 0).getTime()
-          : new Date(b.next_billing_at || 0).getTime();
+        const bTime =
+          b.status ===
+          "past_due"
+            ? new Date(
+                b.next_payment_retry_at ||
+                  0,
+              ).getTime()
+            : new Date(
+                b.next_billing_at ||
+                  0,
+              ).getTime();
 
-      return aTime - bTime;
-    })
-    .slice(0, BATCH_LIMIT);
+        return (
+          aTime -
+          bTime
+        );
+      },
+    )
+    .slice(
+      0,
+      BATCH_LIMIT,
+    );
 }
 
 /* =========================================================
    공통 실행
 ========================================================= */
 
-async function runRenewal(request) {
-  /*
-   * 반드시 CRON_SECRET부터 확인.
-   */
-  if (!verifyCronSecret(request)) {
+async function runRenewal(
+  request,
+) {
+  if (
+    !verifyCronSecret(
+      request,
+    )
+  ) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Unauthorized",
+        error:
+          "Unauthorized",
       },
       {
         status: 401,
@@ -1231,79 +2584,135 @@ async function runRenewal(request) {
     );
   }
 
-  const admin = getAdminSupabase();
+  const admin =
+    getAdminSupabase();
 
-  const requestUrl = new URL(request.url);
+  const requestUrl =
+    new URL(
+      request.url,
+    );
 
-  const dryRunValue = String(
-    requestUrl.searchParams.get("dryRun") || "",
-  ).toLowerCase();
+  const dryRunValue =
+    String(
+      requestUrl
+        .searchParams
+        .get("dryRun") ||
+        "",
+    ).toLowerCase();
 
   const dryRun =
     dryRunValue === "1" ||
-    dryRunValue === "true";
+    dryRunValue ===
+      "true";
 
-  const now = new Date();
+  const now =
+    new Date();
 
   /*
-   * 최초 정기결제 대상 + 실패 재시도 대상
-   * 두 그룹을 별도로 조회합니다.
+   * 세 종류를 동시에 조회합니다.
    *
-   * Supabase OR 조건을 복잡하게 만들지 않고
-   * 상태별로 명확하게 조회합니다.
+   * 1. 취소 예약 기간 만료
+   * 2. 정상 정기결제
+   * 3. 실패 재결제
    */
+
   const [
+    cancellationSubscriptions,
     activeSubscriptions,
     retrySubscriptions,
-  ] = await Promise.all([
-    getDueActiveSubscriptions(admin, now),
-    getDueRetrySubscriptions(admin, now),
-  ]);
+  ] =
+    await Promise.all([
+      getDueCancellationSubscriptions(
+        admin,
+        now,
+      ),
 
-  const subscriptions = mergeSubscriptions(
-    activeSubscriptions,
-    retrySubscriptions,
-  );
+      getDueActiveSubscriptions(
+        admin,
+        now,
+      ),
 
-  if (subscriptions.length === 0) {
-    return NextResponse.json(
-      {
-        ok: true,
-        dryRun,
-        checkedAt: now.toISOString(),
+      getDueRetrySubscriptions(
+        admin,
+        now,
+      ),
+    ]);
 
-        eligible: 0,
-        activeEligible: 0,
-        retryEligible: 0,
+  /*
+   * 취소 예약은 정기결제보다 먼저 처리합니다.
+   */
 
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-        skipped: 0,
+  const cancellationResults =
+    [];
 
-        results: [],
-      },
-      {
-        status: 200,
-      },
-    );
+  for (
+    const subscription of
+      cancellationSubscriptions
+  ) {
+    try {
+      const result =
+        await expireCanceledSubscription({
+          admin,
+          subscription,
+          dryRun,
+        });
+
+      cancellationResults.push(
+        result,
+      );
+    } catch (error) {
+      console.error(
+        "[billing/renew] cancellation expiry error:",
+        subscription.id,
+        error,
+      );
+
+      cancellationResults.push({
+        ok: false,
+
+        action:
+          "cancel_subscription",
+
+        subscriptionId:
+          subscription.id,
+
+        companyId:
+          subscription.company_id,
+
+        error:
+          error?.message ||
+          "구독 취소 만료 처리 중 오류가 발생했습니다.",
+      });
+    }
   }
 
+  const subscriptions =
+    mergeSubscriptions(
+      activeSubscriptions,
+      retrySubscriptions,
+    );
+
   /*
-   * 결제 API이므로 순차 처리.
-   * Promise.all로 카드결제를 동시에 실행하지 않습니다.
+   * 카드 결제는 순차 실행합니다.
    */
+
   const results = [];
 
-  for (const subscription of subscriptions) {
+  for (
+    const subscription of
+      subscriptions
+  ) {
     try {
-      const result = await renewOneSubscription({
-        admin,
-        subscription,
-        dryRun,
-      });
+      const result =
+        await renewOneSubscription({
+          admin,
+          subscription,
+          dryRun,
+        });
 
-      results.push(result);
+      results.push(
+        result,
+      );
     } catch (error) {
       console.error(
         "[billing/renew] subscription error:",
@@ -1313,10 +2722,17 @@ async function runRenewal(request) {
 
       results.push({
         ok: false,
-        subscriptionId: subscription.id,
-        companyId: subscription.company_id,
+
+        subscriptionId:
+          subscription.id,
+
+        companyId:
+          subscription.company_id,
+
         isRetry:
-          subscription.status === "past_due",
+          subscription.status ===
+          "past_due",
+
         error:
           error?.message ||
           "정기결제 처리 중 오류가 발생했습니다.",
@@ -1324,42 +2740,96 @@ async function runRenewal(request) {
     }
   }
 
-  const succeeded = results.filter(
-    (item) => item?.renewed === true,
-  ).length;
+  const succeeded =
+    results.filter(
+      (item) =>
+        item?.renewed ===
+        true,
+    ).length;
 
-  const failed = results.filter(
-    (item) =>
-      item?.ok === false &&
-      item?.skipped !== true,
-  ).length;
+  const failed =
+    results.filter(
+      (item) =>
+        item?.ok ===
+          false &&
+        item?.skipped !==
+          true,
+    ).length;
 
-  const skipped = results.filter(
-    (item) => item?.skipped === true,
-  ).length;
+  const skipped =
+    results.filter(
+      (item) =>
+        item?.skipped ===
+        true,
+    ).length;
 
-  const retryProcessed = results.filter(
-    (item) =>
-      Number(item?.retryNumber || 0) > 0,
-  ).length;
+  const retryProcessed =
+    results.filter(
+      (item) =>
+        Number(
+          item?.retryNumber ||
+            0,
+        ) > 0,
+    ).length;
 
-  const finalFailures = results.filter(
-    (item) => item?.finalFailure === true,
-  ).length;
+  const finalFailures =
+    results.filter(
+      (item) =>
+        item?.finalFailure ===
+        true,
+    ).length;
+
+  const cancellationSucceeded =
+    cancellationResults.filter(
+      (item) =>
+        item?.canceled ===
+        true,
+    ).length;
+
+  const cancellationFailed =
+    cancellationResults.filter(
+      (item) =>
+        item?.ok ===
+          false &&
+        item?.skipped !==
+          true,
+    ).length;
+
+  const cancellationSkipped =
+    cancellationResults.filter(
+      (item) =>
+        item?.skipped ===
+        true,
+    ).length;
+
+  const totalFailed =
+    failed +
+    cancellationFailed;
 
   return NextResponse.json(
     {
-      /*
-       * 실제 결제 실패가 하나라도 있으면
-       * Multi-Status 207을 반환합니다.
-       */
-      ok: failed === 0,
+      ok:
+        totalFailed === 0,
 
       dryRun,
 
-      checkedAt: now.toISOString(),
+      checkedAt:
+        now.toISOString(),
 
-      eligible: subscriptions.length,
+      cancellationEligible:
+        cancellationSubscriptions.length,
+
+      cancellationProcessed:
+        cancellationResults.length,
+
+      cancellationSucceeded,
+
+      cancellationFailed,
+
+      cancellationSkipped,
+
+      eligible:
+        subscriptions.length,
 
       activeEligible:
         activeSubscriptions.length,
@@ -1367,7 +2837,8 @@ async function runRenewal(request) {
       retryEligible:
         retrySubscriptions.length,
 
-      processed: results.length,
+      processed:
+        results.length,
 
       retryProcessed,
 
@@ -1379,11 +2850,13 @@ async function runRenewal(request) {
 
       skipped,
 
+      cancellationResults,
+
       results,
     },
     {
       status:
-        failed === 0
+        totalFailed === 0
           ? 200
           : 207,
     },
@@ -1392,12 +2865,15 @@ async function runRenewal(request) {
 
 /* =========================================================
    GET
-   Cron / dry-run
 ========================================================= */
 
-export async function GET(request) {
+export async function GET(
+  request,
+) {
   try {
-    return await runRenewal(request);
+    return await runRenewal(
+      request,
+    );
   } catch (error) {
     console.error(
       "[billing/renew] GET error:",
@@ -1407,6 +2883,7 @@ export async function GET(request) {
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error?.message ||
           "정기결제 처리 중 오류가 발생했습니다.",
@@ -1420,12 +2897,15 @@ export async function GET(request) {
 
 /* =========================================================
    POST
-   서버 수동 실행
 ========================================================= */
 
-export async function POST(request) {
+export async function POST(
+  request,
+) {
   try {
-    return await runRenewal(request);
+    return await runRenewal(
+      request,
+    );
   } catch (error) {
     console.error(
       "[billing/renew] POST error:",
@@ -1435,6 +2915,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error?.message ||
           "정기결제 처리 중 오류가 발생했습니다.",
@@ -1444,4 +2925,4 @@ export async function POST(request) {
       },
     );
   }
-    }
+}
