@@ -10,85 +10,74 @@ import { supabase } from "../../../lib/supabase";
 
 export default function SuperAdminBillingPage() {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] =
-    useState(false);
+  const [authorized, setAuthorized] = useState(false);
 
-  const [adminName, setAdminName] =
-    useState("");
-  const [userEmail, setUserEmail] =
-    useState("");
+  const [adminName, setAdminName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
 
-  const [overview, setOverview] =
-    useState(null);
-
-  const [message, setMessage] =
-    useState("");
+  const [overview, setOverview] = useState(null);
+  const [message, setMessage] = useState("");
 
   const [paymentFilter, setPaymentFilter] =
     useState("all");
 
-  const [search, setSearch] =
-    useState("");
+  const [search, setSearch] = useState("");
 
   /* =========================================================
      슈퍼관리자 확인
   ========================================================= */
 
-  const checkSuperAdmin =
-    useCallback(async () => {
-      const {
-        data: authData,
-        error: authError,
-      } = await supabase.auth.getUser();
+  const checkSuperAdmin = useCallback(async () => {
+    const {
+      data: authData,
+      error: authError,
+    } = await supabase.auth.getUser();
 
-      if (authError) {
-        throw new Error(
-          `로그인 확인 실패: ${authError.message}`,
-        );
-      }
-
-      const user = authData?.user;
-
-      if (!user?.id) {
-        throw new Error(
-          "로그인이 필요합니다.",
-        );
-      }
-
-      setUserEmail(user.email || "");
-
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "get_super_admin_status",
+    if (authError) {
+      throw new Error(
+        `로그인 확인 실패: ${authError.message}`,
       );
+    }
 
-      if (error) {
-        throw new Error(
-          `슈퍼관리자 확인 실패: ${error.message}`,
-        );
-      }
+    const user = authData?.user;
 
-      const status =
-        Array.isArray(data)
-          ? data[0]
-          : data;
+    if (!user?.id) {
+      throw new Error("로그인이 필요합니다.");
+    }
 
-      if (!status?.is_super_admin) {
-        throw new Error(
-          "슈퍼관리자 권한이 없습니다.",
-        );
-      }
+    setUserEmail(user.email || "");
 
-      setAuthorized(true);
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      "get_super_admin_status",
+    );
 
-      setAdminName(
-        status?.name || "슈퍼관리자",
+    if (error) {
+      throw new Error(
+        `슈퍼관리자 확인 실패: ${error.message}`,
       );
+    }
 
-      return true;
-    }, []);
+    const status =
+      Array.isArray(data)
+        ? data[0]
+        : data;
+
+    if (!status?.is_super_admin) {
+      throw new Error(
+        "슈퍼관리자 권한이 없습니다.",
+      );
+    }
+
+    setAuthorized(true);
+    setAdminName(
+      status?.name || "슈퍼관리자",
+    );
+
+    return true;
+  }, []);
 
   /* =========================================================
      결제 현황 조회
@@ -260,9 +249,7 @@ export default function SuperAdminBillingPage() {
             .join(" ")
             .toLowerCase();
 
-          return text.includes(
-            keyword,
-          );
+          return text.includes(keyword);
         },
       );
     }, [
@@ -316,8 +303,7 @@ export default function SuperAdminBillingPage() {
           </h2>
 
           <div style={styles.deniedText}>
-            슈퍼관리자 전용
-            페이지입니다.
+            슈퍼관리자 전용 페이지입니다.
           </div>
 
           {message && (
@@ -348,7 +334,6 @@ export default function SuperAdminBillingPage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-
         {/* 헤더 */}
 
         <div style={styles.header}>
@@ -510,9 +495,8 @@ export default function SuperAdminBillingPage() {
                   styles.sectionDescription
                 }
               >
-                다음 자동결제일과
-                업체별 구독 상태를
-                확인합니다.
+                다음 자동결제일과 업체별
+                구독 상태를 확인합니다.
               </div>
             </div>
 
@@ -521,8 +505,7 @@ export default function SuperAdminBillingPage() {
             </div>
           </div>
 
-          {subscriptions.length ===
-          0 ? (
+          {subscriptions.length === 0 ? (
             <div style={styles.empty}>
               등록된 구독이 없습니다.
             </div>
@@ -574,8 +557,6 @@ export default function SuperAdminBillingPage() {
             </div>
           </div>
 
-          {/* 검색 */}
-
           <input
             type="search"
             value={search}
@@ -587,8 +568,6 @@ export default function SuperAdminBillingPage() {
             placeholder="업체명, 주문번호, 요금제 검색"
             style={styles.searchInput}
           />
-
-          {/* 필터 */}
 
           <div style={styles.filterRow}>
             <FilterButton
@@ -709,6 +688,7 @@ function StatCard({
     <div
       style={{
         ...styles.statCard,
+
         ...(danger
           ? styles.statCardDanger
           : {}),
@@ -757,6 +737,18 @@ function SubscriptionCard({
   const inactiveCompany =
     subscription?.company_active ===
     false;
+
+  const retryCount = Math.max(
+    0,
+    Number(
+      subscription?.payment_retry_count,
+    ) || 0,
+  );
+
+  const finalRetryFailed =
+    pastDue &&
+    retryCount >= 3 &&
+    !subscription?.next_payment_retry_at;
 
   return (
     <div
@@ -878,13 +870,86 @@ function SubscriptionCard({
         }
       />
 
-      {pastDue && (
+      {/* 자동 재결제 정보 */}
+
+      <div style={styles.retrySection}>
+        <div style={styles.retrySectionTitle}>
+          🔁 자동 재결제
+        </div>
+
+        <InfoRow
+          label="재결제 횟수"
+          value={`${retryCount} / 3`}
+          strong={pastDue}
+          danger={
+            pastDue &&
+            retryCount > 0
+          }
+        />
+
+        <InfoRow
+          label="최근 재결제"
+          value={
+            subscription.last_payment_retry_at
+              ? formatDateTime(
+                  subscription.last_payment_retry_at,
+                )
+              : "-"
+          }
+          danger={
+            pastDue &&
+            retryCount > 0
+          }
+        />
+
+        <InfoRow
+          label="다음 재결제"
+          value={
+            subscription.next_payment_retry_at
+              ? formatDateTime(
+                  subscription.next_payment_retry_at,
+                )
+              : "-"
+          }
+          strong={pastDue}
+          danger={
+            pastDue &&
+            Boolean(
+              subscription.next_payment_retry_at,
+            )
+          }
+        />
+      </div>
+
+      {/* 최종 실패 / 재시도 중 */}
+
+      {finalRetryFailed ? (
+        <div style={styles.finalFailureBox}>
+          <div
+            style={
+              styles.finalFailureTitle
+            }
+          >
+            🔴 자동 재결제 최종 실패
+          </div>
+
+          <div
+            style={
+              styles.finalFailureText
+            }
+          >
+            3회 재시도가 모두
+            실패했습니다. 결제수단 확인
+            또는 고객 안내가 필요합니다.
+          </div>
+        </div>
+      ) : pastDue ? (
         <div style={styles.warningBox}>
           ⚠️ 자동결제에 실패한
           구독입니다. 결제수단과 최근
           실패내역을 확인하세요.
         </div>
-      )}
+      ) : null}
 
       {canceled && (
         <div style={styles.grayNotice}>
@@ -1227,102 +1292,73 @@ function getStatusInfo(status) {
   switch (status) {
     case "active":
       return {
-        label:
-          "정상",
-        background:
-          "#dcfce7",
-        color:
-          "#166534",
+        label: "정상",
+        background: "#dcfce7",
+        color: "#166534",
       };
 
     case "paid":
       return {
-        label:
-          "결제완료",
-        background:
-          "#dcfce7",
-        color:
-          "#166534",
+        label: "결제완료",
+        background: "#dcfce7",
+        color: "#166534",
       };
 
     case "past_due":
       return {
-        label:
-          "결제지연",
-        background:
-          "#fee2e2",
-        color:
-          "#991b1b",
+        label: "결제지연",
+        background: "#fee2e2",
+        color: "#991b1b",
       };
 
     case "failed":
       return {
-        label:
-          "결제실패",
-        background:
-          "#fee2e2",
-        color:
-          "#991b1b",
+        label: "결제실패",
+        background: "#fee2e2",
+        color: "#991b1b",
       };
 
     case "pending":
       return {
-        label:
-          "처리중",
-        background:
-          "#fef3c7",
-        color:
-          "#92400e",
+        label: "처리중",
+        background: "#fef3c7",
+        color: "#92400e",
       };
 
     case "trial":
       return {
-        label:
-          "체험",
-        background:
-          "#dbeafe",
-        color:
-          "#1d4ed8",
+        label: "체험",
+        background: "#dbeafe",
+        color: "#1d4ed8",
       };
 
     case "paused":
       return {
-        label:
-          "일시정지",
-        background:
-          "#f3f4f6",
-        color:
-          "#4b5563",
+        label: "일시정지",
+        background: "#f3f4f6",
+        color: "#4b5563",
       };
 
     case "canceled":
       return {
-        label:
-          "취소",
-        background:
-          "#f3f4f6",
-        color:
-          "#4b5563",
+        label: "취소",
+        background: "#f3f4f6",
+        color: "#4b5563",
       };
 
     case "refunded":
       return {
-        label:
-          "환불",
-        background:
-          "#ede9fe",
-        color:
-          "#6d28d9",
+        label: "환불",
+        background: "#ede9fe",
+        color: "#6d28d9",
       };
 
     default:
       return {
         label:
           status || "알 수 없음",
-        background:
-          "#f3f4f6",
-        color:
-          "#4b5563",
+        background: "#f3f4f6",
+        color: "#4b5563",
       };
   }
 }
@@ -1333,800 +1369,569 @@ function getStatusInfo(status) {
 
 const styles = {
   page: {
-    minHeight:
-      "100vh",
-    background:
-      "#f3f4f6",
-    color:
-      "#111827",
-    padding:
-      "18px 14px 50px",
+    minHeight: "100vh",
+    background: "#f3f4f6",
+    color: "#111827",
+    padding: "18px 14px 50px",
   },
 
   container: {
-    width:
-      "100%",
-    maxWidth:
-      "900px",
-    margin:
-      "0 auto",
+    width: "100%",
+    maxWidth: "900px",
+    margin: "0 auto",
   },
 
   header: {
-    display:
-      "flex",
+    display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "flex-start",
-    gap:
-      "12px",
-    marginBottom:
-      "16px",
+    alignItems: "flex-start",
+    gap: "12px",
+    marginBottom: "16px",
   },
 
   badge: {
-    display:
-      "inline-block",
-    padding:
-      "5px 8px",
-    borderRadius:
-      "999px",
-    background:
-      "#111827",
-    color:
-      "#ffffff",
-    fontSize:
-      "10px",
-    fontWeight:
-      900,
-    letterSpacing:
-      "1px",
-    marginBottom:
-      "7px",
+    display: "inline-block",
+    padding: "5px 8px",
+    borderRadius: "999px",
+    background: "#111827",
+    color: "#ffffff",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "1px",
+    marginBottom: "7px",
   },
 
   title: {
-    margin:
-      0,
-    fontSize:
-      "26px",
-    fontWeight:
-      900,
-    letterSpacing:
-      "-0.6px",
+    margin: 0,
+    fontSize: "26px",
+    fontWeight: 900,
+    letterSpacing: "-0.6px",
   },
 
   subtitle: {
-    marginTop:
-      "5px",
-    color:
-      "#6b7280",
-    fontSize:
-      "13px",
-    lineHeight:
-      1.5,
+    marginTop: "5px",
+    color: "#6b7280",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 
   backButton: {
     border:
       "1px solid #d1d5db",
-    borderRadius:
-      "10px",
-    background:
-      "#ffffff",
-    padding:
-      "10px 12px",
-    fontWeight:
-      800,
-    fontSize:
-      "12px",
-    cursor:
-      "pointer",
-    whiteSpace:
-      "nowrap",
+    borderRadius: "10px",
+    background: "#ffffff",
+    padding: "10px 12px",
+    fontWeight: 800,
+    fontSize: "12px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 
   loginBox: {
-    display:
-      "flex",
+    display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "center",
-    gap:
-      "12px",
-    background:
-      "#ffffff",
-    borderRadius:
-      "14px",
-    padding:
-      "14px",
+    alignItems: "center",
+    gap: "12px",
+    background: "#ffffff",
+    borderRadius: "14px",
+    padding: "14px",
     border:
       "1px solid #e5e7eb",
-    marginBottom:
-      "14px",
+    marginBottom: "14px",
   },
 
   smallLabel: {
-    fontSize:
-      "11px",
-    color:
-      "#6b7280",
-    marginBottom:
-      "3px",
+    fontSize: "11px",
+    color: "#6b7280",
+    marginBottom: "3px",
   },
 
   adminName: {
-    fontSize:
-      "15px",
-    fontWeight:
-      900,
+    fontSize: "15px",
+    fontWeight: 900,
   },
 
   email: {
-    fontSize:
-      "12px",
-    color:
-      "#6b7280",
-    textAlign:
-      "right",
-    wordBreak:
-      "break-all",
+    fontSize: "12px",
+    color: "#6b7280",
+    textAlign: "right",
+    wordBreak: "break-all",
   },
 
   actionRow: {
-    display:
-      "flex",
-    justifyContent:
-      "flex-end",
-    marginBottom:
-      "14px",
+    display: "flex",
+    justifyContent: "flex-end",
+    marginBottom: "14px",
   },
 
   refreshButton: {
     border:
       "1px solid #d1d5db",
-    background:
-      "#ffffff",
-    borderRadius:
-      "10px",
-    padding:
-      "9px 12px",
-    fontSize:
-      "12px",
-    fontWeight:
-      900,
-    cursor:
-      "pointer",
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "9px 12px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   message: {
-    padding:
-      "10px",
-    borderRadius:
-      "9px",
-    marginBottom:
-      "12px",
-    fontSize:
-      "13px",
-    lineHeight:
-      1.5,
+    padding: "10px",
+    borderRadius: "9px",
+    marginBottom: "12px",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 
   messageSuccess: {
-    background:
-      "#f0fdf4",
-    color:
-      "#166534",
+    background: "#f0fdf4",
+    color: "#166534",
     border:
       "1px solid #bbf7d0",
   },
 
   messageError: {
-    background:
-      "#fef2f2",
-    color:
-      "#991b1b",
+    background: "#fef2f2",
+    color: "#991b1b",
     border:
       "1px solid #fecaca",
   },
 
   statsGrid: {
-    display:
-      "grid",
+    display: "grid",
     gridTemplateColumns:
       "repeat(2, minmax(0, 1fr))",
-    gap:
-      "8px",
-    marginBottom:
-      "14px",
+    gap: "8px",
+    marginBottom: "14px",
   },
 
   statCard: {
-    background:
-      "#ffffff",
+    background: "#ffffff",
     border:
       "1px solid #e5e7eb",
-    borderRadius:
-      "14px",
-    padding:
-      "14px 10px",
-    textAlign:
-      "center",
+    borderRadius: "14px",
+    padding: "14px 10px",
+    textAlign: "center",
   },
 
   statCardDanger: {
-    background:
-      "#fff7f7",
+    background: "#fff7f7",
     border:
       "1px solid #fecaca",
   },
 
   statIcon: {
-    fontSize:
-      "20px",
-    marginBottom:
-      "4px",
+    fontSize: "20px",
+    marginBottom: "4px",
   },
 
   statLabel: {
-    fontSize:
-      "11px",
-    color:
-      "#6b7280",
-    fontWeight:
-      700,
+    fontSize: "11px",
+    color: "#6b7280",
+    fontWeight: 700,
   },
 
   statValue: {
-    marginTop:
-      "5px",
-    fontSize:
-      "21px",
-    fontWeight:
-      900,
+    marginTop: "5px",
+    fontSize: "21px",
+    fontWeight: 900,
   },
 
   statValueDanger: {
-    color:
-      "#dc2626",
+    color: "#dc2626",
   },
 
   section: {
-    background:
-      "#ffffff",
-    borderRadius:
-      "16px",
-    padding:
-      "15px",
+    background: "#ffffff",
+    borderRadius: "16px",
+    padding: "15px",
     border:
       "1px solid #e5e7eb",
-    marginBottom:
-      "14px",
+    marginBottom: "14px",
   },
 
   sectionHeader: {
-    display:
-      "flex",
+    display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "flex-start",
-    gap:
-      "10px",
-    marginBottom:
-      "13px",
+    alignItems: "flex-start",
+    gap: "10px",
+    marginBottom: "13px",
   },
 
   sectionTitle: {
-    margin:
-      0,
-    fontSize:
-      "19px",
-    fontWeight:
-      900,
+    margin: 0,
+    fontSize: "19px",
+    fontWeight: 900,
   },
 
   sectionDescription: {
-    marginTop:
-      "4px",
-    color:
-      "#6b7280",
-    fontSize:
-      "12px",
-    lineHeight:
-      1.5,
+    marginTop: "4px",
+    color: "#6b7280",
+    fontSize: "12px",
+    lineHeight: 1.5,
   },
 
   countBadge: {
-    flexShrink:
-      0,
-    background:
-      "#f3f4f6",
-    color:
-      "#4b5563",
-    padding:
-      "5px 8px",
-    borderRadius:
-      "999px",
-    fontSize:
-      "11px",
-    fontWeight:
-      900,
+    flexShrink: 0,
+    background: "#f3f4f6",
+    color: "#4b5563",
+    padding: "5px 8px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: 900,
   },
 
   subscriptionList: {
-    display:
-      "grid",
-    gap:
-      "10px",
+    display: "grid",
+    gap: "10px",
   },
 
   subscriptionCard: {
     border:
       "1px solid #e5e7eb",
-    borderRadius:
-      "13px",
-    padding:
-      "13px",
-    background:
-      "#fafafa",
+    borderRadius: "13px",
+    padding: "13px",
+    background: "#fafafa",
   },
 
   subscriptionCardDanger: {
-    background:
-      "#fff7f7",
+    background: "#fff7f7",
     border:
       "1px solid #fecaca",
   },
 
   cardTop: {
-    display:
-      "flex",
+    display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "flex-start",
-    gap:
-      "12px",
+    alignItems: "flex-start",
+    gap: "12px",
   },
 
   companyNameRow: {
-    display:
-      "flex",
-    alignItems:
-      "center",
-    gap:
-      "7px",
-    flexWrap:
-      "wrap",
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    flexWrap: "wrap",
   },
 
   companyName: {
-    fontSize:
-      "16px",
-    fontWeight:
-      900,
-    wordBreak:
-      "break-word",
+    fontSize: "16px",
+    fontWeight: 900,
+    wordBreak: "break-word",
   },
 
   planName: {
-    marginTop:
-      "4px",
-    fontSize:
-      "11px",
-    color:
-      "#6b7280",
-    fontWeight:
-      800,
+    marginTop: "4px",
+    fontSize: "11px",
+    color: "#6b7280",
+    fontWeight: 800,
   },
 
   statusBadge: {
-    display:
-      "inline-flex",
-    alignItems:
-      "center",
-    justifyContent:
-      "center",
-    padding:
-      "4px 7px",
-    borderRadius:
-      "999px",
-    fontSize:
-      "10px",
-    fontWeight:
-      900,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4px 7px",
+    borderRadius: "999px",
+    fontSize: "10px",
+    fontWeight: 900,
   },
 
   companyInactiveBadge: {
-    display:
-      "inline-flex",
-    padding:
-      "4px 7px",
-    borderRadius:
-      "999px",
-    fontSize:
-      "10px",
-    fontWeight:
-      900,
-    background:
-      "#f3f4f6",
-    color:
-      "#4b5563",
+    display: "inline-flex",
+    padding: "4px 7px",
+    borderRadius: "999px",
+    fontSize: "10px",
+    fontWeight: 900,
+    background: "#f3f4f6",
+    color: "#4b5563",
   },
 
   subscriptionPrice: {
-    flexShrink:
-      0,
-    fontSize:
-      "16px",
-    fontWeight:
-      900,
-    textAlign:
-      "right",
+    flexShrink: 0,
+    fontSize: "16px",
+    fontWeight: 900,
+    textAlign: "right",
   },
 
   subscriptionPriceUnit: {
-    marginLeft:
-      "2px",
-    color:
-      "#9ca3af",
-    fontSize:
-      "10px",
-    fontWeight:
-      700,
+    marginLeft: "2px",
+    color: "#9ca3af",
+    fontSize: "10px",
+    fontWeight: 700,
   },
 
   divider: {
-    height:
-      "1px",
-    background:
-      "#e5e7eb",
-    margin:
-      "12px 0",
+    height: "1px",
+    background: "#e5e7eb",
+    margin: "12px 0",
   },
 
   infoRow: {
-    display:
-      "flex",
+    display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "flex-start",
-    gap:
-      "12px",
-    padding:
-      "4px 0",
-    fontSize:
-      "12px",
+    alignItems: "flex-start",
+    gap: "12px",
+    padding: "4px 0",
+    fontSize: "12px",
   },
 
   infoLabel: {
-    flexShrink:
-      0,
-    color:
-      "#6b7280",
+    flexShrink: 0,
+    color: "#6b7280",
   },
 
   infoValue: {
-    fontWeight:
-      700,
-    textAlign:
-      "right",
-    wordBreak:
-      "break-word",
+    fontWeight: 700,
+    textAlign: "right",
+    wordBreak: "break-word",
   },
 
   infoValueStrong: {
-    fontWeight:
-      900,
+    fontWeight: 900,
   },
 
   infoValueDanger: {
-    color:
-      "#dc2626",
+    color: "#dc2626",
+  },
+
+  /* 자동 재결제 */
+
+  retrySection: {
+    marginTop: "10px",
+    padding: "10px",
+    borderRadius: "9px",
+    background: "#ffffff",
+    border:
+      "1px solid #e5e7eb",
+  },
+
+  retrySectionTitle: {
+    marginBottom: "5px",
+    fontSize: "12px",
+    fontWeight: 900,
+  },
+
+  finalFailureBox: {
+    marginTop: "10px",
+    padding: "11px",
+    borderRadius: "9px",
+    background: "#fef2f2",
+    color: "#991b1b",
+    border:
+      "1px solid #fca5a5",
+  },
+
+  finalFailureTitle: {
+    fontSize: "12px",
+    fontWeight: 900,
+  },
+
+  finalFailureText: {
+    marginTop: "4px",
+    fontSize: "11px",
+    lineHeight: 1.5,
+    fontWeight: 700,
   },
 
   warningBox: {
-    marginTop:
-      "10px",
-    padding:
-      "10px",
-    borderRadius:
-      "9px",
-    background:
-      "#fef2f2",
-    color:
-      "#991b1b",
+    marginTop: "10px",
+    padding: "10px",
+    borderRadius: "9px",
+    background: "#fef2f2",
+    color: "#991b1b",
     border:
       "1px solid #fecaca",
-    fontSize:
-      "11px",
-    lineHeight:
-      1.5,
-    fontWeight:
-      700,
+    fontSize: "11px",
+    lineHeight: 1.5,
+    fontWeight: 700,
   },
 
   grayNotice: {
-    marginTop:
-      "10px",
-    padding:
-      "9px",
-    borderRadius:
-      "9px",
-    background:
-      "#f3f4f6",
-    color:
-      "#4b5563",
-    fontSize:
-      "11px",
+    marginTop: "10px",
+    padding: "9px",
+    borderRadius: "9px",
+    background: "#f3f4f6",
+    color: "#4b5563",
+    fontSize: "11px",
   },
 
   searchInput: {
-    width:
-      "100%",
-    boxSizing:
-      "border-box",
-    minHeight:
-      "44px",
+    width: "100%",
+    boxSizing: "border-box",
+    minHeight: "44px",
     border:
       "1px solid #d1d5db",
-    borderRadius:
-      "10px",
-    padding:
-      "0 12px",
-    fontSize:
-      "14px",
-    outline:
-      "none",
-    marginBottom:
-      "10px",
+    borderRadius: "10px",
+    padding: "0 12px",
+    fontSize: "14px",
+    outline: "none",
+    marginBottom: "10px",
   },
 
   filterRow: {
-    display:
-      "flex",
-    gap:
-      "6px",
-    overflowX:
-      "auto",
-    paddingBottom:
-      "8px",
-    marginBottom:
-      "4px",
+    display: "flex",
+    gap: "6px",
+    overflowX: "auto",
+    paddingBottom: "8px",
+    marginBottom: "4px",
   },
 
   filterButton: {
-    flexShrink:
-      0,
-    minHeight:
-      "34px",
-    padding:
-      "0 11px",
+    flexShrink: 0,
+    minHeight: "34px",
+    padding: "0 11px",
     border:
       "1px solid #d1d5db",
-    borderRadius:
-      "999px",
-    background:
-      "#ffffff",
-    color:
-      "#4b5563",
-    fontSize:
-      "11px",
-    fontWeight:
-      900,
-    cursor:
-      "pointer",
+    borderRadius: "999px",
+    background: "#ffffff",
+    color: "#4b5563",
+    fontSize: "11px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   filterButtonActive: {
-    background:
-      "#111827",
-    borderColor:
-      "#111827",
-    color:
-      "#ffffff",
+    background: "#111827",
+    borderColor: "#111827",
+    color: "#ffffff",
   },
 
   paymentList: {
-    display:
-      "grid",
-    gap:
-      "10px",
+    display: "grid",
+    gap: "10px",
   },
 
   paymentCard: {
     border:
       "1px solid #e5e7eb",
-    borderRadius:
-      "13px",
-    padding:
-      "13px",
-    background:
-      "#fafafa",
+    borderRadius: "13px",
+    padding: "13px",
+    background: "#fafafa",
   },
 
   paymentCardDanger: {
-    background:
-      "#fff7f7",
+    background: "#fff7f7",
     border:
       "1px solid #fecaca",
   },
 
   paymentCardPending: {
-    background:
-      "#fffbeb",
+    background: "#fffbeb",
     border:
       "1px solid #fde68a",
   },
 
   paymentType: {
-    marginTop:
-      "4px",
-    fontSize:
-      "11px",
-    color:
-      "#6b7280",
-    fontWeight:
-      700,
+    marginTop: "4px",
+    fontSize: "11px",
+    color: "#6b7280",
+    fontWeight: 700,
   },
 
   paymentAmount: {
-    flexShrink:
-      0,
-    fontSize:
-      "17px",
-    fontWeight:
-      900,
+    flexShrink: 0,
+    fontSize: "17px",
+    fontWeight: 900,
   },
 
   failureBox: {
-    marginTop:
-      "10px",
-    padding:
-      "10px",
-    borderRadius:
-      "9px",
-    background:
-      "#fef2f2",
+    marginTop: "10px",
+    padding: "10px",
+    borderRadius: "9px",
+    background: "#fef2f2",
     border:
       "1px solid #fecaca",
   },
 
   failureTitle: {
-    color:
-      "#991b1b",
-    fontSize:
-      "12px",
-    fontWeight:
-      900,
-    marginBottom:
-      "4px",
+    color: "#991b1b",
+    fontSize: "12px",
+    fontWeight: 900,
+    marginBottom: "4px",
   },
 
   failureText: {
-    color:
-      "#991b1b",
-    fontSize:
-      "11px",
-    lineHeight:
-      1.5,
-    wordBreak:
-      "break-word",
+    color: "#991b1b",
+    fontSize: "11px",
+    lineHeight: 1.5,
+    wordBreak: "break-word",
   },
 
   empty: {
-    padding:
-      "35px 10px",
-    textAlign:
-      "center",
-    color:
-      "#9ca3af",
-    fontSize:
-      "13px",
+    padding: "35px 10px",
+    textAlign: "center",
+    color: "#9ca3af",
+    fontSize: "13px",
   },
 
   centerBox: {
-    width:
-      "100%",
-    maxWidth:
-      "420px",
-    margin:
-      "100px auto 0",
-    background:
-      "#ffffff",
+    width: "100%",
+    maxWidth: "420px",
+    margin: "100px auto 0",
+    background: "#ffffff",
     border:
       "1px solid #e5e7eb",
-    borderRadius:
-      "18px",
-    padding:
-      "28px 20px",
-    textAlign:
-      "center",
+    borderRadius: "18px",
+    padding: "28px 20px",
+    textAlign: "center",
   },
 
   loadingIcon: {
-    fontSize:
-      "40px",
-    marginBottom:
-      "10px",
+    fontSize: "40px",
+    marginBottom: "10px",
   },
 
   loadingTitle: {
-    fontSize:
-      "18px",
-    fontWeight:
-      900,
+    fontSize: "18px",
+    fontWeight: 900,
   },
 
   loadingText: {
-    marginTop:
-      "7px",
-    color:
-      "#6b7280",
-    fontSize:
-      "13px",
-    lineHeight:
-      1.6,
+    marginTop: "7px",
+    color: "#6b7280",
+    fontSize: "13px",
+    lineHeight: 1.6,
   },
 
   deniedIcon: {
-    fontSize:
-      "42px",
+    fontSize: "42px",
   },
 
   deniedTitle: {
-    margin:
-      "12px 0 5px",
-    fontSize:
-      "20px",
+    margin: "12px 0 5px",
+    fontSize: "20px",
   },
 
   deniedText: {
-    color:
-      "#6b7280",
-    fontSize:
-      "13px",
+    color: "#6b7280",
+    fontSize: "13px",
   },
 
   errorBox: {
-    marginTop:
-      "15px",
-    padding:
-      "10px",
-    borderRadius:
-      "9px",
-    background:
-      "#fef2f2",
-    color:
-      "#991b1b",
-    fontSize:
-      "12px",
-    lineHeight:
-      1.5,
+    marginTop: "15px",
+    padding: "10px",
+    borderRadius: "9px",
+    background: "#fef2f2",
+    color: "#991b1b",
+    fontSize: "12px",
+    lineHeight: 1.5,
   },
 
   homeButton: {
-    marginTop:
-      "16px",
-    width:
-      "100%",
-    minHeight:
-      "44px",
-    border:
-      0,
-    borderRadius:
-      "10px",
-    background:
-      "#111827",
-    color:
-      "#ffffff",
-    fontWeight:
-      900,
-    cursor:
-      "pointer",
+    marginTop: "16px",
+    width: "100%",
+    minHeight: "44px",
+    border: 0,
+    borderRadius: "10px",
+    background: "#111827",
+    color: "#ffffff",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 };
