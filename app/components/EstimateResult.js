@@ -311,17 +311,6 @@ export default function EstimateResult({
                             "#4b5563",
                         }}
                       >
-                        실제 시공금액{" "}
-
-                        <strong>
-                          {formatWon(
-                            item.actual_cost
-                          )}
-                          원
-                        </strong>
-
-                        {" · "}
-
                         유사도{" "}
 
                         {(
@@ -344,4 +333,4 @@ export default function EstimateResult({
       )}
     </section>
   );
-                  }
+                          }
