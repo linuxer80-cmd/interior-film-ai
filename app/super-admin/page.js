@@ -463,6 +463,11 @@ export default function SuperAdminPage() {
       "/super-admin/notifications";
   }
 
+  function openBilling() {
+    window.location.href =
+      "/super-admin/billing";
+  }
+
   /* =========================================================
      회사 상세관리 이동
   ========================================================= */
@@ -799,6 +804,20 @@ export default function SuperAdminPage() {
               알림
             </span>
           </button>
+
+          <button
+            type="button"
+            style={styles.menuButton}
+            onClick={openBilling}
+          >
+            <span style={styles.menuIcon}>
+              💰
+            </span>
+
+            <span>
+              결제 관리
+            </span>
+          </button>
         </div>
 
         {/* 통계 */}
@@ -815,8 +834,7 @@ export default function SuperAdminPage() {
           />
 
           <StatCard
-            label="정지"
-            value={inactiveCount}
+            label="정지"            value={inactiveCount}
           />
         </div>
 
@@ -851,7 +869,8 @@ export default function SuperAdminPage() {
                     loadCompanies(),
                     loadNotificationUnreadCount(),
                   ]);
-                                    setMessage(
+
+                  setMessage(
                     "✅ 회사 목록을 새로고침했습니다.",
                   );
                 } catch (error) {
