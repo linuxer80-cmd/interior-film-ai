@@ -15,11 +15,17 @@ export default function QuoteSendPanel({
   representativeName = "",
   setLeadsMessage,
 }) {
-  const [quotePreview, setQuotePreview] = useState(null);
+  const [quotePreview, setQuotePreview] =
+    useState(null);
 
-  const [creating, setCreating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [creating, setCreating] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [sending, setSending] =
+    useState(false);
 
   /* =========================================================
      미리보기 URL 정리
@@ -28,24 +34,15 @@ export default function QuoteSendPanel({
   useEffect(() => {
     return () => {
       if (quotePreview?.url) {
-        URL.revokeObjectURL(quotePreview.url);
+        URL.revokeObjectURL(
+          quotePreview.url,
+        );
       }
     };
   }, [quotePreview]);
 
   /* =========================================================
      견적서 만들기
-
-     현재 lead 전체를 그대로 사용합니다.
-
-     따라서 기존에 정상 작동 중인:
-     - 최종 견적금액
-     - 시공 내용
-     - 고객 선택 필름
-     - 방염 / 비방염
-     - quote_material
-
-     모두 그대로 유지됩니다.
   ========================================================= */
 
   async function handleCreateQuote() {
@@ -54,14 +51,17 @@ export default function QuoteSendPanel({
 
     try {
       if (quotePreview?.url) {
-        URL.revokeObjectURL(quotePreview.url);
+        URL.revokeObjectURL(
+          quotePreview.url,
+        );
       }
 
-      const preview = await createQuotePreview(
-        lead,
-        companyName,
-        representativeName,
-      );
+      const preview =
+        await createQuotePreview(
+          lead,
+          companyName,
+          representativeName,
+        );
 
       setQuotePreview(preview);
 
@@ -69,7 +69,10 @@ export default function QuoteSendPanel({
         "✅ 견적서가 만들어졌습니다. 금액과 사용 자재를 확인해주세요.",
       );
     } catch (error) {
-      console.error("견적서 만들기 오류:", error);
+      console.error(
+        "견적서 만들기 오류:",
+        error,
+      );
 
       setLeadsMessage?.(
         `❌ 견적서 만들기 오류: ${
@@ -82,16 +85,9 @@ export default function QuoteSendPanel({
   }
 
   /* =========================================================
-     1. 견적서 저장
+     견적서 저장
 
-     견적 이미지 JPG를 휴대폰에 저장합니다.
-
-     여기서는:
-     - 클립보드 복사 안 함
-     - 문자창 안 엶
-     - 공유창 안 엶
-
-     저장만 합니다.
+     JPG 파일 저장만 수행
   ========================================================= */
 
   function handleSaveQuote() {
@@ -107,11 +103,12 @@ export default function QuoteSendPanel({
     setLeadsMessage?.("");
 
     try {
-      const result = downloadQuoteImage(
-        quotePreview.blob,
-        lead,
-        companyName,
-      );
+      const result =
+        downloadQuoteImage(
+          quotePreview.blob,
+          lead,
+          companyName,
+        );
 
       setLeadsMessage?.(
         result?.fileName
@@ -135,21 +132,13 @@ export default function QuoteSendPanel({
   }
 
   /* =========================================================
-     2. 견적서 보내기
+     견적서 보내기
 
-     원하는 핵심 루틴:
+     1. 견적 이미지 PNG 클립보드 복사
+     2. 복사가 완료될 때까지 기다림
+     3. 고객 전화번호 문자창 열기
 
-     견적 이미지
-        ↓
-     이미지 클립보드 복사 완료
-        ↓
-     고객 전화번호 문자창 열기
-
-     중요:
-     navigator.clipboard.write()가 끝날 때까지
-     반드시 await 합니다.
-
-     공유창(navigator.share)은 사용하지 않습니다.
+     Android 공유창은 사용하지 않음
   ========================================================= */
 
   async function handleSendQuote() {
@@ -174,36 +163,29 @@ export default function QuoteSendPanel({
 
     try {
       /*
-       * 1단계
-       * 견적 이미지 자체를 클립보드에 복사
-       *
-       * copyQuoteImage 내부에서:
-       * JPG → PNG 변환
-       * ClipboardItem(image/png)
-       * navigator.clipboard.write()
-       *
-       * 작업이 끝날 때까지 기다립니다.
+       * 이미지 클립보드 복사
        */
+
       await copyQuoteImage(
         quotePreview.blob,
       );
 
-      /*
-       * 2단계
-       * 이미지 복사가 성공한 경우에만
-       * 고객 전화번호 문자창을 엽니다.
-       */
       setLeadsMessage?.(
         "✅ 견적 이미지가 복사되었습니다. 고객 문자창을 엽니다.",
       );
 
       /*
-       * 아주 짧게 브라우저에 상태 반영 시간을 준 뒤
-       * 문자 앱으로 이동합니다.
+       * 클립보드 write 완료 후
+       * 아주 짧은 시간 뒤 문자창 이동
        */
+
       await new Promise((resolve) => {
         setTimeout(resolve, 120);
       });
+
+      /*
+       * 고객 전화번호 문자창
+       */
 
       openCustomerSms(lead);
     } catch (error) {
@@ -214,11 +196,9 @@ export default function QuoteSendPanel({
 
       /*
        * 이미지 복사가 실패하면
-       * 문자창을 열지 않습니다.
-       *
-       * 이전처럼 텍스트 클립보드가 남은 상태에서
-       * 문자창으로 넘어가는 문제를 막기 위함입니다.
+       * 문자창을 열지 않음
        */
+
       setLeadsMessage?.(
         `❌ 견적 이미지 복사 실패: ${
           error?.message ||
@@ -234,17 +214,20 @@ export default function QuoteSendPanel({
      표시 데이터
   ========================================================= */
 
-  const displayCompanyName = String(
-    companyName || "",
-  ).trim();
+  const displayCompanyName =
+    String(
+      companyName || "",
+    ).trim();
 
-  const displayPhone = String(
-    lead?.phone || "",
-  ).trim();
+  const displayPhone =
+    String(
+      lead?.phone || "",
+    ).trim();
 
-  const displayMaterial = String(
-    lead?.quote_material || "",
-  ).trim();
+  const displayMaterial =
+    String(
+      lead?.quote_material || "",
+    ).trim();
 
   const busy =
     creating ||
@@ -260,23 +243,25 @@ export default function QuoteSendPanel({
       style={{
         marginTop: "12px",
         padding: "12px",
-        border: "1px solid #d6d3d1",
+        border:
+          "1px solid #d6d3d1",
         borderRadius: "12px",
         background: "#fafaf9",
       }}
     >
-      {/* =====================================================
-          견적서 만들기
-      ===================================================== */}
+      {/* 견적서 만들기 */}
 
       <button
         type="button"
-        onClick={handleCreateQuote}
+        onClick={
+          handleCreateQuote
+        }
         disabled={busy}
         style={{
           width: "100%",
           padding: "13px",
-          border: "1px solid #5d4037",
+          border:
+            "1px solid #5d4037",
           borderRadius: "10px",
           background: "#ffffff",
           color: "#5d4037",
@@ -288,7 +273,8 @@ export default function QuoteSendPanel({
               ? "not-allowed"
               : "pointer",
           opacity:
-            busy && !creating
+            busy &&
+            !creating
               ? 0.6
               : 1,
         }}
@@ -298,12 +284,10 @@ export default function QuoteSendPanel({
           : "🧾 견적서 만들기"}
       </button>
 
-      {/* =====================================================
-          견적서 생성 후
-      ===================================================== */}
-
       {quotePreview?.url && (
         <>
+          {/* 미리보기 제목 */}
+
           <div
             style={{
               marginTop: "14px",
@@ -318,21 +302,19 @@ export default function QuoteSendPanel({
               : ""}
           </div>
 
-          {/* =================================================
-              고객 선택 필름
-
-              quote_material을 읽기만 합니다.
-              기존 자동입력 기능은 수정하지 않습니다.
-          ================================================= */}
+          {/* 고객 선택 필름 */}
 
           {displayMaterial && (
             <div
               style={{
                 marginTop: "8px",
                 padding: "10px",
-                borderRadius: "8px",
-                background: "#f0f9ff",
-                border: "1px solid #bae6fd",
+                borderRadius:
+                  "8px",
+                background:
+                  "#f0f9ff",
+                border:
+                  "1px solid #bae6fd",
                 fontSize: "13px",
                 lineHeight: 1.6,
                 color: "#0369a1",
@@ -340,8 +322,10 @@ export default function QuoteSendPanel({
             >
               <div
                 style={{
-                  fontWeight: "bold",
-                  marginBottom: "3px",
+                  fontWeight:
+                    "bold",
+                  marginBottom:
+                    "3px",
                 }}
               >
                 🎨 사용 자재
@@ -351,9 +335,7 @@ export default function QuoteSendPanel({
             </div>
           )}
 
-          {/* =================================================
-              견적서 이미지
-          ================================================= */}
+          {/* 견적서 이미지 */}
 
           <img
             src={quotePreview.url}
@@ -368,27 +350,32 @@ export default function QuoteSendPanel({
               maxHeight: "520px",
               marginTop: "10px",
               objectFit: "contain",
-              border: "1px solid #d6d3d1",
-              borderRadius: "10px",
-              background: "#ffffff",
+              border:
+                "1px solid #d6d3d1",
+              borderRadius:
+                "10px",
+              background:
+                "#ffffff",
             }}
           />
 
-          {/* =================================================
-              1. 견적서 저장
-          ================================================= */}
+          {/* 견적서 저장 */}
 
           <button
             type="button"
-            onClick={handleSaveQuote}
+            onClick={
+              handleSaveQuote
+            }
             disabled={busy}
             style={{
               width: "100%",
               padding: "15px",
               marginTop: "14px",
               border: "none",
-              borderRadius: "10px",
-              background: "#166534",
+              borderRadius:
+                "10px",
+              background:
+                "#166534",
               color: "#ffffff",
               fontSize: "16px",
               fontWeight: "bold",
@@ -398,7 +385,8 @@ export default function QuoteSendPanel({
                   ? "not-allowed"
                   : "pointer",
               opacity:
-                busy && !saving
+                busy &&
+                !saving
                   ? 0.6
                   : 1,
             }}
@@ -408,13 +396,13 @@ export default function QuoteSendPanel({
               : "💾 견적서 저장"}
           </button>
 
-          {/* =================================================
-              2. 견적서 보내기
-          ================================================= */}
+          {/* 견적서 보내기 */}
 
           <button
             type="button"
-            onClick={handleSendQuote}
+            onClick={
+              handleSendQuote
+            }
             disabled={
               !displayPhone ||
               busy
@@ -424,32 +412,34 @@ export default function QuoteSendPanel({
               padding: "16px",
               marginTop: "10px",
               border: "none",
-              borderRadius: "10px",
+              borderRadius:
+                "10px",
               background:
-                displayPhone && !busy
+                displayPhone &&
+                !busy
                   ? "#2563eb"
                   : "#a8a29e",
               color: "#ffffff",
               fontSize: "16px",
               fontWeight: "bold",
               cursor:
-                displayPhone && !busy
+                displayPhone &&
+                !busy
                   ? "pointer"
                   : "not-allowed",
               opacity:
-                displayPhone && !busy
+                displayPhone &&
+                !busy
                   ? 1
                   : 0.65,
             }}
           >
             {sending
-              ? "이미지 복사 중..."
+              ? "견적 이미지 복사 중..."
               : "📱 견적서 보내기"}
           </button>
 
-          {/* =================================================
-              고객 전화번호
-          ================================================= */}
+          {/* 고객번호 */}
 
           <div
             style={{
@@ -467,16 +457,16 @@ export default function QuoteSendPanel({
               : "고객 전화번호 없음"}
           </div>
 
-          {/* =================================================
-              안내
-          ================================================= */}
+          {/* 안내 */}
 
           <div
             style={{
               marginTop: "12px",
               padding: "11px",
-              borderRadius: "8px",
-              background: "#f5f5f4",
+              borderRadius:
+                "8px",
+              background:
+                "#f5f5f4",
               fontSize: "12px",
               lineHeight: 1.8,
               color: "#78716c",
@@ -490,7 +480,7 @@ export default function QuoteSendPanel({
 
             📱 견적서 보내기
             <br />
-            견적 이미지를 복사한 뒤 고객 전화번호의 문자창을 엽니다.
+            견적 이미지를 클립보드에 복사한 뒤 고객 전화번호의 문자창을 엽니다.
             <br />
             문자창에서 이미지 붙여넣기 후 전송하면 됩니다.
           </div>
@@ -498,4 +488,4 @@ export default function QuoteSendPanel({
       )}
     </div>
   );
-}
+          }
