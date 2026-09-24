@@ -265,11 +265,16 @@ export default function BillingPage() {
 
       const [
         currentResult,
+        subscriptionResult,
         plansResult,
       ] =
         await Promise.all([
           supabase.rpc(
             "get_my_plan_usage",
+          ),
+
+          supabase.rpc(
+            "get_my_subscription",
           ),
 
           supabase
@@ -312,6 +317,12 @@ export default function BillingPage() {
       }
 
       if (
+        subscriptionResult.error
+      ) {
+        throw subscriptionResult.error;
+      }
+
+      if (
         plansResult.error
       ) {
         throw plansResult.error;
@@ -326,6 +337,15 @@ export default function BillingPage() {
           : currentResult
               .data;
 
+      const subscription =
+        Array.isArray(
+          subscriptionResult.data,
+        )
+          ? subscriptionResult
+              .data[0]
+          : subscriptionResult
+              .data;
+
       setCurrentPlan(
         current || null,
       );
@@ -334,6 +354,50 @@ export default function BillingPage() {
         plansResult.data ||
           [],
       );
+
+      /*
+       * =====================================================
+       * 새로고침 후에도 실제 DB의 구독 취소 예약 상태 복원
+       * =====================================================
+       */
+
+      if (
+        subscription
+          ?.cancel_at_period_end ===
+        true
+      ) {
+        setCancellation({
+          cancelScheduled: true,
+          alreadyScheduled: true,
+
+          subscription: {
+            plan_code:
+              subscription.plan_code,
+
+            status:
+              subscription.subscription_status,
+
+            current_period_start:
+              subscription.current_period_start,
+
+            current_period_end:
+              subscription.current_period_end,
+
+            next_billing_at:
+              subscription.next_billing_at,
+
+            cancel_at_period_end:
+              subscription.cancel_at_period_end,
+
+            canceled_at:
+              subscription.canceled_at,
+          },
+        });
+      } else {
+        setCancellation(
+          null,
+        );
+      }
 
       if (
         current
@@ -1876,4 +1940,4 @@ export default function BillingPage() {
       </div>
     </main>
   );
-}
+          }
