@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
 
 import {
   makeId,
@@ -10,7 +9,6 @@ import {
 } from "../utils/imageUtils";
 
 import {
-  normalizeCategory,
   getGroupKey,
 } from "../utils/categoryUtils";
 
@@ -211,11 +209,6 @@ export default function useEstimate({
       result?.allowed ===
         false
     ) {
-      /*
-       * 서버에서 내려준 한도 메시지를
-       * 그대로 고객 화면에 전달합니다.
-       */
-
       throw new Error(
         result?.error ||
           "요금제 사용량 한도를 확인해주세요."
@@ -228,21 +221,10 @@ export default function useEstimate({
   /*
    * =========================================================
    * 자동견적 시작 전 핵심 사전검사
-   *
-   * 여기서 막히면:
-   *
-   * - OpenAI 사진분석 호출 안 함
-   * - Embedding 호출 안 함
-   * - Storage 업로드 안 함
-   *
    * =========================================================
    */
 
   async function checkEstimateStartLimits() {
-    /*
-     * 자동견적 자체 1회
-     */
-
     setMessage(
       "자동견적 사용 가능 여부를 확인하고 있습니다..."
     );
@@ -253,11 +235,6 @@ export default function useEstimate({
 
       quantity: 1,
     });
-
-    /*
-     * 선택한 사진 수만큼
-     * AI 사진분석 가능 여부
-     */
 
     setMessage(
       "AI 사진분석 사용 가능 여부를 확인하고 있습니다..."
@@ -270,14 +247,6 @@ export default function useEstimate({
       quantity:
         images.length,
     });
-
-    /*
-     * 선택한 사진 수만큼
-     * 이미지 업로드 가능 여부
-     *
-     * 저장용량 MB는 실제 파일 크기를
-     * /api/estimate-photo가 서버에서 다시 검사합니다.
-     */
 
     setMessage(
       "사진 업로드 사용 가능 여부를 확인하고 있습니다..."
@@ -495,11 +464,6 @@ export default function useEstimate({
       "before"
     );
 
-    /*
-     * AI 사용량을 정확한 업체에 귀속하기 위해
-     * 현재 업체 slug 전달
-     */
-
     if (
       normalizedCompanySlug
     ) {
@@ -619,22 +583,48 @@ export default function useEstimate({
 
   /*
    * =========================================================
-   * 유사 시공사례 검색
+   * 유사 시공사례 검색 + 견적
+   *
+   * 이전:
+   *
+   * 브라우저
+   * → /api/embedding
+   * → embedding 반환
+   * → Supabase RPC 직접 호출
+   * → actual_cost 반환
+   * → /api/similar-search-usage
+   * → 브라우저에서 견적 계산
+   *
+   * 변경:
+   *
+   * 브라우저
+   * → /api/similar-estimate
+   *
+   * 서버 내부:
+   * → 사용량 한도 확인
+   * → embedding 생성
+   * → 업체별 유사사례 검색
+   * → actual_cost 기반 견적 계산
+   * → 사용량 +1
+   *
+   * 브라우저에는:
+   * → estimate
+   * → 안전한 similar_cases
+   *
+   * 만 반환합니다.
    * =========================================================
    */
 
   async function findSimilarCases(
     group
   ) {
-    /*
-     * 회사 slug가 없으면
-     * 다른 업체 데이터를 검색하지 않습니다.
-     */
-
     if (
       !normalizedCompanySlug
     ) {
-      return [];
+      return {
+        cases: [],
+        estimate: null,
+      };
     }
 
     const analyses =
@@ -689,109 +679,9 @@ export default function useEstimate({
       )}`,
     ].join("\n");
 
-    /*
-     * 유사검색 사전 한도검사는
-     * handleAnalyze에서 전체 그룹 수를 계산한 뒤
-     * 한 번에 먼저 검사합니다.
-     *
-     * 따라서 여기서는 실제 embedding을 실행합니다.
-     */
-
     const response =
       await fetch(
-        "/api/embedding",
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              text:
-                searchText,
-            }),
-        }
-      );
-
-    const result =
-      await readJsonSafely(
-        response
-      );
-
-    if (
-      !response.ok ||
-      !result?.embedding
-    ) {
-      throw new Error(
-        result?.error ||
-          "유사사례 검색 데이터를 만들지 못했습니다."
-      );
-    }
-
-    /*
-     * company_slug를 RPC에 전달하여
-     * 해당 업체의 시공 데이터만 검색
-     */
-
-    const {
-      data,
-      error,
-    } =
-      await supabase.rpc(
-        "get_public_similar_cases",
-        {
-          query_embedding:
-            result.embedding,
-
-          company_slug:
-            normalizedCompanySlug,
-
-          match_threshold:
-            MATCH_THRESHOLD,
-
-          match_count: 20,
-        }
-      );
-
-    if (error) {
-      throw new Error(
-        `유사사례 검색 오류: ${error.message}`
-      );
-    }
-
-    /*
-     * =========================================================
-     * 유사이미지 검색 사용량 기록
-     *
-     * 실제 검색까지 성공한 경우에만 +1
-     * =========================================================
-     */
-
-    const searchResults =
-      Array.isArray(data)
-        ? data
-        : [];
-
-    const topSimilarity =
-      searchResults.length
-        ? Math.max(
-            ...searchResults.map(
-              (item) =>
-                Number(
-                  item?.similarity ||
-                    0
-                )
-            )
-          )
-        : null;
-
-    const usageResponse =
-      await fetch(
-        "/api/similar-search-usage",
+        "/api/similar-estimate",
         {
           method:
             "POST",
@@ -806,6 +696,9 @@ export default function useEstimate({
               company_slug:
                 normalizedCompanySlug,
 
+              text:
+                searchText,
+
               category:
                 group.category ||
                 null,
@@ -814,228 +707,41 @@ export default function useEstimate({
                 group.subCategory ||
                 null,
 
-              result_count:
-                searchResults.length,
+              match_threshold:
+                MATCH_THRESHOLD,
 
-              top_similarity:
-                topSimilarity,
+              match_count:
+                20,
             }),
         }
       );
 
-    const usageResult =
+    const result =
       await readJsonSafely(
-        usageResponse
+        response
       );
 
-    /*
-     * 여기서는 기존처럼 조용히 무시하지 않습니다.
-     *
-     * 특히 429라면
-     * 한도 초과 상태이므로 즉시 중단합니다.
-     */
-
     if (
-      !usageResponse.ok ||
-      !usageResult?.success
+      !response.ok ||
+      !result?.success
     ) {
       throw new Error(
-        usageResult?.error ||
-          "유사이미지 검색 사용량을 처리하지 못했습니다."
+        result?.error ||
+          "유사 시공사례 검색 중 오류가 발생했습니다."
       );
-    }
-
-    /*
-     * =========================================================
-     * 같은 시공부위 + 실제 시공금액이 있는 데이터만 사용
-     * =========================================================
-     */
-
-    const filtered = (
-      data || []
-    )
-      .filter(
-        (item) => {
-          const itemGroup =
-            normalizeCategory(
-              `${
-                item.category ||
-                ""
-              } ${
-                item.sub_category ||
-                ""
-              }`
-            );
-
-          return (
-            itemGroup ===
-              group.key &&
-            Number(
-              item.actual_cost ||
-                0
-            ) > 0
-          );
-        }
-      )
-      .slice(
-        0,
-        10
-      );
-
-    const unique = [];
-
-    const seen =
-      new Set();
-
-    for (
-      const item of filtered
-    ) {
-      const id =
-        item.work_item_id ||
-        `${item.category}-${item.actual_cost}`;
-
-      if (
-        seen.has(id)
-      ) {
-        continue;
-      }
-
-      seen.add(id);
-
-      unique.push(
-        item
-      );
-    }
-
-    return unique;
-  }
-
-  /*
-   * =========================================================
-   * 유사 시공 데이터 기반 견적 계산
-   * =========================================================
-   */
-
-  function calculateEstimate(
-    cases
-  ) {
-    if (!cases.length) {
-      return null;
-    }
-
-    let weightedCostTotal =
-      0;
-
-    let weightTotal =
-      0;
-
-    for (
-      const item of cases
-    ) {
-      const cost =
-        Number(
-          item.actual_cost ||
-            0
-        );
-
-      const similarity =
-        Number(
-          item.similarity ||
-            0
-        );
-
-      if (
-        cost > 0 &&
-        similarity >=
-          MATCH_THRESHOLD
-      ) {
-        /*
-         * 유사도가 높은 데이터에
-         * 더 큰 가중치를 부여
-         */
-
-        const weight =
-          similarity *
-          similarity;
-
-        weightedCostTotal +=
-          cost *
-          weight;
-
-        weightTotal +=
-          weight;
-      }
-    }
-
-    if (
-      weightTotal <= 0
-    ) {
-      return null;
-    }
-
-    const weightedAverage =
-      weightedCostTotal /
-      weightTotal;
-
-    const min =
-      Math.round(
-        (weightedAverage *
-          0.9) /
-          1000
-      ) * 1000;
-
-    const max =
-      Math.round(
-        (weightedAverage *
-          1.1) /
-          1000
-      ) * 1000;
-
-    const average =
-      Math.round(
-        weightedAverage /
-          1000
-      ) * 1000;
-
-    const topSimilarity =
-      Math.max(
-        ...cases.map(
-          (item) =>
-            Number(
-              item.similarity ||
-                0
-            )
-        )
-      );
-
-    let confidence =
-      "낮음";
-
-    if (
-      cases.length >= 5 &&
-      topSimilarity >=
-        0.85
-    ) {
-      confidence =
-        "높음";
-    } else if (
-      cases.length >= 2 &&
-      topSimilarity >=
-        0.75
-    ) {
-      confidence =
-        "보통";
     }
 
     return {
-      min,
-      max,
-      average,
+      cases:
+        Array.isArray(
+          result?.similar_cases
+        )
+          ? result.similar_cases
+          : [],
 
-      count:
-        cases.length,
-
-      confidence,
+      estimate:
+        result?.estimate ||
+        null,
     };
   }
 
@@ -1160,7 +866,7 @@ export default function useEstimate({
     }
 
     return paths;
-        }
+            }
     /*
    * =========================================================
    * 자동견적 사용 로그
@@ -1309,9 +1015,6 @@ export default function useEstimate({
     /*
      * =====================================================
      * 회사 확인
-     *
-     * SaaS 사용량을 정확하게 적용하려면
-     * 업체 slug가 반드시 있어야 합니다.
      * =====================================================
      */
 
@@ -1346,18 +1049,9 @@ export default function useEstimate({
        * ===================================================
        * 0. 자동견적 시작 전 사전 한도검사
        *
-       * 매우 중요:
-       *
-       * 이 검사가 AI 사진분석보다 먼저 실행됩니다.
-       *
-       * 확인:
-       *
        * - auto_estimate 1회
        * - ai_photo_analysis 사진 수
        * - image_upload 사진 수
-       *
-       * 하나라도 한도 초과라면
-       * 아래 OpenAI 호출까지 내려가지 않습니다.
        * ===================================================
        */
 
@@ -1452,21 +1146,12 @@ export default function useEstimate({
        * ===================================================
        * 2-1. 유사이미지 검색 사전 한도검사
        *
-       * AI 분석 결과가 나온 후에야
-       * 몇 개의 시공부위 그룹인지 알 수 있습니다.
+       * 실제 검색 API에서도 다시 한도를 확인합니다.
        *
-       * 예:
-       *
-       * 사진 4장
-       * → 문 2장
-       * → 싱크대 2장
-       *
-       * 실제 유사검색 = 2회
-       *
-       * 따라서 그룹 수만큼 한 번에 검사합니다.
-       *
-       * 이 검사가 통과해야
-       * /api/embedding 호출을 시작합니다.
+       * 여기서는 여러 그룹 검색을 시작하기 전에
+       * 전체 그룹 수가 현재 남은 한도 안에 있는지
+       * 미리 확인하여 중간에 일부만 처리되는 것을
+       * 방지합니다.
        * ===================================================
        */
 
@@ -1490,6 +1175,18 @@ export default function useEstimate({
       /*
        * ===================================================
        * 3. 각 부위 유사사례 검색
+       *
+       * 이제 브라우저에서는 embedding이나
+       * actual_cost를 받지 않습니다.
+       *
+       * /api/similar-estimate가:
+       *
+       * - embedding
+       * - DB 검색
+       * - actual_cost 기반 계산
+       * - 사용량 기록
+       *
+       * 을 서버에서 처리합니다.
        * ===================================================
        */
 
@@ -1515,33 +1212,22 @@ export default function useEstimate({
           } · ${group.category}`
         );
 
-        let cases = [];
-
-        let estimate =
-          null;
-
-        /*
-         * 이전 버전에서는
-         * 유사검색 오류를 console.error만 하고
-         * 다음 단계로 계속 진행했습니다.
-         *
-         * 이제 사용량 제한도 연결되어 있으므로
-         * 429 등의 오류를 조용히 무시하지 않습니다.
-         */
-
-        cases =
+        const similarResult =
           await findSimilarCases(
             group
           );
 
-        estimate =
-          calculateEstimate(
-            cases
-          );
+        const cases =
+          similarResult.cases;
+
+        const estimate =
+          similarResult.estimate;
 
         /*
          * 고객 화면에는
          * 가장 유사한 2건 표시
+         *
+         * cases에는 actual_cost가 없습니다.
          */
 
         const similarItems =
@@ -1672,14 +1358,6 @@ export default function useEstimate({
       /*
        * ===================================================
        * 5. 자동견적에 사용된 사진 저장
-       *
-       * 시작 전에 image_upload 한도를
-       * 확인했지만 보안을 위해
-       * /api/estimate-photo에서도
-       * 매 사진마다 서버 한도를 다시 검사합니다.
-       *
-       * 저장용량 MB 역시
-       * /api/estimate-photo가 실제 파일 크기로 검사합니다.
        * ===================================================
        */
 
@@ -1693,9 +1371,6 @@ export default function useEstimate({
       /*
        * ===================================================
        * 6. 자동견적 사용 로그 저장
-       *
-       * /api/estimate-usage에서도
-       * 서버가 auto_estimate 한도를 다시 확인합니다.
        * ===================================================
        */
 
@@ -1746,13 +1421,6 @@ export default function useEstimate({
         "자동견적 실행 오류:",
         error
       );
-
-      /*
-       * 한도 초과도 여기로 들어옵니다.
-       *
-       * 서버가 전달한 실제 메시지를
-       * 고객 화면에 보여줍니다.
-       */
 
       setMessage(
         `❌ ${
@@ -1806,4 +1474,4 @@ export default function useEstimate({
 
     readJsonSafely,
   };
-        }
+}
