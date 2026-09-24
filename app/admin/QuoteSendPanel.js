@@ -38,6 +38,11 @@ export default function QuoteSendPanel({
     setImageCopied,
   ] = useState(false);
 
+  const [
+    imageSaved,
+    setImageSaved,
+  ] = useState(false);
+
   /* =======================================================
      미리보기 URL 정리
   ======================================================= */
@@ -58,7 +63,10 @@ export default function QuoteSendPanel({
 
   async function handleCreateQuote() {
     setCreating(true);
+
     setImageCopied(false);
+    setImageSaved(false);
+
     setLeadsMessage?.("");
 
     try {
@@ -78,7 +86,7 @@ export default function QuoteSendPanel({
       setQuotePreview(preview);
 
       setLeadsMessage?.(
-        "✅ 견적서가 만들어졌습니다. 다음으로 '1. 견적 이미지 저장 + 복사'를 눌러주세요.",
+        "✅ 견적서가 만들어졌습니다. 1번 버튼으로 이미지를 저장해주세요.",
       );
     } catch (error) {
       console.error(
@@ -99,9 +107,11 @@ export default function QuoteSendPanel({
 
   /* =======================================================
      1단계
-     견적 이미지 저장 + 클립보드 복사
+     이미지 저장 + 클립보드 복사 시도
 
-     문자창은 열지 않습니다.
+     중요:
+     클립보드 복사가 실패해도
+     문자 버튼은 사용할 수 있게 합니다.
   ======================================================= */
 
   async function handlePrepareImage() {
@@ -114,62 +124,93 @@ export default function QuoteSendPanel({
     }
 
     setPreparing(true);
+
     setImageCopied(false);
+
     setLeadsMessage?.("");
 
+    let saved = false;
+    let copied = false;
+
+    /* -------------------------------------------------------
+       1. JPG 저장
+    ------------------------------------------------------- */
+
     try {
-      /*
-       * 먼저 견적 이미지를
-       * 휴대폰에 JPG로 저장
-       */
       downloadQuoteImage(
         quotePreview.blob,
         lead,
         companyName,
       );
 
-      /*
-       * 같은 견적 이미지를
-       * PNG 이미지로 변환하여
-       * 클립보드에 복사
-       */
+      saved = true;
+
+      setImageSaved(true);
+    } catch (error) {
+      console.error(
+        "견적 이미지 저장 오류:",
+        error,
+      );
+    }
+
+    /* -------------------------------------------------------
+       2. 이미지 클립보드 복사 시도
+
+       브라우저가 이미지 Clipboard API를
+       지원하지 않아도 전체 작업을
+       실패시키지 않습니다.
+    ------------------------------------------------------- */
+
+    try {
       await copyQuoteImage(
         quotePreview.blob,
       );
 
-      /*
-       * 클립보드 복사가 실제로
-       * 성공한 경우에만 true
-       */
-      setImageCopied(true);
+      copied = true;
 
-      setLeadsMessage?.(
-        "✅ 견적 이미지 저장 및 복사가 완료되었습니다. 이제 '2. 고객에게 문자 보내기'를 눌러주세요.",
-      );
+      setImageCopied(true);
     } catch (error) {
-      console.error(
-        "견적 이미지 준비 오류:",
+      console.warn(
+        "이미지 클립보드 복사 미지원 또는 실패:",
         error,
       );
 
-      setImageCopied(false);
+      copied = false;
 
-      setLeadsMessage?.(
-        `❌ 견적 이미지 복사 오류: ${
-          error?.message ||
-          "이 브라우저에서 이미지 클립보드를 지원하지 않습니다."
-        }`,
-      );
-    } finally {
-      setPreparing(false);
+      setImageCopied(false);
     }
+
+    /* -------------------------------------------------------
+       결과 메시지
+    ------------------------------------------------------- */
+
+    if (saved && copied) {
+      setLeadsMessage?.(
+        "✅ 견적 이미지 저장 + 복사가 완료되었습니다. 이제 고객에게 문자 보내기를 눌러주세요.",
+      );
+    } else if (saved) {
+      setLeadsMessage?.(
+        "✅ 견적 이미지는 저장되었습니다. 이 브라우저에서는 이미지 자동 복사를 지원하지 않을 수 있습니다. 고객에게 문자 보내기를 눌러주세요.",
+      );
+    } else if (copied) {
+      setLeadsMessage?.(
+        "✅ 견적 이미지가 복사되었습니다. 고객에게 문자 보내기를 눌러주세요.",
+      );
+    } else {
+      setLeadsMessage?.(
+        "⚠️ 이미지 자동 저장/복사를 확인하지 못했습니다. 그래도 고객 문자창은 열 수 있습니다.",
+      );
+    }
+
+    setPreparing(false);
   }
 
   /* =======================================================
      2단계
-     고객번호 문자창만 열기
+     고객번호 문자창 열기
 
-     저장/다운로드/복사는 여기서 하지 않습니다.
+     imageCopied 여부와 관계없이
+     고객번호가 있으면 실행 가능
   ======================================================= */
 
   function handleOpenCustomerSms() {
@@ -181,23 +222,21 @@ export default function QuoteSendPanel({
       return;
     }
 
-    if (!imageCopied) {
-      setLeadsMessage?.(
-        "⚠️ 먼저 '1. 견적 이미지 저장 + 복사'를 눌러주세요.",
-      );
-
-      return;
-    }
-
     try {
-      setLeadsMessage?.(
-        "✅ 고객 문자창을 엽니다. 입력창을 길게 눌러 견적 이미지를 붙여넣고 전송해주세요.",
-      );
+      if (imageCopied) {
+        setLeadsMessage?.(
+          "✅ 고객 문자창을 엽니다. 입력창을 길게 눌러 붙여넣기 해주세요.",
+        );
+      } else if (imageSaved) {
+        setLeadsMessage?.(
+          "✅ 고객 문자창을 엽니다. 붙여넣기가 없으면 사진 첨부에서 방금 저장한 견적 이미지를 선택해주세요.",
+        );
+      } else {
+        setLeadsMessage?.(
+          "✅ 고객 문자창을 엽니다.",
+        );
+      }
 
-      /*
-       * 고객 전화번호가 지정된
-       * 문자 작성창만 실행
-       */
       openCustomerSms(lead);
     } catch (error) {
       console.error(
@@ -247,7 +286,9 @@ export default function QuoteSendPanel({
         background: "#fafaf9",
       }}
     >
-      {/* 견적서 만들기 */}
+      {/* ================================================
+          견적서 만들기
+      ================================================= */}
 
       <button
         type="button"
@@ -271,7 +312,8 @@ export default function QuoteSendPanel({
               ? "not-allowed"
               : "pointer",
           opacity:
-            busy && !creating
+            busy &&
+            !creating
               ? 0.6
               : 1,
         }}
@@ -281,7 +323,9 @@ export default function QuoteSendPanel({
           : "🧾 견적서 만들기"}
       </button>
 
-      {/* 견적서 생성 후 */}
+      {/* ================================================
+          견적서 생성 후
+      ================================================= */}
 
       {quotePreview?.url && (
         <>
@@ -301,7 +345,7 @@ export default function QuoteSendPanel({
               : ""}
           </div>
 
-          {/* 견적서 이미지 */}
+          {/* 견적 이미지 */}
 
           <img
             src={
@@ -328,7 +372,7 @@ export default function QuoteSendPanel({
           />
 
           {/* =============================================
-              1단계
+              1. 이미지 저장 + 복사
           ============================================== */}
 
           <button
@@ -347,7 +391,9 @@ export default function QuoteSendPanel({
               background:
                 imageCopied
                   ? "#166534"
-                  : "#5d4037",
+                  : imageSaved
+                    ? "#15803d"
+                    : "#5d4037",
               color: "#ffffff",
               fontSize: "16px",
               fontWeight: "bold",
@@ -364,19 +410,22 @@ export default function QuoteSendPanel({
             }}
           >
             {preparing
-              ? "이미지 저장 및 복사 중..."
+              ? "이미지 준비 중..."
               : imageCopied
-                ? "✅ 1. 견적 이미지 복사 완료"
-                : "💾 1. 견적 이미지 저장 + 복사"}
+                ? "✅ 1. 견적 이미지 저장 + 복사 완료"
+                : imageSaved
+                  ? "✅ 1. 견적 이미지 저장 완료"
+                  : "💾 1. 견적 이미지 저장 + 복사"}
           </button>
 
-          {/* 복사 성공 표시 */}
+          {/* 상태 표시 */}
 
-          {imageCopied && (
+          {(imageSaved ||
+            imageCopied) && (
             <div
               style={{
                 marginTop: "8px",
-                padding: "9px",
+                padding: "10px",
                 borderRadius:
                   "8px",
                 background:
@@ -385,18 +434,31 @@ export default function QuoteSendPanel({
                   "1px solid #bbf7d0",
                 color: "#166534",
                 fontSize: "13px",
+                lineHeight: 1.6,
                 fontWeight: "bold",
                 textAlign: "center",
               }}
             >
-              견적 이미지가
-              클립보드에
-              복사되었습니다.
+              {imageCopied ? (
+                <>
+                  견적 이미지가
+                  저장되고
+                  클립보드에도
+                  복사되었습니다.
+                </>
+              ) : (
+                <>
+                  견적 이미지가
+                  저장되었습니다.
+                </>
+              )}
             </div>
           )}
 
           {/* =============================================
-              2단계
+              2. 고객에게 문자 보내기
+
+              복사 여부로 잠그지 않음
           ============================================== */}
 
           <button
@@ -406,7 +468,6 @@ export default function QuoteSendPanel({
             }
             disabled={
               !displayPhone ||
-              !imageCopied ||
               busy
             }
             style={{
@@ -417,22 +478,21 @@ export default function QuoteSendPanel({
               borderRadius:
                 "10px",
               background:
-                imageCopied &&
-                displayPhone
+                displayPhone &&
+                !busy
                   ? "#2563eb"
                   : "#a8a29e",
               color: "#ffffff",
               fontSize: "16px",
               fontWeight: "bold",
               cursor:
-                imageCopied &&
                 displayPhone &&
                 !busy
                   ? "pointer"
                   : "not-allowed",
               opacity:
-                imageCopied &&
-                displayPhone
+                displayPhone &&
+                !busy
                   ? 1
                   : 0.65,
             }}
@@ -440,7 +500,7 @@ export default function QuoteSendPanel({
             📱 2. 고객에게 문자 보내기
           </button>
 
-          {/* 고객 전화번호 */}
+          {/* 고객번호 */}
 
           <div
             style={{
@@ -458,7 +518,7 @@ export default function QuoteSendPanel({
               : "고객 전화번호 없음"}
           </div>
 
-          {/* 사용방법 */}
+          {/* 안내 */}
 
           <div
             style={{
@@ -476,19 +536,27 @@ export default function QuoteSendPanel({
             ① 견적 이미지 저장 +
             복사를 누릅니다.
             <br />
-            ② 복사 완료가 표시되면
-            고객에게 문자 보내기를
+
+            ② 고객에게 문자 보내기를
             누릅니다.
             <br />
+
             ③ 고객번호가 입력된
-            문자창이 열립니다.
+            문자창이 바로 열립니다.
             <br />
-            ④ 문자 입력창을 길게
-            눌러 붙여넣기 후
-            전송합니다.
+
+            ④ 이미지 복사가 지원된
+            경우 문자 입력창을 길게
+            눌러 붙여넣기 합니다.
+            <br />
+
+            ⑤ 붙여넣기가 표시되지
+            않으면 사진 첨부에서
+            방금 저장된 견적 이미지를
+            선택하면 됩니다.
           </div>
         </>
       )}
     </div>
   );
-            }
+}
