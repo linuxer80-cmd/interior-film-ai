@@ -9,7 +9,6 @@ import {
   createQuotePreview,
   downloadQuoteImage,
   shareQuoteImage,
-  copyQuoteImage,
   openCustomerSms,
 } from "./quoteUtils";
 
@@ -37,11 +36,6 @@ export default function QuoteSendPanel({
   const [
     sending,
     setSending,
-  ] = useState(false);
-
-  const [
-    openingSms,
-    setOpeningSms,
   ] = useState(false);
 
   useEffect(() => {
@@ -79,7 +73,7 @@ export default function QuoteSendPanel({
       setQuotePreview(preview);
 
       setLeadsMessage?.(
-        "✅ 견적서가 만들어졌습니다. 내용을 확인한 후 저장하거나 고객에게 전송해주세요.",
+        "✅ 견적서가 만들어졌습니다. 내용을 확인한 후 고객에게 전송해주세요.",
       );
     } catch (error) {
       console.error(
@@ -145,7 +139,16 @@ export default function QuoteSendPanel({
   }
 
   /* =======================================================
-     견적 이미지 공유
+     견적 이미지 고객에게 보내기
+
+     중요:
+     클립보드를 사용하지 않습니다.
+
+     실제 견적 이미지 파일을
+     Android 공유창으로 전달합니다.
+
+     공유창에서
+     메시지 / 카카오톡 등을 선택합니다.
   ======================================================= */
 
   async function handleSendQuote() {
@@ -170,11 +173,11 @@ export default function QuoteSendPanel({
 
       if (result?.downloaded) {
         setLeadsMessage?.(
-          "✅ 이 브라우저에서는 직접 공유를 지원하지 않아 견적 이미지를 저장했습니다.",
+          "✅ 직접 공유를 지원하지 않는 브라우저라 견적 이미지를 저장했습니다.",
         );
       } else {
         setLeadsMessage?.(
-          "✅ 견적 이미지 공유창을 열었습니다.",
+          "✅ 견적 이미지를 공유했습니다.",
         );
       }
     } catch (error) {
@@ -206,81 +209,31 @@ export default function QuoteSendPanel({
   }
 
   /* =======================================================
-     고객 문자
-     1. 견적 이미지 클립보드 복사
-     2. 고객번호 문자창 열기
+     고객번호 문자창만 열기
+
+     이미지 자동첨부는 하지 않습니다.
+     Android 웹 보안 제한 때문에
+     sms: 링크와 이미지 첨부를
+     동시에 강제로 처리할 수 없습니다.
   ======================================================= */
 
-  async function handleOpenCustomerSms() {
-    if (!quotePreview?.blob) {
-      setLeadsMessage?.(
-        "⚠️ 먼저 견적서 만들기를 눌러주세요.",
-      );
-
-      return;
-    }
-
-    if (!lead?.phone) {
-      setLeadsMessage?.(
-        "⚠️ 고객 전화번호가 없습니다.",
-      );
-
-      return;
-    }
-
-    setOpeningSms(true);
-    setLeadsMessage?.("");
-
+  function handleOpenCustomerSms() {
     try {
-      /*
-       * 견적 이미지를 PNG로 변환한 뒤
-       * 클립보드에 복사합니다.
-       */
-      await copyQuoteImage(
-        quotePreview.blob,
-      );
+      setLeadsMessage?.("");
 
-      setLeadsMessage?.(
-        "✅ 견적 이미지를 복사했습니다. 문자창에서 길게 눌러 붙여넣기 해주세요.",
-      );
-
-      /*
-       * 클립보드 복사가 완료된 후
-       * 고객번호가 지정된 문자창을 엽니다.
-       */
       openCustomerSms(lead);
     } catch (error) {
       console.error(
-        "고객 문자 준비 오류:",
+        "고객 문자 열기 오류:",
         error,
       );
 
-      /*
-       * 이미지 클립보드 복사를 지원하지 않는
-       * 브라우저에서도 문자창은 열 수 있게 합니다.
-       */
-      try {
-        setLeadsMessage?.(
-          "⚠️ 이미지 자동 복사를 지원하지 않는 브라우저입니다. 문자창을 열겠습니다.",
-        );
-
-        openCustomerSms(lead);
-      } catch (smsError) {
-        console.error(
-          "고객 문자 열기 오류:",
-          smsError,
-        );
-
-        setLeadsMessage?.(
-          `❌ 고객 문자 열기 오류: ${
-            smsError?.message ||
-            error?.message ||
-            "실패"
-          }`,
-        );
-      }
-    } finally {
-      setOpeningSms(false);
+      setLeadsMessage?.(
+        `❌ 고객 문자 열기 오류: ${
+          error?.message ||
+          "실패"
+        }`,
+      );
     }
   }
 
@@ -301,8 +254,7 @@ export default function QuoteSendPanel({
   const busy =
     creating ||
     saving ||
-    sending ||
-    openingSms;
+    sending;
 
   /* =======================================================
      화면
@@ -395,6 +347,43 @@ export default function QuoteSendPanel({
             }}
           />
 
+          {/* 가장 중요한 버튼 */}
+
+          <button
+            type="button"
+            onClick={
+              handleSendQuote
+            }
+            disabled={busy}
+            style={{
+              width: "100%",
+              padding: "15px",
+              marginTop: "12px",
+              border: "none",
+              borderRadius:
+                "10px",
+              background:
+                "#5d4037",
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "bold",
+              cursor: sending
+                ? "wait"
+                : busy
+                  ? "not-allowed"
+                  : "pointer",
+              opacity:
+                busy &&
+                !sending
+                  ? 0.65
+                  : 1,
+            }}
+          >
+            {sending
+              ? "전송 준비 중..."
+              : "📤 견적서 고객에게 보내기"}
+          </button>
+
           {/* 이미지 저장 */}
 
           <button
@@ -405,8 +394,8 @@ export default function QuoteSendPanel({
             disabled={busy}
             style={{
               width: "100%",
-              padding: "13px",
-              marginTop: "12px",
+              padding: "12px",
+              marginTop: "10px",
               border:
                 "1px solid #166534",
               borderRadius:
@@ -414,7 +403,7 @@ export default function QuoteSendPanel({
               background:
                 "#ffffff",
               color: "#166534",
-              fontSize: "15px",
+              fontSize: "14px",
               fontWeight: "bold",
               cursor: saving
                 ? "wait"
@@ -433,44 +422,7 @@ export default function QuoteSendPanel({
               : "💾 견적 이미지 저장하기"}
           </button>
 
-          {/* 이미지 공유 */}
-
-          <button
-            type="button"
-            onClick={
-              handleSendQuote
-            }
-            disabled={busy}
-            style={{
-              width: "100%",
-              padding: "13px",
-              marginTop: "10px",
-              border: "none",
-              borderRadius:
-                "10px",
-              background:
-                "#5d4037",
-              color: "#ffffff",
-              fontSize: "15px",
-              fontWeight: "bold",
-              cursor: sending
-                ? "wait"
-                : busy
-                  ? "not-allowed"
-                  : "pointer",
-              opacity:
-                busy &&
-                !sending
-                  ? 0.65
-                  : 1,
-            }}
-          >
-            {sending
-              ? "공유 준비 중..."
-              : "📤 견적 이미지 공유하기"}
-          </button>
-
-          {/* 고객 문자 */}
+          {/* 고객 문자창 */}
 
           <button
             type="button"
@@ -483,16 +435,16 @@ export default function QuoteSendPanel({
             }
             style={{
               width: "100%",
-              padding: "13px",
+              padding: "12px",
               marginTop: "10px",
               border:
-                "1px solid #5d4037",
+                "1px solid #78716c",
               borderRadius:
                 "10px",
               background:
                 "#ffffff",
-              color: "#5d4037",
-              fontSize: "15px",
+              color: "#57534e",
+              fontSize: "14px",
               fontWeight: "bold",
               cursor:
                 displayPhone &&
@@ -506,13 +458,10 @@ export default function QuoteSendPanel({
                   : 0.5,
             }}
           >
-            {openingSms
-              ? "📋 이미지 복사 중..."
-              : `📱 고객에게 문자 보내기${
-                  displayPhone
-                    ? ` · ${displayPhone}`
-                    : ""
-                }`}
+            📱 고객 문자창만 열기
+            {displayPhone
+              ? ` · ${displayPhone}`
+              : ""}
           </button>
 
           {/* 안내 */}
@@ -526,30 +475,29 @@ export default function QuoteSendPanel({
               background:
                 "#f5f5f4",
               fontSize: "12px",
-              lineHeight: 1.6,
+              lineHeight: 1.7,
               color: "#78716c",
             }}
           >
+            📤 고객에게 보내기:
+            견적 이미지 파일을
+            휴대폰 공유창으로
+            보냅니다.
+            <br />
+
+            공유창에서 메시지 또는
+            카카오톡을 선택해
+            전송할 수 있습니다.
+            <br />
+
             💾 저장하기:
-            견적 이미지를 JPG로
-            저장합니다.
+            견적 이미지를 JPG
+            파일로 저장합니다.
             <br />
 
-            📤 공유하기:
-            견적 이미지를 휴대폰
-            공유창으로 보냅니다.
-            <br />
-
-            📱 문자 보내기:
-            견적 이미지를 먼저
-            클립보드에 복사한 뒤
-            고객번호의 문자창을
-            엽니다.
-            <br />
-
-            문자창이 열리면
-            입력창을 길게 눌러
-            붙여넣기 해주세요.
+            📱 문자창만 열기:
+            등록된 고객 전화번호의
+            문자 작성창만 엽니다.
           </div>
         </>
       )}
