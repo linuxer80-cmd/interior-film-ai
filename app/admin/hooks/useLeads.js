@@ -141,9 +141,49 @@ export default function useLeads({
 
       if (error) throw error;
 
-      setLeads(data || []);
-      setLeadTotal(count || 0);
-      setLeadPage(page);
+      const normalizedLeads = (data || []).map((lead) => {
+  let autoMaterial = "";
+
+  if (lead.memo) {
+    const filmMatch = lead.memo.match(
+      /선택 필름:\s*(.+?)(?:\r?\n|$)/,
+    );
+
+    const fireMatch = lead.memo.match(
+      /필름 조건:\s*(.+?)(?:\r?\n|$)/,
+    );
+
+    const filmText =
+      filmMatch?.[1]?.trim() || "";
+
+    const fireText =
+      fireMatch?.[1]?.trim() || "";
+
+    if (filmText) {
+      autoMaterial = fireText
+        ? `${filmText} · ${fireText}`
+        : filmText;
+    }
+  }
+
+  return {
+    ...lead,
+
+    final_price:
+      lead.final_price ||
+      lead.estimate_average ||
+      "",
+
+    quote_material:
+      lead.quote_material ||
+      autoMaterial ||
+      "",
+  };
+});
+
+setLeads(normalizedLeads);
+setLeadTotal(count || 0);
+setLeadPage(page);
     } catch (error) {
       console.error(error);
 
