@@ -1,741 +1,501 @@
-import { formatWon } from "./adminUtils";
+"use client";
 
-/* =========================================================
-   공통 문자열 정리
-========================================================= */
+import { useEffect, useState } from "react";
 
-function cleanText(value, fallback = "") {
-  const text = String(value ?? "").trim();
-  return text || fallback;
-}
+import {
+  createQuotePreview,
+  downloadQuoteImage,
+  copyQuoteImage,
+  openCustomerSms,
+} from "./quoteUtils";
 
-/* =========================================================
-   Canvas 줄바꿈
-========================================================= */
-
-export function wrapCanvasText(
-  ctx,
-  text,
-  maxWidth,
-) {
-  const words = String(text || "")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  const lines = [];
-  let current = "";
-
-  for (const word of words) {
-    const test = current
-      ? `${current} ${word}`
-      : word;
-
-    if (
-      ctx.measureText(test).width >
-        maxWidth &&
-      current
-    ) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
-  }
-
-  if (current) {
-    lines.push(current);
-  }
-
-  return lines.length
-    ? lines
-    : [""];
-}
-
-/* =========================================================
-   견적 이미지 생성
-========================================================= */
-
-export async function createQuoteBlob(
+export default function QuoteSendPanel({
   lead,
   companyName = "",
   representativeName = "",
-) {
-  const resolvedCompanyName =
-    cleanText(
-      companyName,
-      "인테리어필름",
-    );
-
-  const resolvedRepresentativeName =
-    cleanText(representativeName);
-
-  const canvas =
-    document.createElement("canvas");
-
-  canvas.width = 1080;
-  canvas.height = 1500;
-
-  const ctx =
-    canvas.getContext("2d");
-
-  if (!ctx) {
-    throw new Error(
-      "견적 이미지를 만들 수 없습니다.",
-    );
-  }
-
-  /* 배경 */
-
-  ctx.fillStyle = "#f7f4ef";
-
-  ctx.fillRect(
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-
-  /* 상단 */
-
-  ctx.fillStyle = "#5d4037";
-
-  ctx.fillRect(
-    0,
-    0,
-    canvas.width,
-    210,
-  );
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 54px sans-serif";
-
-  const companyTitleLines =
-    wrapCanvasText(
-      ctx,
-      resolvedCompanyName,
-      930,
-    );
-
-  ctx.fillText(
-    companyTitleLines[0] ||
-      resolvedCompanyName,
-    70,
-    95,
-  );
-
-  ctx.font = "30px sans-serif";
-
-  ctx.fillText(
-    "인테리어필름 최종 견적서",
-    70,
-    150,
-  );
-
-  let y = 290;
-
-  /* 고객 정보 */
-
-  ctx.fillStyle = "#111827";
-  ctx.font = "bold 32px sans-serif";
-
-  ctx.fillText(
-    "고객 정보",
-    70,
-    y,
-  );
-
-  y += 55;
-
-  ctx.font = "28px sans-serif";
-
-  ctx.fillText(
-    `고객명 : ${
-      lead?.customer_name || "-"
-    }`,
-    70,
-    y,
-  );
-
-  y += 45;
-
-  ctx.fillText(
-    `지역 : ${
-      lead?.region ||
-      lead?.address ||
-      "-"
-    }`,
-    70,
-    y,
-  );
-
-  y += 75;
-
-  ctx.strokeStyle = "#d6d3d1";
-  ctx.lineWidth = 2;
-
-  ctx.beginPath();
-  ctx.moveTo(70, y);
-  ctx.lineTo(1010, y);
-  ctx.stroke();
-
-  y += 70;
-
-  /* 시공 내용 */
-
-  ctx.font = "bold 32px sans-serif";
-
-  ctx.fillText(
-    "시공 내용",
-    70,
-    y,
-  );
-
-  y += 50;
-
-  ctx.font = "27px sans-serif";
-
-  const workLines =
-    wrapCanvasText(
-      ctx,
-      lead?.quote_work_details ||
-        "상담 후 확정",
-      900,
-    );
-
-  for (const line of workLines) {
-    ctx.fillText(
-      line,
-      70,
-      y,
-    );
-
-    y += 42;
-  }
-
-  y += 35;
-
-  /* 사용 자재 */
-
-  ctx.font = "bold 32px sans-serif";
-
-  ctx.fillText(
-    "사용 자재",
-    70,
-    y,
-  );
-
-  y += 50;
-
-  ctx.font = "27px sans-serif";
-
-  const materialLines =
-    wrapCanvasText(
-      ctx,
-      lead?.quote_material ||
-        "협의",
-      900,
-    );
-
-  for (
-    const line of materialLines
-  ) {
-    ctx.fillText(
-      line,
-      70,
-      y,
-    );
-
-    y += 42;
-  }
-
-  y += 45;
-
-  /* 최종 금액 */
-
-  ctx.fillStyle = "#5d4037";
-
-  ctx.fillRect(
-    70,
-    y,
-    940,
-    150,
-  );
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font =
-    "bold 31px sans-serif";
-
-  ctx.fillText(
-    "최종 견적금액",
-    110,
-    y + 58,
-  );
-
-  ctx.font =
-    "bold 46px sans-serif";
-
-  ctx.textAlign = "right";
-
-  ctx.fillText(
-    formatWon(
-      lead?.final_price,
-    ),
-    960,
-    y + 108,
-  );
-
-  ctx.textAlign = "left";
-
-  y += 220;
-
-  /* 안내사항 */
-
-  ctx.fillStyle = "#111827";
-  ctx.font =
-    "bold 30px sans-serif";
-
-  ctx.fillText(
-    "안내사항",
-    70,
-    y,
-  );
-
-  y += 48;
-
-  ctx.font = "25px sans-serif";
-
-  const noteLines =
-    wrapCanvasText(
-      ctx,
-      lead?.quote_note ||
-        "현장 상태 및 추가 작업 발생 시 금액이 변경될 수 있습니다.",
-      900,
-    );
-
-  for (
-    const line of noteLines
-  ) {
-    ctx.fillText(
-      line,
-      70,
-      y,
-    );
-
-    y += 39;
-  }
-
-  /* 하단 */
-
-  ctx.fillStyle = "#78716c";
-  ctx.font = "23px sans-serif";
-
-  ctx.fillText(
-    `견적일 : ${new Date().toLocaleDateString(
-      "ko-KR",
-    )}`,
-    70,
-    1390,
-  );
-
-  const footerText =
-    resolvedRepresentativeName
-      ? `${resolvedCompanyName} · 대표 ${resolvedRepresentativeName}`
-      : resolvedCompanyName;
-
-  ctx.fillText(
-    footerText,
-    70,
-    1435,
-  );
-
-  /* Blob 생성 */
-
-  return await new Promise(
-    (resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            reject(
-              new Error(
-                "견적 이미지 생성 실패",
-              ),
-            );
-
-            return;
-          }
-
-          resolve(blob);
-        },
-        "image/jpeg",
-        0.92,
-      );
-    },
-  );
-}
-
-/* =========================================================
-   견적 미리보기
-========================================================= */
-
-export async function createQuotePreview(
-  lead,
-  companyName = "",
-  representativeName = "",
-) {
-  const price = Number(
-    String(
-      lead?.final_price || "",
-    ).replace(/,/g, ""),
-  );
-
-  if (
-    !Number.isFinite(price) ||
-    price <= 0
-  ) {
-    throw new Error(
-      "먼저 최종 견적금액을 저장해주세요.",
-    );
-  }
-
-  const blob =
-    await createQuoteBlob(
-      lead,
-      companyName,
-      representativeName,
-    );
-
-  if (!blob) {
-    throw new Error(
-      "견적 이미지를 만들지 못했습니다.",
-    );
-  }
-
-  return {
-    blob,
-    url: URL.createObjectURL(
-      blob,
-    ),
-  };
-}
-
-/* =========================================================
-   JPEG → PNG
-   기존 호환 기능 유지
-========================================================= */
-
-async function convertQuoteBlobToPng(
-  blob,
-) {
-  const bitmap =
-    await createImageBitmap(blob);
-
-  const canvas =
-    document.createElement(
-      "canvas",
-    );
-
-  canvas.width =
-    bitmap.width;
-
-  canvas.height =
-    bitmap.height;
-
-  const context =
-    canvas.getContext("2d");
-
-  if (!context) {
-    bitmap.close?.();
-
-    throw new Error(
-      "견적 이미지를 변환하지 못했습니다.",
-    );
-  }
-
-  context.drawImage(
-    bitmap,
-    0,
-    0,
-  );
-
-  bitmap.close?.();
-
-  return await new Promise(
-    (resolve, reject) => {
-      canvas.toBlob(
-        (pngBlob) => {
-          if (!pngBlob) {
-            reject(
-              new Error(
-                "견적 이미지 복사 준비에 실패했습니다.",
-              ),
-            );
-
-            return;
-          }
-
-          resolve(pngBlob);
-        },
-        "image/png",
-      );
-    },
-  );
-}
-
-/* =========================================================
-   이미지 클립보드 복사
-   기존 다른 코드 호환을 위해 유지
-========================================================= */
-
-export async function copyQuoteImage(
-  blob,
-) {
-  if (!blob) {
-    throw new Error(
-      "먼저 견적서를 만들어주세요.",
-    );
-  }
-
-  if (
-    typeof navigator ===
-      "undefined" ||
-    !navigator.clipboard ||
-    typeof ClipboardItem ===
-      "undefined"
-  ) {
-    throw new Error(
-      "이 브라우저에서는 이미지 복사를 지원하지 않습니다.",
-    );
-  }
-
-  const pngBlob =
-    await convertQuoteBlobToPng(
-      blob,
-    );
-
-  await navigator.clipboard.write([
-    new ClipboardItem({
-      "image/png": pngBlob,
-    }),
-  ]);
-
-  return true;
-}
-
-/* =========================================================
-   견적 이미지 파일 생성
-========================================================= */
-
-export function makeQuoteFile(
-  blob,
-  lead,
-  companyName = "",
-) {
-  if (!blob) {
-    throw new Error(
-      "견적 이미지가 없습니다.",
-    );
-  }
-
-  const resolvedCompanyName =
-    cleanText(
-      companyName,
-      "인테리어필름",
-    );
-
-  const customerName =
-    cleanText(
-      lead?.customer_name,
-      "고객",
-    );
-
-  const safeCompanyName =
-    resolvedCompanyName.replace(
-      /[\\/:*?"<>|]/g,
-      "_",
-    );
-
-  const safeCustomerName =
-    customerName.replace(
-      /[\\/:*?"<>|]/g,
-      "_",
-    );
-
-  return new File(
-    [blob],
-    `${safeCompanyName}_견적_${safeCustomerName}.jpg`,
-    {
-      type:
-        blob.type ||
-        "image/jpeg",
-    },
-  );
-}
-
-/* =========================================================
-   견적 이미지 강제 저장
-========================================================= */
-
-export function downloadQuoteImage(
-  blob,
-  lead,
-  companyName = "",
-) {
-  if (!blob) {
-    throw new Error(
-      "먼저 견적서를 만들어주세요.",
-    );
-  }
-
-  const file =
-    makeQuoteFile(
-      blob,
-      lead,
-      companyName,
-    );
-
-  const url =
-    URL.createObjectURL(blob);
-
-  const anchor =
-    document.createElement("a");
-
-  anchor.href = url;
-  anchor.download = file.name;
-
-  document.body.appendChild(
-    anchor,
-  );
-
-  anchor.click();
-  anchor.remove();
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 3000);
-
-  return {
-    downloaded: true,
-    fileName: file.name,
-  };
-}
-
-/* =========================================================
-   이미지 파일만 공유
-   문자 본문 없음
-========================================================= */
-
-export async function shareQuoteImage(
-  blob,
-  lead,
-  companyName = "",
-) {
-  const file =
-    makeQuoteFile(
-      blob,
-      lead,
-      companyName,
-    );
-
-  if (
-    typeof navigator !==
-      "undefined" &&
-    typeof navigator.share ===
-      "function"
-  ) {
-    const canShareFile =
-      typeof navigator.canShare !==
-        "function" ||
-      navigator.canShare({
-        files: [file],
-      });
-
-    if (canShareFile) {
-      /*
-       * 중요:
-       * title / text를 넣지 않습니다.
-       * 공유되는 데이터는
-       * 견적 이미지 파일뿐입니다.
-       */
-      await navigator.share({
-        files: [file],
-      });
-
-      return {
-        shared: true,
-        downloaded: false,
-      };
-    }
-  }
-
-  /*
-   * 파일 공유를 지원하지 않는 브라우저에서는
-   * 이미지만 저장합니다.
-   */
-
-  downloadQuoteImage(
-    blob,
-    lead,
-    companyName,
-  );
-
-  return {
-    shared: false,
-    downloaded: true,
-  };
-}
-
-/* =========================================================
-   고객 문자 바로 열기
-========================================================= */
-
-export function openCustomerSms(
-  lead,
-) {
-  const phone = String(
-    lead?.phone || "",
-  ).replace(/[^\d+]/g, "");
-
-  if (!phone) {
-    throw new Error(
-      "고객 전화번호가 없습니다.",
-    );
-  }
-
-  /*
-   * 문자 본문은 넣지 않고
-   * 고객 전화번호만 지정합니다.
-   */
-
-  window.location.href =
-    `sms:${phone}`;
-}
-
-/* =========================================================
-   기존 shareQuote 호환
-========================================================= */
-
-export async function shareQuote(
-  lead,
   setLeadsMessage,
-) {
-  const price = Number(
-    String(
-      lead?.final_price || "",
-    ).replace(/,/g, ""),
-  );
+}) {
+  const [quotePreview, setQuotePreview] = useState(null);
 
-  if (
-    !Number.isFinite(price) ||
-    price <= 0
-  ) {
-    setLeadsMessage?.(
-      "⚠️ 먼저 최종 견적금액을 저장해주세요.",
-    );
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
 
-    return;
+  /* =========================================================
+     미리보기 URL 정리
+  ========================================================= */
+
+  useEffect(() => {
+    return () => {
+      if (quotePreview?.url) {
+        URL.revokeObjectURL(quotePreview.url);
+      }
+    };
+  }, [quotePreview]);
+
+  /* =========================================================
+     견적서 만들기
+
+     현재 lead 전체를 그대로 사용합니다.
+
+     따라서 기존에 정상 작동 중인:
+     - 최종 견적금액
+     - 시공 내용
+     - 고객 선택 필름
+     - 방염 / 비방염
+     - quote_material
+
+     모두 그대로 유지됩니다.
+  ========================================================= */
+
+  async function handleCreateQuote() {
+    setCreating(true);
+    setLeadsMessage?.("");
+
+    try {
+      if (quotePreview?.url) {
+        URL.revokeObjectURL(quotePreview.url);
+      }
+
+      const preview = await createQuotePreview(
+        lead,
+        companyName,
+        representativeName,
+      );
+
+      setQuotePreview(preview);
+
+      setLeadsMessage?.(
+        "✅ 견적서가 만들어졌습니다. 금액과 사용 자재를 확인해주세요.",
+      );
+    } catch (error) {
+      console.error("견적서 만들기 오류:", error);
+
+      setLeadsMessage?.(
+        `❌ 견적서 만들기 오류: ${
+          error?.message || "실패"
+        }`,
+      );
+    } finally {
+      setCreating(false);
+    }
   }
 
-  setLeadsMessage?.(
-    "⚠️ 견적서 이미지를 먼저 만든 후 이미지 전송 버튼을 이용해주세요.",
+  /* =========================================================
+     1. 견적서 저장
+
+     견적 이미지 JPG를 휴대폰에 저장합니다.
+
+     여기서는:
+     - 클립보드 복사 안 함
+     - 문자창 안 엶
+     - 공유창 안 엶
+
+     저장만 합니다.
+  ========================================================= */
+
+  function handleSaveQuote() {
+    if (!quotePreview?.blob) {
+      setLeadsMessage?.(
+        "⚠️ 먼저 견적서 만들기를 눌러주세요.",
+      );
+
+      return;
+    }
+
+    setSaving(true);
+    setLeadsMessage?.("");
+
+    try {
+      const result = downloadQuoteImage(
+        quotePreview.blob,
+        lead,
+        companyName,
+      );
+
+      setLeadsMessage?.(
+        result?.fileName
+          ? `✅ 견적서를 저장했습니다. ${result.fileName}`
+          : "✅ 견적서를 저장했습니다.",
+      );
+    } catch (error) {
+      console.error(
+        "견적서 저장 오류:",
+        error,
+      );
+
+      setLeadsMessage?.(
+        `❌ 견적서 저장 오류: ${
+          error?.message || "실패"
+        }`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* =========================================================
+     2. 견적서 보내기
+
+     원하는 핵심 루틴:
+
+     견적 이미지
+        ↓
+     이미지 클립보드 복사 완료
+        ↓
+     고객 전화번호 문자창 열기
+
+     중요:
+     navigator.clipboard.write()가 끝날 때까지
+     반드시 await 합니다.
+
+     공유창(navigator.share)은 사용하지 않습니다.
+  ========================================================= */
+
+  async function handleSendQuote() {
+    if (!quotePreview?.blob) {
+      setLeadsMessage?.(
+        "⚠️ 먼저 견적서 만들기를 눌러주세요.",
+      );
+
+      return;
+    }
+
+    if (!lead?.phone) {
+      setLeadsMessage?.(
+        "⚠️ 고객 전화번호가 없습니다.",
+      );
+
+      return;
+    }
+
+    setSending(true);
+    setLeadsMessage?.("");
+
+    try {
+      /*
+       * 1단계
+       * 견적 이미지 자체를 클립보드에 복사
+       *
+       * copyQuoteImage 내부에서:
+       * JPG → PNG 변환
+       * ClipboardItem(image/png)
+       * navigator.clipboard.write()
+       *
+       * 작업이 끝날 때까지 기다립니다.
+       */
+      await copyQuoteImage(
+        quotePreview.blob,
+      );
+
+      /*
+       * 2단계
+       * 이미지 복사가 성공한 경우에만
+       * 고객 전화번호 문자창을 엽니다.
+       */
+      setLeadsMessage?.(
+        "✅ 견적 이미지가 복사되었습니다. 고객 문자창을 엽니다.",
+      );
+
+      /*
+       * 아주 짧게 브라우저에 상태 반영 시간을 준 뒤
+       * 문자 앱으로 이동합니다.
+       */
+      await new Promise((resolve) => {
+        setTimeout(resolve, 120);
+      });
+
+      openCustomerSms(lead);
+    } catch (error) {
+      console.error(
+        "견적서 보내기 오류:",
+        error,
+      );
+
+      /*
+       * 이미지 복사가 실패하면
+       * 문자창을 열지 않습니다.
+       *
+       * 이전처럼 텍스트 클립보드가 남은 상태에서
+       * 문자창으로 넘어가는 문제를 막기 위함입니다.
+       */
+      setLeadsMessage?.(
+        `❌ 견적 이미지 복사 실패: ${
+          error?.message ||
+          "이 브라우저에서 이미지 클립보드를 사용할 수 없습니다."
+        }`,
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /* =========================================================
+     표시 데이터
+  ========================================================= */
+
+  const displayCompanyName = String(
+    companyName || "",
+  ).trim();
+
+  const displayPhone = String(
+    lead?.phone || "",
+  ).trim();
+
+  const displayMaterial = String(
+    lead?.quote_material || "",
+  ).trim();
+
+  const busy =
+    creating ||
+    saving ||
+    sending;
+
+  /* =========================================================
+     화면
+  ========================================================= */
+
+  return (
+    <div
+      style={{
+        marginTop: "12px",
+        padding: "12px",
+        border: "1px solid #d6d3d1",
+        borderRadius: "12px",
+        background: "#fafaf9",
+      }}
+    >
+      {/* =====================================================
+          견적서 만들기
+      ===================================================== */}
+
+      <button
+        type="button"
+        onClick={handleCreateQuote}
+        disabled={busy}
+        style={{
+          width: "100%",
+          padding: "13px",
+          border: "1px solid #5d4037",
+          borderRadius: "10px",
+          background: "#ffffff",
+          color: "#5d4037",
+          fontSize: "15px",
+          fontWeight: "bold",
+          cursor: creating
+            ? "wait"
+            : busy
+              ? "not-allowed"
+              : "pointer",
+          opacity:
+            busy && !creating
+              ? 0.6
+              : 1,
+        }}
+      >
+        {creating
+          ? "견적서 만드는 중..."
+          : "🧾 견적서 만들기"}
+      </button>
+
+      {/* =====================================================
+          견적서 생성 후
+      ===================================================== */}
+
+      {quotePreview?.url && (
+        <>
+          <div
+            style={{
+              marginTop: "14px",
+              fontSize: "13px",
+              fontWeight: "bold",
+              color: "#44403c",
+            }}
+          >
+            견적서 미리보기
+            {displayCompanyName
+              ? ` · ${displayCompanyName}`
+              : ""}
+          </div>
+
+          {/* =================================================
+              고객 선택 필름
+
+              quote_material을 읽기만 합니다.
+              기존 자동입력 기능은 수정하지 않습니다.
+          ================================================= */}
+
+          {displayMaterial && (
+            <div
+              style={{
+                marginTop: "8px",
+                padding: "10px",
+                borderRadius: "8px",
+                background: "#f0f9ff",
+                border: "1px solid #bae6fd",
+                fontSize: "13px",
+                lineHeight: 1.6,
+                color: "#0369a1",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "3px",
+                }}
+              >
+                🎨 사용 자재
+              </div>
+
+              {displayMaterial}
+            </div>
+          )}
+
+          {/* =================================================
+              견적서 이미지
+          ================================================= */}
+
+          <img
+            src={quotePreview.url}
+            alt={
+              displayCompanyName
+                ? `${displayCompanyName} 견적서 미리보기`
+                : "견적서 미리보기"
+            }
+            style={{
+              display: "block",
+              width: "100%",
+              maxHeight: "520px",
+              marginTop: "10px",
+              objectFit: "contain",
+              border: "1px solid #d6d3d1",
+              borderRadius: "10px",
+              background: "#ffffff",
+            }}
+          />
+
+          {/* =================================================
+              1. 견적서 저장
+          ================================================= */}
+
+          <button
+            type="button"
+            onClick={handleSaveQuote}
+            disabled={busy}
+            style={{
+              width: "100%",
+              padding: "15px",
+              marginTop: "14px",
+              border: "none",
+              borderRadius: "10px",
+              background: "#166534",
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "bold",
+              cursor: saving
+                ? "wait"
+                : busy
+                  ? "not-allowed"
+                  : "pointer",
+              opacity:
+                busy && !saving
+                  ? 0.6
+                  : 1,
+            }}
+          >
+            {saving
+              ? "견적서 저장 중..."
+              : "💾 견적서 저장"}
+          </button>
+
+          {/* =================================================
+              2. 견적서 보내기
+          ================================================= */}
+
+          <button
+            type="button"
+            onClick={handleSendQuote}
+            disabled={
+              !displayPhone ||
+              busy
+            }
+            style={{
+              width: "100%",
+              padding: "16px",
+              marginTop: "10px",
+              border: "none",
+              borderRadius: "10px",
+              background:
+                displayPhone && !busy
+                  ? "#2563eb"
+                  : "#a8a29e",
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "bold",
+              cursor:
+                displayPhone && !busy
+                  ? "pointer"
+                  : "not-allowed",
+              opacity:
+                displayPhone && !busy
+                  ? 1
+                  : 0.65,
+            }}
+          >
+            {sending
+              ? "이미지 복사 중..."
+              : "📱 견적서 보내기"}
+          </button>
+
+          {/* =================================================
+              고객 전화번호
+          ================================================= */}
+
+          <div
+            style={{
+              marginTop: "7px",
+              textAlign: "center",
+              fontSize: "13px",
+              fontWeight: "bold",
+              color: displayPhone
+                ? "#57534e"
+                : "#dc2626",
+            }}
+          >
+            {displayPhone
+              ? `수신 고객번호 · ${displayPhone}`
+              : "고객 전화번호 없음"}
+          </div>
+
+          {/* =================================================
+              안내
+          ================================================= */}
+
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "11px",
+              borderRadius: "8px",
+              background: "#f5f5f4",
+              fontSize: "12px",
+              lineHeight: 1.8,
+              color: "#78716c",
+            }}
+          >
+            💾 견적서 저장
+            <br />
+            견적 이미지를 휴대폰에 저장합니다.
+            <br />
+            <br />
+
+            📱 견적서 보내기
+            <br />
+            견적 이미지를 복사한 뒤 고객 전화번호의 문자창을 엽니다.
+            <br />
+            문자창에서 이미지 붙여넣기 후 전송하면 됩니다.
+          </div>
+        </>
+      )}
+    </div>
   );
-     }
+               }
