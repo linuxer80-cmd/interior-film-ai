@@ -406,6 +406,11 @@ export default function AdminPage() {
 
   /* =========================================================
      관리자 초기화
+
+     순서:
+     1. 로그인 / 회사 확인
+     2. 신규 회사 샘플 데이터 확인 및 생성
+     3. 시공 DB / 설정 / 상담 데이터 조회
   ========================================================= */
 
   useEffect(() => {
@@ -428,6 +433,90 @@ export default function AdminPage() {
         result.companyId;
 
       try {
+        /* =====================================================
+           신규 관리자 샘플 데이터 확인 / 자동 생성
+        ===================================================== */
+
+        try {
+          const {
+            data: sessionData,
+            error: sessionError,
+          } =
+            await supabase.auth.getSession();
+
+          if (sessionError) {
+            throw sessionError;
+          }
+
+          const accessToken =
+            sessionData
+              ?.session
+              ?.access_token;
+
+          if (accessToken) {
+            const sampleResponse =
+              await fetch(
+                "/api/admin/ensure-sample-data",
+                {
+                  method: "POST",
+
+                  headers: {
+                    Authorization:
+                      `Bearer ${accessToken}`,
+                  },
+
+                  cache: "no-store",
+                },
+              );
+
+            let sampleResult =
+              null;
+
+            try {
+              sampleResult =
+                await sampleResponse.json();
+            } catch (jsonError) {
+              console.error(
+                "샘플 데이터 응답 확인:",
+                jsonError,
+              );
+            }
+
+            if (
+              !sampleResponse.ok ||
+              sampleResult?.success ===
+                false
+            ) {
+              console.error(
+                "샘플 데이터 확인:",
+                sampleResult,
+              );
+            } else {
+              console.log(
+                "샘플 데이터 확인:",
+                sampleResult,
+              );
+            }
+          }
+        } catch (sampleError) {
+          /*
+           * 샘플 데이터 생성에 문제가 생겨도
+           * 관리자 화면 자체는 정상적으로 열리게 합니다.
+           */
+          console.error(
+            "샘플 데이터 자동 생성:",
+            sampleError,
+          );
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        /* =====================================================
+           샘플 확인 후 관리자 데이터 조회
+        ===================================================== */
+
         await Promise.all([
           loadSettings(
             resolvedCompanyId,
@@ -1234,4 +1323,4 @@ export default function AdminPage() {
       />
     </main>
   );
-            }
+          }
