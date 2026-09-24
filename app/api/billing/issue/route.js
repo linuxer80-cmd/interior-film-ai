@@ -13,9 +13,6 @@ export const maxDuration = 60;
 /*
  * =========================================================
  * Supabase Service Role Client
- *
- * 서버에서만 사용합니다.
- * 브라우저로 service role key가 노출되면 안 됩니다.
  * =========================================================
  */
 
@@ -53,7 +50,7 @@ function getAdminSupabase() {
 
 /*
  * =========================================================
- * Bearer Token 추출
+ * Bearer Token
  * =========================================================
  */
 
@@ -75,7 +72,7 @@ function getBearerToken(request) {
   if (
     String(scheme || "")
       .toLowerCase() !==
-      "bearer"
+    "bearer"
   ) {
     return "";
   }
@@ -86,11 +83,7 @@ function getBearerToken(request) {
 
 /*
  * =========================================================
- * 카드사 표시값 추출
- *
- * Toss Billing 객체 버전에 따라
- * issuerCode / company 등이 다를 수 있으므로
- * 안전하게 처리합니다.
+ * 카드사
  * =========================================================
  */
 
@@ -108,10 +101,7 @@ function getCardCompany(
 
 /*
  * =========================================================
- * 마스킹 카드번호 추출
- *
- * Toss 응답에서 받은 마스킹 카드번호만 저장합니다.
- * 원본 카드번호 / CVC는 저장하지 않습니다.
+ * 마스킹 카드번호
  * =========================================================
  */
 
@@ -134,6 +124,20 @@ function getMaskedCardNumber(
 /*
  * =========================================================
  * POST /api/billing/issue
+ *
+ * 멱등 처리:
+ *
+ * prepared
+ *   → Toss billingKey 발급
+ *   → authorized
+ *
+ * authorized
+ *   → 기존 billingKey 확인
+ *   → 다시 발급하지 않고 성공 반환
+ *
+ * paid
+ *   → 이미 결제 완료
+ *   → 다시 발급하지 않고 성공 반환
  * =========================================================
  */
 
@@ -141,7 +145,6 @@ export async function POST(
   request,
 ) {
   let admin = null;
-
   let checkoutSession = null;
 
   try {
@@ -151,7 +154,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 1. 로그인 사용자 확인
+     * 1. 로그인
      * =====================================================
      */
 
@@ -209,7 +212,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 2. 요청값 읽기
+     * 2. 요청값
      * =====================================================
      */
 
@@ -240,19 +243,10 @@ export async function POST(
       ).trim();
 
 
-    if (!authKey) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "authKey가 없습니다.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
+    /*
+     * checkoutSessionId와 customerKey는
+     * 모든 상태에서 반드시 필요합니다.
+     */
 
     if (!customerKey) {
       return NextResponse.json(
@@ -284,10 +278,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 3. 로그인 사용자의 회사 확인
-     *
-     * 브라우저에서 company_id를 받지 않습니다.
-     * profiles에서 서버가 직접 확인합니다.
+     * 3. 사용자 업체
      * =====================================================
      */
 
@@ -358,7 +349,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 4. 업체 활성 상태 확인
+     * 4. 업체
      * =====================================================
      */
 
@@ -427,11 +418,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 5. checkout session 확인
-     *
-     * 여기서 브라우저가 전달한 값과
-     * 우리가 prepare 단계에서 만든 DB 값을
-     * 다시 대조합니다.
+     * 5. Checkout Session
      * =====================================================
      */
 
@@ -494,7 +481,7 @@ export async function POST(
 
 
     /*
-     * 다른 업체의 checkout session 사용 차단
+     * 업체 검증
      */
 
     if (
@@ -515,8 +502,7 @@ export async function POST(
 
 
     /*
-     * Toss redirect customerKey와
-     * prepare 단계 customerKey 대조
+     * customerKey 검증
      */
 
     if (
@@ -537,76 +523,8 @@ export async function POST(
 
 
     /*
-     * 현재 단계에서는 prepared 상태만 허용
-     */
-
-    if (
-      checkoutSession.status !==
-      "prepared"
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "이미 처리되었거나 사용할 수 없는 결제 세션입니다.",
-        },
-        {
-          status: 409,
-        },
-      );
-    }
-
-
-    /*
-     * checkout session 만료 확인
-     */
-
-    const expiresAt =
-      new Date(
-        checkoutSession.expires_at,
-      ).getTime();
-
-    if (
-      !Number.isFinite(expiresAt) ||
-      expiresAt <= Date.now()
-    ) {
-      await admin
-        .from(
-          "billing_checkout_sessions",
-        )
-        .update({
-          status: "expired",
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          checkoutSession.id,
-        )
-        .eq(
-          "status",
-          "prepared",
-        );
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "결제 세션이 만료되었습니다. 요금제를 다시 선택해주세요.",
-        },
-        {
-          status: 410,
-        },
-      );
-    }
-
-
-    /*
      * =====================================================
-     * 6. 선택한 요금제를 DB에서 다시 검증
-     *
-     * checkout session의 가격도
-     * 현재 DB 가격과 일치하는지 확인합니다.
+     * 6. 요금제 검증
      * =====================================================
      */
 
@@ -731,10 +649,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 7. billing_customer 확인
-     *
-     * prepare 단계에서 만든 customerKey와
-     * 다시 한 번 일치 여부를 확인합니다.
+     * 7. Billing Customer
      * =====================================================
      */
 
@@ -754,6 +669,8 @@ export async function POST(
             provider,
             customer_key,
             billing_key,
+            card_company,
+            card_number_masked,
             is_active
           `,
         )
@@ -815,10 +732,255 @@ export async function POST(
 
     /*
      * =====================================================
-     * 8. Toss 빌링키 발급
+     * 8. 이미 PAID
      *
-     * authKey는 일회성 인증키입니다.
-     * billingKey는 브라우저에 반환하지 않습니다.
+     * 이미 최초 결제가 완료된 checkout입니다.
+     * billingKey 재발급도 하지 않고,
+     * 결제도 여기서는 하지 않습니다.
+     * =====================================================
+     */
+
+    if (
+      checkoutSession.status ===
+      "paid"
+    ) {
+      return NextResponse.json(
+        {
+          ok: true,
+
+          alreadyProcessed:
+            true,
+
+          checkoutSessionId:
+            checkoutSession.id,
+
+          status:
+            "paid",
+
+          company: {
+            id:
+              company.id,
+
+            company_name:
+              company.company_name,
+          },
+
+          plan: {
+            plan_code:
+              plan.plan_code,
+
+            plan_name:
+              plan.plan_name,
+
+            monthly_price_krw:
+              planPrice,
+          },
+
+          paymentMethod: {
+            registered:
+              Boolean(
+                billingCustomer.billing_key,
+              ),
+
+            card_company:
+              billingCustomer.card_company ||
+              null,
+
+            card_number_masked:
+              billingCustomer
+                .card_number_masked ||
+              null,
+          },
+        },
+        {
+          status: 200,
+        },
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * 9. 이미 AUTHORIZED
+     *
+     * 카드 등록은 이미 끝났습니다.
+     * authKey는 일회성이므로 다시 사용하면 안 됩니다.
+     *
+     * billingKey가 실제 DB에 존재하는 경우에만
+     * 성공으로 반환합니다.
+     * =====================================================
+     */
+
+    if (
+      checkoutSession.status ===
+      "authorized"
+    ) {
+      if (
+        !billingCustomer.billing_key ||
+        billingCustomer.is_active ===
+          false
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "결제 세션은 승인되었지만 등록된 결제수단을 확인할 수 없습니다. 요금제를 다시 선택해주세요.",
+          },
+          {
+            status: 409,
+          },
+        );
+      }
+
+
+      return NextResponse.json(
+        {
+          ok: true,
+
+          alreadyAuthorized:
+            true,
+
+          checkoutSessionId:
+            checkoutSession.id,
+
+          status:
+            "authorized",
+
+          company: {
+            id:
+              company.id,
+
+            company_name:
+              company.company_name,
+          },
+
+          plan: {
+            plan_code:
+              plan.plan_code,
+
+            plan_name:
+              plan.plan_name,
+
+            monthly_price_krw:
+              planPrice,
+          },
+
+          paymentMethod: {
+            registered: true,
+
+            card_company:
+              billingCustomer.card_company ||
+              null,
+
+            card_number_masked:
+              billingCustomer
+                .card_number_masked ||
+              null,
+          },
+        },
+        {
+          status: 200,
+        },
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * 10. 허용하지 않는 checkout 상태
+     * =====================================================
+     */
+
+    if (
+      checkoutSession.status !==
+      "prepared"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "이미 실패했거나 사용할 수 없는 결제 세션입니다. 요금제를 다시 선택해주세요.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * 11. prepared 상태에서는 authKey 필수
+     * =====================================================
+     */
+
+    if (!authKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Toss 인증키(authKey)가 없습니다.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * 12. prepared 세션 만료 확인
+     * =====================================================
+     */
+
+    const expiresAt =
+      new Date(
+        checkoutSession.expires_at,
+      ).getTime();
+
+
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now()
+    ) {
+      await admin
+        .from(
+          "billing_checkout_sessions",
+        )
+        .update({
+          status:
+            "expired",
+
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          checkoutSession.id,
+        )
+        .eq(
+          "status",
+          "prepared",
+        );
+
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "결제 세션이 만료되었습니다. 요금제를 다시 선택해주세요.",
+        },
+        {
+          status: 410,
+        },
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * 13. Toss billingKey 발급
      * =====================================================
      */
 
@@ -826,6 +988,7 @@ export async function POST(
       await issueTossBillingKey({
         authKey,
         customerKey,
+
         idempotencyKey:
           createTossIdempotencyKey(),
       });
@@ -844,9 +1007,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 9. billingKey + 마스킹 카드정보 저장
-     *
-     * 원본 카드번호 / CVC 저장 안 함
+     * 14. billingKey 저장
      * =====================================================
      */
 
@@ -879,7 +1040,8 @@ export async function POST(
           card_number_masked:
             maskedCardNumber,
 
-          is_active: true,
+          is_active:
+            true,
 
           updated_at:
             new Date().toISOString(),
@@ -914,12 +1076,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 10. checkout session 상태 변경
-     *
-     * authorized =
-     * 카드등록 + billingKey 발급 완료
-     *
-     * 아직 paid가 아닙니다.
+     * 15. Checkout → authorized
      * =====================================================
      */
 
@@ -968,9 +1125,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 11. billing event 기록
-     *
-     * billingKey / authKey는 metadata에 기록하지 않습니다.
+     * 16. Billing Event
      * =====================================================
      */
 
@@ -1013,10 +1168,6 @@ export async function POST(
 
 
     if (eventError) {
-      /*
-       * 이벤트 로그 실패 때문에
-       * 이미 발급된 billingKey를 실패 처리하지는 않습니다.
-       */
       console.error(
         "[billing/issue] billing event error:",
         eventError,
@@ -1026,16 +1177,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 12. 성공 응답
-     *
-     * 절대로 billingKey를 브라우저에 반환하지 않습니다.
-     *
-     * 그리고 여기서는:
-     * - subscriptions 생성 안 함
-     * - payments paid 처리 안 함
-     * - companies.subscription_plan 변경 안 함
-     *
-     * 최초 결제 성공 단계에서 처리합니다.
+     * 17. 성공
      * =====================================================
      */
 
@@ -1069,7 +1211,8 @@ export async function POST(
         },
 
         paymentMethod: {
-          registered: true,
+          registered:
+            true,
 
           card_company:
             cardCompany,
@@ -1091,11 +1234,13 @@ export async function POST(
 
 
     /*
-     * Toss 또는 서버 처리 실패 기록
+     * prepared 상태에서 실제 발급 과정이 실패한 경우만
+     * checkout을 failed 처리합니다.
      *
-     * checkout session을 찾은 상태라면
-     * failed로 기록합니다.
+     * authorized / paid 재호출은 위에서 이미 반환되므로
+     * 이 catch로 들어오지 않습니다.
      */
+
     if (
       admin &&
       checkoutSession?.id
@@ -1154,6 +1299,7 @@ export async function POST(
                 "unknown error",
             },
           });
+
       } catch (
         logError
       ) {
@@ -1195,4 +1341,4 @@ export async function POST(
       },
     );
   }
-}
+      }
