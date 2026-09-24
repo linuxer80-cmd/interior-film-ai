@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
 import {
   checkUsageLimit,
   makeUsageLimitError,
 } from "../../utils/serverUsageLimit";
 
+import {
+  normalizeCategory,
+} from "../../utils/categoryUtils";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/*
- * =========================================================
- * 설정
- * =========================================================
- */
-
-const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_MODEL =
+  "text-embedding-3-small";
 
 const DEFAULT_MATCH_THRESHOLD = 0.65;
 const DEFAULT_MATCH_COUNT = 20;
@@ -40,7 +40,10 @@ function getAdminSupabase() {
   const serviceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
     return null;
   }
 
@@ -62,40 +65,36 @@ function getAdminSupabase() {
  * =========================================================
  */
 
-function normalizeCompanySlug(value) {
+function normalizeCompanySlug(
+  value
+) {
   return String(value || "")
     .trim()
     .toLowerCase();
 }
 
 function normalizeText(value) {
-  return String(value || "").trim();
+  return String(value || "")
+    .trim();
 }
 
-function normalizeOptionalText(value) {
+function normalizeOptionalText(
+  value
+) {
   const text =
-    String(value || "").trim();
+    String(value || "")
+      .trim();
 
   return text || null;
 }
 
 /*
  * =========================================================
- * 기존 useEstimate.js와 동일한 category 정규화
- * =========================================================
- */
-
-function normalizeCategory(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-}
-
-/*
- * 기존 useEstimate.js의 group.key와 동일한 값을 만듭니다.
+ * 공통 카테고리 그룹 키
  *
- * category + sub_category
+ * 중요:
+ * 브라우저 useEstimate.js와
+ * 서버가 동일한 categoryUtils.js를 사용합니다.
  * =========================================================
  */
 
@@ -112,7 +111,7 @@ function makeGroupKey(
 
 /*
  * =========================================================
- * 숫자 정리
+ * 숫자 처리
  * =========================================================
  */
 
@@ -173,13 +172,9 @@ function normalizeMatchCount(
   );
 }
 
-/*
- * =========================================================
- * 유사도 공개값 정리
- * =========================================================
- */
-
-function roundSimilarity(value) {
+function roundSimilarity(
+  value
+) {
   const number =
     Number(value);
 
@@ -193,13 +188,6 @@ function roundSimilarity(value) {
     number.toFixed(6)
   );
 }
-
-/*
- * =========================================================
- * 기존 useEstimate.js와 동일한
- * 1,000원 단위 금액 반올림
- * =========================================================
- */
 
 function roundMoneyToThousand(
   value
@@ -298,14 +286,10 @@ async function createEmbedding(
 
 /*
  * =========================================================
- * 서버 내부 유사사례 조회
+ * 업체별 유사사례 검색
  *
- * 중요:
- *
- * - 브라우저에서 RPC 직접 호출 안 함
- * - Service Role로만 호출
- * - company_slug 버전 RPC만 호출
- * - DB 함수에서도 업체 격리
+ * 브라우저가 아닌 서버에서
+ * Service Role로만 RPC를 호출합니다.
  * =========================================================
  */
 
@@ -319,22 +303,23 @@ async function getSimilarCases({
   const {
     data,
     error,
-  } = await supabase.rpc(
-    "get_public_similar_cases",
-    {
-      query_embedding:
-        embedding,
+  } =
+    await supabase.rpc(
+      "get_public_similar_cases",
+      {
+        query_embedding:
+          embedding,
 
-      company_slug:
-        companySlug,
+        company_slug:
+          companySlug,
 
-      match_threshold:
-        matchThreshold,
+        match_threshold:
+          matchThreshold,
 
-      match_count:
-        matchCount,
-    }
-  );
+        match_count:
+          matchCount,
+      }
+    );
 
   if (error) {
     console.error(
@@ -355,17 +340,19 @@ async function getSimilarCases({
 
 /*
  * =========================================================
- * 기존 useEstimate.js와 동일한 유사사례 필터
+ * 유사사례 필터
  *
- * 순서:
+ * 중요:
  *
- * 1. category + sub_category 정규화
- * 2. 현재 group.key와 정확히 일치
- * 3. actual_cost > 0
- * 4. 최대 10개
- * 5. work_item_id 기준 중복 제거
+ * AI 분석:
+ * 주방 가구 / 상부장과 하부장...
+ * → kitchen
  *
- * 기존 훅의 동작을 그대로 서버로 이동합니다.
+ * DB:
+ * 싱크대 / 싱크대
+ * → kitchen
+ *
+ * 같은 표준 그룹끼리만 견적에 사용합니다.
  * =========================================================
  */
 
@@ -377,14 +364,6 @@ function filterSimilarCases({
     Array.isArray(rows)
       ? rows
       : [];
-
-  /*
-   * 기존:
-   *
-   * (data || [])
-   *   .filter(...)
-   *   .slice(0, 10)
-   */
 
   const filtered =
     safeRows
@@ -413,11 +392,6 @@ function filterSimilarCases({
         0,
         MAX_ESTIMATE_CASES
       );
-
-  /*
-   * 기존과 동일하게
-   * work_item_id 중복 제거
-   */
 
   const unique = [];
 
@@ -453,13 +427,9 @@ function filterSimilarCases({
 
 /*
  * =========================================================
- * 기존 useEstimate.js와 동일한 견적 계산
+ * 실제 시공금액 기반 견적 계산
  *
- * - similarity >= MATCH_THRESHOLD
- * - similarity² 가중치
- * - 평균 ±10%
- * - 1,000원 단위 반올림
- * - 신뢰도 동일
+ * actual_cost는 서버 내부에서만 사용합니다.
  * =========================================================
  */
 
@@ -476,11 +446,8 @@ function calculateEstimate({
     return null;
   }
 
-  let weightedCostTotal =
-    0;
-
-  let weightTotal =
-    0;
+  let weightedCostTotal = 0;
+  let weightTotal = 0;
 
   for (
     const item of cases
@@ -502,13 +469,6 @@ function calculateEstimate({
       similarity >=
         matchThreshold
     ) {
-      /*
-       * 기존 useEstimate.js와 동일:
-       *
-       * 유사도가 높은 데이터에
-       * similarity² 가중치
-       */
-
       const weight =
         similarity *
         similarity;
@@ -557,10 +517,6 @@ function calculateEstimate({
       )
     );
 
-  /*
-   * 기존 신뢰도 판정 그대로
-   */
-
   let confidence =
     "낮음";
 
@@ -597,18 +553,16 @@ function calculateEstimate({
 
 /*
  * =========================================================
- * 고객에게 반환 가능한 유사사례
+ * 고객에게 반환할 안전한 유사사례 데이터
  *
- * 중요:
- *
- * actual_cost 반환 안 함
- * embedding 반환 안 함
- *
- * 사진 표시와 UI에 필요한 값만 반환
+ * actual_cost 반환 금지
+ * embedding 반환 금지
  * =========================================================
  */
 
-function makePublicCases(rows) {
+function makePublicCases(
+  rows
+) {
   const safeRows =
     Array.isArray(rows)
       ? rows
@@ -646,7 +600,7 @@ function makePublicCases(rows) {
 
 /*
  * =========================================================
- * 사용량 기록
+ * 유사검색 사용량 기록
  * =========================================================
  */
 
@@ -661,64 +615,68 @@ async function insertUsageEvent({
   const {
     data,
     error,
-  } = await supabase
-    .from("usage_events")
-    .insert({
-      company_id:
-        company.id,
+  } =
+    await supabase
+      .from(
+        "usage_events"
+      )
+      .insert({
+        company_id:
+          company.id,
 
-      event_type:
-        "similar_image_search",
+        event_type:
+          "similar_image_search",
 
-      quantity: 1,
+        quantity: 1,
 
-      cost_krw: 0,
+        cost_krw: 0,
 
-      provider:
-        "openai",
+        provider:
+          "openai",
 
-      model:
-        EMBEDDING_MODEL,
+        model:
+          EMBEDDING_MODEL,
 
-      reference_id:
-        null,
-
-      metadata: {
-        company_slug:
-          company.slug,
-
-        subscription_plan:
-          company
-            .subscription_plan ||
+        reference_id:
           null,
 
-        category:
-          category ||
-          null,
+        metadata: {
+          company_slug:
+            company.slug,
 
-        sub_category:
-          subCategory ||
-          null,
+          subscription_plan:
+            company
+              .subscription_plan ||
+            null,
 
-        result_count:
-          Number(
-            resultCount || 0
-          ),
+          category:
+            category ||
+            null,
 
-        top_similarity:
-          Number.isFinite(
+          sub_category:
+            subCategory ||
+            null,
+
+          result_count:
             Number(
-              topSimilarity
-            )
-          )
-            ? Number(
+              resultCount ||
+                0
+            ),
+
+          top_similarity:
+            Number.isFinite(
+              Number(
                 topSimilarity
               )
-            : null,
-      },
-    })
-    .select("id")
-    .single();
+            )
+              ? Number(
+                  topSimilarity
+                )
+              : null,
+        },
+      })
+      .select("id")
+      .single();
 
   if (error) {
     console.error(
@@ -734,6 +692,7 @@ async function insertUsageEvent({
 
   return data;
 }
+
 /*
  * =========================================================
  * POST
@@ -744,12 +703,6 @@ export async function POST(
   request
 ) {
   try {
-    /*
-     * =====================================================
-     * 요청 데이터
-     * =====================================================
-     */
-
     const body =
       await request.json();
 
@@ -787,8 +740,8 @@ export async function POST(
       );
 
     /*
-     * 기존 useEstimate.js의
-     * group.key와 동일한 값
+     * 고객페이지와 동일한
+     * 공통 categoryUtils.js 규칙 사용
      */
 
     const groupKey =
@@ -895,26 +848,29 @@ export async function POST(
     const {
       data: company,
       error: companyError,
-    } = await supabase
-      .from("companies")
-      .select(
-        `
-          id,
-          slug,
-          company_name,
-          subscription_plan,
-          is_active
-        `
-      )
-      .eq(
-        "slug",
-        companySlug
-      )
-      .eq(
-        "is_active",
-        true
-      )
-      .maybeSingle();
+    } =
+      await supabase
+        .from(
+          "companies"
+        )
+        .select(
+          `
+            id,
+            slug,
+            company_name,
+            subscription_plan,
+            is_active
+          `
+        )
+        .eq(
+          "slug",
+          companySlug
+        )
+        .eq(
+          "is_active",
+          true
+        )
+        .maybeSingle();
 
     if (companyError) {
       console.error(
@@ -951,12 +907,10 @@ export async function POST(
 
     /*
      * =====================================================
-     * 유사검색 사용량 한도 검사
+     * 유사검색 한도 검사
      *
-     * OpenAI embedding 전에 검사합니다.
-     *
-     * 따라서 한도 초과 업체는
-     * OpenAI 비용도 발생하지 않습니다.
+     * embedding 생성 전에 검사하여
+     * 한도 초과 상태에서는 OpenAI 비용이 발생하지 않습니다.
      * =====================================================
      */
 
@@ -1003,10 +957,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * OpenAI embedding
-     *
-     * embedding은 이 서버 함수 안에서만 존재합니다.
-     * 고객 브라우저에는 반환하지 않습니다.
+     * 서버 내부 Embedding 생성
      * =====================================================
      */
 
@@ -1037,11 +988,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 기존 useEstimate.js와 동일한 필터링
-     *
-     * category + sub_category 정확 매칭
-     * → 최대 10건
-     * → 중복 제거
+     * 공통 카테고리 규칙으로 필터
      * =====================================================
      */
 
@@ -1055,7 +1002,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 기존 useEstimate.js와 동일한 견적 계산
+     * 서버 내부 견적 계산
      * =====================================================
      */
 
@@ -1068,12 +1015,9 @@ export async function POST(
       });
 
     /*
-     * 검색 로그용 최고 유사도
-     *
-     * 기존 훅에서는 검색 전체 결과의
-     * 최고 유사도를 로그에 기록했습니다.
-     *
-     * 동일하게 rawCases 기준으로 계산합니다.
+     * =====================================================
+     * 로그용 최고 유사도
+     * =====================================================
      */
 
     const rawSimilarities =
@@ -1101,13 +1045,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * 유사검색 사용량 기록
-     *
-     * 실제 embedding + RPC 검색이
-     * 정상적으로 완료된 경우에만 +1
-     *
-     * 기존 /api/similar-search-usage를
-     * 따로 호출하지 않습니다.
+     * 유사검색 사용량 +1
      * =====================================================
      */
 
@@ -1120,13 +1058,6 @@ export async function POST(
         category,
 
         subCategory,
-
-        /*
-         * 기존 사용량 API에는
-         * RPC 검색 전체 결과 개수를 전달했습니다.
-         *
-         * 동일하게 rawCases.length 사용
-         */
 
         resultCount:
           rawCases.length,
@@ -1170,13 +1101,7 @@ export async function POST(
      * =====================================================
      * 고객 공개 응답
      *
-     * 절대 포함하지 않는 값:
-     *
-     * - embedding
-     * - actual_cost
-     *
-     * similar_cases에는 사진 표시와
-     * 유사도 표시에 필요한 데이터만 포함합니다.
+     * embedding과 actual_cost는 반환하지 않습니다.
      * =====================================================
      */
 
@@ -1267,4 +1192,4 @@ export async function POST(
       }
     );
   }
-}
+        }
