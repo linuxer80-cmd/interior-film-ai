@@ -182,6 +182,9 @@ export default function AdminPage() {
     updateSiteSchedule,
     updateSiteStatus,
 
+    addSiteRequestPhotos,
+    deleteSiteRequestPhoto,
+
     openSite,
     closeSite,
   } =
@@ -499,10 +502,6 @@ export default function AdminPage() {
             }
           }
         } catch (sampleError) {
-          /*
-           * 샘플 데이터 생성에 문제가 생겨도
-           * 관리자 화면 자체는 정상적으로 열리게 합니다.
-           */
           console.error(
             "샘플 데이터 자동 생성:",
             sampleError,
@@ -512,10 +511,6 @@ export default function AdminPage() {
         if (!mounted) {
           return;
         }
-
-        /* =====================================================
-           샘플 확인 후 관리자 데이터 조회
-        ===================================================== */
 
         await Promise.all([
           loadSettings(
@@ -835,258 +830,83 @@ export default function AdminPage() {
       {activeTab ===
         "jobs" && (
         <JobsTab
-          jobSearch={
-            jobSearch
-          }
-          setJobSearch={
-            setJobSearch
-          }
-          searchJobs={
-            searchJobs
-          }
-          clearJobSearch={
-            clearJobSearch
-          }
-          jobSearchApplied={
-            jobSearchApplied
-          }
-          jobTotal={
-            jobTotal
-          }
-          jobsMessage={
-            jobsMessage
-          }
-
-          jobsLoading={
-            jobsLoading
-          }
-          jobs={
-            jobs
-          }
-
-          editingId={
-            editingId
-          }
-
-          editCategory={
-            editCategory
-          }
-          setEditCategory={
-            setEditCategory
-          }
-
-          editSubCategory={
-            editSubCategory
-          }
-          setEditSubCategory={
-            setEditSubCategory
-          }
-
-          editCost={
-            editCost
-          }
-          setEditCost={
-            setEditCost
-          }
-
-          editMemo={
-            editMemo
-          }
-          setEditMemo={
-            setEditMemo
-          }
-
-          saveJobEdit={
-            saveJobEdit
-          }
-          cancelEdit={
-            cancelEdit
-          }
-          startEdit={
-            startEdit
-          }
-          deleteJob={
-            deleteJob
-          }
-
-          openJobId={
-            openJobId
-          }
-          toggleJobDetail={
-            toggleJobDetail
-          }
-
-          jobPhotoLoadingId={
-            jobPhotoLoadingId
-          }
-          jobPhotos={
-            jobPhotos
-          }
-
-          jobPhotoUrls={
-            jobPhotoUrls
-          }
-          loadingPhotoId={
-            loadingPhotoId
-          }
-
-          loadSingleJobPhoto={
-            loadSingleJobPhoto
-          }
-          openJobPhoto={
-            openJobPhoto
-          }
-
-          editingPhotoId={
-            editingPhotoId
-          }
-
-          editPhotoType={
-            editPhotoType
-          }
-          setEditPhotoType={
-            setEditPhotoType
-          }
-
-          editPhotoCategory={
-            editPhotoCategory
-          }
-          setEditPhotoCategory={
-            setEditPhotoCategory
-          }
-
-          editPhotoSubCategory={
-            editPhotoSubCategory
-          }
-          setEditPhotoSubCategory={
-            setEditPhotoSubCategory
-          }
-
-          editPhotoDescription={
-            editPhotoDescription
-          }
-          setEditPhotoDescription={
-            setEditPhotoDescription
-          }
-
-          photoEditLoading={
-            photoEditLoading
-          }
-
-          startPhotoEdit={
-            startPhotoEdit
-          }
-          cancelPhotoEdit={
-            cancelPhotoEdit
-          }
-          savePhotoEdit={
-            savePhotoEdit
-          }
-          deletePhoto={
-            deletePhoto
-          }
-
-          jobPage={
-            jobPage
-          }
-          totalJobPages={
-            totalJobPages
-          }
-          loadJobs={
-            loadJobs
-          }
+          jobSearch={jobSearch}
+          setJobSearch={setJobSearch}
+          searchJobs={searchJobs}
+          clearJobSearch={clearJobSearch}
+          jobSearchApplied={jobSearchApplied}
+          jobTotal={jobTotal}
+          jobsMessage={jobsMessage}
+          jobsLoading={jobsLoading}
+          jobs={jobs}
+          editingId={editingId}
+          editCategory={editCategory}
+          setEditCategory={setEditCategory}
+          editSubCategory={editSubCategory}
+          setEditSubCategory={setEditSubCategory}
+          editCost={editCost}
+          setEditCost={setEditCost}
+          editMemo={editMemo}
+          setEditMemo={setEditMemo}
+          saveJobEdit={saveJobEdit}
+          cancelEdit={cancelEdit}
+          startEdit={startEdit}
+          deleteJob={deleteJob}
+          openJobId={openJobId}
+          toggleJobDetail={toggleJobDetail}
+          jobPhotoLoadingId={jobPhotoLoadingId}
+          jobPhotos={jobPhotos}
+          jobPhotoUrls={jobPhotoUrls}
+          loadingPhotoId={loadingPhotoId}
+          loadSingleJobPhoto={loadSingleJobPhoto}
+          openJobPhoto={openJobPhoto}
+          editingPhotoId={editingPhotoId}
+          editPhotoType={editPhotoType}
+          setEditPhotoType={setEditPhotoType}
+          editPhotoCategory={editPhotoCategory}
+          setEditPhotoCategory={setEditPhotoCategory}
+          editPhotoSubCategory={editPhotoSubCategory}
+          setEditPhotoSubCategory={setEditPhotoSubCategory}
+          editPhotoDescription={editPhotoDescription}
+          setEditPhotoDescription={setEditPhotoDescription}
+          photoEditLoading={photoEditLoading}
+          startPhotoEdit={startPhotoEdit}
+          cancelPhotoEdit={cancelPhotoEdit}
+          savePhotoEdit={savePhotoEdit}
+          deletePhoto={deletePhoto}
+          jobPage={jobPage}
+          totalJobPages={totalJobPages}
+          loadJobs={loadJobs}
         />
       )}
-
-      {/* =====================================================
-          시공 등록
-      ===================================================== */}
 
       {activeTab ===
         "register" && (
         <RegisterTab
-          category={
-            category
-          }
-          setCategory={
-            setCategory
-          }
-
-          actualCost={
-            actualCost
-          }
-          setActualCost={
-            setActualCost
-          }
-
-          material={
-            material
-          }
-          setMaterial={
-            setMaterial
-          }
-
-          memo={
-            memo
-          }
-          setMemo={
-            setMemo
-          }
-
-          beforeImages={
-            beforeImages
-          }
-          setBeforeImages={
-            setBeforeImages
-          }
-
-          afterImages={
-            afterImages
-          }
-          setAfterImages={
-            setAfterImages
-          }
-
-          handleBeforeFiles={
-            handleBeforeFiles
-          }
-          handleAfterFiles={
-            handleAfterFiles
-          }
-
-          removeBeforeImage={
-            removeBeforeImage
-          }
-          removeAfterImage={
-            removeAfterImage
-          }
-
-          loading={
-            loading
-          }
-          handleSave={
-            handleSave
-          }
-          message={
-            message
-          }
-
-          similarityThreshold={
-            similarityThreshold
-          }
-          setSimilarityThreshold={
-            setSimilarityThreshold
-          }
-
-          settingLoading={
-            settingLoading
-          }
-          saveSimilaritySetting={
-            saveSimilaritySetting
-          }
-          settingMessage={
-            settingMessage
-          }
+          category={category}
+          setCategory={setCategory}
+          actualCost={actualCost}
+          setActualCost={setActualCost}
+          material={material}
+          setMaterial={setMaterial}
+          memo={memo}
+          setMemo={setMemo}
+          beforeImages={beforeImages}
+          setBeforeImages={setBeforeImages}
+          afterImages={afterImages}
+          setAfterImages={setAfterImages}
+          handleBeforeFiles={handleBeforeFiles}
+          handleAfterFiles={handleAfterFiles}
+          removeBeforeImage={removeBeforeImage}
+          removeAfterImage={removeAfterImage}
+          loading={loading}
+          handleSave={handleSave}
+          message={message}
+          similarityThreshold={similarityThreshold}
+          setSimilarityThreshold={setSimilarityThreshold}
+          settingLoading={settingLoading}
+          saveSimilaritySetting={saveSimilaritySetting}
+          settingMessage={settingMessage}
         />
       )}
 
@@ -1121,6 +941,14 @@ export default function AdminPage() {
 
           updateSiteStatus={
             updateSiteStatus
+          }
+
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
           }
 
           selectedSite={
@@ -1176,142 +1004,50 @@ export default function AdminPage() {
         />
       )}
 
-      {/* =====================================================
-          로그 분석
-      ===================================================== */}
-
       {activeTab ===
         "usage" && (
         <UsageTab
-          usageStats={
-            usageStats
-          }
-          usageMessage={
-            usageMessage
-          }
-          usageLoading={
-            usageLoading
-          }
-          loadUsageStats={
-            loadUsageStats
-          }
-
-          usageRecent={
-            usageRecent
-          }
-
-          usagePhotoUrls={
-            usagePhotoUrls
-          }
-          openUsagePhotoId={
-            openUsagePhotoId
-          }
-          usagePhotoLoadingId={
-            usagePhotoLoadingId
-          }
-          toggleUsagePhotos={
-            toggleUsagePhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
+          usageStats={usageStats}
+          usageMessage={usageMessage}
+          usageLoading={usageLoading}
+          loadUsageStats={loadUsageStats}
+          usageRecent={usageRecent}
+          usagePhotoUrls={usagePhotoUrls}
+          openUsagePhotoId={openUsagePhotoId}
+          usagePhotoLoadingId={usagePhotoLoadingId}
+          toggleUsagePhotos={toggleUsagePhotos}
+          setPreviewPhoto={setPreviewPhoto}
         />
       )}
-
-      {/* =====================================================
-          고객 상담
-      ===================================================== */}
 
       {activeTab ===
         "leads" && (
         <LeadsTab
-          companyName={
-            companyName
-          }
-
-          leadFilter={
-            leadFilter
-          }
-          setLeadFilter={
-            setLeadFilter
-          }
-
-          loadLeads={
-            loadLeads
-          }
-
-          leadTotal={
-            leadTotal
-          }
-          unreadCount={
-            unreadCount
-          }
-
-          notificationEnabled={
-            notificationEnabled
-          }
-          enableNotifications={
-            enableNotifications
-          }
-
-          leadsMessage={
-            leadsMessage
-          }
-          leadsLoading={
-            leadsLoading
-          }
-          leads={
-            leads
-          }
-
-          updateLeadStatus={
-            updateLeadStatus
-          }
-
-          openLeadId={
-            openLeadId
-          }
-          toggleLeadDetail={
-            toggleLeadDetail
-          }
-
-          leadPhotoUrls={
-            leadPhotoUrls
-          }
-          leadPhotoLoadingId={
-            leadPhotoLoadingId
-          }
-          loadLeadPhotos={
-            loadLeadPhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
-
-          saveLeadMemo={
-            saveLeadMemo
-          }
-          updateLeadLocal={
-            updateLeadLocal
-          }
-          saveFinalQuote={
-            saveFinalQuote
-          }
-
-          leadPage={
-            leadPage
-          }
-          totalLeadPages={
-            totalLeadPages
-          }
+          companyName={companyName}
+          leadFilter={leadFilter}
+          setLeadFilter={setLeadFilter}
+          loadLeads={loadLeads}
+          leadTotal={leadTotal}
+          unreadCount={unreadCount}
+          notificationEnabled={notificationEnabled}
+          enableNotifications={enableNotifications}
+          leadsMessage={leadsMessage}
+          leadsLoading={leadsLoading}
+          leads={leads}
+          updateLeadStatus={updateLeadStatus}
+          openLeadId={openLeadId}
+          toggleLeadDetail={toggleLeadDetail}
+          leadPhotoUrls={leadPhotoUrls}
+          leadPhotoLoadingId={leadPhotoLoadingId}
+          loadLeadPhotos={loadLeadPhotos}
+          setPreviewPhoto={setPreviewPhoto}
+          saveLeadMemo={saveLeadMemo}
+          updateLeadLocal={updateLeadLocal}
+          saveFinalQuote={saveFinalQuote}
+          leadPage={leadPage}
+          totalLeadPages={totalLeadPages}
         />
       )}
-
-      {/* =====================================================
-          사진 확대
-      ===================================================== */}
 
       <PhotoPreviewModal
         previewPhoto={
@@ -1323,4 +1059,4 @@ export default function AdminPage() {
       />
     </main>
   );
-          }
+}
