@@ -5,7 +5,7 @@ import {
   useState,
 } from "react";
 
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 
 /* =========================================================
    통화내용 / 통화녹음 AI 자동입력
