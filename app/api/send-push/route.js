@@ -137,6 +137,178 @@ function extractNotificationRecord(body) {
 }
 
 /* =========================================================
+   알림 클릭 이동주소 생성
+
+   중요:
+   1. notification.link가 이미 있으면 그대로 사용
+   2. link가 없을 때만 자동 생성
+   3. 외부 URL은 허용하지 않음
+========================================================= */
+
+function buildNotificationUrl(notification) {
+  const explicitLink =
+    cleanText(
+      notification?.link,
+      "",
+    );
+
+  /*
+   * 기존 link가 정상적인 내부 주소라면
+   * 기존 기능 그대로 유지
+   */
+  if (
+    explicitLink &&
+    explicitLink.startsWith("/") &&
+    !explicitLink.startsWith("//")
+  ) {
+    return explicitLink;
+  }
+
+  const recipientType =
+    cleanText(
+      notification?.recipient_type,
+      "",
+    );
+
+  const referenceType =
+    cleanText(
+      notification?.reference_type,
+      "",
+    ).toLowerCase();
+
+  const referenceId =
+    cleanText(
+      notification?.reference_id,
+      "",
+    );
+
+  const encodedReferenceId =
+    referenceId
+      ? encodeURIComponent(
+          referenceId,
+        )
+      : "";
+
+  /* =====================================================
+     업체 관리자
+  ===================================================== */
+
+  if (
+    recipientType ===
+    "company_admin"
+  ) {
+    /*
+     * 고객 상담
+     */
+    if (
+      encodedReferenceId &&
+      [
+        "lead",
+        "customer_lead",
+        "customer_leads",
+        "consultation",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      return `/admin?tab=leads&lead=${encodedReferenceId}`;
+    }
+
+    /*
+     * 현장
+     */
+    if (
+      encodedReferenceId &&
+      [
+        "site",
+        "sites",
+        "site_assignment",
+        "site_schedule",
+        "site_status",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      return `/admin?tab=sites&site=${encodedReferenceId}`;
+    }
+
+    /*
+     * 기존 기본 관리자 페이지
+     */
+    return "/admin";
+  }
+
+  /* =====================================================
+     시공자
+  ===================================================== */
+
+  if (
+    recipientType ===
+    "worker"
+  ) {
+    if (
+      encodedReferenceId &&
+      [
+        "site",
+        "sites",
+        "site_assignment",
+        "site_schedule",
+        "site_status",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      return `/worker?site=${encodedReferenceId}`;
+    }
+
+    return "/worker";
+  }
+
+  /* =====================================================
+     슈퍼관리자
+  ===================================================== */
+
+  if (
+    recipientType ===
+    "super_admin"
+  ) {
+    /*
+     * 업체 관련 알림
+     */
+    if (
+      encodedReferenceId &&
+      [
+        "company",
+        "companies",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      return `/super-admin/company/${encodedReferenceId}`;
+    }
+
+    /*
+     * 결제 관련
+     */
+    if (
+      [
+        "payment",
+        "subscription",
+        "billing",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      return "/super-admin/billing";
+    }
+
+    return "/super-admin/notifications";
+  }
+
+  return "/";
+}
+
+/* =========================================================
    슈퍼관리자 수신자 조회
 ========================================================= */
 
@@ -160,7 +332,10 @@ async function getSuperAdminUserIds(
   return [
     ...new Set(
       (data || [])
-        .map((item) => item?.user_id)
+        .map(
+          (item) =>
+            item?.user_id,
+        )
         .filter(Boolean),
     ),
   ];
@@ -186,9 +361,18 @@ async function getCompanyAdminUserIds(
   } = await supabase
     .from("profiles")
     .select("id")
-    .eq("company_id", companyId)
-    .eq("role", "owner")
-    .eq("is_active", true);
+    .eq(
+      "company_id",
+      companyId,
+    )
+    .eq(
+      "role",
+      "owner",
+    )
+    .eq(
+      "is_active",
+      true,
+    );
 
   if (error) {
     throw new Error(
@@ -199,7 +383,10 @@ async function getCompanyAdminUserIds(
   return [
     ...new Set(
       (data || [])
-        .map((item) => item?.id)
+        .map(
+          (item) =>
+            item?.id,
+        )
         .filter(Boolean),
     ),
   ];
@@ -208,16 +395,9 @@ async function getCompanyAdminUserIds(
 /* =========================================================
    시공자 Push 수신자 조회
 
-   실제 DB 구조:
-   workers.id         = 시공자 ID
-   workers.company_id = 소속 회사
-   workers.user_id    = 로그인 auth 사용자 UUID
-
-   recipient_worker_id가 있는 경우
-   해당 시공자의 user_id만 반환합니다.
-
-   notification에 recipient_user_id가 같이 들어온 경우에도
-   workers 테이블과 대조해서 동일한 계정인지 검증합니다.
+   workers.id
+   workers.company_id
+   workers.user_id
 ========================================================= */
 
 async function getWorkerUserIds(
@@ -257,9 +437,18 @@ async function getWorkerUserIds(
       .select(
         "id, company_id, user_id, is_active",
       )
-      .eq("id", workerId)
-      .eq("company_id", companyId)
-      .eq("is_active", true);
+      .eq(
+        "id",
+        workerId,
+      )
+      .eq(
+        "company_id",
+        companyId,
+      )
+      .eq(
+        "is_active",
+        true,
+      );
 
   if (recipientUserId) {
     query =
@@ -296,18 +485,6 @@ async function getWorkerUserIds(
 
 /* =========================================================
    알림 대상 사용자 결정
-
-   super_admin
-   → 활성 슈퍼관리자
-
-   company_admin
-   → 해당 회사 활성 owner
-
-   worker
-   → recipient_worker_id의 workers.user_id
-
-   recipient_user_id가 지정된 경우에도
-   각 역할의 실제 DB 소속을 다시 검증합니다.
 ========================================================= */
 
 async function resolveRecipientUserIds(
@@ -324,7 +501,10 @@ async function resolveRecipientUserIds(
       notification?.recipient_user_id,
     );
 
-  if (recipientType === "worker") {
+  if (
+    recipientType ===
+    "worker"
+  ) {
     return await getWorkerUserIds(
       supabase,
       notification,
@@ -332,16 +512,30 @@ async function resolveRecipientUserIds(
   }
 
   if (recipientUserId) {
-    if (recipientType === "super_admin") {
+    if (
+      recipientType ===
+      "super_admin"
+    ) {
       const {
         data,
         error,
-      } = await supabase
-        .from("super_admins")
-        .select("user_id")
-        .eq("user_id", recipientUserId)
-        .eq("is_active", true)
-        .maybeSingle();
+      } =
+        await supabase
+          .from(
+            "super_admins",
+          )
+          .select(
+            "user_id",
+          )
+          .eq(
+            "user_id",
+            recipientUserId,
+          )
+          .eq(
+            "is_active",
+            true,
+          )
+          .maybeSingle();
 
       if (error) {
         throw new Error(
@@ -350,12 +544,19 @@ async function resolveRecipientUserIds(
       }
 
       return data?.user_id
-        ? [data.user_id]
+        ? [
+            data.user_id,
+          ]
         : [];
     }
 
-    if (recipientType === "company_admin") {
-      if (!notification?.company_id) {
+    if (
+      recipientType ===
+      "company_admin"
+    ) {
+      if (
+        !notification?.company_id
+      ) {
         throw new Error(
           "company_admin 알림에는 company_id가 필요합니다.",
         );
@@ -364,17 +565,29 @@ async function resolveRecipientUserIds(
       const {
         data,
         error,
-      } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", recipientUserId)
-        .eq(
-          "company_id",
-          notification.company_id,
-        )
-        .eq("role", "owner")
-        .eq("is_active", true)
-        .maybeSingle();
+      } =
+        await supabase
+          .from(
+            "profiles",
+          )
+          .select("id")
+          .eq(
+            "id",
+            recipientUserId,
+          )
+          .eq(
+            "company_id",
+            notification.company_id,
+          )
+          .eq(
+            "role",
+            "owner",
+          )
+          .eq(
+            "is_active",
+            true,
+          )
+          .maybeSingle();
 
       if (error) {
         throw new Error(
@@ -383,20 +596,28 @@ async function resolveRecipientUserIds(
       }
 
       return data?.id
-        ? [data.id]
+        ? [
+            data.id,
+          ]
         : [];
     }
 
     return [];
   }
 
-  if (recipientType === "super_admin") {
+  if (
+    recipientType ===
+    "super_admin"
+  ) {
     return await getSuperAdminUserIds(
       supabase,
     );
   }
 
-  if (recipientType === "company_admin") {
+  if (
+    recipientType ===
+    "company_admin"
+  ) {
     return await getCompanyAdminUserIds(
       supabase,
       notification?.company_id,
@@ -405,42 +626,57 @@ async function resolveRecipientUserIds(
 
   throw new Error(
     `지원하지 않는 recipient_type입니다: ${
-      recipientType || "없음"
+      recipientType ||
+      "없음"
     }`,
   );
 }
 
 /* =========================================================
-   사용자들의 Push 구독 조회
+   사용자 Push 구독 조회
 ========================================================= */
 
 async function getPushSubscriptions(
   supabase,
   userIds,
 ) {
-  if (!Array.isArray(userIds)) {
+  if (
+    !Array.isArray(
+      userIds,
+    )
+  ) {
     return [];
   }
 
   const ids = [
     ...new Set(
-      userIds.filter(Boolean),
+      userIds.filter(
+        Boolean,
+      ),
     ),
   ];
 
-  if (ids.length === 0) {
+  if (
+    ids.length === 0
+  ) {
     return [];
   }
 
   const {
     data,
     error,
-  } = await supabase
-    .from("push_subscriptions")
-    .select(
-      "id, user_id, endpoint, p256dh, auth",
-    )
-    .in("user_id", ids);
+  } =
+    await supabase
+      .from(
+        "push_subscriptions",
+      )
+      .select(
+        "id, user_id, endpoint, p256dh, auth",
+      )
+      .in(
+        "user_id",
+        ids,
+      );
 
   if (error) {
     throw new Error(
@@ -455,7 +691,9 @@ async function getPushSubscriptions(
    Push Payload 생성
 ========================================================= */
 
-function buildPayload(notification) {
+function buildPayload(
+  notification,
+) {
   const title =
     cleanText(
       notification?.title,
@@ -468,35 +706,17 @@ function buildPayload(notification) {
       "새로운 알림이 도착했습니다.",
     );
 
-  let url =
-    cleanText(
-      notification?.link,
-      "/super-admin/notifications",
-    );
-
   /*
-   * 외부 URL을 Push 클릭 링크로 사용하지 않음.
-   * 내부 경로만 허용.
+   * 기존 notification.link 우선.
+   *
+   * link가 없을 때만
+   * 역할 / reference_type / reference_id로
+   * 자동 목적지 생성.
    */
-  if (
-    !url.startsWith("/") ||
-    url.startsWith("//")
-  ) {
-    if (
-      notification?.recipient_type ===
-      "company_admin"
-    ) {
-      url = "/admin";
-    } else if (
-      notification?.recipient_type ===
-      "worker"
-    ) {
-      url = "/worker";
-    } else {
-      url =
-        "/super-admin/notifications";
-    }
-  }
+  const url =
+    buildNotificationUrl(
+      notification,
+    );
 
   const notificationId =
     cleanText(
@@ -512,15 +732,19 @@ function buildPayload(notification) {
 
   return JSON.stringify({
     title,
+
     body,
+
     url,
 
-    tag: notificationId
-      ? `notification-${notificationId}`
-      : `${type}-${Date.now()}`,
+    tag:
+      notificationId
+        ? `notification-${notificationId}`
+        : `${type}-${Date.now()}`,
 
     notificationId:
-      notificationId || null,
+      notificationId ||
+      null,
 
     type,
 
@@ -546,10 +770,16 @@ async function deleteExpiredSubscription(
 
   const {
     error,
-  } = await supabase
-    .from("push_subscriptions")
-    .delete()
-    .eq("id", subscriptionId);
+  } =
+    await supabase
+      .from(
+        "push_subscriptions",
+      )
+      .delete()
+      .eq(
+        "id",
+        subscriptionId,
+      );
 
   if (error) {
     console.error(
@@ -572,7 +802,10 @@ async function sendPushToSubscriptions({
   let failed = 0;
   let expiredRemoved = 0;
 
-  for (const item of subscriptions) {
+  for (
+    const item of
+    subscriptions
+  ) {
     try {
       if (
         !item?.endpoint ||
@@ -600,7 +833,9 @@ async function sendPushToSubscriptions({
       );
 
       sent += 1;
-    } catch (pushError) {
+    } catch (
+      pushError
+    ) {
       const statusCode =
         Number(
           pushError?.statusCode,
@@ -623,8 +858,10 @@ async function sendPushToSubscriptions({
       );
 
       if (
-        statusCode === 404 ||
-        statusCode === 410
+        statusCode ===
+          404 ||
+        statusCode ===
+          410
       ) {
         await deleteExpiredSubscription(
           supabase,
@@ -647,8 +884,6 @@ async function sendPushToSubscriptions({
 
 /* =========================================================
    Notification Push 상태 기록
-
-   notifications 테이블에 있는 알림일 때만 기록.
 ========================================================= */
 
 async function updateNotificationPushStatus({
@@ -664,24 +899,37 @@ async function updateNotificationPushStatus({
       "",
     );
 
-  if (!notificationId) {
+  if (
+    !notificationId
+  ) {
     return;
   }
 
   const updateData = {};
 
-  if (sent > 0) {
-    updateData.push_sent = true;
+  if (
+    sent > 0
+  ) {
+    updateData.push_sent =
+      true;
+
     updateData.push_sent_at =
       new Date().toISOString();
-    updateData.push_error = null;
-  } else {
-    updateData.push_sent = false;
 
-    if (errorMessage) {
+    updateData.push_error =
+      null;
+  } else {
+    updateData.push_sent =
+      false;
+
+    if (
+      errorMessage
+    ) {
       updateData.push_error =
         errorMessage;
-    } else if (failed > 0) {
+    } else if (
+      failed > 0
+    ) {
       updateData.push_error =
         "Push 발송에 실패했습니다.";
     } else {
@@ -692,10 +940,18 @@ async function updateNotificationPushStatus({
 
   const {
     error,
-  } = await supabase
-    .from("notifications")
-    .update(updateData)
-    .eq("id", notificationId);
+  } =
+    await supabase
+      .from(
+        "notifications",
+      )
+      .update(
+        updateData,
+      )
+      .eq(
+        "id",
+        notificationId,
+      );
 
   if (error) {
     console.error(
@@ -709,20 +965,32 @@ async function updateNotificationPushStatus({
    POST
 ========================================================= */
 
-export async function POST(request) {
-  let supabase = null;
-  let notification = null;
+export async function POST(
+  request,
+) {
+  let supabase =
+    null;
+
+  let notification =
+    null;
 
   try {
     /* -------------------------------------------------------
        1. Webhook Secret 확인
     ------------------------------------------------------- */
 
-    if (!verifyWebhookSecret(request)) {
+    if (
+      !verifyWebhookSecret(
+        request,
+      )
+    ) {
       return json(
         {
-          success: false,
-          error: "Unauthorized",
+          success:
+            false,
+
+          error:
+            "Unauthorized",
         },
         401,
       );
@@ -744,7 +1012,9 @@ export async function POST(request) {
     const body =
       await request
         .json()
-        .catch(() => ({}));
+        .catch(
+          () => ({}),
+        );
 
     notification =
       extractNotificationRecord(
@@ -756,7 +1026,9 @@ export async function POST(request) {
         notification?.recipient_type,
       );
 
-    if (!recipientType) {
+    if (
+      !recipientType
+    ) {
       throw new Error(
         "recipient_type이 없습니다.",
       );
@@ -764,9 +1036,6 @@ export async function POST(request) {
 
     /* -------------------------------------------------------
        4. 수신자 사용자 UUID 결정
-
-       worker도 여기에서
-       workers.user_id를 검증하여 처리
     ------------------------------------------------------- */
 
     const recipientUserIds =
@@ -776,7 +1045,8 @@ export async function POST(request) {
       );
 
     if (
-      recipientUserIds.length === 0
+      recipientUserIds.length ===
+      0
     ) {
       let errorMessage =
         "Push 수신 사용자를 찾지 못했습니다.";
@@ -791,25 +1061,36 @@ export async function POST(request) {
 
       await updateNotificationPushStatus({
         supabase,
+
         notification,
+
         sent: 0,
+
         failed: 0,
+
         errorMessage,
       });
 
       return json({
-        success: true,
-        sent: 0,
+        success:
+          true,
+
+        sent:
+          0,
+
         recipient_type:
           recipientType,
-        recipient_users: 0,
+
+        recipient_users:
+          0,
+
         message:
           errorMessage,
       });
     }
 
     /* -------------------------------------------------------
-       5. 해당 사용자들의 기기만 조회
+       5. 해당 사용자 기기 조회
     ------------------------------------------------------- */
 
     const subscriptions =
@@ -819,25 +1100,38 @@ export async function POST(request) {
       );
 
     if (
-      subscriptions.length === 0
+      subscriptions.length ===
+      0
     ) {
       await updateNotificationPushStatus({
         supabase,
+
         notification,
+
         sent: 0,
+
         failed: 0,
+
         errorMessage:
           "등록된 수신 기기가 없습니다.",
       });
 
       return json({
-        success: true,
-        sent: 0,
+        success:
+          true,
+
+        sent:
+          0,
+
         recipient_type:
           recipientType,
+
         recipient_users:
           recipientUserIds.length,
-        registered_devices: 0,
+
+        registered_devices:
+          0,
+
         message:
           "해당 수신자의 등록된 휴대폰이 없습니다.",
       });
@@ -859,7 +1153,9 @@ export async function POST(request) {
     const result =
       await sendPushToSubscriptions({
         supabase,
+
         subscriptions,
+
         payload,
       });
 
@@ -869,9 +1165,14 @@ export async function POST(request) {
 
     await updateNotificationPushStatus({
       supabase,
+
       notification,
-      sent: result.sent,
-      failed: result.failed,
+
+      sent:
+        result.sent,
+
+      failed:
+        result.failed,
     });
 
     /* -------------------------------------------------------
@@ -879,7 +1180,8 @@ export async function POST(request) {
     ------------------------------------------------------- */
 
     return json({
-      success: true,
+      success:
+        true,
 
       recipient_type:
         recipientType,
@@ -911,9 +1213,13 @@ export async function POST(request) {
     ) {
       await updateNotificationPushStatus({
         supabase,
+
         notification,
+
         sent: 0,
+
         failed: 1,
+
         errorMessage:
           error?.message ||
           "Push 발송 오류",
@@ -922,7 +1228,8 @@ export async function POST(request) {
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         error:
           error?.message ||
@@ -931,4 +1238,4 @@ export async function POST(request) {
       500,
     );
   }
-   }
+     }
