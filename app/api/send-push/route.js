@@ -127,7 +127,10 @@ function extractNotificationRecord(body) {
     body?.notification ||
     body;
 
-  if (!record || typeof record !== "object") {
+  if (
+    !record ||
+    typeof record !== "object"
+  ) {
     throw new Error(
       "알림 데이터가 없습니다.",
     );
@@ -137,33 +140,30 @@ function extractNotificationRecord(body) {
 }
 
 /* =========================================================
-   알림 클릭 이동주소 생성
-
-   중요:
-   1. notification.link가 이미 있으면 그대로 사용
-   2. link가 없을 때만 자동 생성
-   3. 외부 URL은 허용하지 않음
+   내부 링크 확인
 ========================================================= */
 
-function buildNotificationUrl(notification) {
-  const explicitLink =
-    cleanText(
-      notification?.link,
-      "",
-    );
+function isSafeInternalLink(value) {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//")
+  );
+}
 
-  /*
-   * 기존 link가 정상적인 내부 주소라면
-   * 기존 기능 그대로 유지
-   */
-  if (
-    explicitLink &&
-    explicitLink.startsWith("/") &&
-    !explicitLink.startsWith("//")
-  ) {
-    return explicitLink;
-  }
+/* =========================================================
+   Push 클릭 목적지
 
+   기존 기능 유지 원칙:
+   - 이미 구체적인 link가 있으면 그대로 사용
+   - /super-admin/notifications처럼 일반 링크인데
+     reference_type으로 더 정확한 페이지를 알 수 있을 때만
+     더 정확한 주소로 이동
+========================================================= */
+
+function buildNotificationUrl(
+  notification,
+) {
   const recipientType =
     cleanText(
       notification?.recipient_type,
@@ -182,10 +182,34 @@ function buildNotificationUrl(notification) {
       "",
     );
 
+  const companyId =
+    cleanText(
+      notification?.company_id,
+      "",
+    );
+
+  const explicitLink =
+    cleanText(
+      notification?.link,
+      "",
+    );
+
+  const hasSafeExplicitLink =
+    isSafeInternalLink(
+      explicitLink,
+    );
+
   const encodedReferenceId =
     referenceId
       ? encodeURIComponent(
           referenceId,
+        )
+      : "";
+
+  const encodedCompanyId =
+    companyId
+      ? encodeURIComponent(
+          companyId,
         )
       : "";
 
@@ -198,8 +222,15 @@ function buildNotificationUrl(notification) {
     "company_admin"
   ) {
     /*
-     * 고객 상담
+     * 기존 구체적인 링크 우선
+     * 예: /admin/billing
      */
+    if (
+      hasSafeExplicitLink
+    ) {
+      return explicitLink;
+    }
+
     if (
       encodedReferenceId &&
       [
@@ -214,9 +245,6 @@ function buildNotificationUrl(notification) {
       return `/admin?tab=leads&lead=${encodedReferenceId}`;
     }
 
-    /*
-     * 현장
-     */
     if (
       encodedReferenceId &&
       [
@@ -232,9 +260,6 @@ function buildNotificationUrl(notification) {
       return `/admin?tab=sites&site=${encodedReferenceId}`;
     }
 
-    /*
-     * 기존 기본 관리자 페이지
-     */
     return "/admin";
   }
 
@@ -246,6 +271,12 @@ function buildNotificationUrl(notification) {
     recipientType ===
     "worker"
   ) {
+    if (
+      hasSafeExplicitLink
+    ) {
+      return explicitLink;
+    }
+
     if (
       encodedReferenceId &&
       [
@@ -273,22 +304,11 @@ function buildNotificationUrl(notification) {
     "super_admin"
   ) {
     /*
-     * 업체 관련 알림
-     */
-    if (
-      encodedReferenceId &&
-      [
-        "company",
-        "companies",
-      ].includes(
-        referenceType,
-      )
-    ) {
-      return `/super-admin/company/${encodedReferenceId}`;
-    }
-
-    /*
-     * 결제 관련
+     * 결제 / 구독
+     *
+     * 기존 일부 알림이
+     * /super-admin/notifications 로 저장되어 있어도
+     * 실제 내용이 결제라면 결제관리로 이동
      */
     if (
       [
@@ -299,10 +319,83 @@ function buildNotificationUrl(notification) {
         referenceType,
       )
     ) {
+      /*
+       * 이미 더 구체적인 링크가 있다면 유지
+       */
+      if (
+        hasSafeExplicitLink &&
+        explicitLink !==
+          "/super-admin/notifications"
+      ) {
+        return explicitLink;
+      }
+
       return "/super-admin/billing";
     }
 
+    /*
+     * 업체 관련 알림
+     */
+    if (
+      [
+        "company",
+        "companies",
+      ].includes(
+        referenceType,
+      )
+    ) {
+      const targetCompanyId =
+        encodedReferenceId ||
+        encodedCompanyId;
+
+      if (
+        targetCompanyId
+      ) {
+        return `/super-admin/company/${targetCompanyId}`;
+      }
+    }
+
+    /*
+     * 구체적인 기존 link가 있다면 유지
+     */
+    if (
+      hasSafeExplicitLink &&
+      explicitLink !==
+        "/super-admin/notifications"
+    ) {
+      return explicitLink;
+    }
+
+    /*
+     * 일반 알림인데 특정 업체가 연결되어 있다면
+     * 업체 상세로 이동
+     */
+    if (
+      encodedCompanyId
+    ) {
+      return `/super-admin/company/${encodedCompanyId}`;
+    }
+
+    /*
+     * 시스템 전체 알림
+     */
+    if (
+      hasSafeExplicitLink
+    ) {
+      return explicitLink;
+    }
+
     return "/super-admin/notifications";
+  }
+
+  /* =====================================================
+     알 수 없는 수신자
+  ===================================================== */
+
+  if (
+    hasSafeExplicitLink
+  ) {
+    return explicitLink;
   }
 
   return "/";
@@ -319,9 +412,16 @@ async function getSuperAdminUserIds(
     data,
     error,
   } = await supabase
-    .from("super_admins")
-    .select("user_id")
-    .eq("is_active", true);
+    .from(
+      "super_admins",
+    )
+    .select(
+      "user_id",
+    )
+    .eq(
+      "is_active",
+      true,
+    );
 
   if (error) {
     throw new Error(
@@ -336,13 +436,15 @@ async function getSuperAdminUserIds(
           (item) =>
             item?.user_id,
         )
-        .filter(Boolean),
+        .filter(
+          Boolean,
+        ),
     ),
   ];
 }
 
 /* =========================================================
-   회사 관리자(owner) 수신자 조회
+   회사 관리자(owner) 조회
 ========================================================= */
 
 async function getCompanyAdminUserIds(
@@ -359,8 +461,12 @@ async function getCompanyAdminUserIds(
     data,
     error,
   } = await supabase
-    .from("profiles")
-    .select("id")
+    .from(
+      "profiles",
+    )
+    .select(
+      "id",
+    )
     .eq(
       "company_id",
       companyId,
@@ -387,17 +493,15 @@ async function getCompanyAdminUserIds(
           (item) =>
             item?.id,
         )
-        .filter(Boolean),
+        .filter(
+          Boolean,
+        ),
     ),
   ];
 }
 
 /* =========================================================
    시공자 Push 수신자 조회
-
-   workers.id
-   workers.company_id
-   workers.user_id
 ========================================================= */
 
 async function getWorkerUserIds(
@@ -433,7 +537,9 @@ async function getWorkerUserIds(
 
   let query =
     supabase
-      .from("workers")
+      .from(
+        "workers",
+      )
       .select(
         "id, company_id, user_id, is_active",
       )
@@ -450,7 +556,9 @@ async function getWorkerUserIds(
         true,
       );
 
-  if (recipientUserId) {
+  if (
+    recipientUserId
+  ) {
     query =
       query.eq(
         "user_id",
@@ -474,7 +582,9 @@ async function getWorkerUserIds(
     return [];
   }
 
-  if (!data.user_id) {
+  if (
+    !data.user_id
+  ) {
     return [];
   }
 
@@ -511,7 +621,9 @@ async function resolveRecipientUserIds(
     );
   }
 
-  if (recipientUserId) {
+  if (
+    recipientUserId
+  ) {
     if (
       recipientType ===
       "super_admin"
@@ -570,7 +682,9 @@ async function resolveRecipientUserIds(
           .from(
             "profiles",
           )
-          .select("id")
+          .select(
+            "id",
+          )
           .eq(
             "id",
             recipientUserId,
@@ -684,7 +798,9 @@ async function getPushSubscriptions(
     );
   }
 
-  return data || [];
+  return (
+    data || []
+  );
 }
 
 /* =========================================================
@@ -706,13 +822,6 @@ function buildPayload(
       "새로운 알림이 도착했습니다.",
     );
 
-  /*
-   * 기존 notification.link 우선.
-   *
-   * link가 없을 때만
-   * 역할 / reference_type / reference_id로
-   * 자동 목적지 생성.
-   */
   const url =
     buildNotificationUrl(
       notification,
@@ -813,6 +922,7 @@ async function sendPushToSubscriptions({
         !item?.auth
       ) {
         failed += 1;
+
         continue;
       }
 
@@ -858,17 +968,16 @@ async function sendPushToSubscriptions({
       );
 
       if (
-        statusCode ===
-          404 ||
-        statusCode ===
-          410
+        statusCode === 404 ||
+        statusCode === 410
       ) {
         await deleteExpiredSubscription(
           supabase,
           item?.id,
         );
 
-        expiredRemoved += 1;
+        expiredRemoved +=
+          1;
       } else {
         failed += 1;
       }
@@ -1238,4 +1347,4 @@ export async function POST(
       500,
     );
   }
-     }
+           }
