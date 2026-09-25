@@ -216,7 +216,7 @@ export default function useSites({
               null,
 
             description:
-              "현장 등록 시 첨부한 시공 요청사진",
+              "시공 요청사진",
           };
 
           const {
@@ -246,6 +246,377 @@ export default function useSites({
         }
 
         return uploadedRows;
+      },
+      [companyId],
+    );
+
+  /* =========================================================
+     현장 상세에서 요청사진 추가
+  ========================================================= */
+
+  const addSiteRequestPhotos =
+    useCallback(
+      async ({
+        siteId,
+        files = [],
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        const normalizedFiles =
+          Array.from(
+            files || [],
+          ).filter(Boolean);
+
+        if (
+          normalizedFiles.length ===
+          0
+        ) {
+          return {
+            success: false,
+            error:
+              "추가할 사진을 선택해주세요.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          const uploadedPhotos =
+            await uploadRequestPhotos({
+              siteId,
+              files:
+                normalizedFiles,
+            });
+
+          setSites((prev) =>
+            prev.map(
+              (site) => {
+                if (
+                  site.id !==
+                  siteId
+                ) {
+                  return site;
+                }
+
+                const existingPhotos =
+                  Array.isArray(
+                    site.site_photos,
+                  )
+                    ? site.site_photos
+                    : [];
+
+                return {
+                  ...site,
+
+                  site_photos: [
+                    ...existingPhotos,
+                    ...uploadedPhotos,
+                  ],
+                };
+              },
+            ),
+          );
+
+          setSelectedSite(
+            (prev) => {
+              if (
+                !prev ||
+                prev.id !==
+                  siteId
+              ) {
+                return prev;
+              }
+
+              const existingPhotos =
+                Array.isArray(
+                  prev.site_photos,
+                )
+                  ? prev.site_photos
+                  : [];
+
+              return {
+                ...prev,
+
+                site_photos: [
+                  ...existingPhotos,
+                  ...uploadedPhotos,
+                ],
+              };
+            },
+          );
+
+          setSitesMessage(
+            `✅ 요청사진 ${uploadedPhotos.length}장이 추가되었습니다.`,
+          );
+
+          return {
+            success: true,
+            photos:
+              uploadedPhotos,
+          };
+        } catch (error) {
+          console.error(
+            "현장 요청사진 추가 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "사진 추가 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 요청사진 추가 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [
+        companyId,
+        uploadRequestPhotos,
+      ],
+    );
+
+  /* =========================================================
+     현장 상세에서 요청사진 삭제
+  ========================================================= */
+
+  const deleteSiteRequestPhoto =
+    useCallback(
+      async ({
+        siteId,
+        photoId,
+        storagePath = null,
+      }) => {
+        if (
+          !companyId ||
+          !siteId ||
+          !photoId
+        ) {
+          return {
+            success: false,
+            error:
+              "삭제할 사진 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          /*
+           * 먼저 DB에서 실제 사진정보를 확인합니다.
+           * 화면에서 전달된 storagePath보다
+           * DB 값을 우선 사용합니다.
+           */
+          const {
+            data: photoRow,
+            error:
+              photoLoadError,
+          } = await supabase
+            .from("site_photos")
+            .select(
+              "id, company_id, site_id, photo_type, storage_path",
+            )
+            .eq(
+              "id",
+              photoId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            )
+            .maybeSingle();
+
+          if (photoLoadError) {
+            throw new Error(
+              `사진 정보 확인 실패: ${photoLoadError.message}`,
+            );
+          }
+
+          if (!photoRow) {
+            throw new Error(
+              "삭제할 사진을 찾을 수 없습니다.",
+            );
+          }
+
+          const targetStoragePath =
+            photoRow.storage_path ||
+            storagePath ||
+            null;
+
+          /*
+           * DB 행을 먼저 삭제합니다.
+           * 회사 ID + 현장 ID + 사진 ID를
+           * 모두 확인해서 다른 업체 사진이
+           * 삭제되지 않도록 합니다.
+           */
+          const {
+            error: deleteDbError,
+          } = await supabase
+            .from("site_photos")
+            .delete()
+            .eq(
+              "id",
+              photoId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            );
+
+          if (deleteDbError) {
+            throw new Error(
+              `사진 정보 삭제 실패: ${deleteDbError.message}`,
+            );
+          }
+
+          /*
+           * Storage 파일 삭제.
+           * DB 삭제는 성공했는데 Storage 삭제만
+           * 실패하더라도 화면에서는 삭제 상태를
+           * 유지합니다.
+           */
+          let storageWarning =
+            null;
+
+          if (targetStoragePath) {
+            const {
+              error:
+                storageDeleteError,
+            } =
+              await supabase.storage
+                .from(
+                  "work-photos",
+                )
+                .remove([
+                  targetStoragePath,
+                ]);
+
+            if (
+              storageDeleteError
+            ) {
+              console.error(
+                "현장 요청사진 Storage 삭제 오류:",
+                storageDeleteError,
+              );
+
+              storageWarning =
+                storageDeleteError.message;
+            }
+          }
+
+          setSites((prev) =>
+            prev.map(
+              (site) => {
+                if (
+                  site.id !==
+                  siteId
+                ) {
+                  return site;
+                }
+
+                const nextPhotos =
+                  Array.isArray(
+                    site.site_photos,
+                  )
+                    ? site.site_photos.filter(
+                        (photo) =>
+                          photo.id !==
+                          photoId,
+                      )
+                    : [];
+
+                return {
+                  ...site,
+                  site_photos:
+                    nextPhotos,
+                };
+              },
+            ),
+          );
+
+          setSelectedSite(
+            (prev) => {
+              if (
+                !prev ||
+                prev.id !==
+                  siteId
+              ) {
+                return prev;
+              }
+
+              const nextPhotos =
+                Array.isArray(
+                  prev.site_photos,
+                )
+                  ? prev.site_photos.filter(
+                      (photo) =>
+                        photo.id !==
+                        photoId,
+                    )
+                  : [];
+
+              return {
+                ...prev,
+                site_photos:
+                  nextPhotos,
+              };
+            },
+          );
+
+          if (storageWarning) {
+            setSitesMessage(
+              "✅ 사진 목록에서는 삭제되었습니다. 저장소 파일 정리는 일부 실패했습니다.",
+            );
+          } else {
+            setSitesMessage(
+              "✅ 요청사진이 삭제되었습니다.",
+            );
+          }
+
+          return {
+            success: true,
+            storageWarning,
+          };
+        } catch (error) {
+          console.error(
+            "현장 요청사진 삭제 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "사진 삭제 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 요청사진 삭제 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
       },
       [companyId],
     );
@@ -943,9 +1314,13 @@ export default function useSites({
     saveSiteMaterials,
     uploadRequestPhotos,
 
+    // 현장 상세 요청사진 관리
+    addSiteRequestPhotos,
+    deleteSiteRequestPhoto,
+
     openSite,
     closeSite,
 
     clearSitesMessage,
   };
-                   }
+             }
