@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,6 +37,215 @@ function cleanString(value) {
 }
 
 /* =========================================================
+   Bearer 토큰
+========================================================= */
+
+function getBearerToken(request) {
+  const authorization =
+    request.headers.get("authorization") || "";
+
+  if (
+    !authorization.startsWith(
+      "Bearer ",
+    )
+  ) {
+    return "";
+  }
+
+  return authorization
+    .slice("Bearer ".length)
+    .trim();
+}
+
+/* =========================================================
+   관리자 인증
+
+   - access token으로 실제 로그인 사용자 확인
+   - profiles의 company_id 확인
+   - 비활성 관리자 차단
+   - 업체가 실제 존재하는지 확인
+   - 비활성 업체 차단
+========================================================= */
+
+async function authenticateAdmin(
+  request,
+) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    return {
+      error:
+        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      status: 500,
+    };
+  }
+
+  if (!serviceRoleKey) {
+    return {
+      error:
+        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      status: 500,
+    };
+  }
+
+  const accessToken =
+    getBearerToken(request);
+
+  if (!accessToken) {
+    return {
+      error:
+        "로그인 인증정보가 없습니다.",
+      status: 401,
+    };
+  }
+
+  const supabaseAdmin =
+    createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      },
+    );
+
+  const {
+    data: userData,
+    error: userError,
+  } =
+    await supabaseAdmin.auth.getUser(
+      accessToken,
+    );
+
+  if (
+    userError ||
+    !userData?.user?.id
+  ) {
+    console.error(
+      "통화녹음 사용자 인증:",
+      userError,
+    );
+
+    return {
+      error:
+        "로그인 정보를 확인할 수 없습니다.",
+      status: 401,
+    };
+  }
+
+  const userId =
+    userData.user.id;
+
+  const {
+    data: profile,
+    error: profileError,
+  } =
+    await supabaseAdmin
+      .from("profiles")
+      .select(
+        `
+          id,
+          company_id,
+          role,
+          is_active
+        `,
+      )
+      .eq("id", userId)
+      .maybeSingle();
+
+  if (profileError) {
+    console.error(
+      "통화녹음 profile 조회:",
+      profileError,
+    );
+
+    return {
+      error:
+        "관리자 정보를 확인하지 못했습니다.",
+      status: 500,
+    };
+  }
+
+  if (!profile?.company_id) {
+    return {
+      error:
+        "연결된 업체가 없습니다.",
+      status: 403,
+    };
+  }
+
+  if (profile.is_active === false) {
+    return {
+      error:
+        "비활성화된 관리자 계정입니다.",
+      status: 403,
+    };
+  }
+
+  const companyId =
+    profile.company_id;
+
+  const {
+    data: company,
+    error: companyError,
+  } =
+    await supabaseAdmin
+      .from("companies")
+      .select(
+        `
+          id,
+          company_name,
+          is_active
+        `,
+      )
+      .eq("id", companyId)
+      .maybeSingle();
+
+  if (companyError) {
+    console.error(
+      "통화녹음 업체 조회:",
+      companyError,
+    );
+
+    return {
+      error:
+        "업체 정보를 확인하지 못했습니다.",
+      status: 500,
+    };
+  }
+
+  if (!company) {
+    return {
+      error:
+        "업체가 존재하지 않습니다.",
+      status: 404,
+    };
+  }
+
+  if (company.is_active === false) {
+    return {
+      error:
+        "비활성화된 업체입니다.",
+      status: 403,
+    };
+  }
+
+  return {
+    success: true,
+    userId,
+    companyId,
+    profile,
+    company,
+  };
+}
+
+/* =========================================================
    확장자
 ========================================================= */
 
@@ -63,8 +273,9 @@ function getExtension(fileName) {
 
    삼성 통화녹음 예:
    통화 01020215..._144139.m4a
-   실제 파일명에는 전체 번호가 들어있는 경우
-   01012345678 / 0321234567 등을 추출
+
+   실제 File.name에 전체 번호가 있으면
+   해당 번호를 추출합니다.
 ========================================================= */
 
 function extractPhoneFromFileName(
@@ -312,26 +523,34 @@ function extractNameFromFileName(
 async function readOpenAiError(
   response,
 ) {
+  /*
+   * 응답 본문은 한 번만 읽을 수 있으므로
+   * text로 먼저 읽고 JSON 파싱을 시도합니다.
+   */
+
+  let raw = "";
+
+  try {
+    raw =
+      await response.text();
+  } catch {
+    raw = "";
+  }
+
+  if (!raw) {
+    return "음성 변환 요청에 실패했습니다.";
+  }
+
   try {
     const data =
-      await response.json();
+      JSON.parse(raw);
 
     return (
       data?.error?.message ||
       "음성 변환 요청에 실패했습니다."
     );
   } catch {
-    try {
-      const text =
-        await response.text();
-
-      return (
-        text ||
-        "음성 변환 요청에 실패했습니다."
-      );
-    } catch {
-      return "음성 변환 요청에 실패했습니다.";
-    }
+    return raw;
   }
 }
 
@@ -342,7 +561,34 @@ async function readOpenAiError(
 export async function POST(request) {
   try {
     /* -------------------------------------------------------
-       API KEY
+       1. 관리자 로그인 인증
+
+       인증에 성공해야만
+       OpenAI 음성 API를 호출할 수 있습니다.
+    ------------------------------------------------------- */
+
+    const auth =
+      await authenticateAdmin(
+        request,
+      );
+
+    if (!auth?.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            auth?.error ||
+            "관리자 인증에 실패했습니다.",
+        },
+        {
+          status:
+            auth?.status || 401,
+        },
+      );
+    }
+
+    /* -------------------------------------------------------
+       2. OpenAI API KEY 확인
     ------------------------------------------------------- */
 
     if (
@@ -361,7 +607,7 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       multipart/form-data
+       3. multipart/form-data
     ------------------------------------------------------- */
 
     let formData;
@@ -402,7 +648,7 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       파일 검사
+       4. 파일 검사
     ------------------------------------------------------- */
 
     const fileName =
@@ -424,7 +670,7 @@ export async function POST(request) {
         {
           success: false,
           error:
-            "지원하지 않는 파일 형식입니다. m4a, mp3, mp4, wav 파일을 선택해주세요.",
+            "지원하지 않는 파일 형식입니다. m4a, mp3, mp4, wav, webm, mpeg, mpga 파일을 선택해주세요.",
         },
         {
           status: 400,
@@ -465,7 +711,7 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       파일명 정보
+       5. 파일명 정보
     ------------------------------------------------------- */
 
     const filePhone =
@@ -481,7 +727,7 @@ export async function POST(request) {
       );
 
     /* -------------------------------------------------------
-       OpenAI 음성 변환 요청
+       6. OpenAI 음성 변환 요청
     ------------------------------------------------------- */
 
     const openAiForm =
@@ -531,7 +777,7 @@ export async function POST(request) {
       );
 
     /* -------------------------------------------------------
-       OpenAI 오류
+       7. OpenAI 오류
     ------------------------------------------------------- */
 
     if (
@@ -561,7 +807,7 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       결과 읽기
+       8. 결과 읽기
     ------------------------------------------------------- */
 
     let transcriptionData;
@@ -601,7 +847,10 @@ export async function POST(request) {
     }
 
     /* -------------------------------------------------------
-       성공
+       9. 성공
+
+       company_id는 클라이언트에서 받은 값이 아니라
+       로그인 토큰 → profile에서 확인한 값입니다.
     ------------------------------------------------------- */
 
     return NextResponse.json({
@@ -639,4 +888,4 @@ export async function POST(request) {
       },
     );
   }
-      }
+}
