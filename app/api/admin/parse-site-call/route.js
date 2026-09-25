@@ -1,47 +1,7 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-
-/* =========================================================
-   설정
-========================================================= */
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-/* =========================================================
-   JSON 안전 파싱
-========================================================= */
-
-function safeJsonParse(value) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    /*
-     * 혹시 모델이 ```json 코드블록을 붙여서
-     * 반환한 경우를 대비합니다.
-     */
-
-    try {
-      const cleaned = String(value)
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-
-      return JSON.parse(cleaned);
-    } catch {
-      return null;
-    }
-  }
-}
 
 /* =========================================================
    문자열 정리
@@ -56,6 +16,104 @@ function cleanString(value) {
   }
 
   return String(value).trim();
+}
+
+/* =========================================================
+   JSON 안전 파싱
+========================================================= */
+
+function parseJson(text) {
+  if (!text) {
+    return null;
+  }
+
+  let cleaned =
+    String(text).trim();
+
+  cleaned = cleaned
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    /*
+     * 앞뒤에 설명이 붙은 경우
+     * JSON 객체 부분만 다시 시도
+     */
+    const start =
+      cleaned.indexOf("{");
+
+    const end =
+      cleaned.lastIndexOf("}");
+
+    if (
+      start >= 0 &&
+      end > start
+    ) {
+      try {
+        return JSON.parse(
+          cleaned.slice(
+            start,
+            end + 1,
+          ),
+        );
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }
+}
+
+/* =========================================================
+   Responses API 결과 텍스트 추출
+========================================================= */
+
+function extractOutputText(data) {
+  if (
+    typeof data?.output_text ===
+      "string" &&
+    data.output_text.trim()
+  ) {
+    return data.output_text.trim();
+  }
+
+  if (!Array.isArray(data?.output)) {
+    return "";
+  }
+
+  const texts = [];
+
+  for (const item of data.output) {
+    if (
+      !Array.isArray(
+        item?.content,
+      )
+    ) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        content?.type ===
+          "output_text" &&
+        typeof content?.text ===
+          "string"
+      ) {
+        texts.push(
+          content.text,
+        );
+      }
+    }
+  }
+
+  return texts
+    .join("\n")
+    .trim();
 }
 
 /* =========================================================
@@ -90,7 +148,9 @@ function cleanAmount(value) {
   const number =
     Number(text);
 
-  if (!Number.isFinite(number)) {
+  if (
+    !Number.isFinite(number)
+  ) {
     return "";
   }
 
@@ -101,7 +161,7 @@ function cleanAmount(value) {
 }
 
 /* =========================================================
-   날짜 형식 확인
+   날짜 정리
 ========================================================= */
 
 function cleanDate(value) {
@@ -124,7 +184,7 @@ function cleanDate(value) {
 }
 
 /* =========================================================
-   시간 형식 확인
+   시간 정리
 ========================================================= */
 
 function cleanTime(value) {
@@ -134,10 +194,6 @@ function cleanTime(value) {
   if (!text) {
     return "";
   }
-
-  /*
-   * HH:mm
-   */
 
   if (
     /^([01]\d|2[0-3]):[0-5]\d$/.test(
@@ -160,6 +216,7 @@ function cleanMaterials(value) {
   }
 
   return value
+    .slice(0, 20)
     .map((item) => {
       if (
         !item ||
@@ -202,10 +259,6 @@ function cleanMaterials(value) {
           item.memo,
         );
 
-      /*
-       * 자재에 아무 정보도 없으면 제거
-       */
-
       if (
         !brand &&
         !productCode &&
@@ -218,10 +271,13 @@ function cleanMaterials(value) {
 
       return {
         brand,
+
         product_code:
           productCode,
+
         product_name:
           productName,
+
         quantity,
 
         unit:
@@ -234,13 +290,14 @@ function cleanMaterials(value) {
 }
 
 /* =========================================================
-   결과 정리
+   최종 결과 정리
 ========================================================= */
 
 function normalizeResult(raw) {
   const source =
     raw &&
-    typeof raw === "object"
+    typeof raw === "object" &&
+    !Array.isArray(raw)
       ? raw
       : {};
 
@@ -323,14 +380,49 @@ function normalizeResult(raw) {
 }
 
 /* =========================================================
+   한국 기준 오늘 날짜
+========================================================= */
+
+function getKoreaDateString() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "Asia/Seoul",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      },
+    ).formatToParts(
+      new Date(),
+    );
+
+  const values = {};
+
+  for (const part of parts) {
+    values[part.type] =
+      part.value;
+  }
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+/* =========================================================
    POST
 ========================================================= */
 
 export async function POST(request) {
   try {
-    /* =====================================================
+    /* -------------------------------------------------------
        API KEY 확인
-    ===================================================== */
+    ------------------------------------------------------- */
 
     if (
       !process.env.OPENAI_API_KEY
@@ -348,9 +440,9 @@ export async function POST(request) {
       );
     }
 
-    /* =====================================================
+    /* -------------------------------------------------------
        요청 읽기
-    ===================================================== */
+    ------------------------------------------------------- */
 
     const body =
       await request.json();
@@ -374,7 +466,9 @@ export async function POST(request) {
       );
     }
 
-    if (content.length < 5) {
+    if (
+      content.length < 5
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -390,9 +484,7 @@ export async function POST(request) {
 
     /*
      * 지나치게 긴 통화 전문으로 인한
-     * 비용 증가를 막습니다.
-     *
-     * 일반적인 통화요약은 이보다 훨씬 짧습니다.
+     * 불필요한 API 사용량 제한
      */
 
     const trimmedContent =
@@ -401,86 +493,52 @@ export async function POST(request) {
         20000,
       );
 
-    /* =====================================================
-       현재 날짜
-
-       "다음주 월요일", "내일" 등의 표현을
-       해석할 때 기준일로 사용합니다.
-    ===================================================== */
-
-    const now =
-      new Date();
-
     const currentDate =
-      new Intl.DateTimeFormat(
-        "en-CA",
-        {
-          timeZone:
-            "Asia/Seoul",
+      getKoreaDateString();
 
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        },
-      ).format(now);
+    /* -------------------------------------------------------
+       AI 지시문
+    ------------------------------------------------------- */
 
-    /* =====================================================
-       AI 분석
-    ===================================================== */
-
-    const response =
-      await openai.responses.create({
-        model:
-          "gpt-5.6-luna",
-
-        temperature: 0,
-
-        input: [
-          {
-            role: "system",
-
-            content: [
-              {
-                type:
-                  "input_text",
-
-                text: `
+    const instruction = `
 당신은 대한민국 인테리어필름 시공업체의 일정등록 보조 AI입니다.
 
-관리자가 고객과 통화한 내용 또는 휴대폰 통화요약을 입력합니다.
+관리자가 고객과 통화한 내용, 통화 녹취 요약 또는 직접 작성한 상담 메모를 입력합니다.
 
 통화내용에서 명확하게 확인되는 정보만 추출하세요.
 
-절대 지켜야 할 규칙:
+현재 대한민국 기준 날짜는 ${currentDate} 입니다.
+
+반드시 지켜야 할 규칙:
 
 1. 통화내용에 없는 사실은 추측하지 마세요.
 2. 불확실한 값은 빈 문자열 ""로 반환하세요.
 3. 날짜는 YYYY-MM-DD 형식으로 반환하세요.
 4. 시간은 24시간 HH:mm 형식으로 반환하세요.
-5. "오전 9시"는 "09:00"처럼 변환할 수 있습니다.
-6. "오후 2시"는 "14:00"처럼 변환할 수 있습니다.
-7. 상대 날짜 표현은 기준일을 이용해 계산할 수 있습니다.
-8. 계약금액과 선금은 원 단위 숫자로 반환하세요.
-9. "120만원"은 1200000으로 변환하세요.
-10. "30만"은 300000으로 변환하세요.
-11. 전화번호가 명확하면 그대로 추출하세요.
-12. 주소와 상세주소를 가능한 경우 구분하세요.
-13. 지역은 주소에서 명확히 알 수 있을 때만 추출하세요.
-14. 현장명은 아파트명, 건물명 등 명확한 명칭이 있을 때만 입력하세요.
-15. 시공 종류는 "싱크대", "문·문틀", "붙박이장" 등 통화에서 확인되는 표현을 사용하세요.
-16. 상세 작업내용은 시공 부위와 수량 등 실제 통화내용을 간결하게 정리하세요.
-17. 필름 제조사, 제품코드, 제품명/색상이 명확하면 materials에 넣으세요.
-18. 자재 수량을 모르면 빈 문자열로 반환하세요.
-19. 자재 단위를 모르면 "m"를 사용하세요.
-20. 통화내용 중 현장 작업에 필요한 기타 중요한 내용은 memo에 정리하세요.
-21. 고객에게 하지 않은 약속이나 새로운 작업내용을 만들어내지 마세요.
-22. 반드시 JSON 객체 하나만 반환하세요.
-23. 설명, 마크다운, 코드블록은 반환하지 마세요.
+5. 오전 9시는 09:00으로 변환하세요.
+6. 오후 2시는 14:00으로 변환하세요.
+7. "오늘", "내일", "모레", "다음주 월요일"처럼 기준일로 명확하게 계산 가능한 날짜는 실제 날짜로 변환하세요.
+8. 상대 날짜 표현이 애매하면 추측하지 말고 빈값으로 반환하세요.
+9. 계약금액과 계약금/선금은 원 단위 숫자로 반환하세요.
+10. 120만원은 1200000으로 변환하세요.
+11. 30만원은 300000으로 변환하세요.
+12. 전화번호가 명확하면 그대로 추출하세요.
+13. 주소와 상세주소를 가능한 경우 구분하세요.
+14. 지역은 주소에서 명확하게 확인 가능한 경우만 추출하세요.
+15. 아파트명 또는 건물명이 명확하면 site_name에 넣으세요.
+16. 시공 종류는 실제 통화에서 확인되는 내용을 사용하세요.
+17. 예: 싱크대, 문·문틀, 방화문, 붙박이장, 신발장, 샤시, 아트월, 화장대, 중문, 냉장고장.
+18. work_description에는 시공 부위, 개수, 범위 등 작업에 필요한 내용을 간결하게 정리하세요.
+19. 필름 제조사, 제품코드, 제품명 또는 색상이 명확하면 materials에 넣으세요.
+20. 예: 현대보닥 S115가 명확하면 brand는 현대보닥, product_code는 S115로 넣으세요.
+21. 자재 수량을 모르면 quantity는 빈 문자열로 반환하세요.
+22. 자재 단위를 모르면 unit은 "m"으로 반환하세요.
+23. 주차, 출입방법, 비밀번호 전달 예정, 고객 요청사항 등 현장에 필요한 기타 정보는 memo에 정리하세요.
+24. 고객이 말하지 않은 약속이나 작업내용을 새로 만들어내지 마세요.
+25. 반드시 JSON 객체 하나만 반환하세요.
+26. 설명문, 마크다운, 코드블록을 반환하지 마세요.
 
-기준 날짜:
-${currentDate}
-
-반환 JSON 형식:
+반환 형식:
 
 {
   "date": "",
@@ -508,43 +566,128 @@ ${currentDate}
     }
   ]
 }
-                `.trim(),
-              },
-            ],
+
+분석할 통화내용:
+
+${trimmedContent}
+`.trim();
+
+    /* -------------------------------------------------------
+       기존 프로젝트와 동일한 방식으로
+       OpenAI Responses API 직접 호출
+    ------------------------------------------------------- */
+
+    const openaiResponse =
+      await fetch(
+        "https://api.openai.com/v1/responses",
+        {
+          method:
+            "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`,
+
+            "Content-Type":
+              "application/json",
           },
 
-          {
-            role: "user",
+          body:
+            JSON.stringify({
+              model:
+                "gpt-5.6-luna",
 
-            content: [
-              {
-                type:
-                  "input_text",
+              input: [
+                {
+                  role:
+                    "user",
 
-                text:
-                  trimmedContent,
-              },
-            ],
-          },
-        ],
-      });
+                  content: [
+                    {
+                      type:
+                        "input_text",
 
-    /* =====================================================
-       응답 텍스트
-    ===================================================== */
+                      text:
+                        instruction,
+                    },
+                  ],
+                },
+              ],
+            }),
+        },
+      );
+
+    const data =
+      await openaiResponse.json();
+
+    /* -------------------------------------------------------
+       OpenAI 오류
+    ------------------------------------------------------- */
+
+    if (
+      !openaiResponse.ok
+    ) {
+      console.error(
+        "OpenAI parse-site-call error:",
+        data,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            data?.error
+              ?.message ||
+            "AI 통화내용 분석 요청에 실패했습니다.",
+        },
+        {
+          status:
+            openaiResponse.status,
+        },
+      );
+    }
+
+    /* -------------------------------------------------------
+       AI 텍스트 추출
+    ------------------------------------------------------- */
 
     const outputText =
-      response.output_text ||
-      "";
+      extractOutputText(
+        data,
+      );
+
+    if (!outputText) {
+      console.error(
+        "AI output empty:",
+        data,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            "AI 분석 결과가 없습니다.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
+    /* -------------------------------------------------------
+       JSON 변환
+    ------------------------------------------------------- */
 
     const parsed =
-      safeJsonParse(
+      parseJson(
         outputText,
       );
 
     if (!parsed) {
       console.error(
-        "통화내용 AI JSON 파싱 실패:",
+        "통화내용 JSON 파싱 실패:",
         outputText,
       );
 
@@ -561,22 +704,24 @@ ${currentDate}
       );
     }
 
-    /* =====================================================
-       최종 정리
-    ===================================================== */
+    /* -------------------------------------------------------
+       최종 데이터 정리
+    ------------------------------------------------------- */
 
-    const data =
+    const result =
       normalizeResult(
         parsed,
       );
 
     return NextResponse.json({
       success: true,
-      data,
+
+      data:
+        result,
     });
   } catch (error) {
     console.error(
-      "통화내용 AI 분석 API 오류:",
+      "parse-site-call API error:",
       error,
     );
 
@@ -593,4 +738,4 @@ ${currentDate}
       },
     );
   }
-         }
+}
