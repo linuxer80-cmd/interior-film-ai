@@ -5,6 +5,8 @@ import {
   useState,
 } from "react";
 
+import { supabase } from "../../lib/supabase";
+
 /* =========================================================
    통화내용 / 통화녹음 AI 자동입력
 ========================================================= */
@@ -45,6 +47,41 @@ export default function CallContentAiInput({
     message,
     setMessage,
   ] = useState("");
+
+  /* =======================================================
+     로그인 access token
+  ======================================================= */
+
+  async function getAccessToken() {
+    const {
+      data,
+      error,
+    } =
+      await supabase.auth.getSession();
+
+    if (error) {
+      console.error(
+        "관리자 세션 확인 오류:",
+        error,
+      );
+
+      throw new Error(
+        "로그인 정보를 확인하지 못했습니다. 다시 로그인해주세요.",
+      );
+    }
+
+    const accessToken =
+      data?.session?.access_token ||
+      "";
+
+    if (!accessToken) {
+      throw new Error(
+        "로그인이 만료되었습니다. 다시 로그인해주세요.",
+      );
+    }
+
+    return accessToken;
+  }
 
   /* =======================================================
      입력창 열기
@@ -181,7 +218,12 @@ export default function CallContentAiInput({
 
   async function requestSiteCallParse(
     content,
+    accessToken = "",
   ) {
+    const token =
+      accessToken ||
+      (await getAccessToken());
+
     const response =
       await fetch(
         "/api/admin/parse-site-call",
@@ -191,6 +233,9 @@ export default function CallContentAiInput({
           headers: {
             "Content-Type":
               "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
           },
 
           body:
@@ -302,15 +347,29 @@ export default function CallContentAiInput({
     }
 
     setAnalyzing(true);
+
     setStage(
-      "통화녹음을 글자로 변환하고 있습니다...",
+      "로그인 정보를 확인하고 있습니다...",
     );
+
     setMessage("");
 
     try {
+      /*
+       * 두 API 모두 같은 로그인 세션의
+       * access token을 사용합니다.
+       */
+
+      const accessToken =
+        await getAccessToken();
+
       /* ---------------------------------------------------
          1. 녹음파일 업로드 / 전사
       --------------------------------------------------- */
+
+      setStage(
+        "통화녹음을 글자로 변환하고 있습니다...",
+      );
 
       const formData =
         new FormData();
@@ -325,6 +384,11 @@ export default function CallContentAiInput({
           "/api/admin/transcribe-site-call",
           {
             method: "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
 
             body:
               formData,
@@ -395,6 +459,7 @@ export default function CallContentAiInput({
       const aiData =
         await requestSiteCallParse(
           transcript,
+          accessToken,
         );
 
       /* ---------------------------------------------------
@@ -487,15 +552,23 @@ export default function CallContentAiInput({
     setAnalyzing(true);
 
     setStage(
-      "통화내용에서 일정정보를 찾고 있습니다...",
+      "로그인 정보를 확인하고 있습니다...",
     );
 
     setMessage("");
 
     try {
+      const accessToken =
+        await getAccessToken();
+
+      setStage(
+        "통화내용에서 일정정보를 찾고 있습니다...",
+      );
+
       const data =
         await requestSiteCallParse(
           content,
+          accessToken,
         );
 
       if (
@@ -1197,4 +1270,4 @@ export default function CallContentAiInput({
       )}
     </section>
   );
-             }
+}
