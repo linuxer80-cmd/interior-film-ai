@@ -990,7 +990,8 @@ export default function CustomerEstimatePage({
         false
       );
     }
-          }
+  }
+
   /*
    * =========================================================
    * 사진 추가
@@ -1162,8 +1163,7 @@ export default function CustomerEstimatePage({
         </div>
       </main>
     );
-  }
-
+}
   /*
    * =========================================================
    * 화면
@@ -1173,437 +1173,1077 @@ export default function CustomerEstimatePage({
   return (
     <main
       style={{
-        maxWidth: "720px",
-
-        margin: "0 auto",
-
-        padding:
-          "28px 18px 70px",
-
-        fontFamily:
-          "Arial, sans-serif",
-
+        minHeight: "100vh",
         background:
-          "#f8fafc",
-
-        minHeight:
-          "100vh",
-
-        boxSizing:
-          "border-box",
-
-        color:
-          "#111827",
+          "linear-gradient(180deg, #eef3f8 0%, #f8fafc 34%, #ffffff 100%)",
+        color: "#0f172a",
+        fontFamily:
+          'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        boxSizing: "border-box",
       }}
     >
-      {/*
-       * =====================================================
-       * 상단 메뉴
-       *
-       * AI 견적 / 필름 샘플보기는 기존 기능 유지
-       * 관리자 버튼만 추가
-       * =====================================================
-       */}
-
-      <nav
-        style={{
-          display: "grid",
-
-          gridTemplateColumns:
-            "1fr 1fr",
-
-          gap: "8px",
-
-          marginBottom: "10px",
-        }}
-      >
-        <div
-          style={{
-            padding: "11px",
-
-            textAlign: "center",
-
-            borderRadius: "11px",
-
-            background: "#111827",
-
-            color: "#ffffff",
-
-            fontWeight: "800",
-
-            fontSize: "14px",
-          }}
-        >
-          AI 견적
-        </div>
-
-        <Link
-          href={
-            companySlug
-              ? `/samples?company=${encodeURIComponent(
-                  companySlug
-                )}`
-              : "/samples"
-          }
-          style={{
-            padding: "11px",
-
-            textAlign: "center",
-
-            textDecoration: "none",
-
-            border:
-              "1px solid #d1d5db",
-
-            borderRadius: "11px",
-
-            background: "#ffffff",
-
-            color: "#374151",
-
-            fontWeight: "800",
-
-            fontSize: "14px",
-          }}
-        >
-          필름 샘플보기
-        </Link>
-      </nav>
-
-      {/*
-       * 관리자용 진입 버튼
-       *
-       * 고객용 기능과 구분하기 위해
-       * 작은 버튼으로 우측 정렬
-       */}
-
       <div
         style={{
-          display: "flex",
-
-          justifyContent:
-            "flex-end",
-
-          marginBottom: "18px",
+          width: "100%",
+          maxWidth: "760px",
+          margin: "0 auto",
+          padding: "14px 16px 80px",
+          boxSizing: "border-box",
         }}
       >
-        <Link
-          href="/admin"
+        {/* =====================================================
+            상단 헤더
+        ===================================================== */}
+
+        <header
           style={{
-            display:
-              "inline-flex",
-
-            alignItems:
-              "center",
-
-            justifyContent:
-              "center",
-
-            gap: "5px",
-
-            padding:
-              "7px 11px",
-
-            border:
-              "1px solid #d1d5db",
-
-            borderRadius:
-              "9px",
-
-            background:
-              "#ffffff",
-
-            color:
-              "#64748b",
-
-            textDecoration:
-              "none",
-
-            fontSize:
-              "12px",
-
-            fontWeight:
-              "700",
+            position: "sticky",
+            top: "8px",
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "10px",
+            marginBottom: "14px",
+            padding: "10px 12px",
+            border: "1px solid rgba(226,232,240,0.88)",
+            borderRadius: "18px",
+            background: "rgba(255,255,255,0.92)",
+            boxShadow: "0 8px 30px rgba(15,23,42,0.08)",
+            backdropFilter: "blur(14px)",
           }}
         >
-          ⚙️ 관리자
-        </Link>
-      </div>
+          <div
+            style={{
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: "800",
+                letterSpacing: "0.12em",
+                color: "#2563eb",
+                marginBottom: "2px",
+              }}
+            >
+              AI INTERIOR FILM
+            </div>
 
-      {/* 상단 */}
+            <div
+              style={{
+                fontSize: "15px",
+                fontWeight: "900",
+                color: "#0f172a",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {companyName}
+            </div>
+          </div>
 
-      <div
-        style={{
-          display:
-            "inline-block",
-
-          background:
-            "#111827",
-
-          color:
-            "#ffffff",
-
-          padding:
-            "8px 14px",
-
-          borderRadius:
-            "20px",
-
-          fontWeight:
-            "bold",
-        }}
-      >
-        {companyName}
-      </div>
-
-      <h1
-        style={{
-          marginTop:
-            "18px",
-
-          marginBottom:
-            "8px",
-
-          fontSize:
-            "32px",
-
-          lineHeight: 1.3,
-        }}
-      >
-        {estimateTitle}
-      </h1>
-
-      <p
-        style={{
-          marginTop: 0,
-
-          color:
-            "#6b7280",
-
-          fontSize:
-            "17px",
-
-          lineHeight: 1.7,
-        }}
-      >
-        {estimateDescription}
-      </p>
-
-      {/* 1. 사진 등록 */}
-
-      <EstimatePhotoUploader
-        images={images}
-        loading={loading}
-        imageLoading={
-          imageLoading
-        }
-        message={message}
-        onAddImages={
-          handleAddImages
-        }
-        onRemoveImage={
-          handleRemoveImage
-        }
-        onAnalyze={
-          startAnalyze
-        }
-      />
-
-      {/* 2. AI 분석 결과 */}
-
-      <EstimateResult
-        groups={
-          displayGroups
-        }
-        imageCount={
-          images.length
-        }
-      />
-
-      {/* 3. 총 예상견적 */}
-
-      <EstimateTotal
-        totalEstimate={
-          displayTotalEstimate
-        }
-      />
-
-      {/* 4. 서비스 선택 */}
-
-      <ServiceSelector
-        groups={groups}
-        resultMode={
-          resultMode
-        }
-        onChange={
-          setResultMode
-        }
-      />
-
-      {/* 5. 가상 시공 */}
-
-      {groups.length >
-        0 &&
-        resultMode ===
-          "virtual" && (
-          <>
-            {/* 필름 선택 */}
-
-            <FilmColorPicker
-              onSelect={
-                handleFilmSelect
-              }
-            />
-
-            {/* 부분 톤 차이 */}
-
-            <VirtualToneSelector
-              groups={groups}
-              product={selectedFilm}
-              useSplitTone={
-                useSplitTone
-              }
-              onUseSplitToneChange={
-                setUseSplitTone
-              }
-              areaFilms={
-                areaFilms
-              }
-              onAreaFilmsChange={
-                setAreaFilms
-              }
-            />
-
-            {/* 방염 / 비방염 */}
-
-            <FilmPriceSelector
-              selectedFilm={
-                selectedFilm
-              }
-              fireType={
-                fireType
-              }
-              onFireTypeChange={
-                setFireType
-              }
-            />
-
-            {/*
-             * 선택 필름 적용 수정견적
-             */}
-
-            <FilmAdjustedEstimate
-              selectedFilm={
-                selectedFilm
-              }
-              fireType={
-                fireType
-              }
-              baseEstimate={
-                totalEstimate
-              }
-              adjustedEstimate={
-                displayTotalEstimate
-              }
-            />
-
-            {/*
-             * 가상 시공
-             *
-             * 중요:
-             * AI 분석 결과 groups를 전달해서
-             * 싱크대 / 문·문틀일 때만
-             * 부분 톤 선택 기능을 표시
-             */}
-
-            <VirtualInstallPanel
-              images={images}
-              product={
-                selectedFilm
-              }
-              groups={groups}
-              useSplitTone={
-                useSplitTone
-              }
-              areaFilms={
-                areaFilms
-              }
-              companySlug={
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              flexShrink: 0,
+            }}
+          >
+            <Link
+              href={
                 companySlug
+                  ? `/samples?company=${encodeURIComponent(
+                      companySlug
+                    )}`
+                  : "/samples"
               }
-              onRequestDetail={() =>
-                setResultMode(
-                  "detail"
-                )
-              }
-            />
-          </>
-        )}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "38px",
+                padding: "0 11px",
+                border: "1px solid #dbe3ee",
+                borderRadius: "12px",
+                background: "#ffffff",
+                color: "#334155",
+                textDecoration: "none",
+                fontSize: "12px",
+                fontWeight: "800",
+              }}
+            >
+              필름 샘플
+            </Link>
 
-      {/* 6. 상세견적 상담 */}
+            <Link
+              href="/admin"
+              aria-label="관리자 페이지"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "38px",
+                height: "38px",
+                border: "1px solid #dbe3ee",
+                borderRadius: "12px",
+                background: "#ffffff",
+                color: "#64748b",
+                textDecoration: "none",
+                fontSize: "15px",
+                fontWeight: "800",
+              }}
+            >
+              ⚙️
+            </Link>
+          </div>
+        </header>
 
-      {groups.length >
-        0 &&
-        resultMode ===
-          "detail" && (
-          <LeadForm
-            customerName={
-              customerName
+        {/* =====================================================
+            히어로
+        ===================================================== */}
+
+        <section
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            marginBottom: "16px",
+            padding: "28px 22px 24px",
+            borderRadius: "26px",
+            background:
+              "linear-gradient(135deg, #0b1220 0%, #172554 56%, #1d4ed8 125%)",
+            color: "#ffffff",
+            boxShadow: "0 18px 50px rgba(15,23,42,0.18)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              width: "190px",
+              height: "190px",
+              right: "-70px",
+              top: "-80px",
+              borderRadius: "999px",
+              background: "rgba(96,165,250,0.20)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <div
+            style={{
+              position: "absolute",
+              width: "120px",
+              height: "120px",
+              left: "-55px",
+              bottom: "-55px",
+              borderRadius: "999px",
+              background: "rgba(255,255,255,0.08)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                marginBottom: "14px",
+                padding: "7px 10px",
+                border: "1px solid rgba(255,255,255,0.18)",
+                borderRadius: "999px",
+                background: "rgba(255,255,255,0.10)",
+                fontSize: "12px",
+                fontWeight: "800",
+                color: "#dbeafe",
+              }}
+            >
+              ✨ 사진 한 장으로 시작하는 AI 견적
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                maxWidth: "600px",
+                fontSize: "clamp(30px, 8vw, 44px)",
+                lineHeight: 1.14,
+                letterSpacing: "-0.045em",
+                fontWeight: "900",
+              }}
+            >
+              견적부터
+              <br />
+              <span style={{ color: "#93c5fd" }}>
+                가상 시공
+              </span>
+              까지
+              <br />
+              한 번에 확인하세요
+            </h1>
+
+            <p
+              style={{
+                margin: "16px 0 0",
+                maxWidth: "610px",
+                color: "#cbd5e1",
+                fontSize: "15px",
+                lineHeight: 1.7,
+                wordBreak: "keep-all",
+              }}
+            >
+              {estimateDescription}
+            </p>
+
+            <a
+              href="#ai-estimate-start"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "7px",
+                marginTop: "20px",
+                minHeight: "48px",
+                padding: "0 18px",
+                borderRadius: "14px",
+                background: "#ffffff",
+                color: "#0f172a",
+                textDecoration: "none",
+                fontSize: "14px",
+                fontWeight: "900",
+                boxShadow:
+                  "0 10px 25px rgba(0,0,0,0.16)",
+              }}
+            >
+              사진으로 AI 견적 시작
+              <span aria-hidden="true">
+                →
+              </span>
+            </a>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginTop: "18px",
+              }}
+            >
+              {[
+                "AI 자동견적",
+                "실제 필름 선택",
+                "가상 시공 미리보기",
+              ].map((item) => (
+                <div
+                  key={item}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: "999px",
+                    background:
+                      "rgba(255,255,255,0.09)",
+                    border:
+                      "1px solid rgba(255,255,255,0.12)",
+                    color: "#e2e8f0",
+                    fontSize: "11px",
+                    fontWeight: "800",
+                  }}
+                >
+                  ✓ {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            이용 흐름
+        ===================================================== */}
+
+        <section
+          style={{
+            marginBottom: "16px",
+            padding: "16px",
+            border:
+              "1px solid #e5eaf1",
+            borderRadius: "20px",
+            background:
+              "rgba(255,255,255,0.94)",
+            boxShadow:
+              "0 8px 26px rgba(15,23,42,0.05)",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "12px",
+              fontSize: "13px",
+              fontWeight: "900",
+              color: "#0f172a",
+            }}
+          >
+            이렇게 진행됩니다
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(4, minmax(0, 1fr))",
+              gap: "7px",
+            }}
+          >
+            {[
+              ["01", "사진 업로드"],
+              ["02", "AI 견적"],
+              ["03", "필름 선택"],
+              ["04", "가상 시공"],
+            ].map(
+              ([number, label]) => (
+                <div
+                  key={number}
+                  style={{
+                    minWidth: 0,
+                    padding:
+                      "11px 7px",
+                    borderRadius:
+                      "14px",
+                    background:
+                      "#f8fafc",
+                    border:
+                      "1px solid #edf1f5",
+                    textAlign:
+                      "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      marginBottom:
+                        "4px",
+                      fontSize:
+                        "10px",
+                      fontWeight:
+                        "900",
+                      color:
+                        "#2563eb",
+                      letterSpacing:
+                        "0.08em",
+                    }}
+                  >
+                    STEP {number}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize:
+                        "11px",
+                      lineHeight:
+                        1.35,
+                      fontWeight:
+                        "800",
+                      color:
+                        "#334155",
+                      wordBreak:
+                        "keep-all",
+                    }}
+                  >
+                    {label}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        </section>
+
+        {/* =====================================================
+            1. 사진 등록
+        ===================================================== */}
+
+        <section
+          id="ai-estimate-start"
+          style={{
+            marginBottom: "14px",
+            padding: "18px",
+            border:
+              "1px solid #e5eaf1",
+            borderRadius: "22px",
+            background: "#ffffff",
+            boxShadow:
+              "0 10px 30px rgba(15,23,42,0.055)",
+            scrollMarginTop:
+              "82px",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "14px",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginBottom: "7px",
+                padding: "5px 8px",
+                borderRadius:
+                  "999px",
+                background:
+                  "#eff6ff",
+                color: "#2563eb",
+                fontSize: "10px",
+                fontWeight: "900",
+                letterSpacing:
+                  "0.08em",
+              }}
+            >
+              STEP 01
+            </div>
+
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "20px",
+                lineHeight: 1.3,
+                letterSpacing:
+                  "-0.03em",
+                fontWeight: "900",
+                color: "#0f172a",
+              }}
+            >
+              시공할 곳의 사진을 올려주세요
+            </h2>
+
+            <p
+              style={{
+                margin:
+                  "7px 0 0",
+                color: "#64748b",
+                fontSize: "13px",
+                lineHeight: 1.6,
+              }}
+            >
+              여러 장을 올리면 AI가 같은 시공 부위끼리 분석해 견적을 계산합니다.
+            </p>
+          </div>
+
+          <EstimatePhotoUploader
+            images={images}
+            loading={loading}
+            imageLoading={
+              imageLoading
             }
-            phone={phone}
-            region={region}
-            privacyAgree={
-              privacyAgree
+            message={message}
+            onAddImages={
+              handleAddImages
             }
-            leadLoading={
-              leadLoading
+            onRemoveImage={
+              handleRemoveImage
             }
-            leadComplete={
-              leadComplete
-            }
-            leadMessage={
-              leadMessage
-            }
-            onCustomerNameChange={
-              setCustomerName
-            }
-            onPhoneChange={
-              handlePhoneChange
-            }
-            onRegionChange={
-              setRegion
-            }
-            onPrivacyAgreeChange={
-              setPrivacyAgree
-            }
-            onSubmit={
-              handleLeadSubmit
+            onAnalyze={
+              startAnalyze
             }
           />
-        )}
+        </section>
 
-      {/* 하단 */}
+        {/* =====================================================
+            2. AI 분석 결과
+        ===================================================== */}
 
-      <div
-        style={{
-          textAlign:
-            "center",
+        <section
+          style={{
+            marginBottom: "14px",
+            padding: "18px",
+            border:
+              "1px solid #e5eaf1",
+            borderRadius: "22px",
+            background: "#ffffff",
+            boxShadow:
+              "0 10px 30px rgba(15,23,42,0.055)",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginBottom: "7px",
+                padding: "5px 8px",
+                borderRadius:
+                  "999px",
+                background:
+                  "#eef2ff",
+                color: "#4f46e5",
+                fontSize: "10px",
+                fontWeight: "900",
+                letterSpacing:
+                  "0.08em",
+              }}
+            >
+              STEP 02
+            </div>
 
-          marginTop:
-            "35px",
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "20px",
+                lineHeight: 1.3,
+                letterSpacing:
+                  "-0.03em",
+                fontWeight: "900",
+              }}
+            >
+              AI 분석 · 예상 견적
+            </h2>
+          </div>
 
-          color:
-            "#9ca3af",
+          <EstimateResult
+            groups={
+              displayGroups
+            }
+            imageCount={
+              images.length
+            }
+          />
 
-          fontSize:
-            "13px",
+          <div
+            style={{
+              height: "1px",
+              margin: "16px 0",
+              background:
+                "#eef2f6",
+            }}
+          />
 
-          lineHeight: 1.6,
-        }}
-      >
-        {companyName}
-        <br />
-        {estimateTitle}
+          <EstimateTotal
+            totalEstimate={
+              displayTotalEstimate
+            }
+          />
+        </section>
+
+        {/* =====================================================
+            3. 서비스 선택
+        ===================================================== */}
+
+        <section
+          style={{
+            marginBottom: "14px",
+            padding: "18px",
+            border:
+              "1px solid #dce7f5",
+            borderRadius: "22px",
+            background:
+              "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+            boxShadow:
+              "0 10px 30px rgba(15,23,42,0.055)",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginBottom: "7px",
+                padding: "5px 8px",
+                borderRadius:
+                  "999px",
+                background:
+                  "#ecfeff",
+                color: "#0f766e",
+                fontSize: "10px",
+                fontWeight: "900",
+                letterSpacing:
+                  "0.08em",
+              }}
+            >
+              NEXT
+            </div>
+
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "20px",
+                lineHeight: 1.3,
+                letterSpacing:
+                  "-0.03em",
+                fontWeight: "900",
+              }}
+            >
+              다음으로 무엇을 확인할까요?
+            </h2>
+
+            <p
+              style={{
+                margin:
+                  "7px 0 0",
+                color: "#64748b",
+                fontSize: "13px",
+                lineHeight: 1.6,
+              }}
+            >
+              원하는 필름을 적용해 가상 시공을 보거나 상세 상담을 신청할 수 있습니다.
+            </p>
+          </div>
+
+          <ServiceSelector
+            groups={groups}
+            resultMode={
+              resultMode
+            }
+            onChange={
+              setResultMode
+            }
+          />
+        </section>
+
+        {/* =====================================================
+            4. 가상 시공
+        ===================================================== */}
+
+        {groups.length >
+          0 &&
+          resultMode ===
+            "virtual" && (
+            <section
+              style={{
+                marginBottom:
+                  "14px",
+                padding: "18px",
+                border:
+                  "1px solid #dbeafe",
+                borderRadius:
+                  "24px",
+                background:
+                  "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
+                boxShadow:
+                  "0 14px 36px rgba(37,99,235,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom:
+                    "16px",
+                  padding: "15px",
+                  borderRadius:
+                    "18px",
+                  background:
+                    "linear-gradient(135deg, #172554 0%, #1d4ed8 100%)",
+                  color:
+                    "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "6px",
+                    fontSize:
+                      "10px",
+                    fontWeight:
+                      "900",
+                    letterSpacing:
+                      "0.12em",
+                    color:
+                      "#bfdbfe",
+                  }}
+                >
+                  AI VIRTUAL REMODELING
+                </div>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize:
+                      "22px",
+                    lineHeight:
+                      1.3,
+                    letterSpacing:
+                      "-0.035em",
+                    fontWeight:
+                      "900",
+                  }}
+                >
+                  시공 전에 색상과 분위기를 먼저 확인하세요
+                </h2>
+
+                <p
+                  style={{
+                    margin:
+                      "8px 0 0",
+                    color:
+                      "#dbeafe",
+                    fontSize:
+                      "12px",
+                    lineHeight:
+                      1.6,
+                  }}
+                >
+                  필름을 고르면 예상 견적 변화와 가상 시공 이미지를 함께 확인할 수 있습니다.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  marginBottom:
+                    "12px",
+                  padding: "14px",
+                  border:
+                    "1px solid #e5eaf1",
+                  borderRadius:
+                    "18px",
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "10px",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      "900",
+                    color:
+                      "#0f172a",
+                  }}
+                >
+                  1. 필름 선택
+                </div>
+
+                <FilmColorPicker
+                  onSelect={
+                    handleFilmSelect
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginBottom:
+                    "12px",
+                  padding: "14px",
+                  border:
+                    "1px solid #e5eaf1",
+                  borderRadius:
+                    "18px",
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "10px",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      "900",
+                    color:
+                      "#0f172a",
+                  }}
+                >
+                  2. 컬러 적용 방식
+                </div>
+
+                <VirtualToneSelector
+                  groups={groups}
+                  product={
+                    selectedFilm
+                  }
+                  useSplitTone={
+                    useSplitTone
+                  }
+                  onUseSplitToneChange={
+                    setUseSplitTone
+                  }
+                  areaFilms={
+                    areaFilms
+                  }
+                  onAreaFilmsChange={
+                    setAreaFilms
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginBottom:
+                    "12px",
+                  padding: "14px",
+                  border:
+                    "1px solid #e5eaf1",
+                  borderRadius:
+                    "18px",
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "10px",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      "900",
+                    color:
+                      "#0f172a",
+                  }}
+                >
+                  3. 방염 여부 · 예상 견적
+                </div>
+
+                <FilmPriceSelector
+                  selectedFilm={
+                    selectedFilm
+                  }
+                  fireType={
+                    fireType
+                  }
+                  onFireTypeChange={
+                    setFireType
+                  }
+                />
+
+                <FilmAdjustedEstimate
+                  selectedFilm={
+                    selectedFilm
+                  }
+                  fireType={
+                    fireType
+                  }
+                  baseEstimate={
+                    totalEstimate
+                  }
+                  adjustedEstimate={
+                    displayTotalEstimate
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  padding: "14px",
+                  border:
+                    "1px solid #dbeafe",
+                  borderRadius:
+                    "18px",
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "10px",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      "900",
+                    color:
+                      "#0f172a",
+                  }}
+                >
+                  4. AI 가상 시공
+                </div>
+
+                <VirtualInstallPanel
+                  images={images}
+                  product={
+                    selectedFilm
+                  }
+                  groups={groups}
+                  useSplitTone={
+                    useSplitTone
+                  }
+                  areaFilms={
+                    areaFilms
+                  }
+                  companySlug={
+                    companySlug
+                  }
+                  onRequestDetail={() =>
+                    setResultMode(
+                      "detail"
+                    )
+                  }
+                />
+              </div>
+            </section>
+          )}
+
+        {/* =====================================================
+            5. 상세견적 상담
+        ===================================================== */}
+
+        {groups.length >
+          0 &&
+          resultMode ===
+            "detail" && (
+            <section
+              style={{
+                marginBottom:
+                  "14px",
+                padding: "18px",
+                border:
+                  "1px solid #dbeafe",
+                borderRadius:
+                  "24px",
+                background:
+                  "#ffffff",
+                boxShadow:
+                  "0 14px 36px rgba(15,23,42,0.07)",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom:
+                    "12px",
+                }}
+              >
+                <div
+                  style={{
+                    display:
+                      "inline-flex",
+                    alignItems:
+                      "center",
+                    marginBottom:
+                      "7px",
+                    padding:
+                      "5px 8px",
+                    borderRadius:
+                      "999px",
+                    background:
+                      "#eff6ff",
+                    color:
+                      "#2563eb",
+                    fontSize:
+                      "10px",
+                    fontWeight:
+                      "900",
+                    letterSpacing:
+                      "0.08em",
+                  }}
+                >
+                  CONSULTATION
+                </div>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize:
+                      "21px",
+                    lineHeight:
+                      1.3,
+                    letterSpacing:
+                      "-0.03em",
+                    fontWeight:
+                      "900",
+                  }}
+                >
+                  상세 견적 상담 신청
+                </h2>
+
+                <p
+                  style={{
+                    margin:
+                      "7px 0 0",
+                    color:
+                      "#64748b",
+                    fontSize:
+                      "13px",
+                    lineHeight:
+                      1.6,
+                  }}
+                >
+                  AI 견적 결과와 선택한 필름 정보를 함께 전달합니다.
+                </p>
+              </div>
+
+              <LeadForm
+                customerName={
+                  customerName
+                }
+                phone={phone}
+                region={region}
+                privacyAgree={
+                  privacyAgree
+                }
+                leadLoading={
+                  leadLoading
+                }
+                leadComplete={
+                  leadComplete
+                }
+                leadMessage={
+                  leadMessage
+                }
+                onCustomerNameChange={
+                  setCustomerName
+                }
+                onPhoneChange={
+                  handlePhoneChange
+                }
+                onRegionChange={
+                  setRegion
+                }
+                onPrivacyAgreeChange={
+                  setPrivacyAgree
+                }
+                onSubmit={
+                  handleLeadSubmit
+                }
+              />
+            </section>
+          )}
+
+        {/* =====================================================
+            하단
+        ===================================================== */}
+
+        <section
+          style={{
+            marginTop: "18px",
+            padding: "18px",
+            borderRadius: "20px",
+            background: "#0f172a",
+            color: "#ffffff",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "5px",
+              fontSize: "15px",
+              fontWeight: "900",
+            }}
+          >
+            {companyName}
+          </div>
+
+          <div
+            style={{
+              color: "#94a3b8",
+              fontSize: "12px",
+              lineHeight: 1.6,
+            }}
+          >
+            {estimateTitle}
+            <br />
+            AI 예상 견적은 실제 현장 상태와 시공 조건에 따라 달라질 수 있습니다.
+          </div>
+        </section>
       </div>
     </main>
   );
