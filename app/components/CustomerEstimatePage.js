@@ -70,17 +70,26 @@ function getProgress(screen) {
 }
 
 /* =========================================================
-   문·문틀 판별
+   방문·문틀 수량 판별
    =========================================================
 
-   중요:
+   수량 적용:
+   - 문,문틀
+   - 문·문틀
+   - 방문
+   - 방문과 문틀
+   - 여닫이 방문
+   - 방문 문짝과 문틀
+
+   수량 제외:
+   - 중문
+   - 방화문
+   - 현관문
+   - 신발장 도어
+   - 붙박이장 도어
+   - 주방가구 도어
+
    사진 설명 / AI description / tags는 보지 않습니다.
-
-   실제 분석된 그룹의
-   category / subCategory / key / label 만 확인합니다.
-
-   따라서 붙박이장이나 싱크대 설명 속에
-   "문", "도어"가 있어도 수량창이 뜨지 않습니다.
 ========================================================= */
 
 function normalizeDoorText(value) {
@@ -89,24 +98,14 @@ function normalizeDoorText(value) {
     .toLowerCase();
 }
 
-const DOOR_EXACT_NAMES = new Set([
-  "문문틀",
-  "문",
-  "방문",
-  "방화문",
+const VISITOR_DOOR_EXCLUDE_WORDS = [
   "중문",
+  "방화문",
   "현관문",
-  "문짝",
-  "문틀",
-  "도어",
-  "도어프레임",
-
-  "door",
-  "doorframe",
-  "firedoor",
   "slidingdoor",
+  "firedoor",
   "entrancedoor",
-]);
+];
 
 function isDoorPricingGroup(group) {
   if (!group) {
@@ -132,59 +131,91 @@ function isDoorPricingGroup(group) {
       group?.title
   );
 
+  const structuredValues = [
+    category,
+    subCategory,
+    key,
+    label,
+  ].filter(Boolean);
+
   /*
-   * 가장 신뢰하는 값은 category
+   * 중문 / 방화문 / 현관문은
+   * 수량 계산에서 무조건 제외
+   */
+  const hasExcludedDoorType =
+    structuredValues.some((value) =>
+      VISITOR_DOOR_EXCLUDE_WORDS.some(
+        (word) =>
+          value.includes(
+            normalizeDoorText(word)
+          )
+      )
+    );
+
+  if (hasExcludedDoorType) {
+    return false;
+  }
+
+  /*
+   * DB의 "문,문틀", "문·문틀", "문/문틀"
+   * → normalize 후 "문문틀"
    */
   if (
-    category === "문문틀" ||
-    category.includes("문문틀") ||
-    DOOR_EXACT_NAMES.has(category)
+    category.includes(
+      "문문틀"
+    )
   ) {
     return true;
   }
 
   /*
-   * category가 다른 부위로 명확하게 잡혔다면
-   * 다른 텍스트는 보지 않습니다.
-   *
-   * 예:
-   * 붙박이장
-   * 싱크대
-   * 신발장
-   * 냉장고장
-   * 주방가구
+   * 방문과 문틀
+   * 여닫이 방문
+   * 방문 문짝과 문틀
    */
-  if (category) {
-    return false;
+  if (
+    structuredValues.some(
+      (value) =>
+        value.includes(
+          "방문"
+        )
+    )
+  ) {
+    return true;
   }
 
   /*
-   * category가 비어 있는 예외 데이터만
-   * subCategory / key / label로 보조 판별
+   * category가 없는 예외 데이터만
+   * subCategory/key/label에서 문문틀 확인
    */
-  const fallbackValues = [
-    subCategory,
-    key,
-    label,
-  ];
+  if (
+    !category &&
+    [
+      subCategory,
+      key,
+      label,
+    ].some(
+      (value) =>
+        value.includes(
+          "문문틀"
+        )
+    )
+  ) {
+    return true;
+  }
 
-  return fallbackValues.some((value) => {
-    if (!value) {
-      return false;
-    }
-
-    return (
-      value === "문문틀" ||
-      value.includes("문문틀") ||
-      DOOR_EXACT_NAMES.has(value)
-    );
-  });
+  return false;
 }
 
 function clampDoorQuantity(value) {
-  const number = Number(value);
+  const number =
+    Number(value);
 
-  if (!Number.isFinite(number)) {
+  if (
+    !Number.isFinite(
+      number
+    )
+  ) {
     return 1;
   }
 
@@ -192,7 +223,9 @@ function clampDoorQuantity(value) {
     50,
     Math.max(
       1,
-      Math.floor(number)
+      Math.floor(
+        number
+      )
     )
   );
 }
@@ -201,9 +234,13 @@ function DoorQuantitySelector({
   quantity,
   onChange,
 }) {
-  function changeQuantity(value) {
+  function changeQuantity(
+    value
+  ) {
     onChange?.(
-      clampDoorQuantity(value)
+      clampDoorQuantity(
+        value
+      )
     );
   }
 
@@ -212,7 +249,8 @@ function DoorQuantitySelector({
       style={{
         marginBottom: "18px",
         padding: "16px",
-        border: "1px solid #e3e7ec",
+        border:
+          "1px solid #e3e7ec",
         borderRadius: "14px",
         background: "#ffffff",
       }}
@@ -220,8 +258,10 @@ function DoorQuantitySelector({
       <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
+          alignItems:
+            "flex-start",
+          justifyContent:
+            "space-between",
           gap: "12px",
         }}
       >
@@ -234,7 +274,7 @@ function DoorQuantitySelector({
               fontWeight: "900",
             }}
           >
-            동일한 문·문틀 수량
+            동일한 방문·문틀 수량
           </strong>
 
           <div
@@ -245,7 +285,7 @@ function DoorQuantitySelector({
               lineHeight: 1.5,
             }}
           >
-            사진과 같은 문·문틀이 여러 세트라면
+            사진과 같은 방문·문틀이 여러 세트라면
             수량을 조정해주세요.
           </div>
         </div>
@@ -277,8 +317,10 @@ function DoorQuantitySelector({
       >
         <button
           type="button"
-          disabled={quantity <= 1}
-          aria-label="문·문틀 수량 줄이기"
+          disabled={
+            quantity <= 1
+          }
+          aria-label="방문·문틀 수량 줄이기"
           onClick={() =>
             changeQuantity(
               quantity - 1
@@ -286,7 +328,8 @@ function DoorQuantitySelector({
           }
           style={{
             height: "46px",
-            border: "1px solid #dfe3e8",
+            border:
+              "1px solid #dfe3e8",
             borderRadius: "11px",
             background:
               quantity <= 1
@@ -311,7 +354,8 @@ function DoorQuantitySelector({
             height: "46px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
+            justifyContent:
+              "center",
             gap: "5px",
             borderRadius: "11px",
             background: "#f6f8fb",
@@ -333,7 +377,8 @@ function DoorQuantitySelector({
               padding: 0,
               border: 0,
               outline: "none",
-              background: "transparent",
+              background:
+                "transparent",
               color: "#171b21",
               fontSize: "20px",
               fontWeight: "900",
@@ -354,8 +399,10 @@ function DoorQuantitySelector({
 
         <button
           type="button"
-          disabled={quantity >= 50}
-          aria-label="문·문틀 수량 늘리기"
+          disabled={
+            quantity >= 50
+          }
+          aria-label="방문·문틀 수량 늘리기"
           onClick={() =>
             changeQuantity(
               quantity + 1
@@ -363,7 +410,8 @@ function DoorQuantitySelector({
           }
           style={{
             height: "46px",
-            border: "1px solid #dfe3e8",
+            border:
+              "1px solid #dfe3e8",
             borderRadius: "11px",
             background:
               quantity >= 50
@@ -392,8 +440,8 @@ function DoorQuantitySelector({
           lineHeight: 1.5,
         }}
       >
-        문짝과 문틀을 따로 계산하지 않고
-        문·문틀 1세트 견적에 수량을 반영합니다.
+        방문과 문틀을 따로 계산하지 않고
+        방문·문틀 1세트 견적에 수량을 반영합니다.
       </div>
     </div>
   );
@@ -440,8 +488,12 @@ export default function CustomerEstimatePage({
   const analysisLoadingSeenRef =
     useRef(false);
 
-  function changeScreen(nextScreen) {
-    setScreen(nextScreen);
+  function changeScreen(
+    nextScreen
+  ) {
+    setScreen(
+      nextScreen
+    );
 
     setTransitionKey(
       (prev) =>
@@ -460,38 +512,59 @@ export default function CustomerEstimatePage({
   }
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function loadCompany() {
       if (!companySlug) {
         setCompany(null);
-        setCompanySettings(null);
-        setTenantLoading(false);
-        setTenantError("");
+
+        setCompanySettings(
+          null
+        );
+
+        setTenantLoading(
+          false
+        );
+
+        setTenantError(
+          ""
+        );
+
         return;
       }
 
-      setTenantLoading(true);
-      setTenantError("");
+      setTenantLoading(
+        true
+      );
+
+      setTenantError(
+        ""
+      );
 
       try {
-        const response = await fetch(
-          `/api/public-company?slug=${encodeURIComponent(
-            companySlug
-          )}`,
-          {
-            cache: "no-store",
-          }
-        );
+        const response =
+          await fetch(
+            `/api/public-company?slug=${encodeURIComponent(
+              companySlug
+            )}`,
+            {
+              cache:
+                "no-store",
+            }
+          );
 
         const text =
           await response.text();
 
-        let result = null;
+        let result =
+          null;
 
         try {
           result =
-            JSON.parse(text);
+            JSON.parse(
+              text
+            );
         } catch {
           throw new Error(
             text
@@ -514,7 +587,9 @@ export default function CustomerEstimatePage({
           );
         }
 
-        if (!cancelled) {
+        if (
+          !cancelled
+        ) {
           setCompany(
             result.company
           );
@@ -530,15 +605,21 @@ export default function CustomerEstimatePage({
           error
         );
 
-        if (!cancelled) {
+        if (
+          !cancelled
+        ) {
           setTenantError(
             error?.message ||
               "업체 정보를 불러오지 못했습니다."
           );
         }
       } finally {
-        if (!cancelled) {
-          setTenantLoading(false);
+        if (
+          !cancelled
+        ) {
+          setTenantLoading(
+            false
+          );
         }
       }
     }
@@ -546,7 +627,8 @@ export default function CustomerEstimatePage({
     loadCompany();
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
   }, [
     companySlug,
@@ -673,7 +755,9 @@ export default function CustomerEstimatePage({
     screen,
   ]);
 
-  function handlePhoneChange(value) {
+  function handlePhoneChange(
+    value
+  ) {
     const numbers =
       String(value || "")
         .replace(
@@ -686,14 +770,19 @@ export default function CustomerEstimatePage({
         );
 
     if (
-      numbers.length <= 3
+      numbers.length <=
+      3
     ) {
-      setPhone(numbers);
+      setPhone(
+        numbers
+      );
+
       return;
     }
 
     if (
-      numbers.length <= 7
+      numbers.length <=
+      7
     ) {
       setPhone(
         `${numbers.slice(
@@ -720,9 +809,14 @@ export default function CustomerEstimatePage({
     );
   }
 
-  async function handleFilmSelect(film) {
+  async function handleFilmSelect(
+    film
+  ) {
     if (!film) {
-      setSelectedFilm(null);
+      setSelectedFilm(
+        null
+      );
+
       return;
     }
 
@@ -740,7 +834,9 @@ export default function CustomerEstimatePage({
           0
       ) > 0;
 
-    if (!alreadyHasPrice) {
+    if (
+      !alreadyHasPrice
+    ) {
       try {
         let query =
           supabase
@@ -835,9 +931,8 @@ export default function CustomerEstimatePage({
   }
 
   /*
-   * 문·문틀 수량창 표시 여부
-   *
-   * 실제 그룹 분류가 문 계열일 때만 true.
+   * 실제 방문·문틀 그룹이 있을 때만
+   * 수량창 표시
    */
   const hasDoorSetGroup =
     groups.some(
@@ -852,7 +947,9 @@ export default function CustomerEstimatePage({
       !hasDoorSetGroup &&
       doorQuantity !== 1
     ) {
-      setDoorQuantity(1);
+      setDoorQuantity(
+        1
+      );
     }
   }, [
     hasDoorSetGroup,
@@ -862,26 +959,33 @@ export default function CustomerEstimatePage({
   function getFilmAdjustedGroupEstimate(
     group
   ) {
-    if (!group?.estimate) {
+    if (
+      !group?.estimate
+    ) {
       return null;
     }
 
-    if (!selectedFilm) {
+    if (
+      !selectedFilm
+    ) {
       return {
-        min: Number(
-          group.estimate.min ||
-            0
-        ),
+        min:
+          Number(
+            group.estimate.min ||
+              0
+          ),
 
-        max: Number(
-          group.estimate.max ||
-            0
-        ),
+        max:
+          Number(
+            group.estimate.max ||
+              0
+          ),
 
-        average: Number(
-          group.estimate.average ||
-            0
-        ),
+        average:
+          Number(
+            group.estimate.average ||
+              0
+          ),
       };
     }
 
@@ -912,12 +1016,14 @@ export default function CustomerEstimatePage({
   /*
    * 부위별 표시 견적
    *
-   * 문·문틀 그룹만 수량 적용.
+   * 방문·문틀 그룹에만 수량 적용.
    */
   const displayGroups =
     groups.map(
       (group) => {
-        if (!group.estimate) {
+        if (
+          !group.estimate
+        ) {
           return group;
         }
 
@@ -968,10 +1074,9 @@ export default function CustomerEstimatePage({
 
   /*
    * 원래 totalEstimate에는
-   * 문·문틀 1세트 가격이 이미 포함되어 있습니다.
+   * 방문·문틀 1세트 금액이 이미 들어있습니다.
    *
-   * 따라서 2세트 이상일 때
-   * 추가 세트 금액만 더합니다.
+   * 따라서 추가 세트 금액만 더합니다.
    */
   const doorBaseExtra =
     groups.reduce(
@@ -984,7 +1089,8 @@ export default function CustomerEstimatePage({
           !isDoorPricingGroup(
             group
           ) ||
-          doorQuantity <= 1
+          doorQuantity <=
+            1
         ) {
           return sum;
         }
@@ -997,7 +1103,9 @@ export default function CustomerEstimatePage({
           min:
             sum.min +
             Number(
-              group.estimate.min ||
+              group
+                .estimate
+                .min ||
                 0
             ) *
               extraCount,
@@ -1005,7 +1113,9 @@ export default function CustomerEstimatePage({
           max:
             sum.max +
             Number(
-              group.estimate.max ||
+              group
+                .estimate
+                .max ||
                 0
             ) *
               extraCount,
@@ -1013,7 +1123,9 @@ export default function CustomerEstimatePage({
           average:
             sum.average +
             Number(
-              group.estimate.average ||
+              group
+                .estimate
+                .average ||
                 0
             ) *
               extraCount,
@@ -1037,7 +1149,8 @@ export default function CustomerEstimatePage({
           !isDoorPricingGroup(
             group
           ) ||
-          doorQuantity <= 1
+          doorQuantity <=
+            1
         ) {
           return sum;
         }
@@ -1165,30 +1278,59 @@ export default function CustomerEstimatePage({
       : null;
 
   function resetEstimateOptions() {
-    setSelectedFilm(null);
-    setFireType("non_fire");
-    setUseSplitTone(false);
-    setAreaFilms({});
-    setDoorQuantity(1);
-    setLeadComplete(false);
-    setLeadMessage("");
+    setSelectedFilm(
+      null
+    );
+
+    setFireType(
+      "non_fire"
+    );
+
+    setUseSplitTone(
+      false
+    );
+
+    setAreaFilms(
+      {}
+    );
+
+    setDoorQuantity(
+      1
+    );
+
+    setLeadComplete(
+      false
+    );
+
+    setLeadMessage(
+      ""
+    );
   }
 
-  async function handleAddImages(files) {
+  async function handleAddImages(
+    files
+  ) {
     resetEstimateOptions();
 
-    await addImages(files);
+    await addImages(
+      files
+    );
   }
 
-  function handleRemoveImage(id) {
+  function handleRemoveImage(
+    id
+  ) {
     resetEstimateOptions();
 
-    removeImage(id);
+    removeImage(
+      id
+    );
   }
 
   async function startAnalyze() {
     if (
-      images.length === 0
+      images.length ===
+      0
     ) {
       return;
     }
@@ -1221,7 +1363,8 @@ export default function CustomerEstimatePage({
 
     for (
       let index = 0;
-      index < images.length;
+      index <
+      images.length;
       index += 1
     ) {
       try {
@@ -1233,7 +1376,9 @@ export default function CustomerEstimatePage({
           images[index].file
         );
 
-        if (companySlug) {
+        if (
+          companySlug
+        ) {
           formData.append(
             "company_slug",
             companySlug
@@ -1289,8 +1434,10 @@ export default function CustomerEstimatePage({
     }
 
     if (
-      images.length > 0 &&
-      paths.length === 0
+      images.length >
+        0 &&
+      paths.length ===
+        0
     ) {
       throw new Error(
         uploadErrors[0] ||
@@ -1304,10 +1451,14 @@ export default function CustomerEstimatePage({
     return paths;
   }
 
-  async function handleLeadSubmit(event) {
+  async function handleLeadSubmit(
+    event
+  ) {
     event?.preventDefault?.();
 
-    if (!displayGroups.length) {
+    if (
+      !displayGroups.length
+    ) {
       setLeadMessage(
         "먼저 사진 AI 분석을 진행해주세요."
       );
@@ -1315,7 +1466,9 @@ export default function CustomerEstimatePage({
       return;
     }
 
-    if (!customerName.trim()) {
+    if (
+      !customerName.trim()
+    ) {
       setLeadMessage(
         "이름을 입력해주세요."
       );
@@ -1330,7 +1483,8 @@ export default function CustomerEstimatePage({
       );
 
     if (
-      phoneNumbers.length < 9
+      phoneNumbers.length <
+      9
     ) {
       setLeadMessage(
         "연락처를 정확히 입력해주세요."
@@ -1339,7 +1493,9 @@ export default function CustomerEstimatePage({
       return;
     }
 
-    if (!region.trim()) {
+    if (
+      !region.trim()
+    ) {
       setLeadMessage(
         "시공 지역을 입력해주세요."
       );
@@ -1347,7 +1503,9 @@ export default function CustomerEstimatePage({
       return;
     }
 
-    if (!privacyAgree) {
+    if (
+      !privacyAgree
+    ) {
       setLeadMessage(
         "개인정보 수집 및 상담 연락에 동의해주세요."
       );
@@ -1355,7 +1513,9 @@ export default function CustomerEstimatePage({
       return;
     }
 
-    setLeadLoading(true);
+    setLeadLoading(
+      true
+    );
 
     setLeadMessage(
       "사진과 상담 신청을 접수하고 있습니다..."
@@ -1388,23 +1548,28 @@ export default function CustomerEstimatePage({
                 : 1,
 
             estimate_min:
-              group.estimate?.min ??
+              group.estimate
+                ?.min ??
               null,
 
             estimate_max:
-              group.estimate?.max ??
+              group.estimate
+                ?.max ??
               null,
 
             estimate_average:
-              group.estimate?.average ??
+              group.estimate
+                ?.average ??
               null,
 
             confidence:
-              group.estimate?.confidence ||
+              group.estimate
+                ?.confidence ||
               "데이터 부족",
 
             similar_count:
-              group.estimate?.count ||
+              group.estimate
+                ?.count ||
               0,
           })
         );
@@ -1420,12 +1585,17 @@ export default function CustomerEstimatePage({
                 group.photos
                   .map(
                     (photo) =>
-                      photo.analysis
+                      photo
+                        .analysis
                         ?.description ||
                       ""
                   )
-                  .filter(Boolean)
-                  .join(" / ");
+                  .filter(
+                    Boolean
+                  )
+                  .join(
+                    " / "
+                  );
 
               return `${
                 index + 1
@@ -1436,11 +1606,14 @@ export default function CustomerEstimatePage({
                   ? ` · ${group.subCategory}`
                   : ""
               } (${
-                group.photos.length
+                group.photos
+                  .length
               }장): ${descriptions}`;
             }
           )
-          .join("\n");
+          .join(
+            "\n"
+          );
 
       const categoryText =
         groups
@@ -1448,8 +1621,12 @@ export default function CustomerEstimatePage({
             (group) =>
               group.category
           )
-          .filter(Boolean)
-          .join(", ");
+          .filter(
+            Boolean
+          )
+          .join(
+            ", "
+          );
 
       const memoLines =
         displayGroups.map(
@@ -1461,25 +1638,35 @@ export default function CustomerEstimatePage({
             }
 
             return `${group.category}: ${Number(
-              group.estimate.min
+              group
+                .estimate
+                .min
             ).toLocaleString(
               "ko-KR"
             )}~${Number(
-              group.estimate.max
+              group
+                .estimate
+                .max
             ).toLocaleString(
               "ko-KR"
             )}원`;
           }
         );
 
-      if (hasDoorSetGroup) {
+      if (
+        hasDoorSetGroup
+      ) {
         memoLines.push(
-          `문·문틀 수량: ${doorQuantity}세트`
+          `방문·문틀 수량: ${doorQuantity}세트`
         );
       }
 
-      if (selectedFilm) {
-        memoLines.push("");
+      if (
+        selectedFilm
+      ) {
+        memoLines.push(
+          ""
+        );
 
         memoLines.push(
           `선택 필름: ${
@@ -1494,7 +1681,8 @@ export default function CustomerEstimatePage({
 
         memoLines.push(
           `필름 조건: ${
-            fireType === "fire"
+            fireType ===
+            "fire"
               ? "방염"
               : "비방염"
           }`
@@ -1593,7 +1781,9 @@ export default function CustomerEstimatePage({
         );
       }
 
-      setLeadComplete(true);
+      setLeadComplete(
+        true
+      );
 
       setLeadMessage(
         "✅ 상담 신청이 완료되었습니다."
@@ -1603,7 +1793,9 @@ export default function CustomerEstimatePage({
         SCREEN.COMPLETE
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        error
+      );
 
       setLeadMessage(
         `❌ 상담 신청 오류: ${
@@ -1612,9 +1804,11 @@ export default function CustomerEstimatePage({
         }`
       );
     } finally {
-      setLeadLoading(false);
+      setLeadLoading(
+        false
+      );
     }
-            }
+      }
     function goBack() {
     if (
       screen ===
@@ -1699,7 +1893,9 @@ export default function CustomerEstimatePage({
     );
   }
 
-  if (tenantLoading) {
+  if (
+    tenantLoading
+  ) {
     return (
       <main className={styles.statePage}>
         <div className={styles.spinner} />
@@ -1711,7 +1907,9 @@ export default function CustomerEstimatePage({
     );
   }
 
-  if (tenantError) {
+  if (
+    tenantError
+  ) {
     return (
       <main className={styles.statePage}>
         <div className={styles.errorBox}>
@@ -2028,7 +2226,6 @@ export default function CustomerEstimatePage({
               />
             </div>
 
-            {/* 문·문틀 실제 그룹이 있을 때만 표시 */}
             {hasDoorSetGroup && (
               <DoorQuantitySelector
                 quantity={
@@ -2132,9 +2329,8 @@ export default function CustomerEstimatePage({
             </div>
 
             {/*
-              중요:
               3/4 가상시공 단계에서는
-              문·문틀 수량 선택 UI를 다시 보여주지 않습니다.
+              방문·문틀 수량 선택 UI를 다시 표시하지 않음.
             */}
 
             <div className={styles.filmPickerArea}>
@@ -2299,7 +2495,7 @@ export default function CustomerEstimatePage({
               {hasDoorSetGroup && (
                 <div>
                   <span>
-                    문·문틀 수량
+                    방문·문틀 수량
                   </span>
 
                   <strong>
@@ -2410,7 +2606,7 @@ export default function CustomerEstimatePage({
               {hasDoorSetGroup && (
                 <div>
                   <span>
-                    문·문틀 수량
+                    방문·문틀 수량
                   </span>
 
                   <strong>
@@ -2457,4 +2653,4 @@ export default function CustomerEstimatePage({
       </div>
     </main>
   );
-      }
+          }
