@@ -29,29 +29,107 @@ function toNumberOrNull(value) {
 }
 
 /*
- * 일정이 있는 현장은 날짜순으로 먼저 표시하고
- * 일정 미정(상담중) 현장은 뒤에 표시합니다.
+ * schedule_start가 있으면 그 날짜를 사용하고,
+ * 시간 미정 상담중 현장은 schedule_date를 사용합니다.
+ *
+ * 둘 다 없는 완전 미정 현장은 뒤에 표시합니다.
  */
-function sortSitesBySchedule(a, b) {
-  const aValue = a?.schedule_start;
-  const bValue = b?.schedule_start;
+function getSiteSortTime(site) {
+  if (site?.schedule_start) {
+    const value =
+      new Date(
+        site.schedule_start,
+      ).getTime();
 
-  if (!aValue && !bValue) {
+    if (
+      Number.isFinite(value)
+    ) {
+      return value;
+    }
+  }
+
+  if (site?.schedule_date) {
+    const value =
+      new Date(
+        `${site.schedule_date}T00:00:00`,
+      ).getTime();
+
+    if (
+      Number.isFinite(value)
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function sortSitesBySchedule(a, b) {
+  const aValue =
+    getSiteSortTime(a);
+
+  const bValue =
+    getSiteSortTime(b);
+
+  if (
+    aValue === null &&
+    bValue === null
+  ) {
     return 0;
   }
 
-  if (!aValue) {
+  if (aValue === null) {
     return 1;
   }
 
-  if (!bValue) {
+  if (bValue === null) {
     return -1;
   }
 
-  return (
-    new Date(aValue).getTime() -
-    new Date(bValue).getTime()
-  );
+  return aValue - bValue;
+}
+
+/*
+ * ISO 일정에서 로컬 날짜 YYYY-MM-DD 추출
+ */
+function getLocalDateString(
+  value,
+) {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return null;
+  }
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(
+      2,
+      "0",
+    );
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(
+      2,
+      "0",
+    );
+
+  return `${year}-${month}-${day}`;
 }
 
 export default function useSites({
@@ -721,7 +799,8 @@ export default function useSites({
       },
       [companyId],
     );
-     const createSite = useCallback(
+
+  const createSite = useCallback(
     async (form) => {
       if (!companyId) {
         return {
@@ -763,6 +842,16 @@ export default function useSites({
 
           region:
             form.region?.trim() ||
+            null,
+
+          /*
+           * 시간 미정이어도 날짜만 보존합니다.
+           */
+          schedule_date:
+            form.schedule_date ||
+            getLocalDateString(
+              form.schedule_start,
+            ) ||
             null,
 
           schedule_start:
@@ -941,8 +1030,7 @@ export default function useSites({
       uploadRequestPhotos,
     ],
   );
-
-  const updateSiteSchedule =
+    const updateSiteSchedule =
     useCallback(
       async ({
         siteId,
@@ -988,7 +1076,9 @@ export default function useSites({
 
         if (normalizedEnd) {
           const endDate =
-            new Date(normalizedEnd);
+            new Date(
+              normalizedEnd,
+            );
 
           if (
             Number.isNaN(
@@ -1017,7 +1107,19 @@ export default function useSites({
         setSitesMessage("");
 
         try {
+          /*
+           * 정확한 일정이 확정되면
+           * schedule_date도 같은 날짜로 동기화합니다.
+           */
+          const confirmedDate =
+            getLocalDateString(
+              scheduleStart,
+            );
+
           const updateData = {
+            schedule_date:
+              confirmedDate,
+
             schedule_start:
               scheduleStart,
 
@@ -1179,16 +1281,20 @@ export default function useSites({
           }
 
           setSites((prev) =>
-            prev.map(
-              (site) =>
-                site.id ===
-                siteId
-                  ? {
-                      ...site,
-                      ...data,
-                    }
-                  : site,
-            ),
+            prev
+              .map(
+                (site) =>
+                  site.id ===
+                  siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                sortSitesBySchedule,
+              ),
           );
 
           if (
