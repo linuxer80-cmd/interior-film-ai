@@ -44,7 +44,8 @@ export default function SiteBasicInfo({
       <DetailRow
         label="고객"
         value={
-          site.customer_name || "-"
+          site.customer_name ||
+          "미정"
         }
       />
 
@@ -55,7 +56,8 @@ export default function SiteBasicInfo({
       <DetailRow
         label="전화번호"
         value={
-          site.customer_phone || "-"
+          site.customer_phone ||
+          "미정"
         }
       />
 
@@ -66,7 +68,8 @@ export default function SiteBasicInfo({
       <DetailRow
         label="주소"
         value={
-          fullAddress || "-"
+          fullAddress ||
+          "미정"
         }
       />
 
@@ -77,7 +80,8 @@ export default function SiteBasicInfo({
       <DetailRow
         label="지역"
         value={
-          site.region || "-"
+          site.region ||
+          "미정"
         }
       />
 
@@ -88,7 +92,8 @@ export default function SiteBasicInfo({
       <DetailRow
         label="시공 종류"
         value={
-          site.work_type || "-"
+          site.work_type ||
+          "미정"
         }
       />
 
@@ -100,7 +105,7 @@ export default function SiteBasicInfo({
         label="작업 내용"
         value={
           site.work_description ||
-          "-"
+          "미정"
         }
       />
 
@@ -110,9 +115,15 @@ export default function SiteBasicInfo({
 
       <DetailRow
         label="계약금액"
-        value={formatWon(
-          site.contract_amount,
-        )}
+        value={
+          hasAmount(
+            site.contract_amount,
+          )
+            ? formatWon(
+                site.contract_amount,
+              )
+            : "미정"
+        }
       />
 
       {/* =========================
@@ -121,9 +132,15 @@ export default function SiteBasicInfo({
 
       <DetailRow
         label="선금"
-        value={formatWon(
-          site.deposit_amount,
-        )}
+        value={
+          hasAmount(
+            site.deposit_amount,
+          )
+            ? formatWon(
+                site.deposit_amount,
+              )
+            : "미정"
+        }
       />
 
       {/* =========================
@@ -157,10 +174,26 @@ export default function SiteBasicInfo({
       <DetailRow
         label="메모"
         value={
-          site.memo || "-"
+          site.memo ||
+          "미정"
         }
       />
     </div>
+  );
+}
+
+/* =========================================================
+   금액 입력 여부
+
+   0원은 실제 입력값일 수 있으므로
+   미정으로 처리하지 않습니다.
+========================================================= */
+
+function hasAmount(value) {
+  return (
+    value !== null &&
+    value !== undefined &&
+    value !== ""
   );
 }
 
@@ -211,7 +244,7 @@ function DetailRow({
           wordBreak: "break-word",
         }}
       >
-        {value}
+        {value || "미정"}
       </div>
     </div>
   );
