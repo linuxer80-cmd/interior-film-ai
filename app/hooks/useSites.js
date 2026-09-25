@@ -41,9 +41,7 @@ function getSiteSortTime(site) {
         site.schedule_start,
       ).getTime();
 
-    if (
-      Number.isFinite(value)
-    ) {
+    if (Number.isFinite(value)) {
       return value;
     }
   }
@@ -54,9 +52,7 @@ function getSiteSortTime(site) {
         `${site.schedule_date}T00:00:00`,
       ).getTime();
 
-    if (
-      Number.isFinite(value)
-    ) {
+    if (Number.isFinite(value)) {
       return value;
     }
   }
@@ -92,9 +88,7 @@ function sortSitesBySchedule(a, b) {
 /*
  * ISO 일정에서 로컬 날짜 YYYY-MM-DD 추출
  */
-function getLocalDateString(
-  value,
-) {
+function getLocalDateString(value) {
   if (!value) {
     return null;
   }
@@ -116,18 +110,12 @@ function getLocalDateString(
   const month =
     String(
       date.getMonth() + 1,
-    ).padStart(
-      2,
-      "0",
-    );
+    ).padStart(2, "0");
 
   const day =
     String(
       date.getDate(),
-    ).padStart(
-      2,
-      "0",
-    );
+    ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
@@ -271,9 +259,7 @@ export default function useSites({
               {
                 cacheControl:
                   "3600",
-
                 upsert: false,
-
                 contentType:
                   file.type ||
                   undefined,
@@ -671,7 +657,7 @@ export default function useSites({
             "사진 삭제 중 오류가 발생했습니다.";
 
           setSitesMessage(
-            `❌ 요청사진 삭제 실패: ${message}`,
+            `❌ 요청사진 추가 실패: ${message}`,
           );
 
           return {
@@ -798,9 +784,7 @@ export default function useSites({
         return data || [];
       },
       [companyId],
-    );
-
-  const createSite = useCallback(
+    );  const createSite = useCallback(
     async (form) => {
       if (!companyId) {
         return {
@@ -844,9 +828,6 @@ export default function useSites({
             form.region?.trim() ||
             null,
 
-          /*
-           * 시간 미정이어도 날짜만 보존합니다.
-           */
           schedule_date:
             form.schedule_date ||
             getLocalDateString(
@@ -900,9 +881,7 @@ export default function useSites({
           error,
         } = await supabase
           .from("sites")
-          .insert(
-            insertData,
-          )
+          .insert(insertData)
           .select()
           .single();
 
@@ -923,7 +902,6 @@ export default function useSites({
           await saveSiteMaterials({
             siteId:
               createdSite.id,
-
             materials,
           });
 
@@ -938,7 +916,6 @@ export default function useSites({
           await uploadRequestPhotos({
             siteId:
               createdSite.id,
-
             files:
               requestPhotos,
           });
@@ -974,13 +951,10 @@ export default function useSites({
 
         return {
           success: true,
-
           site:
             siteForState,
-
           materials:
             savedMaterials,
-
           photos:
             savedPhotos,
         };
@@ -1030,7 +1004,189 @@ export default function useSites({
       uploadRequestPhotos,
     ],
   );
-    const updateSiteSchedule =
+
+  /*
+   * 현장 기본정보 수정
+   *
+   * 상담중 현장을 먼저 등록한 뒤
+   * 고객과 상담하면서 확정되는 정보를
+   * 상세화면에서 계속 보완할 수 있도록 합니다.
+   */
+  const updateSiteBasicInfo =
+    useCallback(
+      async ({
+        siteId,
+
+        customer_name = "",
+        customer_phone = "",
+
+        site_name = "",
+
+        address = "",
+        address_detail = "",
+        region = "",
+
+        work_type = "",
+        work_description = "",
+
+        contract_amount = "",
+        deposit_amount = "",
+
+        memo = "",
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          const updateData = {
+            customer_name:
+              customer_name?.trim() ||
+              null,
+
+            customer_phone:
+              customer_phone?.trim() ||
+              null,
+
+            site_name:
+              site_name?.trim() ||
+              null,
+
+            address:
+              address?.trim() ||
+              null,
+
+            address_detail:
+              address_detail?.trim() ||
+              null,
+
+            region:
+              region?.trim() ||
+              null,
+
+            work_type:
+              work_type?.trim() ||
+              null,
+
+            work_description:
+              work_description?.trim() ||
+              null,
+
+            contract_amount:
+              toNumberOrNull(
+                contract_amount,
+              ),
+
+            deposit_amount:
+              toNumberOrNull(
+                deposit_amount,
+              ),
+
+            memo:
+              memo?.trim() ||
+              null,
+
+            updated_at:
+              new Date().toISOString(),
+          };
+
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("sites")
+            .update(
+              updateData,
+            )
+            .eq(
+              "id",
+              siteId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .select()
+            .single();
+
+          if (error) {
+            throw error;
+          }
+
+          /*
+           * 현장 목록 즉시 갱신
+           */
+          setSites((prev) =>
+            prev
+              .map(
+                (site) =>
+                  site.id === siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                sortSitesBySchedule,
+              ),
+          );
+
+          /*
+           * 현재 열려 있는 상세화면도
+           * 즉시 갱신합니다.
+           */
+          setSelectedSite(
+            (prev) =>
+              prev?.id === siteId
+                ? {
+                    ...prev,
+                    ...data,
+                  }
+                : prev,
+          );
+
+          setSitesMessage(
+            "✅ 현장 기본정보가 저장되었습니다.",
+          );
+
+          return {
+            success: true,
+            site: data,
+          };
+        } catch (error) {
+          console.error(
+            "현장 기본정보 수정 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "현장 기본정보 저장 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 기본정보 저장 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [companyId],
+    );
+
+  const updateSiteSchedule =
     useCallback(
       async ({
         siteId,
@@ -1107,10 +1263,6 @@ export default function useSites({
         setSitesMessage("");
 
         try {
-          /*
-           * 정확한 일정이 확정되면
-           * schedule_date도 같은 날짜로 동기화합니다.
-           */
           const confirmedDate =
             getLocalDateString(
               scheduleStart,
@@ -1368,6 +1520,7 @@ export default function useSites({
     loadSites,
     createSite,
 
+    updateSiteBasicInfo,
     updateSiteSchedule,
     updateSiteStatus,
 
@@ -1382,4 +1535,5 @@ export default function useSites({
 
     clearSitesMessage,
   };
-}
+    }
+  
