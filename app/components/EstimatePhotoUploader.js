@@ -9,7 +9,6 @@ export default function EstimatePhotoUploader({
   message = "",
   onAddImages,
   onRemoveImage,
-  onAnalyze,
 }) {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -54,7 +53,9 @@ export default function EstimatePhotoUploader({
       await onAddImages(files);
     }
 
-    // 같은 사진을 다시 선택할 수 있도록 초기화
+    /*
+     * 같은 사진을 다시 선택할 수 있도록 초기화
+     */
     event.target.value = "";
   }
 
@@ -74,9 +75,8 @@ export default function EstimatePhotoUploader({
           lineHeight: 1.6,
         }}
       >
-        최대 10장까지 선택할 수
-        있습니다. 같은 부위를 여러
-        각도로 촬영하면 정확도가
+        최대 10장까지 선택할 수 있습니다.
+        같은 부위를 여러 각도로 촬영하면 정확도가
         좋아집니다.
       </p>
 
@@ -245,48 +245,6 @@ export default function EstimatePhotoUploader({
           </div>
         </>
       )}
-
-      <button
-        type="button"
-        onClick={() =>
-          onAnalyze?.()
-        }
-        disabled={
-          loading ||
-          imageLoading ||
-          !images.length
-        }
-        style={{
-          width: "100%",
-          marginTop: "18px",
-          padding: "18px",
-          border: "none",
-          borderRadius:
-            "14px",
-          background:
-            "#111827",
-          color: "#ffffff",
-          fontSize: "18px",
-          fontWeight:
-            "bold",
-          cursor: "pointer",
-          opacity:
-            loading ||
-            imageLoading ||
-            !images.length
-              ? 0.65
-              : 1,
-        }}
-      >
-        {imageLoading
-          ? "사진 준비 중..."
-          : loading
-            ? "AI 분석 중..."
-            : `${
-                images.length ||
-                ""
-              }장 AI 견적 확인`}
-      </button>
 
       {message && (
         <div
