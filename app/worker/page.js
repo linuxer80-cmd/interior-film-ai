@@ -1840,4 +1840,4 @@ function InfoRow({
       </div>
     </div>
   );
-}
+              }
