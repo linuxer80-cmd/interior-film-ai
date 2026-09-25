@@ -435,19 +435,9 @@ export default function CustomerEstimatePage({
       }
     }
 
-    /*
-     * 가격까지 합쳐진 필름정보 저장
-     */
-
     setSelectedFilm(
       completedFilm
     );
-
-    /*
-     * 선택한 제품이
-     * 비방염/방염 중 한 종류만 존재하면
-     * 가능한 조건으로 자동 선택
-     */
 
     const hasNonFire =
       Number(
@@ -747,17 +737,8 @@ export default function CustomerEstimatePage({
     );
 
     try {
-      /*
-       * 자동견적 때 저장한
-       * 고객사진 경로 재사용
-       */
-
       const customerPhotoPaths =
         await uploadLeadPhotos();
-
-      /*
-       * 부위별 최종 견적
-       */
 
       const estimateDetails =
         displayGroups.map(
@@ -800,13 +781,9 @@ export default function CustomerEstimatePage({
           })
         );
 
-      /*
-       * AI 사진 설명
-       */
-
       const description =
         groups
-                .map(
+          .map(
             (
               group,
               index
@@ -843,10 +820,6 @@ export default function CustomerEstimatePage({
           )
           .join("\n");
 
-      /*
-       * 카테고리
-       */
-
       const categoryText =
         groups
           .map(
@@ -855,10 +828,6 @@ export default function CustomerEstimatePage({
           )
           .filter(Boolean)
           .join(", ");
-
-      /*
-       * 관리자 메모
-       */
 
       const memoLines =
         displayGroups.map(
@@ -883,11 +852,6 @@ export default function CustomerEstimatePage({
           }
         );
 
-      /*
-       * 선택 필름정보도
-       * 상담 관리자 메모에 저장
-       */
-
       if (selectedFilm) {
         memoLines.push("");
 
@@ -911,10 +875,6 @@ export default function CustomerEstimatePage({
           }`
         );
       }
-
-      /*
-       * 상담 저장
-       */
 
       const response =
         await fetch(
@@ -951,11 +911,6 @@ export default function CustomerEstimatePage({
 
                 ai_description:
                   description,
-
-                /*
-                 * 필름 선택 후 수정된
-                 * 최종 예상견적 저장
-                 */
 
                 estimate_min:
                   displayTotalEstimate
@@ -1035,8 +990,7 @@ export default function CustomerEstimatePage({
         false
       );
     }
-  }
-
+          }
   /*
    * =========================================================
    * 사진 추가
@@ -1242,23 +1196,41 @@ export default function CustomerEstimatePage({
           "#111827",
       }}
     >
+      {/*
+       * =====================================================
+       * 상단 메뉴
+       *
+       * AI 견적 / 필름 샘플보기는 기존 기능 유지
+       * 관리자 버튼만 추가
+       * =====================================================
+       */}
+
       <nav
         style={{
           display: "grid",
+
           gridTemplateColumns:
             "1fr 1fr",
+
           gap: "8px",
-          marginBottom: "18px",
+
+          marginBottom: "10px",
         }}
       >
         <div
           style={{
             padding: "11px",
+
             textAlign: "center",
+
             borderRadius: "11px",
+
             background: "#111827",
+
             color: "#ffffff",
+
             fontWeight: "800",
+
             fontSize: "14px",
           }}
         >
@@ -1267,26 +1239,96 @@ export default function CustomerEstimatePage({
 
         <Link
           href={
-  companySlug
-    ? `/samples?company=${encodeURIComponent(companySlug)}`
-    : "/samples"
-}
+            companySlug
+              ? `/samples?company=${encodeURIComponent(
+                  companySlug
+                )}`
+              : "/samples"
+          }
           style={{
             padding: "11px",
+
             textAlign: "center",
+
             textDecoration: "none",
+
             border:
               "1px solid #d1d5db",
+
             borderRadius: "11px",
+
             background: "#ffffff",
+
             color: "#374151",
+
             fontWeight: "800",
+
             fontSize: "14px",
           }}
         >
           필름 샘플보기
         </Link>
       </nav>
+
+      {/*
+       * 관리자용 진입 버튼
+       *
+       * 고객용 기능과 구분하기 위해
+       * 작은 버튼으로 우측 정렬
+       */}
+
+      <div
+        style={{
+          display: "flex",
+
+          justifyContent:
+            "flex-end",
+
+          marginBottom: "18px",
+        }}
+      >
+        <Link
+          href="/admin"
+          style={{
+            display:
+              "inline-flex",
+
+            alignItems:
+              "center",
+
+            justifyContent:
+              "center",
+
+            gap: "5px",
+
+            padding:
+              "7px 11px",
+
+            border:
+              "1px solid #d1d5db",
+
+            borderRadius:
+              "9px",
+
+            background:
+              "#ffffff",
+
+            color:
+              "#64748b",
+
+            textDecoration:
+              "none",
+
+            fontSize:
+              "12px",
+
+            fontWeight:
+              "700",
+          }}
+        >
+          ⚙️ 관리자
+        </Link>
+      </div>
 
       {/* 상단 */}
 
@@ -1565,4 +1607,4 @@ export default function CustomerEstimatePage({
       </div>
     </main>
   );
-                  }
+}
