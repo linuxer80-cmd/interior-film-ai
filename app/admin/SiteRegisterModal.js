@@ -559,56 +559,25 @@ export default function SiteRegisterModal({
     setLocalMessage("");
 
     /* -------------------------------------------------------
-       필수값 검사
+       상담중 / 일정확정 판정
+
+       날짜와 시작시간이 모두 있으면 시공 예정,
+       하나라도 미정이면 상담중으로 등록합니다.
     ------------------------------------------------------- */
 
-    if (!form.date) {
-      setLocalMessage(
-        "❌ 시공 날짜를 선택해주세요.",
-      );
-
-      return;
-    }
-
-    if (!form.start_time) {
-      setLocalMessage(
-        "❌ 시작 시간을 입력해주세요.",
-      );
-
-      return;
-    }
-
-    if (
-      !form.customer_name.trim()
-    ) {
-      setLocalMessage(
-        "❌ 고객명을 입력해주세요.",
-      );
-
-      return;
-    }
-
-    if (
-      !form.address.trim()
-    ) {
-      setLocalMessage(
-        "❌ 현장 주소를 입력해주세요.",
-      );
-
-      return;
-    }
-
-    /* -------------------------------------------------------
-       시간 변환
-    ------------------------------------------------------- */
+    const hasConfirmedSchedule =
+      Boolean(form.date && form.start_time);
 
     const scheduleStart =
-      makeDateTime(
-        form.date,
-        form.start_time,
-      );
+      hasConfirmedSchedule
+        ? makeDateTime(
+            form.date,
+            form.start_time,
+          )
+        : null;
 
     const scheduleEnd =
+      hasConfirmedSchedule &&
       form.end_time
         ? makeDateTime(
             form.date,
@@ -616,9 +585,12 @@ export default function SiteRegisterModal({
           )
         : null;
 
-    if (!scheduleStart) {
+    if (
+      hasConfirmedSchedule &&
+      !scheduleStart
+    ) {
       setLocalMessage(
-        "❌ 시작 시간을 확인해주세요.",
+        "❌ 시공 일정을 확인해주세요.",
       );
 
       return;
@@ -726,8 +698,16 @@ export default function SiteRegisterModal({
         region:
           form.region,
 
+        schedule_date:
+          form.date || null,
+
         schedule_start:
           scheduleStart,
+
+        status:
+          hasConfirmedSchedule
+            ? "scheduled"
+            : "consulting",
 
         schedule_end:
           scheduleEnd,
@@ -769,7 +749,11 @@ export default function SiteRegisterModal({
     }
 
     setLocalMessage(
-      `✅ 현장 일정이 등록되었습니다.${
+      `✅ ${
+        hasConfirmedSchedule
+          ? "현장 일정이 등록되었습니다."
+          : "상담중 현장으로 등록되었습니다."
+      }${
         cleanMaterials.length
           ? `\n자재 ${cleanMaterials.length}건 저장`
           : ""
@@ -796,9 +780,9 @@ export default function SiteRegisterModal({
     return null;
   }
 
-  /* =======================================================
+  /* =========================================================
      공통 스타일
-  ======================================================= */
+  ========================================================= */
 
   const inputStyle = {
     width: "100%",
@@ -935,9 +919,8 @@ export default function SiteRegisterModal({
                   "#64748b",
               }}
             >
-              현장정보, 자재,
-              요청사진을 한 번에
-              등록합니다.
+              미정 정보가 있어도 상담중 현장으로
+              먼저 등록할 수 있습니다.
             </div>
           </div>
 
@@ -1006,6 +989,22 @@ export default function SiteRegisterModal({
             </div>
 
             <div
+              style={{
+                marginBottom: "12px",
+                padding: "10px 12px",
+                borderRadius: "9px",
+                background: "#eff6ff",
+                color: "#1e40af",
+                fontSize: "12px",
+                fontWeight: "700",
+                lineHeight: 1.5,
+              }}
+            >
+              날짜와 시작시간이 모두 정해지면 시공 예정,
+              미정 정보가 있으면 상담중으로 등록됩니다.
+            </div>
+
+            <div
               style={
                 fieldStyle
               }
@@ -1015,7 +1014,7 @@ export default function SiteRegisterModal({
                   labelStyle
                 }
               >
-                시공 날짜 *
+                시공 날짜
               </label>
 
               <input
@@ -1056,7 +1055,7 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                  시작 시간 *
+                  시작 시간
                 </label>
 
                 <input
@@ -1149,7 +1148,7 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                  고객명 *
+                  고객명
                 </label>
 
                 <input
@@ -1252,7 +1251,7 @@ export default function SiteRegisterModal({
                   labelStyle
                 }
               >
-                주소 *
+                주소
               </label>
 
               <input
@@ -1441,7 +1440,6 @@ export default function SiteRegisterModal({
               />
             </div>
           </div>
-
           {/* =============================================
               시공 자재
           ============================================= */}
@@ -2426,11 +2424,11 @@ export default function SiteRegisterModal({
             >
               {loading
                 ? "등록 중..."
-                : "현장 일정 등록"}
+                : "현장 등록"}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-}
+                          }
