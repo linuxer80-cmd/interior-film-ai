@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
 import SiteWorkReportReview from "./SiteWorkReportReview";
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
+import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
+import {
+  formatDateTime,
+  toDateTimeLocalValue,
+  formatWon,
+  formatQuantity,
+  getLeader,
+  getMembers,
+} from "./site-detail/siteDetailUtils";
 
 const STATUS_INFO = {
   scheduled: {
@@ -30,131 +39,6 @@ const STATUS_INFO = {
     color: "#64748b",
   },
 };
-
-const PHOTO_BUCKET = "work-photos";
-const SIGNED_URL_SECONDS = 1800;
-
-/* =========================================================
-   날짜 표시
-========================================================= */
-
-function formatDateTime(value) {
-  if (!value) return "-";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-/* =========================================================
-   datetime-local 값 변환
-========================================================= */
-
-function toDateTimeLocalValue(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const pad = (number) =>
-    String(number).padStart(2, "0");
-
-  return [
-    date.getFullYear(),
-    "-",
-    pad(date.getMonth() + 1),
-    "-",
-    pad(date.getDate()),
-    "T",
-    pad(date.getHours()),
-    ":",
-    pad(date.getMinutes()),
-  ].join("");
-}
-
-/* =========================================================
-   금액 표시
-========================================================= */
-
-function formatWon(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "-";
-  }
-
-  const number = Number(value);
-
-  if (Number.isNaN(number)) {
-    return "-";
-  }
-
-  return `${number.toLocaleString("ko-KR")}원`;
-}
-
-/* =========================================================
-   수량 표시
-========================================================= */
-
-function formatQuantity(value, unit) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "-";
-  }
-
-  const number = Number(value);
-
-  const quantity = Number.isNaN(number)
-    ? value
-    : number.toLocaleString("ko-KR");
-
-  return `${quantity}${unit ? ` ${unit}` : ""}`;
-}
-
-/* =========================================================
-   팀장
-========================================================= */
-
-function getLeader(site) {
-  const assignments = site?.site_workers || [];
-
-  return assignments.find(
-    (item) => item.role === "leader",
-  );
-}
-
-/* =========================================================
-   일반 시공자
-========================================================= */
-
-function getMembers(site) {
-  const assignments = site?.site_workers || [];
-
-  return assignments.filter(
-    (item) => item.role === "member",
-  );
-}
 
 /* =========================================================
    현장 상세
@@ -182,28 +66,12 @@ export default function SiteDetailModal({
   reloadSites,
 }) {
   const [materials, setMaterials] = useState([]);
-  const [photos, setPhotos] = useState([]);
 
   const [detailLoading, setDetailLoading] =
     useState(false);
 
   const [detailMessage, setDetailMessage] =
     useState("");
-
-  /* =======================================================
-     요청사진 관리
-  ======================================================= */
-
-  const [photoUploading, setPhotoUploading] =
-    useState(false);
-
-  const [photoDeletingId, setPhotoDeletingId] =
-    useState(null);
-
-  const [photoMessage, setPhotoMessage] =
-    useState("");
-
-  const photoInputRef = useRef(null);
 
   const [reportOpen, setReportOpen] =
     useState(false);
@@ -256,7 +124,7 @@ export default function SiteDetailModal({
   const members = getMembers(site);
 
   /* =======================================================
-     현장 추가정보 로드
+     현장 예정 자재 로드
   ======================================================= */
 
   useEffect(() => {
@@ -269,10 +137,6 @@ export default function SiteDetailModal({
       setDetailMessage("");
 
       try {
-        /*
-         * 1. 예정 시공 자재
-         */
-
         const {
           data: materialData,
           error: materialError,
@@ -303,97 +167,20 @@ export default function SiteDetailModal({
           throw materialError;
         }
 
-        /*
-         * 2. 현장 요청 사진
-         */
-
-        const {
-          data: photoData,
-          error: photoError,
-        } = await supabase
-          .from("site_photos")
-          .select(
-            `
-              id,
-              photo_type,
-              storage_path,
-              photo_url,
-              description,
-              created_at
-            `,
-          )
-          .eq("site_id", site.id)
-          .eq("photo_type", "request")
-          .order("created_at", {
-            ascending: true,
-          });
-
-        if (photoError) {
-          throw photoError;
-        }
-
-        /*
-         * 3. private Storage 사진 signed URL 생성
-         */
-
-        const signedPhotos = await Promise.all(
-          (photoData || []).map(
-            async (photo) => {
-              if (!photo.storage_path) {
-                return {
-                  ...photo,
-                  signed_url:
-                    photo.photo_url || "",
-                };
-              }
-
-              const {
-                data: signedData,
-                error: signedError,
-              } = await supabase.storage
-                .from(PHOTO_BUCKET)
-                .createSignedUrl(
-                  photo.storage_path,
-                  SIGNED_URL_SECONDS,
-                );
-
-              if (signedError) {
-                console.error(
-                  "현장 요청사진 signed URL 오류:",
-                  signedError,
-                );
-
-                return {
-                  ...photo,
-                  signed_url: "",
-                };
-              }
-
-              return {
-                ...photo,
-                signed_url:
-                  signedData?.signedUrl || "",
-              };
-            },
-          ),
-        );
-
         if (cancelled) return;
 
         setMaterials(materialData || []);
-        setPhotos(signedPhotos || []);
       } catch (error) {
         console.error(
-          "현장 상세정보 로드 오류:",
+          "현장 예정 자재 로드 오류:",
           error,
         );
 
         if (!cancelled) {
           setMaterials([]);
-          setPhotos([]);
 
           setDetailMessage(
-            `❌ 추가정보를 불러오지 못했습니다: ${
+            `❌ 예정 시공 자재를 불러오지 못했습니다: ${
               error?.message || "알 수 없는 오류"
             }`,
           );
@@ -423,10 +210,6 @@ export default function SiteDetailModal({
     setScheduleEditOpen(false);
     setScheduleSaving(false);
     setScheduleMessage("");
-
-    setPhotoUploading(false);
-    setPhotoDeletingId(null);
-    setPhotoMessage("");
 
     setScheduleStart(
       toDateTimeLocalValue(
@@ -477,230 +260,6 @@ export default function SiteDetailModal({
   ]);
 
   /* =======================================================
-     요청사진 다시 불러오기
-  ======================================================= */
-
-  async function refreshRequestPhotos() {
-    if (!site?.id) {
-      return;
-    }
-
-    const {
-      data: photoData,
-      error: photoError,
-    } = await supabase
-      .from("site_photos")
-      .select(
-        `
-          id,
-          photo_type,
-          storage_path,
-          photo_url,
-          description,
-          created_at
-        `,
-      )
-      .eq("site_id", site.id)
-      .eq("photo_type", "request")
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (photoError) {
-      throw photoError;
-    }
-
-    const signedPhotos = await Promise.all(
-      (photoData || []).map(
-        async (photo) => {
-          if (!photo.storage_path) {
-            return {
-              ...photo,
-              signed_url:
-                photo.photo_url || "",
-            };
-          }
-
-          const {
-            data: signedData,
-            error: signedError,
-          } = await supabase.storage
-            .from(PHOTO_BUCKET)
-            .createSignedUrl(
-              photo.storage_path,
-              SIGNED_URL_SECONDS,
-            );
-
-          if (signedError) {
-            console.error(
-              "현장 요청사진 signed URL 오류:",
-              signedError,
-            );
-
-            return {
-              ...photo,
-              signed_url: "",
-            };
-          }
-
-          return {
-            ...photo,
-            signed_url:
-              signedData?.signedUrl || "",
-          };
-        },
-      ),
-    );
-
-    setPhotos(signedPhotos || []);
-  }
-
-  /* =======================================================
-     요청사진 추가
-  ======================================================= */
-
-  async function handleRequestPhotoFiles(event) {
-    const files = Array.from(
-      event.target.files || [],
-    ).filter((file) =>
-      file?.type?.startsWith("image/"),
-    );
-
-    event.target.value = "";
-
-    if (files.length === 0) {
-      return;
-    }
-
-    if (
-      typeof addSiteRequestPhotos !== "function"
-    ) {
-      setPhotoMessage(
-        "❌ 사진 추가 기능을 사용할 수 없습니다.",
-      );
-      return;
-    }
-
-    setPhotoUploading(true);
-    setPhotoMessage("");
-
-    try {
-      const result =
-        await addSiteRequestPhotos({
-          siteId: site.id,
-          files,
-        });
-
-      if (!result?.success) {
-        setPhotoMessage(
-          `❌ ${
-            result?.error ||
-            "사진을 등록하지 못했습니다."
-          }`,
-        );
-        return;
-      }
-
-      await refreshRequestPhotos();
-
-      setPhotoMessage(
-        `✅ 요청사진 ${files.length}장이 등록되었습니다.`,
-      );
-    } catch (error) {
-      console.error(
-        "현장 요청사진 추가 오류:",
-        error,
-      );
-
-      setPhotoMessage(
-        `❌ 사진 등록 오류: ${
-          error?.message || "알 수 없는 오류"
-        }`,
-      );
-    } finally {
-      setPhotoUploading(false);
-    }
-  }
-
-  /* =======================================================
-     요청사진 삭제
-  ======================================================= */
-
-  async function handleDeleteRequestPhoto(photo) {
-    if (
-      !photo?.id ||
-      photoDeletingId ||
-      photoUploading
-    ) {
-      return;
-    }
-
-    if (
-      typeof deleteSiteRequestPhoto !== "function"
-    ) {
-      setPhotoMessage(
-        "❌ 사진 삭제 기능을 사용할 수 없습니다.",
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "이 요청사진을 삭제할까요?",
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setPhotoDeletingId(photo.id);
-    setPhotoMessage("");
-
-    try {
-      const result =
-        await deleteSiteRequestPhoto({
-          siteId: site.id,
-          photoId: photo.id,
-          storagePath:
-            photo.storage_path || null,
-        });
-
-      if (!result?.success) {
-        setPhotoMessage(
-          `❌ ${
-            result?.error ||
-            "사진을 삭제하지 못했습니다."
-          }`,
-        );
-        return;
-      }
-
-      setPhotos((current) =>
-        current.filter(
-          (item) => item.id !== photo.id,
-        ),
-      );
-
-      setPhotoMessage(
-        result?.storageWarning
-          ? "✅ 사진 정보는 삭제되었습니다. 저장소 파일 정리는 확인이 필요합니다."
-          : "✅ 요청사진이 삭제되었습니다.",
-      );
-    } catch (error) {
-      console.error(
-        "현장 요청사진 삭제 오류:",
-        error,
-      );
-
-      setPhotoMessage(
-        `❌ 사진 삭제 오류: ${
-          error?.message || "알 수 없는 오류"
-        }`,
-      );
-    } finally {
-      setPhotoDeletingId(null);
-    }
-    }
-    /* =======================================================
      상태 변경
   ======================================================= */
 
@@ -1341,7 +900,6 @@ export default function SiteDetailModal({
                     >
                       취소
                     </button>
-
                     <button
                       type="button"
                       onClick={saveSchedule}
@@ -1497,6 +1055,7 @@ export default function SiteDetailModal({
             value={site.memo || "-"}
           />
         </div>
+
         {/* =========================
             추가정보 로딩/오류
         ========================= */}
@@ -1513,7 +1072,7 @@ export default function SiteDetailModal({
               textAlign: "center",
             }}
           >
-            시공자재와 요청사진을
+            예정 시공 자재를
             불러오는 중입니다...
           </div>
         )}
@@ -1606,180 +1165,15 @@ export default function SiteDetailModal({
             요청 사진
         ========================= */}
 
-        {!detailLoading && (
-          <section
-            style={{
-              marginTop: "18px",
-              paddingTop: "14px",
-              borderTop:
-                "1px solid #e5e7eb",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent:
-                  "space-between",
-                gap: "10px",
-                marginBottom: "10px",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "900",
-                    color: "#111827",
-                  }}
-                >
-                  📷 시공 요청사진
-                </div>
-
-                <div
-                  style={{
-                    marginTop: "3px",
-                    fontSize: "11px",
-                    fontWeight: "700",
-                    color: "#64748b",
-                  }}
-                >
-                  {photos.length}장
-                </div>
-              </div>
-
-              <>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={
-                    handleRequestPhotoFiles
-                  }
-                  disabled={
-                    photoUploading ||
-                    Boolean(
-                      photoDeletingId,
-                    )
-                  }
-                  style={{
-                    display: "none",
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    photoInputRef.current?.click()
-                  }
-                  disabled={
-                    photoUploading ||
-                    Boolean(
-                      photoDeletingId,
-                    )
-                  }
-                  style={{
-                    flex: "0 0 auto",
-                    border: "none",
-                    borderRadius: "9px",
-                    padding: "9px 11px",
-                    background: "#2563eb",
-                    color: "#ffffff",
-                    fontSize: "12px",
-                    fontWeight: "900",
-
-                    cursor:
-                      photoUploading ||
-                      photoDeletingId
-                        ? "not-allowed"
-                        : "pointer",
-
-                    opacity:
-                      photoUploading ||
-                      photoDeletingId
-                        ? 0.6
-                        : 1,
-                  }}
-                >
-                  {photoUploading
-                    ? "업로드 중..."
-                    : "+ 사진 추가"}
-                </button>
-              </>
-            </div>
-
-            {photoMessage && (
-              <div
-                style={{
-                  marginBottom: "10px",
-                  padding: "9px 10px",
-                  borderRadius: "9px",
-
-                  background:
-                    photoMessage.startsWith(
-                      "✅",
-                    )
-                      ? "#f0fdf4"
-                      : "#fef2f2",
-
-                  color:
-                    photoMessage.startsWith(
-                      "✅",
-                    )
-                      ? "#166534"
-                      : "#b91c1c",
-
-                  fontSize: "11px",
-                  fontWeight: "800",
-
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {photoMessage}
-              </div>
-            )}
-
-            {photos.length === 0 ? (
-              <EmptyBox text="등록된 요청사진이 없습니다." />
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(2, minmax(0, 1fr))",
-                  gap: "8px",
-                }}
-              >
-                {photos.map(
-                  (photo, index) => (
-                    <PhotoCard
-                      key={photo.id}
-                      photo={photo}
-                      index={index}
-                      deleting={
-                        photoDeletingId ===
-                        photo.id
-                      }
-                      disabled={
-                        photoUploading ||
-                        Boolean(
-                          photoDeletingId,
-                        )
-                      }
-                      onDelete={() =>
-                        handleDeleteRequestPhoto(
-                          photo,
-                        )
-                      }
-                    />
-                  ),
-                )}
-              </div>
-            )}
-          </section>
-        )}
+        <SiteRequestPhotos
+          site={site}
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
+          }
+        />
 
         {/* =========================
             시공자 완료보고 관리자 검수
@@ -2242,144 +1636,6 @@ function MaterialCard({
     </div>
   );
 }
-/* =========================================================
-   요청 사진 카드
-========================================================= */
-
-function PhotoCard({
-  photo,
-  index,
-  deleting = false,
-  disabled = false,
-  onDelete,
-}) {
-  if (!photo.signed_url) {
-    return (
-      <div
-        style={{
-          position: "relative",
-          aspectRatio: "1 / 1",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "10px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "11px",
-          background: "#f8fafc",
-          color: "#94a3b8",
-          fontSize: "11px",
-          fontWeight: "700",
-          textAlign: "center",
-        }}
-      >
-        사진을 불러올 수 없습니다.
-
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={disabled}
-          style={{
-            position: "absolute",
-            top: "6px",
-            right: "6px",
-            border: "none",
-            borderRadius: "8px",
-            padding: "6px 7px",
-            background: "rgba(185,28,28,0.90)",
-            color: "#ffffff",
-            fontSize: "11px",
-            fontWeight: "900",
-            cursor: disabled
-              ? "not-allowed"
-              : "pointer",
-            opacity: disabled ? 0.6 : 1,
-          }}
-        >
-          {deleting ? "삭제 중" : "삭제"}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        aspectRatio: "1 / 1",
-        overflow: "hidden",
-        borderRadius: "11px",
-        border: "1px solid #e2e8f0",
-        background: "#f8fafc",
-      }}
-    >
-      <a
-        href={photo.signed_url}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-        }}
-      >
-        <img
-          src={photo.signed_url}
-          alt={`시공 요청사진 ${index + 1}`}
-          loading="lazy"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-        />
-      </a>
-
-      <div
-        style={{
-          position: "absolute",
-          left: "6px",
-          bottom: "6px",
-          padding: "3px 6px",
-          borderRadius: "999px",
-          background: "rgba(15,23,42,0.72)",
-          color: "#ffffff",
-          fontSize: "10px",
-          fontWeight: "800",
-          pointerEvents: "none",
-        }}
-      >
-        요청사진 {index + 1}
-      </div>
-
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={disabled}
-        style={{
-          position: "absolute",
-          top: "6px",
-          right: "6px",
-          border: "none",
-          borderRadius: "8px",
-          padding: "6px 7px",
-          background: "rgba(185,28,28,0.90)",
-          color: "#ffffff",
-          fontSize: "11px",
-          fontWeight: "900",
-          cursor: disabled
-            ? "not-allowed"
-            : "pointer",
-          opacity: disabled ? 0.6 : 1,
-        }}
-      >
-        {deleting
-          ? "삭제 중"
-          : "🗑 삭제"}
-      </button>
-    </div>
-  );
-}
 
 /* =========================================================
    빈 데이터
@@ -2485,4 +1741,4 @@ function StatusButton({
       {children}
     </button>
   );
-}
+            }
