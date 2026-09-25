@@ -1,21 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
 import SiteWorkReportReview from "./SiteWorkReportReview";
+
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
+
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
-import {
-  formatDateTime,
-  toDateTimeLocalValue,
-  formatWon,
-  formatQuantity,
-  getLeader,
-  getMembers,
-} from "./site-detail/siteDetailUtils";
+import SiteMaterials from "./site-detail/SiteMaterials";
+import SiteBasicInfo from "./site-detail/SiteBasicInfo";
+import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
+import SiteStatusControl from "./site-detail/SiteStatusControl";
+
+/* =========================================================
+   현장 상태 표시 정보
+========================================================= */
 
 const STATUS_INFO = {
   scheduled: {
@@ -23,16 +25,19 @@ const STATUS_INFO = {
     background: "#eff6ff",
     color: "#1d4ed8",
   },
+
   in_progress: {
     label: "시공 중",
     background: "#fff7ed",
     color: "#c2410c",
   },
+
   completed: {
     label: "시공 완료",
     background: "#f0fdf4",
     color: "#15803d",
   },
+
   cancelled: {
     label: "취소",
     background: "#f8fafc",
@@ -65,35 +70,8 @@ export default function SiteDetailModal({
 
   reloadSites,
 }) {
-  const [materials, setMaterials] = useState([]);
-
-  const [detailLoading, setDetailLoading] =
-    useState(false);
-
-  const [detailMessage, setDetailMessage] =
-    useState("");
-
   const [reportOpen, setReportOpen] =
     useState(false);
-
-  /* =======================================================
-     일정 수정
-  ======================================================= */
-
-  const [scheduleEditOpen, setScheduleEditOpen] =
-    useState(false);
-
-  const [scheduleStart, setScheduleStart] =
-    useState("");
-
-  const [scheduleEnd, setScheduleEnd] =
-    useState("");
-
-  const [scheduleSaving, setScheduleSaving] =
-    useState(false);
-
-  const [scheduleMessage, setScheduleMessage] =
-    useState("");
 
   /*
    * 시공자 완료보고 존재 여부
@@ -120,85 +98,6 @@ export default function SiteDetailModal({
     STATUS_INFO[site?.status] ||
     STATUS_INFO.scheduled;
 
-  const leader = getLeader(site);
-  const members = getMembers(site);
-
-  /* =======================================================
-     현장 예정 자재 로드
-  ======================================================= */
-
-  useEffect(() => {
-    if (!site?.id) return;
-
-    let cancelled = false;
-
-    async function loadDetailData() {
-      setDetailLoading(true);
-      setDetailMessage("");
-
-      try {
-        const {
-          data: materialData,
-          error: materialError,
-        } = await supabase
-          .from("site_materials")
-          .select(
-            `
-              id,
-              brand,
-              product_code,
-              product_name,
-              quantity,
-              unit,
-              unit_price,
-              total_price,
-              memo,
-              material_type,
-              created_at
-            `,
-          )
-          .eq("site_id", site.id)
-          .eq("material_type", "planned")
-          .order("created_at", {
-            ascending: true,
-          });
-
-        if (materialError) {
-          throw materialError;
-        }
-
-        if (cancelled) return;
-
-        setMaterials(materialData || []);
-      } catch (error) {
-        console.error(
-          "현장 예정 자재 로드 오류:",
-          error,
-        );
-
-        if (!cancelled) {
-          setMaterials([]);
-
-          setDetailMessage(
-            `❌ 예정 시공 자재를 불러오지 못했습니다: ${
-              error?.message || "알 수 없는 오류"
-            }`,
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setDetailLoading(false);
-        }
-      }
-    }
-
-    loadDetailData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [site?.id]);
-
   /* =======================================================
      현장 변경 시 상태 초기화
   ======================================================= */
@@ -206,22 +105,6 @@ export default function SiteDetailModal({
   useEffect(() => {
     setReportOpen(false);
     setHasWorkerReport(null);
-
-    setScheduleEditOpen(false);
-    setScheduleSaving(false);
-    setScheduleMessage("");
-
-    setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
-    );
-
-    setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
-    );
 
     if (
       typeof clearReportMessage === "function"
@@ -232,238 +115,6 @@ export default function SiteDetailModal({
     site?.id,
     clearReportMessage,
   ]);
-
-  /* =======================================================
-     site 일정 값 변경 시 입력값 동기화
-  ======================================================= */
-
-  useEffect(() => {
-    if (scheduleEditOpen) {
-      return;
-    }
-
-    setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
-    );
-
-    setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
-    );
-  }, [
-    site?.schedule_start,
-    site?.schedule_end,
-    scheduleEditOpen,
-  ]);
-
-  /* =======================================================
-     상태 변경
-  ======================================================= */
-
-  async function changeStatus(nextStatus) {
-    if (
-      typeof updateSiteStatus !== "function"
-    ) {
-      return;
-    }
-
-    /*
-     * completed는 여기서 직접 변경하지 않습니다.
-     * 완료보고가 모두 정상 저장된 후
-     * useSiteWorkReport에서만 완료 처리합니다.
-     */
-
-    if (nextStatus === "completed") {
-      return;
-    }
-
-    await updateSiteStatus(
-      site.id,
-      nextStatus,
-    );
-  }
-
-  /* =======================================================
-     일정 수정 시작
-  ======================================================= */
-
-  function openScheduleEditor() {
-    setScheduleMessage("");
-
-    setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
-    );
-
-    setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
-    );
-
-    setScheduleEditOpen(true);
-  }
-
-  /* =======================================================
-     일정 수정 취소
-  ======================================================= */
-
-  function cancelScheduleEditor() {
-    if (scheduleSaving) {
-      return;
-    }
-
-    setScheduleMessage("");
-
-    setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
-    );
-
-    setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
-    );
-
-    setScheduleEditOpen(false);
-  }
-
-  /* =======================================================
-     일정 저장
-  ======================================================= */
-
-  async function saveSchedule() {
-    if (scheduleSaving) {
-      return;
-    }
-
-    if (
-      typeof updateSiteSchedule !== "function"
-    ) {
-      setScheduleMessage(
-        "❌ 일정 변경 기능을 사용할 수 없습니다.",
-      );
-      return;
-    }
-
-    if (!scheduleStart) {
-      setScheduleMessage(
-        "❌ 시작 일시를 입력해주세요.",
-      );
-      return;
-    }
-
-    const startDate =
-      new Date(scheduleStart);
-
-    if (
-      Number.isNaN(
-        startDate.getTime(),
-      )
-    ) {
-      setScheduleMessage(
-        "❌ 시작 일시가 올바르지 않습니다.",
-      );
-      return;
-    }
-
-    let endDate = null;
-
-    if (scheduleEnd) {
-      endDate =
-        new Date(scheduleEnd);
-
-      if (
-        Number.isNaN(
-          endDate.getTime(),
-        )
-      ) {
-        setScheduleMessage(
-          "❌ 종료 일시가 올바르지 않습니다.",
-        );
-        return;
-      }
-
-      if (
-        endDate.getTime() <
-        startDate.getTime()
-      ) {
-        setScheduleMessage(
-          "❌ 종료 일시는 시작 일시보다 빠를 수 없습니다.",
-        );
-        return;
-      }
-    }
-
-    setScheduleSaving(true);
-    setScheduleMessage("");
-
-    try {
-      /*
-       * datetime-local은 브라우저 로컬시간입니다.
-       * ISO 문자열로 변환하여
-       * Supabase timestamptz에 저장합니다.
-       */
-
-      const result =
-        await updateSiteSchedule({
-          siteId: site.id,
-          scheduleStart:
-            startDate.toISOString(),
-          scheduleEnd:
-            endDate
-              ? endDate.toISOString()
-              : null,
-        });
-
-      if (!result?.success) {
-        setScheduleMessage(
-          `❌ ${
-            result?.error ||
-            "일정을 변경하지 못했습니다."
-          }`,
-        );
-        return;
-      }
-
-      setScheduleMessage(
-        "✅ 시공 일정이 변경되었습니다.",
-      );
-
-      setScheduleEditOpen(false);
-
-      /*
-       * 목록도 다시 읽어 site_workers 등
-       * 상세 데이터가 최신 상태를 유지하도록 합니다.
-       */
-
-      if (
-        typeof reloadSites === "function"
-      ) {
-        await reloadSites();
-      }
-    } catch (error) {
-      console.error(
-        "현장 일정 변경 오류:",
-        error,
-      );
-
-      setScheduleMessage(
-        `❌ 일정 변경 오류: ${
-          error?.message ||
-          "알 수 없는 오류"
-        }`,
-      );
-    } finally {
-      setScheduleSaving(false);
-    }
-  }
 
   /* =======================================================
      시공자 배정 저장 후
@@ -478,7 +129,7 @@ export default function SiteDetailModal({
   }
 
   /* =======================================================
-     완료보고
+     완료보고 열기
   ======================================================= */
 
   function openWorkReport() {
@@ -490,6 +141,10 @@ export default function SiteDetailModal({
 
     setReportOpen(true);
   }
+
+  /* =======================================================
+     완료보고 닫기
+  ======================================================= */
 
   function closeWorkReport() {
     if (reportSaving) {
@@ -505,7 +160,13 @@ export default function SiteDetailModal({
     }
   }
 
-  async function handleWorkReportSave(payload) {
+  /* =======================================================
+     완료보고 저장
+  ======================================================= */
+
+  async function handleWorkReportSave(
+    payload,
+  ) {
     const success =
       await submitWorkReport(payload);
 
@@ -524,6 +185,10 @@ export default function SiteDetailModal({
     return true;
   }
 
+  /* =======================================================
+     현장 없음
+  ======================================================= */
+
   if (!site) {
     return null;
   }
@@ -537,11 +202,15 @@ export default function SiteDetailModal({
       onClick={onClose}
       style={{
         position: "fixed",
+
         inset: 0,
+
         zIndex: 1001,
 
         display: "flex",
+
         alignItems: "flex-start",
+
         justifyContent: "center",
 
         padding: "24px 12px",
@@ -558,10 +227,13 @@ export default function SiteDetailModal({
         }
         style={{
           width: "100%",
+
           maxWidth: "600px",
+
           padding: "16px",
 
           borderRadius: "16px",
+
           background: "#ffffff",
 
           boxShadow:
@@ -575,17 +247,26 @@ export default function SiteDetailModal({
         <div
           style={{
             display: "flex",
+
             justifyContent:
               "space-between",
+
             alignItems: "flex-start",
+
             gap: "10px",
           }}
         >
           <div>
+            {/* =====================
+                현장명
+            ===================== */}
+
             <div
               style={{
                 fontSize: "19px",
+
                 fontWeight: "900",
+
                 color: "#111827",
               }}
             >
@@ -593,6 +274,10 @@ export default function SiteDetailModal({
                 site.customer_name ||
                 "현장 상세"}
             </div>
+
+            {/* =====================
+                상태 배지
+            ===================== */}
 
             <div
               style={{
@@ -622,28 +307,30 @@ export default function SiteDetailModal({
             </div>
           </div>
 
+          {/* =====================
+              닫기
+          ===================== */}
+
           <button
             type="button"
             onClick={onClose}
-            disabled={
-              reportSaving ||
-              scheduleSaving
-            }
+            disabled={reportSaving}
             style={{
               border: "none",
+
               background: "transparent",
+
               fontSize: "26px",
+
               color: "#64748b",
 
               cursor:
-                reportSaving ||
-                scheduleSaving
+                reportSaving
                   ? "not-allowed"
                   : "pointer",
 
               opacity:
-                reportSaving ||
-                scheduleSaving
+                reportSaving
                   ? 0.5
                   : 1,
             }}
@@ -653,7 +340,7 @@ export default function SiteDetailModal({
         </div>
 
         {/* =========================
-            기본 정보
+            일정 + 기본정보
         ========================= */}
 
         <div
@@ -661,505 +348,37 @@ export default function SiteDetailModal({
             marginTop: "10px",
           }}
         >
-          <DetailRow
-            label="일정"
-            value={
-              site.schedule_end
-                ? `${formatDateTime(
-                    site.schedule_start,
-                  )}\n~ ${formatDateTime(
-                    site.schedule_end,
-                  )}`
-                : formatDateTime(
-                    site.schedule_start,
-                  )
+          {/* =====================
+              일정 표시 / 변경
+          ===================== */}
+
+          <SiteScheduleEditor
+            site={site}
+            reportOpen={reportOpen}
+            updateSiteSchedule={
+              updateSiteSchedule
+            }
+            reloadSites={
+              reloadSites
             }
           />
 
-          {/* =========================
-              일정 변경
-          ========================= */}
-
-          {!reportOpen &&
-            site.status !== "completed" && (
-            <div
-              style={{
-                padding: "10px 0 12px",
-                borderBottom:
-                  "1px solid #f1f5f9",
-              }}
-            >
-              {!scheduleEditOpen ? (
-                <button
-                  type="button"
-                  onClick={
-                    openScheduleEditor
-                  }
-                  disabled={scheduleSaving}
-                  style={{
-                    width: "100%",
-
-                    border:
-                      "1px solid #bfdbfe",
-
-                    borderRadius: "9px",
-
-                    padding: "10px",
-
-                    background: "#eff6ff",
-
-                    color: "#1d4ed8",
-
-                    fontSize: "12px",
-                    fontWeight: "900",
-
-                    cursor: "pointer",
-                  }}
-                >
-                  📅 일정 변경
-                </button>
-              ) : (
-                <div
-                  style={{
-                    padding: "12px",
-
-                    border:
-                      "1px solid #bfdbfe",
-
-                    borderRadius: "11px",
-
-                    background: "#f8fbff",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "900",
-                      color: "#1e3a8a",
-                    }}
-                  >
-                    📅 시공 일정 변경
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: "5px",
-
-                      fontSize: "11px",
-                      lineHeight: "1.5",
-
-                      color: "#64748b",
-                    }}
-                  >
-                    저장하면 배정된 시공자에게
-                    변경된 일정이 알림으로
-                    전달됩니다.
-                  </div>
-
-                  <label
-                    style={{
-                      display: "block",
-                      marginTop: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        marginBottom: "5px",
-
-                        fontSize: "12px",
-                        fontWeight: "800",
-
-                        color: "#334155",
-                      }}
-                    >
-                      시작 일시
-                    </div>
-
-                    <input
-                      type="datetime-local"
-                      value={scheduleStart}
-                      onChange={(event) =>
-                        setScheduleStart(
-                          event.target.value,
-                        )
-                      }
-                      disabled={scheduleSaving}
-                      style={{
-                        width: "100%",
-                        boxSizing:
-                          "border-box",
-
-                        padding: "10px",
-
-                        border:
-                          "1px solid #cbd5e1",
-
-                        borderRadius: "9px",
-
-                        background: "#ffffff",
-
-                        color: "#111827",
-
-                        fontSize: "14px",
-                      }}
-                    />
-                  </label>
-
-                  <label
-                    style={{
-                      display: "block",
-                      marginTop: "10px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        marginBottom: "5px",
-
-                        fontSize: "12px",
-                        fontWeight: "800",
-
-                        color: "#334155",
-                      }}
-                    >
-                      종료 일시
-                    </div>
-
-                    <input
-                      type="datetime-local"
-                      value={scheduleEnd}
-                      onChange={(event) =>
-                        setScheduleEnd(
-                          event.target.value,
-                        )
-                      }
-                      disabled={scheduleSaving}
-                      style={{
-                        width: "100%",
-                        boxSizing:
-                          "border-box",
-
-                        padding: "10px",
-
-                        border:
-                          "1px solid #cbd5e1",
-
-                        borderRadius: "9px",
-
-                        background: "#ffffff",
-
-                        color: "#111827",
-
-                        fontSize: "14px",
-                      }}
-                    />
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-
-                      gridTemplateColumns:
-                        "1fr 1fr",
-
-                      gap: "7px",
-
-                      marginTop: "12px",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={
-                        cancelScheduleEditor
-                      }
-                      disabled={scheduleSaving}
-                      style={{
-                        border:
-                          "1px solid #cbd5e1",
-
-                        borderRadius: "9px",
-
-                        padding: "10px",
-
-                        background: "#ffffff",
-
-                        color: "#475569",
-
-                        fontSize: "12px",
-                        fontWeight: "800",
-
-                        cursor:
-                          scheduleSaving
-                            ? "not-allowed"
-                            : "pointer",
-
-                        opacity:
-                          scheduleSaving
-                            ? 0.6
-                            : 1,
-                      }}
-                    >
-                      취소
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveSchedule}
-                      disabled={scheduleSaving}
-                      style={{
-                        border: "none",
-
-                        borderRadius: "9px",
-
-                        padding: "10px",
-
-                        background: "#2563eb",
-
-                        color: "#ffffff",
-
-                        fontSize: "12px",
-                        fontWeight: "900",
-
-                        cursor:
-                          scheduleSaving
-                            ? "not-allowed"
-                            : "pointer",
-
-                        opacity:
-                          scheduleSaving
-                            ? 0.6
-                            : 1,
-                      }}
-                    >
-                      {scheduleSaving
-                        ? "저장 중..."
-                        : "일정 저장"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {scheduleMessage && (
-                <div
-                  style={{
-                    marginTop: "8px",
-
-                    padding: "9px 10px",
-
-                    borderRadius: "8px",
-
-                    background:
-                      scheduleMessage.startsWith(
-                        "✅",
-                      )
-                        ? "#f0fdf4"
-                        : "#fef2f2",
-
-                    color:
-                      scheduleMessage.startsWith(
-                        "✅",
-                      )
-                        ? "#166534"
-                        : "#b91c1c",
-
-                    fontSize: "11px",
-                    fontWeight: "800",
-
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {scheduleMessage}
-                </div>
-              )}
-            </div>
-          )}
-
-          <DetailRow
-            label="고객"
-            value={
-              site.customer_name || "-"
-            }
-          />
-
-          <DetailRow
-            label="전화번호"
-            value={
-              site.customer_phone || "-"
-            }
-          />
-
-          <DetailRow
-            label="주소"
-            value={`${site.address || "-"}${
-              site.address_detail
-                ? ` ${site.address_detail}`
-                : ""
-            }`}
-          />
-
-          <DetailRow
-            label="지역"
-            value={site.region || "-"}
-          />
-
-          <DetailRow
-            label="시공 종류"
-            value={site.work_type || "-"}
-          />
-
-          <DetailRow
-            label="작업 내용"
-            value={
-              site.work_description || "-"
-            }
-          />
-
-          <DetailRow
-            label="계약금액"
-            value={formatWon(
-              site.contract_amount,
-            )}
-          />
-
-          <DetailRow
-            label="선금"
-            value={formatWon(
-              site.deposit_amount,
-            )}
-          />
-
-          <DetailRow
-            label="팀장"
-            value={
-              leader?.workers?.name ||
-              "미배정"
-            }
-          />
-
-          <DetailRow
-            label="담당자"
-            value={
-              members.length > 0
-                ? members
-                    .map(
-                      (item) =>
-                        item.workers?.name,
-                    )
-                    .filter(Boolean)
-                    .join(", ")
-                : "미배정"
-            }
-          />
-
-          <DetailRow
-            label="메모"
-            value={site.memo || "-"}
+          {/* =====================
+              현장 기본정보
+          ===================== */}
+
+          <SiteBasicInfo
+            site={site}
           />
         </div>
-
-        {/* =========================
-            추가정보 로딩/오류
-        ========================= */}
-
-        {detailLoading && (
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px",
-              borderRadius: "10px",
-              background: "#f8fafc",
-              color: "#64748b",
-              fontSize: "13px",
-              textAlign: "center",
-            }}
-          >
-            예정 시공 자재를
-            불러오는 중입니다...
-          </div>
-        )}
-
-        {detailMessage && (
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "11px 12px",
-              borderRadius: "10px",
-              background: "#fef2f2",
-              color: "#b91c1c",
-              fontSize: "12px",
-              fontWeight: "700",
-              wordBreak: "break-word",
-            }}
-          >
-            {detailMessage}
-          </div>
-        )}
 
         {/* =========================
             예정 시공 자재
         ========================= */}
 
-        {!detailLoading && (
-          <section
-            style={{
-              marginTop: "18px",
-              paddingTop: "14px",
-              borderTop:
-                "1px solid #e5e7eb",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent:
-                  "space-between",
-                gap: "10px",
-                marginBottom: "10px",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "900",
-                  color: "#111827",
-                }}
-              >
-                📦 예정 시공 자재
-              </div>
-
-              <div
-                style={{
-                  fontSize: "11px",
-                  fontWeight: "800",
-                  color: "#64748b",
-                }}
-              >
-                {materials.length}건
-              </div>
-            </div>
-
-            {materials.length === 0 ? (
-              <EmptyBox text="등록된 예정 시공 자재가 없습니다." />
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gap: "8px",
-                }}
-              >
-                {materials.map(
-                  (material, index) => (
-                    <MaterialCard
-                      key={material.id}
-                      material={material}
-                      index={index}
-                    />
-                  ),
-                )}
-              </div>
-            )}
-          </section>
-        )}
+        <SiteMaterials
+          site={site}
+        />
 
         {/* =========================
             요청 사진
@@ -1194,126 +413,13 @@ export default function SiteDetailModal({
             현장 상태
         ========================= */}
 
-        {!reportOpen && (
-          <div
-            style={{
-              marginTop: "18px",
-              paddingTop: "14px",
-              borderTop:
-                "1px solid #e5e7eb",
-            }}
-          >
-            <div
-              style={{
-                marginBottom: "8px",
-                fontSize: "13px",
-                fontWeight: "800",
-                color: "#334155",
-              }}
-            >
-              현장 상태
-            </div>
-
-            {site.status ===
-            "completed" ? (
-              <div
-                style={{
-                  padding: "12px",
-
-                  border:
-                    "1px solid #bbf7d0",
-
-                  borderRadius: "10px",
-
-                  background: "#f0fdf4",
-
-                  color: "#166534",
-
-                  fontSize: "13px",
-                  fontWeight: "800",
-
-                  textAlign: "center",
-                }}
-              >
-                ✅ 시공 완료된 현장입니다.
-              </div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "1fr 1fr",
-                    gap: "7px",
-                  }}
-                >
-                  <StatusButton
-                    active={
-                      site.status ===
-                      "scheduled"
-                    }
-                    onClick={() =>
-                      changeStatus(
-                        "scheduled",
-                      )
-                    }
-                  >
-                    시공 예정
-                  </StatusButton>
-
-                  <StatusButton
-                    active={
-                      site.status ===
-                      "in_progress"
-                    }
-                    onClick={() =>
-                      changeStatus(
-                        "in_progress",
-                      )
-                    }
-                  >
-                    시공 중
-                  </StatusButton>
-
-                  <StatusButton
-                    active={
-                      site.status ===
-                      "cancelled"
-                    }
-                    onClick={() =>
-                      changeStatus(
-                        "cancelled",
-                      )
-                    }
-                  >
-                    취소
-                  </StatusButton>
-                </div>
-
-                <div
-                  style={{
-                    marginTop: "8px",
-
-                    padding: "10px",
-
-                    borderRadius: "9px",
-
-                    background: "#f8fafc",
-
-                    color: "#64748b",
-
-                    fontSize: "11px",
-                    lineHeight: "1.5",
-                  }}
-                >
-                  시공 완료 상태는 아래
-                  완료보고를 저장하면 자동으로
-                  변경됩니다.
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        <SiteStatusControl
+          site={site}
+          reportOpen={reportOpen}
+          updateSiteStatus={
+            updateSiteStatus
+          }
+        />
 
         {/* =========================
             시공 완료 보고 작성
@@ -1325,90 +431,113 @@ export default function SiteDetailModal({
         {site.status !==
           "completed" &&
           hasWorkerReport === false && (
-          <section
-            style={{
-              marginTop: "18px",
-              paddingTop: "14px",
-              borderTop:
-                "1px solid #e5e7eb",
-            }}
-          >
-            {!reportOpen ? (
-              <>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "900",
-                    color: "#111827",
-                  }}
-                >
-                  ✅ 시공 완료 보고
-                </div>
+            <section
+              style={{
+                marginTop: "18px",
 
-                <div
-                  style={{
-                    marginTop: "5px",
+                paddingTop: "14px",
 
-                    fontSize: "12px",
-                    lineHeight: "1.5",
+                borderTop:
+                  "1px solid #e5e7eb",
+              }}
+            >
+              {!reportOpen ? (
+                <>
+                  {/* =====================
+                      제목
+                  ===================== */}
 
-                    color: "#64748b",
-                  }}
-                >
-                  실제 시공 내용, 사용 자재,
-                  현장 경비와 완료사진을
-                  등록한 후 현장을
-                  완료 처리합니다.
-                </div>
+                  <div
+                    style={{
+                      fontSize: "14px",
 
-                <button
-                  type="button"
-                  onClick={
-                    openWorkReport
+                      fontWeight: "900",
+
+                      color: "#111827",
+                    }}
+                  >
+                    ✅ 시공 완료 보고
+                  </div>
+
+                  {/* =====================
+                      설명
+                  ===================== */}
+
+                  <div
+                    style={{
+                      marginTop: "5px",
+
+                      fontSize: "12px",
+
+                      lineHeight: "1.5",
+
+                      color: "#64748b",
+                    }}
+                  >
+                    실제 시공 내용, 사용 자재,
+                    현장 경비와 완료사진을
+                    등록한 후 현장을
+                    완료 처리합니다.
+                  </div>
+
+                  {/* =====================
+                      완료보고 작성
+                  ===================== */}
+
+                  <button
+                    type="button"
+                    onClick={
+                      openWorkReport
+                    }
+                    style={{
+                      width: "100%",
+
+                      marginTop: "10px",
+
+                      padding: "12px",
+
+                      border: "none",
+
+                      borderRadius: "10px",
+
+                      background:
+                        "#16a34a",
+
+                      color: "#ffffff",
+
+                      fontSize: "13px",
+
+                      fontWeight: "900",
+
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✅ 시공 완료 보고 작성
+                  </button>
+                </>
+              ) : (
+                /* =====================
+                   완료보고 입력
+                ===================== */
+
+                <SiteWorkReport
+                  site={site}
+                  saving={
+                    reportSaving
                   }
-                  style={{
-                    width: "100%",
-
-                    marginTop: "10px",
-
-                    padding: "12px",
-
-                    border: "none",
-
-                    borderRadius: "10px",
-
-                    background: "#16a34a",
-
-                    color: "#ffffff",
-
-                    fontSize: "13px",
-                    fontWeight: "900",
-
-                    cursor: "pointer",
-                  }}
-                >
-                  ✅ 시공 완료 보고 작성
-                </button>
-              </>
-            ) : (
-              <SiteWorkReport
-                site={site}
-                saving={
-                  reportSaving
-                }
-                message={
-                  reportMessage
-                }
-                onSave={
-                  handleWorkReportSave
-                }
-                onCancel={
-                  closeWorkReport
-                }
-              />
-            )}
-          </section>
-        )}
+                  message={
+                    reportMessage
+                  }
+                  onSave={
+                    handleWorkReportSave
+                  }
+                  onCancel={
+                    closeWorkReport
+                  }
+                />
+              )}
+            </section>
+          )}
 
         {/* =========================
             저장된 시공 완료 보고
@@ -1416,37 +545,50 @@ export default function SiteDetailModal({
 
         {site.status ===
           "completed" && (
-          <SiteCompletedReport
-            companyId={
-              companyId
-            }
-            site={site}
-          />
-        )}
+            <SiteCompletedReport
+              companyId={
+                companyId
+              }
+              site={site}
+            />
+          )}
 
         {/* =========================
             팀장 / 시공자 배정
         ========================= */}
 
         {!reportOpen && (
-          <div
+          <section
             style={{
               marginTop: "18px",
+
               paddingTop: "14px",
+
               borderTop:
                 "1px solid #e5e7eb",
             }}
           >
+            {/* =====================
+                제목
+            ===================== */}
+
             <div
               style={{
                 marginBottom: "10px",
+
                 fontSize: "14px",
+
                 fontWeight: "900",
+
                 color: "#111827",
               }}
             >
               👷 담당 시공자 배정
             </div>
+
+            {/* =====================
+                시공자 배정
+            ===================== */}
 
             <SiteWorkerAssignment
               site={site}
@@ -1469,276 +611,9 @@ export default function SiteDetailModal({
                 handleAssignmentSaved
               }
             />
-          </div>
+          </section>
         )}
       </div>
     </div>
   );
 }
-
-/* =========================================================
-   예정 자재 카드
-========================================================= */
-
-function MaterialCard({
-  material,
-  index,
-}) {
-  const title =
-    material.product_code ||
-    material.product_name ||
-    `자재 ${index + 1}`;
-
-  return (
-    <div
-      style={{
-        padding: "12px",
-
-        border:
-          "1px solid #e2e8f0",
-
-        borderRadius: "11px",
-
-        background: "#f8fafc",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent:
-            "space-between",
-          gap: "8px",
-        }}
-      >
-        <div
-          style={{
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              fontSize: "13px",
-              fontWeight: "900",
-              color: "#111827",
-              wordBreak: "break-word",
-            }}
-          >
-            {title}
-          </div>
-
-          {(material.brand ||
-            material.product_name) && (
-            <div
-              style={{
-                marginTop: "3px",
-                fontSize: "11px",
-                color: "#64748b",
-                wordBreak: "break-word",
-              }}
-            >
-              {[
-                material.brand,
-                material.product_name,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            flex: "0 0 auto",
-
-            padding: "4px 7px",
-
-            borderRadius: "999px",
-
-            background: "#ffffff",
-
-            border:
-              "1px solid #e2e8f0",
-
-            fontSize: "11px",
-            fontWeight: "800",
-            color: "#334155",
-          }}
-        >
-          {formatQuantity(
-            material.quantity,
-            material.unit,
-          )}
-        </div>
-      </div>
-
-      {(material.unit_price !== null &&
-        material.unit_price !==
-          undefined) ||
-      (material.total_price !== null &&
-        material.total_price !==
-          undefined) ? (
-        <div
-          style={{
-            marginTop: "9px",
-            display: "grid",
-            gap: "4px",
-            fontSize: "11px",
-            color: "#475569",
-          }}
-        >
-          {material.unit_price !==
-            null &&
-            material.unit_price !==
-              undefined && (
-              <div>
-                단가{" "}
-                <strong>
-                  {formatWon(
-                    material.unit_price,
-                  )}
-                </strong>
-              </div>
-            )}
-
-          {material.total_price !==
-            null &&
-            material.total_price !==
-              undefined && (
-              <div>
-                합계{" "}
-                <strong>
-                  {formatWon(
-                    material.total_price,
-                  )}
-                </strong>
-              </div>
-            )}
-        </div>
-      ) : null}
-
-      {material.memo && (
-        <div
-          style={{
-            marginTop: "8px",
-            paddingTop: "8px",
-            borderTop:
-              "1px solid #e2e8f0",
-            fontSize: "11px",
-            color: "#64748b",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {material.memo}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
-   빈 데이터
-========================================================= */
-
-function EmptyBox({
-  text,
-}) {
-  return (
-    <div
-      style={{
-        padding: "16px 12px",
-        border: "1px dashed #cbd5e1",
-        borderRadius: "11px",
-        background: "#f8fafc",
-        color: "#64748b",
-        fontSize: "12px",
-        textAlign: "center",
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-/* =========================================================
-   상세정보 한 줄
-========================================================= */
-
-function DetailRow({
-  label,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "90px 1fr",
-        gap: "10px",
-        padding: "10px 0",
-        borderBottom: "1px solid #f1f5f9",
-        fontSize: "13px",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-          fontWeight: "700",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          color: "#111827",
-          fontWeight: "600",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
-   상태 버튼
-========================================================= */
-
-function StatusButton({
-  active,
-  onClick,
-  children,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: active
-          ? "1px solid #111827"
-          : "1px solid #cbd5e1",
-
-        borderRadius: "9px",
-
-        padding: "10px 8px",
-
-        background: active
-          ? "#111827"
-          : "#ffffff",
-
-        color: active
-          ? "#ffffff"
-          : "#334155",
-
-        fontSize: "12px",
-        fontWeight: "800",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-            }
