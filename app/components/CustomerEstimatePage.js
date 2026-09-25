@@ -70,24 +70,66 @@ function getProgress(screen) {
 }
 
 /*
- * 문·문틀 명칭 통일
+ * =========================================================
+ * 문·문틀 판별
+ * =========================================================
  *
- * 아래 표현을 모두 같은 것으로 인식:
+ * DB/AI에서 아래처럼 서로 다르게 표시되어도
+ * 모두 문·문틀 세트로 봅니다.
  *
  * 문,문틀
  * 문·문틀
  * 문/문틀
- * 문 문틀
- * 문-문틀
+ * 방문
+ * 방화문
+ * 중문
+ * 현관문
+ * 문짝
+ * 문틀
+ * 도어
+ * door
  */
-function normalizeDoorSetText(value) {
+
+function normalizeDoorText(value) {
   return String(value || "")
     .replace(/[^가-힣a-zA-Z0-9]/g, "")
     .toLowerCase();
 }
 
-function isDoorSetGroup(group) {
-  const values = [
+const DOOR_KEYWORDS = [
+  "문문틀",
+  "방문",
+  "방화문",
+  "중문",
+  "현관문",
+  "문짝",
+  "문틀",
+  "도어",
+  "도어프레임",
+  "door",
+  "doorframe",
+  "firedoor",
+  "slidingdoor",
+  "entrancedoor",
+];
+
+function hasDoorKeyword(value) {
+  const normalized =
+    normalizeDoorText(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return DOOR_KEYWORDS.some((keyword) =>
+    normalized.includes(
+      normalizeDoorText(keyword)
+    )
+  );
+}
+
+function getDoorGroupText(group) {
+  const parts = [
     group?.category,
     group?.subCategory,
     group?.sub_category,
@@ -95,23 +137,72 @@ function isDoorSetGroup(group) {
     group?.name,
     group?.label,
     group?.title,
+    group?.description,
   ];
 
-  return values.some((value) => {
-    const normalized =
-      normalizeDoorSetText(value);
+  const photos =
+    Array.isArray(group?.photos)
+      ? group.photos
+      : [];
 
-    return (
-      normalized === "문문틀" ||
-      normalized.includes("문문틀")
+  photos.forEach((photo) => {
+    parts.push(
+      photo?.category,
+      photo?.subCategory,
+      photo?.sub_category,
+      photo?.name,
+      photo?.label,
+      photo?.description,
+
+      photo?.analysis?.category,
+      photo?.analysis?.subCategory,
+      photo?.analysis?.sub_category,
+      photo?.analysis?.name,
+      photo?.analysis?.description
     );
+
+    if (
+      Array.isArray(
+        photo?.tags
+      )
+    ) {
+      parts.push(
+        ...photo.tags
+      );
+    }
+
+    if (
+      Array.isArray(
+        photo?.analysis?.tags
+      )
+    ) {
+      parts.push(
+        ...photo.analysis.tags
+      );
+    }
   });
+
+  return parts
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isDoorSetGroup(group) {
+  const text =
+    getDoorGroupText(group);
+
+  return hasDoorKeyword(
+    text
+  );
 }
 
 function clampDoorQuantity(value) {
-  const number = Number(value);
+  const number =
+    Number(value);
 
-  if (!Number.isFinite(number)) {
+  if (
+    !Number.isFinite(number)
+  ) {
     return 1;
   }
 
@@ -128,37 +219,64 @@ function DoorQuantitySelector({
   quantity,
   onChange,
 }) {
-  function changeQuantity(value) {
+  function changeQuantity(
+    value
+  ) {
     onChange?.(
-      clampDoorQuantity(value)
+      clampDoorQuantity(
+        value
+      )
     );
   }
 
   return (
     <div
       style={{
-        marginBottom: "18px",
-        padding: "16px",
-        border: "1px solid #e3e7ec",
-        borderRadius: "14px",
-        background: "#ffffff",
+        marginBottom:
+          "18px",
+
+        padding:
+          "16px",
+
+        border:
+          "1px solid #e3e7ec",
+
+        borderRadius:
+          "14px",
+
+        background:
+          "#ffffff",
       }}
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "12px",
+          display:
+            "flex",
+
+          alignItems:
+            "flex-start",
+
+          justifyContent:
+            "space-between",
+
+          gap:
+            "12px",
         }}
       >
         <div>
           <strong
             style={{
-              display: "block",
-              color: "#20262e",
-              fontSize: "15px",
-              fontWeight: "900",
+              display:
+                "block",
+
+              color:
+                "#20262e",
+
+              fontSize:
+                "15px",
+
+              fontWeight:
+                "900",
             }}
           >
             동일한 문·문틀 수량
@@ -166,26 +284,46 @@ function DoorQuantitySelector({
 
           <div
             style={{
-              marginTop: "5px",
-              color: "#8b95a1",
-              fontSize: "11px",
-              lineHeight: 1.5,
+              marginTop:
+                "5px",
+
+              color:
+                "#8b95a1",
+
+              fontSize:
+                "11px",
+
+              lineHeight:
+                1.5,
             }}
           >
-            사진과 같은 문·문틀이 여러 세트라면
-            수량을 조정해주세요.
+            사진과 같은 문·문틀이 여러 세트라면 수량을
+            조정해주세요.
           </div>
         </div>
 
         <span
           style={{
-            flexShrink: 0,
-            padding: "5px 9px",
-            borderRadius: "999px",
-            background: "#eef4ff",
-            color: "#246bfd",
-            fontSize: "10px",
-            fontWeight: "900",
+            flexShrink:
+              0,
+
+            padding:
+              "5px 9px",
+
+            borderRadius:
+              "999px",
+
+            background:
+              "#eef4ff",
+
+            color:
+              "#246bfd",
+
+            fontSize:
+              "10px",
+
+            fontWeight:
+              "900",
           }}
         >
           세트 기준
@@ -194,37 +332,55 @@ function DoorQuantitySelector({
 
       <div
         style={{
-          marginTop: "14px",
-          display: "grid",
+          marginTop:
+            "14px",
+
+          display:
+            "grid",
+
           gridTemplateColumns:
             "52px 1fr 52px",
-          alignItems: "center",
-          gap: "8px",
+
+          alignItems:
+            "center",
+
+          gap:
+            "8px",
         }}
       >
         <button
           type="button"
-          disabled={quantity <= 1}
-          aria-label="문·문틀 수량 줄이기"
+          disabled={
+            quantity <= 1
+          }
           onClick={() =>
             changeQuantity(
               quantity - 1
             )
           }
           style={{
-            height: "46px",
-            border: "1px solid #dfe3e8",
-            borderRadius: "11px",
+            height:
+              "46px",
+
+            border:
+              "1px solid #dfe3e8",
+
+            borderRadius:
+              "11px",
+
             background:
               quantity <= 1
                 ? "#f5f6f8"
                 : "#ffffff",
+
             color:
               quantity <= 1
                 ? "#b5bcc5"
                 : "#303842",
-            fontSize: "24px",
-            fontWeight: "500",
+
+            fontSize:
+              "24px",
+
             cursor:
               quantity <= 1
                 ? "default"
@@ -236,13 +392,26 @@ function DoorQuantitySelector({
 
         <div
           style={{
-            height: "46px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "5px",
-            borderRadius: "11px",
-            background: "#f6f8fb",
+            height:
+              "46px",
+
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
+            justifyContent:
+              "center",
+
+            gap:
+              "5px",
+
+            borderRadius:
+              "11px",
+
+            background:
+              "#f6f8fb",
           }}
         >
           <input
@@ -250,30 +419,57 @@ function DoorQuantitySelector({
             min="1"
             max="50"
             inputMode="numeric"
-            value={quantity}
-            onChange={(event) =>
+            value={
+              quantity
+            }
+            onChange={(
+              event
+            ) =>
               changeQuantity(
-                event.target.value
+                event.target
+                  .value
               )
             }
             style={{
-              width: "54px",
-              padding: 0,
-              border: 0,
-              outline: "none",
-              background: "transparent",
-              color: "#171b21",
-              fontSize: "20px",
-              fontWeight: "900",
-              textAlign: "right",
+              width:
+                "54px",
+
+              padding:
+                0,
+
+              border:
+                0,
+
+              outline:
+                "none",
+
+              background:
+                "transparent",
+
+              color:
+                "#171b21",
+
+              fontSize:
+                "20px",
+
+              fontWeight:
+                "900",
+
+              textAlign:
+                "right",
             }}
           />
 
           <span
             style={{
-              color: "#59636f",
-              fontSize: "13px",
-              fontWeight: "800",
+              color:
+                "#59636f",
+
+              fontSize:
+                "13px",
+
+              fontWeight:
+                "800",
             }}
           >
             세트
@@ -282,27 +478,37 @@ function DoorQuantitySelector({
 
         <button
           type="button"
-          disabled={quantity >= 50}
-          aria-label="문·문틀 수량 늘리기"
+          disabled={
+            quantity >= 50
+          }
           onClick={() =>
             changeQuantity(
               quantity + 1
             )
           }
           style={{
-            height: "46px",
-            border: "1px solid #dfe3e8",
-            borderRadius: "11px",
+            height:
+              "46px",
+
+            border:
+              "1px solid #dfe3e8",
+
+            borderRadius:
+              "11px",
+
             background:
               quantity >= 50
                 ? "#f5f6f8"
                 : "#ffffff",
+
             color:
               quantity >= 50
                 ? "#b5bcc5"
                 : "#303842",
-            fontSize: "24px",
-            fontWeight: "500",
+
+            fontSize:
+              "24px",
+
             cursor:
               quantity >= 50
                 ? "default"
@@ -315,14 +521,21 @@ function DoorQuantitySelector({
 
       <div
         style={{
-          marginTop: "10px",
-          color: "#8b95a1",
-          fontSize: "11px",
-          lineHeight: 1.5,
+          marginTop:
+            "10px",
+
+          color:
+            "#8b95a1",
+
+          fontSize:
+            "11px",
+
+          lineHeight:
+            1.5,
         }}
       >
-        문짝과 문틀을 따로 계산하지 않고
-        문·문틀 1세트 견적에 수량을 반영합니다.
+        문짝과 문틀을 따로 계산하지 않고 문·문틀
+        1세트 견적에 수량을 반영합니다.
       </div>
     </div>
   );
@@ -369,8 +582,12 @@ export default function CustomerEstimatePage({
   const analysisLoadingSeenRef =
     useRef(false);
 
-  function changeScreen(nextScreen) {
-    setScreen(nextScreen);
+  function changeScreen(
+    nextScreen
+  ) {
+    setScreen(
+      nextScreen
+    );
 
     setTransitionKey(
       (prev) =>
@@ -395,20 +612,29 @@ export default function CustomerEstimatePage({
     async function loadCompany() {
       if (!companySlug) {
         setCompany(null);
+
         setCompanySettings(
           null
         );
+
         setTenantLoading(
           false
         );
-        setTenantError("");
+
+        setTenantError(
+          ""
+        );
+
         return;
       }
 
       setTenantLoading(
         true
       );
-      setTenantError("");
+
+      setTenantError(
+        ""
+      );
 
       try {
         const response =
@@ -520,6 +746,7 @@ export default function CustomerEstimatePage({
     addImages,
     removeImage,
     handleAnalyze,
+
     readJsonSafely,
   } = useEstimate({
     companySlug,
@@ -547,9 +774,6 @@ export default function CustomerEstimatePage({
     setAreaFilms,
   ] = useState({});
 
-  /*
-   * 문·문틀 세트 수량
-   */
   const [
     doorQuantity,
     setDoorQuantity,
@@ -593,9 +817,6 @@ export default function CustomerEstimatePage({
   const progress =
     getProgress(screen);
 
-  /*
-   * 분석 완료 후 결과 화면 이동
-   */
   useEffect(() => {
     if (
       screen !==
@@ -804,9 +1025,8 @@ export default function CustomerEstimatePage({
   }
 
   /*
-   * 문·문틀 그룹 존재 여부
-   *
-   * 쉼표/점/공백/슬래시 등은 제거한 뒤 판단합니다.
+   * 여러 그룹 중 하나라도
+   * 문 계열이면 true
    */
   const hasDoorSetGroup =
     groups.some(
@@ -816,10 +1036,6 @@ export default function CustomerEstimatePage({
         )
     );
 
-  /*
-   * 문·문틀 분석이 아닌 경우
-   * 수량 자동 초기화
-   */
   useEffect(() => {
     if (
       !hasDoorSetGroup &&
@@ -891,12 +1107,6 @@ export default function CustomerEstimatePage({
     };
   }
 
-  /*
-   * 부위별 표시 견적
-   *
-   * 문·문틀인 경우에만
-   * 1세트 견적 × 수량
-   */
   const displayGroups =
     groups.map(
       (group) => {
@@ -952,10 +1162,8 @@ export default function CustomerEstimatePage({
     );
 
   /*
-   * 원래 totalEstimate에는
-   * 문·문틀 1세트 금액이 이미 포함되어 있습니다.
-   *
-   * 따라서 추가 수량만 더합니다.
+   * 총견적은 기존 1세트가 이미 포함되어 있으므로
+   * 추가 세트만 더합니다.
    */
   const doorBaseExtra =
     groups.reduce(
@@ -1076,9 +1284,6 @@ export default function CustomerEstimatePage({
       }
     );
 
-  /*
-   * 필름 적용 전 기본 견적 + 문·문틀 추가수량
-   */
   const quantityAdjustedBaseEstimate =
     totalEstimate
       ? {
@@ -1107,9 +1312,6 @@ export default function CustomerEstimatePage({
         }
       : null;
 
-  /*
-   * 고객에게 최종 표시되는 견적
-   */
   const displayTotalEstimate =
     totalEstimate
       ? {
@@ -1695,9 +1897,8 @@ export default function CustomerEstimatePage({
         false
       );
     }
-  }
-
-  function goBack() {
+                }
+    function goBack() {
     if (
       screen ===
       SCREEN.UPLOAD
@@ -1827,7 +2028,8 @@ export default function CustomerEstimatePage({
         </div>
       </main>
     );
-}
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
