@@ -39,7 +39,54 @@ const SCREEN = {
   RESULT: "result",
   VIRTUAL: "virtual",
   CONSULTATION: "consultation",
+  COMPLETE: "complete",
 };
+
+/* =========================================================
+   단계 진행률
+========================================================= */
+
+function getProgress(screen) {
+  if (screen === SCREEN.UPLOAD) {
+    return {
+      step: 1,
+      total: 4,
+      percent: 25,
+    };
+  }
+
+  if (screen === SCREEN.ANALYZING) {
+    return {
+      step: 2,
+      total: 4,
+      percent: 50,
+    };
+  }
+
+  if (
+    screen === SCREEN.RESULT ||
+    screen === SCREEN.VIRTUAL
+  ) {
+    return {
+      step: 3,
+      total: 4,
+      percent: 75,
+    };
+  }
+
+  if (
+    screen === SCREEN.CONSULTATION ||
+    screen === SCREEN.COMPLETE
+  ) {
+    return {
+      step: 4,
+      total: 4,
+      percent: 100,
+    };
+  }
+
+  return null;
+}
 
 /* =========================================================
    메인
@@ -76,7 +123,7 @@ export default function CustomerEstimatePage({
   ] = useState(null);
 
   /* =======================================================
-     현재 화면
+     화면 상태
   ======================================================= */
 
   const [
@@ -91,8 +138,23 @@ export default function CustomerEstimatePage({
     setTransitionKey,
   ] = useState(0);
 
+  const [
+    startPickerOpen,
+    setStartPickerOpen,
+  ] = useState(false);
+
+  const cameraInputRef =
+    useRef(null);
+
+  const albumInputRef =
+    useRef(null);
+
   const analysisLoadingSeenRef =
     useRef(false);
+
+  /* =======================================================
+     화면 변경
+  ======================================================= */
 
   function changeScreen(
     nextScreen,
@@ -110,15 +172,15 @@ export default function CustomerEstimatePage({
       typeof window !==
       "undefined"
     ) {
-      window.scrollTo({
-        top: 0,
-        behavior: "instant",
-      });
+      window.scrollTo(
+        0,
+        0,
+      );
     }
   }
 
   /* =======================================================
-     업체정보 로드
+     업체 정보 로드
   ======================================================= */
 
   useEffect(() => {
@@ -129,7 +191,10 @@ export default function CustomerEstimatePage({
       if (
         !companySlug
       ) {
-        setCompany(null);
+        setCompany(
+          null,
+        );
+
         setCompanySettings(
           null,
         );
@@ -260,7 +325,7 @@ export default function CustomerEstimatePage({
   const estimateDescription =
     companySettings
       ?.estimate_description ||
-    "사진을 올리면 AI가 시공 부위를 분석하고 예상 견적을 알려드립니다.";
+    "AI가 사진을 분석해 예상 견적을 계산하고 원하는 필름으로 시공 후 모습까지 미리 보여드립니다.";
 
   /* =======================================================
      AI 견적
@@ -287,7 +352,7 @@ export default function CustomerEstimatePage({
   });
 
   /* =======================================================
-     필름 / 가상시공
+     필름
   ======================================================= */
 
   const [
@@ -352,7 +417,16 @@ export default function CustomerEstimatePage({
   ] = useState("");
 
   /* =======================================================
-     AI 분석 화면 종료 감지
+     진행률
+  ======================================================= */
+
+  const progress =
+    getProgress(
+      screen,
+    );
+
+  /* =======================================================
+     AI 분석 완료 감지
   ======================================================= */
 
   useEffect(() => {
@@ -581,7 +655,7 @@ export default function CustomerEstimatePage({
   }
 
   /* =======================================================
-     필름 가격 반영
+     필름가격 반영 견적
   ======================================================= */
 
   const displayGroups =
@@ -666,12 +740,10 @@ export default function CustomerEstimatePage({
       : null;
 
   /* =======================================================
-     사진 추가
+     사진 초기화
   ======================================================= */
 
-  async function handleAddImages(
-    files,
-  ) {
+  function resetEstimateOptions() {
     setSelectedFilm(
       null,
     );
@@ -693,10 +765,54 @@ export default function CustomerEstimatePage({
     setLeadMessage(
       "",
     );
+  }
+
+  /* =======================================================
+     사진 추가
+  ======================================================= */
+
+  async function handleAddImages(
+    files,
+  ) {
+    resetEstimateOptions();
 
     await addImages(
       files,
     );
+  }
+
+  /* =======================================================
+     시작화면에서 사진 직접 선택
+  ======================================================= */
+
+  async function handleDirectFileSelect(
+    event,
+  ) {
+    const files =
+      event.target.files;
+
+    if (
+      !files ||
+      files.length ===
+        0
+    ) {
+      return;
+    }
+
+    setStartPickerOpen(
+      false,
+    );
+
+    changeScreen(
+      SCREEN.UPLOAD,
+    );
+
+    await handleAddImages(
+      files,
+    );
+
+    event.target.value =
+      "";
   }
 
   /* =======================================================
@@ -706,27 +822,7 @@ export default function CustomerEstimatePage({
   function handleRemoveImage(
     id,
   ) {
-    setSelectedFilm(
-      null,
-    );
-
-    setFireType(
-      "non_fire",
-    );
-
-    setUseSplitTone(
-      false,
-    );
-
-    setAreaFilms({});
-
-    setLeadComplete(
-      false,
-    );
-
-    setLeadMessage(
-      "",
-    );
+    resetEstimateOptions();
 
     removeImage(
       id,
@@ -745,27 +841,7 @@ export default function CustomerEstimatePage({
       return;
     }
 
-    setSelectedFilm(
-      null,
-    );
-
-    setFireType(
-      "non_fire",
-    );
-
-    setUseSplitTone(
-      false,
-    );
-
-    setAreaFilms({});
-
-    setLeadComplete(
-      false,
-    );
-
-    setLeadMessage(
-      "",
-    );
+    resetEstimateOptions();
 
     analysisLoadingSeenRef.current =
       false;
@@ -1214,7 +1290,11 @@ export default function CustomerEstimatePage({
       );
 
       setLeadMessage(
-        "✅ 상담 신청이 완료되었습니다. 확인 후 연락드리겠습니다.",
+        "✅ 상담 신청이 완료되었습니다.",
+      );
+
+      changeScreen(
+        SCREEN.COMPLETE,
       );
     } catch (error) {
       console.error(
@@ -1288,13 +1368,60 @@ export default function CustomerEstimatePage({
       SCREEN.CONSULTATION
     ) {
       changeScreen(
-        SCREEN.RESULT,
+        selectedFilm
+          ? SCREEN.VIRTUAL
+          : SCREEN.RESULT,
+      );
+
+      return;
+    }
+
+    if (
+      screen ===
+      SCREEN.COMPLETE
+    ) {
+      changeScreen(
+        SCREEN.HOME,
       );
     }
   }
 
   /* =======================================================
-     로딩 / 오류
+     처음으로
+  ======================================================= */
+
+  function restart() {
+    setCustomerName(
+      "",
+    );
+
+    setPhone(
+      "",
+    );
+
+    setRegion(
+      "",
+    );
+
+    setPrivacyAgree(
+      false,
+    );
+
+    setLeadComplete(
+      false,
+    );
+
+    setLeadMessage(
+      "",
+    );
+
+    changeScreen(
+      SCREEN.HOME,
+    );
+  }
+
+  /* =======================================================
+     로딩
   ======================================================= */
 
   if (
@@ -1310,6 +1437,10 @@ export default function CustomerEstimatePage({
       </main>
     );
   }
+
+  /* =======================================================
+     오류
+  ======================================================= */
 
   if (
     tenantError
@@ -1335,23 +1466,59 @@ export default function CustomerEstimatePage({
 
   return (
     <main className={styles.page}>
+      {/* ===================================================
+          시작용 숨김 사진 input
+      =================================================== */}
+
+      <input
+        ref={
+          cameraInputRef
+        }
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className={styles.hiddenInput}
+        onChange={
+          handleDirectFileSelect
+        }
+      />
+
+      <input
+        ref={
+          albumInputRef
+        }
+        type="file"
+        accept="image/*"
+        multiple
+        className={styles.hiddenInput}
+        onChange={
+          handleDirectFileSelect
+        }
+      />
+
+      {/* ===================================================
+          헤더
+      =================================================== */}
+
       <header className={styles.header}>
         <div className={styles.headerInner}>
-          {screen !==
-          SCREEN.HOME ? (
-            <button
-              type="button"
-              onClick={
-                goBack
-              }
-              className={styles.backButton}
-              aria-label="뒤로가기"
-            >
-              ‹
-            </button>
-          ) : (
-            <div className={styles.headerSpacer} />
-          )}
+          <div className={styles.headerSide}>
+            {screen !==
+            SCREEN.HOME ? (
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={
+                  goBack
+                }
+                aria-label="뒤로가기"
+              >
+                ‹
+              </button>
+            ) : (
+              <div />
+            )}
+          </div>
 
           <button
             type="button"
@@ -1365,7 +1532,7 @@ export default function CustomerEstimatePage({
             {companyName}
           </button>
 
-          <div className={styles.headerRight}>
+          <div className={`${styles.headerSide} ${styles.headerSideRight}`}>
             <Link
               href={
                 companySlug
@@ -1388,7 +1555,31 @@ export default function CustomerEstimatePage({
             </Link>
           </div>
         </div>
+
+        {progress && (
+          <div className={styles.progressWrap}>
+            <div className={styles.progressInfo}>
+              <span>
+                {progress.step} / {progress.total}
+              </span>
+            </div>
+
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressBar}
+                style={{
+                  width:
+                    `${progress.percent}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </header>
+
+      {/* ===================================================
+          화면 전환
+      =================================================== */}
 
       <div
         key={
@@ -1403,23 +1594,31 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.HOME && (
           <section className={styles.homeScreen}>
-            <div className={styles.homeVisual}>
-              <div className={styles.homeVisualOverlay} />
+            <div className={styles.homeHero}>
+              <div className={styles.heroGlowOne} />
+              <div className={styles.heroGlowTwo} />
 
-              <div className={styles.homeVisualContent}>
-                <div className={styles.homeBadge}>
-                  AI INTERIOR FILM
+              <div className={styles.heroKitchen}>
+                <div className={styles.fakeCeiling} />
+                <div className={styles.fakeCabinetOne} />
+                <div className={styles.fakeCabinetTwo} />
+                <div className={styles.fakeCounter} />
+                <div className={styles.fakePlant} />
+              </div>
+
+              <div className={styles.homeHeroContent}>
+                <div className={styles.homeEyebrow}>
+                  AI 인테리어필름 견적 서비스
                 </div>
 
                 <h1>
-                  인테리어필름,
-                  <br />
-
                   사진 한 장으로
+                  <br />
+                  견적부터
                   <br />
 
                   <span>
-                    먼저 확인하세요
+                    가상시공까지
                   </span>
                 </h1>
 
@@ -1428,7 +1627,7 @@ export default function CustomerEstimatePage({
                   <br />
                   원하는 필름으로 시공 후 모습까지
                   <br />
-                  미리 보여드려요.
+                  미리 확인해보세요.
                 </p>
               </div>
             </div>
@@ -1438,66 +1637,75 @@ export default function CustomerEstimatePage({
                 type="button"
                 className={styles.primaryButton}
                 onClick={() =>
-                  changeScreen(
-                    SCREEN.UPLOAD,
+                  setStartPickerOpen(
+                    true,
                   )
                 }
               >
                 무료 AI 견적 시작
-                <span>›</span>
+
+                <span>
+                  →
+                </span>
               </button>
 
-              <div className={styles.quickInfo}>
+              <div className={styles.homeBenefits}>
                 <div>
-                  <strong>
+                  <div className={styles.benefitIcon}>
                     ◉
+                  </div>
+
+                  <strong>
+                    사진만 있으면
                   </strong>
 
                   <span>
-                    사진만 있으면
-                    <br />
                     바로 시작
                   </span>
                 </div>
 
                 <div>
+                  <div className={styles.benefitIcon}>
+                    ⚡
+                  </div>
+
                   <strong>
-                    ◷
+                    빠른
                   </strong>
 
                   <span>
-                    빠른
-                    <br />
                     AI 분석
                   </span>
                 </div>
 
                 <div>
-                  <strong>
+                  <div className={styles.benefitIcon}>
                     ◇
+                  </div>
+
+                  <strong>
+                    견적 +
                   </strong>
 
                   <span>
-                    견적 +
-                    <br />
                     가상시공
                   </span>
                 </div>
               </div>
 
-              <div className={styles.homeLinks}>
-                <Link
-                  href={
-                    companySlug
-                      ? `/samples?company=${encodeURIComponent(
-                          companySlug,
-                        )}`
-                      : "/samples"
-                  }
-                >
-                  필름 샘플 보기
-                </Link>
-              </div>
+              <Link
+                href={
+                  companySlug
+                    ? `/samples?company=${encodeURIComponent(
+                        companySlug,
+                      )}`
+                    : "/samples"
+                }
+                className={styles.textLink}
+              >
+                실제 필름 샘플 보기
+                <span>›</span>
+              </Link>
             </div>
           </section>
         )}
@@ -1509,22 +1717,24 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.UPLOAD && (
           <section className={styles.contentScreen}>
-            <div className={styles.stepText}>
-              STEP 1
+            <div className={styles.screenHeader}>
+              <div className={styles.stepBadge}>
+                STEP 1
+              </div>
+
+              <h1>
+                시공할 공간의
+                <br />
+                사진을 올려주세요
+              </h1>
+
+              <p>
+                AI가 사진 속 시공 부위와 구조를 분석하고
+                예상 견적을 계산합니다.
+              </p>
             </div>
 
-            <h1 className={styles.screenTitle}>
-              사진을
-              <br />
-              올려주세요
-            </h1>
-
-            <p className={styles.screenDescription}>
-              시공하려는 공간의 사진을 등록해주세요.
-              AI가 시공 부위와 예상 비용을 분석합니다.
-            </p>
-
-            <div className={styles.contentCard}>
+            <div className={styles.uploadShell}>
               <EstimatePhotoUploader
                 images={
                   images
@@ -1563,21 +1773,28 @@ export default function CustomerEstimatePage({
                   startAnalyze
                 }
               >
-                AI 분석 시작
+                AI 분석하기
+
                 <span>
-                  ›
+                  →
                 </span>
               </button>
             )}
 
-            <div className={styles.tipCard}>
-              <strong>
-                사진 촬영 팁
-              </strong>
+            <div className={styles.infoNotice}>
+              <div className={styles.infoIcon}>
+                i
+              </div>
 
-              <p>
-                시공할 면이 잘 보이도록 조금 떨어져서 정면으로 촬영하면 분석에 도움이 됩니다.
-              </p>
+              <div>
+                <strong>
+                  사진 촬영 팁
+                </strong>
+
+                <p>
+                  시공할 면 전체가 보이도록 조금 떨어져서 정면으로 촬영하면 더 정확한 분석에 도움이 됩니다.
+                </p>
+              </div>
             </div>
           </section>
         )}
@@ -1589,43 +1806,48 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.ANALYZING && (
           <section className={`${styles.contentScreen} ${styles.analysisScreen}`}>
-            <div className={styles.stepText}>
-              STEP 2
+            <div className={styles.screenHeader}>
+              <div className={styles.stepBadge}>
+                STEP 2
+              </div>
+
+              <h1>
+                AI가 사진을
+                <br />
+                분석하고 있어요
+              </h1>
+
+              <p>
+                사진에서 시공 부위를 확인하고
+                기존 시공 데이터와 비교 중입니다.
+              </p>
             </div>
 
-            <h1 className={styles.screenTitle}>
-              AI가
-              <br />
-              분석 중입니다
-            </h1>
-
-            <p className={styles.screenDescription}>
-              사진에서 시공 부위와 구조를 확인하고
-              기존 시공 데이터와 비교하고 있어요.
-            </p>
-
-            <div className={styles.analysisVisual}>
-              <div className={styles.analysisRing}>
-                <div className={styles.analysisRingInner}>
-                  ◇
+            <div className={styles.analysisGraphic}>
+              <div className={styles.analysisOuter}>
+                <div className={styles.analysisMiddle}>
+                  <div className={styles.analysisCenter}>
+                    ⌂
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className={styles.analysisList}>
-              <div className={styles.analysisDone}>
-                <span>✓</span>
-                이미지 확인
-              </div>
-
-              <div className={loading ? styles.analysisActive : ""}>
+            <div className={styles.analysisSteps}>
+              <div className={styles.analysisComplete}>
                 <span>
-                  {loading
-                    ? "●"
-                    : "✓"}
+                  ✓
                 </span>
 
-                시공 부위 분석
+                이미지 확인 완료
+              </div>
+
+              <div className={styles.analysisCurrent}>
+                <span>
+                  ✓
+                </span>
+
+                시공 부위 분석 중
               </div>
 
               <div>
@@ -1633,7 +1855,7 @@ export default function CustomerEstimatePage({
                   ○
                 </span>
 
-                유사 시공 데이터 비교
+                유사 시공 데이터 검색
               </div>
 
               <div>
@@ -1645,8 +1867,9 @@ export default function CustomerEstimatePage({
               </div>
             </div>
 
-            <div className={styles.analysisNotice}>
-              보통 잠시 후 결과를 확인할 수 있습니다.
+            <div className={styles.softNotice}>
+              AI 분석을 진행하고 있습니다.
+              잠시만 기다려주세요.
             </div>
           </section>
         )}
@@ -1658,22 +1881,29 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.RESULT && (
           <section className={styles.contentScreen}>
-            <div className={styles.stepText}>
-              STEP 3
+            <div className={styles.screenHeader}>
+              <div className={styles.stepBadge}>
+                STEP 3
+              </div>
+
+              <h1>
+                AI 분석이
+                <br />
+                완료되었어요
+              </h1>
+
+              <p>
+                사진과 기존 시공 데이터를 기반으로 계산된
+                예상 시공 견적입니다.
+              </p>
             </div>
 
-            <h1 className={styles.screenTitle}>
-              예상 견적이
-              <br />
-              완료됐어요
-            </h1>
+            <div className={styles.priceCard}>
+              <div className={styles.priceCardTitle}>
+                <span className={styles.priceIcon}>
+                  ▣
+                </span>
 
-            <p className={styles.screenDescription}>
-              AI 분석 결과와 기존 시공 데이터를 기준으로 계산한 예상 견적입니다.
-            </p>
-
-            <div className={styles.estimateMainCard}>
-              <div className={styles.estimateLabel}>
                 예상 시공 금액
               </div>
 
@@ -1684,9 +1914,43 @@ export default function CustomerEstimatePage({
               />
             </div>
 
-            <div className={styles.contentCard}>
-              <div className={styles.cardHeading}>
-                분석된 시공 부위
+            <div className={styles.statGrid}>
+              <div>
+                <strong>
+                  {images.length}장
+                </strong>
+
+                <span>
+                  분석 사진
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  {groups.length}개
+                </strong>
+
+                <span>
+                  시공 부위
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  AI
+                </strong>
+
+                <span>
+                  유사사례 분석
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.resultDetail}>
+              <div className={styles.sectionMiniHeader}>
+                <strong>
+                  분석된 시공 부위
+                </strong>
               </div>
 
               <EstimateResult
@@ -1699,7 +1963,7 @@ export default function CustomerEstimatePage({
               />
             </div>
 
-            <div className={styles.resultActions}>
+            <div className={styles.doubleButtons}>
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -1710,8 +1974,9 @@ export default function CustomerEstimatePage({
                 }
               >
                 가상시공 해보기
+
                 <span>
-                  ›
+                  →
                 </span>
               </button>
 
@@ -1728,9 +1993,9 @@ export default function CustomerEstimatePage({
               </button>
             </div>
 
-            <p className={styles.disclaimer}>
-              실제 견적은 현장 상태, 작업 범위 및 선택한 필름에 따라 달라질 수 있습니다.
-            </p>
+            <div className={styles.smallDisclaimer}>
+              정확한 견적은 실제 현장 상태와 선택 자재에 따라 달라질 수 있습니다.
+            </div>
           </section>
         )}
 
@@ -1741,108 +2006,115 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.VIRTUAL && (
           <section className={styles.contentScreen}>
-            <div className={styles.stepText}>
-              STEP 4
+            <div className={styles.screenHeader}>
+              <div className={styles.stepBadge}>
+                STEP 3
+              </div>
+
+              <h1>
+                원하는 필름을
+                <br />
+                선택해주세요
+              </h1>
+
+              <p>
+                다양한 브랜드와 컬러로
+                시공 후 모습을 미리 확인할 수 있어요.
+              </p>
             </div>
 
-            <h1 className={styles.screenTitle}>
-              원하는 필름을
-              <br />
-              선택해주세요
-            </h1>
-
-            <p className={styles.screenDescription}>
-              실제 등록된 필름 중 원하는 제품을 골라 시공 후 모습을 미리 확인할 수 있어요.
-            </p>
-
-            <div className={styles.virtualBlock}>
-              <div className={styles.blockTitle}>
-                1. 필름 선택
-              </div>
-
-              <div className={styles.contentCard}>
-                <FilmColorPicker
-                  onSelect={
-                    handleFilmSelect
-                  }
-                />
-              </div>
+            <div className={styles.filmSection}>
+              <FilmColorPicker
+                onSelect={
+                  handleFilmSelect
+                }
+              />
             </div>
 
             {selectedFilm && (
               <>
-                <div className={styles.virtualBlock}>
-                  <div className={styles.blockTitle}>
-                    2. 컬러 적용 방식
+                <div className={styles.optionSection}>
+                  <div className={styles.sectionMiniHeader}>
+                    <strong>
+                      시공 방식 선택
+                    </strong>
                   </div>
 
-                  <div className={styles.contentCard}>
-                    <VirtualToneSelector
-                      groups={
-                        groups
-                      }
-                      product={
-                        selectedFilm
-                      }
-                      useSplitTone={
-                        useSplitTone
-                      }
-                      onUseSplitToneChange={
-                        setUseSplitTone
-                      }
-                      areaFilms={
-                        areaFilms
-                      }
-                      onAreaFilmsChange={
-                        setAreaFilms
-                      }
-                    />
-                  </div>
+                  <VirtualToneSelector
+                    groups={
+                      groups
+                    }
+                    product={
+                      selectedFilm
+                    }
+                    useSplitTone={
+                      useSplitTone
+                    }
+                    onUseSplitToneChange={
+                      setUseSplitTone
+                    }
+                    areaFilms={
+                      areaFilms
+                    }
+                    onAreaFilmsChange={
+                      setAreaFilms
+                    }
+                  />
                 </div>
 
-                <div className={styles.virtualBlock}>
-                  <div className={styles.blockTitle}>
-                    3. 필름 조건 · 예상 견적
+                <div className={styles.optionSection}>
+                  <div className={styles.sectionMiniHeader}>
+                    <strong>
+                      필름 조건
+                    </strong>
                   </div>
 
-                  <div className={styles.contentCard}>
-                    <FilmPriceSelector
-                      selectedFilm={
-                        selectedFilm
-                      }
-                      fireType={
-                        fireType
-                      }
-                      onFireTypeChange={
-                        setFireType
-                      }
-                    />
-
-                    <div className={styles.divider} />
-
-                    <FilmAdjustedEstimate
-                      selectedFilm={
-                        selectedFilm
-                      }
-                      fireType={
-                        fireType
-                      }
-                      baseEstimate={
-                        totalEstimate
-                      }
-                      adjustedEstimate={
-                        displayTotalEstimate
-                      }
-                    />
-                  </div>
+                  <FilmPriceSelector
+                    selectedFilm={
+                      selectedFilm
+                    }
+                    fireType={
+                      fireType
+                    }
+                    onFireTypeChange={
+                      setFireType
+                    }
+                  />
                 </div>
 
-                <div className={styles.virtualBlock}>
-                  <div className={styles.blockTitle}>
-                    4. 가상 시공
+                <div className={styles.priceCard}>
+                  <div className={styles.priceCardTitle}>
+                    선택한 필름으로 예상 견적
                   </div>
 
-                  <div className={styles.virtualResultCard}>
+                  <FilmAdjustedEstimate
+                    selectedFilm={
+                      selectedFilm
+                    }
+                    fireType={
+                      fireType
+                    }
+                    baseEstimate={
+                      totalEstimate
+                    }
+                    adjustedEstimate={
+                      displayTotalEstimate
+                    }
+                  />
+                </div>
+
+                <div className={styles.virtualSection}>
+                  <div className={styles.sectionMiniHeader}>
+                    <strong>
+                      가상시공 결과
+                    </strong>
+
+                    <span>
+                      선택한 필름으로 시공 후 모습을 확인해보세요
+                    </span>
+                  </div>
+
+                  <div className={styles.virtualResultShell}>
                     <VirtualInstallPanel
                       images={
                         images
@@ -1880,9 +2152,10 @@ export default function CustomerEstimatePage({
                     )
                   }
                 >
-                  이 필름으로 상담 신청
+                  이 필름으로 상담 신청하기
+
                   <span>
-                    ›
+                    →
                   </span>
                 </button>
               </>
@@ -1897,21 +2170,60 @@ export default function CustomerEstimatePage({
         {screen ===
           SCREEN.CONSULTATION && (
           <section className={styles.contentScreen}>
-            <div className={styles.stepText}>
-              CONSULTATION
+            <div className={styles.screenHeader}>
+              <div className={styles.stepBadge}>
+                STEP 4
+              </div>
+
+              <h1>
+                상담
+                <br />
+                신청하기
+              </h1>
+
+              <p>
+                AI 견적 결과와 선택한 필름 정보를
+                함께 업체에 전달합니다.
+              </p>
             </div>
 
-            <h1 className={styles.screenTitle}>
-              상담
-              <br />
-              신청하기
-            </h1>
+            <div className={styles.consultSummary}>
+              <div>
+                <span>
+                  예상견적
+                </span>
 
-            <p className={styles.screenDescription}>
-              AI 견적 결과와 선택한 필름 정보를 함께 업체에 전달합니다.
-            </p>
+                <strong>
+                  {displayTotalEstimate
+                    ? `${Number(
+                        displayTotalEstimate.min,
+                      ).toLocaleString(
+                        "ko-KR",
+                      )} ~ ${Number(
+                        displayTotalEstimate.max,
+                      ).toLocaleString(
+                        "ko-KR",
+                      )}원`
+                    : "AI 견적"}
+                </strong>
+              </div>
 
-            <div className={styles.contentCard}>
+              {selectedFilm && (
+                <div>
+                  <span>
+                    선택필름
+                  </span>
+
+                  <strong>
+                    {selectedFilm.product_code ||
+                      selectedFilm.product_name ||
+                      "선택 완료"}
+                  </strong>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.formShell}>
               <LeadForm
                 customerName={
                   customerName
@@ -1951,25 +2263,193 @@ export default function CustomerEstimatePage({
                 }
               />
             </div>
+          </section>
+        )}
 
-            {leadComplete && (
-              <div className={styles.completeCard}>
-                <div className={styles.completeIcon}>
-                  ✓
-                </div>
+        {/* =================================================
+            COMPLETE
+        ================================================= */}
+
+        {screen ===
+          SCREEN.COMPLETE && (
+          <section className={styles.completeScreen}>
+            <div className={styles.completeCheck}>
+              ✓
+            </div>
+
+            <h1>
+              상담 신청이
+              <br />
+              완료되었습니다
+            </h1>
+
+            <p>
+              AI 견적 결과와 선택한 필름 정보가
+              <br />
+              업체에 전달되었습니다.
+              <br />
+              확인 후 빠르게 연락드리겠습니다.
+            </p>
+
+            <div className={styles.completeSummary}>
+              <div>
+                <span>
+                  예상 견적
+                </span>
 
                 <strong>
-                  상담 신청이 완료됐습니다
+                  {displayTotalEstimate
+                    ? `${Number(
+                        displayTotalEstimate.min,
+                      ).toLocaleString(
+                        "ko-KR",
+                      )} ~ ${Number(
+                        displayTotalEstimate.max,
+                      ).toLocaleString(
+                        "ko-KR",
+                      )}원`
+                    : "확인 중"}
                 </strong>
-
-                <p>
-                  확인 후 연락드리겠습니다.
-                </p>
               </div>
-            )}
+
+              {selectedFilm && (
+                <div>
+                  <span>
+                    선택 필름
+                  </span>
+
+                  <strong>
+                    {selectedFilm.product_code ||
+                      selectedFilm.product_name ||
+                      "선택 완료"}
+                  </strong>
+                </div>
+              )}
+
+              <div>
+                <span>
+                  사진 수
+                </span>
+
+                <strong>
+                  {images.length}장
+                </strong>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={
+                restart
+              }
+            >
+              처음으로 돌아가기
+            </button>
           </section>
         )}
       </div>
+
+      {/* ===================================================
+          시작 사진 선택 모달
+      =================================================== */}
+
+      {startPickerOpen && (
+        <div
+          className={styles.pickerOverlay}
+          onClick={() =>
+            setStartPickerOpen(
+              false,
+            )
+          }
+        >
+          <div
+            className={styles.pickerSheet}
+            onClick={(
+              event,
+            ) =>
+              event.stopPropagation()
+            }
+          >
+            <div className={styles.pickerHandle} />
+
+            <div className={styles.pickerHeader}>
+              <div>
+                <h2>
+                  사진을 선택해주세요
+                </h2>
+
+                <p>
+                  시공할 공간의 사진을 등록하면 바로 AI 견적을 시작할 수 있어요.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setStartPickerOpen(
+                    false,
+                  )
+                }
+              >
+                ×
+              </button>
+            </div>
+
+            <div className={styles.pickerButtons}>
+              <button
+                type="button"
+                onClick={() =>
+                  cameraInputRef.current?.click()
+                }
+              >
+                <span className={styles.pickerIcon}>
+                  ◉
+                </span>
+
+                <div>
+                  <strong>
+                    사진 촬영하기
+                  </strong>
+
+                  <p>
+                    지금 시공할 공간을 촬영합니다
+                  </p>
+                </div>
+
+                <span>
+                  ›
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  albumInputRef.current?.click()
+                }
+              >
+                <span className={styles.pickerIcon}>
+                  ▣
+                </span>
+
+                <div>
+                  <strong>
+                    앨범에서 선택
+                  </strong>
+
+                  <p>
+                    저장된 사진을 여러 장 선택합니다
+                  </p>
+                </div>
+
+                <span>
+                  ›
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className={styles.footer}>
         <strong>
@@ -1986,4 +2466,4 @@ export default function CustomerEstimatePage({
       </footer>
     </main>
   );
-}
+                }
