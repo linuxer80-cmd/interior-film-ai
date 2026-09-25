@@ -3,10 +3,6 @@
 import { useCallback, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-/* =========================================================
-   파일명 안전하게 만들기
-========================================================= */
-
 function makeSafeFileName(fileName = "photo.jpg") {
   const extension =
     fileName.includes(".")
@@ -15,10 +11,6 @@ function makeSafeFileName(fileName = "photo.jpg") {
 
   return `${Date.now()}-${crypto.randomUUID()}.${extension}`;
 }
-
-/* =========================================================
-   숫자 변환
-========================================================= */
 
 function toNumberOrNull(value) {
   if (
@@ -36,9 +28,31 @@ function toNumberOrNull(value) {
     : null;
 }
 
-/* =========================================================
-   Hook
-========================================================= */
+/*
+ * 일정이 있는 현장은 날짜순으로 먼저 표시하고
+ * 일정 미정(상담중) 현장은 뒤에 표시합니다.
+ */
+function sortSitesBySchedule(a, b) {
+  const aValue = a?.schedule_start;
+  const bValue = b?.schedule_start;
+
+  if (!aValue && !bValue) {
+    return 0;
+  }
+
+  if (!aValue) {
+    return 1;
+  }
+
+  if (!bValue) {
+    return -1;
+  }
+
+  return (
+    new Date(aValue).getTime() -
+    new Date(bValue).getTime()
+  );
+}
 
 export default function useSites({
   companyId,
@@ -60,10 +74,6 @@ export default function useSites({
     selectedSite,
     setSelectedSite,
   ] = useState(null);
-
-  /* =========================================================
-     현장 목록 불러오기
-  ========================================================= */
 
   const loadSites = useCallback(
     async (
@@ -104,6 +114,7 @@ export default function useSites({
             "schedule_start",
             {
               ascending: true,
+              nullsFirst: false,
             },
           );
 
@@ -112,7 +123,9 @@ export default function useSites({
         }
 
         setSites(
-          data || [],
+          (data || []).sort(
+            sortSitesBySchedule,
+          ),
         );
       } catch (error) {
         console.error(
@@ -134,10 +147,6 @@ export default function useSites({
     },
     [companyId],
   );
-
-  /* =========================================================
-     현장 요청사진 업로드
-  ========================================================= */
 
   const uploadRequestPhotos =
     useCallback(
@@ -249,10 +258,6 @@ export default function useSites({
       },
       [companyId],
     );
-
-  /* =========================================================
-     현장 상세에서 요청사진 추가
-  ========================================================= */
 
   const addSiteRequestPhotos =
     useCallback(
@@ -389,10 +394,6 @@ export default function useSites({
       ],
     );
 
-  /* =========================================================
-     현장 상세에서 요청사진 삭제
-  ========================================================= */
-
   const deleteSiteRequestPhoto =
     useCallback(
       async ({
@@ -415,11 +416,6 @@ export default function useSites({
         setSitesMessage("");
 
         try {
-          /*
-           * 먼저 DB에서 실제 사진정보를 확인합니다.
-           * 화면에서 전달된 storagePath보다
-           * DB 값을 우선 사용합니다.
-           */
           const {
             data: photoRow,
             error:
@@ -460,12 +456,6 @@ export default function useSites({
             storagePath ||
             null;
 
-          /*
-           * DB 행을 먼저 삭제합니다.
-           * 회사 ID + 현장 ID + 사진 ID를
-           * 모두 확인해서 다른 업체 사진이
-           * 삭제되지 않도록 합니다.
-           */
           const {
             error: deleteDbError,
           } = await supabase
@@ -490,12 +480,6 @@ export default function useSites({
             );
           }
 
-          /*
-           * Storage 파일 삭제.
-           * DB 삭제는 성공했는데 Storage 삭제만
-           * 실패하더라도 화면에서는 삭제 상태를
-           * 유지합니다.
-           */
           let storageWarning =
             null;
 
@@ -621,10 +605,6 @@ export default function useSites({
       [companyId],
     );
 
-  /* =========================================================
-     시공 예정 자재 저장
-  ========================================================= */
-
   const saveSiteMaterials =
     useCallback(
       async ({
@@ -741,28 +721,13 @@ export default function useSites({
       },
       [companyId],
     );
-
-  /* =========================================================
-     현장 등록
-  ========================================================= */
-
-  const createSite = useCallback(
+     const createSite = useCallback(
     async (form) => {
       if (!companyId) {
         return {
           success: false,
           error:
             "회사 정보를 확인할 수 없습니다.",
-        };
-      }
-
-      if (
-        !form?.schedule_start
-      ) {
-        return {
-          success: false,
-          error:
-            "시공 일정을 입력해주세요.",
         };
       }
 
@@ -801,7 +766,8 @@ export default function useSites({
             null,
 
           schedule_start:
-            form.schedule_start,
+            form.schedule_start ||
+            null,
 
           schedule_end:
             form.schedule_end ||
@@ -830,7 +796,10 @@ export default function useSites({
             "phone",
 
           status:
-            "scheduled",
+            form.status ||
+            (form.schedule_start
+              ? "scheduled"
+              : "consulting"),
 
           memo:
             form.memo?.trim() ||
@@ -903,18 +872,15 @@ export default function useSites({
             ...prev,
             siteForState,
           ].sort(
-            (a, b) =>
-              new Date(
-                a.schedule_start,
-              ).getTime() -
-              new Date(
-                b.schedule_start,
-              ).getTime(),
+            sortSitesBySchedule,
           ),
         );
 
         setSitesMessage(
-          "✅ 현장 일정이 등록되었습니다.",
+          createdSite.status ===
+            "consulting"
+            ? "✅ 상담중 현장으로 등록되었습니다."
+            : "✅ 현장 일정이 등록되었습니다.",
         );
 
         return {
@@ -958,7 +924,7 @@ export default function useSites({
 
           error:
             createdSite
-              ? `현장 일정은 생성되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
+              ? `현장은 생성되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
               : message,
 
           site:
@@ -975,10 +941,6 @@ export default function useSites({
       uploadRequestPhotos,
     ],
   );
-
-  /* =========================================================
-     현장 일정 변경
-  ========================================================= */
 
   const updateSiteSchedule =
     useCallback(
@@ -1021,7 +983,7 @@ export default function useSites({
           };
         }
 
-        let normalizedEnd =
+        const normalizedEnd =
           scheduleEnd || null;
 
         if (normalizedEnd) {
@@ -1055,21 +1017,39 @@ export default function useSites({
         setSitesMessage("");
 
         try {
+          const updateData = {
+            schedule_start:
+              scheduleStart,
+
+            schedule_end:
+              normalizedEnd,
+
+            updated_at:
+              new Date().toISOString(),
+          };
+
+          /*
+           * 상담중 현장에서 실제 일정이 확정되면
+           * 자동으로 시공 예정 상태로 변경합니다.
+           */
+          if (
+            selectedSite?.id ===
+              siteId &&
+            selectedSite?.status ===
+              "consulting"
+          ) {
+            updateData.status =
+              "scheduled";
+          }
+
           const {
             data,
             error,
           } = await supabase
             .from("sites")
-            .update({
-              schedule_start:
-                scheduleStart,
-
-              schedule_end:
-                normalizedEnd,
-
-              updated_at:
-                new Date().toISOString(),
-            })
+            .update(
+              updateData,
+            )
             .eq(
               "id",
               siteId,
@@ -1085,15 +1065,6 @@ export default function useSites({
             throw error;
           }
 
-          /*
-           * sites UPDATE가 성공하면
-           * DB에 설치한 일정 변경 트리거가 실행됩니다.
-           *
-           * 일정이 실제로 변경된 경우에만
-           * 배정 시공자 notifications가 생성되고
-           * 기존 Push 시스템으로 전달됩니다.
-           */
-
           setSites((prev) =>
             prev
               .map(
@@ -1106,13 +1077,7 @@ export default function useSites({
                     : site,
               )
               .sort(
-                (a, b) =>
-                  new Date(
-                    a.schedule_start,
-                  ).getTime() -
-                  new Date(
-                    b.schedule_start,
-                  ).getTime(),
+                sortSitesBySchedule,
               ),
           );
 
@@ -1132,7 +1097,12 @@ export default function useSites({
           }
 
           setSitesMessage(
-            "✅ 시공 일정이 변경되었습니다.",
+            data.status ===
+              "scheduled" &&
+            selectedSite?.status ===
+              "consulting"
+              ? "✅ 일정이 확정되어 시공 예정으로 변경되었습니다."
+              : "✅ 시공 일정이 변경되었습니다.",
           );
 
           return {
@@ -1164,10 +1134,6 @@ export default function useSites({
         selectedSite,
       ],
     );
-
-  /* =========================================================
-     현장 상태 변경
-  ========================================================= */
 
   const updateSiteStatus =
     useCallback(
@@ -1270,10 +1236,6 @@ export default function useSites({
       ],
     );
 
-  /* =========================================================
-     현장 선택
-  ========================================================= */
-
   function openSite(site) {
     setSelectedSite(
       site,
@@ -1286,17 +1248,9 @@ export default function useSites({
     );
   }
 
-  /* =========================================================
-     메시지 초기화
-  ========================================================= */
-
   function clearSitesMessage() {
     setSitesMessage("");
   }
-
-  /* =========================================================
-     반환
-  ========================================================= */
 
   return {
     sites,
@@ -1314,7 +1268,6 @@ export default function useSites({
     saveSiteMaterials,
     uploadRequestPhotos,
 
-    // 현장 상세 요청사진 관리
     addSiteRequestPhotos,
     deleteSiteRequestPhoto,
 
@@ -1323,4 +1276,4 @@ export default function useSites({
 
     clearSitesMessage,
   };
-             }
+}
