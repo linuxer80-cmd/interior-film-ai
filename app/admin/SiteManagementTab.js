@@ -53,9 +53,6 @@ function formatDateTime(
   scheduleStart,
   scheduleDate,
 ) {
-  /*
-   * 날짜와 시간이 모두 확정된 경우
-   */
   if (scheduleStart) {
     const date =
       new Date(scheduleStart);
@@ -79,9 +76,6 @@ function formatDateTime(
     }
   }
 
-  /*
-   * 날짜만 정해지고 시간이 미정인 상담
-   */
   if (scheduleDate) {
     const date =
       new Date(
@@ -154,6 +148,7 @@ export default function SiteManagementTab({
   sitesMessage = "",
 
   createSite,
+  updateSiteBasicInfo,
   updateSiteSchedule,
   updateSiteStatus,
 
@@ -179,36 +174,20 @@ export default function SiteManagementTab({
 
   reloadSites,
 }) {
-  /* =======================================================
-     현장 등록 모달
-  ======================================================= */
-
   const [
     registerOpen,
     setRegisterOpen,
   ] = useState(false);
-
-  /* =======================================================
-     시공자 관리 모달
-  ======================================================= */
 
   const [
     workerManagerOpen,
     setWorkerManagerOpen,
   ] = useState(false);
 
-  /* =======================================================
-     현장 필터
-  ======================================================= */
-
   const [
     filter,
     setFilter,
   ] = useState("active");
-
-  /* =======================================================
-     필터 적용
-  ======================================================= */
 
   const filteredSites =
     useMemo(() => {
@@ -242,10 +221,6 @@ export default function SiteManagementTab({
       filter,
     ]);
 
-  /* =======================================================
-     상태별 개수
-  ======================================================= */
-
   const consultingCount =
     sites.filter(
       (site) =>
@@ -274,10 +249,6 @@ export default function SiteManagementTab({
         "completed",
     ).length;
 
-  /* =======================================================
-     시공자 관리 열기
-  ======================================================= */
-
   async function openWorkerManager() {
     if (
       typeof loadWorkers ===
@@ -291,17 +262,9 @@ export default function SiteManagementTab({
     );
   }
 
-  /* =======================================================
-     화면
-  ======================================================= */
-
   return (
     <>
       <section>
-        {/* =================================================
-            상단
-        ================================================= */}
-
         <div
           style={{
             display: "flex",
@@ -415,10 +378,6 @@ export default function SiteManagementTab({
           </div>
         </div>
 
-        {/* =================================================
-            요약
-        ================================================= */}
-
         <div
           style={{
             display: "grid",
@@ -457,10 +416,6 @@ export default function SiteManagementTab({
             }
           />
         </div>
-
-        {/* =================================================
-            필터
-        ================================================= */}
 
         <div
           style={{
@@ -559,10 +514,6 @@ export default function SiteManagementTab({
           </FilterButton>
         </div>
 
-        {/* =================================================
-            메시지
-        ================================================= */}
-
         {sitesMessage && (
           <div
             style={{
@@ -598,10 +549,6 @@ export default function SiteManagementTab({
           </div>
         )}
 
-        {/* =================================================
-            로딩
-        ================================================= */}
-
         {sitesLoading &&
           sites.length ===
             0 && (
@@ -621,10 +568,6 @@ export default function SiteManagementTab({
               중입니다...
             </div>
           )}
-
-        {/* =================================================
-            현장 없음
-        ================================================= */}
 
         {!sitesLoading &&
           filteredSites.length ===
@@ -684,10 +627,6 @@ export default function SiteManagementTab({
             </div>
           )}
 
-        {/* =================================================
-            현장 목록
-        ================================================= */}
-
         <div
           style={{
             display: "grid",
@@ -714,10 +653,6 @@ export default function SiteManagementTab({
         </div>
       </section>
 
-      {/* ===================================================
-          현장 등록
-      =================================================== */}
-
       <SiteRegisterModal
         open={
           registerOpen
@@ -734,10 +669,6 @@ export default function SiteManagementTab({
           sitesLoading
         }
       />
-
-      {/* ===================================================
-          시공자 관리
-      =================================================== */}
 
       {workerManagerOpen && (
         <WorkerManagerModal
@@ -773,10 +704,6 @@ export default function SiteManagementTab({
         </WorkerManagerModal>
       )}
 
-      {/* ===================================================
-          현장 상세
-      =================================================== */}
-
       {selectedSite && (
         <SiteDetailModal
           companyId={
@@ -789,6 +716,10 @@ export default function SiteManagementTab({
 
           onClose={
             closeSite
+          }
+
+          updateSiteBasicInfo={
+            updateSiteBasicInfo
           }
 
           updateSiteSchedule={
@@ -834,8 +765,7 @@ export default function SiteManagementTab({
       )}
     </>
   );
-}
-
+            }
 /* =========================================================
    요약 카드
 ========================================================= */
@@ -937,6 +867,7 @@ function FilterButton({
     </button>
   );
 }
+
 /* =========================================================
    현장 카드
 ========================================================= */
@@ -997,8 +928,6 @@ function SiteCard({
           "pointer",
       }}
     >
-      {/* 상단 */}
-
       <div
         style={{
           display:
@@ -1068,8 +997,6 @@ function SiteCard({
           {status.label}
         </span>
       </div>
-
-      {/* 현장 정보 */}
 
       <div
         style={{
@@ -1249,4 +1176,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-            }
+}
