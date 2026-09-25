@@ -9,26 +9,6 @@ import {
 import CallContentAiInput from "./site-register/CallContentAiInput";
 
 /* =========================================================
-   오늘 날짜
-========================================================= */
-
-function getTodayString() {
-  const now = new Date();
-
-  const year = now.getFullYear();
-
-  const month = String(
-    now.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    now.getDate(),
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-/* =========================================================
    날짜 + 시간을 ISO로 변환
 ========================================================= */
 
@@ -57,12 +37,19 @@ function makeDateTime(
 
 /* =========================================================
    기본 폼
+
+   중요:
+   날짜 / 시작시간 / 종료시간은
+   기본값을 넣지 않습니다.
+
+   AI가 통화에서 실제 시공일정을 찾았을 때만
+   자동으로 입력합니다.
 ========================================================= */
 
 const initialForm = {
   date: "",
-  start_time: "09:00",
-  end_time: "18:00",
+  start_time: "",
+  end_time: "",
 
   customer_name: "",
   customer_phone: "",
@@ -141,6 +128,8 @@ export default function SiteRegisterModal({
 
   /* =======================================================
      팝업 열릴 때 초기화
+
+     날짜와 시간도 빈칸으로 시작합니다.
   ======================================================= */
 
   useEffect(() => {
@@ -150,7 +139,6 @@ export default function SiteRegisterModal({
 
     setForm({
       ...initialForm,
-      date: getTodayString(),
     });
 
     setMaterials([]);
@@ -243,11 +231,10 @@ export default function SiteRegisterModal({
     ];
 
     /*
-     * AI가 실제로 찾은 값만
-     * 현재 입력폼에 적용합니다.
+     * AI가 실제로 찾은 값만 적용합니다.
      *
-     * AI가 빈값을 반환했다고 해서
-     * 관리자가 이미 입력한 값을
+     * AI 결과가 빈값이면
+     * 관리자가 이미 입력한 내용을
      * 지우지 않습니다.
      */
 
@@ -343,6 +330,26 @@ export default function SiteRegisterModal({
                       item.unit,
                     ).trim()
                   : "m",
+
+              unit_price:
+                item.unit_price !==
+                  null &&
+                item.unit_price !==
+                  undefined
+                  ? String(
+                      item.unit_price,
+                    ).trim()
+                  : "",
+
+              total_price:
+                item.total_price !==
+                  null &&
+                item.total_price !==
+                  undefined
+                  ? String(
+                      item.total_price,
+                    ).trim()
+                  : "",
 
               memo:
                 item.memo
@@ -641,8 +648,14 @@ export default function SiteRegisterModal({
       materials
         .filter(
           (material) =>
-            material.product_code.trim() ||
-            material.product_name.trim(),
+            String(
+              material.product_code ||
+                "",
+            ).trim() ||
+            String(
+              material.product_name ||
+                "",
+            ).trim(),
         )
         .map(
           (material) => ({
@@ -651,13 +664,22 @@ export default function SiteRegisterModal({
               null,
 
             brand:
-              material.brand.trim(),
+              String(
+                material.brand ||
+                  "",
+              ).trim(),
 
             product_code:
-              material.product_code.trim(),
+              String(
+                material.product_code ||
+                  "",
+              ).trim(),
 
             product_name:
-              material.product_name.trim(),
+              String(
+                material.product_name ||
+                  "",
+              ).trim(),
 
             quantity:
               material.quantity,
@@ -673,7 +695,10 @@ export default function SiteRegisterModal({
               material.total_price,
 
             memo:
-              material.memo.trim(),
+              String(
+                material.memo ||
+                  "",
+              ).trim(),
           }),
         );
 
@@ -777,41 +802,29 @@ export default function SiteRegisterModal({
 
   const inputStyle = {
     width: "100%",
-
     boxSizing:
       "border-box",
-
     padding:
       "11px 12px",
-
     border:
       "1px solid #cbd5e1",
-
     borderRadius:
       "9px",
-
     background:
       "#ffffff",
-
     color:
       "#111827",
-
     fontSize:
       "14px",
-
     outline:
       "none",
   };
 
   const labelStyle = {
     display: "block",
-
     marginBottom: "6px",
-
     color: "#334155",
-
     fontSize: "13px",
-
     fontWeight: "700",
   };
 
@@ -821,25 +834,18 @@ export default function SiteRegisterModal({
 
   const sectionStyle = {
     marginBottom: "16px",
-
     padding: "14px",
-
     border:
       "1px solid #e2e8f0",
-
     borderRadius: "12px",
-
     background:
       "#ffffff",
   };
 
   const sectionTitleStyle = {
     marginBottom: "12px",
-
     fontSize: "15px",
-
     fontWeight: "800",
-
     color: "#111827",
   };
 
@@ -856,25 +862,17 @@ export default function SiteRegisterModal({
       }}
       style={{
         position: "fixed",
-
         inset: 0,
-
         zIndex: 1000,
-
         display: "flex",
-
         alignItems:
           "flex-start",
-
         justifyContent:
           "center",
-
         padding:
           "24px 12px",
-
         background:
           "rgba(15, 23, 42, 0.55)",
-
         overflowY: "auto",
       }}
     >
@@ -886,18 +884,13 @@ export default function SiteRegisterModal({
         }
         style={{
           width: "100%",
-
           maxWidth: "620px",
-
           background:
             "#ffffff",
-
           borderRadius:
             "16px",
-
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
-
           overflow:
             "hidden",
         }}
@@ -909,15 +902,11 @@ export default function SiteRegisterModal({
         <div
           style={{
             display: "flex",
-
             alignItems:
               "center",
-
             justifyContent:
               "space-between",
-
             padding: "16px",
-
             borderBottom:
               "1px solid #e5e7eb",
           }}
@@ -927,10 +916,8 @@ export default function SiteRegisterModal({
               style={{
                 fontSize:
                   "18px",
-
                 fontWeight:
                   "800",
-
                 color:
                   "#111827",
               }}
@@ -942,10 +929,8 @@ export default function SiteRegisterModal({
               style={{
                 marginTop:
                   "4px",
-
                 fontSize:
                   "12px",
-
                 color:
                   "#64748b",
               }}
@@ -962,19 +947,14 @@ export default function SiteRegisterModal({
             onClick={onClose}
             style={{
               border: "none",
-
               background:
                 "transparent",
-
               fontSize: "25px",
-
               lineHeight: 1,
-
               cursor:
                 loading
                   ? "default"
                   : "pointer",
-
               color:
                 "#64748b",
             }}
@@ -993,7 +973,6 @@ export default function SiteRegisterModal({
           }
           style={{
             padding: "16px",
-
             background:
               "#f8fafc",
           }}
@@ -1062,10 +1041,8 @@ export default function SiteRegisterModal({
             <div
               style={{
                 display: "grid",
-
                 gridTemplateColumns:
                   "1fr 1fr",
-
                 gap: "8px",
               }}
             >
@@ -1157,10 +1134,8 @@ export default function SiteRegisterModal({
             <div
               style={{
                 display: "grid",
-
                 gridTemplateColumns:
                   "1fr 1fr",
-
                 gap: "8px",
               }}
             >
@@ -1304,10 +1279,8 @@ export default function SiteRegisterModal({
             <div
               style={{
                 display: "grid",
-
                 gridTemplateColumns:
                   "1fr 1fr",
-
                 gap: "8px",
               }}
             >
@@ -1462,7 +1435,6 @@ export default function SiteRegisterModal({
                 rows={3}
                 style={{
                   ...inputStyle,
-
                   resize:
                     "vertical",
                 }}
@@ -1482,15 +1454,11 @@ export default function SiteRegisterModal({
             <div
               style={{
                 display: "flex",
-
                 justifyContent:
                   "space-between",
-
                 alignItems:
                   "center",
-
                 gap: "10px",
-
                 marginBottom:
                   "12px",
               }}
@@ -1498,7 +1466,6 @@ export default function SiteRegisterModal({
               <div
                 style={{
                   ...sectionTitleStyle,
-
                   marginBottom: 0,
                 }}
               >
@@ -1514,25 +1481,18 @@ export default function SiteRegisterModal({
                 style={{
                   border:
                     "1px solid #111827",
-
                   borderRadius:
                     "8px",
-
                   padding:
                     "8px 11px",
-
                   background:
                     "#ffffff",
-
                   color:
                     "#111827",
-
                   fontSize:
                     "12px",
-
                   fontWeight:
                     "800",
-
                   cursor:
                     loading
                       ? "default"
@@ -1548,22 +1508,16 @@ export default function SiteRegisterModal({
               <div
                 style={{
                   padding: "14px",
-
                   border:
                     "1px dashed #cbd5e1",
-
                   borderRadius:
                     "10px",
-
                   background:
                     "#f8fafc",
-
                   color:
                     "#64748b",
-
                   fontSize:
                     "13px",
-
                   textAlign:
                     "center",
                 }}
@@ -1586,16 +1540,12 @@ export default function SiteRegisterModal({
                   style={{
                     marginTop:
                       "10px",
-
                     padding:
                       "12px",
-
                     border:
                       "1px solid #e2e8f0",
-
                     borderRadius:
                       "10px",
-
                     background:
                       "#f8fafc",
                   }}
@@ -1604,13 +1554,10 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "flex",
-
                       alignItems:
                         "center",
-
                       justifyContent:
                         "space-between",
-
                       marginBottom:
                         "10px",
                     }}
@@ -1635,16 +1582,12 @@ export default function SiteRegisterModal({
                       style={{
                         border:
                           "none",
-
                         background:
                           "transparent",
-
                         color:
                           "#dc2626",
-
                         fontWeight:
                           "800",
-
                         cursor:
                           "pointer",
                       }}
@@ -1657,10 +1600,8 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "grid",
-
                       gridTemplateColumns:
                         "1fr 1fr",
-
                       gap: "8px",
                     }}
                   >
@@ -1688,8 +1629,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "brand",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1724,8 +1664,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "product_code",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1776,10 +1715,8 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "grid",
-
                       gridTemplateColumns:
                         "2fr 1fr",
-
                       gap: "8px",
                     }}
                   >
@@ -1810,8 +1747,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "quantity",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1845,8 +1781,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "unit",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1877,10 +1812,8 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "grid",
-
                       gridTemplateColumns:
                         "1fr 1fr",
-
                       gap: "8px",
                     }}
                   >
@@ -1910,8 +1843,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "unit_price",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1948,8 +1880,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "total_price",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -2020,21 +1951,15 @@ export default function SiteRegisterModal({
             <label
               style={{
                 display: "block",
-
                 padding: "16px",
-
                 border:
                   "2px dashed #cbd5e1",
-
                 borderRadius:
                   "10px",
-
                 background:
                   "#f8fafc",
-
                 textAlign:
                   "center",
-
                 cursor:
                   loading
                     ? "default"
@@ -2054,13 +1979,10 @@ export default function SiteRegisterModal({
                 style={{
                   marginTop:
                     "5px",
-
                   color:
                     "#111827",
-
                   fontSize:
                     "14px",
-
                   fontWeight:
                     "800",
                 }}
@@ -2072,10 +1994,8 @@ export default function SiteRegisterModal({
                 style={{
                   marginTop:
                     "4px",
-
                   color:
                     "#64748b",
-
                   fontSize:
                     "12px",
                 }}
@@ -2107,13 +2027,10 @@ export default function SiteRegisterModal({
                   style={{
                     marginTop:
                       "10px",
-
                     color:
                       "#475569",
-
                     fontSize:
                       "12px",
-
                     fontWeight:
                       "700",
                   }}
@@ -2129,12 +2046,9 @@ export default function SiteRegisterModal({
                   style={{
                     display:
                       "grid",
-
                     gridTemplateColumns:
                       "repeat(3, 1fr)",
-
                     gap: "8px",
-
                     marginTop:
                       "8px",
                   }}
@@ -2149,16 +2063,12 @@ export default function SiteRegisterModal({
                         style={{
                           position:
                             "relative",
-
                           aspectRatio:
                             "1 / 1",
-
                           borderRadius:
                             "9px",
-
                           overflow:
                             "hidden",
-
                           background:
                             "#e2e8f0",
                         }}
@@ -2174,10 +2084,8 @@ export default function SiteRegisterModal({
                           style={{
                             width:
                               "100%",
-
                             height:
                               "100%",
-
                             objectFit:
                               "cover",
                           }}
@@ -2193,36 +2101,25 @@ export default function SiteRegisterModal({
                           style={{
                             position:
                               "absolute",
-
                             top: "5px",
-
                             right:
                               "5px",
-
                             width:
                               "28px",
-
                             height:
                               "28px",
-
                             border:
                               "none",
-
                             borderRadius:
                               "50%",
-
                             background:
                               "rgba(0,0,0,0.72)",
-
                             color:
                               "#ffffff",
-
                             fontSize:
                               "16px",
-
                             fontWeight:
                               "800",
-
                             cursor:
                               "pointer",
                           }}
@@ -2257,10 +2154,8 @@ export default function SiteRegisterModal({
             <div
               style={{
                 display: "grid",
-
                 gridTemplateColumns:
                   "1fr 1fr",
-
                 gap: "8px",
               }}
             >
@@ -2424,7 +2319,6 @@ export default function SiteRegisterModal({
               rows={3}
               style={{
                 ...inputStyle,
-
                 resize:
                   "vertical",
               }}
@@ -2440,10 +2334,8 @@ export default function SiteRegisterModal({
               style={{
                 marginBottom:
                   "14px",
-
                 padding:
                   "10px 12px",
-
                 borderRadius:
                   "9px",
 
@@ -2463,10 +2355,8 @@ export default function SiteRegisterModal({
 
                 fontSize:
                   "13px",
-
                 fontWeight:
                   "700",
-
                 whiteSpace:
                   "pre-wrap",
               }}
@@ -2482,10 +2372,8 @@ export default function SiteRegisterModal({
           <div
             style={{
               display: "grid",
-
               gridTemplateColumns:
                 "1fr 2fr",
-
               gap: "8px",
             }}
           >
@@ -2496,21 +2384,15 @@ export default function SiteRegisterModal({
               style={{
                 border:
                   "1px solid #cbd5e1",
-
                 borderRadius:
                   "10px",
-
                 padding: "12px",
-
                 background:
                   "#ffffff",
-
                 color:
                   "#334155",
-
                 fontWeight:
                   "700",
-
                 cursor:
                   loading
                     ? "default"
@@ -2525,23 +2407,17 @@ export default function SiteRegisterModal({
               disabled={loading}
               style={{
                 border: "none",
-
                 borderRadius:
                   "10px",
-
                 padding: "12px",
-
                 background:
                   loading
                     ? "#94a3b8"
                     : "#111827",
-
                 color:
                   "#ffffff",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   loading
                     ? "default"
@@ -2557,4 +2433,4 @@ export default function SiteRegisterModal({
       </div>
     </div>
   );
-                  }
+}
