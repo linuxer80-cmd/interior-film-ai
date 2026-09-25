@@ -7,6 +7,84 @@ import {
 } from "./siteDetailUtils";
 
 /* =========================================================
+   날짜만 있는 상담 일정 표시
+========================================================= */
+
+function formatScheduleDateOnly(value) {
+  if (!value) {
+    return "미정";
+  }
+
+  const date = new Date(
+    `${value}T00:00:00`,
+  );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "미정";
+  }
+
+  const dateText =
+    new Intl.DateTimeFormat(
+      "ko-KR",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+      },
+    ).format(date);
+
+  return `${dateText} · 시간 미정`;
+}
+
+/* =========================================================
+   현재 일정 표시값
+========================================================= */
+
+function getScheduleText(site) {
+  if (!site) {
+    return "미정";
+  }
+
+  /*
+   * 시작 일시가 확정된 현장
+   */
+  if (site.schedule_start) {
+    if (site.schedule_end) {
+      return `${formatDateTime(
+        site.schedule_start,
+      )}\n~ ${formatDateTime(
+        site.schedule_end,
+      )}`;
+    }
+
+    return (
+      formatDateTime(
+        site.schedule_start,
+      ) || "미정"
+    );
+  }
+
+  /*
+   * 날짜만 정해진 상담중 현장
+   */
+  if (site.schedule_date) {
+    return formatScheduleDateOnly(
+      site.schedule_date,
+    );
+  }
+
+  /*
+   * 날짜 / 시간 모두 미정
+   */
+  return "미정";
+}
+
+/* =========================================================
    현장 일정 표시 / 수정
 ========================================================= */
 
@@ -16,20 +94,30 @@ export default function SiteScheduleEditor({
   updateSiteSchedule,
   reloadSites,
 }) {
-  const [scheduleEditOpen, setScheduleEditOpen] =
-    useState(false);
+  const [
+    scheduleEditOpen,
+    setScheduleEditOpen,
+  ] = useState(false);
 
-  const [scheduleStart, setScheduleStart] =
-    useState("");
+  const [
+    scheduleStart,
+    setScheduleStart,
+  ] = useState("");
 
-  const [scheduleEnd, setScheduleEnd] =
-    useState("");
+  const [
+    scheduleEnd,
+    setScheduleEnd,
+  ] = useState("");
 
-  const [scheduleSaving, setScheduleSaving] =
-    useState(false);
+  const [
+    scheduleSaving,
+    setScheduleSaving,
+  ] = useState(false);
 
-  const [scheduleMessage, setScheduleMessage] =
-    useState("");
+  const [
+    scheduleMessage,
+    setScheduleMessage,
+  ] = useState("");
 
   /* =======================================================
      현장 변경 시 상태 초기화
@@ -143,6 +231,7 @@ export default function SiteScheduleEditor({
       setScheduleMessage(
         "❌ 일정 변경 기능을 사용할 수 없습니다.",
       );
+
       return;
     }
 
@@ -150,6 +239,7 @@ export default function SiteScheduleEditor({
       setScheduleMessage(
         "❌ 현장 정보를 확인할 수 없습니다.",
       );
+
       return;
     }
 
@@ -157,6 +247,7 @@ export default function SiteScheduleEditor({
       setScheduleMessage(
         "❌ 시작 일시를 입력해주세요.",
       );
+
       return;
     }
 
@@ -171,6 +262,7 @@ export default function SiteScheduleEditor({
       setScheduleMessage(
         "❌ 시작 일시가 올바르지 않습니다.",
       );
+
       return;
     }
 
@@ -188,6 +280,7 @@ export default function SiteScheduleEditor({
         setScheduleMessage(
           "❌ 종료 일시가 올바르지 않습니다.",
         );
+
         return;
       }
 
@@ -198,6 +291,7 @@ export default function SiteScheduleEditor({
         setScheduleMessage(
           "❌ 종료 일시는 시작 일시보다 빠를 수 없습니다.",
         );
+
         return;
       }
     }
@@ -234,11 +328,20 @@ export default function SiteScheduleEditor({
             "일정을 변경하지 못했습니다."
           }`,
         );
+
         return;
       }
 
+      /*
+       * 상담중 현장에서 일정을 확정하면
+       * useSites.js가 scheduled로 자동 변경합니다.
+       */
+
       setScheduleMessage(
-        "✅ 시공 일정이 변경되었습니다.",
+        site.status ===
+          "consulting"
+          ? "✅ 일정이 확정되어 시공 예정으로 변경되었습니다."
+          : "✅ 시공 일정이 변경되었습니다.",
       );
 
       setScheduleEditOpen(false);
@@ -276,15 +379,7 @@ export default function SiteScheduleEditor({
   ======================================================= */
 
   const scheduleText =
-    site?.schedule_end
-      ? `${formatDateTime(
-          site?.schedule_start,
-        )}\n~ ${formatDateTime(
-          site?.schedule_end,
-        )}`
-      : formatDateTime(
-          site?.schedule_start,
-        );
+    getScheduleText(site);
 
   if (!site) {
     return null;
@@ -306,6 +401,38 @@ export default function SiteScheduleEditor({
       />
 
       {/* =========================
+          일정 상태 안내
+      ========================= */}
+
+      {site.status ===
+        "consulting" &&
+        !reportOpen && (
+          <div
+            style={{
+              marginTop: "8px",
+
+              padding: "10px",
+
+              borderRadius: "9px",
+
+              background: "#fff7ed",
+
+              color: "#9a3412",
+
+              fontSize: "11px",
+
+              fontWeight: "700",
+
+              lineHeight: "1.5",
+            }}
+          >
+            {site.schedule_date
+              ? "시공 날짜는 등록되어 있지만 시간이 아직 미정입니다."
+              : "시공 일정이 아직 미정인 상담중 현장입니다."}
+          </div>
+        )}
+
+      {/* =========================
           일정 변경
 
           완료보고 작성 중이거나
@@ -313,10 +440,12 @@ export default function SiteScheduleEditor({
       ========================= */}
 
       {!reportOpen &&
-        site.status !== "completed" && (
+        site.status !==
+          "completed" && (
           <div
             style={{
-              padding: "10px 0 12px",
+              padding:
+                "10px 0 12px",
 
               borderBottom:
                 "1px solid #f1f5f9",
@@ -341,7 +470,8 @@ export default function SiteScheduleEditor({
                   border:
                     "1px solid #bfdbfe",
 
-                  borderRadius: "9px",
+                  borderRadius:
+                    "9px",
 
                   padding: "10px",
 
@@ -350,9 +480,11 @@ export default function SiteScheduleEditor({
 
                   color: "#1d4ed8",
 
-                  fontSize: "12px",
+                  fontSize:
+                    "12px",
 
-                  fontWeight: "900",
+                  fontWeight:
+                    "900",
 
                   cursor:
                     scheduleSaving
@@ -365,7 +497,10 @@ export default function SiteScheduleEditor({
                       : 1,
                 }}
               >
-                📅 일정 변경
+                📅{" "}
+                {site.schedule_start
+                  ? "일정 변경"
+                  : "일정 확정"}
               </button>
             ) : (
               /* =====================
@@ -388,30 +523,41 @@ export default function SiteScheduleEditor({
               >
                 <div
                   style={{
-                    fontSize: "13px",
+                    fontSize:
+                      "13px",
 
-                    fontWeight: "900",
+                    fontWeight:
+                      "900",
 
-                    color: "#1e3a8a",
+                    color:
+                      "#1e3a8a",
                   }}
                 >
-                  📅 시공 일정 변경
+                  📅{" "}
+                  {site.schedule_start
+                    ? "시공 일정 변경"
+                    : "시공 일정 확정"}
                 </div>
 
                 <div
                   style={{
-                    marginTop: "5px",
+                    marginTop:
+                      "5px",
 
-                    fontSize: "11px",
+                    fontSize:
+                      "11px",
 
-                    lineHeight: "1.5",
+                    lineHeight:
+                      "1.5",
 
-                    color: "#64748b",
+                    color:
+                      "#64748b",
                   }}
                 >
-                  저장하면 배정된
-                  시공자에게 변경된 일정이
-                  알림으로 전달됩니다.
+                  {site.status ===
+                  "consulting"
+                    ? "시작 일시를 저장하면 상담중에서 시공 예정으로 자동 변경됩니다."
+                    : "저장하면 변경된 시공 일정이 적용됩니다."}
                 </div>
 
                 {/* =====================
@@ -420,20 +566,26 @@ export default function SiteScheduleEditor({
 
                 <label
                   style={{
-                    display: "block",
+                    display:
+                      "block",
 
-                    marginTop: "12px",
+                    marginTop:
+                      "12px",
                   }}
                 >
                   <div
                     style={{
-                      marginBottom: "5px",
+                      marginBottom:
+                        "5px",
 
-                      fontSize: "12px",
+                      fontSize:
+                        "12px",
 
-                      fontWeight: "800",
+                      fontWeight:
+                        "800",
 
-                      color: "#334155",
+                      color:
+                        "#334155",
                     }}
                   >
                     시작 일시
@@ -441,22 +593,29 @@ export default function SiteScheduleEditor({
 
                   <input
                     type="datetime-local"
-                    value={scheduleStart}
-                    onChange={(event) =>
+                    value={
+                      scheduleStart
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setScheduleStart(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                     disabled={
                       scheduleSaving
                     }
                     style={{
-                      width: "100%",
+                      width:
+                        "100%",
 
                       boxSizing:
                         "border-box",
 
-                      padding: "10px",
+                      padding:
+                        "10px",
 
                       border:
                         "1px solid #cbd5e1",
@@ -467,33 +626,87 @@ export default function SiteScheduleEditor({
                       background:
                         "#ffffff",
 
-                      color: "#111827",
+                      color:
+                        "#111827",
 
-                      fontSize: "14px",
+                      fontSize:
+                        "14px",
                     }}
                   />
                 </label>
 
                 {/* =====================
+                    날짜만 등록된 상담 안내
+                ===================== */}
+
+                {site.schedule_date &&
+                  !site.schedule_start && (
+                    <div
+                      style={{
+                        marginTop:
+                          "7px",
+
+                        padding:
+                          "8px 9px",
+
+                        borderRadius:
+                          "8px",
+
+                        background:
+                          "#fefce8",
+
+                        color:
+                          "#854d0e",
+
+                        fontSize:
+                          "11px",
+
+                        lineHeight:
+                          "1.5",
+                      }}
+                    >
+                      현재 상담에서 확인된
+                      날짜:{" "}
+                      <strong>
+                        {formatScheduleDateOnly(
+                          site.schedule_date,
+                        ).replace(
+                          " · 시간 미정",
+                          "",
+                        )}
+                      </strong>
+                      <br />
+                      시간을 선택해 일정을
+                      확정해주세요.
+                    </div>
+                  )}
+
+                {/* =====================
                     종료 일시
                 ===================== */}
 
                 <label
                   style={{
-                    display: "block",
+                    display:
+                      "block",
 
-                    marginTop: "10px",
+                    marginTop:
+                      "10px",
                   }}
                 >
                   <div
                     style={{
-                      marginBottom: "5px",
+                      marginBottom:
+                        "5px",
 
-                      fontSize: "12px",
+                      fontSize:
+                        "12px",
 
-                      fontWeight: "800",
+                      fontWeight:
+                        "800",
 
-                      color: "#334155",
+                      color:
+                        "#334155",
                     }}
                   >
                     종료 일시
@@ -501,22 +714,29 @@ export default function SiteScheduleEditor({
 
                   <input
                     type="datetime-local"
-                    value={scheduleEnd}
-                    onChange={(event) =>
+                    value={
+                      scheduleEnd
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setScheduleEnd(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                     disabled={
                       scheduleSaving
                     }
                     style={{
-                      width: "100%",
+                      width:
+                        "100%",
 
                       boxSizing:
                         "border-box",
 
-                      padding: "10px",
+                      padding:
+                        "10px",
 
                       border:
                         "1px solid #cbd5e1",
@@ -527,9 +747,11 @@ export default function SiteScheduleEditor({
                       background:
                         "#ffffff",
 
-                      color: "#111827",
+                      color:
+                        "#111827",
 
-                      fontSize: "14px",
+                      fontSize:
+                        "14px",
                     }}
                   />
                 </label>
@@ -540,14 +762,16 @@ export default function SiteScheduleEditor({
 
                 <div
                   style={{
-                    display: "grid",
+                    display:
+                      "grid",
 
                     gridTemplateColumns:
                       "1fr 1fr",
 
                     gap: "7px",
 
-                    marginTop: "12px",
+                    marginTop:
+                      "12px",
                   }}
                 >
                   <button
@@ -565,16 +789,20 @@ export default function SiteScheduleEditor({
                       borderRadius:
                         "9px",
 
-                      padding: "10px",
+                      padding:
+                        "10px",
 
                       background:
                         "#ffffff",
 
-                      color: "#475569",
+                      color:
+                        "#475569",
 
-                      fontSize: "12px",
+                      fontSize:
+                        "12px",
 
-                      fontWeight: "800",
+                      fontWeight:
+                        "800",
 
                       cursor:
                         scheduleSaving
@@ -599,21 +827,26 @@ export default function SiteScheduleEditor({
                       scheduleSaving
                     }
                     style={{
-                      border: "none",
+                      border:
+                        "none",
 
                       borderRadius:
                         "9px",
 
-                      padding: "10px",
+                      padding:
+                        "10px",
 
                       background:
                         "#2563eb",
 
-                      color: "#ffffff",
+                      color:
+                        "#ffffff",
 
-                      fontSize: "12px",
+                      fontSize:
+                        "12px",
 
-                      fontWeight: "900",
+                      fontWeight:
+                        "900",
 
                       cursor:
                         scheduleSaving
@@ -628,7 +861,10 @@ export default function SiteScheduleEditor({
                   >
                     {scheduleSaving
                       ? "저장 중..."
-                      : "일정 저장"}
+                      : site.status ===
+                          "consulting"
+                        ? "일정 확정"
+                        : "일정 저장"}
                   </button>
                 </div>
               </div>
@@ -641,11 +877,14 @@ export default function SiteScheduleEditor({
             {scheduleMessage && (
               <div
                 style={{
-                  marginTop: "8px",
+                  marginTop:
+                    "8px",
 
-                  padding: "9px 10px",
+                  padding:
+                    "9px 10px",
 
-                  borderRadius: "8px",
+                  borderRadius:
+                    "8px",
 
                   background:
                     scheduleMessage.startsWith(
@@ -661,9 +900,11 @@ export default function SiteScheduleEditor({
                       ? "#166534"
                       : "#b91c1c",
 
-                  fontSize: "11px",
+                  fontSize:
+                    "11px",
 
-                  fontWeight: "800",
+                  fontWeight:
+                    "800",
 
                   whiteSpace:
                     "pre-wrap",
@@ -723,13 +964,15 @@ function DetailRow({
 
           fontWeight: "600",
 
-          whiteSpace: "pre-wrap",
+          whiteSpace:
+            "pre-wrap",
 
-          wordBreak: "break-word",
+          wordBreak:
+            "break-word",
         }}
       >
-        {value}
+        {value || "미정"}
       </div>
     </div>
   );
-          }
+    }
