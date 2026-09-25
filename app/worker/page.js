@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  useRouter,
-  useSearchParams,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
 import {
@@ -14,8 +11,6 @@ import {
 
 export default function WorkerPage() {
   const router = useRouter();
-  const searchParams =
-    useSearchParams();
 
   const [loading, setLoading] =
     useState(true);
@@ -63,20 +58,30 @@ export default function WorkerPage() {
      /worker?site=현장ID
      → /worker/site/현장ID
 
-     기존 현장카드 클릭 동작과 동일하게 처리
+     useSearchParams를 사용하지 않음.
+     Next.js prerender/Suspense 오류 방지.
+
+     기존 현장카드 클릭 동작과 동일하게 처리.
   ========================================================= */
 
   useEffect(() => {
     if (
       loading ||
       !worker ||
-      sitesLoading
+      sitesLoading ||
+      typeof window ===
+        "undefined"
     ) {
       return;
     }
 
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
     const siteId =
-      searchParams.get(
+      params.get(
         "site",
       );
 
@@ -111,7 +116,6 @@ export default function WorkerPage() {
     worker,
     sitesLoading,
     sites,
-    searchParams,
     router,
   ]);
 
@@ -1836,4 +1840,4 @@ function InfoRow({
       </div>
     </div>
   );
-        }
+}
