@@ -14,6 +14,12 @@ import WorkerManagement from "./WorkerManagement";
 ========================================================= */
 
 const STATUS_INFO = {
+  consulting: {
+    label: "상담중",
+    background: "#fff7ed",
+    color: "#c2410c",
+  },
+
   scheduled: {
     label: "시공 예정",
     background: "#eff6ff",
@@ -22,8 +28,8 @@ const STATUS_INFO = {
 
   in_progress: {
     label: "시공 중",
-    background: "#fff7ed",
-    color: "#c2410c",
+    background: "#fef3c7",
+    color: "#b45309",
   },
 
   completed: {
@@ -40,36 +46,68 @@ const STATUS_INFO = {
 };
 
 /* =========================================================
-   날짜 표시
+   날짜 + 시간 표시
 ========================================================= */
 
-function formatDateTime(value) {
-  if (!value) {
-    return "-";
+function formatDateTime(
+  scheduleStart,
+  scheduleDate,
+) {
+  /*
+   * 날짜와 시간이 모두 확정된 경우
+   */
+  if (scheduleStart) {
+    const date =
+      new Date(scheduleStart);
+
+    if (
+      !Number.isNaN(
+        date.getTime(),
+      )
+    ) {
+      return new Intl.DateTimeFormat(
+        "ko-KR",
+        {
+          month: "long",
+          day: "numeric",
+          weekday: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        },
+      ).format(date);
+    }
   }
 
-  const date =
-    new Date(value);
+  /*
+   * 날짜만 정해지고 시간이 미정인 상담
+   */
+  if (scheduleDate) {
+    const date =
+      new Date(
+        `${scheduleDate}T00:00:00`,
+      );
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return "-";
+    if (
+      !Number.isNaN(
+        date.getTime(),
+      )
+    ) {
+      const dateText =
+        new Intl.DateTimeFormat(
+          "ko-KR",
+          {
+            month: "long",
+            day: "numeric",
+            weekday: "short",
+          },
+        ).format(date);
+
+      return `${dateText} · 시간 미정`;
+    }
   }
 
-  return new Intl.DateTimeFormat(
-    "ko-KR",
-    {
-      month: "long",
-      day: "numeric",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    },
-  ).format(date);
+  return "미정";
 }
 
 /* =========================================================
@@ -186,6 +224,8 @@ export default function SiteManagementTab({
         return sites.filter(
           (site) =>
             site.status ===
+              "consulting" ||
+            site.status ===
               "scheduled" ||
             site.status ===
               "in_progress",
@@ -205,6 +245,13 @@ export default function SiteManagementTab({
   /* =======================================================
      상태별 개수
   ======================================================= */
+
+  const consultingCount =
+    sites.filter(
+      (site) =>
+        site.status ===
+        "consulting",
+    ).length;
 
   const scheduledCount =
     sites.filter(
@@ -291,8 +338,8 @@ export default function SiteManagementTab({
                   "#64748b",
               }}
             >
-              시공 일정과 담당자를
-              관리합니다.
+              상담중 현장부터 시공
+              완료까지 관리합니다.
             </div>
           </div>
 
@@ -334,7 +381,7 @@ export default function SiteManagementTab({
                   "nowrap",
               }}
             >
-              + 일정 추가
+              + 현장 추가
             </button>
 
             <button
@@ -376,12 +423,19 @@ export default function SiteManagementTab({
           style={{
             display: "grid",
             gridTemplateColumns:
-              "repeat(3, 1fr)",
-            gap: "8px",
+              "repeat(4, minmax(0, 1fr))",
+            gap: "6px",
             marginBottom:
               "14px",
           }}
         >
+          <SummaryCard
+            label="상담중"
+            value={
+              consultingCount
+            }
+          />
+
           <SummaryCard
             label="시공 예정"
             value={
@@ -432,6 +486,20 @@ export default function SiteManagementTab({
             }
           >
             진행 현장
+          </FilterButton>
+
+          <FilterButton
+            active={
+              filter ===
+              "consulting"
+            }
+            onClick={() =>
+              setFilter(
+                "consulting",
+              )
+            }
+          >
+            상담중
           </FilterButton>
 
           <FilterButton
@@ -608,8 +676,10 @@ export default function SiteManagementTab({
                     "#64748b",
                 }}
               >
-                + 일정 추가에서 첫
-                현장을 등록해주세요.
+                + 현장 추가에서
+                상담중 현장이나
+                시공 일정을
+                등록해주세요.
               </div>
             </div>
           )}
@@ -777,8 +847,9 @@ function SummaryCard({
   return (
     <div
       style={{
+        minWidth: 0,
         padding:
-          "12px 8px",
+          "12px 4px",
         border:
           "1px solid #e2e8f0",
         borderRadius:
@@ -792,9 +863,11 @@ function SummaryCard({
       <div
         style={{
           fontSize:
-            "12px",
+            "11px",
           color:
             "#64748b",
+          whiteSpace:
+            "nowrap",
         }}
       >
         {label}
@@ -864,7 +937,6 @@ function FilterButton({
     </button>
   );
 }
-
 /* =========================================================
    현장 카드
 ========================================================= */
@@ -877,13 +949,30 @@ function SiteCard({
     STATUS_INFO[
       site.status
     ] ||
-    STATUS_INFO.scheduled;
+    STATUS_INFO.consulting;
 
   const leader =
     getLeader(site);
 
   const members =
     getMembers(site);
+
+  const siteTitle =
+    site.site_name ||
+    site.customer_name ||
+    "현장명 미정";
+
+  const customerName =
+    site.customer_name ||
+    "미정";
+
+  const address =
+    site.address ||
+    "미정";
+
+  const workType =
+    site.work_type ||
+    "미정";
 
   return (
     <button
@@ -940,28 +1029,22 @@ function SiteCard({
                 "break-word",
             }}
           >
-            {site.site_name ||
-              site.customer_name ||
-              "현장"}
+            {siteTitle}
           </div>
 
-          {site.customer_name && (
-            <div
-              style={{
-                marginTop:
-                  "3px",
-                fontSize:
-                  "12px",
-                color:
-                  "#64748b",
-              }}
-            >
-              고객{" "}
-              {
-                site.customer_name
-              }
-            </div>
-          )}
+          <div
+            style={{
+              marginTop:
+                "3px",
+              fontSize:
+                "12px",
+              color:
+                "#64748b",
+            }}
+          >
+            고객{" "}
+            {customerName}
+          </div>
         </div>
 
         <span
@@ -1006,25 +1089,23 @@ function SiteCard({
           📅{" "}
           {formatDateTime(
             site.schedule_start,
+            site.schedule_date,
           )}
         </div>
 
         <div>
           📍{" "}
-          {site.address ||
-            "주소 미입력"}
+          {address}
 
           {site.address_detail
             ? ` ${site.address_detail}`
             : ""}
         </div>
 
-        {site.work_type && (
-          <div>
-            🛠️{" "}
-            {site.work_type}
-          </div>
-        )}
+        <div>
+          🛠️{" "}
+          {workType}
+        </div>
 
         <div>
           ★ 팀장{" "}
@@ -1051,7 +1132,8 @@ function SiteCard({
               )
               .join(
                 ", ",
-              )}
+              ) ||
+              "미배정"}
           </div>
         )}
       </div>
@@ -1167,4 +1249,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-}
+            }
