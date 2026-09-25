@@ -100,6 +100,20 @@ export default function SiteStatusControl({
             <StatusButton
               active={
                 site.status ===
+                "consulting"
+              }
+              onClick={() =>
+                changeStatus(
+                  "consulting",
+                )
+              }
+            >
+              상담중
+            </StatusButton>
+
+            <StatusButton
+              active={
+                site.status ===
                 "scheduled"
               }
               onClick={() =>
@@ -139,6 +153,38 @@ export default function SiteStatusControl({
               취소
             </StatusButton>
           </div>
+
+          {/* =====================
+              상담중 안내
+          ===================== */}
+
+          {site.status ===
+            "consulting" && (
+            <div
+              style={{
+                marginTop: "8px",
+
+                padding: "10px",
+
+                borderRadius: "9px",
+
+                background: "#fff7ed",
+
+                color: "#9a3412",
+
+                fontSize: "11px",
+
+                fontWeight: "700",
+
+                lineHeight: "1.5",
+              }}
+            >
+              상담중 현장입니다. 일정이
+              확정되면 위의 일정 변경에서
+              시작 일시를 저장하면 시공
+              예정으로 자동 변경됩니다.
+            </div>
+          )}
 
           {/* =====================
               완료 안내
@@ -242,4 +288,4 @@ function StatusButton({
       {children}
     </button>
   );
-        }
+                 }
