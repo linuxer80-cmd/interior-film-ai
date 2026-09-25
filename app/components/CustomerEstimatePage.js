@@ -69,6 +69,261 @@ function getProgress(screen) {
   return null;
 }
 
+function normalizeDoorSetText(value) {
+  return String(value || "")
+    .replace(/[\s·/+\-_.]/g, "")
+    .toLowerCase();
+}
+
+function isDoorSetGroup(group) {
+  const values = [
+    group?.category,
+    group?.subCategory,
+    group?.sub_category,
+    group?.key,
+    group?.name,
+    group?.label,
+  ];
+
+  return values.some((value) => {
+    const normalized = normalizeDoorSetText(value);
+
+    return (
+      normalized === "문문틀" ||
+      normalized.includes("문문틀")
+    );
+  });
+}
+
+function clampDoorQuantity(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 1;
+  }
+
+  return Math.min(
+    50,
+    Math.max(
+      1,
+      Math.floor(number)
+    )
+  );
+}
+
+function DoorQuantitySelector({
+  quantity,
+  onChange,
+}) {
+  function changeQuantity(nextValue) {
+    onChange?.(
+      clampDoorQuantity(nextValue)
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginBottom: "18px",
+        padding: "16px",
+        border: "1px solid #e3e7ec",
+        borderRadius: "14px",
+        background: "#ffffff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              color: "#20262e",
+              fontSize: "14px",
+              fontWeight: "900",
+            }}
+          >
+            동일한 문·문틀 수량
+          </div>
+
+          <div
+            style={{
+              marginTop: "4px",
+              color: "#8b95a1",
+              fontSize: "10px",
+              lineHeight: 1.5,
+            }}
+          >
+            사진과 같은 문·문틀 세트가 여러 개라면
+            수량을 조정해주세요.
+          </div>
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "5px 8px",
+            borderRadius: "999px",
+            background: "#eef4ff",
+            color: "#246bfd",
+            fontSize: "10px",
+            fontWeight: "900",
+          }}
+        >
+          세트 기준
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: "14px",
+          display: "grid",
+          gridTemplateColumns: "52px 1fr 52px",
+          alignItems: "center",
+          gap: "8px",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="문·문틀 수량 줄이기"
+          disabled={quantity <= 1}
+          onClick={() =>
+            changeQuantity(
+              quantity - 1
+            )
+          }
+          style={{
+            height: "46px",
+            border: "1px solid #dfe3e8",
+            borderRadius: "11px",
+            background:
+              quantity <= 1
+                ? "#f5f6f8"
+                : "#ffffff",
+            color:
+              quantity <= 1
+                ? "#b5bcc5"
+                : "#303842",
+            fontSize: "24px",
+            lineHeight: 1,
+            fontWeight: "500",
+            cursor:
+              quantity <= 1
+                ? "default"
+                : "pointer",
+          }}
+        >
+          −
+        </button>
+
+        <div
+          style={{
+            height: "46px",
+            padding: "0 8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "5px",
+            borderRadius: "11px",
+            background: "#f6f8fb",
+          }}
+        >
+          <input
+            type="number"
+            min="1"
+            max="50"
+            inputMode="numeric"
+            value={quantity}
+            onChange={(event) =>
+              changeQuantity(
+                event.target.value
+              )
+            }
+            style={{
+              width: "54px",
+              padding: 0,
+              border: 0,
+              outline: "none",
+              background: "transparent",
+              color: "#171b21",
+              fontSize: "20px",
+              fontWeight: "900",
+              textAlign: "right",
+            }}
+          />
+
+          <span
+            style={{
+              color: "#59636f",
+              fontSize: "13px",
+              fontWeight: "800",
+            }}
+          >
+            세트
+          </span>
+        </div>
+
+        <button
+          type="button"
+          aria-label="문·문틀 수량 늘리기"
+          disabled={quantity >= 50}
+          onClick={() =>
+            changeQuantity(
+              quantity + 1
+            )
+          }
+          style={{
+            height: "46px",
+            border: "1px solid #dfe3e8",
+            borderRadius: "11px",
+            background:
+              quantity >= 50
+                ? "#f5f6f8"
+                : "#ffffff",
+            color:
+              quantity >= 50
+                ? "#b5bcc5"
+                : "#303842",
+            fontSize: "24px",
+            lineHeight: 1,
+            fontWeight: "500",
+            cursor:
+              quantity >= 50
+                ? "default"
+                : "pointer",
+          }}
+        >
+          +
+        </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: "10px",
+          color: "#6b7684",
+          fontSize: "10px",
+          lineHeight: 1.55,
+        }}
+      >
+        문짝과 문틀을 따로 계산하지 않고 기존 DB의
+        <strong
+          style={{
+            margin: "0 3px",
+            color: "#46515d",
+          }}
+        >
+          문·문틀 1세트 가격
+        </strong>
+        에 수량을 반영합니다.
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerEstimatePage({
   companySlug = null,
   fallbackCompanyName = "기분좋은공간",
@@ -208,6 +463,7 @@ export default function CustomerEstimatePage({
   const [fireType, setFireType] = useState("non_fire");
   const [useSplitTone, setUseSplitTone] = useState(false);
   const [areaFilms, setAreaFilms] = useState({});
+  const [doorQuantity, setDoorQuantity] = useState(1);
 
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -335,65 +591,249 @@ export default function CustomerEstimatePage({
     }
   }
 
+  const hasDoorSetGroup = groups.some(
+    (group) =>
+      isDoorSetGroup(group)
+  );
+
+  useEffect(() => {
+    if (
+      !hasDoorSetGroup &&
+      doorQuantity !== 1
+    ) {
+      setDoorQuantity(1);
+    }
+  }, [
+    hasDoorSetGroup,
+    doorQuantity,
+  ]);
+
+  function getFilmAdjustedGroupEstimate(group) {
+    if (!group?.estimate) {
+      return null;
+    }
+
+    if (!selectedFilm) {
+      return {
+        min: group.estimate.min,
+        max: group.estimate.max,
+        average: group.estimate.average,
+      };
+    }
+
+    return {
+      min: adjustEstimateByFilm(
+        group.estimate.min,
+        selectedFilm,
+        fireType
+      ),
+
+      max: adjustEstimateByFilm(
+        group.estimate.max,
+        selectedFilm,
+        fireType
+      ),
+
+      average: adjustEstimateByFilm(
+        group.estimate.average,
+        selectedFilm,
+        fireType
+      ),
+    };
+  }
+
   const displayGroups = groups.map((group) => {
-    if (!group.estimate || !selectedFilm) {
+    if (!group.estimate) {
       return group;
     }
+
+    const adjusted =
+      getFilmAdjustedGroupEstimate(group);
+
+    const quantity =
+      isDoorSetGroup(group)
+        ? doorQuantity
+        : 1;
 
     return {
       ...group,
 
+      quantity,
+
       estimate: {
         ...group.estimate,
 
-        min: adjustEstimateByFilm(
-          group.estimate.min,
-          selectedFilm,
-          fireType
-        ),
+        min:
+          Number(
+            adjusted?.min || 0
+          ) * quantity,
 
-        max: adjustEstimateByFilm(
-          group.estimate.max,
-          selectedFilm,
-          fireType
-        ),
+        max:
+          Number(
+            adjusted?.max || 0
+          ) * quantity,
 
-        average: adjustEstimateByFilm(
-          group.estimate.average,
-          selectedFilm,
-          fireType
-        ),
+        average:
+          Number(
+            adjusted?.average || 0
+          ) * quantity,
       },
     };
   });
+
+  const doorBaseExtra = groups.reduce(
+    (sum, group) => {
+      if (
+        !group?.estimate ||
+        !isDoorSetGroup(group) ||
+        doorQuantity <= 1
+      ) {
+        return sum;
+      }
+
+      const extraCount =
+        doorQuantity - 1;
+
+      return {
+        min:
+          sum.min +
+          Number(
+            group.estimate.min || 0
+          ) *
+            extraCount,
+
+        max:
+          sum.max +
+          Number(
+            group.estimate.max || 0
+          ) *
+            extraCount,
+
+        average:
+          sum.average +
+          Number(
+            group.estimate.average || 0
+          ) *
+            extraCount,
+      };
+    },
+    {
+      min: 0,
+      max: 0,
+      average: 0,
+    }
+  );
+
+  const doorDisplayExtra = groups.reduce(
+    (sum, group) => {
+      if (
+        !group?.estimate ||
+        !isDoorSetGroup(group) ||
+        doorQuantity <= 1
+      ) {
+        return sum;
+      }
+
+      const adjusted =
+        getFilmAdjustedGroupEstimate(group);
+
+      const extraCount =
+        doorQuantity - 1;
+
+      return {
+        min:
+          sum.min +
+          Number(
+            adjusted?.min || 0
+          ) *
+            extraCount,
+
+        max:
+          sum.max +
+          Number(
+            adjusted?.max || 0
+          ) *
+            extraCount,
+
+        average:
+          sum.average +
+          Number(
+            adjusted?.average || 0
+          ) *
+            extraCount,
+      };
+    },
+    {
+      min: 0,
+      max: 0,
+      average: 0,
+    }
+  );
+
+  const quantityAdjustedBaseEstimate =
+    totalEstimate
+      ? {
+          ...totalEstimate,
+
+          min:
+            Number(
+              totalEstimate.min || 0
+            ) +
+            doorBaseExtra.min,
+
+          max:
+            Number(
+              totalEstimate.max || 0
+            ) +
+            doorBaseExtra.max,
+
+          average:
+            Number(
+              totalEstimate.average || 0
+            ) +
+            doorBaseExtra.average,
+        }
+      : null;
 
   const displayTotalEstimate = totalEstimate
     ? {
         ...totalEstimate,
 
-        min: selectedFilm
-          ? adjustEstimateByFilm(
-              totalEstimate.min,
-              selectedFilm,
-              fireType
-            )
-          : totalEstimate.min,
+        min:
+          (selectedFilm
+            ? adjustEstimateByFilm(
+                totalEstimate.min,
+                selectedFilm,
+                fireType
+              )
+            : Number(
+                totalEstimate.min || 0
+              )) +
+          doorDisplayExtra.min,
 
-        max: selectedFilm
-          ? adjustEstimateByFilm(
-              totalEstimate.max,
-              selectedFilm,
-              fireType
-            )
-          : totalEstimate.max,
+        max:
+          (selectedFilm
+            ? adjustEstimateByFilm(
+                totalEstimate.max,
+                selectedFilm,
+                fireType
+              )
+            : Number(
+                totalEstimate.max || 0
+              )) +
+          doorDisplayExtra.max,
 
-        average: selectedFilm
-          ? adjustEstimateByFilm(
-              totalEstimate.average,
-              selectedFilm,
-              fireType
-            )
-          : totalEstimate.average,
+        average:
+          (selectedFilm
+            ? adjustEstimateByFilm(
+                totalEstimate.average,
+                selectedFilm,
+                fireType
+              )
+            : Number(
+                totalEstimate.average || 0
+              )) +
+          doorDisplayExtra.average,
       }
     : null;
 
@@ -402,6 +842,7 @@ export default function CustomerEstimatePage({
     setFireType("non_fire");
     setUseSplitTone(false);
     setAreaFilms({});
+    setDoorQuantity(1);
     setLeadComplete(false);
     setLeadMessage("");
   }
@@ -572,6 +1013,11 @@ export default function CustomerEstimatePage({
 
           photo_count: group.photos.length,
 
+          quantity:
+            isDoorSetGroup(group)
+              ? doorQuantity
+              : 1,
+
           estimate_min:
             group.estimate?.min ?? null,
 
@@ -629,6 +1075,12 @@ export default function CustomerEstimatePage({
           ).toLocaleString("ko-KR")}원`;
         }
       );
+
+      if (hasDoorSetGroup) {
+        memoLines.push(
+          `문·문틀 수량: ${doorQuantity}세트`
+        );
+      }
 
       if (selectedFilm) {
         memoLines.push("");
@@ -746,9 +1198,8 @@ export default function CustomerEstimatePage({
     } finally {
       setLeadLoading(false);
     }
-  }
-
-  function goBack() {
+            }
+    function goBack() {
     if (screen === SCREEN.UPLOAD) {
       changeScreen(SCREEN.HOME);
       return;
@@ -1115,11 +1566,19 @@ export default function CustomerEstimatePage({
               />
             </div>
 
+            {hasDoorSetGroup && (
+              <DoorQuantitySelector
+                quantity={doorQuantity}
+                onChange={setDoorQuantity}
+              />
+            )}
+
             <div className={styles.summaryGrid}>
               <div>
                 <strong>
                   {images.length}장
                 </strong>
+
                 <span>
                   분석 사진
                 </span>
@@ -1129,6 +1588,7 @@ export default function CustomerEstimatePage({
                 <strong>
                   {groups.length}개
                 </strong>
+
                 <span>
                   시공 부위
                 </span>
@@ -1138,6 +1598,7 @@ export default function CustomerEstimatePage({
                 <strong>
                   AI
                 </strong>
+
                 <span>
                   유사사례
                 </span>
@@ -1201,6 +1662,13 @@ export default function CustomerEstimatePage({
               </p>
             </div>
 
+            {hasDoorSetGroup && (
+              <DoorQuantitySelector
+                quantity={doorQuantity}
+                onChange={setDoorQuantity}
+              />
+            )}
+
             <div className={styles.filmPickerArea}>
               <FilmColorPicker
                 onSelect={
@@ -1263,7 +1731,7 @@ export default function CustomerEstimatePage({
                     }
                     fireType={fireType}
                     baseEstimate={
-                      totalEstimate
+                      quantityAdjustedBaseEstimate
                     }
                     adjustedEstimate={
                       displayTotalEstimate
@@ -1349,6 +1817,18 @@ export default function CustomerEstimatePage({
                     : "확인 중"}
                 </strong>
               </div>
+
+              {hasDoorSetGroup && (
+                <div>
+                  <span>
+                    문·문틀 수량
+                  </span>
+
+                  <strong>
+                    {doorQuantity}세트
+                  </strong>
+                </div>
+              )}
 
               {selectedFilm && (
                 <div>
@@ -1445,6 +1925,18 @@ export default function CustomerEstimatePage({
                 </strong>
               </div>
 
+              {hasDoorSetGroup && (
+                <div>
+                  <span>
+                    문·문틀 수량
+                  </span>
+
+                  <strong>
+                    {doorQuantity}세트
+                  </strong>
+                </div>
+              )}
+
               {selectedFilm && (
                 <div>
                   <span>
@@ -1481,4 +1973,4 @@ export default function CustomerEstimatePage({
       </div>
     </main>
   );
-            }
+              }
