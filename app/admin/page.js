@@ -179,6 +179,7 @@ export default function AdminPage() {
     loadSites,
     createSite,
 
+    updateSiteBasicInfo,
     updateSiteSchedule,
     updateSiteStatus,
 
@@ -618,6 +619,10 @@ export default function AdminPage() {
     companyName,
   ]);
 
+  /* =========================================================
+     관리자 준비 전
+  ========================================================= */
+
   if (!adminReady) {
     return (
       <main
@@ -634,6 +639,10 @@ export default function AdminPage() {
       </main>
     );
   }
+
+  /* =========================================================
+     관리자 화면
+  ========================================================= */
 
   return (
     <main
@@ -662,7 +671,8 @@ export default function AdminPage() {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           gap: "12px",
           margin: "8px 0 12px",
         }}
@@ -686,7 +696,8 @@ export default function AdminPage() {
             padding: "12px",
             marginBottom: "14px",
             borderRadius: "10px",
-            border: "1px solid #fecaca",
+            border:
+              "1px solid #fecaca",
             background: "#fef2f2",
             color: "#b91c1c",
             fontSize: "13px",
@@ -702,7 +713,8 @@ export default function AdminPage() {
         <section
           style={{
             background: "#ffffff",
-            border: "1px solid #e5e7eb",
+            border:
+              "1px solid #e5e7eb",
             borderRadius: "14px",
             padding: "14px",
             marginBottom: "16px",
@@ -734,7 +746,8 @@ export default function AdminPage() {
             style={{
               padding: "10px 12px",
               background: "#f8fafc",
-              border: "1px solid #e2e8f0",
+              border:
+                "1px solid #e2e8f0",
               borderRadius: "9px",
               fontSize: "13px",
               lineHeight: "1.5",
@@ -749,7 +762,8 @@ export default function AdminPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns:
+                "1fr 1fr",
               gap: "8px",
             }}
           >
@@ -826,8 +840,7 @@ export default function AdminPage() {
           unreadCount
         }
       />
-
-      {activeTab ===
+                {activeTab ===
         "jobs" && (
         <JobsTab
           jobSearch={jobSearch}
@@ -924,15 +937,21 @@ export default function AdminPage() {
           sites={
             sites
           }
+
           sitesLoading={
             sitesLoading
           }
+
           sitesMessage={
             sitesMessage
           }
 
           createSite={
             createSite
+          }
+
+          updateSiteBasicInfo={
+            updateSiteBasicInfo
           }
 
           updateSiteSchedule={
@@ -958,6 +977,7 @@ export default function AdminPage() {
           openSite={
             openSite
           }
+
           closeSite={
             closeSite
           }
@@ -965,9 +985,11 @@ export default function AdminPage() {
           workers={
             workers
           }
+
           workersLoading={
             workersLoading
           }
+
           workersMessage={
             workersMessage
           }
@@ -975,12 +997,15 @@ export default function AdminPage() {
           loadWorkers={
             loadWorkers
           }
+
           createWorker={
             createWorker
           }
+
           updateWorker={
             updateWorker
           }
+
           setWorkerActive={
             setWorkerActive
           }
@@ -992,6 +1017,7 @@ export default function AdminPage() {
           assignSiteWorkers={
             assignSiteWorkers
           }
+
           loadSiteWorkers={
             loadSiteWorkers
           }
@@ -1059,4 +1085,4 @@ export default function AdminPage() {
       />
     </main>
   );
-}
+            }
