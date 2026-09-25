@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
@@ -59,9 +59,6 @@ function formatDateTime(value) {
 
 /* =========================================================
    datetime-local 값 변환
-
-   UTC 문자열을 단순 slice 하지 않고
-   브라우저의 로컬 시간 기준으로 변환합니다.
 ========================================================= */
 
 function toDateTimeLocalValue(value) {
@@ -172,6 +169,9 @@ export default function SiteDetailModal({
   updateSiteSchedule,
   updateSiteStatus,
 
+  addSiteRequestPhotos,
+  deleteSiteRequestPhoto,
+
   workers = [],
   workersLoading = false,
 
@@ -189,6 +189,21 @@ export default function SiteDetailModal({
 
   const [detailMessage, setDetailMessage] =
     useState("");
+
+  /* =======================================================
+     요청사진 관리
+  ======================================================= */
+
+  const [photoUploading, setPhotoUploading] =
+    useState(false);
+
+  const [photoDeletingId, setPhotoDeletingId] =
+    useState(null);
+
+  const [photoMessage, setPhotoMessage] =
+    useState("");
+
+  const photoInputRef = useRef(null);
 
   const [reportOpen, setReportOpen] =
     useState(false);
@@ -218,9 +233,6 @@ export default function SiteDetailModal({
    * null  = 확인 중 / 조회 오류
    * false = 시공자 완료보고 없음
    * true  = 시공자 완료보고 있음
-   *
-   * 시공자 완료보고가 있으면 기존 관리자용
-   * "시공 완료 보고 작성"을 중복으로 표시하지 않습니다.
    */
 
   const [hasWorkerReport, setHasWorkerReport] =
@@ -259,10 +271,6 @@ export default function SiteDetailModal({
       try {
         /*
          * 1. 예정 시공 자재
-         *
-         * 현장 등록 단계에서 입력한 자재만 표시합니다.
-         * 완료보고의 실제 사용 자재(actual)는
-         * SiteCompletedReport에서 별도로 표시합니다.
          */
 
         const {
@@ -297,10 +305,6 @@ export default function SiteDetailModal({
 
         /*
          * 2. 현장 요청 사진
-         *
-         * request = 고객 요청사진
-         * before  = 실제 시공 전 사진
-         * after   = 실제 시공 완료사진
          */
 
         const {
@@ -329,8 +333,7 @@ export default function SiteDetailModal({
         }
 
         /*
-         * 3. private Storage 사진
-         * signed URL 생성
+         * 3. private Storage 사진 signed URL 생성
          */
 
         const signedPhotos = await Promise.all(
@@ -421,6 +424,10 @@ export default function SiteDetailModal({
     setScheduleSaving(false);
     setScheduleMessage("");
 
+    setPhotoUploading(false);
+    setPhotoDeletingId(null);
+    setPhotoMessage("");
+
     setScheduleStart(
       toDateTimeLocalValue(
         site?.schedule_start,
@@ -470,6 +477,230 @@ export default function SiteDetailModal({
   ]);
 
   /* =======================================================
+     요청사진 다시 불러오기
+  ======================================================= */
+
+  async function refreshRequestPhotos() {
+    if (!site?.id) {
+      return;
+    }
+
+    const {
+      data: photoData,
+      error: photoError,
+    } = await supabase
+      .from("site_photos")
+      .select(
+        `
+          id,
+          photo_type,
+          storage_path,
+          photo_url,
+          description,
+          created_at
+        `,
+      )
+      .eq("site_id", site.id)
+      .eq("photo_type", "request")
+      .order("created_at", {
+        ascending: true,
+      });
+
+    if (photoError) {
+      throw photoError;
+    }
+
+    const signedPhotos = await Promise.all(
+      (photoData || []).map(
+        async (photo) => {
+          if (!photo.storage_path) {
+            return {
+              ...photo,
+              signed_url:
+                photo.photo_url || "",
+            };
+          }
+
+          const {
+            data: signedData,
+            error: signedError,
+          } = await supabase.storage
+            .from(PHOTO_BUCKET)
+            .createSignedUrl(
+              photo.storage_path,
+              SIGNED_URL_SECONDS,
+            );
+
+          if (signedError) {
+            console.error(
+              "현장 요청사진 signed URL 오류:",
+              signedError,
+            );
+
+            return {
+              ...photo,
+              signed_url: "",
+            };
+          }
+
+          return {
+            ...photo,
+            signed_url:
+              signedData?.signedUrl || "",
+          };
+        },
+      ),
+    );
+
+    setPhotos(signedPhotos || []);
+  }
+
+  /* =======================================================
+     요청사진 추가
+  ======================================================= */
+
+  async function handleRequestPhotoFiles(event) {
+    const files = Array.from(
+      event.target.files || [],
+    ).filter((file) =>
+      file?.type?.startsWith("image/"),
+    );
+
+    event.target.value = "";
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (
+      typeof addSiteRequestPhotos !== "function"
+    ) {
+      setPhotoMessage(
+        "❌ 사진 추가 기능을 사용할 수 없습니다.",
+      );
+      return;
+    }
+
+    setPhotoUploading(true);
+    setPhotoMessage("");
+
+    try {
+      const result =
+        await addSiteRequestPhotos({
+          siteId: site.id,
+          files,
+        });
+
+      if (!result?.success) {
+        setPhotoMessage(
+          `❌ ${
+            result?.error ||
+            "사진을 등록하지 못했습니다."
+          }`,
+        );
+        return;
+      }
+
+      await refreshRequestPhotos();
+
+      setPhotoMessage(
+        `✅ 요청사진 ${files.length}장이 등록되었습니다.`,
+      );
+    } catch (error) {
+      console.error(
+        "현장 요청사진 추가 오류:",
+        error,
+      );
+
+      setPhotoMessage(
+        `❌ 사진 등록 오류: ${
+          error?.message || "알 수 없는 오류"
+        }`,
+      );
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  /* =======================================================
+     요청사진 삭제
+  ======================================================= */
+
+  async function handleDeleteRequestPhoto(photo) {
+    if (
+      !photo?.id ||
+      photoDeletingId ||
+      photoUploading
+    ) {
+      return;
+    }
+
+    if (
+      typeof deleteSiteRequestPhoto !== "function"
+    ) {
+      setPhotoMessage(
+        "❌ 사진 삭제 기능을 사용할 수 없습니다.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "이 요청사진을 삭제할까요?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setPhotoDeletingId(photo.id);
+    setPhotoMessage("");
+
+    try {
+      const result =
+        await deleteSiteRequestPhoto({
+          siteId: site.id,
+          photoId: photo.id,
+          storagePath:
+            photo.storage_path || null,
+        });
+
+      if (!result?.success) {
+        setPhotoMessage(
+          `❌ ${
+            result?.error ||
+            "사진을 삭제하지 못했습니다."
+          }`,
+        );
+        return;
+      }
+
+      setPhotos((current) =>
+        current.filter(
+          (item) => item.id !== photo.id,
+        ),
+      );
+
+      setPhotoMessage(
+        result?.storageWarning
+          ? "✅ 사진 정보는 삭제되었습니다. 저장소 파일 정리는 확인이 필요합니다."
+          : "✅ 요청사진이 삭제되었습니다.",
+      );
+    } catch (error) {
+      console.error(
+        "현장 요청사진 삭제 오류:",
+        error,
+      );
+
+      setPhotoMessage(
+        `❌ 사진 삭제 오류: ${
+          error?.message || "알 수 없는 오류"
+        }`,
+      );
+    } finally {
+      setPhotoDeletingId(null);
+    }
+    }
+    /* =======================================================
      상태 변경
   ======================================================= */
 
@@ -617,7 +848,8 @@ export default function SiteDetailModal({
     try {
       /*
        * datetime-local은 브라우저 로컬시간입니다.
-       * ISO 문자열로 변환하여 Supabase timestamptz에 저장합니다.
+       * ISO 문자열로 변환하여
+       * Supabase timestamptz에 저장합니다.
        */
 
       const result =
@@ -1265,7 +1497,6 @@ export default function SiteDetailModal({
             value={site.memo || "-"}
           />
         </div>
-
         {/* =========================
             추가정보 로딩/오류
         ========================= */}
@@ -1394,26 +1625,121 @@ export default function SiteDetailModal({
                 marginBottom: "10px",
               }}
             >
-              <div
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "900",
-                  color: "#111827",
-                }}
-              >
-                📷 시공 요청사진
+              <div>
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "900",
+                    color: "#111827",
+                  }}
+                >
+                  📷 시공 요청사진
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "3px",
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    color: "#64748b",
+                  }}
+                >
+                  {photos.length}장
+                </div>
               </div>
 
+              <>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={
+                    handleRequestPhotoFiles
+                  }
+                  disabled={
+                    photoUploading ||
+                    Boolean(
+                      photoDeletingId,
+                    )
+                  }
+                  style={{
+                    display: "none",
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    photoInputRef.current?.click()
+                  }
+                  disabled={
+                    photoUploading ||
+                    Boolean(
+                      photoDeletingId,
+                    )
+                  }
+                  style={{
+                    flex: "0 0 auto",
+                    border: "none",
+                    borderRadius: "9px",
+                    padding: "9px 11px",
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: "900",
+
+                    cursor:
+                      photoUploading ||
+                      photoDeletingId
+                        ? "not-allowed"
+                        : "pointer",
+
+                    opacity:
+                      photoUploading ||
+                      photoDeletingId
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {photoUploading
+                    ? "업로드 중..."
+                    : "+ 사진 추가"}
+                </button>
+              </>
+            </div>
+
+            {photoMessage && (
               <div
                 style={{
+                  marginBottom: "10px",
+                  padding: "9px 10px",
+                  borderRadius: "9px",
+
+                  background:
+                    photoMessage.startsWith(
+                      "✅",
+                    )
+                      ? "#f0fdf4"
+                      : "#fef2f2",
+
+                  color:
+                    photoMessage.startsWith(
+                      "✅",
+                    )
+                      ? "#166534"
+                      : "#b91c1c",
+
                   fontSize: "11px",
                   fontWeight: "800",
-                  color: "#64748b",
+
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
                 }}
               >
-                {photos.length}장
+                {photoMessage}
               </div>
-            </div>
+            )}
 
             {photos.length === 0 ? (
               <EmptyBox text="등록된 요청사진이 없습니다." />
@@ -1432,6 +1758,21 @@ export default function SiteDetailModal({
                       key={photo.id}
                       photo={photo}
                       index={index}
+                      deleting={
+                        photoDeletingId ===
+                        photo.id
+                      }
+                      disabled={
+                        photoUploading ||
+                        Boolean(
+                          photoDeletingId,
+                        )
+                      }
+                      onDelete={() =>
+                        handleDeleteRequestPhoto(
+                          photo,
+                        )
+                      }
                     />
                   ),
                 )}
@@ -1628,7 +1969,9 @@ export default function SiteDetailModal({
 
                 <button
                   type="button"
-                  onClick={openWorkReport}
+                  onClick={
+                    openWorkReport
+                  }
                   style={{
                     width: "100%",
 
@@ -1656,8 +1999,12 @@ export default function SiteDetailModal({
             ) : (
               <SiteWorkReport
                 site={site}
-                saving={reportSaving}
-                message={reportMessage}
+                saving={
+                  reportSaving
+                }
+                message={
+                  reportMessage
+                }
                 onSave={
                   handleWorkReportSave
                 }
@@ -1676,7 +2023,9 @@ export default function SiteDetailModal({
         {site.status ===
           "completed" && (
           <SiteCompletedReport
-            companyId={companyId}
+            companyId={
+              companyId
+            }
             site={site}
           />
         )}
@@ -1707,7 +2056,9 @@ export default function SiteDetailModal({
 
             <SiteWorkerAssignment
               site={site}
-              workers={workers}
+              workers={
+                workers
+              }
               workersLoading={
                 workersLoading
               }
@@ -1891,7 +2242,6 @@ function MaterialCard({
     </div>
   );
 }
-
 /* =========================================================
    요청 사진 카드
 ========================================================= */
@@ -1899,94 +2249,135 @@ function MaterialCard({
 function PhotoCard({
   photo,
   index,
+  deleting = false,
+  disabled = false,
+  onDelete,
 }) {
   if (!photo.signed_url) {
     return (
       <div
         style={{
+          position: "relative",
           aspectRatio: "1 / 1",
-
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-
           padding: "10px",
-
-          border:
-            "1px solid #e2e8f0",
-
+          border: "1px solid #e2e8f0",
           borderRadius: "11px",
-
           background: "#f8fafc",
-
           color: "#94a3b8",
-
           fontSize: "11px",
           fontWeight: "700",
-
           textAlign: "center",
         }}
       >
         사진을 불러올 수 없습니다.
+
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={disabled}
+          style={{
+            position: "absolute",
+            top: "6px",
+            right: "6px",
+            border: "none",
+            borderRadius: "8px",
+            padding: "6px 7px",
+            background: "rgba(185,28,28,0.90)",
+            color: "#ffffff",
+            fontSize: "11px",
+            fontWeight: "900",
+            cursor: disabled
+              ? "not-allowed"
+              : "pointer",
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
+          {deleting ? "삭제 중" : "삭제"}
+        </button>
       </div>
     );
   }
 
   return (
-    <a
-      href={photo.signed_url}
-      target="_blank"
-      rel="noreferrer"
+    <div
       style={{
         position: "relative",
-        display: "block",
-
         aspectRatio: "1 / 1",
-
         overflow: "hidden",
-
         borderRadius: "11px",
-
-        border:
-          "1px solid #e2e8f0",
-
+        border: "1px solid #e2e8f0",
         background: "#f8fafc",
       }}
     >
-      <img
-        src={photo.signed_url}
-        alt={`시공 요청사진 ${index + 1}`}
-        loading="lazy"
+      <a
+        href={photo.signed_url}
+        target="_blank"
+        rel="noreferrer"
         style={{
+          display: "block",
           width: "100%",
           height: "100%",
-          objectFit: "cover",
-          display: "block",
         }}
-      />
+      >
+        <img
+          src={photo.signed_url}
+          alt={`시공 요청사진 ${index + 1}`}
+          loading="lazy"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      </a>
 
       <div
         style={{
           position: "absolute",
           left: "6px",
           bottom: "6px",
-
           padding: "3px 6px",
-
           borderRadius: "999px",
-
-          background:
-            "rgba(15,23,42,0.72)",
-
+          background: "rgba(15,23,42,0.72)",
           color: "#ffffff",
-
           fontSize: "10px",
           fontWeight: "800",
+          pointerEvents: "none",
         }}
       >
         요청사진 {index + 1}
       </div>
-    </a>
+
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={disabled}
+        style={{
+          position: "absolute",
+          top: "6px",
+          right: "6px",
+          border: "none",
+          borderRadius: "8px",
+          padding: "6px 7px",
+          background: "rgba(185,28,28,0.90)",
+          color: "#ffffff",
+          fontSize: "11px",
+          fontWeight: "900",
+          cursor: disabled
+            ? "not-allowed"
+            : "pointer",
+          opacity: disabled ? 0.6 : 1,
+        }}
+      >
+        {deleting
+          ? "삭제 중"
+          : "🗑 삭제"}
+      </button>
+    </div>
   );
 }
 
@@ -2001,18 +2392,11 @@ function EmptyBox({
     <div
       style={{
         padding: "16px 12px",
-
-        border:
-          "1px dashed #cbd5e1",
-
+        border: "1px dashed #cbd5e1",
         borderRadius: "11px",
-
         background: "#f8fafc",
-
         color: "#64748b",
-
         fontSize: "12px",
-
         textAlign: "center",
       }}
     >
@@ -2033,15 +2417,10 @@ function DetailRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns:
-          "90px 1fr",
+        gridTemplateColumns: "90px 1fr",
         gap: "10px",
-
         padding: "10px 0",
-
-        borderBottom:
-          "1px solid #f1f5f9",
-
+        borderBottom: "1px solid #f1f5f9",
         fontSize: "13px",
       }}
     >
@@ -2106,4 +2485,4 @@ function StatusButton({
       {children}
     </button>
   );
-        }
+}
