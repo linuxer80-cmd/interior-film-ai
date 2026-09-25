@@ -20,6 +20,12 @@ import SiteStatusControl from "./site-detail/SiteStatusControl";
 ========================================================= */
 
 const STATUS_INFO = {
+  consulting: {
+    label: "상담중",
+    background: "#fff7ed",
+    color: "#c2410c",
+  },
+
   scheduled: {
     label: "시공 예정",
     background: "#eff6ff",
@@ -55,6 +61,7 @@ export default function SiteDetailModal({
   site,
   onClose,
 
+  updateSiteBasicInfo,
   updateSiteSchedule,
   updateSiteStatus,
 
@@ -81,8 +88,10 @@ export default function SiteDetailModal({
    * true  = 시공자 완료보고 있음
    */
 
-  const [hasWorkerReport, setHasWorkerReport] =
-    useState(null);
+  const [
+    hasWorkerReport,
+    setHasWorkerReport,
+  ] = useState(null);
 
   const {
     reportSaving,
@@ -96,7 +105,7 @@ export default function SiteDetailModal({
 
   const status =
     STATUS_INFO[site?.status] ||
-    STATUS_INFO.scheduled;
+    STATUS_INFO.consulting;
 
   /* =======================================================
      현장 변경 시 상태 초기화
@@ -107,7 +116,8 @@ export default function SiteDetailModal({
     setHasWorkerReport(null);
 
     if (
-      typeof clearReportMessage === "function"
+      typeof clearReportMessage ===
+      "function"
     ) {
       clearReportMessage();
     }
@@ -122,7 +132,8 @@ export default function SiteDetailModal({
 
   async function handleAssignmentSaved() {
     if (
-      typeof reloadSites === "function"
+      typeof reloadSites ===
+      "function"
     ) {
       await reloadSites();
     }
@@ -134,7 +145,8 @@ export default function SiteDetailModal({
 
   function openWorkReport() {
     if (
-      typeof clearReportMessage === "function"
+      typeof clearReportMessage ===
+      "function"
     ) {
       clearReportMessage();
     }
@@ -154,7 +166,8 @@ export default function SiteDetailModal({
     setReportOpen(false);
 
     if (
-      typeof clearReportMessage === "function"
+      typeof clearReportMessage ===
+      "function"
     ) {
       clearReportMessage();
     }
@@ -168,7 +181,9 @@ export default function SiteDetailModal({
     payload,
   ) {
     const success =
-      await submitWorkReport(payload);
+      await submitWorkReport(
+        payload,
+      );
 
     if (!success) {
       return false;
@@ -177,7 +192,8 @@ export default function SiteDetailModal({
     setReportOpen(false);
 
     if (
-      typeof onClose === "function"
+      typeof onClose ===
+      "function"
     ) {
       onClose();
     }
@@ -202,22 +218,14 @@ export default function SiteDetailModal({
       onClick={onClose}
       style={{
         position: "fixed",
-
         inset: 0,
-
         zIndex: 1001,
-
         display: "flex",
-
         alignItems: "flex-start",
-
         justifyContent: "center",
-
         padding: "24px 12px",
-
         background:
           "rgba(15,23,42,0.55)",
-
         overflowY: "auto",
       }}
     >
@@ -227,15 +235,10 @@ export default function SiteDetailModal({
         }
         style={{
           width: "100%",
-
           maxWidth: "600px",
-
           padding: "16px",
-
           borderRadius: "16px",
-
           background: "#ffffff",
-
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
         }}
@@ -247,12 +250,9 @@ export default function SiteDetailModal({
         <div
           style={{
             display: "flex",
-
             justifyContent:
               "space-between",
-
             alignItems: "flex-start",
-
             gap: "10px",
           }}
         >
@@ -264,15 +264,13 @@ export default function SiteDetailModal({
             <div
               style={{
                 fontSize: "19px",
-
                 fontWeight: "900",
-
                 color: "#111827",
               }}
             >
               {site.site_name ||
                 site.customer_name ||
-                "현장 상세"}
+                "현장명 미정"}
             </div>
 
             {/* =====================
@@ -286,20 +284,20 @@ export default function SiteDetailModal({
             >
               <span
                 style={{
-                  display: "inline-block",
-
-                  padding: "5px 8px",
-
-                  borderRadius: "999px",
-
+                  display:
+                    "inline-block",
+                  padding:
+                    "5px 8px",
+                  borderRadius:
+                    "999px",
                   background:
                     status.background,
-
-                  color: status.color,
-
-                  fontSize: "11px",
-
-                  fontWeight: "800",
+                  color:
+                    status.color,
+                  fontSize:
+                    "11px",
+                  fontWeight:
+                    "800",
                 }}
               >
                 {status.label}
@@ -317,18 +315,14 @@ export default function SiteDetailModal({
             disabled={reportSaving}
             style={{
               border: "none",
-
-              background: "transparent",
-
+              background:
+                "transparent",
               fontSize: "26px",
-
               color: "#64748b",
-
               cursor:
                 reportSaving
                   ? "not-allowed"
                   : "pointer",
-
               opacity:
                 reportSaving
                   ? 0.5
@@ -369,6 +363,9 @@ export default function SiteDetailModal({
 
           <SiteBasicInfo
             site={site}
+            updateSiteBasicInfo={
+              updateSiteBasicInfo
+            }
           />
         </div>
 
@@ -404,7 +401,9 @@ export default function SiteDetailModal({
             hasReport,
           }) => {
             setHasWorkerReport(
-              Boolean(hasReport),
+              Boolean(
+                hasReport,
+              ),
             );
           }}
         />
@@ -415,7 +414,9 @@ export default function SiteDetailModal({
 
         <SiteStatusControl
           site={site}
-          reportOpen={reportOpen}
+          reportOpen={
+            reportOpen
+          }
           updateSiteStatus={
             updateSiteStatus
           }
@@ -430,13 +431,14 @@ export default function SiteDetailModal({
 
         {site.status !==
           "completed" &&
-          hasWorkerReport === false && (
+          hasWorkerReport ===
+            false && (
             <section
               style={{
-                marginTop: "18px",
-
-                paddingTop: "14px",
-
+                marginTop:
+                  "18px",
+                paddingTop:
+                  "14px",
                 borderTop:
                   "1px solid #e5e7eb",
               }}
@@ -449,11 +451,12 @@ export default function SiteDetailModal({
 
                   <div
                     style={{
-                      fontSize: "14px",
-
-                      fontWeight: "900",
-
-                      color: "#111827",
+                      fontSize:
+                        "14px",
+                      fontWeight:
+                        "900",
+                      color:
+                        "#111827",
                     }}
                   >
                     ✅ 시공 완료 보고
@@ -465,17 +468,19 @@ export default function SiteDetailModal({
 
                   <div
                     style={{
-                      marginTop: "5px",
-
-                      fontSize: "12px",
-
-                      lineHeight: "1.5",
-
-                      color: "#64748b",
+                      marginTop:
+                        "5px",
+                      fontSize:
+                        "12px",
+                      lineHeight:
+                        "1.5",
+                      color:
+                        "#64748b",
                     }}
                   >
-                    실제 시공 내용, 사용 자재,
-                    현장 경비와 완료사진을
+                    실제 시공 내용,
+                    사용 자재, 현장
+                    경비와 완료사진을
                     등록한 후 현장을
                     완료 처리합니다.
                   </div>
@@ -490,36 +495,32 @@ export default function SiteDetailModal({
                       openWorkReport
                     }
                     style={{
-                      width: "100%",
-
-                      marginTop: "10px",
-
-                      padding: "12px",
-
-                      border: "none",
-
-                      borderRadius: "10px",
-
+                      width:
+                        "100%",
+                      marginTop:
+                        "10px",
+                      padding:
+                        "12px",
+                      border:
+                        "none",
+                      borderRadius:
+                        "10px",
                       background:
                         "#16a34a",
-
-                      color: "#ffffff",
-
-                      fontSize: "13px",
-
-                      fontWeight: "900",
-
-                      cursor: "pointer",
+                      color:
+                        "#ffffff",
+                      fontSize:
+                        "13px",
+                      fontWeight:
+                        "900",
+                      cursor:
+                        "pointer",
                     }}
                   >
                     ✅ 시공 완료 보고 작성
                   </button>
                 </>
               ) : (
-                /* =====================
-                   완료보고 입력
-                ===================== */
-
                 <SiteWorkReport
                   site={site}
                   saving={
@@ -545,13 +546,13 @@ export default function SiteDetailModal({
 
         {site.status ===
           "completed" && (
-            <SiteCompletedReport
-              companyId={
-                companyId
-              }
-              site={site}
-            />
-          )}
+          <SiteCompletedReport
+            companyId={
+              companyId
+            }
+            site={site}
+          />
+        )}
 
         {/* =========================
             팀장 / 시공자 배정
@@ -560,10 +561,10 @@ export default function SiteDetailModal({
         {!reportOpen && (
           <section
             style={{
-              marginTop: "18px",
-
-              paddingTop: "14px",
-
+              marginTop:
+                "18px",
+              paddingTop:
+                "14px",
               borderTop:
                 "1px solid #e5e7eb",
             }}
@@ -574,13 +575,14 @@ export default function SiteDetailModal({
 
             <div
               style={{
-                marginBottom: "10px",
-
-                fontSize: "14px",
-
-                fontWeight: "900",
-
-                color: "#111827",
+                marginBottom:
+                  "10px",
+                fontSize:
+                  "14px",
+                fontWeight:
+                  "900",
+                color:
+                  "#111827",
               }}
             >
               👷 담당 시공자 배정
@@ -616,4 +618,4 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-}
+                     }
