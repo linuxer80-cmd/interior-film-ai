@@ -119,6 +119,9 @@ export default function SiteManagementTab({
   updateSiteSchedule,
   updateSiteStatus,
 
+  addSiteRequestPhotos,
+  deleteSiteRequestPhoto,
+
   selectedSite,
   openSite,
   closeSite,
@@ -255,15 +258,11 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "flex",
-
             alignItems:
               "flex-start",
-
             justifyContent:
               "space-between",
-
             gap: "10px",
-
             marginBottom:
               "14px",
           }}
@@ -273,10 +272,8 @@ export default function SiteManagementTab({
               style={{
                 fontSize:
                   "20px",
-
                 fontWeight:
                   "800",
-
                 color:
                   "#111827",
               }}
@@ -288,10 +285,8 @@ export default function SiteManagementTab({
               style={{
                 marginTop:
                   "3px",
-
                 fontSize:
                   "12px",
-
                 color:
                   "#64748b",
               }}
@@ -304,12 +299,9 @@ export default function SiteManagementTab({
           <div
             style={{
               display: "flex",
-
               flexDirection:
                 "column",
-
               gap: "6px",
-
               flex:
                 "0 0 auto",
             }}
@@ -324,28 +316,20 @@ export default function SiteManagementTab({
               style={{
                 border:
                   "none",
-
                 borderRadius:
                   "10px",
-
                 padding:
                   "10px 12px",
-
                 background:
                   "#111827",
-
                 color:
                   "#ffffff",
-
                 fontSize:
                   "13px",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   "pointer",
-
                 whiteSpace:
                   "nowrap",
               }}
@@ -361,28 +345,20 @@ export default function SiteManagementTab({
               style={{
                 border:
                   "1px solid #cbd5e1",
-
                 borderRadius:
                   "10px",
-
                 padding:
                   "9px 12px",
-
                 background:
                   "#ffffff",
-
                 color:
                   "#334155",
-
                 fontSize:
                   "12px",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   "pointer",
-
                 whiteSpace:
                   "nowrap",
               }}
@@ -399,12 +375,9 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "grid",
-
             gridTemplateColumns:
               "repeat(3, 1fr)",
-
             gap: "8px",
-
             marginBottom:
               "14px",
           }}
@@ -438,15 +411,11 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "flex",
-
             gap: "6px",
-
             overflowX:
               "auto",
-
             paddingBottom:
               "5px",
-
             marginBottom:
               "12px",
           }}
@@ -531,36 +500,28 @@ export default function SiteManagementTab({
             style={{
               marginBottom:
                 "12px",
-
               padding:
                 "10px 12px",
-
               borderRadius:
                 "9px",
-
               background:
                 sitesMessage.startsWith(
                   "✅",
                 )
                   ? "#f0fdf4"
                   : "#fef2f2",
-
               color:
                 sitesMessage.startsWith(
                   "✅",
                 )
                   ? "#166534"
                   : "#b91c1c",
-
               fontSize:
                 "13px",
-
               fontWeight:
                 "700",
-
               whiteSpace:
                 "pre-wrap",
-
               wordBreak:
                 "break-word",
             }}
@@ -580,13 +541,10 @@ export default function SiteManagementTab({
               style={{
                 padding:
                   "30px 12px",
-
                 textAlign:
                   "center",
-
                 color:
                   "#64748b",
-
                 fontSize:
                   "14px",
               }}
@@ -607,16 +565,12 @@ export default function SiteManagementTab({
               style={{
                 padding:
                   "38px 16px",
-
                 border:
                   "1px dashed #cbd5e1",
-
                 borderRadius:
                   "14px",
-
                 background:
                   "#ffffff",
-
                 textAlign:
                   "center",
               }}
@@ -625,7 +579,6 @@ export default function SiteManagementTab({
                 style={{
                   fontSize:
                     "30px",
-
                   marginBottom:
                     "8px",
                 }}
@@ -637,7 +590,6 @@ export default function SiteManagementTab({
                 style={{
                   fontWeight:
                     "800",
-
                   color:
                     "#334155",
                 }}
@@ -650,10 +602,8 @@ export default function SiteManagementTab({
                 style={{
                   marginTop:
                     "5px",
-
                   fontSize:
                     "12px",
-
                   color:
                     "#64748b",
                 }}
@@ -671,7 +621,6 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "grid",
-
             gap: "10px",
           }}
         >
@@ -756,7 +705,6 @@ export default function SiteManagementTab({
 
       {/* ===================================================
           현장 상세
-          별도 컴포넌트
       =================================================== */}
 
       {selectedSite && (
@@ -779,6 +727,14 @@ export default function SiteManagementTab({
 
           updateSiteStatus={
             updateSiteStatus
+          }
+
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
           }
 
           workers={
@@ -823,16 +779,12 @@ function SummaryCard({
       style={{
         padding:
           "12px 8px",
-
         border:
           "1px solid #e2e8f0",
-
         borderRadius:
           "12px",
-
         background:
           "#ffffff",
-
         textAlign:
           "center",
       }}
@@ -841,7 +793,6 @@ function SummaryCard({
         style={{
           fontSize:
             "12px",
-
           color:
             "#64748b",
         }}
@@ -853,13 +804,10 @@ function SummaryCard({
         style={{
           marginTop:
             "4px",
-
           fontSize:
             "22px",
-
           fontWeight:
             "900",
-
           color:
             "#111827",
         }}
@@ -888,34 +836,26 @@ function FilterButton({
       style={{
         flex:
           "0 0 auto",
-
         border:
           active
             ? "1px solid #111827"
             : "1px solid #cbd5e1",
-
         borderRadius:
           "999px",
-
         padding:
           "8px 12px",
-
         background:
           active
             ? "#111827"
             : "#ffffff",
-
         color:
           active
             ? "#ffffff"
             : "#475569",
-
         fontSize:
           "12px",
-
         fontWeight:
           "700",
-
         cursor:
           "pointer",
       }}
@@ -954,22 +894,16 @@ function SiteCard({
       style={{
         width:
           "100%",
-
         padding:
           "14px",
-
         border:
           "1px solid #e2e8f0",
-
         borderRadius:
           "14px",
-
         background:
           "#ffffff",
-
         textAlign:
           "left",
-
         cursor:
           "pointer",
       }}
@@ -980,13 +914,10 @@ function SiteCard({
         style={{
           display:
             "flex",
-
           alignItems:
             "flex-start",
-
           justifyContent:
             "space-between",
-
           gap:
             "8px",
         }}
@@ -1001,13 +932,10 @@ function SiteCard({
             style={{
               fontSize:
                 "15px",
-
               fontWeight:
                 "800",
-
               color:
                 "#111827",
-
               wordBreak:
                 "break-word",
             }}
@@ -1022,10 +950,8 @@ function SiteCard({
               style={{
                 marginTop:
                   "3px",
-
                 fontSize:
                   "12px",
-
                 color:
                   "#64748b",
               }}
@@ -1042,22 +968,16 @@ function SiteCard({
           style={{
             flex:
               "0 0 auto",
-
             padding:
               "5px 8px",
-
             borderRadius:
               "999px",
-
             background:
               status.background,
-
             color:
               status.color,
-
             fontSize:
               "11px",
-
             fontWeight:
               "800",
           }}
@@ -1072,16 +992,12 @@ function SiteCard({
         style={{
           marginTop:
             "12px",
-
           display:
             "grid",
-
           gap:
             "7px",
-
           fontSize:
             "13px",
-
           color:
             "#334155",
         }}
@@ -1159,28 +1075,20 @@ function WorkerManagerModal({
       style={{
         position:
           "fixed",
-
         inset:
           0,
-
         zIndex:
           1100,
-
         display:
           "flex",
-
         alignItems:
           "flex-start",
-
         justifyContent:
           "center",
-
         padding:
           "20px 10px",
-
         background:
           "rgba(15,23,42,0.55)",
-
         overflowY:
           "auto",
       }}
@@ -1194,19 +1102,14 @@ function WorkerManagerModal({
         style={{
           width:
             "100%",
-
           maxWidth:
             "650px",
-
           padding:
             "16px",
-
           borderRadius:
             "16px",
-
           background:
             "#ffffff",
-
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
         }}
@@ -1215,16 +1118,12 @@ function WorkerManagerModal({
           style={{
             display:
               "flex",
-
             alignItems:
               "center",
-
             justifyContent:
               "space-between",
-
             gap:
               "10px",
-
             marginBottom:
               "12px",
           }}
@@ -1233,10 +1132,8 @@ function WorkerManagerModal({
             style={{
               fontSize:
                 "18px",
-
               fontWeight:
                 "900",
-
               color:
                 "#111827",
             }}
@@ -1252,16 +1149,12 @@ function WorkerManagerModal({
             style={{
               border:
                 "none",
-
               background:
                 "transparent",
-
               fontSize:
                 "28px",
-
               color:
                 "#64748b",
-
               cursor:
                 "pointer",
             }}
@@ -1274,4 +1167,4 @@ function WorkerManagerModal({
       </div>
     </div>
   );
-                }
+}
