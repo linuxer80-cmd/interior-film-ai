@@ -48,34 +48,48 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
     photos.forEach((photo) => URL.revokeObjectURL(photo.url));
     setPhotos(selected);
     setPrices({}); setSiteNames({});
-    setMessage(`${selected.length}장 선택. 촬영일/GPS가 없는 사진은 AI 비교와 직접 확인으로 분류합니다.`);
+    await analyze(selected);
   }
 
-  async function analyze() {
-    if (!photos.length || photos.length > 12) { setMessage("한 번에 1~12장을 선택해주세요."); return; }
-    setBusy(true); setMessage("사진 구조와 촬영 정보를 비교하고 있습니다...");
+  async function analyze(selected = photos) {
+    if (!selected.length) return;
+    setBusy(true); setMessage(`사진 ${selected.length}장을 AI로 분류하고 있습니다...`);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("로그인이 필요합니다.");
-      const form = new FormData();
-      for (const photo of photos) {
-        form.append("images", await resizeImage(photo.file, 1100, 0.65));
-      }
-      form.append("metadata", JSON.stringify(photos.map(({ takenAt, latitude, longitude }) => ({ takenAt, latitude, longitude }))));
-      const response = await fetch("/api/quick-register/analyze", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "분석 실패");
-      setPhotos((current) => current.map((photo, index) => {
-        const found = data.photos.find((item) => item.index === index);
-        return { ...photo, site: String(found.site_key || index + 1).slice(0, 20),
+      const classified = [];
+      let nextSite = 1;
+      for (let offset = 0; offset < selected.length;) {
+        // Include examples from earlier groups so site numbers remain consistent across requests.
+        const references = [...new Map(classified.map((p) => [p.site, p])).values()].slice(-3);
+        const batch = selected.slice(offset, offset + 12 - references.length);
+        const input = [...references, ...batch];
+        setMessage(`AI 분류 중: ${offset}/${selected.length}장 완료`);
+        const form = new FormData();
+        for (const photo of input) form.append("images", await resizeImage(photo.file, 1100, 0.65));
+        form.append("metadata", JSON.stringify(input.map(({ takenAt, latitude, longitude, site }, index) => ({ takenAt, latitude, longitude, referenceSite: index < references.length ? site : null }))));
+        const response = await fetch("/api/quick-register/analyze", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: form });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "분석 실패");
+        const labels = new Map();
+        references.forEach((photo, index) => labels.set(String(data.photos.find((p) => p.index === index)?.site_key), photo.site));
+        const resolved = batch.map((photo, index) => {
+          const found = data.photos.find((item) => item.index === index + references.length);
+          const key = String(found.site_key || `new-${index}`);
+          if (!labels.has(key)) labels.set(key, String(nextSite++));
+          return { ...photo, site: labels.get(key),
           category: categories.includes(found.category) ? found.category : "기타",
           subCategory: String(found.sub_category || "").slice(0, 80),
           type: ["before", "after"].includes(found.photo_type) ? found.photo_type : "unknown",
           confidence: ["high", "medium"].includes(found.confidence) ? found.confidence : "low",
           description: String(found.description || "").slice(0, 500),
           tags: Array.isArray(found.tags) ? found.tags.filter((tag) => typeof tag === "string").slice(0, 12) : [] };
-      }));
-      setMessage("분류 완료. 현장과 전후를 확인한 뒤 부위별 실제금액을 입력해주세요.");
+        });
+        classified.push(...resolved);
+        offset += batch.length;
+        setPhotos([...classified, ...selected.slice(offset)]);
+      }
+      setMessage(`✅ ${classified.length}장 자동 분류 완료. '분류 확인' 표시가 있는 사진만 확인하고 실제금액을 입력해주세요.`);
     } catch (error) { setMessage(`❌ ${error.message}`); }
     finally { setBusy(false); }
   }
@@ -158,10 +172,10 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
 
   return <section style={sectionStyle}>
     <h2 style={{ marginTop: 0 }}>⚡ 빠른 시공등록</h2>
-    <p>원본 사진을 최대 12장 선택하세요. 날짜가 다른 전후 사진도 한 번에 선택하면 함께 비교합니다.</p>
+    <p>원본 사진을 여러 장 선택하면 AI가 자동으로 현장·부위·전후를 분류합니다. 불확실한 사진만 확인해주세요.</p>
     <input type="file" accept="image/*" multiple disabled={busy} onChange={selectFiles} style={inputStyle} />
     <button type="button" disabled={busy || !photos.length} onClick={analyze} style={{ ...primaryButtonStyle, marginTop: 12 }}>AI 현장·부위·전후 분류</button>
-    {sites.map(({ site, items, groups }) => <div key={site} style={{ border: "1px solid #d1d5db", borderRadius: 12, padding: 12, marginTop: 16 }}>
+    {!busy && sites.map(({ site, items, groups }) => <div key={site} style={{ border: "1px solid #d1d5db", borderRadius: 12, padding: 12, marginTop: 16 }}>
       <h3>현장 {site} · {items.length}장</h3>
       <input aria-label={`현장 ${site} 이름`} style={inputStyle} placeholder={siteHint(items[0])} value={siteNames[site] || ""} onChange={(e) => setSiteNames((s) => ({ ...s, [site]: e.target.value }))} />
       {groups.map(([key, group]) => <div key={key} style={{ borderTop: "1px solid #eee", marginTop: 14, paddingTop: 10 }}>
