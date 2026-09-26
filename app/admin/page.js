@@ -13,6 +13,7 @@ import AdminTabs from "./AdminTabs";
 import NewLeadAlert from "./NewLeadAlert";
 import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
+import QuickRegisterTab from "./QuickRegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
@@ -892,6 +893,14 @@ export default function AdminPage() {
           loadJobs={loadJobs}
         />
       )}
+
+      {activeTab === "quick-register" && (
+        <QuickRegisterTab companyId={companyId} loadJobs={loadJobs} />
+      )}
+
+      {/* =====================================================
+          시공 등록
+      ===================================================== */}
 
       {activeTab ===
         "register" && (
