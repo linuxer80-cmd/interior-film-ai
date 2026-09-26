@@ -14,6 +14,12 @@ import WorkerManagement from "./WorkerManagement";
 ========================================================= */
 
 const STATUS_INFO = {
+  consulting: {
+    label: "상담중",
+    background: "#fff7ed",
+    color: "#c2410c",
+  },
+
   scheduled: {
     label: "시공 예정",
     background: "#eff6ff",
@@ -22,8 +28,8 @@ const STATUS_INFO = {
 
   in_progress: {
     label: "시공 중",
-    background: "#fff7ed",
-    color: "#c2410c",
+    background: "#fef3c7",
+    color: "#b45309",
   },
 
   completed: {
@@ -40,36 +46,62 @@ const STATUS_INFO = {
 };
 
 /* =========================================================
-   날짜 표시
+   날짜 + 시간 표시
 ========================================================= */
 
-function formatDateTime(value) {
-  if (!value) {
-    return "-";
+function formatDateTime(
+  scheduleStart,
+  scheduleDate,
+) {
+  if (scheduleStart) {
+    const date =
+      new Date(scheduleStart);
+
+    if (
+      !Number.isNaN(
+        date.getTime(),
+      )
+    ) {
+      return new Intl.DateTimeFormat(
+        "ko-KR",
+        {
+          month: "long",
+          day: "numeric",
+          weekday: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        },
+      ).format(date);
+    }
   }
 
-  const date =
-    new Date(value);
+  if (scheduleDate) {
+    const date =
+      new Date(
+        `${scheduleDate}T00:00:00`,
+      );
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return "-";
+    if (
+      !Number.isNaN(
+        date.getTime(),
+      )
+    ) {
+      const dateText =
+        new Intl.DateTimeFormat(
+          "ko-KR",
+          {
+            month: "long",
+            day: "numeric",
+            weekday: "short",
+          },
+        ).format(date);
+
+      return `${dateText} · 시간 미정`;
+    }
   }
 
-  return new Intl.DateTimeFormat(
-    "ko-KR",
-    {
-      month: "long",
-      day: "numeric",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    },
-  ).format(date);
+  return "미정";
 }
 
 /* =========================================================
@@ -116,7 +148,12 @@ export default function SiteManagementTab({
   sitesMessage = "",
 
   createSite,
+  updateSiteBasicInfo,
+  updateSiteSchedule,
   updateSiteStatus,
+
+  addSiteRequestPhotos,
+  deleteSiteRequestPhoto,
 
   selectedSite,
   openSite,
@@ -137,36 +174,20 @@ export default function SiteManagementTab({
 
   reloadSites,
 }) {
-  /* =======================================================
-     현장 등록 모달
-  ======================================================= */
-
   const [
     registerOpen,
     setRegisterOpen,
   ] = useState(false);
-
-  /* =======================================================
-     시공자 관리 모달
-  ======================================================= */
 
   const [
     workerManagerOpen,
     setWorkerManagerOpen,
   ] = useState(false);
 
-  /* =======================================================
-     현장 필터
-  ======================================================= */
-
   const [
     filter,
     setFilter,
   ] = useState("active");
-
-  /* =======================================================
-     필터 적용
-  ======================================================= */
 
   const filteredSites =
     useMemo(() => {
@@ -181,6 +202,8 @@ export default function SiteManagementTab({
       ) {
         return sites.filter(
           (site) =>
+            site.status ===
+              "consulting" ||
             site.status ===
               "scheduled" ||
             site.status ===
@@ -198,9 +221,12 @@ export default function SiteManagementTab({
       filter,
     ]);
 
-  /* =======================================================
-     상태별 개수
-  ======================================================= */
+  const consultingCount =
+    sites.filter(
+      (site) =>
+        site.status ===
+        "consulting",
+    ).length;
 
   const scheduledCount =
     sites.filter(
@@ -223,10 +249,6 @@ export default function SiteManagementTab({
         "completed",
     ).length;
 
-  /* =======================================================
-     시공자 관리 열기
-  ======================================================= */
-
   async function openWorkerManager() {
     if (
       typeof loadWorkers ===
@@ -240,29 +262,17 @@ export default function SiteManagementTab({
     );
   }
 
-  /* =======================================================
-     화면
-  ======================================================= */
-
   return (
     <>
       <section>
-        {/* =================================================
-            상단
-        ================================================= */}
-
         <div
           style={{
             display: "flex",
-
             alignItems:
               "flex-start",
-
             justifyContent:
               "space-between",
-
             gap: "10px",
-
             marginBottom:
               "14px",
           }}
@@ -272,10 +282,8 @@ export default function SiteManagementTab({
               style={{
                 fontSize:
                   "20px",
-
                 fontWeight:
                   "800",
-
                 color:
                   "#111827",
               }}
@@ -287,28 +295,23 @@ export default function SiteManagementTab({
               style={{
                 marginTop:
                   "3px",
-
                 fontSize:
                   "12px",
-
                 color:
                   "#64748b",
               }}
             >
-              시공 일정과 담당자를
-              관리합니다.
+              상담중 현장부터 시공
+              완료까지 관리합니다.
             </div>
           </div>
 
           <div
             style={{
               display: "flex",
-
               flexDirection:
                 "column",
-
               gap: "6px",
-
               flex:
                 "0 0 auto",
             }}
@@ -323,33 +326,25 @@ export default function SiteManagementTab({
               style={{
                 border:
                   "none",
-
                 borderRadius:
                   "10px",
-
                 padding:
                   "10px 12px",
-
                 background:
                   "#111827",
-
                 color:
                   "#ffffff",
-
                 fontSize:
                   "13px",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   "pointer",
-
                 whiteSpace:
                   "nowrap",
               }}
             >
-              + 일정 추가
+              + 현장 추가
             </button>
 
             <button
@@ -360,28 +355,20 @@ export default function SiteManagementTab({
               style={{
                 border:
                   "1px solid #cbd5e1",
-
                 borderRadius:
                   "10px",
-
                 padding:
                   "9px 12px",
-
                 background:
                   "#ffffff",
-
                 color:
                   "#334155",
-
                 fontSize:
                   "12px",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   "pointer",
-
                 whiteSpace:
                   "nowrap",
               }}
@@ -391,23 +378,23 @@ export default function SiteManagementTab({
           </div>
         </div>
 
-        {/* =================================================
-            요약
-        ================================================= */}
-
         <div
           style={{
             display: "grid",
-
             gridTemplateColumns:
-              "repeat(3, 1fr)",
-
-            gap: "8px",
-
+              "repeat(4, minmax(0, 1fr))",
+            gap: "6px",
             marginBottom:
               "14px",
           }}
         >
+          <SummaryCard
+            label="상담중"
+            value={
+              consultingCount
+            }
+          />
+
           <SummaryCard
             label="시공 예정"
             value={
@@ -430,22 +417,14 @@ export default function SiteManagementTab({
           />
         </div>
 
-        {/* =================================================
-            필터
-        ================================================= */}
-
         <div
           style={{
             display: "flex",
-
             gap: "6px",
-
             overflowX:
               "auto",
-
             paddingBottom:
               "5px",
-
             marginBottom:
               "12px",
           }}
@@ -462,6 +441,20 @@ export default function SiteManagementTab({
             }
           >
             진행 현장
+          </FilterButton>
+
+          <FilterButton
+            active={
+              filter ===
+              "consulting"
+            }
+            onClick={() =>
+              setFilter(
+                "consulting",
+              )
+            }
+          >
+            상담중
           </FilterButton>
 
           <FilterButton
@@ -521,45 +514,33 @@ export default function SiteManagementTab({
           </FilterButton>
         </div>
 
-        {/* =================================================
-            메시지
-        ================================================= */}
-
         {sitesMessage && (
           <div
             style={{
               marginBottom:
                 "12px",
-
               padding:
                 "10px 12px",
-
               borderRadius:
                 "9px",
-
               background:
                 sitesMessage.startsWith(
                   "✅",
                 )
                   ? "#f0fdf4"
                   : "#fef2f2",
-
               color:
                 sitesMessage.startsWith(
                   "✅",
                 )
                   ? "#166534"
                   : "#b91c1c",
-
               fontSize:
                 "13px",
-
               fontWeight:
                 "700",
-
               whiteSpace:
                 "pre-wrap",
-
               wordBreak:
                 "break-word",
             }}
@@ -568,10 +549,6 @@ export default function SiteManagementTab({
           </div>
         )}
 
-        {/* =================================================
-            로딩
-        ================================================= */}
-
         {sitesLoading &&
           sites.length ===
             0 && (
@@ -579,13 +556,10 @@ export default function SiteManagementTab({
               style={{
                 padding:
                   "30px 12px",
-
                 textAlign:
                   "center",
-
                 color:
                   "#64748b",
-
                 fontSize:
                   "14px",
               }}
@@ -595,10 +569,6 @@ export default function SiteManagementTab({
             </div>
           )}
 
-        {/* =================================================
-            현장 없음
-        ================================================= */}
-
         {!sitesLoading &&
           filteredSites.length ===
             0 && (
@@ -606,16 +576,12 @@ export default function SiteManagementTab({
               style={{
                 padding:
                   "38px 16px",
-
                 border:
                   "1px dashed #cbd5e1",
-
                 borderRadius:
                   "14px",
-
                 background:
                   "#ffffff",
-
                 textAlign:
                   "center",
               }}
@@ -624,7 +590,6 @@ export default function SiteManagementTab({
                 style={{
                   fontSize:
                     "30px",
-
                   marginBottom:
                     "8px",
                 }}
@@ -636,7 +601,6 @@ export default function SiteManagementTab({
                 style={{
                   fontWeight:
                     "800",
-
                   color:
                     "#334155",
                 }}
@@ -649,28 +613,23 @@ export default function SiteManagementTab({
                 style={{
                   marginTop:
                     "5px",
-
                   fontSize:
                     "12px",
-
                   color:
                     "#64748b",
                 }}
               >
-                + 일정 추가에서 첫
-                현장을 등록해주세요.
+                + 현장 추가에서
+                상담중 현장이나
+                시공 일정을
+                등록해주세요.
               </div>
             </div>
           )}
 
-        {/* =================================================
-            현장 목록
-        ================================================= */}
-
         <div
           style={{
             display: "grid",
-
             gap: "10px",
           }}
         >
@@ -694,10 +653,6 @@ export default function SiteManagementTab({
         </div>
       </section>
 
-      {/* ===================================================
-          현장 등록
-      =================================================== */}
-
       <SiteRegisterModal
         open={
           registerOpen
@@ -714,10 +669,6 @@ export default function SiteManagementTab({
           sitesLoading
         }
       />
-
-      {/* ===================================================
-          시공자 관리
-      =================================================== */}
 
       {workerManagerOpen && (
         <WorkerManagerModal
@@ -753,11 +704,6 @@ export default function SiteManagementTab({
         </WorkerManagerModal>
       )}
 
-      {/* ===================================================
-          현장 상세
-          별도 컴포넌트
-      =================================================== */}
-
       {selectedSite && (
         <SiteDetailModal
           companyId={
@@ -772,8 +718,24 @@ export default function SiteManagementTab({
             closeSite
           }
 
+          updateSiteBasicInfo={
+            updateSiteBasicInfo
+          }
+
+          updateSiteSchedule={
+            updateSiteSchedule
+          }
+
           updateSiteStatus={
             updateSiteStatus
+          }
+
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
           }
 
           workers={
@@ -803,8 +765,7 @@ export default function SiteManagementTab({
       )}
     </>
   );
-}
-
+            }
 /* =========================================================
    요약 카드
 ========================================================= */
@@ -816,18 +777,15 @@ function SummaryCard({
   return (
     <div
       style={{
+        minWidth: 0,
         padding:
-          "12px 8px",
-
+          "12px 4px",
         border:
           "1px solid #e2e8f0",
-
         borderRadius:
           "12px",
-
         background:
           "#ffffff",
-
         textAlign:
           "center",
       }}
@@ -835,10 +793,11 @@ function SummaryCard({
       <div
         style={{
           fontSize:
-            "12px",
-
+            "11px",
           color:
             "#64748b",
+          whiteSpace:
+            "nowrap",
         }}
       >
         {label}
@@ -848,13 +807,10 @@ function SummaryCard({
         style={{
           marginTop:
             "4px",
-
           fontSize:
             "22px",
-
           fontWeight:
             "900",
-
           color:
             "#111827",
         }}
@@ -883,34 +839,26 @@ function FilterButton({
       style={{
         flex:
           "0 0 auto",
-
         border:
           active
             ? "1px solid #111827"
             : "1px solid #cbd5e1",
-
         borderRadius:
           "999px",
-
         padding:
           "8px 12px",
-
         background:
           active
             ? "#111827"
             : "#ffffff",
-
         color:
           active
             ? "#ffffff"
             : "#475569",
-
         fontSize:
           "12px",
-
         fontWeight:
           "700",
-
         cursor:
           "pointer",
       }}
@@ -932,13 +880,30 @@ function SiteCard({
     STATUS_INFO[
       site.status
     ] ||
-    STATUS_INFO.scheduled;
+    STATUS_INFO.consulting;
 
   const leader =
     getLeader(site);
 
   const members =
     getMembers(site);
+
+  const siteTitle =
+    site.site_name ||
+    site.customer_name ||
+    "현장명 미정";
+
+  const customerName =
+    site.customer_name ||
+    "미정";
+
+  const address =
+    site.address ||
+    "미정";
+
+  const workType =
+    site.work_type ||
+    "미정";
 
   return (
     <button
@@ -949,39 +914,28 @@ function SiteCard({
       style={{
         width:
           "100%",
-
         padding:
           "14px",
-
         border:
           "1px solid #e2e8f0",
-
         borderRadius:
           "14px",
-
         background:
           "#ffffff",
-
         textAlign:
           "left",
-
         cursor:
           "pointer",
       }}
     >
-      {/* 상단 */}
-
       <div
         style={{
           display:
             "flex",
-
           alignItems:
             "flex-start",
-
           justifyContent:
             "space-between",
-
           gap:
             "8px",
         }}
@@ -996,63 +950,46 @@ function SiteCard({
             style={{
               fontSize:
                 "15px",
-
               fontWeight:
                 "800",
-
               color:
                 "#111827",
-
               wordBreak:
                 "break-word",
             }}
           >
-            {site.site_name ||
-              site.customer_name ||
-              "현장"}
+            {siteTitle}
           </div>
 
-          {site.customer_name && (
-            <div
-              style={{
-                marginTop:
-                  "3px",
-
-                fontSize:
-                  "12px",
-
-                color:
-                  "#64748b",
-              }}
-            >
-              고객{" "}
-              {
-                site.customer_name
-              }
-            </div>
-          )}
+          <div
+            style={{
+              marginTop:
+                "3px",
+              fontSize:
+                "12px",
+              color:
+                "#64748b",
+            }}
+          >
+            고객{" "}
+            {customerName}
+          </div>
         </div>
 
         <span
           style={{
             flex:
               "0 0 auto",
-
             padding:
               "5px 8px",
-
             borderRadius:
               "999px",
-
             background:
               status.background,
-
             color:
               status.color,
-
             fontSize:
               "11px",
-
             fontWeight:
               "800",
           }}
@@ -1061,22 +998,16 @@ function SiteCard({
         </span>
       </div>
 
-      {/* 현장 정보 */}
-
       <div
         style={{
           marginTop:
             "12px",
-
           display:
             "grid",
-
           gap:
             "7px",
-
           fontSize:
             "13px",
-
           color:
             "#334155",
         }}
@@ -1085,25 +1016,23 @@ function SiteCard({
           📅{" "}
           {formatDateTime(
             site.schedule_start,
+            site.schedule_date,
           )}
         </div>
 
         <div>
           📍{" "}
-          {site.address ||
-            "주소 미입력"}
+          {address}
 
           {site.address_detail
             ? ` ${site.address_detail}`
             : ""}
         </div>
 
-        {site.work_type && (
-          <div>
-            🛠️{" "}
-            {site.work_type}
-          </div>
-        )}
+        <div>
+          🛠️{" "}
+          {workType}
+        </div>
 
         <div>
           ★ 팀장{" "}
@@ -1130,7 +1059,8 @@ function SiteCard({
               )
               .join(
                 ", ",
-              )}
+              ) ||
+              "미배정"}
           </div>
         )}
       </div>
@@ -1154,28 +1084,20 @@ function WorkerManagerModal({
       style={{
         position:
           "fixed",
-
         inset:
           0,
-
         zIndex:
           1100,
-
         display:
           "flex",
-
         alignItems:
           "flex-start",
-
         justifyContent:
           "center",
-
         padding:
           "20px 10px",
-
         background:
           "rgba(15,23,42,0.55)",
-
         overflowY:
           "auto",
       }}
@@ -1189,19 +1111,14 @@ function WorkerManagerModal({
         style={{
           width:
             "100%",
-
           maxWidth:
             "650px",
-
           padding:
             "16px",
-
           borderRadius:
             "16px",
-
           background:
             "#ffffff",
-
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
         }}
@@ -1210,16 +1127,12 @@ function WorkerManagerModal({
           style={{
             display:
               "flex",
-
             alignItems:
               "center",
-
             justifyContent:
               "space-between",
-
             gap:
               "10px",
-
             marginBottom:
               "12px",
           }}
@@ -1228,10 +1141,8 @@ function WorkerManagerModal({
             style={{
               fontSize:
                 "18px",
-
               fontWeight:
                 "900",
-
               color:
                 "#111827",
             }}
@@ -1247,16 +1158,12 @@ function WorkerManagerModal({
             style={{
               border:
                 "none",
-
               background:
                 "transparent",
-
               fontSize:
                 "28px",
-
               color:
                 "#64748b",
-
               cursor:
                 "pointer",
             }}

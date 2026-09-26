@@ -647,8 +647,16 @@ export default function useWorkers({
      leader = 책임 팀장 1명
      member = 담당 시공자
 
-     역할은 시공자 기본정보가 아니라
-     현장마다 별도로 지정한다.
+     중요:
+     기존처럼 모든 배정을 삭제한 뒤 다시 INSERT하지 않는다.
+
+     현재 배정과 새 배정을 비교해서:
+     - 제거된 시공자만 DELETE
+     - 역할이 바뀐 시공자만 UPDATE
+     - 새로 배정된 시공자만 INSERT
+
+     따라서 site_workers AFTER INSERT 알림은
+     실제로 새로 배정된 시공자에게만 발생한다.
   ========================================================= */
 
   const assignSiteWorkers =
@@ -674,10 +682,10 @@ export default function useWorkers({
 
         try {
           /*
-           * 중복 제거
+           * 새 배정 정리
            *
-           * 팀장으로 선택된 사람은
-           * member에서 자동 제외
+           * 중복 member 제거
+           * leader는 member에서 제외
            */
 
           const cleanMemberIds =
@@ -697,99 +705,285 @@ export default function useWorkers({
             );
 
           /*
-           * 기존 배정 삭제
+           * 최종적으로 원하는 배정 Map
+           *
+           * worker_id → role
            */
 
-          const {
-            error:
-              deleteError,
-          } = await supabase
-            .from(
-              "site_workers",
-            )
-            .delete()
-            .eq(
-              "site_id",
-              siteId,
-            )
-            .eq(
-              "company_id",
-              companyId,
-            );
-
-          if (deleteError) {
-            throw deleteError;
-          }
-
-          /*
-           * 새 배정 데이터
-           */
-
-          const assignments = [];
+          const desiredMap =
+            new Map();
 
           if (leaderId) {
-            assignments.push({
-              company_id:
-                companyId,
-
-              site_id:
-                siteId,
-
-              worker_id:
-                leaderId,
-
-              role:
-                "leader",
-            });
+            desiredMap.set(
+              leaderId,
+              "leader",
+            );
           }
 
           for (
             const workerId of
               cleanMemberIds
           ) {
-            assignments.push({
-              company_id:
-                companyId,
-
-              site_id:
-                siteId,
-
-              worker_id:
-                workerId,
-
-              role:
-                "member",
-            });
+            desiredMap.set(
+              workerId,
+              "member",
+            );
           }
 
           /*
-           * 아무도 선택하지 않은 경우
-           * 기존 배정 삭제만 하고 종료
+           * 현재 DB에 저장되어 있는
+           * 이 현장의 기존 배정 조회
            */
 
-          if (
-            assignments.length ===
-            0
-          ) {
-            setWorkersMessage(
-              "✅ 현장 시공자 배정을 해제했습니다.",
-            );
-
-            return {
-              success: true,
-              assignments: [],
-            };
-          }
-
           const {
-            data,
-            error,
+            data:
+              existingRows,
+            error:
+              existingError,
           } = await supabase
             .from(
               "site_workers",
             )
-            .insert(
-              assignments,
+            .select(`
+              id,
+              company_id,
+              site_id,
+              worker_id,
+              role,
+              assigned_at
+            `)
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            );
+
+          if (existingError) {
+            throw existingError;
+          }
+
+          const currentRows =
+            existingRows || [];
+
+          /*
+           * 기존 배정 Map
+           *
+           * worker_id → 기존 site_workers 행
+           */
+
+          const existingMap =
+            new Map(
+              currentRows.map(
+                (row) => [
+                  row.worker_id,
+                  row,
+                ],
+              ),
+            );
+
+          /*
+           * ---------------------------------------------------
+           * 1. 제거된 시공자만 DELETE
+           * ---------------------------------------------------
+           *
+           * 기존에는 있었지만
+           * 새 선택에는 없는 시공자만 삭제한다.
+           */
+
+          const rowsToDelete =
+            currentRows.filter(
+              (row) =>
+                !desiredMap.has(
+                  row.worker_id,
+                ),
+            );
+
+          if (
+            rowsToDelete.length >
+            0
+          ) {
+            const deleteIds =
+              rowsToDelete.map(
+                (row) => row.id,
+              );
+
+            const {
+              error:
+                deleteError,
+            } = await supabase
+              .from(
+                "site_workers",
+              )
+              .delete()
+              .eq(
+                "company_id",
+                companyId,
+              )
+              .eq(
+                "site_id",
+                siteId,
+              )
+              .in(
+                "id",
+                deleteIds,
+              );
+
+            if (deleteError) {
+              throw deleteError;
+            }
+          }
+
+          /*
+           * ---------------------------------------------------
+           * 2. 역할이 바뀐 기존 시공자만 UPDATE
+           * ---------------------------------------------------
+           *
+           * 예:
+           * member → leader
+           * leader → member
+           *
+           * UPDATE이므로
+           * AFTER INSERT 알림은 발생하지 않는다.
+           */
+
+          const rowsToUpdate =
+            currentRows.filter(
+              (row) => {
+                const desiredRole =
+                  desiredMap.get(
+                    row.worker_id,
+                  );
+
+                if (!desiredRole) {
+                  return false;
+                }
+
+                return (
+                  row.role !==
+                  desiredRole
+                );
+              },
+            );
+
+          for (
+            const row of
+              rowsToUpdate
+          ) {
+            const desiredRole =
+              desiredMap.get(
+                row.worker_id,
+              );
+
+            const {
+              error:
+                updateError,
+            } = await supabase
+              .from(
+                "site_workers",
+              )
+              .update({
+                role:
+                  desiredRole,
+              })
+              .eq(
+                "id",
+                row.id,
+              )
+              .eq(
+                "company_id",
+                companyId,
+              )
+              .eq(
+                "site_id",
+                siteId,
+              );
+
+            if (updateError) {
+              throw updateError;
+            }
+          }
+
+          /*
+           * ---------------------------------------------------
+           * 3. 새로 추가된 시공자만 INSERT
+           * ---------------------------------------------------
+           *
+           * 기존 DB에 없는 worker_id만 INSERT한다.
+           *
+           * 이 INSERT에 대해서만
+           * create_site_worker_notification()
+           * 트리거가 실행되어 Push가 발송된다.
+           */
+
+          const rowsToInsert =
+            [];
+
+          for (
+            const [
+              workerId,
+              role,
+            ] of desiredMap.entries()
+          ) {
+            if (
+              !existingMap.has(
+                workerId,
+              )
+            ) {
+              rowsToInsert.push({
+                company_id:
+                  companyId,
+
+                site_id:
+                  siteId,
+
+                worker_id:
+                  workerId,
+
+                role,
+              });
+            }
+          }
+
+          if (
+            rowsToInsert.length >
+            0
+          ) {
+            const {
+              error:
+                insertError,
+            } = await supabase
+              .from(
+                "site_workers",
+              )
+              .insert(
+                rowsToInsert,
+              );
+
+            if (insertError) {
+              throw insertError;
+            }
+          }
+
+          /*
+           * ---------------------------------------------------
+           * 4. 최종 배정 상태 다시 조회
+           * ---------------------------------------------------
+           *
+           * UI가 실제 DB 상태와
+           * 정확히 일치하도록 다시 읽는다.
+           */
+
+          const {
+            data:
+              finalRows,
+            error:
+              finalError,
+          } = await supabase
+            .from(
+              "site_workers",
             )
             .select(`
               id,
@@ -805,20 +999,71 @@ export default function useWorkers({
                 daily_wage,
                 position
               )
-            `);
+            `)
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            )
+            .order(
+              "assigned_at",
+              {
+                ascending: true,
+              },
+            );
 
-          if (error) {
-            throw error;
+          if (finalError) {
+            throw finalError;
           }
 
-          setWorkersMessage(
-            "✅ 현장 시공자 배정이 저장되었습니다.",
-          );
+          /*
+           * 실제 변경 여부
+           */
+
+          const changed =
+            rowsToDelete.length >
+              0 ||
+            rowsToUpdate.length >
+              0 ||
+            rowsToInsert.length >
+              0;
+
+          if (!changed) {
+            setWorkersMessage(
+              "✅ 기존 시공자 배정과 동일합니다.",
+            );
+          } else if (
+            desiredMap.size ===
+            0
+          ) {
+            setWorkersMessage(
+              "✅ 현장 시공자 배정을 해제했습니다.",
+            );
+          } else {
+            setWorkersMessage(
+              "✅ 현장 시공자 배정이 저장되었습니다.",
+            );
+          }
 
           return {
             success: true,
+
             assignments:
-              data || [],
+              finalRows || [],
+
+            changed,
+
+            insertedCount:
+              rowsToInsert.length,
+
+            updatedCount:
+              rowsToUpdate.length,
+
+            deletedCount:
+              rowsToDelete.length,
           };
         } catch (error) {
           console.error(
@@ -947,4 +1192,4 @@ export default function useWorkers({
 
     clearWorkersMessage,
   };
-          }
+    }

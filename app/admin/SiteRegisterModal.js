@@ -6,62 +6,23 @@ import {
   useState,
 } from "react";
 
-/* =========================================================
-   오늘 날짜
-========================================================= */
-
-function getTodayString() {
-  const now = new Date();
-
-  const year =
-    now.getFullYear();
-
-  const month =
-    String(
-      now.getMonth() + 1,
-    ).padStart(
-      2,
-      "0",
-    );
-
-  const day =
-    String(
-      now.getDate(),
-    ).padStart(
-      2,
-      "0",
-    );
-
-  return `${year}-${month}-${day}`;
-}
+import CallContentAiInput from "./site-register/CallContentAiInput";
 
 /* =========================================================
    날짜 + 시간을 ISO로 변환
-
-   예:
-   한국 휴대폰에서
-   2026-09-21 09:00 선택
-   ↓
-   실제 한국시간 09:00을 의미하는 ISO 저장
-
-   timestamptz와 브라우저 표시 시간 불일치 방지
 ========================================================= */
 
 function makeDateTime(
   date,
   time,
 ) {
-  if (
-    !date ||
-    !time
-  ) {
+  if (!date || !time) {
     return null;
   }
 
-  const localDate =
-    new Date(
-      `${date}T${time}:00`,
-    );
+  const localDate = new Date(
+    `${date}T${time}:00`,
+  );
 
   if (
     Number.isNaN(
@@ -76,52 +37,37 @@ function makeDateTime(
 
 /* =========================================================
    기본 폼
+
+   중요:
+   날짜 / 시작시간 / 종료시간은
+   기본값을 넣지 않습니다.
+
+   AI가 통화에서 실제 시공일정을 찾았을 때만
+   자동으로 입력합니다.
 ========================================================= */
 
 const initialForm = {
   date: "",
+  start_time: "",
+  end_time: "",
 
-  start_time:
-    "09:00",
+  customer_name: "",
+  customer_phone: "",
 
-  end_time:
-    "18:00",
+  site_name: "",
+  address: "",
+  address_detail: "",
+  region: "",
 
-  customer_name:
-    "",
+  work_type: "",
+  work_description: "",
 
-  customer_phone:
-    "",
+  contract_amount: "",
+  deposit_amount: "",
 
-  site_name:
-    "",
+  source: "phone",
 
-  address:
-    "",
-
-  address_detail:
-    "",
-
-  region:
-    "",
-
-  work_type:
-    "",
-
-  work_description:
-    "",
-
-  contract_amount:
-    "",
-
-  deposit_amount:
-    "",
-
-  source:
-    "phone",
-
-  memo:
-    "",
+  memo: "",
 };
 
 /* =========================================================
@@ -136,29 +82,17 @@ function makeEmptyMaterial() {
     film_product_id:
       null,
 
-    brand:
-      "",
+    brand: "",
+    product_code: "",
+    product_name: "",
 
-    product_code:
-      "",
+    quantity: "",
+    unit: "m",
 
-    product_name:
-      "",
+    unit_price: "",
+    total_price: "",
 
-    quantity:
-      "",
-
-    unit:
-      "m",
-
-    unit_price:
-      "",
-
-    total_price:
-      "",
-
-    memo:
-      "",
+    memo: "",
   };
 }
 
@@ -175,32 +109,28 @@ export default function SiteRegisterModal({
   const [
     form,
     setForm,
-  ] =
-    useState(
-      initialForm,
-    );
+  ] = useState(initialForm);
 
   const [
     materials,
     setMaterials,
-  ] =
-    useState([]);
+  ] = useState([]);
 
   const [
     requestPhotos,
     setRequestPhotos,
-  ] =
-    useState([]);
+  ] = useState([]);
 
   const [
     localMessage,
     setLocalMessage,
-  ] =
-    useState("");
+  ] = useState("");
 
-  /* =========================================================
+  /* =======================================================
      팝업 열릴 때 초기화
-  ========================================================= */
+
+     날짜와 시간도 빈칸으로 시작합니다.
+  ======================================================= */
 
   useEffect(() => {
     if (!open) {
@@ -209,21 +139,16 @@ export default function SiteRegisterModal({
 
     setForm({
       ...initialForm,
-
-      date:
-        getTodayString(),
     });
 
     setMaterials([]);
-
     setRequestPhotos([]);
-
     setLocalMessage("");
   }, [open]);
 
-  /* =========================================================
-     사진 미리보기 URL
-  ========================================================= */
+  /* =======================================================
+     사진 미리보기
+  ======================================================= */
 
   const photoPreviews =
     useMemo(
@@ -253,9 +178,9 @@ export default function SiteRegisterModal({
     };
   }, [photoPreviews]);
 
-  /* =========================================================
+  /* =======================================================
      일반 입력 변경
-  ========================================================= */
+  ======================================================= */
 
   function updateField(
     field,
@@ -264,16 +189,206 @@ export default function SiteRegisterModal({
     setForm(
       (prev) => ({
         ...prev,
-
-        [field]:
-          value,
+        [field]: value,
       }),
     );
   }
 
-  /* =========================================================
+  /* =======================================================
+     AI 통화 분석 결과 적용
+  ======================================================= */
+
+  function applyCallAnalysis(
+    data,
+  ) {
+    if (
+      !data ||
+      typeof data !== "object"
+    ) {
+      return;
+    }
+
+    const fields = [
+      "date",
+      "start_time",
+      "end_time",
+
+      "customer_name",
+      "customer_phone",
+
+      "site_name",
+      "address",
+      "address_detail",
+      "region",
+
+      "work_type",
+      "work_description",
+
+      "contract_amount",
+      "deposit_amount",
+
+      "memo",
+    ];
+
+    /*
+     * AI가 실제로 찾은 값만 적용합니다.
+     *
+     * AI 결과가 빈값이면
+     * 관리자가 이미 입력한 내용을
+     * 지우지 않습니다.
+     */
+
+    setForm(
+      (prev) => {
+        const next = {
+          ...prev,
+
+          source:
+            "phone",
+        };
+
+        fields.forEach(
+          (field) => {
+            const value =
+              data[field];
+
+            if (
+              value !== null &&
+              value !== undefined &&
+              String(value).trim() !==
+                ""
+            ) {
+              next[field] =
+                String(
+                  value,
+                ).trim();
+            }
+          },
+        );
+
+        return next;
+      },
+    );
+
+    /* -------------------------------------------------------
+       AI가 찾은 자재 추가
+    ------------------------------------------------------- */
+
+    if (
+      Array.isArray(
+        data.materials,
+      ) &&
+      data.materials.length >
+        0
+    ) {
+      const aiMaterials =
+        data.materials
+          .filter(
+            (item) =>
+              item &&
+              typeof item ===
+                "object",
+          )
+          .map(
+            (item) => ({
+              ...makeEmptyMaterial(),
+
+              brand:
+                item.brand
+                  ? String(
+                      item.brand,
+                    ).trim()
+                  : "",
+
+              product_code:
+                item.product_code
+                  ? String(
+                      item.product_code,
+                    ).trim()
+                  : "",
+
+              product_name:
+                item.product_name
+                  ? String(
+                      item.product_name,
+                    ).trim()
+                  : "",
+
+              quantity:
+                item.quantity !==
+                  null &&
+                item.quantity !==
+                  undefined
+                  ? String(
+                      item.quantity,
+                    ).trim()
+                  : "",
+
+              unit:
+                item.unit
+                  ? String(
+                      item.unit,
+                    ).trim()
+                  : "m",
+
+              unit_price:
+                item.unit_price !==
+                  null &&
+                item.unit_price !==
+                  undefined
+                  ? String(
+                      item.unit_price,
+                    ).trim()
+                  : "",
+
+              total_price:
+                item.total_price !==
+                  null &&
+                item.total_price !==
+                  undefined
+                  ? String(
+                      item.total_price,
+                    ).trim()
+                  : "",
+
+              memo:
+                item.memo
+                  ? String(
+                      item.memo,
+                    ).trim()
+                  : "",
+            }),
+          )
+          .filter(
+            (item) =>
+              item.brand ||
+              item.product_code ||
+              item.product_name ||
+              item.quantity ||
+              item.memo,
+          );
+
+      if (
+        aiMaterials.length >
+        0
+      ) {
+        setMaterials(
+          (prev) => [
+            ...prev,
+            ...aiMaterials,
+          ],
+        );
+      }
+    }
+
+    setLocalMessage(
+      "✅ 통화내용을 일정등록 화면에 반영했습니다. 내용을 확인한 후 등록해주세요.",
+    );
+  }
+
+  /* =======================================================
      자재 추가
-  ========================================================= */
+  ======================================================= */
 
   function addMaterial() {
     setMaterials(
@@ -284,9 +399,9 @@ export default function SiteRegisterModal({
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      자재 변경
-  ========================================================= */
+  ======================================================= */
 
   function updateMaterial(
     localId,
@@ -306,15 +421,14 @@ export default function SiteRegisterModal({
 
             const next = {
               ...material,
-
-              [field]:
-                value,
+              [field]: value,
             };
 
             /*
-             * 수량/단가 입력 시
+             * 수량 또는 단가 변경 시
              * 총액 자동 계산
              */
+
             if (
               field ===
                 "quantity" ||
@@ -359,9 +473,9 @@ export default function SiteRegisterModal({
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      자재 삭제
-  ========================================================= */
+  ======================================================= */
 
   function removeMaterial(
     localId,
@@ -376,9 +490,9 @@ export default function SiteRegisterModal({
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      요청사진 선택
-  ========================================================= */
+  ======================================================= */
 
   function handlePhotoFiles(
     event,
@@ -406,15 +520,16 @@ export default function SiteRegisterModal({
     );
 
     /*
-     * 같은 사진을 다시 선택할 수 있도록
+     * 같은 사진 재선택 가능
      */
+
     event.target.value =
       "";
   }
 
-  /* =========================================================
+  /* =======================================================
      요청사진 삭제
-  ========================================================= */
+  ======================================================= */
 
   function removePhoto(
     index,
@@ -422,16 +537,19 @@ export default function SiteRegisterModal({
     setRequestPhotos(
       (prev) =>
         prev.filter(
-          (_, photoIndex) =>
+          (
+            _,
+            photoIndex,
+          ) =>
             photoIndex !==
             index,
         ),
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      저장
-  ========================================================= */
+  ======================================================= */
 
   async function handleSubmit(
     event,
@@ -440,59 +558,26 @@ export default function SiteRegisterModal({
 
     setLocalMessage("");
 
-    /* ---------------------------------------------------------
-       필수값 검사
-    --------------------------------------------------------- */
+    /* -------------------------------------------------------
+       상담중 / 일정확정 판정
 
-    if (!form.date) {
-      setLocalMessage(
-        "❌ 시공 날짜를 선택해주세요.",
-      );
+       날짜와 시작시간이 모두 있으면 시공 예정,
+       하나라도 미정이면 상담중으로 등록합니다.
+    ------------------------------------------------------- */
 
-      return;
-    }
-
-    if (
-      !form.start_time
-    ) {
-      setLocalMessage(
-        "❌ 시작 시간을 입력해주세요.",
-      );
-
-      return;
-    }
-
-    if (
-      !form.customer_name.trim()
-    ) {
-      setLocalMessage(
-        "❌ 고객명을 입력해주세요.",
-      );
-
-      return;
-    }
-
-    if (
-      !form.address.trim()
-    ) {
-      setLocalMessage(
-        "❌ 현장 주소를 입력해주세요.",
-      );
-
-      return;
-    }
-
-    /* ---------------------------------------------------------
-       시간 변환
-    --------------------------------------------------------- */
+    const hasConfirmedSchedule =
+      Boolean(form.date && form.start_time);
 
     const scheduleStart =
-      makeDateTime(
-        form.date,
-        form.start_time,
-      );
+      hasConfirmedSchedule
+        ? makeDateTime(
+            form.date,
+            form.start_time,
+          )
+        : null;
 
     const scheduleEnd =
+      hasConfirmedSchedule &&
       form.end_time
         ? makeDateTime(
             form.date,
@@ -500,9 +585,12 @@ export default function SiteRegisterModal({
           )
         : null;
 
-    if (!scheduleStart) {
+    if (
+      hasConfirmedSchedule &&
+      !scheduleStart
+    ) {
       setLocalMessage(
-        "❌ 시작 시간을 확인해주세요.",
+        "❌ 시공 일정을 확인해주세요.",
       );
 
       return;
@@ -524,16 +612,22 @@ export default function SiteRegisterModal({
       return;
     }
 
-    /* ---------------------------------------------------------
+    /* -------------------------------------------------------
        입력된 자재만 저장
-    --------------------------------------------------------- */
+    ------------------------------------------------------- */
 
     const cleanMaterials =
       materials
         .filter(
           (material) =>
-            material.product_code.trim() ||
-            material.product_name.trim(),
+            String(
+              material.product_code ||
+                "",
+            ).trim() ||
+            String(
+              material.product_name ||
+                "",
+            ).trim(),
         )
         .map(
           (material) => ({
@@ -542,13 +636,22 @@ export default function SiteRegisterModal({
               null,
 
             brand:
-              material.brand.trim(),
+              String(
+                material.brand ||
+                  "",
+              ).trim(),
 
             product_code:
-              material.product_code.trim(),
+              String(
+                material.product_code ||
+                  "",
+              ).trim(),
 
             product_name:
-              material.product_name.trim(),
+              String(
+                material.product_name ||
+                  "",
+              ).trim(),
 
             quantity:
               material.quantity,
@@ -564,13 +667,16 @@ export default function SiteRegisterModal({
               material.total_price,
 
             memo:
-              material.memo.trim(),
+              String(
+                material.memo ||
+                  "",
+              ).trim(),
           }),
         );
 
-    /* ---------------------------------------------------------
+    /* -------------------------------------------------------
        저장
-    --------------------------------------------------------- */
+    ------------------------------------------------------- */
 
     const result =
       await createSite({
@@ -592,8 +698,16 @@ export default function SiteRegisterModal({
         region:
           form.region,
 
+        schedule_date:
+          form.date || null,
+
         schedule_start:
           scheduleStart,
+
+        status:
+          hasConfirmedSchedule
+            ? "scheduled"
+            : "consulting",
 
         schedule_end:
           scheduleEnd,
@@ -616,9 +730,6 @@ export default function SiteRegisterModal({
         memo:
           form.memo,
 
-        /*
-         * 신규
-         */
         materials:
           cleanMaterials,
 
@@ -626,9 +737,7 @@ export default function SiteRegisterModal({
           requestPhotos,
       });
 
-    if (
-      !result?.success
-    ) {
+    if (!result?.success) {
       setLocalMessage(
         `❌ ${
           result?.error ||
@@ -640,7 +749,11 @@ export default function SiteRegisterModal({
     }
 
     setLocalMessage(
-      `✅ 현장 일정이 등록되었습니다.${
+      `✅ ${
+        hasConfirmedSchedule
+          ? "현장 일정이 등록되었습니다."
+          : "상담중 현장으로 등록되었습니다."
+      }${
         cleanMaterials.length
           ? `\n자재 ${cleanMaterials.length}건 저장`
           : ""
@@ -659,9 +772,9 @@ export default function SiteRegisterModal({
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      닫힌 상태
-  ========================================================= */
+  ======================================================= */
 
   if (!open) {
     return null;
@@ -672,90 +785,57 @@ export default function SiteRegisterModal({
   ========================================================= */
 
   const inputStyle = {
-    width:
-      "100%",
-
+    width: "100%",
     boxSizing:
       "border-box",
-
     padding:
       "11px 12px",
-
     border:
       "1px solid #cbd5e1",
-
     borderRadius:
       "9px",
-
     background:
       "#ffffff",
-
     color:
       "#111827",
-
     fontSize:
       "14px",
-
     outline:
       "none",
   };
 
   const labelStyle = {
-    display:
-      "block",
-
-    marginBottom:
-      "6px",
-
-    color:
-      "#334155",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      "700",
+    display: "block",
+    marginBottom: "6px",
+    color: "#334155",
+    fontSize: "13px",
+    fontWeight: "700",
   };
 
   const fieldStyle = {
-    marginBottom:
-      "14px",
+    marginBottom: "14px",
   };
 
   const sectionStyle = {
-    marginBottom:
-      "16px",
-
-    padding:
-      "14px",
-
+    marginBottom: "16px",
+    padding: "14px",
     border:
       "1px solid #e2e8f0",
-
-    borderRadius:
-      "12px",
-
+    borderRadius: "12px",
     background:
       "#ffffff",
   };
 
   const sectionTitleStyle = {
-    marginBottom:
-      "12px",
-
-    fontSize:
-      "15px",
-
-    fontWeight:
-      "800",
-
-    color:
-      "#111827",
+    marginBottom: "12px",
+    fontSize: "15px",
+    fontWeight: "800",
+    color: "#111827",
   };
 
-  /* =========================================================
+  /* =======================================================
      화면
-  ========================================================= */
+  ======================================================= */
 
   return (
     <div
@@ -765,31 +845,19 @@ export default function SiteRegisterModal({
         }
       }}
       style={{
-        position:
-          "fixed",
-
+        position: "fixed",
         inset: 0,
-
-        zIndex:
-          1000,
-
-        display:
-          "flex",
-
+        zIndex: 1000,
+        display: "flex",
         alignItems:
           "flex-start",
-
         justifyContent:
           "center",
-
         padding:
           "24px 12px",
-
         background:
           "rgba(15, 23, 42, 0.55)",
-
-        overflowY:
-          "auto",
+        overflowY: "auto",
       }}
     >
       <div
@@ -799,43 +867,30 @@ export default function SiteRegisterModal({
           event.stopPropagation()
         }
         style={{
-          width:
-            "100%",
-
-          maxWidth:
-            "620px",
-
+          width: "100%",
+          maxWidth: "620px",
           background:
             "#ffffff",
-
           borderRadius:
             "16px",
-
           boxShadow:
             "0 20px 50px rgba(0,0,0,0.20)",
-
           overflow:
             "hidden",
         }}
       >
-        {/* =================================================
+        {/* ===============================================
             제목
-        ================================================= */}
+        =============================================== */}
 
         <div
           style={{
-            display:
-              "flex",
-
+            display: "flex",
             alignItems:
               "center",
-
             justifyContent:
               "space-between",
-
-            padding:
-              "16px",
-
+            padding: "16px",
             borderBottom:
               "1px solid #e5e7eb",
           }}
@@ -845,10 +900,8 @@ export default function SiteRegisterModal({
               style={{
                 fontSize:
                   "18px",
-
                 fontWeight:
                   "800",
-
                 color:
                   "#111827",
               }}
@@ -860,45 +913,31 @@ export default function SiteRegisterModal({
               style={{
                 marginTop:
                   "4px",
-
                 fontSize:
                   "12px",
-
                 color:
                   "#64748b",
               }}
             >
-              현장정보, 자재, 요청사진을
-              한 번에 등록합니다.
+              미정 정보가 있어도 상담중 현장으로
+              먼저 등록할 수 있습니다.
             </div>
           </div>
 
           <button
             type="button"
-            disabled={
-              loading
-            }
-            onClick={
-              onClose
-            }
+            disabled={loading}
+            onClick={onClose}
             style={{
-              border:
-                "none",
-
+              border: "none",
               background:
                 "transparent",
-
-              fontSize:
-                "25px",
-
-              lineHeight:
-                1,
-
+              fontSize: "25px",
+              lineHeight: 1,
               cursor:
                 loading
                   ? "default"
                   : "pointer",
-
               color:
                 "#64748b",
             }}
@@ -907,25 +946,34 @@ export default function SiteRegisterModal({
           </button>
         </div>
 
-        {/* =================================================
+        {/* ===============================================
             FORM
-        ================================================= */}
+        =============================================== */}
 
         <form
           onSubmit={
             handleSubmit
           }
           style={{
-            padding:
-              "16px",
-
+            padding: "16px",
             background:
               "#f8fafc",
           }}
         >
-          {/* =================================================
+          {/* =============================================
+              통화내용 AI 자동입력
+          ============================================= */}
+
+          <CallContentAiInput
+            disabled={loading}
+            onApply={
+              applyCallAnalysis
+            }
+          />
+
+          {/* =============================================
               일정
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -941,6 +989,22 @@ export default function SiteRegisterModal({
             </div>
 
             <div
+              style={{
+                marginBottom: "12px",
+                padding: "10px 12px",
+                borderRadius: "9px",
+                background: "#eff6ff",
+                color: "#1e40af",
+                fontSize: "12px",
+                fontWeight: "700",
+                lineHeight: 1.5,
+              }}
+            >
+              날짜와 시작시간이 모두 정해지면 시공 예정,
+              미정 정보가 있으면 상담중으로 등록됩니다.
+            </div>
+
+            <div
               style={
                 fieldStyle
               }
@@ -950,7 +1014,7 @@ export default function SiteRegisterModal({
                   labelStyle
                 }
               >
-                시공 날짜 *
+                시공 날짜
               </label>
 
               <input
@@ -963,8 +1027,7 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "date",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
@@ -976,14 +1039,10 @@ export default function SiteRegisterModal({
 
             <div
               style={{
-                display:
-                  "grid",
-
+                display: "grid",
                 gridTemplateColumns:
                   "1fr 1fr",
-
-                gap:
-                  "8px",
+                gap: "8px",
               }}
             >
               <div
@@ -996,7 +1055,7 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                  시작 시간 *
+                  시작 시간
                 </label>
 
                 <input
@@ -1009,8 +1068,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "start_time",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1043,8 +1101,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "end_time",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1056,9 +1113,9 @@ export default function SiteRegisterModal({
             </div>
           </div>
 
-          {/* =================================================
+          {/* =============================================
               고객 / 현장
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -1075,14 +1132,10 @@ export default function SiteRegisterModal({
 
             <div
               style={{
-                display:
-                  "grid",
-
+                display: "grid",
                 gridTemplateColumns:
                   "1fr 1fr",
-
-                gap:
-                  "8px",
+                gap: "8px",
               }}
             >
               <div
@@ -1095,7 +1148,7 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                  고객명 *
+                  고객명
                 </label>
 
                 <input
@@ -1108,8 +1161,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "customer_name",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1143,8 +1195,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "customer_phone",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1179,8 +1230,7 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "site_name",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
@@ -1201,7 +1251,7 @@ export default function SiteRegisterModal({
                   labelStyle
                 }
               >
-                주소 *
+                주소
               </label>
 
               <input
@@ -1214,8 +1264,7 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "address",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
@@ -1228,14 +1277,10 @@ export default function SiteRegisterModal({
 
             <div
               style={{
-                display:
-                  "grid",
-
+                display: "grid",
                 gridTemplateColumns:
                   "1fr 1fr",
-
-                gap:
-                  "8px",
+                gap: "8px",
               }}
             >
               <div
@@ -1261,8 +1306,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "address_detail",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1296,8 +1340,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "region",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -1310,9 +1353,9 @@ export default function SiteRegisterModal({
             </div>
           </div>
 
-          {/* =================================================
+          {/* =============================================
               시공 내용
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -1350,8 +1393,7 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "work_type",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
@@ -1384,28 +1426,23 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "work_description",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
                 placeholder="예: 싱크대 상하부장, 방문 3개, 문틀 3개"
-                rows={
-                  3
-                }
+                rows={3}
                 style={{
                   ...inputStyle,
-
                   resize:
                     "vertical",
                 }}
               />
             </div>
           </div>
-
-          {/* =================================================
+          {/* =============================================
               시공 자재
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -1414,18 +1451,12 @@ export default function SiteRegisterModal({
           >
             <div
               style={{
-                display:
-                  "flex",
-
+                display: "flex",
                 justifyContent:
                   "space-between",
-
                 alignItems:
                   "center",
-
-                gap:
-                  "10px",
-
+                gap: "10px",
                 marginBottom:
                   "12px",
               }}
@@ -1433,9 +1464,7 @@ export default function SiteRegisterModal({
               <div
                 style={{
                   ...sectionTitleStyle,
-
-                  marginBottom:
-                    0,
+                  marginBottom: 0,
                 }}
               >
                 📦 시공 자재
@@ -1446,33 +1475,26 @@ export default function SiteRegisterModal({
                 onClick={
                   addMaterial
                 }
-                disabled={
-                  loading
-                }
+                disabled={loading}
                 style={{
                   border:
                     "1px solid #111827",
-
                   borderRadius:
                     "8px",
-
                   padding:
                     "8px 11px",
-
                   background:
                     "#ffffff",
-
                   color:
                     "#111827",
-
                   fontSize:
                     "12px",
-
                   fontWeight:
                     "800",
-
                   cursor:
-                    "pointer",
+                    loading
+                      ? "default"
+                      : "pointer",
                 }}
               >
                 + 자재 추가
@@ -1483,30 +1505,24 @@ export default function SiteRegisterModal({
               0 && (
               <div
                 style={{
-                  padding:
-                    "14px",
-
+                  padding: "14px",
                   border:
                     "1px dashed #cbd5e1",
-
                   borderRadius:
                     "10px",
-
                   background:
                     "#f8fafc",
-
                   color:
                     "#64748b",
-
                   fontSize:
                     "13px",
-
                   textAlign:
                     "center",
                 }}
               >
-                사용할 필름이 정해졌다면
-                자재를 추가해주세요.
+                사용할 필름이
+                정해졌다면 자재를
+                추가해주세요.
               </div>
             )}
 
@@ -1522,16 +1538,12 @@ export default function SiteRegisterModal({
                   style={{
                     marginTop:
                       "10px",
-
                     padding:
                       "12px",
-
                     border:
                       "1px solid #e2e8f0",
-
                     borderRadius:
                       "10px",
-
                     background:
                       "#f8fafc",
                   }}
@@ -1540,13 +1552,10 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "flex",
-
                       alignItems:
                         "center",
-
                       justifyContent:
                         "space-between",
-
                       marginBottom:
                         "10px",
                     }}
@@ -1557,7 +1566,8 @@ export default function SiteRegisterModal({
                           "13px",
                       }}
                     >
-                      자재 {index + 1}
+                      자재{" "}
+                      {index + 1}
                     </strong>
 
                     <button
@@ -1570,16 +1580,12 @@ export default function SiteRegisterModal({
                       style={{
                         border:
                           "none",
-
                         background:
                           "transparent",
-
                         color:
                           "#dc2626",
-
                         fontWeight:
                           "800",
-
                         cursor:
                           "pointer",
                       }}
@@ -1592,12 +1598,9 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "grid",
-
                       gridTemplateColumns:
                         "1fr 1fr",
-
-                      gap:
-                        "8px",
+                      gap: "8px",
                     }}
                   >
                     <div
@@ -1624,8 +1627,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "brand",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1660,8 +1662,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "product_code",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1697,8 +1698,7 @@ export default function SiteRegisterModal({
                         updateMaterial(
                           material.local_id,
                           "product_name",
-                          event
-                            .target
+                          event.target
                             .value,
                         )
                       }
@@ -1713,12 +1713,9 @@ export default function SiteRegisterModal({
                     style={{
                       display:
                         "grid",
-
                       gridTemplateColumns:
                         "2fr 1fr",
-
-                      gap:
-                        "8px",
+                      gap: "8px",
                     }}
                   >
                     <div
@@ -1748,8 +1745,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "quantity",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1783,8 +1779,7 @@ export default function SiteRegisterModal({
                           updateMaterial(
                             material.local_id,
                             "unit",
-                            event
-                              .target
+                            event.target
                               .value,
                           )
                         }
@@ -1812,6 +1807,90 @@ export default function SiteRegisterModal({
                   </div>
 
                   <div
+                    style={{
+                      display:
+                        "grid",
+                      gridTemplateColumns:
+                        "1fr 1fr",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        단가
+                      </label>
+
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={
+                          material.unit_price
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "unit_price",
+                            event.target
+                              .value,
+                          )
+                        }
+                        placeholder="0"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+
+                    <div
+                      style={
+                        fieldStyle
+                      }
+                    >
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        예상 자재금액
+                      </label>
+
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={
+                          material.total_price
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateMaterial(
+                            material.local_id,
+                            "total_price",
+                            event.target
+                              .value,
+                          )
+                        }
+                        placeholder="0"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div
                     style={
                       fieldStyle
                     }
@@ -1835,8 +1914,7 @@ export default function SiteRegisterModal({
                         updateMaterial(
                           material.local_id,
                           "memo",
-                          event
-                            .target
+                          event.target
                             .value,
                         )
                       }
@@ -1851,9 +1929,9 @@ export default function SiteRegisterModal({
             )}
           </div>
 
-          {/* =================================================
+          {/* =============================================
               요청사진
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -1870,26 +1948,20 @@ export default function SiteRegisterModal({
 
             <label
               style={{
-                display:
-                  "block",
-
-                padding:
-                  "16px",
-
+                display: "block",
+                padding: "16px",
                 border:
                   "2px dashed #cbd5e1",
-
                 borderRadius:
                   "10px",
-
                 background:
                   "#f8fafc",
-
                 textAlign:
                   "center",
-
                 cursor:
-                  "pointer",
+                  loading
+                    ? "default"
+                    : "pointer",
               }}
             >
               <div
@@ -1905,13 +1977,10 @@ export default function SiteRegisterModal({
                 style={{
                   marginTop:
                     "5px",
-
                   color:
                     "#111827",
-
                   fontSize:
                     "14px",
-
                   fontWeight:
                     "800",
                 }}
@@ -1923,25 +1992,22 @@ export default function SiteRegisterModal({
                 style={{
                   marginTop:
                     "4px",
-
                   color:
                     "#64748b",
-
                   fontSize:
                     "12px",
                 }}
               >
-                고객이 보내준 현장사진을
-                여러 장 선택할 수 있습니다.
+                고객이 보내준
+                현장사진을 여러 장
+                선택할 수 있습니다.
               </div>
 
               <input
                 type="file"
                 accept="image/*"
                 multiple
-                disabled={
-                  loading
-                }
+                disabled={loading}
                 onChange={
                   handlePhotoFiles
                 }
@@ -1959,13 +2025,10 @@ export default function SiteRegisterModal({
                   style={{
                     marginTop:
                       "10px",
-
                     color:
                       "#475569",
-
                     fontSize:
                       "12px",
-
                     fontWeight:
                       "700",
                   }}
@@ -1981,13 +2044,9 @@ export default function SiteRegisterModal({
                   style={{
                     display:
                       "grid",
-
                     gridTemplateColumns:
                       "repeat(3, 1fr)",
-
-                    gap:
-                      "8px",
-
+                    gap: "8px",
                     marginTop:
                       "8px",
                   }}
@@ -2002,16 +2061,12 @@ export default function SiteRegisterModal({
                         style={{
                           position:
                             "relative",
-
                           aspectRatio:
                             "1 / 1",
-
                           borderRadius:
                             "9px",
-
                           overflow:
                             "hidden",
-
                           background:
                             "#e2e8f0",
                         }}
@@ -2027,10 +2082,8 @@ export default function SiteRegisterModal({
                           style={{
                             width:
                               "100%",
-
                             height:
                               "100%",
-
                             objectFit:
                               "cover",
                           }}
@@ -2046,37 +2099,25 @@ export default function SiteRegisterModal({
                           style={{
                             position:
                               "absolute",
-
-                            top:
-                              "5px",
-
+                            top: "5px",
                             right:
                               "5px",
-
                             width:
                               "28px",
-
                             height:
                               "28px",
-
                             border:
                               "none",
-
                             borderRadius:
                               "50%",
-
                             background:
                               "rgba(0,0,0,0.72)",
-
                             color:
                               "#ffffff",
-
                             fontSize:
                               "16px",
-
                             fontWeight:
                               "800",
-
                             cursor:
                               "pointer",
                           }}
@@ -2091,9 +2132,9 @@ export default function SiteRegisterModal({
             )}
           </div>
 
-          {/* =================================================
+          {/* =============================================
               계약 정보
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -2110,14 +2151,10 @@ export default function SiteRegisterModal({
 
             <div
               style={{
-                display:
-                  "grid",
-
+                display: "grid",
                 gridTemplateColumns:
                   "1fr 1fr",
-
-                gap:
-                  "8px",
+                gap: "8px",
               }}
             >
               <div
@@ -2145,8 +2182,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "contract_amount",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -2182,8 +2218,7 @@ export default function SiteRegisterModal({
                   ) =>
                     updateField(
                       "deposit_amount",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
@@ -2217,8 +2252,7 @@ export default function SiteRegisterModal({
                 ) =>
                   updateField(
                     "source",
-                    event
-                      .target
+                    event.target
                       .value,
                   )
                 }
@@ -2249,9 +2283,9 @@ export default function SiteRegisterModal({
             </div>
           </div>
 
-          {/* =================================================
+          {/* =============================================
               메모
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={
@@ -2275,37 +2309,31 @@ export default function SiteRegisterModal({
               ) =>
                 updateField(
                   "memo",
-                  event
-                    .target
+                  event.target
                     .value,
                 )
               }
               placeholder="예: 지하 2층 주차, 오전 9시 고객 통화 후 입장"
-              rows={
-                3
-              }
+              rows={3}
               style={{
                 ...inputStyle,
-
                 resize:
                   "vertical",
               }}
             />
           </div>
 
-          {/* =================================================
+          {/* =============================================
               결과 메시지
-          ================================================= */}
+          ============================================= */}
 
           {localMessage && (
             <div
               style={{
                 marginBottom:
                   "14px",
-
                 padding:
                   "10px 12px",
-
                 borderRadius:
                   "9px",
 
@@ -2325,63 +2353,44 @@ export default function SiteRegisterModal({
 
                 fontSize:
                   "13px",
-
                 fontWeight:
                   "700",
-
                 whiteSpace:
                   "pre-wrap",
               }}
             >
-              {
-                localMessage
-              }
+              {localMessage}
             </div>
           )}
 
-          {/* =================================================
+          {/* =============================================
               하단 버튼
-          ================================================= */}
+          ============================================= */}
 
           <div
             style={{
-              display:
-                "grid",
-
+              display: "grid",
               gridTemplateColumns:
                 "1fr 2fr",
-
-              gap:
-                "8px",
+              gap: "8px",
             }}
           >
             <button
               type="button"
-              disabled={
-                loading
-              }
-              onClick={
-                onClose
-              }
+              disabled={loading}
+              onClick={onClose}
               style={{
                 border:
                   "1px solid #cbd5e1",
-
                 borderRadius:
                   "10px",
-
-                padding:
-                  "12px",
-
+                padding: "12px",
                 background:
                   "#ffffff",
-
                 color:
                   "#334155",
-
                 fontWeight:
                   "700",
-
                 cursor:
                   loading
                     ? "default"
@@ -2393,30 +2402,20 @@ export default function SiteRegisterModal({
 
             <button
               type="submit"
-              disabled={
-                loading
-              }
+              disabled={loading}
               style={{
-                border:
-                  "none",
-
+                border: "none",
                 borderRadius:
                   "10px",
-
-                padding:
-                  "12px",
-
+                padding: "12px",
                 background:
                   loading
                     ? "#94a3b8"
                     : "#111827",
-
                 color:
                   "#ffffff",
-
                 fontWeight:
                   "800",
-
                 cursor:
                   loading
                     ? "default"
@@ -2425,11 +2424,11 @@ export default function SiteRegisterModal({
             >
               {loading
                 ? "등록 중..."
-                : "현장 일정 등록"}
+                : "현장 등록"}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-        }
+                          }

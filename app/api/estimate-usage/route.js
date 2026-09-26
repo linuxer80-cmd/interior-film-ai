@@ -1,11 +1,180 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkUsageLimit,
+  makeUsageLimitError,
+} from "../../utils/serverUsageLimit";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+/*
+ * =========================================================
+ * Supabase 관리자 클라이언트
+ * =========================================================
+ */
+
+function getAdminSupabase() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
+
+/*
+ * =========================================================
+ * 자동견적 사용량 이벤트 기록
+ *
+ * 중요:
+ * estimate_usage 저장은 기존 핵심 기능입니다.
+ *
+ * usage_events 기록이 실패하더라도
+ * 이미 정상 완료된 자동견적을 실패시키지 않습니다.
+ * =========================================================
+ */
+
+async function recordAutoEstimateUsage({
+  supabase,
+  company,
+  estimateUsageId,
+  sessionId,
+  category,
+  subCategory,
+  photoCount,
+  estimateMin,
+  estimateMax,
+  estimateAverage,
+  photoPaths,
+}) {
+  if (!supabase || !company?.id) {
+    return false;
+  }
+
+  try {
+    const { error } =
+      await supabase
+        .from("usage_events")
+        .insert({
+          company_id:
+            company.id,
+
+          event_type:
+            "auto_estimate",
+
+          quantity: 1,
+
+          cost_krw: 0,
+
+          provider: null,
+
+          model: null,
+
+          reference_id:
+            estimateUsageId
+              ? String(
+                  estimateUsageId
+                )
+              : null,
+
+          metadata: {
+            company_slug:
+              company.slug ||
+              null,
+
+            session_id:
+              sessionId
+                ? String(
+                    sessionId
+                  )
+                : null,
+
+            category:
+              category ||
+              null,
+
+            sub_category:
+              subCategory ||
+              null,
+
+            photo_count:
+              Number(
+                photoCount || 0
+              ),
+
+            estimate_min:
+              estimateMin,
+
+            estimate_max:
+              estimateMax,
+
+            estimate_average:
+              estimateAverage,
+
+            photo_path_count:
+              Array.isArray(
+                photoPaths
+              )
+                ? photoPaths.length
+                : 0,
+
+            estimate_usage_id:
+              estimateUsageId ||
+              null,
+          },
+        });
+
+    if (error) {
+      console.error(
+        "AUTO ESTIMATE USAGE EVENT INSERT ERROR:",
+        error
+      );
+
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(
+      "AUTO ESTIMATE USAGE EVENT ERROR:",
+      error
+    );
+
+    return false;
+  }
+}
+
+/*
+ * =========================================================
+ * POST
+ * =========================================================
+ */
 
 export async function POST(request) {
   try {
-    const body = await request.json();
+    /*
+     * =======================================================
+     * 요청 데이터
+     * =======================================================
+     */
+
+    const body =
+      await request.json();
 
     const {
       company_slug,
@@ -19,22 +188,41 @@ export async function POST(request) {
       photo_paths,
     } = body || {};
 
+    /*
+     * =======================================================
+     * 업체 slug 정리
+     * =======================================================
+     */
+
     const normalizedCompanySlug =
-      String(company_slug || "")
+      String(
+        company_slug || ""
+      )
         .trim()
         .toLowerCase();
 
-    if (!normalizedCompanySlug) {
+    if (
+      !normalizedCompanySlug
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "company_slug가 없습니다.",
+
+          error:
+            "company_slug가 없습니다.",
         },
         {
           status: 400,
         }
       );
     }
+
+    /*
+     * 허용:
+     * 영문 소문자
+     * 숫자
+     * -
+     */
 
     if (
       !/^[a-z0-9-]+$/.test(
@@ -44,19 +232,29 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
-          error: "올바르지 않은 회사 주소입니다.",
+
+          error:
+            "올바르지 않은 회사 주소입니다.",
         },
         {
           status: 400,
         }
       );
     }
+
+    /*
+     * =======================================================
+     * 세션 ID 확인
+     * =======================================================
+     */
 
     if (!session_id) {
       return NextResponse.json(
         {
           success: false,
-          error: "session_id가 없습니다.",
+
+          error:
+            "session_id가 없습니다.",
         },
         {
           status: 400,
@@ -64,16 +262,25 @@ export async function POST(request) {
       );
     }
 
+    /*
+     * =======================================================
+     * Supabase 환경변수 확인
+     * =======================================================
+     */
+
     const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
+      process.env
+        .NEXT_PUBLIC_SUPABASE_URL;
 
     const serviceRoleKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env
+        .SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
         },
@@ -87,6 +294,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
         },
@@ -96,28 +304,63 @@ export async function POST(request) {
       );
     }
 
-    const supabase = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
+    /*
+     * =======================================================
+     * Supabase Service Role
+     * =======================================================
+     */
+
+    const supabase =
+      getAdminSupabase();
+
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            "Supabase 서버 연결 설정을 확인할 수 없습니다.",
         },
-      }
-    );
+        {
+          status: 500,
+        }
+      );
+    }
+
+    /*
+     * =======================================================
+     * 업체 확인
+     *
+     * 클라이언트가 company_id를 보내더라도
+     * 신뢰하지 않습니다.
+     *
+     * company_slug를 기준으로 서버가
+     * 실제 활성 업체를 조회합니다.
+     * =======================================================
+     */
 
     const {
       data: company,
       error: companyError,
     } = await supabase
       .from("companies")
-      .select("id, slug")
+      .select(
+        `
+          id,
+          slug,
+          company_name,
+          subscription_plan,
+          is_active
+        `
+      )
       .eq(
         "slug",
         normalizedCompanySlug
       )
-      .eq("is_active", true)
+      .eq(
+        "is_active",
+        true
+      )
       .maybeSingle();
 
     if (companyError) {
@@ -129,6 +372,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "회사 정보를 확인하지 못했습니다.",
         },
@@ -142,6 +386,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             "사용할 수 없는 회사 주소입니다.",
         },
@@ -151,103 +396,238 @@ export async function POST(request) {
       );
     }
 
+    /*
+     * =======================================================
+     * 자동견적 월 사용 한도 검사
+     *
+     * 중요:
+     * estimate_usage에 저장하기 전에 검사합니다.
+     *
+     * 한도가 10회이고 이미 10회를 사용했다면
+     * 여기에서 429로 차단합니다.
+     * =======================================================
+     */
+
+    const limitCheck =
+      await checkUsageLimit({
+        company,
+        eventType:
+          "auto_estimate",
+        requestedQuantity: 1,
+        supabase,
+      });
+
+    if (!limitCheck.ok) {
+      const errorPayload =
+        makeUsageLimitError(
+          limitCheck
+        );
+
+      return NextResponse.json(
+        {
+          ...errorPayload,
+
+          code:
+            limitCheck.limitReached
+              ? "AUTO_ESTIMATE_LIMIT_REACHED"
+              : "AUTO_ESTIMATE_LIMIT_CHECK_FAILED",
+        },
+        {
+          status:
+            limitCheck.status ||
+            (
+              limitCheck.limitReached
+                ? 429
+                : 503
+            ),
+        }
+      );
+    }
+
+    /*
+     * =======================================================
+     * 사진 경로 정리
+     * =======================================================
+     */
+
     const safePhotoPaths =
-      Array.isArray(photo_paths)
+      Array.isArray(
+        photo_paths
+      )
         ? photo_paths
-            .map((path) =>
-              String(path || "").trim()
+            .map(
+              (path) =>
+                String(
+                  path || ""
+                ).trim()
             )
             .filter(Boolean)
         : [];
 
+    /*
+     * 같은 경로 중복 제거
+     */
+
+    const uniquePhotoPaths =
+      [
+        ...new Set(
+          safePhotoPaths
+        ),
+      ];
+
+    /*
+     * =======================================================
+     * 숫자값 정리
+     * =======================================================
+     */
+
     const safePhotoCount =
-      Number.isFinite(Number(photo_count))
-        ? Number(photo_count)
-        : safePhotoPaths.length;
+      Number.isFinite(
+        Number(photo_count)
+      )
+        ? Math.max(
+            0,
+            Math.round(
+              Number(
+                photo_count
+              )
+            )
+          )
+        : 0;
 
     const safeEstimateMin =
-      estimate_min === null ||
-      estimate_min === undefined ||
+      estimate_min ===
+        null ||
+      estimate_min ===
+        undefined ||
       estimate_min === ""
         ? null
-        : Number(estimate_min);
+        : Number(
+            estimate_min
+          );
 
     const safeEstimateMax =
-      estimate_max === null ||
-      estimate_max === undefined ||
+      estimate_max ===
+        null ||
+      estimate_max ===
+        undefined ||
       estimate_max === ""
         ? null
-        : Number(estimate_max);
+        : Number(
+            estimate_max
+          );
 
     const safeEstimateAverage =
-      estimate_average === null ||
-      estimate_average === undefined ||
+      estimate_average ===
+        null ||
+      estimate_average ===
+        undefined ||
       estimate_average === ""
         ? null
-        : Number(estimate_average);
+        : Number(
+            estimate_average
+          );
+
+    /*
+     * =======================================================
+     * estimate_usage 저장 데이터
+     * =======================================================
+     */
 
     const insertData = {
-      company_id: company.id,
+      company_id:
+        company.id,
 
-      session_id: String(session_id),
+      session_id:
+        String(
+          session_id
+        ),
 
       category:
         category
-          ? String(category)
+          ? String(
+              category
+            )
           : null,
 
       sub_category:
         sub_category
-          ? String(sub_category)
+          ? String(
+              sub_category
+            )
           : null,
 
       photo_count:
         safePhotoCount,
 
       estimate_min:
-        Number.isFinite(safeEstimateMin)
+        Number.isFinite(
+          safeEstimateMin
+        )
           ? safeEstimateMin
           : null,
 
       estimate_max:
-        Number.isFinite(safeEstimateMax)
+        Number.isFinite(
+          safeEstimateMax
+        )
           ? safeEstimateMax
           : null,
 
       estimate_average:
-        Number.isFinite(safeEstimateAverage)
+        Number.isFinite(
+          safeEstimateAverage
+        )
           ? safeEstimateAverage
           : null,
 
-      converted_to_lead: false,
+      converted_to_lead:
+        false,
 
       photo_paths:
-        safePhotoPaths,
+        uniquePhotoPaths,
     };
+
+    /*
+     * =======================================================
+     * 기존 자동견적 로그 저장
+     * =======================================================
+     */
 
     const {
       data,
       error,
     } = await supabase
-      .from("estimate_usage")
-      .insert(insertData)
+      .from(
+        "estimate_usage"
+      )
+      .insert(
+        insertData
+      )
       .select(
         `
-        id,
-        company_id,
-        session_id,
-        category,
-        sub_category,
-        photo_count,
-        estimate_min,
-        estimate_max,
-        estimate_average,
-        converted_to_lead,
-        photo_paths,
-        created_at
+          id,
+          company_id,
+          session_id,
+          category,
+          sub_category,
+          photo_count,
+          estimate_min,
+          estimate_max,
+          estimate_average,
+          converted_to_lead,
+          photo_paths,
+          created_at
         `
       )
-      .single();
+      .single();    /*
+     * =======================================================
+     * estimate_usage 저장 실패
+     *
+     * 이것은 기존 핵심 로그이므로
+     * 실패 응답을 유지합니다.
+     * =======================================================
+     */
 
     if (error) {
       console.error(
@@ -258,6 +638,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
+
           error:
             error.message ||
             "자동견적 로그 저장 실패",
@@ -268,9 +649,133 @@ export async function POST(request) {
       );
     }
 
+    /*
+     * =======================================================
+     * SaaS 사용량 기록
+     *
+     * 자동견적 1회 완료 =
+     * auto_estimate quantity 1
+     *
+     * AI 사진 분석 횟수와는 별도입니다.
+     *
+     * 예:
+     *
+     * 사진 3장 자동견적 1회
+     *
+     * ai_photo_analysis = 3
+     * auto_estimate = 1
+     *
+     * usage_events 저장이 실패해도
+     * 기존 estimate_usage 결과는 성공으로 유지합니다.
+     * =======================================================
+     */
+
+    const usageRecorded =
+      await recordAutoEstimateUsage(
+        {
+          supabase,
+
+          company,
+
+          estimateUsageId:
+            data.id,
+
+          sessionId:
+            data.session_id,
+
+          category:
+            data.category,
+
+          subCategory:
+            data.sub_category,
+
+          photoCount:
+            data.photo_count,
+
+          estimateMin:
+            data.estimate_min,
+
+          estimateMax:
+            data.estimate_max,
+
+          estimateAverage:
+            data.estimate_average,
+
+          photoPaths:
+            data.photo_paths,
+        }
+      );
+
+    /*
+     * =======================================================
+     * 성공
+     * =======================================================
+     */
+
     return NextResponse.json({
       success: true,
-      usage_id: data.id,
+
+      usage_id:
+        data.id,
+
+      usageRecorded,
+
+      /*
+       * 현재 요금제 사용량도 함께 반환
+       * 나중에 고객 화면에서
+       * "3 / 10회 사용" 표시할 때 사용할 수 있습니다.
+       */
+      planUsage: {
+        event_type:
+          "auto_estimate",
+
+        plan_code:
+          limitCheck.planCode ||
+          company.subscription_plan ||
+          null,
+
+        plan_name:
+          limitCheck.planName ||
+          null,
+
+        used_before:
+          Number(
+            limitCheck.used || 0
+          ),
+
+        used_after:
+          Number(
+            limitCheck.used || 0
+          ) + 1,
+
+        limit:
+          limitCheck.unlimited
+            ? null
+            : Number(
+                limitCheck.limit || 0
+              ),
+
+        unlimited:
+          Boolean(
+            limitCheck.unlimited
+          ),
+
+        remaining:
+          limitCheck.unlimited
+            ? null
+            : Math.max(
+                0,
+                Number(
+                  limitCheck.limit || 0
+                ) -
+                  (
+                    Number(
+                      limitCheck.used || 0
+                    ) + 1
+                  )
+              ),
+      },
+
       data,
     });
   } catch (error) {
@@ -282,6 +787,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         success: false,
+
         error:
           error?.message ||
           "자동견적 로그 저장 중 오류가 발생했습니다.",
@@ -291,4 +797,4 @@ export async function POST(request) {
       }
     );
   }
-      }
+}

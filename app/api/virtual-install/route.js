@@ -64,6 +64,236 @@ async function resolveCompanyBySlug(companySlug) {
   return data;
 }
 
+async function checkVirtualRemodelLimit(company) {
+  if (!company?.id) {
+    return {
+      ok: false,
+      error: "업체 정보가 없습니다.",
+    };
+  }
+
+  const supabase = getAdminSupabase();
+
+  if (!supabase) {
+    return {
+      ok: false,
+      error: "Supabase 서버 설정이 없습니다.",
+    };
+  }
+
+  try {
+    const planCode =
+      company.subscription_plan || "basic";
+
+    const {
+      data: plan,
+      error: planError,
+    } = await supabase
+      .from("subscription_plans")
+      .select(
+        "plan_code, plan_name, virtual_remodel_limit, is_active"
+      )
+      .eq("plan_code", planCode)
+      .maybeSingle();
+
+    if (planError) {
+      console.error(
+        "가상시공 요금제 조회 오류:",
+        planError
+      );
+
+      return {
+        ok: false,
+        error:
+          "요금제 정보를 확인할 수 없습니다.",
+      };
+    }
+
+    if (!plan) {
+      return {
+        ok: false,
+        error:
+          "등록된 요금제를 찾을 수 없습니다.",
+      };
+    }
+
+    if (plan.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "현재 사용할 수 없는 요금제입니다.",
+      };
+    }
+
+    const limit = Number(
+      plan.virtual_remodel_limit || 0
+    );
+
+    // 0 이하 = 무제한
+    if (limit <= 0) {
+      return {
+        ok: true,
+        planCode: plan.plan_code,
+        planName: plan.plan_name,
+        used: 0,
+        limit: 0,
+        remaining: null,
+        unlimited: true,
+      };
+    }
+
+    // 한국시간 기준 현재 월 계산
+    const now = new Date();
+
+    const parts =
+      new Intl.DateTimeFormat(
+        "en-CA",
+        {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+        }
+      ).formatToParts(now);
+
+    const year = Number(
+      parts.find(
+        (item) =>
+          item.type === "year"
+      )?.value
+    );
+
+    const month = Number(
+      parts.find(
+        (item) =>
+          item.type === "month"
+      )?.value
+    );
+
+    // 한국시간 매월 1일 00:00
+    const monthStart =
+      new Date(
+        Date.UTC(
+          year,
+          month - 1,
+          1,
+          -9,
+          0,
+          0,
+          0
+        )
+      );
+
+    const nextMonthStart =
+      new Date(
+        Date.UTC(
+          month === 12
+            ? year + 1
+            : year,
+          month === 12
+            ? 0
+            : month,
+          1,
+          -9,
+          0,
+          0,
+          0
+        )
+      );
+
+    const {
+      data: usageRows,
+      error: usageError,
+    } = await supabase
+      .from("usage_events")
+      .select("quantity")
+      .eq(
+        "company_id",
+        company.id
+      )
+      .eq(
+        "event_type",
+        "virtual_remodel"
+      )
+      .gte(
+        "created_at",
+        monthStart.toISOString()
+      )
+      .lt(
+        "created_at",
+        nextMonthStart.toISOString()
+      );
+
+    if (usageError) {
+      console.error(
+        "가상시공 사용량 조회 오류:",
+        usageError
+      );
+
+      return {
+        ok: false,
+        error:
+          "현재 사용량을 확인할 수 없습니다.",
+      };
+    }
+
+    const used = (
+      usageRows || []
+    ).reduce(
+      (sum, row) =>
+        sum +
+        Number(
+          row.quantity || 0
+        ),
+      0
+    );
+
+    const remaining =
+      Math.max(
+        0,
+        limit - used
+      );
+
+    if (used >= limit) {
+      return {
+        ok: false,
+        limitReached: true,
+        planCode:
+          plan.plan_code,
+        planName:
+          plan.plan_name,
+        used,
+        limit,
+        remaining: 0,
+        error:
+          `${plan.plan_name} 요금제의 이번 달 가상시공 사용 한도(${limit}회)를 모두 사용했습니다.`,
+      };
+    }
+
+    return {
+      ok: true,
+      planCode:
+        plan.plan_code,
+      planName:
+        plan.plan_name,
+      used,
+      limit,
+      remaining,
+      unlimited: false,
+    };
+  } catch (error) {
+    console.error(
+      "가상시공 한도 확인 오류:",
+      error
+    );
+
+    return {
+      ok: false,
+      error:
+        "가상시공 사용 한도를 확인할 수 없습니다.",
+    };
+  }
+}
+
 async function recordVirtualInstallUsage({
   company,
   model,
@@ -79,7 +309,8 @@ async function recordVirtualInstallUsage({
     return false;
   }
 
-  const supabase = getAdminSupabase();
+  const supabase =
+    getAdminSupabase();
 
   if (!supabase) {
     console.error(
@@ -88,37 +319,72 @@ async function recordVirtualInstallUsage({
     return false;
   }
 
-  const { error } = await supabase
-    .from("usage_events")
-    .insert({
-      company_id: company.id,
-      event_type: "virtual_remodel",
-      quantity: 1,
-      cost_krw: 0,
-      provider: "openai",
-      model: model || null,
-      reference_id: productCode || null,
-      metadata: {
-        company_slug: company.slug,
-        company_name: company.company_name,
-        subscription_plan: company.subscription_plan,
-        target_type: targetType,
-        split_tone: Boolean(useSplitTone),
-        product_code: productCode || null,
-        image_size: size || null,
-        image_quality: quality || null,
-        sample_reference_count: Number(
-          sampleReferenceCount || 0
-        ),
-        openai_usage: openAIUsage || null,
-      },
-    });
+  const { error } =
+    await supabase
+      .from("usage_events")
+      .insert({
+        company_id:
+          company.id,
+
+        event_type:
+          "virtual_remodel",
+
+        quantity: 1,
+        cost_krw: 0,
+        provider: "openai",
+
+        model:
+          model || null,
+
+        reference_id:
+          productCode || null,
+
+        metadata: {
+          company_slug:
+            company.slug,
+
+          company_name:
+            company.company_name,
+
+          subscription_plan:
+            company.subscription_plan,
+
+          target_type:
+            targetType,
+
+          split_tone:
+            Boolean(
+              useSplitTone
+            ),
+
+          product_code:
+            productCode ||
+            null,
+
+          image_size:
+            size || null,
+
+          image_quality:
+            quality || null,
+
+          sample_reference_count:
+            Number(
+              sampleReferenceCount ||
+                0
+            ),
+
+          openai_usage:
+            openAIUsage ||
+            null,
+        },
+      });
 
   if (error) {
     console.error(
       "가상시공 사용량 기록 오류:",
       error
     );
+
     return false;
   }
 
@@ -133,6 +399,29 @@ const MAX_SAMPLE_SIZE =
 
 const MAX_AREA_FILMS = 8;
 
+/*
+ * 서버에서 허용하는 가상시공 종류.
+ */
+const ALLOWED_TARGET_TYPES =
+  new Set([
+    "kitchen",
+    "door",
+    "built_in",
+    "shoe_cabinet",
+    "fridge_cabinet",
+    "cabinet",
+  ]);
+
+/*
+ * 여러 톤은 싱크대와 문·문틀에서만 허용.
+ * 클라이언트 값을 신뢰하지 않고 서버에서도 강제한다.
+ */
+const MULTI_TONE_TARGET_TYPES =
+  new Set([
+    "kitchen",
+    "door",
+  ]);
+
 function cleanText(
   value,
   maxLength = 300
@@ -144,10 +433,11 @@ function cleanText(
 }
 
 function cleanHex(value) {
-  const hex = cleanText(
-    value,
-    20
-  );
+  const hex =
+    cleanText(
+      value,
+      20
+    );
 
   return /^#[0-9a-fA-F]{3,8}$/.test(
     hex
@@ -157,9 +447,10 @@ function cleanHex(value) {
 }
 
 function getAllowedSampleHosts() {
-  const hosts = new Set([
-    "gxtvvzysuhexhpljpswj.supabase.co",
-  ]);
+  const hosts =
+    new Set([
+      "gxtvvzysuhexhpljpswj.supabase.co",
+    ]);
 
   try {
     const supabaseUrl =
@@ -199,7 +490,8 @@ async function fetchSampleImage(
       );
 
     if (
-      url.protocol !== "https:" ||
+      url.protocol !==
+        "https:" ||
       !getAllowedSampleHosts().has(
         url.hostname
       )
@@ -216,7 +508,9 @@ async function fetchSampleImage(
       await fetch(
         url.toString(),
         {
-          cache: "no-store",
+          cache:
+            "no-store",
+
           signal:
             AbortSignal.timeout(
               15000
@@ -237,7 +531,8 @@ async function fetchSampleImage(
     const contentType =
       response.headers.get(
         "content-type"
-      ) || "image/jpeg";
+      ) ||
+      "image/jpeg";
 
     if (
       !contentType.startsWith(
@@ -248,7 +543,8 @@ async function fetchSampleImage(
     }
 
     const arrayBuffer =
-      await response.arrayBuffer();
+      await response
+        .arrayBuffer();
 
     if (
       !arrayBuffer.byteLength ||
@@ -258,20 +554,23 @@ async function fetchSampleImage(
       return null;
     }
 
-    let extension = "jpg";
+    let extension =
+      "jpg";
 
     if (
       contentType.includes(
         "png"
       )
     ) {
-      extension = "png";
+      extension =
+        "png";
     } else if (
       contentType.includes(
         "webp"
       )
     ) {
-      extension = "webp";
+      extension =
+        "webp";
     }
 
     return new File(
@@ -281,7 +580,8 @@ async function fetchSampleImage(
         "sample"
       }.${extension}`,
       {
-        type: contentType,
+        type:
+          contentType,
       }
     );
   } catch (error) {
@@ -300,13 +600,17 @@ function getPrimaryFilm(
 ) {
   return {
     areaKey: "all",
+
     areaLabel:
       "전체 시공 부위",
 
-    brand: cleanText(
-      formData.get("brand"),
-      100
-    ),
+    brand:
+      cleanText(
+        formData.get(
+          "brand"
+        ),
+        100
+      ),
 
     productCode:
       cleanText(
@@ -324,10 +628,13 @@ function getPrimaryFilm(
         200
       ),
 
-    texture: cleanText(
-      formData.get("texture"),
-      100
-    ),
+    texture:
+      cleanText(
+        formData.get(
+          "texture"
+        ),
+        100
+      ),
 
     colorFamily:
       cleanText(
@@ -345,9 +652,12 @@ function getPrimaryFilm(
         300
       ),
 
-    colorHex: cleanHex(
-      formData.get("colorHex")
-    ),
+    colorHex:
+      cleanHex(
+        formData.get(
+          "colorHex"
+        )
+      ),
 
     sampleImageUrl:
       cleanText(
@@ -363,7 +673,9 @@ function getAreaFilms(
   formData
 ) {
   const rawValue =
-    formData.get("areaFilms");
+    formData.get(
+      "areaFilms"
+    );
 
   if (!rawValue) {
     return [];
@@ -372,11 +684,15 @@ function getAreaFilms(
   try {
     const parsed =
       JSON.parse(
-        String(rawValue)
+        String(
+          rawValue
+        )
       );
 
     if (
-      !Array.isArray(parsed)
+      !Array.isArray(
+        parsed
+      )
     ) {
       return [];
     }
@@ -386,66 +702,70 @@ function getAreaFilms(
         0,
         MAX_AREA_FILMS
       )
-      .map((item) => ({
-        areaKey:
-          cleanText(
-            item?.areaKey,
-            100
-          ),
+      .map(
+        (item) => ({
+          areaKey:
+            cleanText(
+              item?.areaKey,
+              100
+            ),
 
-        areaLabel:
-          cleanText(
-            item?.areaLabel,
-            100
-          ),
+          areaLabel:
+            cleanText(
+              item?.areaLabel,
+              100
+            ),
 
-        brand:
-          cleanText(
-            item?.brand,
-            100
-          ),
+          brand:
+            cleanText(
+              item?.brand,
+              100
+            ),
 
-        productCode:
-          cleanText(
-            item?.productCode,
-            100
-          ),
+          productCode:
+            cleanText(
+              item?.productCode,
+              100
+            ),
 
-        productName:
-          cleanText(
-            item?.productName,
-            200
-          ),
+          productName:
+            cleanText(
+              item?.productName,
+              200
+            ),
 
-        texture:
-          cleanText(
-            item?.texture,
-            100
-          ),
+          texture:
+            cleanText(
+              item?.texture,
+              100
+            ),
 
-        colorFamily:
-          cleanText(
-            item?.colorFamily,
-            100
-          ),
+          colorFamily:
+            cleanText(
+              item?.colorFamily,
+              100
+            ),
 
-        colorDescription:
-          cleanText(
-            item?.colorDescription,
-            300
-          ),
+          colorDescription:
+            cleanText(
+              item
+                ?.colorDescription,
+              300
+            ),
 
-        colorHex:
-          cleanHex(
-            item?.colorHex
-          ),
+          colorHex:
+            cleanHex(
+              item?.colorHex
+            ),
 
-        sampleImageUrl:
-          cleanText(
-            item?.sampleImageUrl,
-            2000
-          ),
-      }))
+          sampleImageUrl:
+            cleanText(
+              item
+                ?.sampleImageUrl,
+              2000
+            ),
+        })
+      )
       .filter(
         (item) =>
           item.areaKey &&
@@ -461,11 +781,16 @@ function getAreaFilms(
   }
 }
 
+/* =========================================================
+   시공 종류별 프롬프트
+========================================================= */
+
 function getTargetPrompt(
   targetType
 ) {
   if (
-    targetType === "kitchen"
+    targetType ===
+    "kitchen"
   ) {
     return [
       "The installation target is KITCHEN CABINETRY ONLY.",
@@ -485,7 +810,8 @@ function getTargetPrompt(
   }
 
   if (
-    targetType === "door"
+    targetType ===
+    "door"
   ) {
     return [
       "The installation target is the EXISTING DOOR AND DOOR FRAME ONLY.",
@@ -500,8 +826,112 @@ function getTargetPrompt(
     ].join(" ");
   }
 
+  if (
+    targetType ===
+    "built_in"
+  ) {
+    return [
+      "The installation target is the EXISTING BUILT-IN CLOSET OR BUILT-IN WARDROBE ONLY.",
+
+      "This object is built-in furniture. It is NOT a room door, doorway, entrance door or door frame.",
+
+      "Apply interior film only to the existing visible built-in closet door fronts, drawer fronts and film-finished exposed side panels.",
+
+      "Preserve the exact identity of the built-in closet as furniture.",
+
+      "Preserve the exact number, width, height, position and division of every closet door, drawer and panel.",
+
+      "Preserve all existing handles, grooves, rails, gaps, seams, moldings, edges and hardware.",
+
+      "Do not reinterpret any closet door panel as an architectural room door.",
+
+      "Do not create a doorway, door frame, wall opening or passage.",
+
+      "Do not add, remove, merge or divide closet doors or panels.",
+
+      "Do not redesign the closet.",
+
+      "Change only the visible film-finished surface color and material.",
+    ].join(" ");
+  }
+
+  if (
+    targetType ===
+    "shoe_cabinet"
+  ) {
+    return [
+      "The installation target is the EXISTING SHOE CABINET ONLY.",
+
+      "This object is storage furniture. It is NOT a room door or doorway.",
+
+      "Apply interior film only to existing visible shoe-cabinet door fronts, drawer fronts and film-finished exposed panels.",
+
+      "Preserve the exact cabinet size, position, number of doors, panel divisions, handles, seams, gaps and hardware.",
+
+      "Do not reinterpret a shoe-cabinet door as an architectural room door.",
+
+      "Do not create a doorway or door frame.",
+
+      "Do not add, remove, merge or divide cabinet panels.",
+
+      "Change only the surface color and material finish.",
+    ].join(" ");
+  }
+
+  if (
+    targetType ===
+    "fridge_cabinet"
+  ) {
+    return [
+      "The installation target is the EXISTING REFRIGERATOR CABINET OR REFRIGERATOR ENCLOSURE ONLY.",
+
+      "Apply interior film only to the existing visible refrigerator-cabinet doors and film-finished enclosure panels.",
+
+      "Preserve the refrigerator, appliances and all non-cabinet surfaces exactly as they appear.",
+
+      "Preserve the exact cabinet dimensions, door count, panel divisions, gaps, handles, seams and hardware.",
+
+      "Do not reinterpret cabinet doors as room doors.",
+
+      "Do not create a doorway or architectural door frame.",
+
+      "Do not add, remove, enlarge, shrink, merge or divide cabinet panels.",
+
+      "Change only the surface color and material finish of the existing refrigerator cabinet.",
+    ].join(" ");
+  }
+
+  if (
+    targetType ===
+    "cabinet"
+  ) {
+    return [
+      "The installation target is the EXISTING STORAGE CABINET OR FURNITURE CABINET ONLY.",
+
+      "Treat the selected object as furniture, not as an architectural room door.",
+
+      "Apply interior film only to the existing visible cabinet door fronts, drawer fronts and film-finished exposed panels.",
+
+      "Preserve the exact cabinet identity, size, position, door count, drawer count, panel divisions, handles, seams, gaps and hardware.",
+
+      "Do not reinterpret cabinet door panels as room doors.",
+
+      "Do not create a doorway, passage or architectural door frame.",
+
+      "Do not add, remove, merge or divide doors, drawers or panels.",
+
+      "Do not redesign the furniture.",
+
+      "Change only the existing target surface color and material finish.",
+    ].join(" ");
+  }
+
   return [
     "Apply interior film only to the explicitly identified existing target surfaces.",
+
+    "Preserve the identity, geometry, divisions and hardware of the existing target object.",
+
+    "Do not reinterpret furniture as a room door.",
 
     "Do not modify unrelated doors, cabinets, walls or furniture.",
   ].join(" ");
@@ -519,7 +949,7 @@ function getAreaInstruction(
       "Apply this assigned film only to existing visible lower base cabinet doors and drawer fronts below the countertop.",
 
     fridge_cabinet:
-      "If an actual refrigerator enclosure or refrigerator cabinet is visible, apply this assigned film only to its cabinet doors and film-finished enclosure panels. If it is absent, do nothing.",
+      "Apply this assigned film only to the existing visible refrigerator cabinet doors and film-finished enclosure panels. Preserve the refrigerator and all appliances. If that cabinet is absent, do nothing.",
 
     tall_cabinet:
       "If an actual tall cabinet is visible, apply this assigned film only to its doors and film-finished panels. If it is absent, do nothing.",
@@ -531,19 +961,32 @@ function getAreaInstruction(
       "If an actual kitchen island cabinet is visible, apply this assigned film only to its cabinet doors, drawer fronts and film-finished side panels. Preserve its countertop. If it is absent, do nothing.",
 
     door_leaf:
-      "Apply this assigned film only to the existing moving door leaf or door panel. Preserve the handle, lock, hinges and glass.",
+      "Apply this assigned film only to the existing moving room-door leaf or door panel. Preserve the handle, lock, hinges and glass.",
 
     door_frame:
-      "Apply this assigned film only to the existing surrounding door frame, jamb and casing. Do not apply it to the door leaf or wall.",
+      "Apply this assigned film only to the existing surrounding room-door frame, jamb and casing. Do not apply it to the door leaf or wall.",
+
+    built_in:
+      "Apply this assigned film only to the existing built-in closet or wardrobe door fronts, drawer fronts and film-finished panels. Preserve every existing panel division, handle, seam and gap. Do not turn this furniture into a room door.",
+
+    shoe_cabinet:
+      "Apply this assigned film only to the existing shoe-cabinet door fronts, drawer fronts and film-finished panels. Preserve every existing division, handle, seam and gap. Do not turn this furniture into a room door.",
+
+    cabinet:
+      "Apply this assigned film only to the existing storage-cabinet or furniture-cabinet fronts and film-finished panels. Preserve every existing division, handle, seam and gap. Do not turn this furniture into a room door.",
   };
 
   return (
-    instructions[areaKey] ||
+    instructions[
+      areaKey
+    ] ||
     `Apply this assigned film only to the existing visible area identified as "${areaLabel}". If that area is absent, do nothing.`
   );
 }
 
-function getFilmKey(film) {
+function getFilmKey(
+  film
+) {
   return [
     film.productCode,
     film.sampleImageUrl,
@@ -595,7 +1038,7 @@ function getPreservationPrompt() {
 
     "Preserve the original room layout, camera angle, perspective, crop, dimensions and proportions.",
 
-    "Preserve the exact number, size, position, shape and division of all doors, frames, cabinet doors, drawers and panels.",
+    "Preserve the exact identity, number, size, position, shape and division of all doors, frames, cabinet doors, drawers, furniture doors and panels.",
 
     "Preserve handles, hinges, locks, rails, glass, appliances, fixtures, switches and all hardware.",
 
@@ -605,7 +1048,11 @@ function getPreservationPrompt() {
 
     "Do not redesign the room or furniture.",
 
-    "Do not change cabinet divisions, door divisions or hardware.",
+    "Do not change cabinet divisions, furniture divisions, door divisions or hardware.",
+
+    "Do not reinterpret a cabinet door or furniture panel as an architectural room door.",
+
+    "Do not create new doors, doorways, wall openings, cabinet doors, drawers or panels.",
 
     "Do not move, enlarge or shrink any object.",
 
@@ -720,6 +1167,66 @@ export async function POST(
       );
     }
 
+    /*
+     * 요금제별 가상시공 사용 한도 확인.
+     * OpenAI 호출 전에 검사해서 비용 발생을 막는다.
+     */
+    const virtualLimit =
+      await checkVirtualRemodelLimit(
+        company
+      );
+
+    if (!virtualLimit.ok) {
+      if (
+        virtualLimit.limitReached
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+
+            error:
+              virtualLimit.error,
+
+            code:
+              "VIRTUAL_REMODEL_LIMIT_REACHED",
+
+            planCode:
+              virtualLimit.planCode,
+
+            planName:
+              virtualLimit.planName,
+
+            used:
+              virtualLimit.used,
+
+            limit:
+              virtualLimit.limit,
+
+            remaining: 0,
+          },
+          {
+            status: 429,
+          }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            virtualLimit.error ||
+            "사용 한도를 확인할 수 없습니다.",
+
+          code:
+            "VIRTUAL_REMODEL_LIMIT_CHECK_FAILED",
+        },
+        {
+          status: 503,
+        }
+      );
+    }
+
     const image =
       requestData.get("image");
 
@@ -777,21 +1284,33 @@ export async function POST(
         30
       );
 
+    /*
+     * kitchen / door 외에도
+     * 단일 컬러 가구 종류를 허용한다.
+     */
     if (
-      targetType !==
-        "kitchen" &&
-      targetType !== "door"
+      !ALLOWED_TARGET_TYPES.has(
+        targetType
+      )
     ) {
       return NextResponse.json(
         {
           error:
-            "싱크대·주방가구 또는 문·문틀을 선택해주세요.",
+            "사용할 수 없는 가상시공 종류입니다.",
         },
         {
           status: 400,
         }
       );
     }
+
+    const targetLabel =
+      cleanText(
+        requestData.get(
+          "targetLabel"
+        ),
+        100
+      );
 
     const primaryFilm =
       getPrimaryFilm(
@@ -812,16 +1331,26 @@ export async function POST(
       );
     }
 
-    const useSplitTone =
+    /*
+     * 클라이언트가 true를 보내더라도
+     * kitchen / door 이외에는 서버에서 false 강제.
+     */
+    const requestedSplitTone =
       String(
         requestData.get(
           "useSplitTone"
         ) || ""
       ) === "true";
 
+    const useSplitTone =
+      MULTI_TONE_TARGET_TYPES.has(
+        targetType
+      ) &&
+      requestedSplitTone;
+
     /*
-     * 단일 컬러여도 부위 목록은 항상 받습니다.
-     * 그래야 싱크대 사진의 문이 변경되는 것을 막을 수 있습니다.
+     * 단일 컬러여도 부위 목록은 항상 받는다.
+     * 그래야 정확한 시공 대상만 필름을 적용할 수 있다.
      */
     let areaFilms =
       getAreaFilms(
@@ -829,70 +1358,128 @@ export async function POST(
       );
 
     if (!areaFilms.length) {
-      const defaultAreas =
-        targetType === "kitchen"
-          ? [
-              {
-                key:
-                  "kitchen_upper",
-                label: "상부장",
-              },
-              {
-                key:
-                  "kitchen_lower",
-                label: "하부장",
-              },
-              {
-                key:
-                  "fridge_cabinet",
-                label:
-                  "냉장고장",
-              },
-              {
-                key:
-                  "tall_cabinet",
-                label: "키큰장",
-              },
-              {
-                key:
-                  "pantry_cabinet",
-                label:
-                  "팬트리장",
-              },
-              {
-                key:
-                  "island_cabinet",
-                label:
-                  "아일랜드장",
-              },
-            ]
-          : [
-              {
-                key:
-                  "door_leaf",
-                label: "문짝",
-              },
-              {
-                key:
-                  "door_frame",
-                label: "문틀",
-              },
-            ];
+      let defaultAreas = [];
+
+      if (
+        targetType ===
+        "kitchen"
+      ) {
+        defaultAreas = [
+          {
+            key:
+              "kitchen_upper",
+            label: "상부장",
+          },
+          {
+            key:
+              "kitchen_lower",
+            label: "하부장",
+          },
+          {
+            key:
+              "fridge_cabinet",
+            label:
+              "냉장고장",
+          },
+          {
+            key:
+              "tall_cabinet",
+            label: "키큰장",
+          },
+          {
+            key:
+              "pantry_cabinet",
+            label:
+              "팬트리장",
+          },
+          {
+            key:
+              "island_cabinet",
+            label:
+              "아일랜드장",
+          },
+        ];
+      } else if (
+        targetType === "door"
+      ) {
+        defaultAreas = [
+          {
+            key:
+              "door_leaf",
+            label: "문짝",
+          },
+          {
+            key:
+              "door_frame",
+            label: "문틀",
+          },
+        ];
+      } else if (
+        targetType ===
+        "built_in"
+      ) {
+        defaultAreas = [
+          {
+            key:
+              "built_in",
+            label:
+              targetLabel ||
+              "붙박이장",
+          },
+        ];
+      } else if (
+        targetType ===
+        "shoe_cabinet"
+      ) {
+        defaultAreas = [
+          {
+            key:
+              "shoe_cabinet",
+            label:
+              targetLabel ||
+              "신발장",
+          },
+        ];
+      } else if (
+        targetType ===
+        "fridge_cabinet"
+      ) {
+        defaultAreas = [
+          {
+            key:
+              "fridge_cabinet",
+            label:
+              targetLabel ||
+              "냉장고장",
+          },
+        ];
+      } else {
+        defaultAreas = [
+          {
+            key:
+              "cabinet",
+            label:
+              targetLabel ||
+              "수납장",
+          },
+        ];
+      }
 
       areaFilms =
         defaultAreas.map(
           (area) => ({
             ...primaryFilm,
+
             areaKey:
               area.key,
+
             areaLabel:
               area.label,
           })
         );
-    }
-
-    /*
-     * 동일한 필름은 샘플 이미지를 한 번만 전송합니다.
+}
+        /*
+     * 동일한 필름은 샘플 이미지를 한 번만 전송한다.
      */
     const uniqueFilmMap =
       new Map();
@@ -968,11 +1555,25 @@ export async function POST(
 
     const promptParts = [
       getPreservationPrompt(),
+
       getTargetPrompt(
         targetType
       ),
     ];
 
+    /*
+     * targetLabel은 클라이언트에서 전달하는
+     * 사람이 읽을 수 있는 시공 종류 이름이다.
+     */
+    if (targetLabel) {
+      promptParts.push(
+        `The selected installation category is "${targetLabel}". Preserve this object's original identity and structure exactly as shown in IMAGE 1.`
+      );
+    }
+
+    /*
+     * 실제 필름 샘플 이미지 설명
+     */
     referenceFilms.forEach(
       (film) => {
         if (
@@ -996,6 +1597,9 @@ export async function POST(
       }
     );
 
+    /*
+     * 부위별 필름 지시
+     */
     areaFilms.forEach(
       (film) => {
         const reference =
@@ -1037,21 +1641,90 @@ export async function POST(
       }
     );
 
+    /*
+     * 여러 톤 / 단일 컬러
+     *
+     * useSplitTone은 앞에서 이미
+     * kitchen / door에서만 true가 될 수 있도록
+     * 서버에서 강제했다.
+     */
     if (useSplitTone) {
       promptParts.push(
         "This is a MULTI-TONE installation. Keep every assigned film restricted to its own target area. Do not swap, blend or mix finishes between different areas."
       );
     } else {
       promptParts.push(
-        "This is a UNIFIED-COLOR installation. Apply the same selected film consistently to all existing visible target areas for the selected installation type."
+        "This is a UNIFIED-COLOR installation. Apply the same selected film consistently to all existing visible target surfaces belonging to the selected installation object. Do not apply the film to unrelated objects."
       );
     }
 
-    promptParts.push(
+    /*
+     * 종류별 마지막 검증.
+     *
+     * 기존 코드는 kitchen이 아니면 전부
+     * door라고 지시했기 때문에
+     * 붙박이장이 문으로 변형될 수 있었다.
+     */
+    if (
       targetType ===
-        "kitchen"
-        ? "Final check: kitchen cabinet surfaces may change, but every room door and door frame must remain unchanged."
-        : "Final check: the selected door and door frame may change, but every kitchen cabinet and other piece of furniture must remain unchanged."
+      "kitchen"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: Modify only the existing kitchen cabinetry surfaces. Every architectural room door and door frame must remain completely unchanged. Do not create new cabinets or alter cabinet geometry."
+      );
+    } else if (
+      targetType ===
+      "door"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: Modify only the selected existing architectural door and door frame. Every kitchen cabinet, built-in closet, shoe cabinet, refrigerator cabinet and other piece of furniture must remain completely unchanged."
+      );
+    } else if (
+      targetType ===
+      "built_in"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: The selected object is a BUILT-IN CLOSET OR WARDROBE, NOT AN ARCHITECTURAL DOOR. Keep it as the exact same built-in furniture. Preserve every closet panel, division, gap, handle, molding and dimension. Change only its film-finished surface appearance."
+      );
+    } else if (
+      targetType ===
+      "shoe_cabinet"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: The selected object is a SHOE CABINET, NOT AN ARCHITECTURAL DOOR. Keep it as the exact same storage furniture. Preserve every cabinet panel, division, gap, handle and dimension. Change only its film-finished surface appearance."
+      );
+    } else if (
+      targetType ===
+      "fridge_cabinet"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: The selected object is a REFRIGERATOR CABINET OR ENCLOSURE, NOT AN ARCHITECTURAL DOOR. Preserve the refrigerator, appliances, cabinet geometry, panel divisions, gaps and dimensions. Change only the existing cabinet film surfaces."
+      );
+    } else if (
+      targetType ===
+      "cabinet"
+    ) {
+      promptParts.push(
+        "FINAL IDENTITY CHECK: The selected object is EXISTING CABINET FURNITURE, NOT AN ARCHITECTURAL DOOR. Preserve its exact furniture identity, geometry, panel count, divisions, gaps, handles and dimensions. Change only the existing film-finished surfaces."
+      );
+    }
+
+    /*
+     * 모델이 구조를 다시 그리지 않도록
+     * 최종 공통 지시를 한 번 더 강조한다.
+     */
+    promptParts.push(
+      [
+        "ABSOLUTE STRUCTURE RULE:",
+        "IMAGE 1 must remain the structural source of truth.",
+        "Do not replace the selected object with another type of object.",
+        "Do not convert furniture into a room door.",
+        "Do not convert a room door into furniture.",
+        "Do not change the number of doors, cabinet fronts, drawers or panels.",
+        "Do not change existing panel boundaries, seams, openings or proportions.",
+        "Do not add new handles, frames, moldings, doors, drawers or panels.",
+        "Only perform a realistic surface-film finish change on the existing target surfaces.",
+      ].join(" ")
     );
 
     const prompt =
@@ -1059,9 +1732,16 @@ export async function POST(
         .filter(Boolean)
         .join(" ");
 
+    /* =========================================================
+       OpenAI 이미지 편집 요청
+    ========================================================= */
+
     const openAIForm =
       new FormData();
 
+    /*
+     * 기존 모델/사이즈/품질 설정 유지
+     */
     const openAIModel =
       process.env
         .OPENAI_IMAGE_MODEL ||
@@ -1082,6 +1762,9 @@ export async function POST(
       openAIModel
     );
 
+    /*
+     * IMAGE 1 = 고객 원본사진
+     */
     openAIForm.append(
       "image[]",
       image,
@@ -1089,6 +1772,9 @@ export async function POST(
         "interior.jpg"
     );
 
+    /*
+     * IMAGE 2 이후 = 실제 필름 샘플
+     */
     referenceFilms.forEach(
       (film) => {
         if (
@@ -1212,44 +1898,104 @@ export async function POST(
           )
       ).length;
 
+    /*
+     * OpenAI 이미지 생성이 성공한 경우에만
+     * 가상시공 사용량 +1
+     */
     const usageRecorded =
       await recordVirtualInstallUsage({
         company,
-        model: openAIModel,
-        size: openAIImageSize,
-        quality: openAIImageQuality,
+
+        model:
+          openAIModel,
+
+        size:
+          openAIImageSize,
+
+        quality:
+          openAIImageQuality,
+
         targetType,
+
         useSplitTone,
+
         productCode:
           primaryFilm.productCode,
+
         sampleReferenceCount,
+
         openAIUsage:
-          result?.usage || null,
+          result?.usage ||
+          null,
       });
 
     return NextResponse.json({
       success: true,
+
       imageUrl,
+
       targetType,
+
+      targetLabel:
+        targetLabel || null,
+
       useSplitTone,
+
       productCode:
         primaryFilm.productCode,
+
       appliedAreas:
         areaFilms.map(
           (film) => ({
             areaKey:
               film.areaKey,
+
             areaLabel:
               film.areaLabel,
+
             productCode:
               film.productCode,
           })
         ),
+
       sampleReferenceCount,
+
       usage:
         result?.usage ||
         null,
+
       usageRecorded,
+
+      planUsage: {
+        planCode:
+          virtualLimit.planCode,
+
+        planName:
+          virtualLimit.planName,
+
+        usedBefore:
+          virtualLimit.used,
+
+        usedAfter:
+          virtualLimit.used + 1,
+
+        limit:
+          virtualLimit.limit,
+
+        remaining:
+          virtualLimit.unlimited
+            ? null
+            : Math.max(
+                0,
+                virtualLimit.remaining -
+                  1
+              ),
+
+        unlimited:
+          Boolean(
+            virtualLimit.unlimited
+          ),
+      },
     });
   } catch (error) {
     console.error(
@@ -1285,4 +2031,4 @@ export async function POST(
       }
     );
   }
-           }
+            }

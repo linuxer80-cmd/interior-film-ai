@@ -17,13 +17,13 @@ import QuickRegisterTab from "./QuickRegisterTab";
 import UsageTab from "./UsageTab";
 import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
+import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
 import useJobs from "./hooks/useJobs";
 import useJobRegister from "./hooks/useJobRegister";
 import useLeads from "./hooks/useLeads";
 import useUsage from "./hooks/useUsage";
-import useStructureAnalysis from "./hooks/useStructureAnalysis";
 import useCompanySettings from "./hooks/useCompanySettings";
 import useWorkers from "./hooks/useWorkers";
 
@@ -167,17 +167,6 @@ export default function AdminPage() {
     );
 
   /* =========================================================
-     AI 구조분석
-  ========================================================= */
-
-  const {
-    structureAnalysis,
-    runStructureAnalysis,
-    stopStructureAnalysis,
-  } =
-    useStructureAnalysis();
-
-  /* =========================================================
      현장 관리
   ========================================================= */
 
@@ -190,7 +179,13 @@ export default function AdminPage() {
 
     loadSites,
     createSite,
+
+    updateSiteBasicInfo,
+    updateSiteSchedule,
     updateSiteStatus,
+
+    addSiteRequestPhotos,
+    deleteSiteRequestPhoto,
 
     openSite,
     closeSite,
@@ -416,6 +411,11 @@ export default function AdminPage() {
 
   /* =========================================================
      관리자 초기화
+
+     순서:
+     1. 로그인 / 회사 확인
+     2. 신규 회사 샘플 데이터 확인 및 생성
+     3. 시공 DB / 설정 / 상담 데이터 조회
   ========================================================= */
 
   useEffect(() => {
@@ -438,6 +438,82 @@ export default function AdminPage() {
         result.companyId;
 
       try {
+        /* =====================================================
+           신규 관리자 샘플 데이터 확인 / 자동 생성
+        ===================================================== */
+
+        try {
+          const {
+            data: sessionData,
+            error: sessionError,
+          } =
+            await supabase.auth.getSession();
+
+          if (sessionError) {
+            throw sessionError;
+          }
+
+          const accessToken =
+            sessionData
+              ?.session
+              ?.access_token;
+
+          if (accessToken) {
+            const sampleResponse =
+              await fetch(
+                "/api/admin/ensure-sample-data",
+                {
+                  method: "POST",
+
+                  headers: {
+                    Authorization:
+                      `Bearer ${accessToken}`,
+                  },
+
+                  cache: "no-store",
+                },
+              );
+
+            let sampleResult =
+              null;
+
+            try {
+              sampleResult =
+                await sampleResponse.json();
+            } catch (jsonError) {
+              console.error(
+                "샘플 데이터 응답 확인:",
+                jsonError,
+              );
+            }
+
+            if (
+              !sampleResponse.ok ||
+              sampleResult?.success ===
+                false
+            ) {
+              console.error(
+                "샘플 데이터 확인:",
+                sampleResult,
+              );
+            } else {
+              console.log(
+                "샘플 데이터 확인:",
+                sampleResult,
+              );
+            }
+          }
+        } catch (sampleError) {
+          console.error(
+            "샘플 데이터 자동 생성:",
+            sampleError,
+          );
+        }
+
+        if (!mounted) {
+          return;
+        }
+
         await Promise.all([
           loadSettings(
             resolvedCompanyId,
@@ -481,6 +557,22 @@ export default function AdminPage() {
   }, []);
 
   /* =========================================================
+     회사 ID 반영 후 시공 DB 재조회
+  ========================================================= */
+
+  useEffect(() => {
+    if (!companyId) {
+      return;
+    }
+
+    loadJobs(
+      1,
+      "",
+      companyId,
+    );
+  }, [companyId]);
+
+  /* =========================================================
      신규 상담 실시간 구독
   ========================================================= */
 
@@ -512,7 +604,7 @@ export default function AdminPage() {
           (payload) => {
             handleRealtimeLead(
               payload.new,
-              companyId,
+              activeTabRef.current === "leads",
             );
           },
         )
@@ -529,30 +621,19 @@ export default function AdminPage() {
   ]);
 
   /* =========================================================
-     관리자 로딩
+     관리자 준비 전
   ========================================================= */
 
   if (!adminReady) {
     return (
       <main
         style={{
-          maxWidth:
-            "900px",
-
-          margin:
-            "0 auto",
-
-          padding:
-            "40px 16px",
-
-          minHeight:
-            "100vh",
-
-          background:
-            "#f8fafc",
-
-          color:
-            "#111827",
+          maxWidth: "900px",
+          margin: "0 auto",
+          padding: "40px 16px",
+          minHeight: "100vh",
+          background: "#f8fafc",
+          color: "#111827",
         }}
       >
         관리자 정보를 확인하고 있습니다...
@@ -561,35 +642,20 @@ export default function AdminPage() {
   }
 
   /* =========================================================
-     화면
+     관리자 화면
   ========================================================= */
 
   return (
     <main
       style={{
-        maxWidth:
-          "900px",
-
-        margin:
-          "0 auto",
-
-        padding:
-          "16px 14px 80px",
-
-        background:
-          "#f8fafc",
-
-        minHeight:
-          "100vh",
-
-        color:
-          "#111827",
+        maxWidth: "900px",
+        margin: "0 auto",
+        padding: "16px 14px 80px",
+        background: "#f8fafc",
+        minHeight: "100vh",
+        color: "#111827",
       }}
     >
-      {/* =====================================================
-          신규 상담 알림
-      ===================================================== */}
-
       <NewLeadAlert
         newLeadAlert={
           newLeadAlert
@@ -602,97 +668,66 @@ export default function AdminPage() {
         }
       />
 
-      {/* =====================================================
-          관리자 제목
-      ===================================================== */}
-
-      <h1
+      <div
         style={{
-          fontSize:
-            "24px",
-
-          margin:
-            "8px 0 12px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent:
+            "space-between",
+          gap: "12px",
+          margin: "8px 0 12px",
         }}
       >
-        {companyName} 관리자
-      </h1>
+        <h1
+          style={{
+            fontSize: "24px",
+            margin: 0,
+            minWidth: 0,
+          }}
+        >
+          {companyName} 관리자
+        </h1>
 
-      {/* =====================================================
-          관리자 초기화 오류
-      ===================================================== */}
+        <PlanUsageButton />
+      </div>
 
       {adminError && (
         <div
           style={{
-            padding:
-              "12px",
-
-            marginBottom:
-              "14px",
-
-            borderRadius:
-              "10px",
-
+            padding: "12px",
+            marginBottom: "14px",
+            borderRadius: "10px",
             border:
               "1px solid #fecaca",
-
-            background:
-              "#fef2f2",
-
-            color:
-              "#b91c1c",
-
-            fontSize:
-              "13px",
-
-            fontWeight:
-              "600",
-
-            whiteSpace:
-              "pre-wrap",
+            background: "#fef2f2",
+            color: "#b91c1c",
+            fontSize: "13px",
+            fontWeight: "600",
+            whiteSpace: "pre-wrap",
           }}
         >
           {adminError}
         </div>
       )}
 
-      {/* =====================================================
-          회사별 고객 AI 견적 페이지
-      ===================================================== */}
-
       {customerEstimateUrl && (
         <section
           style={{
-            background:
-              "#ffffff",
-
+            background: "#ffffff",
             border:
               "1px solid #e5e7eb",
-
-            borderRadius:
-              "14px",
-
-            padding:
-              "14px",
-
-            marginBottom:
-              "16px",
-
+            borderRadius: "14px",
+            padding: "14px",
+            marginBottom: "16px",
             boxShadow:
               "0 1px 3px rgba(0,0,0,0.05)",
           }}
         >
           <div
             style={{
-              fontSize:
-                "15px",
-
-              fontWeight:
-                "700",
-
-              marginBottom:
-                "8px",
+              fontSize: "15px",
+              fontWeight: "700",
+              marginBottom: "8px",
             }}
           >
             고객 AI 견적 페이지
@@ -700,14 +735,9 @@ export default function AdminPage() {
 
           <div
             style={{
-              fontSize:
-                "12px",
-
-              color:
-                "#64748b",
-
-              marginBottom:
-                "8px",
+              fontSize: "12px",
+              color: "#64748b",
+              marginBottom: "8px",
             }}
           >
             블로그, 홈페이지, 문자, 카카오톡 등에 아래 주소를 게시하세요.
@@ -715,32 +745,16 @@ export default function AdminPage() {
 
           <div
             style={{
-              padding:
-                "10px 12px",
-
-              background:
-                "#f8fafc",
-
+              padding: "10px 12px",
+              background: "#f8fafc",
               border:
                 "1px solid #e2e8f0",
-
-              borderRadius:
-                "9px",
-
-              fontSize:
-                "13px",
-
-              lineHeight:
-                "1.5",
-
-              wordBreak:
-                "break-all",
-
-              marginBottom:
-                "10px",
-
-              userSelect:
-                "all",
+              borderRadius: "9px",
+              fontSize: "13px",
+              lineHeight: "1.5",
+              wordBreak: "break-all",
+              marginBottom: "10px",
+              userSelect: "all",
             }}
           >
             {customerEstimateUrl}
@@ -748,14 +762,10 @@ export default function AdminPage() {
 
           <div
             style={{
-              display:
-                "grid",
-
+              display: "grid",
               gridTemplateColumns:
                 "1fr 1fr",
-
-              gap:
-                "8px",
+              gap: "8px",
             }}
           >
             <button
@@ -764,32 +774,15 @@ export default function AdminPage() {
                 openCustomerEstimatePage
               }
               style={{
-                width:
-                  "100%",
-
-                border:
-                  "none",
-
-                borderRadius:
-                  "9px",
-
-                padding:
-                  "11px 8px",
-
-                background:
-                  "#111827",
-
-                color:
-                  "#ffffff",
-
-                fontWeight:
-                  "700",
-
-                fontSize:
-                  "14px",
-
-                cursor:
-                  "pointer",
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                padding: "11px 8px",
+                background: "#111827",
+                color: "#ffffff",
+                fontWeight: "700",
+                fontSize: "14px",
+                cursor: "pointer",
               }}
             >
               고객페이지 열기
@@ -801,32 +794,16 @@ export default function AdminPage() {
                 copyCustomerEstimateUrl
               }
               style={{
-                width:
-                  "100%",
-
+                width: "100%",
                 border:
                   "1px solid #cbd5e1",
-
-                borderRadius:
-                  "9px",
-
-                padding:
-                  "11px 8px",
-
-                background:
-                  "#ffffff",
-
-                color:
-                  "#111827",
-
-                fontWeight:
-                  "700",
-
-                fontSize:
-                  "14px",
-
-                cursor:
-                  "pointer",
+                borderRadius: "9px",
+                padding: "11px 8px",
+                background: "#ffffff",
+                color: "#111827",
+                fontWeight: "700",
+                fontSize: "14px",
+                cursor: "pointer",
               }}
             >
               주소 복사
@@ -836,15 +813,9 @@ export default function AdminPage() {
           {copyMessage && (
             <div
               style={{
-                marginTop:
-                  "9px",
-
-                fontSize:
-                  "13px",
-
-                fontWeight:
-                  "600",
-
+                marginTop: "9px",
+                fontSize: "13px",
+                fontWeight: "600",
                 color:
                   copyMessage.startsWith(
                     "✅",
@@ -859,10 +830,6 @@ export default function AdminPage() {
         </section>
       )}
 
-      {/* =====================================================
-          탭
-      ===================================================== */}
-
       <AdminTabs
         activeTab={
           activeTab
@@ -874,184 +841,56 @@ export default function AdminPage() {
           unreadCount
         }
       />
-
-      {/* =====================================================
-          시공 DB
-      ===================================================== */}
-
-      {activeTab ===
+                {activeTab ===
         "jobs" && (
         <JobsTab
-          jobSearch={
-            jobSearch
-          }
-          setJobSearch={
-            setJobSearch
-          }
-          searchJobs={
-            searchJobs
-          }
-          clearJobSearch={
-            clearJobSearch
-          }
-          jobSearchApplied={
-            jobSearchApplied
-          }
-          jobTotal={
-            jobTotal
-          }
-          jobsMessage={
-            jobsMessage
-          }
-
-          structureAnalysis={
-            structureAnalysis
-          }
-          runStructureAnalysis={
-            runStructureAnalysis
-          }
-          stopStructureAnalysis={
-            stopStructureAnalysis
-          }
-
-          jobsLoading={
-            jobsLoading
-          }
-          jobs={
-            jobs
-          }
-
-          editingId={
-            editingId
-          }
-
-          editCategory={
-            editCategory
-          }
-          setEditCategory={
-            setEditCategory
-          }
-
-          editSubCategory={
-            editSubCategory
-          }
-          setEditSubCategory={
-            setEditSubCategory
-          }
-
-          editCost={
-            editCost
-          }
-          setEditCost={
-            setEditCost
-          }
-
-          editMemo={
-            editMemo
-          }
-          setEditMemo={
-            setEditMemo
-          }
-
-          saveJobEdit={
-            saveJobEdit
-          }
-          cancelEdit={
-            cancelEdit
-          }
-          startEdit={
-            startEdit
-          }
-          deleteJob={
-            deleteJob
-          }
-
-          openJobId={
-            openJobId
-          }
-          toggleJobDetail={
-            toggleJobDetail
-          }
-
-          jobPhotoLoadingId={
-            jobPhotoLoadingId
-          }
-          jobPhotos={
-            jobPhotos
-          }
-
-          jobPhotoUrls={
-            jobPhotoUrls
-          }
-          loadingPhotoId={
-            loadingPhotoId
-          }
-
-          loadSingleJobPhoto={
-            loadSingleJobPhoto
-          }
-          openJobPhoto={
-            openJobPhoto
-          }
-
-          editingPhotoId={
-            editingPhotoId
-          }
-
-          editPhotoType={
-            editPhotoType
-          }
-          setEditPhotoType={
-            setEditPhotoType
-          }
-
-          editPhotoCategory={
-            editPhotoCategory
-          }
-          setEditPhotoCategory={
-            setEditPhotoCategory
-          }
-
-          editPhotoSubCategory={
-            editPhotoSubCategory
-          }
-          setEditPhotoSubCategory={
-            setEditPhotoSubCategory
-          }
-
-          editPhotoDescription={
-            editPhotoDescription
-          }
-          setEditPhotoDescription={
-            setEditPhotoDescription
-          }
-
-          photoEditLoading={
-            photoEditLoading
-          }
-
-          startPhotoEdit={
-            startPhotoEdit
-          }
-          cancelPhotoEdit={
-            cancelPhotoEdit
-          }
-          savePhotoEdit={
-            savePhotoEdit
-          }
-          deletePhoto={
-            deletePhoto
-          }
-
-          jobPage={
-            jobPage
-          }
-          totalJobPages={
-            totalJobPages
-          }
-          loadJobs={
-            loadJobs
-          }
+          jobSearch={jobSearch}
+          setJobSearch={setJobSearch}
+          searchJobs={searchJobs}
+          clearJobSearch={clearJobSearch}
+          jobSearchApplied={jobSearchApplied}
+          jobTotal={jobTotal}
+          jobsMessage={jobsMessage}
+          jobsLoading={jobsLoading}
+          jobs={jobs}
+          editingId={editingId}
+          editCategory={editCategory}
+          setEditCategory={setEditCategory}
+          editSubCategory={editSubCategory}
+          setEditSubCategory={setEditSubCategory}
+          editCost={editCost}
+          setEditCost={setEditCost}
+          editMemo={editMemo}
+          setEditMemo={setEditMemo}
+          saveJobEdit={saveJobEdit}
+          cancelEdit={cancelEdit}
+          startEdit={startEdit}
+          deleteJob={deleteJob}
+          openJobId={openJobId}
+          toggleJobDetail={toggleJobDetail}
+          jobPhotoLoadingId={jobPhotoLoadingId}
+          jobPhotos={jobPhotos}
+          jobPhotoUrls={jobPhotoUrls}
+          loadingPhotoId={loadingPhotoId}
+          loadSingleJobPhoto={loadSingleJobPhoto}
+          openJobPhoto={openJobPhoto}
+          editingPhotoId={editingPhotoId}
+          editPhotoType={editPhotoType}
+          setEditPhotoType={setEditPhotoType}
+          editPhotoCategory={editPhotoCategory}
+          setEditPhotoCategory={setEditPhotoCategory}
+          editPhotoSubCategory={editPhotoSubCategory}
+          setEditPhotoSubCategory={setEditPhotoSubCategory}
+          editPhotoDescription={editPhotoDescription}
+          setEditPhotoDescription={setEditPhotoDescription}
+          photoEditLoading={photoEditLoading}
+          startPhotoEdit={startPhotoEdit}
+          cancelPhotoEdit={cancelPhotoEdit}
+          savePhotoEdit={savePhotoEdit}
+          deletePhoto={deletePhoto}
+          jobPage={jobPage}
+          totalJobPages={totalJobPages}
+          loadJobs={loadJobs}
         />
       )}
 
@@ -1066,88 +905,30 @@ export default function AdminPage() {
       {activeTab ===
         "register" && (
         <RegisterTab
-          category={
-            category
-          }
-          setCategory={
-            setCategory
-          }
-
-          actualCost={
-            actualCost
-          }
-          setActualCost={
-            setActualCost
-          }
-
-          material={
-            material
-          }
-          setMaterial={
-            setMaterial
-          }
-
-          memo={
-            memo
-          }
-          setMemo={
-            setMemo
-          }
-
-          beforeImages={
-            beforeImages
-          }
-          setBeforeImages={
-            setBeforeImages
-          }
-
-          afterImages={
-            afterImages
-          }
-          setAfterImages={
-            setAfterImages
-          }
-
-          handleBeforeFiles={
-            handleBeforeFiles
-          }
-          handleAfterFiles={
-            handleAfterFiles
-          }
-
-          removeBeforeImage={
-            removeBeforeImage
-          }
-          removeAfterImage={
-            removeAfterImage
-          }
-
-          loading={
-            loading
-          }
-          handleSave={
-            handleSave
-          }
-          message={
-            message
-          }
-
-          similarityThreshold={
-            similarityThreshold
-          }
-          setSimilarityThreshold={
-            setSimilarityThreshold
-          }
-
-          settingLoading={
-            settingLoading
-          }
-          saveSimilaritySetting={
-            saveSimilaritySetting
-          }
-          settingMessage={
-            settingMessage
-          }
+          category={category}
+          setCategory={setCategory}
+          actualCost={actualCost}
+          setActualCost={setActualCost}
+          material={material}
+          setMaterial={setMaterial}
+          memo={memo}
+          setMemo={setMemo}
+          beforeImages={beforeImages}
+          setBeforeImages={setBeforeImages}
+          afterImages={afterImages}
+          setAfterImages={setAfterImages}
+          handleBeforeFiles={handleBeforeFiles}
+          handleAfterFiles={handleAfterFiles}
+          removeBeforeImage={removeBeforeImage}
+          removeAfterImage={removeAfterImage}
+          loading={loading}
+          handleSave={handleSave}
+          message={message}
+          similarityThreshold={similarityThreshold}
+          setSimilarityThreshold={setSimilarityThreshold}
+          settingLoading={settingLoading}
+          saveSimilaritySetting={saveSimilaritySetting}
+          settingMessage={settingMessage}
         />
       )}
 
@@ -1165,9 +946,11 @@ export default function AdminPage() {
           sites={
             sites
           }
+
           sitesLoading={
             sitesLoading
           }
+
           sitesMessage={
             sitesMessage
           }
@@ -1176,8 +959,24 @@ export default function AdminPage() {
             createSite
           }
 
+          updateSiteBasicInfo={
+            updateSiteBasicInfo
+          }
+
+          updateSiteSchedule={
+            updateSiteSchedule
+          }
+
           updateSiteStatus={
             updateSiteStatus
+          }
+
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
           }
 
           selectedSite={
@@ -1187,6 +986,7 @@ export default function AdminPage() {
           openSite={
             openSite
           }
+
           closeSite={
             closeSite
           }
@@ -1194,9 +994,11 @@ export default function AdminPage() {
           workers={
             workers
           }
+
           workersLoading={
             workersLoading
           }
+
           workersMessage={
             workersMessage
           }
@@ -1204,12 +1006,15 @@ export default function AdminPage() {
           loadWorkers={
             loadWorkers
           }
+
           createWorker={
             createWorker
           }
+
           updateWorker={
             updateWorker
           }
+
           setWorkerActive={
             setWorkerActive
           }
@@ -1221,6 +1026,7 @@ export default function AdminPage() {
           assignSiteWorkers={
             assignSiteWorkers
           }
+
           loadSiteWorkers={
             loadSiteWorkers
           }
@@ -1233,138 +1039,50 @@ export default function AdminPage() {
         />
       )}
 
-      {/* =====================================================
-          로그 분석
-      ===================================================== */}
-
       {activeTab ===
         "usage" && (
         <UsageTab
-          usageStats={
-            usageStats
-          }
-          usageMessage={
-            usageMessage
-          }
-          usageLoading={
-            usageLoading
-          }
-          loadUsageStats={
-            loadUsageStats
-          }
-
-          usageRecent={
-            usageRecent
-          }
-
-          usagePhotoUrls={
-            usagePhotoUrls
-          }
-          openUsagePhotoId={
-            openUsagePhotoId
-          }
-          usagePhotoLoadingId={
-            usagePhotoLoadingId
-          }
-          toggleUsagePhotos={
-            toggleUsagePhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
+          usageStats={usageStats}
+          usageMessage={usageMessage}
+          usageLoading={usageLoading}
+          loadUsageStats={loadUsageStats}
+          usageRecent={usageRecent}
+          usagePhotoUrls={usagePhotoUrls}
+          openUsagePhotoId={openUsagePhotoId}
+          usagePhotoLoadingId={usagePhotoLoadingId}
+          toggleUsagePhotos={toggleUsagePhotos}
+          setPreviewPhoto={setPreviewPhoto}
         />
       )}
-
-      {/* =====================================================
-          고객 상담
-      ===================================================== */}
 
       {activeTab ===
         "leads" && (
         <LeadsTab
-          leadFilter={
-            leadFilter
-          }
-          setLeadFilter={
-            setLeadFilter
-          }
-
-          loadLeads={
-            loadLeads
-          }
-
-          leadTotal={
-            leadTotal
-          }
-          unreadCount={
-            unreadCount
-          }
-
-          notificationEnabled={
-            notificationEnabled
-          }
-          enableNotifications={
-            enableNotifications
-          }
-
-          leadsMessage={
-            leadsMessage
-          }
-          leadsLoading={
-            leadsLoading
-          }
-          leads={
-            leads
-          }
-
-          updateLeadStatus={
-            updateLeadStatus
-          }
-
-          openLeadId={
-            openLeadId
-          }
-          toggleLeadDetail={
-            toggleLeadDetail
-          }
-
-          leadPhotoUrls={
-            leadPhotoUrls
-          }
-          leadPhotoLoadingId={
-            leadPhotoLoadingId
-          }
-          loadLeadPhotos={
-            loadLeadPhotos
-          }
-
-          setPreviewPhoto={
-            setPreviewPhoto
-          }
-
-          saveLeadMemo={
-            saveLeadMemo
-          }
-          updateLeadLocal={
-            updateLeadLocal
-          }
-          saveFinalQuote={
-            saveFinalQuote
-          }
-
-          leadPage={
-            leadPage
-          }
-          totalLeadPages={
-            totalLeadPages
-          }
+          companyName={companyName}
+          leadFilter={leadFilter}
+          setLeadFilter={setLeadFilter}
+          loadLeads={loadLeads}
+          leadTotal={leadTotal}
+          unreadCount={unreadCount}
+          notificationEnabled={notificationEnabled}
+          enableNotifications={enableNotifications}
+          leadsMessage={leadsMessage}
+          leadsLoading={leadsLoading}
+          leads={leads}
+          updateLeadStatus={updateLeadStatus}
+          openLeadId={openLeadId}
+          toggleLeadDetail={toggleLeadDetail}
+          leadPhotoUrls={leadPhotoUrls}
+          leadPhotoLoadingId={leadPhotoLoadingId}
+          loadLeadPhotos={loadLeadPhotos}
+          setPreviewPhoto={setPreviewPhoto}
+          saveLeadMemo={saveLeadMemo}
+          updateLeadLocal={updateLeadLocal}
+          saveFinalQuote={saveFinalQuote}
+          leadPage={leadPage}
+          totalLeadPages={totalLeadPages}
         />
       )}
-
-      {/* =====================================================
-          사진 확대
-      ===================================================== */}
 
       <PhotoPreviewModal
         previewPhoto={

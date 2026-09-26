@@ -3,10 +3,6 @@
 import { useCallback, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-/* =========================================================
-   파일명 안전하게 만들기
-========================================================= */
-
 function makeSafeFileName(fileName = "photo.jpg") {
   const extension =
     fileName.includes(".")
@@ -15,10 +11,6 @@ function makeSafeFileName(fileName = "photo.jpg") {
 
   return `${Date.now()}-${crypto.randomUUID()}.${extension}`;
 }
-
-/* =========================================================
-   숫자 변환
-========================================================= */
 
 function toNumberOrNull(value) {
   if (
@@ -36,9 +28,97 @@ function toNumberOrNull(value) {
     : null;
 }
 
-/* =========================================================
-   Hook
-========================================================= */
+/*
+ * schedule_start가 있으면 그 날짜를 사용하고,
+ * 시간 미정 상담중 현장은 schedule_date를 사용합니다.
+ *
+ * 둘 다 없는 완전 미정 현장은 뒤에 표시합니다.
+ */
+function getSiteSortTime(site) {
+  if (site?.schedule_start) {
+    const value =
+      new Date(
+        site.schedule_start,
+      ).getTime();
+
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  if (site?.schedule_date) {
+    const value =
+      new Date(
+        `${site.schedule_date}T00:00:00`,
+      ).getTime();
+
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function sortSitesBySchedule(a, b) {
+  const aValue =
+    getSiteSortTime(a);
+
+  const bValue =
+    getSiteSortTime(b);
+
+  if (
+    aValue === null &&
+    bValue === null
+  ) {
+    return 0;
+  }
+
+  if (aValue === null) {
+    return 1;
+  }
+
+  if (bValue === null) {
+    return -1;
+  }
+
+  return aValue - bValue;
+}
+
+/*
+ * ISO 일정에서 로컬 날짜 YYYY-MM-DD 추출
+ */
+function getLocalDateString(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return null;
+  }
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 export default function useSites({
   companyId,
@@ -60,10 +140,6 @@ export default function useSites({
     selectedSite,
     setSelectedSite,
   ] = useState(null);
-
-  /* =========================================================
-     현장 목록 불러오기
-  ========================================================= */
 
   const loadSites = useCallback(
     async (
@@ -104,6 +180,7 @@ export default function useSites({
             "schedule_start",
             {
               ascending: true,
+              nullsFirst: false,
             },
           );
 
@@ -112,7 +189,9 @@ export default function useSites({
         }
 
         setSites(
-          data || [],
+          (data || []).sort(
+            sortSitesBySchedule,
+          ),
         );
       } catch (error) {
         console.error(
@@ -134,10 +213,6 @@ export default function useSites({
     },
     [companyId],
   );
-
-  /* =========================================================
-     현장 요청사진 업로드
-  ========================================================= */
 
   const uploadRequestPhotos =
     useCallback(
@@ -174,10 +249,6 @@ export default function useSites({
           const storagePath =
             `sites/${companyId}/${siteId}/request/${safeFileName}`;
 
-          /* ---------------------------------------------
-             Storage 업로드
-          --------------------------------------------- */
-
           const {
             error: uploadError,
           } = await supabase.storage
@@ -188,9 +259,7 @@ export default function useSites({
               {
                 cacheControl:
                   "3600",
-
                 upsert: false,
-
                 contentType:
                   file.type ||
                   undefined,
@@ -202,14 +271,6 @@ export default function useSites({
               `요청사진 업로드 실패: ${uploadError.message}`,
             );
           }
-
-          /* ---------------------------------------------
-             site_photos DB 등록
-
-             request = 현장 등록 시 고객이 보내준 시공 요청사진
-             before  = 실제 시공 전 사진
-             after   = 실제 시공 후 사진
-          --------------------------------------------- */
 
           const photoRow = {
             company_id:
@@ -228,7 +289,7 @@ export default function useSites({
               null,
 
             description:
-              "현장 등록 시 첨부한 시공 요청사진",
+              "시공 요청사진",
           };
 
           const {
@@ -241,11 +302,6 @@ export default function useSites({
             .single();
 
           if (photoError) {
-            /*
-             * Storage에는 올라갔는데
-             * DB 등록이 실패한 경우
-             * 고아 파일을 남기지 않도록 제거
-             */
             await supabase.storage
               .from("work-photos")
               .remove([
@@ -267,9 +323,351 @@ export default function useSites({
       [companyId],
     );
 
-  /* =========================================================
-     시공 예정 자재 저장
-  ========================================================= */
+  const addSiteRequestPhotos =
+    useCallback(
+      async ({
+        siteId,
+        files = [],
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        const normalizedFiles =
+          Array.from(
+            files || [],
+          ).filter(Boolean);
+
+        if (
+          normalizedFiles.length ===
+          0
+        ) {
+          return {
+            success: false,
+            error:
+              "추가할 사진을 선택해주세요.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          const uploadedPhotos =
+            await uploadRequestPhotos({
+              siteId,
+              files:
+                normalizedFiles,
+            });
+
+          setSites((prev) =>
+            prev.map(
+              (site) => {
+                if (
+                  site.id !==
+                  siteId
+                ) {
+                  return site;
+                }
+
+                const existingPhotos =
+                  Array.isArray(
+                    site.site_photos,
+                  )
+                    ? site.site_photos
+                    : [];
+
+                return {
+                  ...site,
+
+                  site_photos: [
+                    ...existingPhotos,
+                    ...uploadedPhotos,
+                  ],
+                };
+              },
+            ),
+          );
+
+          setSelectedSite(
+            (prev) => {
+              if (
+                !prev ||
+                prev.id !==
+                  siteId
+              ) {
+                return prev;
+              }
+
+              const existingPhotos =
+                Array.isArray(
+                  prev.site_photos,
+                )
+                  ? prev.site_photos
+                  : [];
+
+              return {
+                ...prev,
+
+                site_photos: [
+                  ...existingPhotos,
+                  ...uploadedPhotos,
+                ],
+              };
+            },
+          );
+
+          setSitesMessage(
+            `✅ 요청사진 ${uploadedPhotos.length}장이 추가되었습니다.`,
+          );
+
+          return {
+            success: true,
+            photos:
+              uploadedPhotos,
+          };
+        } catch (error) {
+          console.error(
+            "현장 요청사진 추가 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "사진 추가 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 요청사진 추가 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [
+        companyId,
+        uploadRequestPhotos,
+      ],
+    );
+
+  const deleteSiteRequestPhoto =
+    useCallback(
+      async ({
+        siteId,
+        photoId,
+        storagePath = null,
+      }) => {
+        if (
+          !companyId ||
+          !siteId ||
+          !photoId
+        ) {
+          return {
+            success: false,
+            error:
+              "삭제할 사진 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          const {
+            data: photoRow,
+            error:
+              photoLoadError,
+          } = await supabase
+            .from("site_photos")
+            .select(
+              "id, company_id, site_id, photo_type, storage_path",
+            )
+            .eq(
+              "id",
+              photoId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            )
+            .maybeSingle();
+
+          if (photoLoadError) {
+            throw new Error(
+              `사진 정보 확인 실패: ${photoLoadError.message}`,
+            );
+          }
+
+          if (!photoRow) {
+            throw new Error(
+              "삭제할 사진을 찾을 수 없습니다.",
+            );
+          }
+
+          const targetStoragePath =
+            photoRow.storage_path ||
+            storagePath ||
+            null;
+
+          const {
+            error: deleteDbError,
+          } = await supabase
+            .from("site_photos")
+            .delete()
+            .eq(
+              "id",
+              photoId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .eq(
+              "site_id",
+              siteId,
+            );
+
+          if (deleteDbError) {
+            throw new Error(
+              `사진 정보 삭제 실패: ${deleteDbError.message}`,
+            );
+          }
+
+          let storageWarning =
+            null;
+
+          if (targetStoragePath) {
+            const {
+              error:
+                storageDeleteError,
+            } =
+              await supabase.storage
+                .from(
+                  "work-photos",
+                )
+                .remove([
+                  targetStoragePath,
+                ]);
+
+            if (
+              storageDeleteError
+            ) {
+              console.error(
+                "현장 요청사진 Storage 삭제 오류:",
+                storageDeleteError,
+              );
+
+              storageWarning =
+                storageDeleteError.message;
+            }
+          }
+
+          setSites((prev) =>
+            prev.map(
+              (site) => {
+                if (
+                  site.id !==
+                  siteId
+                ) {
+                  return site;
+                }
+
+                const nextPhotos =
+                  Array.isArray(
+                    site.site_photos,
+                  )
+                    ? site.site_photos.filter(
+                        (photo) =>
+                          photo.id !==
+                          photoId,
+                      )
+                    : [];
+
+                return {
+                  ...site,
+                  site_photos:
+                    nextPhotos,
+                };
+              },
+            ),
+          );
+
+          setSelectedSite(
+            (prev) => {
+              if (
+                !prev ||
+                prev.id !==
+                  siteId
+              ) {
+                return prev;
+              }
+
+              const nextPhotos =
+                Array.isArray(
+                  prev.site_photos,
+                )
+                  ? prev.site_photos.filter(
+                      (photo) =>
+                        photo.id !==
+                        photoId,
+                    )
+                  : [];
+
+              return {
+                ...prev,
+                site_photos:
+                  nextPhotos,
+              };
+            },
+          );
+
+          if (storageWarning) {
+            setSitesMessage(
+              "✅ 사진 목록에서는 삭제되었습니다. 저장소 파일 정리는 일부 실패했습니다.",
+            );
+          } else {
+            setSitesMessage(
+              "✅ 요청사진이 삭제되었습니다.",
+            );
+          }
+
+          return {
+            success: true,
+            storageWarning,
+          };
+        } catch (error) {
+          console.error(
+            "현장 요청사진 삭제 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "사진 삭제 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 요청사진 추가 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [companyId],
+    );
 
   const saveSiteMaterials =
     useCallback(
@@ -386,18 +784,7 @@ export default function useSites({
         return data || [];
       },
       [companyId],
-    );
-
-  /* =========================================================
-     현장 등록
-     sites
-       ↓
-     site_materials
-       ↓
-     Storage + site_photos
-  ========================================================= */
-
-  const createSite = useCallback(
+    );  const createSite = useCallback(
     async (form) => {
       if (!companyId) {
         return {
@@ -407,26 +794,12 @@ export default function useSites({
         };
       }
 
-      if (
-        !form?.schedule_start
-      ) {
-        return {
-          success: false,
-          error:
-            "시공 일정을 입력해주세요.",
-        };
-      }
-
       setSitesLoading(true);
       setSitesMessage("");
 
       let createdSite = null;
 
       try {
-        /* =================================================
-           1. 현장 기본정보 저장
-        ================================================= */
-
         const insertData = {
           company_id:
             companyId,
@@ -455,8 +828,16 @@ export default function useSites({
             form.region?.trim() ||
             null,
 
+          schedule_date:
+            form.schedule_date ||
+            getLocalDateString(
+              form.schedule_start,
+            ) ||
+            null,
+
           schedule_start:
-            form.schedule_start,
+            form.schedule_start ||
+            null,
 
           schedule_end:
             form.schedule_end ||
@@ -485,7 +866,10 @@ export default function useSites({
             "phone",
 
           status:
-            "scheduled",
+            form.status ||
+            (form.schedule_start
+              ? "scheduled"
+              : "consulting"),
 
           memo:
             form.memo?.trim() ||
@@ -497,9 +881,7 @@ export default function useSites({
           error,
         } = await supabase
           .from("sites")
-          .insert(
-            insertData,
-          )
+          .insert(insertData)
           .select()
           .single();
 
@@ -508,10 +890,6 @@ export default function useSites({
         }
 
         createdSite = data;
-
-        /* =================================================
-           2. 시공 예정 자재 저장
-        ================================================= */
 
         const materials =
           Array.isArray(
@@ -524,13 +902,8 @@ export default function useSites({
           await saveSiteMaterials({
             siteId:
               createdSite.id,
-
             materials,
           });
-
-        /* =================================================
-           3. 시공 요청사진 저장
-        ================================================= */
 
         const requestPhotos =
           Array.isArray(
@@ -543,14 +916,9 @@ export default function useSites({
           await uploadRequestPhotos({
             siteId:
               createdSite.id,
-
             files:
               requestPhotos,
           });
-
-        /* =================================================
-           4. 화면 목록 즉시 갱신
-        ================================================= */
 
         const siteForState = {
           ...createdSite,
@@ -570,29 +938,23 @@ export default function useSites({
             ...prev,
             siteForState,
           ].sort(
-            (a, b) =>
-              new Date(
-                a.schedule_start,
-              ).getTime() -
-              new Date(
-                b.schedule_start,
-              ).getTime(),
+            sortSitesBySchedule,
           ),
         );
 
         setSitesMessage(
-          "✅ 현장 일정이 등록되었습니다.",
+          createdSite.status ===
+            "consulting"
+            ? "✅ 상담중 현장으로 등록되었습니다."
+            : "✅ 현장 일정이 등록되었습니다.",
         );
 
         return {
           success: true,
-
           site:
             siteForState,
-
           materials:
             savedMaterials,
-
           photos:
             savedPhotos,
         };
@@ -602,15 +964,6 @@ export default function useSites({
           error,
         );
 
-        /*
-         * 현장 생성 후 자재/사진 저장 단계에서
-         * 실패한 경우 현장 자체는 유지합니다.
-         *
-         * 실제 현장 일정이 사라지는 것보다
-         * 관리자에게 실패 내용을 보여주고
-         * 추가정보를 다시 입력하는 편이 안전합니다.
-         */
-
         const message =
           error?.message ||
           "현장 등록 중 오류가 발생했습니다.";
@@ -619,10 +972,6 @@ export default function useSites({
           `❌ ${message}`,
         );
 
-        /*
-         * 기본 현장까지 생성된 상태라면
-         * 목록에서 현장이 사라지지 않도록 다시 조회
-         */
         if (createdSite) {
           try {
             await loadSites(
@@ -638,7 +987,7 @@ export default function useSites({
 
           error:
             createdSite
-              ? `현장 일정은 생성되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
+              ? `현장은 생성되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
               : message,
 
           site:
@@ -656,9 +1005,389 @@ export default function useSites({
     ],
   );
 
-  /* =========================================================
-     현장 상태 변경
-  ========================================================= */
+  /*
+   * 현장 기본정보 수정
+   *
+   * 상담중 현장을 먼저 등록한 뒤
+   * 고객과 상담하면서 확정되는 정보를
+   * 상세화면에서 계속 보완할 수 있도록 합니다.
+   */
+  const updateSiteBasicInfo =
+    useCallback(
+      async ({
+        siteId,
+
+        customer_name = "",
+        customer_phone = "",
+
+        site_name = "",
+
+        address = "",
+        address_detail = "",
+        region = "",
+
+        work_type = "",
+        work_description = "",
+
+        contract_amount = "",
+        deposit_amount = "",
+
+        memo = "",
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        setSitesMessage("");
+
+        try {
+          const updateData = {
+            customer_name:
+              customer_name?.trim() ||
+              null,
+
+            customer_phone:
+              customer_phone?.trim() ||
+              null,
+
+            site_name:
+              site_name?.trim() ||
+              null,
+
+            address:
+              address?.trim() ||
+              null,
+
+            address_detail:
+              address_detail?.trim() ||
+              null,
+
+            region:
+              region?.trim() ||
+              null,
+
+            work_type:
+              work_type?.trim() ||
+              null,
+
+            work_description:
+              work_description?.trim() ||
+              null,
+
+            contract_amount:
+              toNumberOrNull(
+                contract_amount,
+              ),
+
+            deposit_amount:
+              toNumberOrNull(
+                deposit_amount,
+              ),
+
+            memo:
+              memo?.trim() ||
+              null,
+
+            updated_at:
+              new Date().toISOString(),
+          };
+
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("sites")
+            .update(
+              updateData,
+            )
+            .eq(
+              "id",
+              siteId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .select()
+            .single();
+
+          if (error) {
+            throw error;
+          }
+
+          /*
+           * 현장 목록 즉시 갱신
+           */
+          setSites((prev) =>
+            prev
+              .map(
+                (site) =>
+                  site.id === siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                sortSitesBySchedule,
+              ),
+          );
+
+          /*
+           * 현재 열려 있는 상세화면도
+           * 즉시 갱신합니다.
+           */
+          setSelectedSite(
+            (prev) =>
+              prev?.id === siteId
+                ? {
+                    ...prev,
+                    ...data,
+                  }
+                : prev,
+          );
+
+          setSitesMessage(
+            "✅ 현장 기본정보가 저장되었습니다.",
+          );
+
+          return {
+            success: true,
+            site: data,
+          };
+        } catch (error) {
+          console.error(
+            "현장 기본정보 수정 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "현장 기본정보 저장 중 오류가 발생했습니다.";
+
+          setSitesMessage(
+            `❌ 기본정보 저장 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [companyId],
+    );
+
+  const updateSiteSchedule =
+    useCallback(
+      async ({
+        siteId,
+        scheduleStart,
+        scheduleEnd = null,
+      }) => {
+        if (
+          !companyId ||
+          !siteId
+        ) {
+          return {
+            success: false,
+            error:
+              "회사 또는 현장 정보를 확인할 수 없습니다.",
+          };
+        }
+
+        if (!scheduleStart) {
+          return {
+            success: false,
+            error:
+              "시공 시작 일정을 입력해주세요.",
+          };
+        }
+
+        const startDate =
+          new Date(scheduleStart);
+
+        if (
+          Number.isNaN(
+            startDate.getTime(),
+          )
+        ) {
+          return {
+            success: false,
+            error:
+              "시공 시작 일정이 올바르지 않습니다.",
+          };
+        }
+
+        const normalizedEnd =
+          scheduleEnd || null;
+
+        if (normalizedEnd) {
+          const endDate =
+            new Date(
+              normalizedEnd,
+            );
+
+          if (
+            Number.isNaN(
+              endDate.getTime(),
+            )
+          ) {
+            return {
+              success: false,
+              error:
+                "시공 종료 일정이 올바르지 않습니다.",
+            };
+          }
+
+          if (
+            endDate.getTime() <
+            startDate.getTime()
+          ) {
+            return {
+              success: false,
+              error:
+                "종료 일정은 시작 일정보다 빠를 수 없습니다.",
+            };
+          }
+        }
+
+        setSitesMessage("");
+
+        try {
+          const confirmedDate =
+            getLocalDateString(
+              scheduleStart,
+            );
+
+          const updateData = {
+            schedule_date:
+              confirmedDate,
+
+            schedule_start:
+              scheduleStart,
+
+            schedule_end:
+              normalizedEnd,
+
+            updated_at:
+              new Date().toISOString(),
+          };
+
+          /*
+           * 상담중 현장에서 실제 일정이 확정되면
+           * 자동으로 시공 예정 상태로 변경합니다.
+           */
+          if (
+            selectedSite?.id ===
+              siteId &&
+            selectedSite?.status ===
+              "consulting"
+          ) {
+            updateData.status =
+              "scheduled";
+          }
+
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("sites")
+            .update(
+              updateData,
+            )
+            .eq(
+              "id",
+              siteId,
+            )
+            .eq(
+              "company_id",
+              companyId,
+            )
+            .select()
+            .single();
+
+          if (error) {
+            throw error;
+          }
+
+          setSites((prev) =>
+            prev
+              .map(
+                (site) =>
+                  site.id === siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                sortSitesBySchedule,
+              ),
+          );
+
+          if (
+            selectedSite?.id ===
+            siteId
+          ) {
+            setSelectedSite(
+              (prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      ...data,
+                    }
+                  : prev,
+            );
+          }
+
+          setSitesMessage(
+            data.status ===
+              "scheduled" &&
+            selectedSite?.status ===
+              "consulting"
+              ? "✅ 일정이 확정되어 시공 예정으로 변경되었습니다."
+              : "✅ 시공 일정이 변경되었습니다.",
+          );
+
+          return {
+            success: true,
+            site: data,
+          };
+        } catch (error) {
+          console.error(
+            "현장 일정 변경 오류:",
+            error,
+          );
+
+          const message =
+            error?.message ||
+            "알 수 없는 오류";
+
+          setSitesMessage(
+            `❌ 일정 변경 실패: ${message}`,
+          );
+
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      },
+      [
+        companyId,
+        selectedSite,
+      ],
+    );
 
   const updateSiteStatus =
     useCallback(
@@ -704,16 +1433,20 @@ export default function useSites({
           }
 
           setSites((prev) =>
-            prev.map(
-              (site) =>
-                site.id ===
-                siteId
-                  ? {
-                      ...site,
-                      ...data,
-                    }
-                  : site,
-            ),
+            prev
+              .map(
+                (site) =>
+                  site.id ===
+                  siteId
+                    ? {
+                        ...site,
+                        ...data,
+                      }
+                    : site,
+              )
+              .sort(
+                sortSitesBySchedule,
+              ),
           );
 
           if (
@@ -761,10 +1494,6 @@ export default function useSites({
       ],
     );
 
-  /* =========================================================
-     현장 선택
-  ========================================================= */
-
   function openSite(site) {
     setSelectedSite(
       site,
@@ -777,17 +1506,9 @@ export default function useSites({
     );
   }
 
-  /* =========================================================
-     메시지 초기화
-  ========================================================= */
-
   function clearSitesMessage() {
     setSitesMessage("");
   }
-
-  /* =========================================================
-     반환
-  ========================================================= */
 
   return {
     sites,
@@ -798,10 +1519,16 @@ export default function useSites({
 
     loadSites,
     createSite,
+
+    updateSiteBasicInfo,
+    updateSiteSchedule,
     updateSiteStatus,
 
     saveSiteMaterials,
     uploadRequestPhotos,
+
+    addSiteRequestPhotos,
+    deleteSiteRequestPhoto,
 
     openSite,
     closeSite,
@@ -809,3 +1536,4 @@ export default function useSites({
     clearSitesMessage,
   };
     }
+  

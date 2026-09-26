@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import {
+  enablePushNotifications,
+  getPushSubscriptionStatus,
+} from "../../utils/pushSubscription";
 import { LEAD_PAGE_SIZE, SIGNED_URL_SECONDS } from "../adminConstants";
 import { getLeadPhotoPaths } from "../adminUtils";
 import {
@@ -91,6 +95,7 @@ export default function useLeads({
           address,
           preferred_date,
           request_text,
+          memo,
           status,
           admin_memo,
           is_read,
@@ -136,9 +141,49 @@ export default function useLeads({
 
       if (error) throw error;
 
-      setLeads(data || []);
-      setLeadTotal(count || 0);
-      setLeadPage(page);
+      const normalizedLeads = (data || []).map((lead) => {
+  let autoMaterial = "";
+
+  if (lead.memo) {
+    const filmMatch = lead.memo.match(
+      /선택 필름:\s*(.+?)(?:\r?\n|$)/,
+    );
+
+    const fireMatch = lead.memo.match(
+      /필름 조건:\s*(.+?)(?:\r?\n|$)/,
+    );
+
+    const filmText =
+      filmMatch?.[1]?.trim() || "";
+
+    const fireText =
+      fireMatch?.[1]?.trim() || "";
+
+    if (filmText) {
+      autoMaterial = fireText
+        ? `${filmText} · ${fireText}`
+        : filmText;
+    }
+  }
+
+  return {
+    ...lead,
+
+    final_price:
+      lead.final_price ||
+      lead.estimate_average ||
+      "",
+
+    quote_material:
+      lead.quote_material ||
+      autoMaterial ||
+      "",
+  };
+});
+
+setLeads(normalizedLeads);
+setLeadTotal(count || 0);
+setLeadPage(page);
     } catch (error) {
       console.error(error);
 
@@ -593,55 +638,29 @@ export default function useLeads({
   }
 
   /* =========================================================
-     브라우저 알림 활성화
+     Web Push 알림 활성화
   ========================================================= */
 
   async function enableNotifications() {
     try {
-      if (
-        !(
-          "Notification" in
-          window
-        )
-      ) {
-        alert(
-          "이 브라우저는 알림 기능을 지원하지 않습니다.",
-        );
-
-        return;
-      }
-
-      const permission =
-        await Notification.requestPermission();
-
-      if (
-        permission !==
-        "granted"
-      ) {
-        setNotificationEnabled(
-          false,
-        );
-
-        alert(
-          "알림 권한을 허용해주세요.",
-        );
-
-        return;
-      }
+      await enablePushNotifications();
 
       setNotificationEnabled(
         true,
       );
 
-      new Notification(
-        companyName,
-        {
-          body:
-            "신규 상담 알림이 활성화되었습니다.",
-        },
+      alert(
+        `${companyName} 휴대폰 알림이 켜졌습니다.`,
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Web Push 알림 설정:",
+        error,
+      );
+
+      setNotificationEnabled(
+        false,
+      );
 
       alert(
         `알림 설정 오류: ${
@@ -654,6 +673,15 @@ export default function useLeads({
 
   /* =========================================================
      신규 상담 실시간 처리
+
+     실제 휴대폰 알림:
+     notifications
+       → /api/send-push
+       → service worker
+       → 휴대폰
+
+     여기서는 관리자 화면의
+     신규상담 표시/진동/목록 갱신만 처리합니다.
   ========================================================= */
 
   function handleRealtimeLead(
@@ -693,28 +721,6 @@ export default function useLeads({
       ]);
     } catch {}
 
-    try {
-      if (
-        typeof Notification !==
-          "undefined" &&
-        Notification.permission ===
-          "granted"
-      ) {
-        new Notification(
-          "🔔 신규 상담이 들어왔습니다.",
-          {
-            body: `${
-              lead.customer_name ||
-              "고객"
-            } ${
-              lead.phone ||
-              ""
-            }`,
-          },
-        );
-      }
-    } catch {}
-
     if (
       isLeadsTabOpen
     ) {
@@ -726,18 +732,30 @@ export default function useLeads({
   }
 
   /* =========================================================
-     이미 허용된 브라우저 알림 상태 반영
+     현재 Web Push 구독 상태 반영
   ========================================================= */
 
-  function syncNotificationPermission() {
-    if (
-      typeof Notification !==
-        "undefined" &&
-      Notification.permission ===
-        "granted"
-    ) {
+  async function syncNotificationPermission() {
+    try {
+      const status =
+        await getPushSubscriptionStatus();
+
       setNotificationEnabled(
-        true,
+        Boolean(
+          status?.supported &&
+          status?.permission ===
+            "granted" &&
+          status?.subscribed,
+        ),
+      );
+    } catch (error) {
+      console.error(
+        "Web Push 상태 확인:",
+        error,
+      );
+
+      setNotificationEnabled(
+        false,
       );
     }
   }
@@ -804,4 +822,4 @@ export default function useLeads({
     handleRealtimeLead,
     syncNotificationPermission,
   };
-          }
+  }

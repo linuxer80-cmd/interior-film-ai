@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
 
 import {
   makeId,
@@ -10,38 +9,153 @@ import {
 } from "../utils/imageUtils";
 
 import {
-  normalizeCategory,
   getGroupKey,
 } from "../utils/categoryUtils";
 
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
-export default function useEstimate({ companySlug = null } = {}) {
-  const normalizedCompanySlug = String(companySlug || "")
-    .trim()
-    .toLowerCase();
+/*
+ * 모바일 / 서버 부하를 고려한 동시 처리 수
+ *
+ * AI 분석:
+ * 한꺼번에 너무 많이 보내면 OpenAI/Vercel 요청이 몰릴 수 있으므로
+ * 최대 3개씩 처리합니다.
+ *
+ * 유사검색:
+ * 그룹별 검색은 최대 3개씩 처리합니다.
+ *
+ * 사진 업로드:
+ * 최대 3개씩 처리합니다.
+ */
+const AI_ANALYSIS_CONCURRENCY = 3;
+const SIMILAR_SEARCH_CONCURRENCY = 3;
+const PHOTO_UPLOAD_CONCURRENCY = 3;
 
-  const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] =
+export default function useEstimate({
+  companySlug = null,
+} = {}) {
+  const normalizedCompanySlug =
+    String(companySlug || "")
+      .trim()
+      .toLowerCase();
+
+  const [images, setImages] =
+    useState([]);
+
+  const [loading, setLoading] =
     useState(false);
 
-  const [message, setMessage] = useState("");
+  const [
+    imageLoading,
+    setImageLoading,
+  ] = useState(false);
 
-  const [groups, setGroups] = useState([]);
+  const [message, setMessage] =
+    useState("");
 
-  const [totalEstimate, setTotalEstimate] =
-    useState(null);
+  const [groups, setGroups] =
+    useState([]);
 
-  const usageIdRef = useRef(null);
+  const [
+    totalEstimate,
+    setTotalEstimate,
+  ] = useState(null);
+
+  const usageIdRef =
+    useRef(null);
 
   const estimatePhotoPathsRef =
     useRef([]);
 
+  /*
+   * =========================================================
+   * 동시 처리 헬퍼
+   *
+   * 전체를 한꺼번에 실행하지 않고
+   * 지정한 개수만큼 묶어서 병렬 처리합니다.
+   *
+   * 반환 순서는 원본 배열 순서를 유지합니다.
+   * =========================================================
+   */
+
+  async function mapWithConcurrency(
+    items,
+    concurrency,
+    worker
+  ) {
+    const safeItems =
+      Array.isArray(items)
+        ? items
+        : [];
+
+    if (!safeItems.length) {
+      return [];
+    }
+
+    const safeConcurrency =
+      Math.max(
+        1,
+        Math.min(
+          Number(concurrency) || 1,
+          safeItems.length
+        )
+      );
+
+    const results =
+      new Array(
+        safeItems.length
+      );
+
+    let nextIndex = 0;
+
+    async function runWorker() {
+      while (true) {
+        const currentIndex =
+          nextIndex;
+
+        nextIndex += 1;
+
+        if (
+          currentIndex >=
+          safeItems.length
+        ) {
+          return;
+        }
+
+        results[currentIndex] =
+          await worker(
+            safeItems[
+              currentIndex
+            ],
+            currentIndex
+          );
+      }
+    }
+
+    await Promise.all(
+      Array.from(
+        {
+          length:
+            safeConcurrency,
+        },
+        () => runWorker()
+      )
+    );
+
+    return results;
+  }
+
+  /*
+   * =========================================================
+   * 세션 ID
+   * =========================================================
+   */
+
   function getSessionId() {
     if (
-      typeof window === "undefined"
+      typeof window ===
+      "undefined"
     ) {
       return makeId();
     }
@@ -55,7 +169,8 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
 
     if (!sessionId) {
-      sessionId = makeId();
+      sessionId =
+        makeId();
 
       window.localStorage.setItem(
         key,
@@ -66,15 +181,31 @@ export default function useEstimate({ companySlug = null } = {}) {
     return sessionId;
   }
 
+  /*
+   * =========================================================
+   * 견적 결과 초기화
+   * =========================================================
+   */
+
   function resetEstimateResults() {
     setGroups([]);
-    setTotalEstimate(null);
 
-    usageIdRef.current = null;
+    setTotalEstimate(
+      null
+    );
+
+    usageIdRef.current =
+      null;
 
     estimatePhotoPathsRef.current =
       [];
   }
+
+  /*
+   * =========================================================
+   * JSON 안전 읽기
+   * =========================================================
+   */
 
   async function readJsonSafely(
     response
@@ -83,7 +214,9 @@ export default function useEstimate({ companySlug = null } = {}) {
       await response.text();
 
     try {
-      return JSON.parse(text);
+      return JSON.parse(
+        text
+      );
     } catch {
       throw new Error(
         text
@@ -98,26 +231,151 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   /*
    * =========================================================
+   * 사용량 사전검사
+   * =========================================================
+   */
+
+  async function checkUsageBeforeAction({
+    eventType,
+    quantity = 1,
+  }) {
+    if (
+      !normalizedCompanySlug
+    ) {
+      throw new Error(
+        "회사 정보를 확인할 수 없습니다."
+      );
+    }
+
+    const safeQuantity =
+      Number(quantity);
+
+    if (
+      !Number.isFinite(
+        safeQuantity
+      ) ||
+      safeQuantity <= 0
+    ) {
+      throw new Error(
+        "사용량 확인 수량이 올바르지 않습니다."
+      );
+    }
+
+    const response =
+      await fetch(
+        "/api/usage-limit",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              company_slug:
+                normalizedCompanySlug,
+
+              event_type:
+                eventType,
+
+              requested_quantity:
+                safeQuantity,
+            }),
+        }
+      );
+
+    const result =
+      await readJsonSafely(
+        response
+      );
+
+    if (
+      !response.ok ||
+      !result?.success ||
+      result?.allowed ===
+        false
+    ) {
+      throw new Error(
+        result?.error ||
+          "요금제 사용량 한도를 확인해주세요."
+      );
+    }
+
+    return result;
+  }
+
+  /*
+   * =========================================================
+   * 자동견적 시작 전 핵심 사전검사
+   *
+   * 기존에는 3번을 순서대로 기다렸습니다.
+   *
+   * 변경:
+   * 서로 독립적인 사용량 조회이므로 동시에 검사합니다.
+   * 사용량 자체를 증가시키지는 않습니다.
+   * =========================================================
+   */
+
+  async function checkEstimateStartLimits() {
+    setMessage(
+      "자동견적 사용 가능 여부를 확인하고 있습니다..."
+    );
+
+    await Promise.all([
+      checkUsageBeforeAction({
+        eventType:
+          "auto_estimate",
+
+        quantity: 1,
+      }),
+
+      checkUsageBeforeAction({
+        eventType:
+          "ai_photo_analysis",
+
+        quantity:
+          images.length,
+      }),
+
+      checkUsageBeforeAction({
+        eventType:
+          "image_upload",
+
+        quantity:
+          images.length,
+      }),
+    ]);
+  }
+
+  /*
+   * =========================================================
    * 사진 추가
+   *
+   * 이미지 준비도 최대 3장씩 병렬 처리합니다.
    * =========================================================
    */
 
   async function addImages(
     fileList
   ) {
-    const files = Array.from(
-      fileList || []
-    );
+    const files =
+      Array.from(
+        fileList || []
+      );
 
     if (!files.length) {
       return;
     }
 
-    const remaining = Math.max(
-      0,
-      MAX_IMAGES -
-        images.length
-    );
+    const remaining =
+      Math.max(
+        0,
+        MAX_IMAGES -
+          images.length
+      );
 
     if (remaining <= 0) {
       setMessage(
@@ -133,7 +391,9 @@ export default function useEstimate({ companySlug = null } = {}) {
         remaining
       );
 
-    setImageLoading(true);
+    setImageLoading(
+      true
+    );
 
     setMessage(
       `사진을 준비하고 있습니다... 0/${selected.length}`
@@ -142,44 +402,85 @@ export default function useEstimate({ companySlug = null } = {}) {
     resetEstimateResults();
 
     try {
-      const additions = [];
+      let completedCount = 0;
 
-      for (
-        let index = 0;
-        index <
-        selected.length;
-        index += 1
-      ) {
-        setMessage(
-          `사진을 준비하고 있습니다... ${
-            index + 1
-          }/${selected.length}`
+      const preparedResults =
+        await mapWithConcurrency(
+          selected,
+          3,
+          async (
+            file,
+            index
+          ) => {
+            try {
+              const prepared =
+                await prepareImage(
+                  file
+                );
+
+              completedCount += 1;
+
+              setMessage(
+                `사진을 준비하고 있습니다... ${completedCount}/${selected.length}`
+              );
+
+              return {
+                success: true,
+
+                index,
+
+                item: {
+                  id:
+                    makeId(),
+
+                  file:
+                    prepared.file,
+
+                  preview:
+                    prepared.preview,
+                },
+              };
+            } catch (error) {
+              console.error(
+                `사진 ${
+                  index + 1
+                } 처리 실패:`,
+                error
+              );
+
+              completedCount += 1;
+
+              setMessage(
+                `사진을 준비하고 있습니다... ${completedCount}/${selected.length}`
+              );
+
+              return {
+                success: false,
+
+                index,
+
+                error,
+              };
+            }
+          }
         );
 
-        try {
-          const prepared =
-            await prepareImage(
-              selected[index]
-            );
-
-          additions.push({
-            id: makeId(),
-
-            file:
-              prepared.file,
-
-            preview:
-              prepared.preview,
-          });
-        } catch (error) {
-          console.error(
-            `사진 ${
-              index + 1
-            } 처리 실패:`,
-            error
+      const additions =
+        preparedResults
+          .filter(
+            (item) =>
+              item?.success &&
+              item?.item
+          )
+          .sort(
+            (a, b) =>
+              a.index -
+              b.index
+          )
+          .map(
+            (item) =>
+              item.item
           );
-        }
-      }
 
       if (
         !additions.length
@@ -272,12 +573,6 @@ export default function useEstimate({ companySlug = null } = {}) {
     index,
     total
   ) {
-    setMessage(
-      `AI 사진 분석 중... ${
-        index + 1
-      }/${total}`
-    );
-
     const formData =
       new FormData();
 
@@ -291,12 +586,24 @@ export default function useEstimate({ companySlug = null } = {}) {
       "before"
     );
 
+    if (
+      normalizedCompanySlug
+    ) {
+      formData.append(
+        "company_slug",
+        normalizedCompanySlug
+      );
+    }
+
     const response =
       await fetch(
         "/api/analyze",
         {
-          method: "POST",
-          body: formData,
+          method:
+            "POST",
+
+          body:
+            formData,
         }
       );
 
@@ -319,48 +626,64 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     return {
       ...imageItem,
+
       analysis:
         result.analysis,
+
+      analysisIndex:
+        index,
+
+      analysisTotal:
+        total,
     };
   }
 
   /*
    * =========================================================
    * Private Storage 이미지 Signed URL
-   * 서버에서 업체 소속을 확인한 뒤 발급
    * =========================================================
    */
 
-  async function getSignedImageUrl(path) {
+  async function getSignedImageUrl(
+    path
+  ) {
     if (!path) {
       return null;
     }
 
-    if (!normalizedCompanySlug) {
+    if (
+      !normalizedCompanySlug
+    ) {
       return null;
     }
 
     try {
-      const response = await fetch(
-        "/api/similar-photo",
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          "/api/similar-photo",
+          {
+            method:
+              "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          body: JSON.stringify({
-            company_slug:
-              normalizedCompanySlug,
-            path,
-          }),
-        }
-      );
+            body:
+              JSON.stringify({
+                company_slug:
+                  normalizedCompanySlug,
+
+                path,
+              }),
+          }
+        );
 
       const result =
-        await readJsonSafely(response);
+        await readJsonSafely(
+          response
+        );
 
       if (
         !response.ok ||
@@ -388,19 +711,20 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   /*
    * =========================================================
-   * 유사 시공사례 검색
+   * 유사 시공사례 검색 + 견적
    * =========================================================
    */
 
   async function findSimilarCases(
     group
   ) {
-    /*
-     * 회사 slug가 없으면
-     * 절대로 공용/다른 업체 데이터를 검색하지 않습니다.
-     */
-    if (!normalizedCompanySlug) {
-      return [];
+    if (
+      !normalizedCompanySlug
+    ) {
+      return {
+        cases: [],
+        estimate: null,
+      };
     }
 
     const analyses =
@@ -457,9 +781,10 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     const response =
       await fetch(
-        "/api/embedding",
+        "/api/similar-estimate",
         {
-          method: "POST",
+          method:
+            "POST",
 
           headers: {
             "Content-Type":
@@ -468,8 +793,25 @@ export default function useEstimate({ companySlug = null } = {}) {
 
           body:
             JSON.stringify({
+              company_slug:
+                normalizedCompanySlug,
+
               text:
                 searchText,
+
+              category:
+                group.category ||
+                null,
+
+              sub_category:
+                group.subCategory ||
+                null,
+
+              match_threshold:
+                MATCH_THRESHOLD,
+
+              match_count:
+                20,
             }),
         }
       );
@@ -481,327 +823,262 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     if (
       !response.ok ||
-      !result?.embedding
+      !result?.success
     ) {
       throw new Error(
         result?.error ||
-          "유사사례 검색 데이터를 만들지 못했습니다."
+          "유사 시공사례 검색 중 오류가 발생했습니다."
       );
     }
 
-    /*
-     * 중요:
-     * company_slug를 RPC에 전달하여
-     * 해당 업체의 시공 데이터만 검색합니다.
-     */
+    return {
+      cases:
+        Array.isArray(
+          result?.similar_cases
+        )
+          ? result.similar_cases
+          : [],
 
-    const {
-      data,
-      error,
-    } =
-      await supabase.rpc(
-        "get_public_similar_cases",
-        {
-          query_embedding:
-            result.embedding,
-
-          company_slug:
-            normalizedCompanySlug,
-
-          match_threshold:
-            MATCH_THRESHOLD,
-
-          match_count: 20,
-
-          company_slug:
-            normalizedCompanySlug,
-        }
-      );
-
-    if (error) {
-      throw new Error(
-        `유사사례 검색 오류: ${error.message}`
-      );
-    }
-
-    const filtered = (
-      data || []
-    )
-      .filter(
-        (item) => {
-          const itemGroup =
-            normalizeCategory(
-              `${
-                item.category ||
-                ""
-              } ${
-                item.sub_category ||
-                ""
-              }`
-            );
-
-          return (
-            itemGroup ===
-              group.key &&
-            Number(
-              item.actual_cost ||
-                0
-            ) > 0
-          );
-        }
-      )
-      .slice(0, 10);
-
-    const unique = [];
-
-    const seen =
-      new Set();
-
-    for (
-      const item of filtered
-    ) {
-      const id =
-        item.work_item_id ||
-        `${item.category}-${item.actual_cost}`;
-
-      if (
-        seen.has(id)
-      ) {
-        continue;
-      }
-
-      seen.add(id);
-
-      unique.push(
-        item
-      );
-    }
-
-    return unique;
+      estimate:
+        result?.estimate ||
+        null,
+    };
   }
 
   /*
    * =========================================================
-   * 유사 시공 데이터 기반 견적 계산
+   * 유사 시공사례 한 그룹 완성
+   *
+   * 검색 + Signed URL 생성을 하나의 작업으로 묶습니다.
+   * 그룹 여러 개는 외부에서 병렬 처리합니다.
    * =========================================================
    */
 
-  function calculateEstimate(
-    cases
+  async function completeSimilarGroup(
+    group
   ) {
-    if (!cases.length) {
-      return null;
-    }
-
-    let weightedCostTotal =
-      0;
-
-    let weightTotal = 0;
-
-    for (
-      const item of cases
-    ) {
-      const cost =
-        Number(
-          item.actual_cost ||
-            0
-        );
-
-      const similarity =
-        Number(
-          item.similarity ||
-            0
-        );
-
-      if (
-        cost > 0 &&
-        similarity >=
-          MATCH_THRESHOLD
-      ) {
-        /*
-         * 유사도가 높은 데이터에
-         * 더 큰 가중치를 부여합니다.
-         */
-
-        const weight =
-          similarity *
-          similarity;
-
-        weightedCostTotal +=
-          cost * weight;
-
-        weightTotal +=
-          weight;
-      }
-    }
-
-    if (
-      weightTotal <= 0
-    ) {
-      return null;
-    }
-
-    const weightedAverage =
-      weightedCostTotal /
-      weightTotal;
-
-    const min =
-      Math.round(
-        (weightedAverage *
-          0.9) /
-          1000
-      ) * 1000;
-
-    const max =
-      Math.round(
-        (weightedAverage *
-          1.1) /
-          1000
-      ) * 1000;
-
-    const average =
-      Math.round(
-        weightedAverage /
-          1000
-      ) * 1000;
-
-    const topSimilarity =
-      Math.max(
-        ...cases.map(
-          (item) =>
-            Number(
-              item.similarity ||
-                0
-            )
-        )
+    const similarResult =
+      await findSimilarCases(
+        group
       );
 
-    let confidence =      "낮음";
+    const cases =
+      similarResult.cases;
 
-    if (
-      cases.length >= 5 &&
-      topSimilarity >=
-        0.85
-    ) {
-      confidence =
-        "높음";
-    } else if (
-      cases.length >= 2 &&
-      topSimilarity >=
-        0.75
-    ) {
-      confidence =
-        "보통";
-    }
+    const estimate =
+      similarResult.estimate;
+
+    /*
+     * 고객 화면에는 가장 유사한 2건 표시
+     *
+     * 각 사례의 before/after URL도
+     * 서로 동시에 요청합니다.
+     */
+
+    const similarItems =
+      await Promise.all(
+        cases
+          .slice(
+            0,
+            2
+          )
+          .map(
+            async (
+              item
+            ) => {
+              const [
+                beforeUrl,
+                afterUrl,
+              ] =
+                await Promise.all([
+                  getSignedImageUrl(
+                    item.before_path
+                  ),
+
+                  getSignedImageUrl(
+                    item.after_path
+                  ),
+                ]);
+
+              return {
+                ...item,
+
+                beforeUrl,
+
+                afterUrl,
+              };
+            }
+          )
+      );
 
     return {
-      min,
-      max,
-      average,
-      count:
-        cases.length,
-      confidence,
+      ...group,
+
+      similarItems,
+
+      estimate,
     };
-              }
-    /*
+  }
+
+  /*
+   * =========================================================
+   * 자동견적 사진 한 장 저장
+   * =========================================================
+   */
+
+  async function uploadOneEstimatePhoto(
+    imageItem,
+    index
+  ) {
+    const formData =
+      new FormData();
+
+    formData.append(
+      "image",
+      imageItem.file
+    );
+
+    if (
+      normalizedCompanySlug
+    ) {
+      formData.append(
+        "company_slug",
+        normalizedCompanySlug
+      );
+    }
+
+    const response =
+      await fetch(
+        "/api/estimate-photo",
+        {
+          method:
+            "POST",
+
+          body:
+            formData,
+        }
+      );
+
+    const result =
+      await readJsonSafely(
+        response
+      );
+
+    if (
+      !response.ok ||
+      !result?.success ||
+      !result?.path
+    ) {
+      throw new Error(
+        result?.error ||
+          `사진 ${
+            index + 1
+          } 저장 실패`
+      );
+    }
+
+    return result.path;
+  }
+
+  /*
    * =========================================================
    * 자동견적 사진 저장
+   *
+   * 기존:
+   * 사진1 → 사진2 → 사진3
+   *
+   * 변경:
+   * 최대 3장 동시 업로드
    * =========================================================
    */
 
   async function uploadEstimatePhotos() {
-    const paths = [];
-    const failed = [];
-    const uploadErrors =
-      [];
+    if (!images.length) {
+      estimatePhotoPathsRef.current =
+        [];
 
-    for (
-      let index = 0;
-      index <
-      images.length;
-      index += 1
-    ) {
-      try {
-        setMessage(
-          `견적 사진 저장 중... ${
-            index + 1
-          }/${images.length}`
-        );
-
-        const formData =
-          new FormData();
-
-        formData.append(
-          "image",
-          images[index].file
-        );
-
-        /*
-         * 중요:
-         * 사진 저장 API에도
-         * 현재 업체 slug를 전달합니다.
-         */
-
-        if (
-          normalizedCompanySlug
-        ) {
-          formData.append(
-            "company_slug",
-            normalizedCompanySlug
-          );
-        }
-
-        const response =
-          await fetch(
-            "/api/estimate-photo",
-            {
-              method:
-                "POST",
-
-              body:
-                formData,
-            }
-          );
-
-        const result =
-          await readJsonSafely(
-            response
-          );
-
-        if (
-          !response.ok ||
-          !result?.success ||
-          !result?.path
-        ) {
-          throw new Error(
-            result?.error ||
-              "사진 저장 실패"
-          );
-        }
-
-        paths.push(
-          result.path
-        );
-      } catch (error) {
-        console.error(
-          `자동견적 사진 ${
-            index + 1
-          } 저장 실패:`,
-          error
-        );
-
-        failed.push(
-          index + 1
-        );
-
-        uploadErrors.push(
-          error?.message ||
-            `자동견적 사진 ${
-              index + 1
-            } 저장 실패`
-        );
-      }
+      return [];
     }
+
+    let completedCount = 0;
+
+    const uploadResults =
+      await mapWithConcurrency(
+        images,
+        PHOTO_UPLOAD_CONCURRENCY,
+        async (
+          imageItem,
+          index
+        ) => {
+          try {
+            const path =
+              await uploadOneEstimatePhoto(
+                imageItem,
+                index
+              );
+
+            completedCount += 1;
+
+            setMessage(
+              `견적 사진 저장 중... ${completedCount}/${images.length}`
+            );
+
+            return {
+              success: true,
+
+              index,
+
+              path,
+            };
+          } catch (error) {
+            completedCount += 1;
+
+            setMessage(
+              `견적 사진 저장 중... ${completedCount}/${images.length}`
+            );
+
+            console.error(
+              `자동견적 사진 ${
+                index + 1
+              } 저장 실패:`,
+              error
+            );
+
+            return {
+              success: false,
+
+              index,
+
+              error,
+            };
+          }
+        }
+      );
+
+    const successResults =
+      uploadResults
+        .filter(
+          (item) =>
+            item?.success &&
+            item?.path
+        )
+        .sort(
+          (a, b) =>
+            a.index -
+            b.index
+        );
+
+    const paths =
+      successResults.map(
+        (item) =>
+          item.path
+      );
+
+    const failed =
+      uploadResults.filter(
+        (item) =>
+          !item?.success
+      );
 
     estimatePhotoPathsRef.current =
       paths;
@@ -811,7 +1088,8 @@ export default function useEstimate({ companySlug = null } = {}) {
       paths.length === 0
     ) {
       throw new Error(
-        uploadErrors[0] ||
+        failed[0]?.error
+          ?.message ||
           "자동견적 사진을 서버에 저장하지 못했습니다."
       );
     }
@@ -821,7 +1099,10 @@ export default function useEstimate({ companySlug = null } = {}) {
     ) {
       console.warn(
         "일부 자동견적 사진 저장 실패:",
-        failed
+        failed.map(
+          (item) =>
+            item.index + 1
+        )
       );
     }
 
@@ -844,7 +1125,8 @@ export default function useEstimate({ companySlug = null } = {}) {
         await fetch(
           "/api/estimate-usage",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -863,9 +1145,7 @@ export default function useEstimate({ companySlug = null } = {}) {
                 category:
                   completedGroups
                     .map(
-                      (
-                        group
-                      ) =>
+                      (group) =>
                         group.category
                     )
                     .filter(
@@ -879,9 +1159,7 @@ export default function useEstimate({ companySlug = null } = {}) {
                 sub_category:
                   completedGroups
                     .map(
-                      (
-                        group
-                      ) =>
+                      (group) =>
                         group.subCategory
                     )
                     .filter(
@@ -913,14 +1191,6 @@ export default function useEstimate({ companySlug = null } = {}) {
                   )
                     ? photoPaths
                     : [],
-
-                /*
-                 * 사용기록도 현재 업체에 귀속
-                 */
-
-                company_slug:
-                  normalizedCompanySlug ||
-                  null,
               }),
           }
         );
@@ -953,8 +1223,8 @@ export default function useEstimate({ companySlug = null } = {}) {
       );
 
       /*
-       * 로그 저장 오류가 나도
-       * AI 견적 자체는 유지합니다.
+       * 로그 저장 오류가 나더라도
+       * 계산된 AI 견적 결과는 유지합니다.
        */
 
       return null;
@@ -968,6 +1238,12 @@ export default function useEstimate({ companySlug = null } = {}) {
    */
 
   async function handleAnalyze() {
+    /*
+     * =====================================================
+     * 사진 확인
+     * =====================================================
+     */
+
     if (!images.length) {
       setMessage(
         "사진을 한 장 이상 선택해주세요."
@@ -976,7 +1252,25 @@ export default function useEstimate({ companySlug = null } = {}) {
       return;
     }
 
-    setLoading(true);
+    /*
+     * =====================================================
+     * 회사 확인
+     * =====================================================
+     */
+
+    if (
+      !normalizedCompanySlug
+    ) {
+      setMessage(
+        "❌ 회사 정보를 확인할 수 없습니다."
+      );
+
+      return;
+    }
+
+    setLoading(
+      true
+    );
 
     setGroups([]);
 
@@ -992,32 +1286,62 @@ export default function useEstimate({ companySlug = null } = {}) {
 
     try {
       /*
-       * 1. 사진별 AI 분석
+       * ===================================================
+       * 0. 자동견적 시작 전 사전 한도검사
+       *
+       * 3개 사용량 검사를 동시에 실행합니다.
+       * ===================================================
        */
 
-      const analyzedPhotos =
-        [];
-
-      for (
-        let index = 0;
-        index <
-        images.length;
-        index += 1
-      ) {
-        const result =
-          await analyzeOnePhoto(
-            images[index],
-            index,
-            images.length
-          );
-
-        analyzedPhotos.push(
-          result
-        );
-      }
+      await checkEstimateStartLimits();
 
       /*
+       * ===================================================
+       * 1. 사진별 AI 분석
+       *
+       * 기존:
+       * 사진1 완료 → 사진2 완료 → 사진3 완료
+       *
+       * 변경:
+       * 최대 3장 동시 분석
+       * ===================================================
+       */
+
+      setMessage(
+        `AI 사진 분석 중... 0/${images.length}`
+      );
+
+      let analyzedCount = 0;
+
+      const analyzedPhotos =
+        await mapWithConcurrency(
+          images,
+          AI_ANALYSIS_CONCURRENCY,
+          async (
+            imageItem,
+            index
+          ) => {
+            const result =
+              await analyzeOnePhoto(
+                imageItem,
+                index,
+                images.length
+              );
+
+            analyzedCount += 1;
+
+            setMessage(
+              `AI 사진 분석 중... ${analyzedCount}/${images.length}`
+            );
+
+            return result;
+          }
+        );
+
+      /*
+       * ===================================================
        * 2. 같은 시공 부위끼리 그룹화
+       * ===================================================
        */
 
       setMessage(
@@ -1073,100 +1397,84 @@ export default function useEstimate({ companySlug = null } = {}) {
         );
 
       /*
-       * 3. 각 부위 유사사례 검색
+       * ===================================================
+       * 2-1. 유사이미지 검색 사전 한도검사
        *
-       * findSimilarCases 내부에서
-       * company_slug 기준으로
-       * 해당 업체 데이터만 검색합니다.
+       * 전체 그룹 수가 남은 한도 안에 있는지
+       * 먼저 확인하는 기존 안전장치는 유지합니다.
+       * ===================================================
        */
 
-      const completedGroups =
-        [];
-
-      for (
-        let index = 0;
-        index <
-        baseGroups.length;
-        index += 1
+      if (
+        baseGroups.length >
+        0
       ) {
-        const group =
-          baseGroups[index];
-
         setMessage(
-          `유사 시공사례 검색 중... ${
-            index + 1
-          }/${
-            baseGroups.length
-          } · ${group.category}`
+          "유사 시공사례 검색 가능 여부를 확인하고 있습니다..."
         );
 
-        let cases = [];
-        let estimate =
-          null;
+        await checkUsageBeforeAction({
+          eventType:
+            "similar_image_search",
 
-        try {
-          cases =
-            await findSimilarCases(
-              group
+          quantity:
+            baseGroups.length,
+        });
+      }
+
+      /*
+       * ===================================================
+       * 3. 각 부위 유사사례 검색
+       *
+       * 기존:
+       * 그룹1 → 그룹2 → 그룹3
+       *
+       * 변경:
+       * 최대 3개 그룹 동시 검색
+       * ===================================================
+       */
+
+      setMessage(
+        `유사 시공사례 검색 중... 0/${baseGroups.length}`
+      );
+
+      let searchedGroupCount = 0;
+
+      const completedGroups =
+        await mapWithConcurrency(
+          baseGroups,
+          SIMILAR_SEARCH_CONCURRENCY,
+          async (
+            group
+          ) => {
+            const completed =
+              await completeSimilarGroup(
+                group
+              );
+
+            searchedGroupCount += 1;
+
+            setMessage(
+              `유사 시공사례 검색 중... ${searchedGroupCount}/${baseGroups.length}`
             );
 
-          estimate =
-            calculateEstimate(
-              cases
-            );
-        } catch (error) {
-          console.error(
-            error
-          );
-        }
-
-        /*
-         * 고객 화면에는
-         * 가장 유사한 2건을 표시
-         *
-         * getSignedImageUrl은 이제
-         * /api/similar-photo 서버 API를 통해
-         * 업체 소속 확인 후 Signed URL을 받습니다.
-         */
-
-        const similarItems =
-          await Promise.all(
-            cases
-              .slice(0, 2)
-              .map(
-                async (
-                  item
-                ) => ({
-                  ...item,
-
-                  beforeUrl:
-                    await getSignedImageUrl(
-                      item.before_path
-                    ),
-
-                  afterUrl:
-                    await getSignedImageUrl(
-                      item.after_path
-                    ),
-                })
-              )
-          );
-
-        completedGroups.push(
-          {
-            ...group,
-            similarItems,
-            estimate,
+            return completed;
           }
         );
-      }
+
+      /*
+       * 견적 및 유사사례 결과를
+       * 사진 저장보다 먼저 화면에 표시합니다.
+       */
 
       setGroups(
         completedGroups
       );
 
       /*
+       * ===================================================
        * 4. 부위별 견적 합산
+       * ===================================================
        */
 
       const validEstimates =
@@ -1222,20 +1530,21 @@ export default function useEstimate({ companySlug = null } = {}) {
           completedGroups.length -
           validEstimates.length;
 
-        calculatedTotal =
-          {
-            min,
-            max,
-            average,
+        calculatedTotal = {
+          min,
 
-            estimatedGroupCount:
-              validEstimates.length,
+          max,
 
-            totalGroupCount:
-              completedGroups.length,
+          average,
 
-            missingCount,
-          };
+          estimatedGroupCount:
+            validEstimates.length,
+
+          totalGroupCount:
+            completedGroups.length,
+
+          missingCount,
+        };
 
         setTotalEstimate(
           calculatedTotal
@@ -1247,7 +1556,11 @@ export default function useEstimate({ companySlug = null } = {}) {
       }
 
       /*
-       * 5. 자동견적에 사용된 사진 저장
+       * ===================================================
+       * 5. 자동견적 사진 저장
+       *
+       * 최대 3장씩 동시 업로드
+       * ===================================================
        */
 
       setMessage(
@@ -1258,26 +1571,28 @@ export default function useEstimate({ companySlug = null } = {}) {
         await uploadEstimatePhotos();
 
       /*
+       * ===================================================
        * 6. 자동견적 사용 로그 저장
+       * ===================================================
        */
 
       setMessage(
         "자동견적 기록을 저장하고 있습니다..."
       );
 
-      await saveEstimateUsage(
-        {
-          completedGroups,
+      await saveEstimateUsage({
+        completedGroups,
 
-          estimate:
-            calculatedTotal,
+        estimate:
+          calculatedTotal,
 
-          photoPaths,
-        }
-      );
+        photoPaths,
+      });
 
       /*
+       * ===================================================
        * 7. 완료 메시지
+       * ===================================================
        */
 
       if (
@@ -1305,17 +1620,20 @@ export default function useEstimate({ companySlug = null } = {}) {
       }
     } catch (error) {
       console.error(
+        "자동견적 실행 오류:",
         error
       );
 
       setMessage(
-        `❌ 오류: ${
+        `❌ ${
           error?.message ||
           "분석 중 오류가 발생했습니다."
         }`
       );
     } finally {
-      setLoading(false);
+      setLoading(
+        false
+      );
     }
   }
 
@@ -1327,24 +1645,35 @@ export default function useEstimate({ companySlug = null } = {}) {
 
   return {
     images,
+
     loading,
+
     imageLoading,
+
     message,
+
     groups,
+
     totalEstimate,
 
     usageIdRef,
+
     estimatePhotoPathsRef,
 
     addImages,
+
     removeImage,
+
     handleAnalyze,
 
     setMessage,
+
     setGroups,
+
     setTotalEstimate,
 
     resetEstimateResults,
+
     readJsonSafely,
   };
-  }
+        }

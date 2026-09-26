@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import ApprovedWorkAiRegister from "./ApprovedWorkAiRegister";
 
 export default function SiteWorkReportReview({
   siteId,
@@ -838,7 +839,6 @@ export default function SiteWorkReportReview({
           </div>
         )}
       </ReviewBlock>
-
       <ReviewBlock
         title={`💳 현장 경비 · ${expenses.length}건`}
       >
@@ -1123,70 +1123,80 @@ export default function SiteWorkReportReview({
       )}
 
       {reviewStatus === "approved" && (
-        <NoticeBox
-          background="#f0fdf4"
-          color="#166534"
-        >
-          <strong>
-            🟢 관리자 검수 승인 완료
-          </strong>
+        <>
+          <NoticeBox
+            background="#f0fdf4"
+            color="#166534"
+          >
+            <strong>
+              🟢 관리자 검수 승인 완료
+            </strong>
 
-          {data?.review?.approvedAmount !==
-            null &&
-            data?.review?.approvedAmount !==
-              undefined && (
-              <div style={{ marginTop: "9px" }}>
-                실제 시공금액{" "}
-                <strong>
-                  {formatMoney(
-                    data.review.approvedAmount
-                  )}
-                </strong>
+            {data?.review?.approvedAmount !==
+              null &&
+              data?.review?.approvedAmount !==
+                undefined && (
+                <div style={{ marginTop: "9px" }}>
+                  실제 시공금액{" "}
+                  <strong>
+                    {formatMoney(
+                      data.review.approvedAmount
+                    )}
+                  </strong>
+                </div>
+              )}
+
+            {data?.review?.memo && (
+              <div
+                style={{
+                  marginTop: "9px",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {data.review.memo}
               </div>
             )}
 
-          {data?.review?.memo && (
-            <div
-              style={{
-                marginTop: "9px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {data.review.memo}
-            </div>
-          )}
+            {data?.review?.reviewedAt && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  fontSize: "10px",
+                }}
+              >
+                검수일{" "}
+                {formatDateTime(
+                  data.review.reviewedAt
+                )}
+              </div>
+            )}
 
-          {data?.review?.reviewedAt && (
             <div
               style={{
-                marginTop: "8px",
+                marginTop: "11px",
+                paddingTop: "10px",
+                borderTop:
+                  "1px solid #bbf7d0",
                 fontSize: "10px",
+                color: "#64748b",
               }}
             >
-              검수일{" "}
-              {formatDateTime(
-                data.review.reviewedAt
-              )}
+              관리자 검수 승인이 완료되었습니다.
+              <br />
+              아래에서 AI 견적자료 등록을 진행할 수
+              있습니다.
             </div>
-          )}
+          </NoticeBox>
 
-          <div
-            style={{
-              marginTop: "11px",
-              paddingTop: "10px",
-              borderTop:
-                "1px solid #bbf7d0",
-              fontSize: "10px",
-              color: "#64748b",
-            }}
-          >
-            현재는 관리자 검수 승인까지만
-            완료된 상태입니다.
-            <br />
-            AI 견적자료 등록은 다음 단계에서
-            별도로 연결합니다.
-          </div>
-        </NoticeBox>
+          <ApprovedWorkAiRegister
+            siteId={siteId}
+            report={report}
+            materials={materials}
+            beforePhotos={beforePhotos}
+            afterPhotos={afterPhotos}
+            onRegistered={loadReview}
+          />
+        </>
       )}
 
       {reviewStatus === "rejected" && (
@@ -1565,4 +1575,4 @@ function PhotoCard({ photo, index }) {
       </div>
     </a>
   );
-           }
+}
