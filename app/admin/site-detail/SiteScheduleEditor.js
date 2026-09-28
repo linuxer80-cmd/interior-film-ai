@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-} from "./siteDetailUtils";
 
 /* =========================================================
    날짜만 있는 상담 일정 표시
