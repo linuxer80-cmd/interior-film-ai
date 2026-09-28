@@ -203,6 +203,11 @@ export default function BillingPage() {
     setCurrentPlan,
   ] = useState(null);
 
+  const [pendingPlan, setPendingPlan] = useState(null);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [billingConsent, setBillingConsent] = useState(false);
+
   const [
     selectedPlan,
     setSelectedPlan,
@@ -232,6 +237,38 @@ export default function BillingPage() {
   useEffect(() => {
     loadBillingPage();
   }, []);
+  async function loadPaymentHistory() {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return;
+    const response = await fetch("/api/billing/refunds", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) setPaymentHistory((await response.json()).payments || []);
+  }
+
+  useEffect(() => { loadPaymentHistory().catch(console.error); }, []);
+
+  async function requestRefund(payment) {
+    const reason = window.prompt("환불 또는 중복 결제 사유를 입력해주세요. 구독 취소는 별도 버튼으로 처리됩니다.");
+    if (reason === null) return;
+    if (reason.trim().length < 3) { alert("환불 사유를 입력해주세요."); return; }
+    setRefundBusy(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error("로그인이 필요합니다.");
+      const response = await fetch("/api/billing/refunds", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payment_id: payment.id, reason: reason.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "환불 신청에 실패했습니다.");
+      alert("환불 신청을 접수했습니다. 결제 취소 가능 금액을 확인한 뒤 원래 결제수단으로 처리합니다.");
+      await loadPaymentHistory();
+    } catch (error) { alert(error.message); } finally { setRefundBusy(false); }
+  }
+
 
 
   async function loadBillingPage() {
@@ -349,6 +386,11 @@ export default function BillingPage() {
       setCurrentPlan(
         current || null,
       );
+      const { data: authSession } = await supabase.auth.getSession();
+      if (authSession?.session?.access_token) {
+        const res = await fetch("/api/billing/change-plan", { headers: { Authorization: "Bearer " + authSession.session.access_token } });
+        if (res.ok) setPendingPlan((await res.json()).pendingPlanCode || null);
+      }
 
       setPlans(
         plansResult.data ||
@@ -747,6 +789,45 @@ export default function BillingPage() {
         window.location.href =
           "/admin";
 
+        return;
+      }
+
+      const currentPrice = Number(currentPlan?.monthly_price_krw);
+      const targetPrice = Number(plan?.monthly_price_krw);
+      if (currentCode !== "trial" && Number.isFinite(currentPrice) && Number.isFinite(targetPrice) && targetPrice < currentPrice) {
+        if (!window.confirm(getPlanLabel(code) + " 요금제로 다음 결제일부터 변경하시겠습니까?\n지금 추가 결제: 0원 / 다음 결제: " + formatPrice(targetPrice))) return;
+        const res = await fetch("/api/billing/change-plan", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken }, body: JSON.stringify({ plan_code: code }) });
+        const change = await res.json();
+        if (!res.ok) throw new Error(change.error || "변경 예약에 실패했습니다.");
+        setPendingPlan(change.pendingPlanCode);
+        alert("변경 예약 완료: " + formatKstDate(change.effectiveAt) + "부터 적용, 다음 결제 " + formatPrice(change.nextAmount));
+        return;
+      }
+
+      if (!billingConsent) {
+        alert("월 정기결제 및 환불 안내를 확인하고 동의해주세요.");
+        return;
+      }
+
+      if (currentCode !== "trial" && Number.isFinite(currentPrice) &&
+          Number.isFinite(targetPrice) && targetPrice > currentPrice) {
+        const quoteResponse = await fetch("/api/billing/upgrade", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ action: "quote", plan_code: code }),
+        });
+        const quote = await quoteResponse.json();
+        if (!quoteResponse.ok) throw new Error(quote.error || "변경 금액을 확인하지 못했습니다.");
+        if (!window.confirm(`${getPlanLabel(code)} 상향 변경\n지금 결제: ${formatPrice(quote.amountNow)} (남은 기간 차액)\n다음 결제부터: ${formatPrice(quote.monthlyPrice)} / 월\n현재 결제기간 종료: ${formatKstDate(quote.periodEnd)}\n결제하시겠습니까?`)) return;
+        if (!billingConsent) { alert("정기결제 및 환불 안내를 확인하고 동의해주세요."); return; }
+        const chargeResponse = await fetch("/api/billing/upgrade", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ action: "confirm", plan_code: code,
+            quoteAt: quote.quoteAt, signature: quote.signature }),
+        });
+        const charge = await chargeResponse.json();
+        if (!chargeResponse.ok) throw new Error(charge.error || "결제 결과를 확인하지 못했습니다. 다시 결제하지 말고 관리자에게 문의해주세요.");
+        alert(`상향 변경 완료. 이번 결제 ${formatPrice(charge.amountPaid)}. 다음 결제일부터 월 ${formatPrice(quote.monthlyPrice)}입니다.`);
+        window.location.href = "/admin/billing";
         return;
       }
 
@@ -1594,6 +1675,19 @@ export default function BillingPage() {
       </div>
 
 
+      {pendingPlan && <p role="status">다음 결제일부터 {getPlanLabel(pendingPlan)} 요금제가 적용됩니다. 지금 추가 결제는 없습니다.</p>}
+      <p>월 정기결제입니다. 하향 변경은 다음 결제일부터 적용되고, 취소하면 현재 결제 기간 종료 후 자동결제가 중단됩니다.</p>
+      <details style={{ margin: "16px 0", padding: 14, background: "#fff", borderRadius: 12 }}>
+        <summary>정기결제 · 청약철회 · 환불 안내</summary>
+        <p>선택한 요금제의 월 요금이 지금 결제되고, 이후 화면에 표시된 다음 결제일부터 매월 자동 결제됩니다. 하위 요금제는 현재 기간 종료 후 변경됩니다.</p>
+        <p>구독 취소는 다음 결제를 중단합니다. 이미 결제한 금액의 청약철회 또는 환불은 결제 내역에서 별도로 신청할 수 있습니다.</p>
+        <p>전자상거래법상 청약철회 가능 기간 및 예외가 적용됩니다. 디지털 서비스 제공이 시작된 경우에도 법에서 정한 조건과 안내를 충족했는지 확인합니다. 계약 내용과 다른 서비스, 중복 결제 또는 결제 오류는 사유에 따라 별도로 검토합니다.</p>
+        <p>환불이 결정되면 원래 결제수단에 대해 토스페이먼츠 결제 취소를 요청합니다. 법정 환급 기한이 적용되며 카드사 반영 시점은 다를 수 있습니다.</p>
+      </details>
+      <label style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "start" }}>
+        <input type="checkbox" checked={billingConsent} onChange={(event) => setBillingConsent(event.target.checked)} />
+        월 요금의 자동결제와 위 취소·환불 안내를 확인했습니다.
+      </label>
       {/* 요금제 목록 */}
 
       <div
@@ -1907,6 +2001,27 @@ export default function BillingPage() {
         )}
       </div>
 
+
+      <section style={{ marginTop: 24, padding: 16, background: "#fff", borderRadius: 12 }}>
+        <h2 style={{ fontSize: 18 }}>결제 내역 · 환불 신청</h2>
+        <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+          구독 취소는 다음 자동결제를 중단하며 이미 결제한 금액의 환불 신청과는 별개입니다.
+          청약철회 가능 여부와 이용한 서비스 범위를 확인해 환불액을 안내합니다.
+          중복 결제 또는 결제 오류는 전액 취소 대상으로 확인합니다.
+          환불이 확정되면 토스페이먼츠를 통해 원래 결제수단의 결제를 취소합니다.
+        </p>
+        {paymentHistory.length === 0 && <p>표시할 결제 내역이 없습니다.</p>}
+        {paymentHistory.map((payment) => (
+          <div key={payment.id} style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0" }}>
+            <strong>{getPlanLabel(payment.plan_code)} · {formatPrice(payment.amount_krw)}</strong>
+            <div style={{ fontSize: 13 }}>{formatKstDate(payment.paid_at)} · {payment.status === "refunded" ? "환불 완료" : "결제 완료"}</div>
+            {payment.refundRequestedAt ? <span>환불 신청 접수됨</span> : payment.status === "paid" && (
+              <button type="button" disabled={refundBusy} onClick={() => requestRefund(payment)}
+                style={{ marginTop: 8, padding: "8px 12px" }}>환불·중복 결제 문의</button>
+            )}
+          </div>
+        ))}
+      </section>
 
       {/* 안내 */}
 

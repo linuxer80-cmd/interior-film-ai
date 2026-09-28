@@ -5,18 +5,21 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 
 import { supabase } from "../../lib/supabase";
 
 import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
+import HelpChat from "./HelpChat";
 import NewLeadAlert from "./NewLeadAlert";
 import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
-import QuickRegisterTab from "./QuickRegisterTab";
-import UsageTab from "./UsageTab";
-import LeadsTab from "./LeadsTab";
-import SiteManagementTab from "./SiteManagementTab";
+const QuickRegisterTab = dynamic(() => import("./QuickRegisterTab"));
+const UsageTab = dynamic(() => import("./UsageTab"));
+const ProfitTab = dynamic(() => import("./ProfitTab"));
+const LeadsTab = dynamic(() => import("./LeadsTab"));
+const SiteManagementTab = dynamic(() => import("./SiteManagementTab"));
 import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
@@ -587,22 +590,6 @@ export default function AdminPage() {
   }, []);
 
   /* =========================================================
-     회사 ID 반영 후 시공 DB 재조회
-  ========================================================= */
-
-  useEffect(() => {
-    if (!companyId) {
-      return;
-    }
-
-    loadJobs(
-      1,
-      "",
-      companyId,
-    );
-  }, [companyId]);
-
-  /* =========================================================
      신규 상담 실시간 구독
   ========================================================= */
 
@@ -1085,6 +1072,8 @@ export default function AdminPage() {
         />
       )}
 
+      {activeTab === "profit" && <ProfitTab />}
+
       {activeTab ===
         "leads" && (
         <LeadsTab
@@ -1122,6 +1111,7 @@ export default function AdminPage() {
           setPreviewPhoto
         }
       />
+      <HelpChat />
     </main>
   );
             }

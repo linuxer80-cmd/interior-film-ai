@@ -818,6 +818,20 @@ export async function POST(request) {
     plan =
       planData;
 
+    // Old checkout sessions cannot charge a second full month.
+    const { data: activeSubscription, error: activeSubscriptionError } = await admin
+      .from("subscriptions")
+      .select("id")
+      .eq("company_id", company.id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (activeSubscriptionError) throw activeSubscriptionError;
+    if (activeSubscription) {
+      return NextResponse.json({ ok: false,
+        error: "기존 구독의 요금제 변경은 별도 변경 절차를 이용해주세요." },
+        { status: 409 });
+    }
+
     if (
       String(
         plan.plan_code,

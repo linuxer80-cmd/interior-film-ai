@@ -20,13 +20,12 @@ const tabs = [
     label: "로그 분석",
   },
   {
-    id: "leads",
-    label: "고객 상담",
+    id: "profit",
+    label: "📊 매출·수익",
   },
   {
-    id: "material-order",
-    label: "📦 자재 주문",
-    href: "/admin/material-order",
+    id: "leads",
+    label: "고객 상담",
   },
 ];
 

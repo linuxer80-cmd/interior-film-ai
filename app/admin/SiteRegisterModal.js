@@ -21,7 +21,7 @@ function makeDateTime(
   }
 
   const localDate = new Date(
-    `${date}T${time}:00`,
+    `${date}T${time}:00+09:00`,
   );
 
   if (
@@ -48,6 +48,7 @@ function makeDateTime(
 
 const initialForm = {
   date: "",
+  end_date: "",
   start_time: "",
   end_time: "",
 
@@ -565,24 +566,22 @@ export default function SiteRegisterModal({
        하나라도 미정이면 상담중으로 등록합니다.
     ------------------------------------------------------- */
 
-    const hasConfirmedSchedule =
-      Boolean(form.date && form.start_time);
+    const hasConfirmedSchedule = Boolean(form.date && form.end_date);
+
+    if (form.date && !form.end_date) {
+      setLocalMessage("❌ 종료 날짜를 선택해주세요. 하루 현장은 시작일과 같은 날짜를 선택하세요.");
+      return;
+    }
 
     const scheduleStart =
       hasConfirmedSchedule
-        ? makeDateTime(
-            form.date,
-            form.start_time,
-          )
+        ? makeDateTime(form.date, "00:00")
         : null;
 
     const scheduleEnd =
       hasConfirmedSchedule &&
-      form.end_time
-        ? makeDateTime(
-            form.date,
-            form.end_time,
-          )
+      form.end_date
+        ? makeDateTime(form.end_date, "23:59")
         : null;
 
     if (
@@ -606,7 +605,7 @@ export default function SiteRegisterModal({
         ).getTime()
     ) {
       setLocalMessage(
-        "❌ 종료 시간은 시작 시간보다 늦어야 합니다.",
+        "❌ 종료 날짜는 시작 날짜보다 빠를 수 없습니다.",
       );
 
       return;
@@ -1000,8 +999,7 @@ export default function SiteRegisterModal({
                 lineHeight: 1.5,
               }}
             >
-              날짜와 시작시간이 모두 정해지면 시공 예정,
-              미정 정보가 있으면 상담중으로 등록됩니다.
+              시작일과 종료일을 지정하세요. 하루 현장은 같은 날짜를 선택합니다.
             </div>
 
             <div
@@ -1014,7 +1012,7 @@ export default function SiteRegisterModal({
                   labelStyle
                 }
               >
-                시공 날짜
+                시작 날짜
               </label>
 
               <input
@@ -1041,7 +1039,7 @@ export default function SiteRegisterModal({
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "1fr 1fr",
+                  "1fr",
                 gap: "8px",
               }}
             >
@@ -1055,52 +1053,19 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                  시작 시간
+                  종료 날짜
                 </label>
 
                 <input
-                  type="time"
+                  type="date"
                   value={
-                    form.start_time
+                    form.end_date
                   }
                   onChange={(
                     event,
                   ) =>
                     updateField(
-                      "start_time",
-                      event.target
-                        .value,
-                    )
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-              </div>
-
-              <div
-                style={
-                  fieldStyle
-                }
-              >
-                <label
-                  style={
-                    labelStyle
-                  }
-                >
-                  종료 시간
-                </label>
-
-                <input
-                  type="time"
-                  value={
-                    form.end_time
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateField(
-                      "end_time",
+                      "end_date",
                       event.target
                         .value,
                     )

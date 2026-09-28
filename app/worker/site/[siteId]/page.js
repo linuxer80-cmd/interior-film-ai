@@ -6,6 +6,14 @@ import { supabase } from "../../../../lib/supabase";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
 
+function workDate(value) {
+  if (!value) return "미정";
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value);
+  return Number.isNaN(date.getTime()) ? "미정" : new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short",
+  }).format(date);
+}
+
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -165,6 +173,22 @@ export default function WorkerSiteDetailPage() {
         );
 
         return;
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch(`/api/site-daily-assignments?siteId=${encodeURIComponent(siteId)}`, {
+        headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error("날짜별 담당 정보를 확인하지 못했습니다.");
+      const daily = await response.json();
+      if (daily.hasDailySchedule && !daily.assignments.length) {
+        setSite(null);
+        setMessage("이 날짜에 배정된 작업이 없습니다.");
+        return;
+      }
+      if (daily.hasDailySchedule) {
+        siteData.assigned_dates = daily.assignments;
+        siteData.my_role = daily.assignments.some((item) => item.role === "leader") ? "leader" : "member";
       }
 
       setSite(siteData);
@@ -702,21 +726,11 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "900",
               }}
             >
-              📅 {formatDateTime(site.schedule_start)}
+              📅 {site.assigned_dates ? "내 작업 날짜" : `${workDate(site.schedule_start)}${site.schedule_end && workDate(site.schedule_end) !== workDate(site.schedule_start) ? ` ~ ${workDate(site.schedule_end)}` : ""}`}
             </div>
-
-            {site.schedule_end && (
-              <div
-                style={{
-                  marginTop: "6px",
-                  color: "#64748b",
-                  fontSize: "12px",
-                }}
-              >
-                종료 예정{" "}
-                {formatDateTime(site.schedule_end)}
-              </div>
-            )}
+            {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 6, fontSize: 13 }}>
+              {workDate(day.work_date)} · {day.role === "leader" ? "팀장" : "팀원"}
+            </div>) : null}
           </div>
 
           <InfoRow

@@ -181,7 +181,7 @@ export default function SiteStatusControl({
             >
               상담중 현장입니다. 일정이
               확정되면 위의 일정 변경에서
-              시작 일시를 저장하면 시공
+              시작 날짜와 종료 날짜를 저장하면 시공
               예정으로 자동 변경됩니다.
             </div>
           )}

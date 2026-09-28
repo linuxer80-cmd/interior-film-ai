@@ -1071,6 +1071,8 @@ async function completeSuccessfulRenewal({
         plan_code:
           plan.plan_code,
 
+        ...(subscription.pending_plan_code ? { pending_plan_code: null } : {}),
+
         status:
           "active",
 
@@ -1585,10 +1587,18 @@ async function renewOneSubscription({
     };
   }
 
+  // The optional column is read separately so renewal keeps working before the migration runs.
+  const { data: planChange, error: planChangeError } = await admin
+    .from("subscriptions")
+    .select("pending_plan_code")
+    .eq("id", subscription.id)
+    .maybeSingle();
+  if (planChangeError && planChangeError.code !== "42703") throw planChangeError;
+  subscription.pending_plan_code = planChange?.pending_plan_code || null;
   plan =
     await getPlan(
       admin,
-      subscription.plan_code,
+      subscription.pending_plan_code || subscription.plan_code,
     );
 
   if (

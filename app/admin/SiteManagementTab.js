@@ -45,63 +45,18 @@ const STATUS_INFO = {
   },
 };
 
-/* =========================================================
-   날짜 + 시간 표시
-========================================================= */
-
-function formatDateTime(
-  scheduleStart,
-  scheduleDate,
-) {
-  if (scheduleStart) {
-    const date =
-      new Date(scheduleStart);
-
-    if (
-      !Number.isNaN(
-        date.getTime(),
-      )
-    ) {
-      return new Intl.DateTimeFormat(
-        "ko-KR",
-        {
-          month: "long",
-          day: "numeric",
-          weekday: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        },
-      ).format(date);
-    }
-  }
-
-  if (scheduleDate) {
-    const date =
-      new Date(
-        `${scheduleDate}T00:00:00`,
-      );
-
-    if (
-      !Number.isNaN(
-        date.getTime(),
-      )
-    ) {
-      const dateText =
-        new Intl.DateTimeFormat(
-          "ko-KR",
-          {
-            month: "long",
-            day: "numeric",
-            weekday: "short",
-          },
-        ).format(date);
-
-      return `${dateText} · 시간 미정`;
-    }
-  }
-
-  return "미정";
+/* 시공 일정은 날짜만 표시합니다. */
+function formatScheduleDates(scheduleStart, scheduleEnd, scheduleDate) {
+  const format = (value) => {
+    if (!value) return "";
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value);
+    return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short",
+    }).format(date);
+  };
+  const start = format(scheduleStart || scheduleDate);
+  const end = format(scheduleEnd);
+  return start ? (end && end !== start ? `${start} ~ ${end}` : start) : "미정";
 }
 
 /* =========================================================
@@ -1014,8 +969,9 @@ function SiteCard({
       >
         <div>
           📅{" "}
-          {formatDateTime(
+          {formatScheduleDates(
             site.schedule_start,
+            site.schedule_end,
             site.schedule_date,
           )}
         </div>

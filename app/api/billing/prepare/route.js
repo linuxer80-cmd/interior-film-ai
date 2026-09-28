@@ -447,6 +447,22 @@ export async function POST(request) {
     }
 
 
+    // Active subscriptions cannot be charged another full month for a plan change.
+    if (currentPlanCode !== "trial") {
+      const { data: activeSubscription, error: activeError } = await admin
+        .from("subscriptions")
+        .select("id")
+        .eq("company_id", company.id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (activeError) throw activeError;
+      if (activeSubscription) {
+        return NextResponse.json({ ok: false,
+          error: "현재 이용기간 중 요금제 변경은 별도 변경 절차를 이용해주세요." },
+          { status: 409 });
+      }
+    }
+
     const planCode =
       String(
         plan.plan_code || "",
