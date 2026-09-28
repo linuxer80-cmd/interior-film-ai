@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 
 import { supabase } from "../../lib/supabase";
 
@@ -14,11 +15,11 @@ import HelpChat from "./HelpChat";
 import NewLeadAlert from "./NewLeadAlert";
 import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
-import QuickRegisterTab from "./QuickRegisterTab";
-import UsageTab from "./UsageTab";
-import ProfitTab from "./ProfitTab";
-import LeadsTab from "./LeadsTab";
-import SiteManagementTab from "./SiteManagementTab";
+const QuickRegisterTab = dynamic(() => import("./QuickRegisterTab"));
+const UsageTab = dynamic(() => import("./UsageTab"));
+const ProfitTab = dynamic(() => import("./ProfitTab"));
+const LeadsTab = dynamic(() => import("./LeadsTab"));
+const SiteManagementTab = dynamic(() => import("./SiteManagementTab"));
 import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
