@@ -491,17 +491,49 @@ export default function WorkerPage() {
      현장 역할
   ========================================================= */
 
-  function getRoleLabel(
+  function getRoleInfo(
     role,
   ) {
     if (
       role ===
       "leader"
     ) {
-      return "책임 팀장";
+      return {
+        label:
+          "👑 책임 팀장",
+
+        background:
+          "#fff7ed",
+
+        color:
+          "#c2410c",
+
+        border:
+          "#fed7aa",
+      };
     }
 
-    return "시공자";
+    return {
+      label:
+        "👤 팀원",
+
+      background:
+        "#eff6ff",
+
+      color:
+        "#1d4ed8",
+
+      border:
+        "#bfdbfe",
+    };
+  }
+
+  function getRoleLabel(
+    role,
+  ) {
+    return getRoleInfo(
+      role,
+    ).label;
   }
 
   /* =========================================================
@@ -1382,6 +1414,11 @@ export default function WorkerPage() {
                         site,
                       );
 
+                    const role =
+                      getRoleInfo(
+                        site.worker_role,
+                      );
+
                     return (
                       <article
                         key={
@@ -1479,28 +1516,76 @@ export default function WorkerPage() {
                               flex:
                                 "0 0 auto",
 
-                              padding:
-                                "5px 8px",
+                              display:
+                                "grid",
 
-                              borderRadius:
-                                "999px",
+                              justifyItems:
+                                "end",
 
-                              background:
-                                status.background,
-
-                              color:
-                                status.color,
-
-                              fontSize:
-                                "11px",
-
-                              fontWeight:
-                                "800",
+                              gap:
+                                "6px",
                             }}
                           >
-                            {
-                              status.label
-                            }
+                            <div
+                              style={{
+                                padding:
+                                  "6px 9px",
+
+                                borderRadius:
+                                  "999px",
+
+                                background:
+                                  role.background,
+
+                                color:
+                                  role.color,
+
+                                border:
+                                  `1px solid ${role.border}`,
+
+                                fontSize:
+                                  "11px",
+
+                                fontWeight:
+                                  "900",
+
+                                whiteSpace:
+                                  "nowrap",
+                              }}
+                            >
+                              {
+                                role.label
+                              }
+                            </div>
+
+                            <div
+                              style={{
+                                padding:
+                                  "5px 8px",
+
+                                borderRadius:
+                                  "999px",
+
+                                background:
+                                  status.background,
+
+                                color:
+                                  status.color,
+
+                                fontSize:
+                                  "11px",
+
+                                fontWeight:
+                                  "800",
+
+                                whiteSpace:
+                                  "nowrap",
+                              }}
+                            >
+                              {
+                                status.label
+                              }
+                            </div>
                           </div>
                         </div>
 
@@ -1840,4 +1925,4 @@ function InfoRow({
       </div>
     </div>
   );
-              }
+                  }
