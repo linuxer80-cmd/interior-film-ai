@@ -20,6 +20,10 @@ const tabs = [
     label: "로그 분석",
   },
   {
+    id: "profit",
+    label: "📊 매출·수익",
+  },
+  {
     id: "leads",
     label: "고객 상담",
   },
