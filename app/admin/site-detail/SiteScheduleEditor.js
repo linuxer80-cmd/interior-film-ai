@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  formatDateTime,
-  toDateTimeLocalValue,
 } from "./siteDetailUtils";
 
 /* =========================================================
    날짜만 있는 상담 일정 표시
 ========================================================= */
+
+const localDay = (value) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)) : "";
 
 function formatScheduleDateOnly(value) {
   if (!value) {
@@ -51,21 +51,15 @@ function getScheduleText(site) {
   }
 
   /*
-   * 시작 일시가 확정된 현장
+   * 시작 날짜가 확정된 현장
    */
   if (site.schedule_start) {
     if (site.schedule_end) {
-      return `${formatDateTime(
-        site.schedule_start,
-      )}\n~ ${formatDateTime(
-        site.schedule_end,
-      )}`;
+      return `${localDay(site.schedule_start)} ~ ${localDay(site.schedule_end)}`;
     }
 
     return (
-      formatDateTime(
-        site.schedule_start,
-      ) || "미정"
+      localDay(site.schedule_start) || "미정"
     );
   }
 
@@ -129,15 +123,11 @@ export default function SiteScheduleEditor({
     setScheduleMessage("");
 
     setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
+      localDay(site?.schedule_start),
     );
 
     setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
+      localDay(site?.schedule_end),
     );
   }, [site?.id]);
 
@@ -151,15 +141,11 @@ export default function SiteScheduleEditor({
     }
 
     setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
+      localDay(site?.schedule_start),
     );
 
     setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
+      localDay(site?.schedule_end),
     );
   }, [
     site?.schedule_start,
@@ -175,15 +161,11 @@ export default function SiteScheduleEditor({
     setScheduleMessage("");
 
     setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
+      localDay(site?.schedule_start),
     );
 
     setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
+      localDay(site?.schedule_end),
     );
 
     setScheduleEditOpen(true);
@@ -201,15 +183,11 @@ export default function SiteScheduleEditor({
     setScheduleMessage("");
 
     setScheduleStart(
-      toDateTimeLocalValue(
-        site?.schedule_start,
-      ),
+      localDay(site?.schedule_start),
     );
 
     setScheduleEnd(
-      toDateTimeLocalValue(
-        site?.schedule_end,
-      ),
+      localDay(site?.schedule_end),
     );
 
     setScheduleEditOpen(false);
@@ -243,16 +221,16 @@ export default function SiteScheduleEditor({
       return;
     }
 
-    if (!scheduleStart) {
+    if (!scheduleStart || !scheduleEnd) {
       setScheduleMessage(
-        "❌ 시작 일시를 입력해주세요.",
+        "❌ 시작 날짜와 종료 날짜를 입력해주세요.",
       );
 
       return;
     }
 
     const startDate =
-      new Date(scheduleStart);
+      new Date(`${scheduleStart}T00:00:00+09:00`);
 
     if (
       Number.isNaN(
@@ -260,7 +238,7 @@ export default function SiteScheduleEditor({
       )
     ) {
       setScheduleMessage(
-        "❌ 시작 일시가 올바르지 않습니다.",
+        "❌ 시작 날짜가 올바르지 않습니다.",
       );
 
       return;
@@ -270,7 +248,7 @@ export default function SiteScheduleEditor({
 
     if (scheduleEnd) {
       endDate =
-        new Date(scheduleEnd);
+        new Date(`${scheduleEnd}T23:59:00+09:00`);
 
       if (
         Number.isNaN(
@@ -278,7 +256,7 @@ export default function SiteScheduleEditor({
         )
       ) {
         setScheduleMessage(
-          "❌ 종료 일시가 올바르지 않습니다.",
+          "❌ 종료 날짜가 올바르지 않습니다.",
         );
 
         return;
@@ -289,7 +267,7 @@ export default function SiteScheduleEditor({
         startDate.getTime()
       ) {
         setScheduleMessage(
-          "❌ 종료 일시는 시작 일시보다 빠를 수 없습니다.",
+          "❌ 종료 날짜는 시작 날짜보다 빠를 수 없습니다.",
         );
 
         return;
@@ -556,12 +534,12 @@ export default function SiteScheduleEditor({
                 >
                   {site.status ===
                   "consulting"
-                    ? "시작 일시를 저장하면 상담중에서 시공 예정으로 자동 변경됩니다."
+                    ? "시작 날짜를 저장하면 상담중에서 시공 예정으로 자동 변경됩니다."
                     : "저장하면 변경된 시공 일정이 적용됩니다."}
                 </div>
 
                 {/* =====================
-                    시작 일시
+                    시작 날짜
                 ===================== */}
 
                 <label
@@ -588,11 +566,11 @@ export default function SiteScheduleEditor({
                         "#334155",
                     }}
                   >
-                    시작 일시
+                    시작 날짜
                   </div>
 
                   <input
-                    type="datetime-local"
+                    type="date"
                     value={
                       scheduleStart
                     }
@@ -676,13 +654,13 @@ export default function SiteScheduleEditor({
                         )}
                       </strong>
                       <br />
-                      시간을 선택해 일정을
+                      종료 날짜를 선택해 일정을
                       확정해주세요.
                     </div>
                   )}
 
                 {/* =====================
-                    종료 일시
+                    종료 날짜
                 ===================== */}
 
                 <label
@@ -709,11 +687,11 @@ export default function SiteScheduleEditor({
                         "#334155",
                     }}
                   >
-                    종료 일시
+                    종료 날짜
                   </div>
 
                   <input
-                    type="datetime-local"
+                    type="date"
                     value={
                       scheduleEnd
                     }
