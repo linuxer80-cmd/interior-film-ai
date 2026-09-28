@@ -16,6 +16,8 @@ export default function SuperAdminBillingPage() {
   const [userEmail, setUserEmail] = useState("");
 
   const [overview, setOverview] = useState(null);
+  const [refundRequests, setRefundRequests] = useState([]);
+  const [refundBusy, setRefundBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   const [paymentFilter, setPaymentFilter] =
@@ -109,6 +111,42 @@ export default function SuperAdminBillingPage() {
       );
     }, []);
 
+  async function loadRefundRequests() {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return;
+    const response = await fetch("/api/billing/refunds", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) setRefundRequests((await response.json()).requests || []);
+  }
+
+  async function processRefund(request) {
+    const payment = request.payment;
+    if (!payment?.id) { setMessage("❌ 카드 결제 정보를 확인할 수 없습니다."); return; }
+    const answer = window.prompt("토스페이먼츠에서 취소할 금액(원)을 입력하세요. 먼저 이용 내역과 청약철회 사유를 확인하세요.", String(payment.amount_krw));
+    if (answer === null) return;
+    const amount = Number(answer);
+    if (!Number.isInteger(amount) || amount < 1 || amount > Number(payment.amount_krw)) {
+      setMessage("❌ 환불 금액이 올바르지 않습니다."); return;
+    }
+    if (!window.confirm(`${formatMoney(amount)}원을 원래 결제수단으로 취소하시겠습니까? 이 작업은 카드 결제를 취소합니다.`)) return;
+    setRefundBusy(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      const response = await fetch("/api/billing/refunds", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "process", request_id: request.id, amount_krw: amount }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "PG 결제 취소에 실패했습니다.");
+      setMessage(`✅ ${formatMoney(amount)}원 결제 취소가 접수되었습니다.`);
+      await Promise.all([loadRefundRequests(), loadBillingOverview()]);
+    } catch (error) { setMessage(`❌ ${error.message}`); }
+    finally { setRefundBusy(false); }
+  }
+
   /* =========================================================
      초기 로딩
   ========================================================= */
@@ -125,7 +163,7 @@ export default function SuperAdminBillingPage() {
 
         if (!alive) return;
 
-        await loadBillingOverview();
+        await Promise.all([loadBillingOverview(), loadRefundRequests()]);
       } catch (error) {
         console.error(
           "결제관리 초기화:",
@@ -168,7 +206,7 @@ export default function SuperAdminBillingPage() {
     setMessage("");
 
     try {
-      await loadBillingOverview();
+      await Promise.all([loadBillingOverview(), loadRefundRequests()]);
 
       setMessage(
         "✅ 결제 정보를 새로고침했습니다.",
@@ -478,6 +516,24 @@ export default function SuperAdminBillingPage() {
             }
           />
         </div>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>환불 요청</h2>
+          <p style={styles.sectionDescription}>사유와 실제 이용 내역을 검토한 뒤 원래 카드 결제를 취소합니다. 구독 취소 예약은 별도로 확인하세요.</p>
+          {refundRequests.length === 0 && <div style={styles.empty}>접수된 요청이 없습니다.</div>}
+          {refundRequests.map((item) => (
+            <div key={item.id} style={{ padding: 14, borderTop: "1px solid #e5e7eb" }}>
+              <strong>{item.payment?.plan_code?.toUpperCase() || "결제"} · {formatMoney(item.payment?.amount_krw)}원</strong>
+              <div>업체 ID: {item.company_id}</div>
+              <div>신청일: {formatDateTime(item.created_at)}</div>
+              <div>사유: {item.event_data?.reason || "-"}</div>
+              {item.processed ? <strong>PG 취소 처리 완료</strong> : (
+                <button type="button" disabled={refundBusy} onClick={() => processRefund(item)}
+                  style={styles.refreshButton}>결제 취소 처리</button>
+              )}
+            </div>
+          ))}
+        </section>
 
         {/* =====================================================
             구독 현황
