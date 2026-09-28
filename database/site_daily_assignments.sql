@@ -38,7 +38,7 @@ begin
 
   update public.site_workers sw set role = desired.role
   from (
-    select worker_id, case when bool_or(role = 'leader') then 'leader' else 'member' end as role
+    select worker_id, case when worker_id = (select worker_id from public.site_daily_assignments where site_id = p_site_id and role = 'leader' order by work_date, worker_id limit 1) then 'leader' else 'member' end as role
     from public.site_daily_assignments where site_id = p_site_id group by worker_id
   ) desired
   where sw.site_id = p_site_id and sw.company_id = p_company_id
@@ -47,7 +47,7 @@ begin
   insert into public.site_workers(company_id, site_id, worker_id, role)
   select p_company_id, p_site_id, desired.worker_id, desired.role
   from (
-    select worker_id, case when bool_or(role = 'leader') then 'leader' else 'member' end as role
+    select worker_id, case when worker_id = (select worker_id from public.site_daily_assignments where site_id = p_site_id and role = 'leader' order by work_date, worker_id limit 1) then 'leader' else 'member' end as role
     from public.site_daily_assignments where site_id = p_site_id group by worker_id
   ) desired
   where not exists (select 1 from public.site_workers sw
