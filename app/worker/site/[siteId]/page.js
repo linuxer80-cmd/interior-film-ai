@@ -6,6 +6,14 @@ import { supabase } from "../../../../lib/supabase";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
 
+function workDate(value) {
+  if (!value) return "미정";
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value);
+  return Number.isNaN(date.getTime()) ? "미정" : new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short",
+  }).format(date);
+}
+
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -718,13 +726,11 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "900",
               }}
             >
-              📅 {site.assigned_dates ? "내 작업 날짜" : formatDateTime(site.schedule_start)}
+              📅 {site.assigned_dates ? "내 작업 날짜" : `${workDate(site.schedule_start)}${site.schedule_end && workDate(site.schedule_end) !== workDate(site.schedule_start) ? ` ~ ${workDate(site.schedule_end)}` : ""}`}
             </div>
             {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 6, fontSize: 13 }}>
-              {day.work_date} · {day.role === "leader" ? "팀장" : "팀원"}
-            </div>) : site.schedule_end && <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
-              종료 예정 {formatDateTime(site.schedule_end)}
-            </div>}
+              {workDate(day.work_date)} · {day.role === "leader" ? "팀장" : "팀원"}
+            </div>) : null}
           </div>
 
           <InfoRow
