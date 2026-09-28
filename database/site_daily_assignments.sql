@@ -36,6 +36,11 @@ begin
     and not exists (select 1 from public.site_daily_assignments da
                     where da.site_id = p_site_id and da.worker_id = sw.worker_id);
 
+  -- 현장당 팀장 한 명 제약이 있어도 팀장 교체가 가능하도록 먼저 해제합니다.
+  update public.site_workers
+  set role = 'member'
+  where site_id = p_site_id and company_id = p_company_id and role = 'leader';
+
   update public.site_workers sw set role = desired.role
   from (
     select worker_id, case when worker_id = (select worker_id from public.site_daily_assignments where site_id = p_site_id and role = 'leader' order by work_date, worker_id limit 1) then 'leader' else 'member' end as role
