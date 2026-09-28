@@ -399,11 +399,7 @@ export default function AdminPage() {
     if (
       tab === "leads"
     ) {
-      loadLeads(
-        1,
-        leadFilter,
-        companyId,
-      );
+      loadLeads(1, leadFilter);
     }
   }
 
