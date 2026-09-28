@@ -16,6 +16,7 @@ import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
 import QuickRegisterTab from "./QuickRegisterTab";
 import UsageTab from "./UsageTab";
+import ProfitTab from "./ProfitTab";
 import LeadsTab from "./LeadsTab";
 import SiteManagementTab from "./SiteManagementTab";
 import PlanUsageButton from "./PlanUsageButton";
@@ -1085,6 +1086,8 @@ export default function AdminPage() {
           setPreviewPhoto={setPreviewPhoto}
         />
       )}
+
+      {activeTab === "profit" && <ProfitTab />}
 
       {activeTab ===
         "leads" && (
