@@ -15,6 +15,18 @@ export function normalizeCategory(value) {
     .trim()
     .toLowerCase();
 
+  // A cabinet door is furniture even when another field says "door/frame".
+  // Check these before the broad door/doorframe aliases below.
+  if (text.includes("붙박이장") || text.includes("옷장") || text.includes("wardrobe") || text.includes("closet")) {
+    return "closet";
+  }
+  if (text.includes("신발장") || text.includes("현관장") || text.includes("shoe cabinet")) {
+    return "shoe";
+  }
+  if (text.includes("냉장고장")) {
+    return "kitchen";
+  }
+
   // ----------------------------------------------------
   // 중문
   //
