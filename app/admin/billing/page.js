@@ -69,6 +69,10 @@ function getPlanLabel(
     return "TRIAL";
   }
 
+  if (code === "light") {
+    return "LIGHT";
+  }
+
   if (code === "basic") {
     return "BASIC";
   }
