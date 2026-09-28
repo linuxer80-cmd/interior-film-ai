@@ -311,12 +311,28 @@ export default function WorkerSiteDetailPage() {
      역할
   ========================================================= */
 
-  function getRoleLabel(role) {
+  function getRoleInfo(role) {
     if (role === "leader") {
-      return "책임 팀장";
+      return {
+        label: "👑 책임 팀장",
+        description: "이 현장의 책임 팀장입니다.",
+        background: "#fff7ed",
+        color: "#c2410c",
+        border: "#fed7aa",
+      };
     }
 
-    return "시공자";
+    return {
+      label: "👤 팀원",
+      description: "이 현장의 일반 팀원입니다.",
+      background: "#eff6ff",
+      color: "#1d4ed8",
+      border: "#bfdbfe",
+    };
+  }
+
+  function getRoleLabel(role) {
+    return getRoleInfo(role).label;
   }
 
   /* =========================================================
@@ -457,6 +473,7 @@ export default function WorkerSiteDetailPage() {
   }
 
   const status = getStatusInfo(site.status);
+  const role = getRoleInfo(site.my_role);
 
   /* =========================================================
      메인
@@ -471,10 +488,6 @@ export default function WorkerSiteDetailPage() {
         paddingBottom: "50px",
       }}
     >
-      {/* =====================================================
-          상단
-      ===================================================== */}
-
       <header
         style={{
           background: "#ffffff",
@@ -547,10 +560,6 @@ export default function WorkerSiteDetailPage() {
         </div>
       </header>
 
-      {/* =====================================================
-          본문
-      ===================================================== */}
-
       <div
         style={{
           width: "100%",
@@ -560,10 +569,6 @@ export default function WorkerSiteDetailPage() {
           boxSizing: "border-box",
         }}
       >
-        {/* ===================================================
-            현장 기본정보
-        =================================================== */}
-
         <section
           style={{
             background: "#ffffff",
@@ -628,7 +633,48 @@ export default function WorkerSiteDetailPage() {
             </div>
           </div>
 
-          {/* 일정 */}
+          <div
+            style={{
+              marginTop: "15px",
+              padding: "13px 14px",
+              borderRadius: "11px",
+              background: role.background,
+              border: `1px solid ${role.border}`,
+            }}
+          >
+            <div
+              style={{
+                color: role.color,
+                fontSize: "11px",
+                fontWeight: "800",
+              }}
+            >
+              이 현장에서 내 역할
+            </div>
+
+            <div
+              style={{
+                marginTop: "5px",
+                color: role.color,
+                fontSize: "16px",
+                fontWeight: "900",
+              }}
+            >
+              {role.label}
+            </div>
+
+            <div
+              style={{
+                marginTop: "4px",
+                color: "#64748b",
+                fontSize: "11px",
+                fontWeight: "700",
+                lineHeight: 1.5,
+              }}
+            >
+              {role.description}
+            </div>
+          </div>
 
           <div
             style={{
@@ -694,10 +740,6 @@ export default function WorkerSiteDetailPage() {
           />
         </section>
 
-        {/* ===================================================
-            작업 내용
-        =================================================== */}
-
         {site.work_description && (
           <section
             style={{
@@ -729,10 +771,6 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         )}
-
-        {/* ===================================================
-            예정 자재
-        =================================================== */}
 
         <section
           style={{
@@ -932,7 +970,6 @@ export default function WorkerSiteDetailPage() {
               )}
             </div>
           )}
-
           <div
             style={{
               marginTop: "10px",
@@ -944,15 +981,8 @@ export default function WorkerSiteDetailPage() {
             관리자에서 등록한 예정 사용 자재입니다.
           </div>
         </section>
-        {/* ===================================================
-            고객 요청사진
-        =================================================== */}
 
         <WorkerRequestPhotos siteId={siteId} />
-
-        {/* ===================================================
-            고객 연락
-        =================================================== */}
 
         {site.customer_phone && (
           <section
@@ -1015,10 +1045,6 @@ export default function WorkerSiteDetailPage() {
         =================================================== */}
 
         {site.status === "completed" ? (
-          /* =================================================
-             현장 자체가 시공 완료 상태
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1048,10 +1074,6 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         ) : site.status === "cancelled" ? (
-          /* =================================================
-             취소 현장
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1081,10 +1103,6 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         ) : site.my_role !== "leader" ? (
-          /* =================================================
-             일반 시공자
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1114,10 +1132,6 @@ export default function WorkerSiteDetailPage() {
             </div>
           </section>
         ) : reportLoading ? (
-          /* =================================================
-             완료보고 상태 조회 중
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1148,10 +1162,6 @@ export default function WorkerSiteDetailPage() {
           </section>
         ) : reportStatus?.hasReport &&
           reportStatus?.report?.review_status === "pending" ? (
-          /* =================================================
-             관리자 검수 대기
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1280,10 +1290,6 @@ export default function WorkerSiteDetailPage() {
           </section>
         ) : reportStatus?.hasReport &&
           reportStatus?.report?.review_status === "approved" ? (
-          /* =================================================
-             관리자 승인 완료
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1405,10 +1411,6 @@ export default function WorkerSiteDetailPage() {
           </section>
         ) : reportStatus?.hasReport &&
           reportStatus?.report?.review_status === "rejected" ? (
-          /* =================================================
-             관리자 보완 요청
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1515,12 +1517,6 @@ export default function WorkerSiteDetailPage() {
             />
           </section>
         ) : (
-          /* =================================================
-             완료보고 없음
-
-             책임 팀장에게 작성폼 표시
-          ================================================= */
-
           <section
             style={{
               marginTop: "14px",
@@ -1535,15 +1531,6 @@ export default function WorkerSiteDetailPage() {
             />
           </section>
         )}
-
-        {/* ===================================================
-            검수 전 안내
-
-            보고서가 아직 없는 책임 팀장에게만 표시한다.
-
-            pending 상태에서는 위 검수대기 카드에서
-            이미 안내하므로 중복 표시하지 않는다.
-        =================================================== */}
 
         {site.my_role === "leader" &&
           site.status !== "cancelled" &&
@@ -1567,10 +1554,6 @@ export default function WorkerSiteDetailPage() {
               승인하기 전에는 AI 견적자료로 등록되지 않습니다.
             </div>
           )}
-
-        {/* ===================================================
-            보안 안내
-        =================================================== */}
 
         <div
           style={{
@@ -1656,4 +1639,4 @@ function InfoRow({
       </div>
     </div>
   );
-          }
+                    }

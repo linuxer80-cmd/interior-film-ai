@@ -35,6 +35,56 @@ export default function RegisterTab({
         </h2>
 
         <label style={labelStyle}>
+          시공 전 사진
+        </label>
+
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(event) =>
+            setBeforeImages(
+              Array.from(
+                event.target.files || []
+              )
+            )
+          }
+          style={{
+            ...inputStyle,
+            marginBottom: "8px",
+          }}
+        />
+
+        <div style={countStyle}>
+          선택 {beforeImages.length}장
+        </div>
+
+        <label style={labelStyle}>
+          시공 후 사진
+        </label>
+
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(event) =>
+            setAfterImages(
+              Array.from(
+                event.target.files || []
+              )
+            )
+          }
+          style={{
+            ...inputStyle,
+            marginBottom: "8px",
+          }}
+        />
+
+        <div style={countStyle}>
+          선택 {afterImages.length}장
+        </div>
+
+        <label style={labelStyle}>
           시공 부위
         </label>
 
@@ -100,56 +150,6 @@ export default function RegisterTab({
             marginBottom: "14px",
           }}
         />
-
-        <label style={labelStyle}>
-          시공 전 사진
-        </label>
-
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) =>
-            setBeforeImages(
-              Array.from(
-                event.target.files || []
-              )
-            )
-          }
-          style={{
-            ...inputStyle,
-            marginBottom: "8px",
-          }}
-        />
-
-        <div style={countStyle}>
-          선택 {beforeImages.length}장
-        </div>
-
-        <label style={labelStyle}>
-          시공 후 사진
-        </label>
-
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) =>
-            setAfterImages(
-              Array.from(
-                event.target.files || []
-              )
-            )
-          }
-          style={{
-            ...inputStyle,
-            marginBottom: "8px",
-          }}
-        />
-
-        <div style={countStyle}>
-          선택 {afterImages.length}장
-        </div>
 
         <button
           type="button"

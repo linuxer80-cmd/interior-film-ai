@@ -12,26 +12,18 @@ import {
 export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState(null);
-
   const [authorized, setAuthorized] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-
   const [notificationUnreadCount, setNotificationUnreadCount] =
     useState(0);
-
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
-
-  /* =========================================================
-     슈퍼관리자 확인
-  ========================================================= */
 
   const checkSuperAdmin = useCallback(async () => {
     const {
@@ -53,10 +45,7 @@ export default function SuperAdminPage() {
 
     setUserEmail(user.email || "");
 
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
+    const { data, error } = await supabase.rpc(
       "get_super_admin_status",
     );
 
@@ -66,10 +55,9 @@ export default function SuperAdminPage() {
       );
     }
 
-    const status =
-      Array.isArray(data)
-        ? data[0]
-        : data;
+    const status = Array.isArray(data)
+      ? data[0]
+      : data;
 
     if (!status?.is_super_admin) {
       throw new Error(
@@ -78,7 +66,6 @@ export default function SuperAdminPage() {
     }
 
     setAuthorized(true);
-
     setAdminName(
       status?.name || "슈퍼관리자",
     );
@@ -86,44 +73,25 @@ export default function SuperAdminPage() {
     return true;
   }, []);
 
-  /* =========================================================
-     전체 회사 조회
-  ========================================================= */
+  const loadCompanies = useCallback(async () => {
+    const { data, error } = await supabase.rpc(
+      "super_admin_get_companies",
+    );
 
-  const loadCompanies = useCallback(
-    async () => {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "super_admin_get_companies",
+    if (error) {
+      throw new Error(
+        `회사 목록 조회 실패: ${error.message}`,
       );
+    }
 
-      if (error) {
-        throw new Error(
-          `회사 목록 조회 실패: ${error.message}`,
-        );
-      }
-
-      setCompanies(
-        Array.isArray(data)
-          ? data
-          : [],
-      );
-    },
-    [],
-  );
-
-  /* =========================================================
-     슈퍼관리자 읽지 않은 알림 개수
-  ========================================================= */
+    setCompanies(
+      Array.isArray(data) ? data : [],
+    );
+  }, []);
 
   const loadNotificationUnreadCount =
     useCallback(async () => {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
+      const { data, error } = await supabase.rpc(
         "get_unread_notification_count",
       );
 
@@ -132,7 +100,6 @@ export default function SuperAdminPage() {
           "알림 개수 조회:",
           error,
         );
-
         return;
       }
 
@@ -143,14 +110,8 @@ export default function SuperAdminPage() {
             : data,
         ) || 0;
 
-      setNotificationUnreadCount(
-        count,
-      );
+      setNotificationUnreadCount(count);
     }, []);
-
-  /* =========================================================
-     초기 로딩
-  ========================================================= */
 
   useEffect(() => {
     let alive = true;
@@ -177,7 +138,6 @@ export default function SuperAdminPage() {
         if (!alive) return;
 
         setAuthorized(false);
-
         setMessage(
           `❌ ${
             error?.message ||
@@ -201,10 +161,6 @@ export default function SuperAdminPage() {
     loadCompanies,
     loadNotificationUnreadCount,
   ]);
-
-  /* =========================================================
-     슈퍼관리자 알림 실시간 갱신
-  ========================================================= */
 
   useEffect(() => {
     if (!authorized) {
@@ -237,10 +193,6 @@ export default function SuperAdminPage() {
     authorized,
     loadNotificationUnreadCount,
   ]);
-
-  /* =========================================================
-     휴대폰 Push 등록 상태
-  ========================================================= */
 
   const loadPushStatus = useCallback(async () => {
     const supported = isPushSupported();
@@ -286,7 +238,6 @@ export default function SuperAdminPage() {
       await enablePushNotifications();
 
       setPushEnabled(true);
-
       setPushMessage(
         "✅ 이 휴대폰의 알림이 켜졌습니다.",
       );
@@ -297,7 +248,6 @@ export default function SuperAdminPage() {
       );
 
       setPushEnabled(false);
-
       setPushMessage(
         `❌ ${
           error?.message ||
@@ -310,10 +260,9 @@ export default function SuperAdminPage() {
   }
 
   async function handleDisablePush() {
-    const confirmed =
-      window.confirm(
-        "이 휴대폰의 슈퍼관리자 Push 알림을 끌까요?",
-      );
+    const confirmed = window.confirm(
+      "이 휴대폰의 슈퍼관리자 Push 알림을 끌까요?",
+    );
 
     if (!confirmed) return;
 
@@ -324,7 +273,6 @@ export default function SuperAdminPage() {
       await disablePushNotifications();
 
       setPushEnabled(false);
-
       setPushMessage(
         "✅ 이 휴대폰의 알림을 껐습니다.",
       );
@@ -345,30 +293,21 @@ export default function SuperAdminPage() {
     }
   }
 
-  /* =========================================================
-     회사 활성 / 정지
-  ========================================================= */
-
-  async function changeCompanyActive(
-    company,
-  ) {
+  async function changeCompanyActive(company) {
     if (!company?.id) return;
 
     const nextActive =
       !Boolean(company.is_active);
 
-    const actionText =
-      nextActive
-        ? "활성화"
-        : "정지";
+    const actionText = nextActive
+      ? "활성화"
+      : "정지";
 
-    const confirmed =
-      window.confirm(
-        `${
-          company.company_name ||
-          "회사"
-        }를 ${actionText}할까요?`,
-      );
+    const confirmed = window.confirm(
+      `${
+        company.company_name || "회사"
+      }를 ${actionText}할까요?`,
+    );
 
     if (!confirmed) return;
 
@@ -376,17 +315,11 @@ export default function SuperAdminPage() {
     setMessage("");
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
+      const { data, error } = await supabase.rpc(
         "super_admin_set_company_active",
         {
-          p_company_id:
-            company.id,
-
-          p_is_active:
-            nextActive,
+          p_company_id: company.id,
+          p_is_active: nextActive,
         },
       );
 
@@ -394,17 +327,15 @@ export default function SuperAdminPage() {
         throw error;
       }
 
-      const updated =
-        Array.isArray(data)
-          ? data[0]
-          : data;
+      const updated = Array.isArray(data)
+        ? data[0]
+        : data;
 
       setCompanies((current) =>
         current.map((item) =>
           item.id === company.id
             ? {
                 ...item,
-
                 is_active:
                   updated?.is_active ??
                   nextActive,
@@ -414,12 +345,8 @@ export default function SuperAdminPage() {
       );
 
       setMessage(
-        `✅ ${
-          company.company_name
-        } ${
-          nextActive
-            ? "활성화"
-            : "정지"
+        `✅ ${company.company_name} ${
+          nextActive ? "활성화" : "정지"
         } 완료`,
       );
     } catch (error) {
@@ -438,10 +365,6 @@ export default function SuperAdminPage() {
       setChangingId(null);
     }
   }
-
-  /* =========================================================
-     메뉴 이동
-  ========================================================= */
 
   function openCompanies() {
     window.location.href =
@@ -468,9 +391,10 @@ export default function SuperAdminPage() {
       "/super-admin/billing";
   }
 
-  /* =========================================================
-     회사 상세관리 이동
-  ========================================================= */
+  function openMaterialOrders() {
+    window.location.href =
+      "/super-admin/material-orders";
+  }
 
   function openCompany(company) {
     if (!company?.id) return;
@@ -479,64 +403,43 @@ export default function SuperAdminPage() {
       `/super-admin/company/${company.id}`;
   }
 
-  /* =========================================================
-     검색
-  ========================================================= */
+  const filteredCompanies = useMemo(() => {
+    const keyword = search
+      .trim()
+      .toLowerCase();
 
-  const filteredCompanies =
-    useMemo(() => {
-      const keyword =
-        search
-          .trim()
-          .toLowerCase();
+    if (!keyword) {
+      return companies;
+    }
 
-      if (!keyword) {
-        return companies;
-      }
+    return companies.filter((company) => {
+      const text = [
+        company.company_name,
+        company.slug,
+        company.representative_name,
+        company.phone,
+        company.address,
+        company.subscription_plan,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
-      return companies.filter(
-        (company) => {
-          const text = [
-            company.company_name,
-            company.slug,
-            company.representative_name,
-            company.phone,
-            company.address,
-            company.subscription_plan,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [
+    companies,
+    search,
+  ]);
 
-          return text.includes(
-            keyword,
-          );
-        },
-      );
-    }, [
-      companies,
-      search,
-    ]);
+  const totalCount = companies.length;
 
-  /* =========================================================
-     통계
-  ========================================================= */
-
-  const totalCount =
-    companies.length;
-
-  const activeCount =
-    companies.filter(
-      (item) =>
-        item.is_active === true,
-    ).length;
+  const activeCount = companies.filter(
+    (item) => item.is_active === true,
+  ).length;
 
   const inactiveCount =
     totalCount - activeCount;
-
-  /* =========================================================
-     로딩
-  ========================================================= */
 
   if (loading) {
     return (
@@ -559,10 +462,6 @@ export default function SuperAdminPage() {
     );
   }
 
-  /* =========================================================
-     권한 없음
-  ========================================================= */
-
   if (!authorized) {
     return (
       <main style={styles.page}>
@@ -576,8 +475,7 @@ export default function SuperAdminPage() {
           </h2>
 
           <div style={styles.deniedText}>
-            슈퍼관리자 전용
-            페이지입니다.
+            슈퍼관리자 전용 페이지입니다.
           </div>
 
           {message && (
@@ -601,16 +499,9 @@ export default function SuperAdminPage() {
     );
   }
 
-  /* =========================================================
-     화면
-  ========================================================= */
-
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-
-        {/* 헤더 */}
-
         <div style={styles.header}>
           <div>
             <div style={styles.badge}>
@@ -639,8 +530,6 @@ export default function SuperAdminPage() {
           </button>
         </div>
 
-        {/* 로그인 정보 */}
-
         <div style={styles.loginBox}>
           <div>
             <div style={styles.smallLabel}>
@@ -656,8 +545,6 @@ export default function SuperAdminPage() {
             {userEmail}
           </div>
         </div>
-
-        {/* 휴대폰 Push 알림 */}
 
         <div style={styles.pushBox}>
           <div style={styles.pushInfo}>
@@ -677,10 +564,7 @@ export default function SuperAdminPage() {
               <div
                 style={{
                   ...styles.pushMessage,
-
-                  ...(pushMessage.startsWith(
-                    "❌",
-                  )
+                  ...(pushMessage.startsWith("❌")
                     ? styles.pushMessageError
                     : styles.pushMessageSuccess),
                 }}
@@ -703,11 +587,9 @@ export default function SuperAdminPage() {
             }
             style={{
               ...styles.pushButton,
-
               ...(pushEnabled
                 ? styles.pushButtonEnabled
                 : styles.pushButtonDisabled),
-
               opacity:
                 !pushSupported ||
                 pushLoading
@@ -723,10 +605,6 @@ export default function SuperAdminPage() {
           </button>
         </div>
 
-        {/* =====================================================
-            슈퍼관리자 메뉴
-        ===================================================== */}
-
         <div style={styles.menuGrid}>
           <button
             type="button"
@@ -740,9 +618,7 @@ export default function SuperAdminPage() {
               🏢
             </span>
 
-            <span>
-              업체 관리
-            </span>
+            <span>업체 관리</span>
           </button>
 
           <button
@@ -754,9 +630,7 @@ export default function SuperAdminPage() {
               💳
             </span>
 
-            <span>
-              요금제 관리
-            </span>
+            <span>요금제 관리</span>
           </button>
 
           <button
@@ -768,9 +642,7 @@ export default function SuperAdminPage() {
               🛠️
             </span>
 
-            <span>
-              구조분석 관리
-            </span>
+            <span>구조분석 관리</span>
           </button>
 
           <button
@@ -800,9 +672,7 @@ export default function SuperAdminPage() {
               )}
             </span>
 
-            <span>
-              알림
-            </span>
+            <span>알림</span>
           </button>
 
           <button
@@ -814,13 +684,21 @@ export default function SuperAdminPage() {
               💰
             </span>
 
-            <span>
-              결제 관리
+            <span>결제 관리</span>
+          </button>
+
+          <button
+            type="button"
+            style={styles.menuButton}
+            onClick={openMaterialOrders}
+          >
+            <span style={styles.menuIcon}>
+              📦
             </span>
+
+            <span>주문 확인</span>
           </button>
         </div>
-
-        {/* 통계 */}
 
         <div style={styles.statsGrid}>
           <StatCard
@@ -834,11 +712,10 @@ export default function SuperAdminPage() {
           />
 
           <StatCard
-            label="정지"            value={inactiveCount}
+            label="정지"
+            value={inactiveCount}
           />
         </div>
-
-        {/* 회사 관리 */}
 
         <section style={styles.section}>
           <div style={styles.sectionHeader}>
@@ -852,9 +729,8 @@ export default function SuperAdminPage() {
                   styles.sectionDescription
                 }
               >
-                가입된 회사를 조회하고
-                서비스 이용 상태를
-                관리합니다.
+                가입된 회사를 조회하고 서비스
+                이용 상태를 관리합니다.
               </div>
             </div>
 
@@ -887,30 +763,21 @@ export default function SuperAdminPage() {
             </button>
           </div>
 
-          {/* 검색 */}
-
           <input
             type="search"
             value={search}
             onChange={(event) =>
-              setSearch(
-                event.target.value,
-              )
+              setSearch(event.target.value)
             }
             placeholder="회사명, 대표자, 전화번호 검색"
             style={styles.searchInput}
           />
 
-          {/* 메시지 */}
-
           {message && (
             <div
               style={{
                 ...styles.message,
-
-                ...(message.startsWith(
-                  "❌",
-                )
+                ...(message.startsWith("❌")
                   ? styles.messageError
                   : styles.messageSuccess),
               }}
@@ -919,11 +786,8 @@ export default function SuperAdminPage() {
             </div>
           )}
 
-          {/* 회사 목록 */}
-
           <div style={styles.companyList}>
-            {filteredCompanies.length ===
-            0 ? (
+            {filteredCompanies.length === 0 ? (
               <div style={styles.empty}>
                 검색 결과가 없습니다.
               </div>
@@ -956,10 +820,6 @@ export default function SuperAdminPage() {
   );
 }
 
-/* =========================================================
-   통계 카드
-========================================================= */
-
 function StatCard({
   label,
   value,
@@ -977,10 +837,6 @@ function StatCard({
   );
 }
 
-/* =========================================================
-   회사 카드
-========================================================= */
-
 function CompanyCard({
   company,
   changing,
@@ -992,14 +848,9 @@ function CompanyCard({
 
   return (
     <div style={styles.companyCard}>
-
       <div style={styles.companyTop}>
         <div style={{ minWidth: 0 }}>
-          <div
-            style={
-              styles.companyNameRow
-            }
-          >
+          <div style={styles.companyNameRow}>
             <div style={styles.companyName}>
               {company.company_name ||
                 "회사명 없음"}
@@ -1008,15 +859,12 @@ function CompanyCard({
             <span
               style={{
                 ...styles.statusBadge,
-
                 ...(active
                   ? styles.activeBadge
                   : styles.inactiveBadge),
               }}
             >
-              {active
-                ? "활성"
-                : "정지"}
+              {active ? "활성" : "정지"}
             </span>
           </div>
 
@@ -1033,15 +881,11 @@ function CompanyCard({
           onClick={onToggle}
           style={{
             ...styles.toggleButton,
-
             ...(active
               ? styles.stopButton
               : styles.activateButton),
-
             opacity:
-              changing
-                ? 0.6
-                : 1,
+              changing ? 0.6 : 1,
           }}
         >
           {changing
@@ -1064,9 +908,7 @@ function CompanyCard({
 
       <InfoRow
         label="전화번호"
-        value={
-          company.phone || "-"
-        }
+        value={company.phone || "-"}
       />
 
       <InfoRow
@@ -1094,8 +936,6 @@ function CompanyCard({
         }
       />
 
-      {/* 회사 상세관리 버튼 */}
-
       <button
         type="button"
         onClick={onManage}
@@ -1110,10 +950,6 @@ function CompanyCard({
     </div>
   );
 }
-
-/* =========================================================
-   정보 행
-========================================================= */
 
 function InfoRow({
   label,
@@ -1132,17 +968,12 @@ function InfoRow({
   );
 }
 
-/* =========================================================
-   스타일
-========================================================= */
-
 const styles = {
   page: {
     minHeight: "100vh",
     background: "#f3f4f6",
     color: "#111827",
-    padding:
-      "18px 14px 50px",
+    padding: "18px 14px 50px",
   },
 
   container: {
@@ -1153,8 +984,7 @@ const styles = {
 
   header: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     alignItems: "flex-start",
     gap: "12px",
     marginBottom: "16px",
@@ -1199,15 +1029,13 @@ const styles = {
 
   loginBox: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: "12px",
     background: "#ffffff",
     borderRadius: "14px",
     padding: "14px",
-    border:
-      "1px solid #e5e7eb",
+    border: "1px solid #e5e7eb",
     marginBottom: "14px",
   },
 
@@ -1283,7 +1111,8 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    WebkitTapHighlightColor: "transparent",
+    WebkitTapHighlightColor:
+      "transparent",
     touchAction: "manipulation",
   },
 
@@ -1297,10 +1126,6 @@ const styles = {
     color: "#166534",
   },
 
-  /* =========================================================
-     슈퍼관리자 메뉴
-  ========================================================= */
-
   menuGrid: {
     display: "grid",
     gridTemplateColumns:
@@ -1311,8 +1136,7 @@ const styles = {
 
   menuButton: {
     minHeight: "62px",
-    border:
-      "1px solid #d1d5db",
+    border: "1px solid #d1d5db",
     borderRadius: "14px",
     background: "#ffffff",
     color: "#111827",
@@ -1375,8 +1199,7 @@ const styles = {
 
   statCard: {
     background: "#ffffff",
-    border:
-      "1px solid #e5e7eb",
+    border: "1px solid #e5e7eb",
     borderRadius: "14px",
     padding: "14px 10px",
     textAlign: "center",
@@ -1398,14 +1221,12 @@ const styles = {
     background: "#ffffff",
     borderRadius: "16px",
     padding: "15px",
-    border:
-      "1px solid #e5e7eb",
+    border: "1px solid #e5e7eb",
   },
 
   sectionHeader: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     alignItems: "flex-start",
     gap: "10px",
     marginBottom: "13px",
@@ -1439,8 +1260,7 @@ const styles = {
     width: "100%",
     boxSizing: "border-box",
     minHeight: "44px",
-    border:
-      "1px solid #d1d5db",
+    border: "1px solid #d1d5db",
     borderRadius: "10px",
     padding: "0 12px",
     fontSize: "14px",
@@ -1459,15 +1279,13 @@ const styles = {
   messageSuccess: {
     background: "#f0fdf4",
     color: "#166534",
-    border:
-      "1px solid #bbf7d0",
+    border: "1px solid #bbf7d0",
   },
 
   messageError: {
     background: "#fef2f2",
     color: "#991b1b",
-    border:
-      "1px solid #fecaca",
+    border: "1px solid #fecaca",
   },
 
   companyList: {
@@ -1476,8 +1294,7 @@ const styles = {
   },
 
   companyCard: {
-    border:
-      "1px solid #e5e7eb",
+    border: "1px solid #e5e7eb",
     borderRadius: "13px",
     padding: "13px",
     background: "#fafafa",
@@ -1485,8 +1302,7 @@ const styles = {
 
   companyTop: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     alignItems: "flex-start",
     gap: "10px",
   },
@@ -1555,8 +1371,7 @@ const styles = {
 
   infoRow: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: "12px",
     padding: "4px 0",
@@ -1611,8 +1426,7 @@ const styles = {
     maxWidth: "420px",
     margin: "100px auto 0",
     background: "#ffffff",
-    border:
-      "1px solid #e5e7eb",
+    border: "1px solid #e5e7eb",
     borderRadius: "18px",
     padding: "28px 20px",
     textAlign: "center",
@@ -1640,8 +1454,7 @@ const styles = {
   },
 
   deniedTitle: {
-    margin:
-      "12px 0 5px",
+    margin: "12px 0 5px",
     fontSize: "20px",
   },
 
