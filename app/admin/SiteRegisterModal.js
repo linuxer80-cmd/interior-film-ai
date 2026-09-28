@@ -1039,7 +1039,7 @@ export default function SiteRegisterModal({
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "1fr 1fr",
+                  "1fr",
                 gap: "8px",
               }}
             >
@@ -1053,7 +1053,7 @@ export default function SiteRegisterModal({
                     labelStyle
                   }
                 >
-                    종료 날짜
+                  종료 날짜
                 </label>
 
                 <input
@@ -1075,40 +1075,6 @@ export default function SiteRegisterModal({
                   }
                 />
               </div>
-
-              {/* 일정 시간은 현장별로 달라 날짜만 입력합니다. */}
-              {/* <div
-                style={
-                  fieldStyle
-                }
-              >
-                <label
-                  style={
-                    labelStyle
-                  }
-                >
-                  종료 시간
-                </label>
-
-                <input
-                  type="time"
-                  value={
-                    form.end_time
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateField(
-                      "end_time",
-                      event.target
-                        .value,
-                    )
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-              </div> */}
             </div>
           </div>
 
