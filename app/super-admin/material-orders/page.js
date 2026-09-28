@@ -1,0 +1,1315 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabase } from "../../../lib/supabase";
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "전체 주문" },
+  { value: "paid", label: "결제 완료" },
+  { value: "preparing", label: "상품 준비중" },
+  { value: "shipped", label: "발송 완료" },
+  { value: "delivered", label: "배송 완료" },
+  { value: "cancel_requested", label: "취소 요청" },
+  { value: "cancelled", label: "취소 완료" },
+  { value: "payment_failed", label: "결제 실패" },
+];
+
+const STATUS_INFO = {
+  payment_pending: {
+    label: "결제 대기",
+    color: "#b45309",
+    background: "#fff7ed",
+  },
+  paid: {
+    label: "결제 완료",
+    color: "#2563eb",
+    background: "#eff6ff",
+  },
+  preparing: {
+    label: "상품 준비중",
+    color: "#7c3aed",
+    background: "#f5f3ff",
+  },
+  shipped: {
+    label: "발송 완료",
+    color: "#0891b2",
+    background: "#ecfeff",
+  },
+  delivered: {
+    label: "배송 완료",
+    color: "#15803d",
+    background: "#f0fdf4",
+  },
+  cancel_requested: {
+    label: "취소 요청",
+    color: "#c2410c",
+    background: "#fff7ed",
+  },
+  cancelled: {
+    label: "취소 완료",
+    color: "#6b7280",
+    background: "#f3f4f6",
+  },
+  payment_failed: {
+    label: "결제 실패",
+    color: "#dc2626",
+    background: "#fef2f2",
+  },
+};
+
+function money(value) {
+  const number = Number(value || 0);
+  return `${number.toLocaleString("ko-KR")}원`;
+}
+
+function meter(value) {
+  const number = Number(value || 0);
+
+  if (Number.isInteger(number)) {
+    return `${number}m`;
+  }
+
+  return `${number.toLocaleString("ko-KR")}m`;
+}
+
+function dateTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getItemCode(item) {
+  return (
+    item.product_code ||
+    item.material_code ||
+    item.code ||
+    "-"
+  );
+}
+
+function getItemName(item) {
+  return (
+    item.product_name ||
+    item.material_name ||
+    item.name ||
+    getItemCode(item)
+  );
+}
+
+function getItemQuantity(item) {
+  return (
+    item.quantity_m ??
+    item.order_length_m ??
+    item.meters ??
+    item.quantity ??
+    0
+  );
+}
+
+function getItemUnitPrice(item) {
+  return (
+    item.unit_price ??
+    item.unit_price_per_m ??
+    item.price_per_m ??
+    item.dealer_price_per_m ??
+    0
+  );
+}
+
+function getItemTotal(item) {
+  const savedTotal =
+    item.total_amount ??
+    item.line_total_amount ??
+    item.subtotal_amount;
+
+  if (
+    savedTotal !== undefined &&
+    savedTotal !== null
+  ) {
+    return Number(savedTotal || 0);
+  }
+
+  return (
+    Number(getItemQuantity(item)) *
+    Number(getItemUnitPrice(item))
+  );
+}
+
+function StatusBadge({ status }) {
+  const info = STATUS_INFO[status] || {
+    label: status || "상태 미확인",
+    color: "#374151",
+    background: "#f3f4f6",
+  };
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        minHeight: 34,
+        padding: "6px 12px",
+        borderRadius: 999,
+        color: info.color,
+        background: info.background,
+        fontSize: 14,
+        fontWeight: 900,
+      }}
+    >
+      {info.label}
+    </span>
+  );
+}
+
+export default function SuperAdminMaterialOrdersPage() {
+  const [orders, setOrders] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] =
+    useState("success");
+  const [expandedIds, setExpandedIds] =
+    useState({});
+
+  const apiFetch = useCallback(
+    async (url, options = {}) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("로그인이 필요합니다.");
+      }
+
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.body
+            ? {
+                "Content-Type": "application/json",
+              }
+            : {}),
+          Authorization:
+            `Bearer ${session.access_token}`,
+          ...(options.headers || {}),
+        },
+        cache: "no-store",
+      });
+
+      const rawText = await response.text();
+      let result = {};
+
+      if (rawText) {
+        try {
+          result = JSON.parse(rawText);
+        } catch {
+          throw new Error(
+            `서버 응답을 읽을 수 없습니다. 상태코드: ${response.status}`,
+          );
+        }
+      }
+
+      if (
+        !response.ok ||
+        result.ok === false
+      ) {
+        throw new Error(
+          result.error ||
+            result.message ||
+            `요청 실패: ${response.status}`,
+        );
+      }
+
+      return result;
+    },
+    [],
+  );
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const params = new URLSearchParams();
+
+      if (statusFilter !== "all") {
+        params.set("status", statusFilter);
+      }
+
+      if (appliedSearch) {
+        params.set("search", appliedSearch);
+      }
+
+      const query = params.toString();
+
+      const result = await apiFetch(
+        `/api/super-admin/material-orders${
+          query ? `?${query}` : ""
+        }`,
+      );
+
+      setOrders(result.orders || []);
+
+      const requestedOrderId =
+        new URLSearchParams(
+          window.location.search,
+        ).get("orderId");
+
+      if (requestedOrderId) {
+        setExpandedIds((current) => ({
+          ...current,
+          [requestedOrderId]: true,
+        }));
+
+        window.setTimeout(() => {
+          const target =
+            document.getElementById(
+              `material-order-${requestedOrderId}`,
+            );
+
+          target?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 300);
+      }
+    } catch (error) {
+      setOrders([]);
+      setMessageType("error");
+      setMessage(
+        error.message ||
+          "주문을 불러오지 못했습니다.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    apiFetch,
+    appliedSearch,
+    statusFilter,
+  ]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  const counts = useMemo(() => {
+    const result = {
+      total: orders.length,
+      paid: 0,
+      preparing: 0,
+      shipped: 0,
+      delivered: 0,
+    };
+
+    for (const order of orders) {
+      if (
+        result[order.status] !== undefined
+      ) {
+        result[order.status] += 1;
+      }
+    }
+
+    return result;
+  }, [orders]);
+
+  function submitSearch(event) {
+    event.preventDefault();
+    setAppliedSearch(searchInput.trim());
+  }
+
+  function toggleOrder(orderId) {
+    setExpandedIds((current) => ({
+      ...current,
+      [orderId]: !current[orderId],
+    }));
+  }
+
+  async function changeStatus(
+    order,
+    nextStatus,
+  ) {
+    const nextLabel =
+      STATUS_INFO[nextStatus]?.label ||
+      nextStatus;
+
+    const confirmed = window.confirm(
+      `${
+        order.order_number || "이 주문"
+      }을(를) '${nextLabel}' 상태로 변경할까요?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUpdatingId(order.id);
+    setMessage("");
+
+    try {
+      const result = await apiFetch(
+        "/api/super-admin/material-orders",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            orderId: order.id,
+            status: nextStatus,
+          }),
+        },
+      );
+
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                ...result.order,
+              }
+            : item,
+        ),
+      );
+
+      setMessageType("success");
+      setMessage(
+        `${
+          order.order_number || "주문"
+        } 상태를 '${nextLabel}'로 변경했습니다.`,
+      );
+    } catch (error) {
+      setMessageType("error");
+      setMessage(
+        error.message ||
+          "상태 변경에 실패했습니다.",
+      );
+
+      window.alert(
+        error.message ||
+          "상태 변경에 실패했습니다.",
+      );
+    } finally {
+      setUpdatingId("");
+    }
+  }
+
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#f6f7fb",
+        color: "#111827",
+        padding: "24px 16px 80px",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 980,
+          margin: "0 auto",
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 14,
+            marginBottom: 24,
+          }}
+        >
+          <Link
+            href="/super-admin"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 52,
+              height: 52,
+              flexShrink: 0,
+              border:
+                "1px solid #d7dae2",
+              borderRadius: 16,
+              background: "#ffffff",
+              color: "#111827",
+              textDecoration: "none",
+              fontSize: 26,
+              fontWeight: 900,
+            }}
+          >
+            ←
+          </Link>
+
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                padding: "7px 13px",
+                borderRadius: 999,
+                background: "#111827",
+                color: "#ffffff",
+                fontSize: 14,
+                fontWeight: 900,
+                marginBottom: 10,
+              }}
+            >
+              슈퍼관리자
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize:
+                  "clamp(30px, 7vw, 48px)",
+                lineHeight: 1.15,
+                letterSpacing: "-0.04em",
+              }}
+            >
+              자재 주문관리
+            </h1>
+
+            <p
+              style={{
+                margin: "10px 0 0",
+                color: "#6b7280",
+                fontSize: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              결제된 주문과 배송지를 확인하고
+              발송 상태를 관리합니다.
+            </p>
+          </div>
+        </header>
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
+            gap: 12,
+            marginBottom: 20,
+          }}
+        >
+          {[
+            [
+              "조회 주문",
+              counts.total,
+              "#111827",
+            ],
+            [
+              "결제 완료",
+              counts.paid,
+              "#2563eb",
+            ],
+            [
+              "준비중",
+              counts.preparing,
+              "#7c3aed",
+            ],
+            [
+              "발송 완료",
+              counts.shipped,
+              "#0891b2",
+            ],
+          ].map(
+            ([label, value, color]) => (
+              <div
+                key={label}
+                style={{
+                  padding: 20,
+                  border:
+                    "1px solid #e1e3e9",
+                  borderRadius: 22,
+                  background: "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 14,
+                    fontWeight: 800,
+                    marginBottom: 6,
+                  }}
+                >
+                  {label}
+                </div>
+
+                <div
+                  style={{
+                    color,
+                    fontSize: 34,
+                    fontWeight: 950,
+                  }}
+                >
+                  {value}
+                </div>
+              </div>
+            ),
+          )}
+        </section>
+
+        <section
+          style={{
+            padding: 20,
+            border:
+              "1px solid #e1e3e9",
+            borderRadius: 24,
+            background: "#ffffff",
+            marginBottom: 20,
+          }}
+        >
+          <form onSubmit={submitSearch}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 8,
+                fontWeight: 900,
+              }}
+            >
+              주문 검색
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+              }}
+            >
+              <input
+                value={searchInput}
+                onChange={(event) =>
+                  setSearchInput(
+                    event.target.value,
+                  )
+                }
+                placeholder="주문번호·받는 분·전화번호"
+                style={{
+                  flex: 1,
+                  width: "100%",
+                  minWidth: 0,
+                  height: 52,
+                  padding: "0 15px",
+                  border:
+                    "1px solid #d7dae2",
+                  borderRadius: 15,
+                  background: "#ffffff",
+                  fontSize: 16,
+                  outline: "none",
+                }}
+              />
+
+              <button
+                type="submit"
+                style={{
+                  flexShrink: 0,
+                  minWidth: 82,
+                  height: 52,
+                  border: 0,
+                  borderRadius: 15,
+                  background: "#111827",
+                  color: "#ffffff",
+                  fontSize: 16,
+                  fontWeight: 900,
+                }}
+              >
+                검색
+              </button>
+            </div>
+          </form>
+
+          <label
+            style={{
+              display: "block",
+              margin: "18px 0 8px",
+              fontWeight: 900,
+            }}
+          >
+            주문 상태
+          </label>
+
+          <select
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value,
+              )
+            }
+            style={{
+              width: "100%",
+              height: 52,
+              padding: "0 14px",
+              border:
+                "1px solid #d7dae2",
+              borderRadius: 15,
+              background: "#ffffff",
+              color: "#111827",
+              fontSize: 16,
+              fontWeight: 800,
+            }}
+          >
+            {STATUS_OPTIONS.map(
+              (option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                >
+                  {option.label}
+                </option>
+              ),
+            )}
+          </select>
+        </section>
+
+        {message && (
+          <div
+            style={{
+              padding: "14px 16px",
+              marginBottom: 18,
+              borderRadius: 15,
+              background:
+                messageType === "error"
+                  ? "#fef2f2"
+                  : "#f0fdf4",
+              color:
+                messageType === "error"
+                  ? "#b91c1c"
+                  : "#15803d",
+              fontWeight: 800,
+              lineHeight: 1.5,
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {loading ? (
+          <div
+            style={{
+              padding: 50,
+              textAlign: "center",
+              borderRadius: 24,
+              background: "#ffffff",
+              color: "#6b7280",
+              fontWeight: 800,
+            }}
+          >
+            주문을 불러오는 중입니다.
+          </div>
+        ) : orders.length === 0 ? (
+          <div
+            style={{
+              padding: "60px 20px",
+              textAlign: "center",
+              border:
+                "1px solid #e1e3e9",
+              borderRadius: 24,
+              background: "#ffffff",
+              color: "#6b7280",
+              fontWeight: 800,
+              lineHeight: 1.7,
+            }}
+          >
+            조건에 맞는 자재 주문이 없습니다.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gap: 16,
+            }}
+          >
+            {orders.map((order) => {
+              const expanded = Boolean(
+                expandedIds[order.id],
+              );
+
+              const address =
+                order.shipping_address || {};
+
+              const disabled =
+                updatingId === order.id;
+
+              return (
+                <article
+                  id={`material-order-${order.id}`}
+                  key={order.id}
+                  style={{
+                    overflow: "hidden",
+                    border:
+                      "1px solid #e1e3e9",
+                    borderRadius: 24,
+                    background: "#ffffff",
+                    boxShadow:
+                      "0 8px 24px rgba(17,24,39,0.04)",
+                    scrollMarginTop: 20,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggleOrder(order.id)
+                    }
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: 20,
+                      border: 0,
+                      background: "#ffffff",
+                      color: "#111827",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems:
+                          "flex-start",
+                        justifyContent:
+                          "space-between",
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            fontSize: 13,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {dateTime(
+                            order.created_at,
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 5,
+                            fontSize: 19,
+                            fontWeight: 950,
+                          }}
+                        >
+                          {order.order_number ||
+                            "주문번호 없음"}
+                        </div>
+                      </div>
+
+                      <StatusBadge
+                        status={order.status}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 12,
+                        marginTop: 16,
+                        paddingTop: 15,
+                        borderTop:
+                          "1px solid #eef0f4",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#6b7280",
+                          fontWeight: 800,
+                        }}
+                      >
+                        상품{" "}
+                        {order.items?.length ||
+                          0}
+                        종
+                      </span>
+
+                      <strong
+                        style={{
+                          color: "#7c3aed",
+                          fontSize: 19,
+                        }}
+                      >
+                        {money(
+                          order.total_amount ??
+                            order.final_amount ??
+                            order.amount,
+                        )}
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        textAlign: "center",
+                        color: "#6b7280",
+                        fontSize: 14,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {expanded
+                        ? "주문 상세 닫기 ▲"
+                        : "주문 상세 보기 ▼"}
+                    </div>
+                  </button>
+
+                  {expanded && (
+                    <div
+                      style={{
+                        padding:
+                          "0 20px 22px",
+                      }}
+                    >
+                      <section
+                        style={{
+                          padding: 16,
+                          borderRadius: 17,
+                          background:
+                            "#f7f7fa",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 12px",
+                            fontSize: 17,
+                          }}
+                        >
+                          주문 자재
+                        </h3>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          {(
+                            order.items || []
+                          ).map(
+                            (
+                              item,
+                              index,
+                            ) => (
+                              <div
+                                key={
+                                  item.id ||
+                                  `${order.id}-${index}`
+                                }
+                                style={{
+                                  padding: 14,
+                                  border:
+                                    "1px solid #e2e4e9",
+                                  borderRadius: 14,
+                                  background:
+                                    "#ffffff",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display:
+                                      "flex",
+                                    justifyContent:
+                                      "space-between",
+                                    gap: 10,
+                                  }}
+                                >
+                                  <div>
+                                    <strong
+                                      style={{
+                                        display:
+                                          "block",
+                                        fontSize: 17,
+                                      }}
+                                    >
+                                      {getItemCode(
+                                        item,
+                                      )}
+                                    </strong>
+
+                                    <span
+                                      style={{
+                                        display:
+                                          "block",
+                                        marginTop: 4,
+                                        color:
+                                          "#6b7280",
+                                        fontSize: 14,
+                                      }}
+                                    >
+                                      {getItemName(
+                                        item,
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  <strong
+                                    style={{
+                                      color:
+                                        "#7c3aed",
+                                      whiteSpace:
+                                        "nowrap",
+                                    }}
+                                  >
+                                    {meter(
+                                      getItemQuantity(
+                                        item,
+                                      ),
+                                    )}
+                                  </strong>
+                                </div>
+
+                                <div
+                                  style={{
+                                    marginTop: 10,
+                                    color:
+                                      "#4b5563",
+                                    fontSize: 14,
+                                  }}
+                                >
+                                  단가{" "}
+                                  {money(
+                                    getItemUnitPrice(
+                                      item,
+                                    ),
+                                  )}
+                                  /m · 상품금액{" "}
+                                  {money(
+                                    getItemTotal(
+                                      item,
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </section>
+
+                      <section
+                        style={{
+                          padding: 16,
+                          borderRadius: 17,
+                          background:
+                            "#f7f7fa",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 10px",
+                            fontSize: 17,
+                          }}
+                        >
+                          배송지
+                        </h3>
+
+                        <div
+                          style={{
+                            lineHeight: 1.75,
+                            color: "#374151",
+                          }}
+                        >
+                          <strong>
+                            {address.recipient_name ||
+                              order.recipient_name ||
+                              "받는 분 미등록"}
+                          </strong>
+
+                          <br />
+
+                          {address.recipient_phone ||
+                            order.recipient_phone ||
+                            "전화번호 미등록"}
+
+                          <br />
+
+                          {address.postal_code && (
+                            <>
+                              [
+                              {
+                                address.postal_code
+                              }
+                              ]{" "}
+                            </>
+                          )}
+
+                          {address.address_line1 ||
+                            order.address_line1 ||
+                            "주소 미등록"}
+
+                          {address.address_line2 && (
+                            <>
+                              {" "}
+                              {
+                                address.address_line2
+                              }
+                            </>
+                          )}
+
+                          {(address.delivery_note ||
+                            order.delivery_note) && (
+                            <>
+                              <br />
+                              배송 요청:{" "}
+                              {address.delivery_note ||
+                                order.delivery_note}
+                            </>
+                          )}
+                        </div>
+                      </section>
+
+                      <section
+                        style={{
+                          padding: 16,
+                          borderRadius: 17,
+                          background:
+                            "#f7f7fa",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 10px",
+                            fontSize: 17,
+                          }}
+                        >
+                          결제 정보
+                        </h3>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 7,
+                            color: "#4b5563",
+                            fontSize: 14,
+                          }}
+                        >
+                          <div>
+                            결제 상태:{" "}
+                            <strong>
+                              {order.payment_status ||
+                                "-"}
+                            </strong>
+                          </div>
+
+                          <div>
+                            공급가액:{" "}
+                            <strong>
+                              {money(
+                                order.subtotal_amount ??
+                                  order.supply_amount,
+                              )}
+                            </strong>
+                          </div>
+
+                          <div>
+                            부가세:{" "}
+                            <strong>
+                              {money(
+                                order.vat_amount,
+                              )}
+                            </strong>
+                          </div>
+
+                          <div>
+                            배송비:{" "}
+                            <strong>
+                              {money(
+                                order.shipping_fee,
+                              )}
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              paddingTop: 8,
+                              borderTop:
+                                "1px solid #dedfe5",
+                              color: "#111827",
+                              fontSize: 17,
+                            }}
+                          >
+                            총 결제금액:{" "}
+                            <strong>
+                              {money(
+                                order.total_amount ??
+                                  order.final_amount ??
+                                  order.amount,
+                              )}
+                            </strong>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section
+                        style={{
+                          padding: 16,
+                          border:
+                            "1px solid #ddd6fe",
+                          borderRadius: 17,
+                          background:
+                            "#faf8ff",
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 12px",
+                            fontSize: 17,
+                          }}
+                        >
+                          주문 상태 변경
+                        </h3>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(2, minmax(0, 1fr))",
+                            gap: 9,
+                          }}
+                        >
+                          {[
+                            [
+                              "paid",
+                              "결제 완료",
+                            ],
+                            [
+                              "preparing",
+                              "상품 준비중",
+                            ],
+                            [
+                              "shipped",
+                              "발송 완료",
+                            ],
+                            [
+                              "delivered",
+                              "배송 완료",
+                            ],
+                            [
+                              "cancelled",
+                              "주문 취소",
+                            ],
+                          ].map(
+                            ([
+                              value,
+                              label,
+                            ]) => {
+                              const selected =
+                                order.status ===
+                                value;
+
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  disabled={
+                                    disabled ||
+                                    selected
+                                  }
+                                  onClick={() =>
+                                    changeStatus(
+                                      order,
+                                      value,
+                                    )
+                                  }
+                                  style={{
+                                    minHeight: 48,
+                                    padding:
+                                      "10px 8px",
+                                    border: selected
+                                      ? "2px solid #7c3aed"
+                                      : "1px solid #d7d2e5",
+                                    borderRadius: 14,
+                                    background:
+                                      selected
+                                        ? "#7c3aed"
+                                        : "#ffffff",
+                                    color:
+                                      selected
+                                        ? "#ffffff"
+                                        : "#111827",
+                                    fontSize: 14,
+                                    fontWeight: 900,
+                                    opacity:
+                                      disabled
+                                        ? 0.55
+                                        : 1,
+                                  }}
+                                >
+                                  {selected
+                                    ? "현재 상태"
+                                    : label}
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
+
+                        {disabled && (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              color: "#7c3aed",
+                              textAlign:
+                                "center",
+                              fontSize: 14,
+                              fontWeight: 800,
+                            }}
+                          >
+                            상태를 변경하는
+                            중입니다.
+                          </div>
+                        )}
+                      </section>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={loadOrders}
+          disabled={loading}
+          style={{
+            width: "100%",
+            minHeight: 54,
+            marginTop: 18,
+            border:
+              "1px solid #d7dae2",
+            borderRadius: 16,
+            background: "#ffffff",
+            color: "#111827",
+            fontSize: 16,
+            fontWeight: 900,
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          주문 목록 새로고침
+        </button>
+      </div>
+    </main>
+  );
+      }
