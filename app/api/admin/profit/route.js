@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 const TYPES = { labor: "인건비", material: "자재비", expense: "경비" };
 const PREFIX = "수익관리/";
-const json = (body, status = 200) => Response.json(body, { status });
+const json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 const money = (value) => { const n = Number(value); return Number.isFinite(n) && n >= 0 ? n : 0; };
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
@@ -45,7 +45,7 @@ export async function GET(request) {
     const toTime = Date.parse(`${to}T00:00:00Z`);
     if (!validDate(from) || !validDate(to) || fromTime > toTime || toTime - fromTime > 366 * 86400000) return json({ error: "기간은 최대 1년으로 지정해주세요." }, 400);
     const { db, companyId } = auth;
-    const sites = await allRows(db.from("sites").select("id,site_name,customer_name,schedule_start,contract_amount,status,site_workers(role,worker_id,workers(id,name,daily_wage))")
+    const sites = await allRows(db.from("sites").select("id,site_name,customer_name,schedule_start,contract_amount,status,site_workers(company_id,role,worker_id,workers(id,company_id,name,daily_wage))")
       .eq("company_id", companyId).gte("schedule_start", `${from}T00:00:00`).lt("schedule_start", new Date(toTime + 86400000).toISOString().slice(0, 10) + "T00:00:00").order("schedule_start", { ascending: true }));
     const materials = [];
     const expenses = [];
@@ -74,7 +74,11 @@ export async function GET(request) {
       const revenue = money(site.contract_amount);
       const material = (materialBySite.get(site.id) || 0) + costs.material;
       const profit = revenue - costs.labor - material - costs.expense;
-      return { ...site, revenue, labor: costs.labor, material, expense: costs.expense, profit, entries: costs.entries, missingContract: site.contract_amount == null || site.contract_amount === "" };
+      const site_workers = (site.site_workers || [])
+        .filter((assignment) => assignment.company_id === companyId && assignment.workers?.company_id === companyId)
+        .map(({ role, worker_id, workers }) => ({ role, worker_id,
+          workers: { id: workers.id, name: workers.name, daily_wage: workers.daily_wage } }));
+      return { ...site, site_workers, revenue, labor: costs.labor, material, expense: costs.expense, profit, entries: costs.entries, missingContract: site.contract_amount == null || site.contract_amount === "" };
     });
     const totals = result.reduce((sum, item) => { for (const key of ["revenue", "labor", "material", "expense", "profit"]) sum[key] += item[key]; return sum; }, { revenue: 0, labor: 0, material: 0, expense: 0, profit: 0 });
     return json({ sites: result, totals });
