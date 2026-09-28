@@ -48,7 +48,7 @@ export async function GET(request) {
     const { count, error: countError } = await db.from("site_daily_assignments").select("id", { head: true, count: "exact" }).eq("site_id", siteId);
     if (countError?.code === "42P01") return reply({ assignments: [], hasDailySchedule: false, site });
     if (countError) throw countError;
-    let query = db.from("site_daily_assignments").select("work_date,worker_id,role").eq("company_id", profile.company_id).eq("site_id", siteId).order("work_date");
+    let query = db.from("site_daily_assignments").select("work_date,worker_id,role").eq("company_id", profile.company_id).eq("site_id", siteId).gte("work_date", localDay(site.schedule_start)).lte("work_date", localDay(site.schedule_end) || localDay(site.schedule_start)).order("work_date");
     if (workerId) query = query.eq("worker_id", workerId);
     const { data, error } = await query;
     if (error) throw error;
