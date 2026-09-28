@@ -397,6 +397,24 @@ function normalizeAnalysisClassification(
     .filter(Boolean)
     .join(" ");
 
+  // Cabinet doors can sit beside a room door. The object named as the
+  // installation target takes precedence over a generic "door" label.
+  const targetEvidence = [
+    analysis.sub_category,
+    analysis.classification_evidence,
+    ...tags,
+  ].filter(Boolean).join(" ");
+  const furnitureText = [analysis.category, targetEvidence].filter(Boolean).join(" ");
+  const wardrobe = includesAny(furnitureText, ["붙박이장", "붙박이 장", "옷장", "wardrobe", "built-in closet"]);
+  const shoeCabinet = includesAny(furnitureText, ["신발장", "현관장", "shoe cabinet"]);
+  if (wardrobe || shoeCabinet) {
+    return {
+      ...analysis,
+      category: wardrobe ? "붙박이장" : "신발장",
+      sub_category: wardrobe ? "붙박이장 문짝" : "신발장 문짝",
+    };
+  }
+
   /*
    * 매우 강한 문 계열 특징
    *
@@ -526,6 +544,12 @@ function makeClassificationRules() {
 "문짝 + 문틀 + 손잡이 또는 경첩"이 확인되면
 주방가구가 아니라 "문 및 문틀"을 우선 선택한다.
 
+단, 수납장 문짝의 손잡이·경첩은 출입문의 증거가 아니다.
+실제로 사람이 통과하는 출입구와 독립된 건축용 문틀이 보여야 한다.
+붙박이장 문, 신발장 문, 냉장고장 문은 출입문으로 분류하지 않는다.
+한 사진에 방문과 붙박이장이 함께 보이면 주요 시공 대상이 무엇인지
+가구의 연속된 수납 도어·선반과 출입구 구조를 구분해 판단한다.
+
 문 표면에 사각 패널이나 몰딩이 있어도
 그것을 싱크대 문짝으로 판단하지 않는다.
 
@@ -576,6 +600,8 @@ function makeClassificationRules() {
 - 바닥부터 천장 가까이 이어지는 다수의 수납 도어
 - 옷장 구조
 - 붙박이 수납 구조
+- 열린 수납 칸이나 선반, 여러 장의 가구 도어가 이어진 구조
+- 가구 문짝에 손잡이가 있어도 사람이 드나드는 출입문이 아니다
 
 출입용 방문과 혼동하지 않는다.
 
