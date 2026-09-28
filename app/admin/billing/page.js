@@ -203,6 +203,8 @@ export default function BillingPage() {
     setCurrentPlan,
   ] = useState(null);
 
+  const [pendingPlan, setPendingPlan] = useState(null);
+
   const [
     selectedPlan,
     setSelectedPlan,
@@ -349,6 +351,11 @@ export default function BillingPage() {
       setCurrentPlan(
         current || null,
       );
+      const { data: authSession } = await supabase.auth.getSession();
+      if (authSession?.session?.access_token) {
+        const res = await fetch("/api/billing/change-plan", { headers: { Authorization: "Bearer " + authSession.session.access_token } });
+        if (res.ok) setPendingPlan((await res.json()).pendingPlanCode || null);
+      }
 
       setPlans(
         plansResult.data ||
@@ -747,6 +754,18 @@ export default function BillingPage() {
         window.location.href =
           "/admin";
 
+        return;
+      }
+
+      const currentPrice = Number(currentPlan?.monthly_price_krw);
+      const targetPrice = Number(plan?.monthly_price_krw);
+      if (currentCode !== "trial" && Number.isFinite(currentPrice) && Number.isFinite(targetPrice) && targetPrice < currentPrice) {
+        if (!window.confirm(getPlanLabel(code) + " 요금제로 다음 결제일부터 변경하시겠습니까?\n지금 추가 결제: 0원 / 다음 결제: " + formatPrice(targetPrice))) return;
+        const res = await fetch("/api/billing/change-plan", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken }, body: JSON.stringify({ plan_code: code }) });
+        const change = await res.json();
+        if (!res.ok) throw new Error(change.error || "변경 예약에 실패했습니다.");
+        setPendingPlan(change.pendingPlanCode);
+        alert("변경 예약 완료: " + formatKstDate(change.effectiveAt) + "부터 적용, 다음 결제 " + formatPrice(change.nextAmount));
         return;
       }
 
@@ -1594,6 +1613,8 @@ export default function BillingPage() {
       </div>
 
 
+      {pendingPlan && <p role="status">다음 결제일부터 {getPlanLabel(pendingPlan)} 요금제가 적용됩니다. 지금 추가 결제는 없습니다.</p>}
+      <p>월 정기결제입니다. 하향 변경은 다음 결제일부터 적용되고, 취소하면 현재 결제 기간 종료 후 자동결제가 중단됩니다.</p>
       {/* 요금제 목록 */}
 
       <div
@@ -1632,6 +1653,7 @@ export default function BillingPage() {
             const isTrial =
               code ===
               "trial";
+            const upgradePaused = currentPlanCode !== "trial" && Number(plan.monthly_price_krw) > Number(currentPlan?.monthly_price_krw);
 
             const isPreparing =
               normalizePlanCode(
@@ -1830,6 +1852,7 @@ export default function BillingPage() {
                   type="button"
                   disabled={
                     isCurrent ||
+                    upgradePaused ||
                     anyPreparing ||
                     canceling
                   }
@@ -1890,6 +1913,8 @@ export default function BillingPage() {
                 >
                   {isCurrent
                     ? "현재 요금제"
+                    : upgradePaused
+                      ? "상향 변경 준비 중"
                     : isPreparing
                       ? "결제 처리 중..."
                       : isTrial
