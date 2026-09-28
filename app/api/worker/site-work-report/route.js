@@ -912,9 +912,17 @@ export async function POST(request) {
        완료보고는 책임 팀장만 제출 가능
     ------------------------------------------------------- */
 
-    if (
-      assignment.role !== "leader"
-    ) {
+    const { data: dailyLeader, error: leaderError } = await supabase
+      .from("site_daily_assignments")
+      .select("id")
+      .eq("company_id", worker.company_id)
+      .eq("site_id", siteId)
+      .eq("worker_id", worker.id)
+      .eq("role", "leader")
+      .limit(1);
+    if (leaderError && leaderError.code !== "42P01") throw leaderError;
+
+    if (assignment.role !== "leader" && !dailyLeader?.length) {
       return NextResponse.json(
         {
           success: false,
