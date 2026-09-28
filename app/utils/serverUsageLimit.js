@@ -285,6 +285,7 @@ async function getUsedQuantity({
   companyId,
   eventType,
   isTrial,
+  planCode,
 }) {
   let query =
     supabase
@@ -313,11 +314,30 @@ async function getUsedQuantity({
     } =
       getCurrentKoreanMonthRange();
 
+    let usageStart = monthStart;
+    if (planCode === "light") {
+      const { data: subscription, error: subscriptionError } = await supabase
+        .from("subscriptions")
+        .select("current_period_start")
+        .eq("company_id", companyId)
+        .eq("plan_code", "light")
+        .eq("status", "active")
+        .maybeSingle();
+      if (subscriptionError || !subscription?.current_period_start) {
+        return { ok: false, error: subscriptionError || new Error("라이트 결제기간을 확인할 수 없습니다."), used: 0 };
+      }
+      const periodStart = new Date(subscription.current_period_start);
+      if (Number.isNaN(periodStart.getTime())) {
+        return { ok: false, error: new Error("라이트 결제기간이 올바르지 않습니다."), used: 0 };
+      }
+      if (periodStart > usageStart) usageStart = periodStart;
+    }
+
     query =
       query
         .gte(
           "created_at",
-          monthStart.toISOString()
+          usageStart.toISOString()
         )
         .lt(
           "created_at",
@@ -563,6 +583,7 @@ export async function checkUsageLimit({
           company.id,
         eventType,
         isTrial,
+        planCode: normalizedPlanCode,
       });
 
     if (!usageResult.ok) {
