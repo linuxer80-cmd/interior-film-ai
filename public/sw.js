@@ -102,11 +102,16 @@ self.addEventListener(
     /*
      * 현재 사이트 기준 절대 URL로 변환
      */
-    const targetUrl =
-      new URL(
-        rawUrl,
-        self.location.origin
-      ).href;
+    let targetUrl;
+
+    try {
+      const parsed = new URL(rawUrl, self.location.origin);
+      targetUrl = parsed.origin === self.location.origin
+        ? parsed.href
+        : `${self.location.origin}/`;
+    } catch {
+      targetUrl = `${self.location.origin}/`;
+    }
 
     event.waitUntil(
       (async () => {
@@ -153,18 +158,12 @@ self.addEventListener(
               if (
                 "navigate" in client
               ) {
-                await client.navigate(
-                  targetUrl
-                );
+                const navigated = await client.navigate(targetUrl);
+                if (navigated) {
+                  await navigated.focus();
+                  return;
+                }
               }
-
-              if (
-                "focus" in client
-              ) {
-                await client.focus();
-              }
-
-              return;
             }
           } catch {
             // 새 창 열기로 진행
