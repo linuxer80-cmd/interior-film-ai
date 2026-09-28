@@ -47,6 +47,10 @@ function getPlanLabel(planCode, planName) {
     return "TRIAL";
   }
 
+  if (code === "light") {
+    return "LIGHT";
+  }
+
   if (code === "basic") {
     return "BASIC";
   }
@@ -276,6 +280,20 @@ export default function PlanUsageButton() {
         );
       }
 
+      if (String(row.plan_code).toLowerCase() === "light") {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error("로그인이 필요합니다.");
+        const response = await fetch("/api/billing/light-usage", {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "라이트 사용량을 확인하지 못했습니다.");
+        for (const [eventType, values] of Object.entries(result.usage || {})) {
+          row[`${eventType}_used`] = values.used;
+          row[`${eventType}_remaining`] = values.remaining;
+        }
+      }
       setPlan(row);
     } catch (loadError) {
       console.error(

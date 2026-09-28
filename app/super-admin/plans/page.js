@@ -424,6 +424,7 @@ function PlanCard({
 }) {
   const icons = {
     trial: "🎁",
+    light: "🌱",
     basic: "🥉",
     pro: "🥈",
     business: "🥇",
