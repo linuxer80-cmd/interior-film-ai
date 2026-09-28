@@ -27,11 +27,6 @@ const tabs = [
     id: "leads",
     label: "고객 상담",
   },
-  {
-    id: "material-order",
-    label: "📦 자재 주문",
-    href: "/admin/material-order",
-  },
 ];
 
 export default function AdminTabs({
