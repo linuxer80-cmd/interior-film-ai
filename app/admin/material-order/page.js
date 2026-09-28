@@ -17,24 +17,33 @@ function formatWon(value) {
   )}원`;
 }
 
-function getSampleImage(product) {
-  const directUrl =
+function emptyAddress() {
+  return {
+    address_name: "기본 배송지",
+    recipient_name: "",
+    recipient_phone: "",
+    postal_code: "",
+    address_line1: "",
+    address_line2: "",
+    delivery_note: "",
+    is_default: true,
+  };
+}
+
+function getImageUrl(product) {
+  const direct =
     product?.sample_image_url ||
     product?.image_url ||
     "";
 
-  if (directUrl) {
-    return directUrl;
-  }
+  if (direct) return direct;
 
   let path =
     product?.sample_image_path ||
     product?.image_path ||
     "";
 
-  if (!path) {
-    return "";
-  }
+  if (!path) return "";
 
   if (
     path.startsWith("http://") ||
@@ -59,14 +68,14 @@ function getSampleImage(product) {
 }
 
 function calculateAmounts(product, quantityM) {
-  const unitPrice = Number(
+  const price = Number(
     product?.dealer_price_per_m || 0,
   );
 
   const quantity = Number(quantityM || 0);
 
   if (product?.price_vat_included === true) {
-    const total = Math.round(unitPrice * quantity);
+    const total = Math.round(price * quantity);
     const supply = Math.round(total / 1.1);
 
     return {
@@ -76,7 +85,7 @@ function calculateAmounts(product, quantityM) {
     };
   }
 
-  const supply = Math.round(unitPrice * quantity);
+  const supply = Math.round(price * quantity);
   const vat = Math.round(supply * 0.1);
 
   return {
@@ -86,65 +95,58 @@ function calculateAmounts(product, quantityM) {
   };
 }
 
-function emptyAddressForm() {
-  return {
-    address_name: "기본 배송지",
-    recipient_name: "",
-    recipient_phone: "",
-    postal_code: "",
-    address_line1: "",
-    address_line2: "",
-    delivery_note: "",
-    is_default: true,
-  };
-}
-
 export default function MaterialOrderPage() {
   const router = useRouter();
 
-  const [accessToken, setAccessToken] = useState("");
-  const [authorized, setAuthorized] = useState(null);
+  const [authorized, setAuthorized] =
+    useState(null);
+
+  const [accessToken, setAccessToken] =
+    useState("");
 
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
-  const [selectedBrand, setSelectedBrand] =
-    useState("");
 
-  const [searchInput, setSearchInput] = useState("");
+  const [brand, setBrand] = useState("");
+  const [searchInput, setSearchInput] =
+    useState("");
   const [search, setSearch] = useState("");
 
-  const [pagination, setPagination] = useState({
-    page: 1,
-    total: 0,
-    totalPages: 1,
-  });
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] =
+    useState(1);
 
   const [cart, setCart] = useState([]);
 
-  const [addresses, setAddresses] = useState([]);
+  const [addresses, setAddresses] =
+    useState([]);
+
   const [selectedAddressId, setSelectedAddressId] =
     useState("");
+
+  const [addressForm, setAddressForm] =
+    useState(emptyAddress());
 
   const [showAddressForm, setShowAddressForm] =
     useState(false);
 
-  const [addressForm, setAddressForm] = useState(
-    emptyAddressForm(),
-  );
+  const [addressStatus, setAddressStatus] =
+    useState("");
 
   const [deliveryNote, setDeliveryNote] =
     useState("");
 
   const [loadingProducts, setLoadingProducts] =
-    useState(true);
+    useState(false);
 
   const [loadingAddresses, setLoadingAddresses] =
-    useState(true);
+    useState(false);
 
   const [savingAddress, setSavingAddress] =
     useState(false);
 
-  const [ordering, setOrdering] = useState(false);
+  const [ordering, setOrdering] =
+    useState(false);
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] =
@@ -162,7 +164,7 @@ export default function MaterialOrderPage() {
       window.__materialOrderMessageTimer =
         window.setTimeout(() => {
           setMessage("");
-        }, 4000);
+        }, 4500);
     },
     [],
   );
@@ -186,30 +188,42 @@ export default function MaterialOrderPage() {
       const token =
         accessToken || (await getToken());
 
-      const response = await fetch(url, {
-        ...options,
-        cache: "no-store",
-        headers: {
-          ...(options.body
-            ? {
-                "Content-Type":
-                  "application/json",
-              }
-            : {}),
+      let response;
 
-          ...(options.headers || {}),
+      try {
+        response = await fetch(url, {
+          ...options,
+          cache: "no-store",
+          headers: {
+            ...(options.body
+              ? {
+                  "Content-Type":
+                    "application/json",
+                }
+              : {}),
+            ...(options.headers || {}),
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch (networkError) {
+        throw new Error(
+          "서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.",
+        );
+      }
 
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const responseText = await response.text();
 
-      const result = await response
-        .json()
-        .catch(() => ({
-          ok: false,
-          error:
-            "서버 응답을 확인하지 못했습니다.",
-        }));
+      let result;
+
+      try {
+        result = responseText
+          ? JSON.parse(responseText)
+          : {};
+      } catch {
+        throw new Error(
+          `서버 응답 오류 (${response.status})`,
+        );
+      }
 
       if (response.status === 401) {
         setAuthorized(false);
@@ -218,12 +232,13 @@ export default function MaterialOrderPage() {
       if (!response.ok || result.ok === false) {
         const error = new Error(
           result.error ||
-            "요청을 처리하지 못했습니다.",
+            result.detail ||
+            `요청 실패 (${response.status})`,
         );
 
         error.code = result.code;
-        error.result = result;
-
+        error.status = response.status;
+        error.detail = result.detail;
         throw error;
       }
 
@@ -234,14 +249,14 @@ export default function MaterialOrderPage() {
   );
 
   const loadProducts = useCallback(
-    async (page = 1) => {
+    async (requestedPage = 1) => {
       try {
         setLoadingProducts(true);
 
         const params = new URLSearchParams({
-          brand: selectedBrand,
+          brand,
           search,
-          page: String(page),
+          page: String(requestedPage),
           limit: String(PAGE_SIZE),
         });
 
@@ -251,133 +266,116 @@ export default function MaterialOrderPage() {
 
         setProducts(result.products || []);
         setBrands(result.brands || []);
-
-        setPagination(
-          result.pagination || {
-            page,
-            total: 0,
-            totalPages: 1,
-          },
+        setPage(result.pagination?.page || 1);
+        setTotalPages(
+          result.pagination?.totalPages || 1,
         );
       } catch (error) {
-        showMessage(
-          error.message ||
-            "판매 제품을 불러오지 못했습니다.",
-          "error",
-        );
+        showMessage(error.message, "error");
       } finally {
         setLoadingProducts(false);
       }
     },
-    [
-      apiFetch,
-      search,
-      selectedBrand,
-      showMessage,
-    ],
+    [apiFetch, brand, search, showMessage],
   );
 
-  const loadAddresses = useCallback(async () => {
-    try {
-      setLoadingAddresses(true);
+  const loadAddresses = useCallback(
+    async (preferredId = "") => {
+      try {
+        setLoadingAddresses(true);
 
-      const result = await apiFetch(
-        "/api/admin/material-addresses",
-      );
-
-      const nextAddresses =
-        result.addresses || [];
-
-      setAddresses(nextAddresses);
-
-      const selectedStillExists =
-        nextAddresses.some(
-          (address) =>
-            address.id === selectedAddressId,
+        const result = await apiFetch(
+          "/api/admin/material-addresses",
         );
 
-      if (!selectedStillExists) {
+        const nextAddresses =
+          result.addresses || [];
+
+        setAddresses(nextAddresses);
+
+        const preferred = nextAddresses.find(
+          (item) => item.id === preferredId,
+        );
+
         const defaultAddress =
           nextAddresses.find(
-            (address) => address.is_default,
-          ) || nextAddresses[0];
+            (item) => item.is_default,
+          );
+
+        const current = nextAddresses.find(
+          (item) =>
+            item.id === selectedAddressId,
+        );
+
+        const nextSelected =
+          preferred ||
+          current ||
+          defaultAddress ||
+          nextAddresses[0];
 
         setSelectedAddressId(
-          defaultAddress?.id || "",
+          nextSelected?.id || "",
         );
-      }
 
-      if (nextAddresses.length === 0) {
-        setShowAddressForm(true);
+        if (nextAddresses.length === 0) {
+          setShowAddressForm(true);
+        }
+
+        return nextAddresses;
+      } finally {
+        setLoadingAddresses(false);
       }
-    } catch (error) {
-      showMessage(
-        error.message ||
-          "배송지를 불러오지 못했습니다.",
-        "error",
-      );
-    } finally {
-      setLoadingAddresses(false);
-    }
-  }, [
-    apiFetch,
-    selectedAddressId,
-    showMessage,
-  ]);
+    },
+    [apiFetch, selectedAddressId],
+  );
 
   useEffect(() => {
     getToken()
-      .then(() => {
-        setAuthorized(true);
-      })
-      .catch(() => {
-        setAuthorized(false);
-      });
+      .then(() => setAuthorized(true))
+      .catch(() => setAuthorized(false));
   }, [getToken]);
 
   useEffect(() => {
-    if (authorized !== true) {
-      return;
-    }
+    if (authorized !== true) return;
 
     loadProducts(1);
-    loadAddresses();
+
+    loadAddresses().catch((error) => {
+      setAddressStatus(
+        `배송지 조회 실패: ${error.message}`,
+      );
+    });
   }, [authorized]);
 
   useEffect(() => {
-    if (authorized !== true) {
-      return;
-    }
-
+    if (authorized !== true) return;
     loadProducts(1);
-  }, [selectedBrand, search]);
+  }, [brand, search]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSearch(searchInput.trim());
     }, 400);
 
-    return () => {
-      window.clearTimeout(timer);
-    };
+    return () => window.clearTimeout(timer);
   }, [searchInput]);
 
   const cartTotals = useMemo(() => {
     return cart.reduce(
-      (result, item) => {
+      (total, item) => {
         const amounts = calculateAmounts(
           item.product,
           item.quantityM,
         );
 
-        result.supply += amounts.supply;
-        result.vat += amounts.vat;
-        result.total += amounts.total;
-        result.quantity += Number(
+        total.supply += amounts.supply;
+        total.vat += amounts.vat;
+        total.total += amounts.total;
+        total.quantity += Number(
           item.quantityM || 0,
         );
 
-        return result;
+        return total;
       },
       {
         supply: 0,
@@ -388,14 +386,16 @@ export default function MaterialOrderPage() {
     );
   }, [cart]);
 
-  const selectedAddress = useMemo(() => {
-    return addresses.find(
-      (address) =>
-        address.id === selectedAddressId,
-    );
-  }, [addresses, selectedAddressId]);
+  const selectedAddress = useMemo(
+    () =>
+      addresses.find(
+        (item) =>
+          item.id === selectedAddressId,
+      ),
+    [addresses, selectedAddressId],
+  );
 
-  function addToCart(product) {
+  function addCart(product) {
     const exists = cart.some(
       (item) => item.product.id === product.id,
     );
@@ -408,15 +408,13 @@ export default function MaterialOrderPage() {
       return;
     }
 
-    const minimumOrder = Number(
-      product.minimum_order_m || 1,
-    );
-
     setCart((current) => [
       ...current,
       {
         product,
-        quantityM: minimumOrder,
+        quantityM: Number(
+          product.minimum_order_m || 1,
+        ),
       },
     ]);
 
@@ -425,7 +423,7 @@ export default function MaterialOrderPage() {
     );
   }
 
-  function removeFromCart(productId) {
+  function removeCart(productId) {
     setCart((current) =>
       current.filter(
         (item) => item.product.id !== productId,
@@ -433,101 +431,153 @@ export default function MaterialOrderPage() {
     );
   }
 
-  function updateQuantity(productId, nextValue) {
-    const quantity = Number(nextValue);
-
+  function updateQuantity(productId, value) {
     setCart((current) =>
-      current.map((item) => {
-        if (item.product.id !== productId) {
-          return item;
-        }
-
-        return {
-          ...item,
-          quantityM:
-            Number.isFinite(quantity) && quantity >= 0
-              ? quantity
-              : 0,
-        };
-      }),
+      current.map((item) =>
+        item.product.id === productId
+          ? {
+              ...item,
+              quantityM: value,
+            }
+          : item,
+      ),
     );
   }
 
-  function changeAddressField(field, value) {
+  function updateAddressField(field, value) {
     setAddressForm((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  async function saveAddress(event) {
-    event.preventDefault();
+  async function saveAddress() {
+    if (savingAddress) return;
 
-    if (!addressForm.recipient_name.trim()) {
-      showMessage(
+    const payload = {
+      ...addressForm,
+      address_name:
+        addressForm.address_name.trim() ||
+        "배송지",
+      recipient_name:
+        addressForm.recipient_name.trim(),
+      recipient_phone:
+        addressForm.recipient_phone.trim(),
+      postal_code:
+        addressForm.postal_code.trim(),
+      address_line1:
+        addressForm.address_line1.trim(),
+      address_line2:
+        addressForm.address_line2.trim(),
+      delivery_note:
+        addressForm.delivery_note.trim(),
+    };
+
+    if (!payload.recipient_name) {
+      setAddressStatus(
         "받는 분 이름을 입력해주세요.",
-        "error",
+      );
+      window.alert(
+        "받는 분 이름을 입력해주세요.",
       );
       return;
     }
 
-    if (!addressForm.recipient_phone.trim()) {
-      showMessage(
-        "연락처를 입력해주세요.",
-        "error",
+    if (!payload.recipient_phone) {
+      setAddressStatus(
+        "받는 분 연락처를 입력해주세요.",
+      );
+      window.alert(
+        "받는 분 연락처를 입력해주세요.",
       );
       return;
     }
 
-    if (!addressForm.address_line1.trim()) {
-      showMessage(
+    if (!payload.address_line1) {
+      setAddressStatus(
         "배송 주소를 입력해주세요.",
-        "error",
+      );
+      window.alert(
+        "배송 주소를 입력해주세요.",
       );
       return;
     }
 
     setSavingAddress(true);
+    setAddressStatus("배송지를 저장하고 있습니다...");
 
     try {
       const result = await apiFetch(
         "/api/admin/material-addresses",
         {
           method: "POST",
-          body: JSON.stringify(addressForm),
+          body: JSON.stringify(payload),
         },
       );
 
-      showMessage(
-        result.message ||
-          "배송지를 등록했습니다.",
-      );
-
-      setAddressForm(emptyAddressForm());
-      setShowAddressForm(false);
-
-      await loadAddresses();
-
-      if (result.address?.id) {
-        setSelectedAddressId(
-          result.address.id,
+      if (!result.address?.id) {
+        throw new Error(
+          "서버에서 저장된 배송지 ID를 받지 못했습니다.",
         );
       }
-    } catch (error) {
+
+      const savedAddress = result.address;
+
+      setAddresses((current) => [
+        savedAddress,
+        ...current.filter(
+          (item) =>
+            item.id !== savedAddress.id,
+        ),
+      ]);
+
+      setSelectedAddressId(savedAddress.id);
+      setShowAddressForm(false);
+      setAddressForm(emptyAddress());
+
+      await loadAddresses(savedAddress.id);
+
+      setAddressStatus(
+        "✅ 배송지가 저장되고 선택됐습니다.",
+      );
+
       showMessage(
+        "배송지가 저장되고 선택됐습니다.",
+      );
+
+      window.alert(
+        "배송지가 정상적으로 저장됐습니다.",
+      );
+    } catch (error) {
+      const errorMessage =
+        error.detail ||
         error.message ||
-          "배송지를 등록하지 못했습니다.",
-        "error",
+        "배송지를 저장하지 못했습니다.";
+
+      setAddressStatus(
+        `❌ 저장 실패: ${errorMessage}`,
+      );
+
+      showMessage(errorMessage, "error");
+
+      window.alert(
+        `배송지 저장 실패\n\n${errorMessage}`,
       );
     } finally {
       setSavingAddress(false);
     }
   }
 
-  function validateCart() {
+  function validateOrder() {
     if (cart.length === 0) {
       throw new Error(
         "주문할 제품을 담아주세요.",
+      );
+    }
+
+    if (!selectedAddressId) {
+      throw new Error(
+        "배송지를 선택해주세요.",
       );
     }
 
@@ -536,7 +586,6 @@ export default function MaterialOrderPage() {
       const minimum = Number(
         item.product.minimum_order_m || 1,
       );
-
       const unit = Number(
         item.product.order_unit_m || 1,
       );
@@ -546,13 +595,11 @@ export default function MaterialOrderPage() {
         quantity < minimum
       ) {
         throw new Error(
-          `${item.product.product_code}의 ` +
-            `최소 주문량은 ${minimum}m입니다.`,
+          `${item.product.product_code}의 최소 주문량은 ${minimum}m입니다.`,
         );
       }
 
       const difference = quantity - minimum;
-
       const remainder =
         ((difference % unit) + unit) % unit;
 
@@ -561,24 +608,17 @@ export default function MaterialOrderPage() {
         Math.abs(remainder - unit) > 0.001
       ) {
         throw new Error(
-          `${item.product.product_code}는 ` +
-            `${unit}m 단위로 주문할 수 있습니다.`,
+          `${item.product.product_code}는 ${unit}m 단위로 주문할 수 있습니다.`,
         );
       }
     });
-
-    if (!selectedAddressId) {
-      throw new Error(
-        "배송지를 선택해주세요.",
-      );
-    }
   }
 
   async function submitOrder() {
     try {
-      validateCart();
+      validateOrder();
     } catch (error) {
-      showMessage(error.message, "error");
+      window.alert(error.message);
       return;
     }
 
@@ -586,25 +626,25 @@ export default function MaterialOrderPage() {
       [
         "등록된 카드로 결제하시겠습니까?",
         "",
-        `제품: ${cart.length}개`,
-        `총 주문량: ${cartTotals.quantity}m`,
-        `공급가액: ${formatWon(
+        `제품 ${cart.length}개`,
+        `총 주문량 ${cartTotals.quantity}m`,
+        `공급가액 ${formatWon(
           cartTotals.supply,
         )}`,
-        `부가세: ${formatWon(cartTotals.vat)}`,
-        `최종 결제금액: ${formatWon(
+        `부가세 ${formatWon(
+          cartTotals.vat,
+        )}`,
+        `최종 결제금액 ${formatWon(
           cartTotals.total,
         )}`,
         "",
-        `배송지: ${
+        `배송지 ${
           selectedAddress?.address_line1 || ""
         }`,
       ].join("\n"),
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setOrdering(true);
 
@@ -613,16 +653,15 @@ export default function MaterialOrderPage() {
         "/api/admin/material-orders",
         {
           method: "POST",
-
           body: JSON.stringify({
             addressId: selectedAddressId,
-
             deliveryNote:
               deliveryNote.trim(),
-
             items: cart.map((item) => ({
               productId: item.product.id,
-              quantityM: Number(item.quantityM),
+              quantityM: Number(
+                item.quantityM,
+              ),
             })),
           }),
         },
@@ -631,19 +670,14 @@ export default function MaterialOrderPage() {
       setCart([]);
       setDeliveryNote("");
 
-      showMessage(
-        result.message ||
-          "자재 주문이 접수됐습니다.",
-      );
-
       window.alert(
         [
           "자재 주문이 완료됐습니다.",
           "",
-          `주문번호: ${
+          `주문번호 ${
             result.order?.orderNumber || ""
           }`,
-          `결제금액: ${formatWon(
+          `결제금액 ${formatWon(
             result.order?.totalAmount,
           )}`,
         ].join("\n"),
@@ -653,84 +687,47 @@ export default function MaterialOrderPage() {
         error.code ===
         "BILLING_CARD_NOT_FOUND"
       ) {
-        const goBilling = window.confirm(
+        const move = window.confirm(
           `${error.message}\n\n결제관리로 이동하시겠습니까?`,
         );
 
-        if (goBilling) {
+        if (move) {
           router.push("/admin/billing");
         }
-
-        return;
+      } else {
+        window.alert(
+          `주문 실패\n\n${error.message}`,
+        );
       }
-
-      showMessage(
-        error.message ||
-          "주문 결제에 실패했습니다.",
-        "error",
-      );
     } finally {
       setOrdering(false);
     }
-  }
-
-  if (authorized === null) {
+                                          }
+    if (authorized === null) {
     return (
-      <main className="center-page">
-        <div className="spinner" />
-        <p>로그인 정보를 확인하고 있습니다.</p>
-
-        <style jsx>{`
-          .center-page {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: #f7f8fb;
-            color: #6b7280;
-          }
-
-          .spinner {
-            width: 34px;
-            height: 34px;
-            border: 4px solid #e5e7eb;
-            border-top-color: #6d28d9;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-          }
-
-          @keyframes spin {
-            to {
-              transform: rotate(360deg);
-            }
-          }
-        `}</style>
+      <main className="center">
+        로그인 정보를 확인하고 있습니다.
       </main>
     );
   }
 
   if (authorized === false) {
     return (
-      <main className="center-page">
+      <main className="center">
         <section className="login-card">
-          <div className="lock">🔒</div>
           <h1>로그인이 필요합니다</h1>
-          <p>
-            관리자 계정으로 로그인한 후
-            이용해주세요.
-          </p>
-
           <button
             type="button"
-            onClick={() => router.push("/login")}
+            onClick={() =>
+              router.push("/login")
+            }
           >
             로그인하기
           </button>
         </section>
 
         <style jsx>{`
-          .center-page {
+          .center {
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -741,32 +738,18 @@ export default function MaterialOrderPage() {
 
           .login-card {
             width: 100%;
-            max-width: 420px;
-            padding: 32px 24px;
+            max-width: 400px;
+            padding: 25px;
+            border-radius: 20px;
             background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 24px;
             text-align: center;
-          }
-
-          .lock {
-            font-size: 42px;
-          }
-
-          h1 {
-            margin: 16px 0 8px;
-          }
-
-          p {
-            color: #6b7280;
           }
 
           button {
             width: 100%;
             height: 48px;
-            margin-top: 16px;
             border: 0;
-            border-radius: 14px;
+            border-radius: 13px;
             background: #111827;
             color: white;
             font-weight: 900;
@@ -781,18 +764,21 @@ export default function MaterialOrderPage() {
       <header className="header">
         <button
           type="button"
-          className="back-button"
-          onClick={() => router.push("/admin")}
+          className="back"
+          onClick={() =>
+            router.push("/admin")
+          }
         >
           ←
         </button>
 
         <div>
-          <span className="badge">자재 주문</span>
+          <span className="badge">
+            자재 주문
+          </span>
           <h1>인테리어필름 주문</h1>
           <p>
-            판매 가능한 필름을 선택하고 등록된
-            카드로 결제합니다.
+            판매 가능한 필름을 주문합니다.
           </p>
         </div>
       </header>
@@ -818,50 +804,46 @@ export default function MaterialOrderPage() {
           placeholder="제품번호 또는 제품명 검색"
         />
 
-        <div className="brand-list">
+        <div className="brands">
           <button
             type="button"
             className={
-              selectedBrand === "" ? "active" : ""
+              brand === "" ? "active" : ""
             }
-            onClick={() => setSelectedBrand("")}
+            onClick={() => setBrand("")}
           >
             전체
           </button>
 
-          {brands.map((brand) => (
+          {brands.map((item) => (
             <button
-              key={brand}
+              key={item}
               type="button"
               className={
-                selectedBrand === brand
-                  ? "active"
-                  : ""
+                brand === item ? "active" : ""
               }
-              onClick={() =>
-                setSelectedBrand(brand)
-              }
+              onClick={() => setBrand(item)}
             >
-              {brand}
+              {item}
             </button>
           ))}
         </div>
 
         {loadingProducts ? (
-          <div className="loading">
-            판매 제품을 불러오는 중입니다.
+          <div className="empty">
+            제품을 불러오는 중입니다.
           </div>
         ) : products.length === 0 ? (
           <div className="empty">
-            현재 조건에 맞는 판매 제품이 없습니다.
+            판매 가능한 제품이 없습니다.
           </div>
         ) : (
-          <div className="product-grid">
+          <div className="products">
             {products.map((product) => {
               const imageUrl =
-                getSampleImage(product);
+                getImageUrl(product);
 
-              const inCart = cart.some(
+              const added = cart.some(
                 (item) =>
                   item.product.id === product.id,
               );
@@ -869,14 +851,13 @@ export default function MaterialOrderPage() {
               return (
                 <article
                   key={product.id}
-                  className="product-card"
+                  className="product"
                 >
-                  <div className="product-image">
+                  <div className="image">
                     {imageUrl ? (
                       <img
                         src={imageUrl}
-                        alt={`${product.product_code} 샘플`}
-                        loading="lazy"
+                        alt={product.product_code}
                       />
                     ) : (
                       <span>이미지 없음</span>
@@ -894,34 +875,28 @@ export default function MaterialOrderPage() {
                         "제품명 없음"}
                     </p>
 
-                    <small>
-                      {product.flame_type ===
-                      "flame_retardant"
-                        ? "방염"
-                        : "비방염"}
-                    </small>
-
-                    <div className="product-price">
+                    <div className="price">
                       {formatWon(
                         product.dealer_price_per_m,
                       )}
                       /m
-                      <span>
-                        {product.price_vat_included
-                          ? "VAT 포함"
-                          : "VAT 별도"}
-                      </span>
                     </div>
+
+                    <small>
+                      {product.price_vat_included
+                        ? "VAT 포함"
+                        : "VAT 별도"}
+                    </small>
 
                     <button
                       type="button"
-                      disabled={inCart}
+                      disabled={added}
                       onClick={() =>
-                        addToCart(product)
+                        addCart(product)
                       }
                     >
-                      {inCart
-                        ? "장바구니에 담김"
+                      {added
+                        ? "담김"
                         : "장바구니 담기"}
                     </button>
                   </div>
@@ -934,31 +909,23 @@ export default function MaterialOrderPage() {
         <div className="pagination">
           <button
             type="button"
-            disabled={pagination.page <= 1}
+            disabled={page <= 1}
             onClick={() =>
-              loadProducts(
-                pagination.page - 1,
-              )
+              loadProducts(page - 1)
             }
           >
             이전
           </button>
 
           <span>
-            {pagination.page} /{" "}
-            {pagination.totalPages}
+            {page} / {totalPages}
           </span>
 
           <button
             type="button"
-            disabled={
-              pagination.page >=
-              pagination.totalPages
-            }
+            disabled={page >= totalPages}
             onClick={() =>
-              loadProducts(
-                pagination.page + 1,
-              )
+              loadProducts(page + 1)
             }
           >
             다음
@@ -967,14 +934,14 @@ export default function MaterialOrderPage() {
       </section>
 
       <section className="panel">
-        <div className="section-title">
+        <div className="title-row">
           <h2>2. 주문 수량</h2>
-          <strong>{cart.length}개 제품</strong>
+          <strong>{cart.length}개</strong>
         </div>
 
         {cart.length === 0 ? (
           <div className="empty">
-            주문할 필름을 장바구니에 담아주세요.
+            주문할 필름을 담아주세요.
           </div>
         ) : (
           <div className="cart-list">
@@ -987,14 +954,13 @@ export default function MaterialOrderPage() {
               return (
                 <article
                   key={item.product.id}
-                  className="cart-item"
+                  className="cart"
                 >
-                  <div className="cart-top">
+                  <div className="cart-head">
                     <div>
                       <strong>
                         {item.product.product_code}
                       </strong>
-
                       <p>
                         {formatWon(
                           item.product
@@ -1006,9 +972,8 @@ export default function MaterialOrderPage() {
 
                     <button
                       type="button"
-                      className="remove"
                       onClick={() =>
-                        removeFromCart(
+                        removeCart(
                           item.product.id,
                         )
                       }
@@ -1017,25 +982,18 @@ export default function MaterialOrderPage() {
                     </button>
                   </div>
 
-                  <div className="quantity-row">
-                    <label>
-                      주문 길이
-                      <small>
-                        최소{" "}
-                        {Number(
-                          item.product
-                            .minimum_order_m || 1,
-                        )}
-                        m ·{" "}
-                        {Number(
-                          item.product
-                            .order_unit_m || 1,
-                        )}
-                        m 단위
-                      </small>
-                    </label>
+                  <div className="quantity">
+                    <span>
+                      최소{" "}
+                      {item.product
+                        .minimum_order_m || 1}
+                      m ·{" "}
+                      {item.product
+                        .order_unit_m || 1}
+                      m 단위
+                    </span>
 
-                    <div className="quantity-input">
+                    <label>
                       <input
                         type="number"
                         min={
@@ -1054,12 +1012,12 @@ export default function MaterialOrderPage() {
                           )
                         }
                       />
-                      <span>m</span>
-                    </div>
+                      m
+                    </label>
                   </div>
 
                   <div className="item-total">
-                    <span>상품 결제금액</span>
+                    <span>결제금액</span>
                     <strong>
                       {formatWon(amounts.total)}
                     </strong>
@@ -1070,14 +1028,11 @@ export default function MaterialOrderPage() {
           </div>
         )}
 
-        <div className="total-box">
+        <div className="totals">
           <div>
             <span>총 주문량</span>
             <strong>
-              {cartTotals.quantity.toLocaleString(
-                "ko-KR",
-              )}
-              m
+              {cartTotals.quantity}m
             </strong>
           </div>
 
@@ -1095,7 +1050,7 @@ export default function MaterialOrderPage() {
             </strong>
           </div>
 
-          <div className="grand-total">
+          <div className="final">
             <span>최종 결제금액</span>
             <strong>
               {formatWon(cartTotals.total)}
@@ -1105,17 +1060,18 @@ export default function MaterialOrderPage() {
       </section>
 
       <section className="panel">
-        <div className="section-title">
+        <div className="title-row">
           <h2>3. 배송지</h2>
 
           <button
             type="button"
-            className="outline-button"
-            onClick={() =>
+            className="outline"
+            onClick={() => {
               setShowAddressForm(
                 (current) => !current,
-              )
-            }
+              );
+              setAddressStatus("");
+            }}
           >
             {showAddressForm
               ? "입력 닫기"
@@ -1124,15 +1080,15 @@ export default function MaterialOrderPage() {
         </div>
 
         {loadingAddresses ? (
-          <div className="loading">
+          <div className="empty">
             배송지를 불러오는 중입니다.
           </div>
-        ) : addresses.length > 0 ? (
+        ) : (
           <div className="address-list">
             {addresses.map((address) => (
               <label
                 key={address.id}
-                className={`address-card ${
+                className={`address ${
                   selectedAddressId === address.id
                     ? "selected"
                     : ""
@@ -1140,7 +1096,6 @@ export default function MaterialOrderPage() {
               >
                 <input
                   type="radio"
-                  name="shipping-address"
                   checked={
                     selectedAddressId === address.id
                   }
@@ -1165,9 +1120,6 @@ export default function MaterialOrderPage() {
                   </p>
 
                   <p>
-                    {address.postal_code
-                      ? `(${address.postal_code}) `
-                      : ""}
                     {address.address_line1}{" "}
                     {address.address_line2 || ""}
                   </p>
@@ -1175,17 +1127,14 @@ export default function MaterialOrderPage() {
               </label>
             ))}
           </div>
-        ) : null}
+        )}
 
         {showAddressForm ? (
-          <form
-            className="address-form"
-            onSubmit={saveAddress}
-          >
+          <div className="address-form">
             <input
               value={addressForm.address_name}
               onChange={(event) =>
-                changeAddressField(
+                updateAddressField(
                   "address_name",
                   event.target.value,
                 )
@@ -1193,13 +1142,13 @@ export default function MaterialOrderPage() {
               placeholder="배송지 이름"
             />
 
-            <div className="two-column">
+            <div className="two">
               <input
                 value={
                   addressForm.recipient_name
                 }
                 onChange={(event) =>
-                  changeAddressField(
+                  updateAddressField(
                     "recipient_name",
                     event.target.value,
                   )
@@ -1212,32 +1161,31 @@ export default function MaterialOrderPage() {
                   addressForm.recipient_phone
                 }
                 onChange={(event) =>
-                  changeAddressField(
+                  updateAddressField(
                     "recipient_phone",
                     event.target.value,
                   )
                 }
-                inputMode="tel"
                 placeholder="연락처"
+                inputMode="tel"
               />
             </div>
 
             <input
               value={addressForm.postal_code}
               onChange={(event) =>
-                changeAddressField(
+                updateAddressField(
                   "postal_code",
                   event.target.value,
                 )
               }
-              inputMode="numeric"
               placeholder="우편번호"
             />
 
             <input
               value={addressForm.address_line1}
               onChange={(event) =>
-                changeAddressField(
+                updateAddressField(
                   "address_line1",
                   event.target.value,
                 )
@@ -1248,7 +1196,7 @@ export default function MaterialOrderPage() {
             <input
               value={addressForm.address_line2}
               onChange={(event) =>
-                changeAddressField(
+                updateAddressField(
                   "address_line2",
                   event.target.value,
                 )
@@ -1259,7 +1207,7 @@ export default function MaterialOrderPage() {
             <textarea
               value={addressForm.delivery_note}
               onChange={(event) =>
-                changeAddressField(
+                updateAddressField(
                   "delivery_note",
                   event.target.value,
                 )
@@ -1267,12 +1215,12 @@ export default function MaterialOrderPage() {
               placeholder="기본 배송 요청사항"
             />
 
-            <label className="default-check">
+            <label className="default">
               <input
                 type="checkbox"
                 checked={addressForm.is_default}
                 onChange={(event) =>
-                  changeAddressField(
+                  updateAddressField(
                     "is_default",
                     event.target.checked,
                   )
@@ -1282,42 +1230,52 @@ export default function MaterialOrderPage() {
             </label>
 
             <button
-              type="submit"
+              type="button"
               className="save-address"
               disabled={savingAddress}
+              onClick={saveAddress}
             >
               {savingAddress
-                ? "저장 중..."
+                ? "배송지 저장 중..."
                 : "배송지 저장"}
             </button>
-          </form>
+
+            {addressStatus ? (
+              <div
+                className={`address-status ${
+                  addressStatus.startsWith("❌")
+                    ? "fail"
+                    : ""
+                }`}
+              >
+                {addressStatus}
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
-        <label className="delivery-note">
+        <label className="delivery">
           <span>이번 주문 배송 요청사항</span>
 
           <textarea
             value={deliveryNote}
             onChange={(event) =>
-              setDeliveryNote(event.target.value)
+              setDeliveryNote(
+                event.target.value,
+              )
             }
-            placeholder="예: 현장 도착 전 연락해주세요."
+            placeholder="현장 도착 전 연락해주세요."
           />
         </label>
       </section>
 
-      <section className="payment-panel">
+      <section className="payment">
         <div>
           <span>등록카드 결제금액</span>
           <strong>
             {formatWon(cartTotals.total)}
           </strong>
         </div>
-
-        <p>
-          주문 버튼을 누르면 결제 전 최종 확인창이
-          표시됩니다.
-        </p>
 
         <button
           type="button"
@@ -1336,8 +1294,6 @@ export default function MaterialOrderPage() {
         </button>
       </section>
 
-      <div className="bottom-space" />
-
       <style jsx>{`
         * {
           box-sizing: border-box;
@@ -1345,14 +1301,14 @@ export default function MaterialOrderPage() {
 
         .page {
           min-height: 100vh;
-          padding: 20px 16px 40px;
+          padding: 18px 15px 100px;
           background: #f7f8fb;
           color: #111827;
         }
 
         .header,
         .panel,
-        .payment-panel,
+        .payment,
         .message {
           max-width: 760px;
           margin-left: auto;
@@ -1362,10 +1318,10 @@ export default function MaterialOrderPage() {
         .header {
           display: flex;
           gap: 12px;
-          margin-bottom: 18px;
+          margin-bottom: 16px;
         }
 
-        .back-button {
+        .back {
           width: 44px;
           height: 44px;
           flex-shrink: 0;
@@ -1373,11 +1329,9 @@ export default function MaterialOrderPage() {
           border-radius: 14px;
           background: white;
           font-size: 24px;
-          font-weight: 900;
         }
 
         .badge {
-          display: inline-flex;
           padding: 6px 10px;
           border-radius: 999px;
           background: #111827;
@@ -1388,113 +1342,104 @@ export default function MaterialOrderPage() {
 
         h1 {
           margin: 10px 0 5px;
-          font-size: 30px;
+          font-size: 29px;
+        }
+
+        h2 {
+          margin: 0 0 14px;
+          font-size: 21px;
         }
 
         .header p {
           margin: 0;
           color: #6b7280;
-          font-size: 14px;
-          line-height: 1.5;
         }
 
         .message {
           position: sticky;
-          top: 10px;
-          z-index: 50;
-          margin-bottom: 14px;
-          padding: 14px 16px;
-          border-radius: 14px;
-          font-size: 14px;
+          top: 8px;
+          z-index: 30;
+          margin-bottom: 12px;
+          padding: 13px;
+          border-radius: 13px;
           font-weight: 900;
-          box-shadow: 0 10px 24px
-            rgba(0, 0, 0, 0.12);
         }
 
         .message.success {
-          border: 1px solid #a7f3d0;
           background: #ecfdf5;
           color: #047857;
         }
 
         .message.error {
-          border: 1px solid #fecaca;
           background: #fef2f2;
           color: #b91c1c;
         }
 
         .panel {
-          margin-bottom: 16px;
-          padding: 18px;
+          margin-bottom: 15px;
+          padding: 17px;
           border: 1px solid #e5e7eb;
-          border-radius: 22px;
+          border-radius: 21px;
           background: white;
         }
 
-        h2 {
-          margin: 0 0 15px;
-          font-size: 21px;
-        }
-
-        .search {
+        .search,
+        .address-form > input,
+        .address-form textarea,
+        .delivery textarea,
+        .two input {
           width: 100%;
-          height: 50px;
-          padding: 0 15px;
+          min-height: 47px;
+          padding: 11px 13px;
           border: 1px solid #d1d5db;
-          border-radius: 14px;
-          font-size: 16px;
+          border-radius: 12px;
+          font: inherit;
         }
 
-        .brand-list {
+        .brands {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin: 13px 0;
+          gap: 7px;
+          margin: 12px 0;
         }
 
-        .brand-list button {
-          padding: 10px 14px;
+        .brands button {
+          padding: 9px 13px;
           border: 1px solid #d1d5db;
           border-radius: 999px;
           background: white;
-          color: #374151;
           font-weight: 800;
         }
 
-        .brand-list button.active {
+        .brands .active {
           border-color: #6d28d9;
           background: #6d28d9;
           color: white;
         }
 
-        .loading,
         .empty {
-          padding: 34px 12px;
-          border-radius: 15px;
+          padding: 30px 10px;
+          border-radius: 14px;
           background: #f9fafb;
           color: #6b7280;
           text-align: center;
-          font-size: 14px;
         }
 
-        .product-grid {
+        .products {
           display: grid;
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
-          gap: 10px;
+          gap: 9px;
         }
 
-        .product-card {
-          min-width: 0;
+        .product {
           overflow: hidden;
           border: 1px solid #e5e7eb;
-          border-radius: 17px;
-          background: white;
+          border-radius: 16px;
         }
 
-        .product-image {
-          width: 100%;
-          aspect-ratio: 1 / 0.82;
+        .image {
+          aspect-ratio: 1 / 0.8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1504,375 +1449,305 @@ export default function MaterialOrderPage() {
           font-size: 11px;
         }
 
-        .product-image img {
+        .image img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
 
         .product-info {
-          padding: 12px;
+          padding: 11px;
         }
 
         .product-info > strong {
-          display: block;
           font-size: 18px;
         }
 
         .product-info p {
-          min-height: 38px;
-          margin: 5px 0;
+          min-height: 35px;
+          margin: 4px 0;
           color: #4b5563;
-          font-size: 13px;
-          line-height: 1.4;
+          font-size: 12px;
         }
 
-        .product-info small {
-          color: #6b7280;
-        }
-
-        .product-price {
-          margin-top: 9px;
+        .price {
           color: #6d28d9;
-          font-size: 15px;
           font-weight: 900;
         }
 
-        .product-price span {
+        .product-info small {
           display: block;
-          margin-top: 2px;
           color: #9ca3af;
-          font-size: 10px;
         }
 
         .product-info button {
           width: 100%;
-          min-height: 42px;
-          margin-top: 10px;
+          height: 40px;
+          margin-top: 8px;
           border: 0;
-          border-radius: 11px;
+          border-radius: 10px;
           background: #111827;
           color: white;
           font-weight: 900;
         }
 
         button:disabled {
-          opacity: 0.42;
+          opacity: 0.4;
         }
 
         .pagination {
           display: grid;
           grid-template-columns: 1fr auto 1fr;
           align-items: center;
-          gap: 12px;
-          margin-top: 15px;
+          gap: 10px;
+          margin-top: 13px;
         }
 
         .pagination button {
-          height: 44px;
+          height: 43px;
           border: 1px solid #d1d5db;
-          border-radius: 12px;
+          border-radius: 11px;
           background: white;
           font-weight: 900;
         }
 
-        .pagination span {
-          min-width: 65px;
-          text-align: center;
-        }
-
-        .section-title {
+        .title-row,
+        .cart-head,
+        .item-total,
+        .totals > div,
+        .payment > div {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
         }
 
-        .section-title strong {
+        .title-row strong {
           color: #6d28d9;
-          font-size: 14px;
         }
 
-        .outline-button {
-          padding: 9px 12px;
+        .outline {
+          padding: 8px 11px;
           border: 1px solid #6d28d9;
-          border-radius: 11px;
+          border-radius: 10px;
           background: white;
           color: #6d28d9;
           font-weight: 900;
         }
 
         .cart-list,
-        .address-list {
+        .address-list,
+        .address-form {
           display: grid;
-          gap: 10px;
+          gap: 9px;
         }
 
-        .cart-item {
-          padding: 14px;
+        .cart {
+          padding: 13px;
           border: 1px solid #e5e7eb;
-          border-radius: 16px;
+          border-radius: 15px;
         }
 
-        .cart-top {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-        }
-
-        .cart-top strong {
-          font-size: 18px;
-        }
-
-        .cart-top p {
-          margin: 4px 0 0;
+        .cart-head p {
+          margin: 3px 0 0;
           color: #6b7280;
           font-size: 12px;
         }
 
-        .remove {
+        .cart-head button {
           border: 0;
           background: transparent;
           color: #dc2626;
           font-weight: 900;
         }
 
-        .quantity-row {
-          display: flex;
-          align-items: end;
-          justify-content: space-between;
-          gap: 12px;
-          margin-top: 14px;
-        }
-
-        .quantity-row label {
-          font-size: 13px;
-          font-weight: 900;
-        }
-
-        .quantity-row small {
-          display: block;
-          margin-top: 4px;
-          color: #9ca3af;
-          font-weight: 500;
-        }
-
-        .quantity-input {
+        .quantity {
           display: flex;
           align-items: center;
-          width: 130px;
-          border: 1px solid #d1d5db;
-          border-radius: 12px;
-          overflow: hidden;
+          justify-content: space-between;
+          gap: 10px;
+          margin-top: 12px;
+          color: #6b7280;
+          font-size: 11px;
         }
 
-        .quantity-input input {
-          width: 100%;
-          height: 43px;
-          padding: 0 10px;
-          border: 0;
-          outline: 0;
+        .quantity label {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .quantity input {
+          width: 85px;
+          height: 41px;
+          border: 1px solid #d1d5db;
+          border-radius: 10px;
+          padding: 0 8px;
           font-size: 16px;
           font-weight: 900;
         }
 
-        .quantity-input span {
-          padding-right: 12px;
-          color: #6b7280;
-          font-weight: 800;
-        }
-
         .item-total {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 13px;
-          padding-top: 12px;
+          margin-top: 11px;
+          padding-top: 11px;
           border-top: 1px solid #f0f1f3;
           font-size: 13px;
         }
 
-        .total-box {
-          margin-top: 15px;
-          padding: 15px;
-          border-radius: 16px;
+        .totals {
+          margin-top: 13px;
+          padding: 14px;
+          border-radius: 14px;
           background: #f9fafb;
         }
 
-        .total-box > div {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 9px;
+        .totals > div {
+          margin-bottom: 8px;
           color: #6b7280;
           font-size: 13px;
         }
 
-        .total-box > div strong {
-          color: #374151;
-        }
-
-        .total-box .grand-total {
-          margin: 12px 0 0;
-          padding-top: 13px;
+        .totals .final {
+          margin: 10px 0 0;
+          padding-top: 11px;
           border-top: 1px solid #d1d5db;
           color: #111827;
           font-size: 16px;
-          font-weight: 900;
         }
 
-        .grand-total strong {
-          color: #6d28d9 !important;
-          font-size: 21px;
+        .final strong {
+          color: #6d28d9;
+          font-size: 20px;
         }
 
-        .address-card {
+        .address {
           display: grid;
           grid-template-columns: auto 1fr;
-          gap: 11px;
-          padding: 14px;
+          gap: 10px;
+          padding: 13px;
           border: 2px solid #e5e7eb;
-          border-radius: 16px;
+          border-radius: 14px;
         }
 
-        .address-card.selected {
+        .address.selected {
           border-color: #6d28d9;
           background: #faf7ff;
         }
 
-        .address-card input {
+        .address input {
           width: 20px;
           height: 20px;
           accent-color: #6d28d9;
         }
 
-        .address-card p {
-          margin: 5px 0 0;
+        .address p {
+          margin: 4px 0 0;
           color: #6b7280;
-          font-size: 13px;
-          line-height: 1.45;
+          font-size: 12px;
         }
 
         .address-form {
-          display: grid;
-          gap: 10px;
-          margin-top: 15px;
-          padding: 15px;
-          border-radius: 16px;
+          margin-top: 13px;
+          padding: 14px;
+          border-radius: 15px;
           background: #f9fafb;
         }
 
-        .address-form input,
-        .address-form textarea,
-        .delivery-note textarea {
-          width: 100%;
-          min-height: 46px;
-          padding: 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 12px;
-          background: white;
-          font-size: 15px;
-          font-family: inherit;
-        }
-
-        .address-form textarea,
-        .delivery-note textarea {
-          min-height: 82px;
-          resize: vertical;
-        }
-
-        .two-column {
+        .two {
           display: grid;
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
-          gap: 9px;
+          gap: 8px;
         }
 
-        .default-check {
+        .default {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 14px;
-          font-weight: 800;
-        }
-
-        .default-check input {
-          width: 20px;
-          min-height: 20px;
-        }
-
-        .save-address {
-          height: 46px;
-          border: 0;
-          border-radius: 12px;
-          background: #111827;
-          color: white;
-          font-weight: 900;
-        }
-
-        .delivery-note {
-          display: block;
-          margin-top: 15px;
-        }
-
-        .delivery-note span {
-          display: block;
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 900;
-        }
-
-        .payment-panel {
-          position: sticky;
-          bottom: 10px;
-          z-index: 30;
-          padding: 17px;
-          border: 1px solid #ddd6fe;
-          border-radius: 20px;
-          background: rgba(255, 255, 255, 0.97);
-          box-shadow: 0 12px 35px
-            rgba(17, 24, 39, 0.16);
-          backdrop-filter: blur(10px);
-        }
-
-        .payment-panel > div {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-        }
-
-        .payment-panel span {
-          color: #6b7280;
           font-size: 13px;
           font-weight: 800;
         }
 
-        .payment-panel strong {
-          color: #6d28d9;
-          font-size: 23px;
+        .default input {
+          width: 20px;
+          height: 20px;
         }
 
-        .payment-panel p {
-          margin: 8px 0 12px;
-          color: #9ca3af;
-          font-size: 11px;
-        }
-
-        .payment-panel button {
-          width: 100%;
-          min-height: 54px;
+        .save-address {
+          min-height: 48px;
           border: 0;
-          border-radius: 14px;
+          border-radius: 12px;
           background: #111827;
           color: white;
-          font-size: 16px;
           font-weight: 900;
         }
 
-        .bottom-space {
-          height: 70px;
+        .address-status {
+          padding: 11px;
+          border-radius: 11px;
+          background: #ecfdf5;
+          color: #047857;
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .address-status.fail {
+          background: #fef2f2;
+          color: #b91c1c;
+        }
+
+        .delivery {
+          display: block;
+          margin-top: 14px;
+        }
+
+        .delivery span {
+          display: block;
+          margin-bottom: 7px;
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .delivery textarea {
+          min-height: 75px;
+        }
+
+        .payment {
+          position: sticky;
+          bottom: 8px;
+          z-index: 20;
+          padding: 16px;
+          border: 1px solid #ddd6fe;
+          border-radius: 18px;
+          background: rgba(
+            255,
+            255,
+            255,
+            0.97
+          );
+          box-shadow: 0 12px 30px
+            rgba(17, 24, 39, 0.16);
+        }
+
+        .payment strong {
+          color: #6d28d9;
+          font-size: 21px;
+        }
+
+        .payment button {
+          width: 100%;
+          min-height: 52px;
+          margin-top: 11px;
+          border: 0;
+          border-radius: 13px;
+          background: #111827;
+          color: white;
+          font-size: 15px;
+          font-weight: 900;
         }
 
         @media (min-width: 700px) {
-          .product-grid {
+          .products {
             grid-template-columns:
               repeat(3, minmax(0, 1fr));
           }
@@ -1880,4 +1755,4 @@ export default function MaterialOrderPage() {
       `}</style>
     </main>
   );
-        }
+                }
