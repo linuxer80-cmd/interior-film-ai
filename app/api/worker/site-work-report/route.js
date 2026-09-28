@@ -554,7 +554,8 @@ async function clearExpenses({
     .from("site_expenses")
     .delete()
     .eq("company_id", companyId)
-    .eq("site_id", siteId);
+    .eq("site_id", siteId)
+    .or("description.is.null,description.not.like.수익관리/%");
 
   if (error) {
     throw error;
