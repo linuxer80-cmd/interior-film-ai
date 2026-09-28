@@ -71,6 +71,7 @@ export default function useLeads({
   async function loadLeads(
     page = 1,
     filter = leadFilter,
+    focusLeadId = null,
   ) {
     if (!companyId) return;
 
@@ -119,6 +120,10 @@ export default function useLeads({
         )
         .eq("company_id", companyId);
 
+      if (focusLeadId) {
+        query = query.eq("id", focusLeadId);
+      }
+
       if (
         filter &&
         filter !== "all"
@@ -140,6 +145,10 @@ export default function useLeads({
         .range(from, to);
 
       if (error) throw error;
+
+      if (focusLeadId && data?.length) {
+        setOpenLeadId(focusLeadId);
+      }
 
       const normalizedLeads = (data || []).map((lead) => {
   let autoMaterial = "";

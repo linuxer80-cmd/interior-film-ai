@@ -199,6 +199,9 @@ function buildNotificationUrl(
       explicitLink,
     );
 
+  const isSiteReference = ["site", "sites", "site_assignment", "site_schedule", "site_status"].includes(referenceType);
+  const isLeadReference = ["lead", "customer_lead", "customer_leads", "consultation"].includes(referenceType);
+
   const encodedReferenceId =
     referenceId
       ? encodeURIComponent(
@@ -221,6 +224,14 @@ function buildNotificationUrl(
     recipientType ===
     "company_admin"
   ) {
+    if (encodedReferenceId && isSiteReference && (!hasSafeExplicitLink || explicitLink === "/admin" || explicitLink === "/admin?tab=sites")) {
+      return `/admin?tab=sites&site=${encodedReferenceId}`;
+    }
+
+    if (encodedReferenceId && isLeadReference && (!hasSafeExplicitLink || explicitLink === "/admin" || explicitLink === "/admin?tab=leads")) {
+      return `/admin?tab=leads&lead=${encodedReferenceId}`;
+    }
+
     /*
      * 기존 구체적인 링크 우선
      * 예: /admin/billing
@@ -271,6 +282,10 @@ function buildNotificationUrl(
     recipientType ===
     "worker"
   ) {
+    if (encodedReferenceId && isSiteReference && (!hasSafeExplicitLink || explicitLink === "/worker" || explicitLink === "/worker/")) {
+      return `/worker/site/${encodedReferenceId}`;
+    }
+
     if (
       hasSafeExplicitLink
     ) {
@@ -289,7 +304,7 @@ function buildNotificationUrl(
         referenceType,
       )
     ) {
-      return `/worker?site=${encodedReferenceId}`;
+      return `/worker/site/${encodedReferenceId}`;
     }
 
     return "/worker";

@@ -46,6 +46,9 @@ export default function AdminPage() {
   const activeTabRef =
     useRef("jobs");
 
+  const pendingSiteIdRef =
+    useRef(null);
+
   const [
     previewPhoto,
     setPreviewPhoto,
@@ -396,11 +399,7 @@ export default function AdminPage() {
     if (
       tab === "leads"
     ) {
-      loadLeads(
-        1,
-        leadFilter,
-        companyId,
-      );
+      loadLeads(1, leadFilter);
     }
   }
 
@@ -408,6 +407,37 @@ export default function AdminPage() {
     activeTabRef.current =
       activeTab;
   }, [activeTab]);
+
+  /* 알림에서 열린 현장 관리 탭과 현장 상세로 이동 */
+  useEffect(() => {
+    if (!companyId) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+
+    if (tab === "sites") {
+      pendingSiteIdRef.current = params.get("site");
+      activeTabRef.current = "sites";
+      setActiveTab("sites");
+      loadSites(companyId);
+      loadWorkers(companyId);
+    } else if (tab === "leads") {
+      activeTabRef.current = "leads";
+      setActiveTab("leads");
+      loadLeads(1, "all", params.get("lead"));
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    const siteId = pendingSiteIdRef.current;
+    if (!siteId || sitesLoading) return;
+
+    const site = sites.find((item) => String(item.id) === siteId);
+    if (site) {
+      pendingSiteIdRef.current = null;
+      openSite(site);
+    }
+  }, [sites, sitesLoading]);
 
   /* =========================================================
      관리자 초기화
