@@ -23,6 +23,11 @@ const tabs = [
     id: "leads",
     label: "고객 상담",
   },
+  {
+    id: "material-order",
+    label: "📦 자재 주문",
+    href: "/admin/material-order",
+  },
 ];
 
 export default function AdminTabs({
@@ -41,16 +46,20 @@ export default function AdminTabs({
       }}
     >
       {tabs.map((tab) => {
-        const active =
-          activeTab === tab.id;
+        const active = activeTab === tab.id;
 
         return (
           <button
             key={tab.id}
             type="button"
-            onClick={() =>
-              changeTab(tab.id)
-            }
+            onClick={() => {
+              if (tab.href) {
+                window.location.href = tab.href;
+                return;
+              }
+
+              changeTab(tab.id);
+            }}
             style={{
               position:
                 tab.id === "leads"
