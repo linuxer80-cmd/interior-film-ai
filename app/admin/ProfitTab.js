@@ -8,6 +8,31 @@ const today = () => { const date = new Date(); return `${date.getFullYear()}-${S
 const monthStart = () => `${today().slice(0, 7)}-01`;
 const kinds = { labor: "시공자 인건비", material: "추가 자재비", expense: "기타 경비" };
 const costLabels = kinds;
+const colors = { labor: "#2563eb", material: "#7c3aed", expense: "#ea580c" };
+const group = (rows, key) => Object.entries((rows || []).reduce((map, row) => {
+  const label = row[key] || "미분류";
+  if (!map[label]) map[label] = { amount: 0, rows: [] };
+  map[label].amount += Number(row.amount || 0); map[label].rows.push(row);
+  return map;
+}, {})).map(([label, value]) => ({ label, ...value })).sort((a, b) => b.amount - a.amount);
+
+function Breakdown({ data, type, title, itemKey }) {
+  const [open, setOpen] = useState("");
+  const [productOpen, setProductOpen] = useState("");
+  const list = group(data.breakdown?.[type], itemKey);
+  const total = Number(data.totals[type] || 0);
+  return <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16 }}>
+    <h3 style={{ margin: "0 0 4px" }}>{title}</h3><strong style={{ color: colors[type], fontSize: 20 }}>{won(total)}</strong>
+    {!list.length && <p style={{ color: "#64748b", fontSize: 13 }}>등록된 비용이 없습니다.</p>}
+    <div style={{ display: "grid", gap: 9, marginTop: 12 }}>{list.map((entry) => <div key={entry.label}>
+      <button type="button" aria-expanded={open === entry.label} onClick={() => { setOpen(open === entry.label ? "" : entry.label); setProductOpen(""); }} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, border: 0, background: "transparent", textAlign: "left", padding: "4px 0", cursor: "pointer", fontSize: 14 }}><span>{entry.label} <small>({entry.rows.length}건)</small></span><strong>{won(entry.amount)} {open === entry.label ? "⌃" : "⌄"}</strong></button>
+      <div role="img" aria-label={`${entry.label} ${won(entry.amount)}, 전체 ${title}의 ${total ? Math.round(entry.amount / total * 100) : 0}%`} style={{ height: 10, borderRadius: 10, background: "#f1f5f9", overflow: "hidden" }}><div style={{ height: "100%", width: `${total ? Math.min(100, entry.amount / total * 100) : 0}%`, background: colors[type], borderRadius: 10 }} /></div>
+      {open === entry.label && <div style={{ padding: "8px 4px 8px 12px", borderLeft: `3px solid ${colors[type]}`, fontSize: 13 }}>
+        {type === "material" ? group(entry.rows, "product").map((product) => <div key={product.label} style={{ padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}><button type="button" aria-expanded={productOpen === product.label} onClick={() => setProductOpen(productOpen === product.label ? "" : product.label)} style={{ width: "100%", display: "flex", justifyContent: "space-between", gap: 8, border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer" }}><span>{product.label} ({product.rows.length}건)</span><strong>{won(product.amount)} {productOpen === product.label ? "⌃" : "⌄"}</strong></button>{productOpen === product.label && product.rows.map((row, index) => <div key={index} style={{ padding: "5px 0 0 10px", color: "#475569" }}>{row.siteName} · {row.quantity == null ? "수기 입력" : `${row.quantity.toLocaleString("ko-KR")}${row.unit}`} · {won(row.amount)}</div>)}</div>) : entry.rows.map((row, index) => <div key={index} style={{ padding: "5px 0", borderBottom: "1px solid #f1f5f9", color: "#475569" }}>{row.siteName} · {row.description} · {won(row.amount)}</div>)}
+      </div>}
+    </div>)}</div>
+  </section>;
+}
 
 export default function ProfitTab() {
   const [from, setFrom] = useState(monthStart);
@@ -84,6 +109,13 @@ export default function ProfitTab() {
         {[["계약 매출", data.totals.revenue], ["인건비", data.totals.labor], ["자재비", data.totals.material], ["기타 경비", data.totals.expense], ["예상 수익", data.totals.profit]].map(([label, value]) =>
           <div key={label}><div style={{ color: "#64748b", fontSize: 12 }}>{label}</div><strong style={{ color: label === "예상 수익" ? "#166534" : "#111827" }}>{won(value)}</strong></div>)}
       </div>
+      <div style={card}>
+        <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
+        {data.totals.labor + data.totals.material + data.totals.expense > 0 ? <><div role="img" aria-label="인건비, 자재비, 경비 비율" style={{ display: "flex", height: 22, borderRadius: 9, overflow: "hidden" }}>{["labor", "material", "expense"].map((type) => <div key={type} style={{ width: `${100 * data.totals[type] / (data.totals.labor + data.totals.material + data.totals.expense)}%`, background: colors[type] }} />)}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8, fontSize: 12 }}>{[["labor", "인건비"], ["material", "자재비"], ["expense", "경비"]].map(([key, label]) => <span key={key}><i style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: colors[key], marginRight: 4 }} />{label} {won(data.totals[key])}</span>)}</div></> : <span>등록된 비용이 없습니다.</span>}
+      </div>
+      <Breakdown data={data} type="labor" title="시공자별 인건비" itemKey="name" />
+      <Breakdown data={data} type="material" title="브랜드별 자재비" itemKey="brand" />
+      <Breakdown data={data} type="expense" title="품목별 경비" itemKey="category" />
       {data.sites.length === 0 && <div style={card}>이 기간에 시공 시작일이 등록된 현장이 없습니다.</div>}
       {data.sites.map((site) => <div key={site.id} style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><strong>{site.site_name || site.customer_name || "이름 없는 현장"}</strong><span>{String(site.schedule_start).slice(0, 10)}</span></div>
@@ -105,4 +137,4 @@ export default function ProfitTab() {
       </div>)}
     </>}
   </section>;
-}
+  }
