@@ -167,6 +167,22 @@ export default function WorkerSiteDetailPage() {
         return;
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch(`/api/site-daily-assignments?siteId=${encodeURIComponent(siteId)}`, {
+        headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error("날짜별 담당 정보를 확인하지 못했습니다.");
+      const daily = await response.json();
+      if (daily.hasDailySchedule && !daily.assignments.length) {
+        setSite(null);
+        setMessage("이 날짜에 배정된 작업이 없습니다.");
+        return;
+      }
+      if (daily.hasDailySchedule) {
+        siteData.assigned_dates = daily.assignments;
+        siteData.my_role = daily.assignments.some((item) => item.role === "leader") ? "leader" : "member";
+      }
+
       setSite(siteData);
 
       /* =====================================================
@@ -702,21 +718,13 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "900",
               }}
             >
-              📅 {formatDateTime(site.schedule_start)}
+              📅 {site.assigned_dates ? "내 작업 날짜" : formatDateTime(site.schedule_start)}
             </div>
-
-            {site.schedule_end && (
-              <div
-                style={{
-                  marginTop: "6px",
-                  color: "#64748b",
-                  fontSize: "12px",
-                }}
-              >
-                종료 예정{" "}
-                {formatDateTime(site.schedule_end)}
-              </div>
-            )}
+            {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 6, fontSize: 13 }}>
+              {day.work_date} · {day.role === "leader" ? "팀장" : "팀원"}
+            </div>) : site.schedule_end && <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
+              종료 예정 {formatDateTime(site.schedule_end)}
+            </div>}
           </div>
 
           <InfoRow
