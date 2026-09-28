@@ -36,7 +36,7 @@ function formatScheduleDateOnly(value) {
       },
     ).format(date);
 
-  return `${dateText} · 시간 미정`;
+  return dateText;
 }
 
 /* =========================================================
@@ -646,9 +646,6 @@ export default function SiteScheduleEditor({
                       <strong>
                         {formatScheduleDateOnly(
                           site.schedule_date,
-                        ).replace(
-                          " · 시간 미정",
-                          "",
                         )}
                       </strong>
                       <br />
