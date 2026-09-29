@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { ESTIMATE_TARGET_OPTIONS } from "../utils/categoryUtils";
 
 export default function EstimatePhotoUploader({
   images = [],
@@ -9,6 +10,7 @@ export default function EstimatePhotoUploader({
   message = "",
   onAddImages,
   onRemoveImage,
+  onUpdatePhotoOptions,
 }) {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -76,8 +78,8 @@ export default function EstimatePhotoUploader({
         }}
       >
         최대 10장까지 선택할 수 있습니다.
-        같은 부위를 여러 각도로 촬영하면 정확도가
-        좋아집니다.
+        사진마다 별도 시공 대상으로 계산합니다.
+        같은 대상을 여러 각도에서 찍었다면 아래에서 같은 부위로 묶어주세요.
       </p>
 
       {/* 휴대폰 카메라 */}
@@ -167,7 +169,7 @@ export default function EstimatePhotoUploader({
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(3, minmax(0, 1fr))",
+                "repeat(2, minmax(0, 1fr))",
               gap: "8px",
               marginTop: "12px",
             }}
@@ -202,6 +204,29 @@ export default function EstimatePhotoUploader({
                         "block",
                     }}
                   />
+
+                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>사진 {index + 1}</div>
+                  <label style={{ display: "block", marginTop: 8, fontSize: 12 }}>
+                    시공 부위
+                    <select aria-label={`사진 ${index + 1} 시공 부위`} disabled={disabled}
+                      value={item.targetChoice || ""} onChange={(event) => onUpdatePhotoOptions?.(item.id, { targetChoice: event.target.value })}
+                      style={{ width: "100%", minHeight: 40, marginTop: 4, border: "1px solid #d1d5db", borderRadius: 8, background: "white", fontSize: 13 }}>
+                      <option value="">AI 자동 인식</option>
+                      {ESTIMATE_TARGET_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  {index > 0 && <label style={{ display: "block", marginTop: 8, fontSize: 12 }}>
+                    다른 사진과 같은 대상인가요?
+                    <select aria-label={`사진 ${index + 1} 같은 대상 선택`} disabled={disabled}
+                      value={item.subjectId && item.subjectId !== item.id ? item.subjectId : ""}
+                      onChange={(event) => onUpdatePhotoOptions?.(item.id, { subjectId: event.target.value })}
+                      style={{ width: "100%", minHeight: 40, marginTop: 4, border: "1px solid #d1d5db", borderRadius: 8, background: "white", fontSize: 13 }}>
+                      <option value="">별도 대상 (각각 계산)</option>
+                      {images.slice(0, index).filter((photo) => !photo.subjectId || photo.subjectId === photo.id).map((photo) => (
+                        <option key={photo.id} value={photo.id}>사진 {images.findIndex((entry) => entry.id === photo.id) + 1}과 같은 대상</option>
+                      ))}
+                    </select>
+                  </label>}
 
                   <button
                     type="button"
