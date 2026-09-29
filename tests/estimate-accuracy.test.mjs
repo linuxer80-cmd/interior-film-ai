@@ -84,9 +84,9 @@ function harness() {
       }
       if (url === '/api/similar-estimate') {
         assert.equal(JSON.parse(options.body).construction_scope, 'kitchen_lower');
-        return ok({ success: true, estimate: { min: 90000, max: 110000, average: 100000 }, similar_cases: [{ actual_cost: 100000, before_path: 'before', after_path: 'after' }] });
+        return ok({ success: true, estimate: { min: 90000, max: 110000, average: 100000 }, similar_cases: [{ actual_cost: 100000, work_item_id: '00000000-0000-0000-0000-000000000001', before_path: null, after_path: null }] });
       }
-      if (url === '/api/similar-photo') { const task = deferred(); thumbnails.push(task); return task.promise; }
+      if (url === '/api/similar-photo') { const body = JSON.parse(options.body); assert.equal(body.work_item_id, '00000000-0000-0000-0000-000000000001'); assert.ok(['before', 'after'].includes(body.photo_type)); const task = deferred(); thumbnails.push(task); return task.promise; }
       if (url === '/api/estimate-photo') { const task = deferred(); uploads.push(task); return task.promise; }
       if (url === '/api/estimate-usage') return ok({ success: true, usage_id: 'usage' });
       throw Error(`Unexpected URL ${url}`);
@@ -138,4 +138,83 @@ test('partial upload failure preserves estimate and retries only the missing ima
   assert.equal(h.render().storageStatus, '사진 저장 완료');
   h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
   await flush();
+});
+
+
+test('same category photos remain distinct unless the customer explicitly groups the same object', () => {
+  const analysis = { category: '붙박이장', sub_category: '붙박이장 문짝', target_type: 'closet' };
+  const photos = ['a', 'b', 'c'].map((id) => ({ id, analysis }));
+  assert.equal(categories.buildEstimatePhotoGroups(photos).length, 3);
+  const linked = categories.assignEstimateSubject(photos, 'b', 'a');
+  const groups = categories.buildEstimatePhotoGroups(linked);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].photoNumbers, [1, 2]);
+  assert.equal(categories.buildEstimatePhotoGroups(categories.assignEstimateSubject(linked, 'b', '')).length, 3);
+  assert.equal(categories.buildEstimatePhotoGroups([{ ...photos[0], subjectId: 'deleted' }, photos[1]]).length, 2);
+});
+
+test('explicit photo selection corrects refrigerator/shoe categories and never joins incompatible scopes', () => {
+  const original = normalize({ category: '붙박이장', classification_confidence: 'high' });
+  const fridge = categories.applyEstimateTarget(original, 'kitchen_fridge');
+  const shoe = categories.applyEstimateTarget(original, 'shoe');
+  assert.equal(fridge.target_type, 'kitchen');
+  assert.equal(fridge.construction_scope, 'kitchen_fridge');
+  assert.equal(shoe.target_type, 'shoe');
+  assert.equal(categories.buildEstimatePhotoGroups([
+    { id: 'a', analysis: fridge }, { id: 'b', subjectId: 'a', analysis: shoe },
+  ]).length, 2);
+});
+
+test('two separate targets produce two estimates; explicitly grouped views count once', async () => {
+  for (const linked of [false, true]) {
+    const h = harness();
+    await h.render().addImages([new Blob(['one']), new Blob(['two'])]);
+    if (linked) {
+      const photos = h.render().images;
+      h.render().updatePhotoOptions(photos[1].id, { subjectId: photos[0].id });
+    }
+    const work = h.render().handleAnalyze();
+    await flush();
+    assert.equal(h.render().groups.length, linked ? 1 : 2);
+    assert.equal(h.render().totalEstimate.average, linked ? 100000 : 200000);
+    h.uploads.forEach((task, i) => task.resolve(ok({ success: true, path: `customer/${i}.jpg` })));
+    h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+    await work;
+  }
+});
+
+test('photos load independently with missing RPC paths and failed sides can be retried', async () => {
+  const h = harness();
+  await h.render().addImages([new Blob(['one'])]);
+  const work = h.render().handleAnalyze();
+  await flush();
+  assert.equal(h.render().groups[0].similarItems[0].beforeStatus, 'loading');
+  h.thumbnails[0].resolve(ok({ success: true, signed_url: 'https://example.com/before' }));
+  await flush();
+  assert.equal(h.render().groups[0].similarItems[0].beforeUrl, 'https://example.com/before');
+  assert.equal(h.render().groups[0].similarItems[0].afterStatus, 'loading');
+  h.thumbnails[1].resolve({ ok: false, text: async () => JSON.stringify({ error: 'temporary' }) });
+  await flush();
+  assert.equal(h.render().groups[0].similarItems[0].afterStatus, 'error');
+  h.render().retrySimilarPhoto(h.render().groups[0].key, 0, 'after');
+  await flush();
+  assert.equal(h.thumbnails.length, 3);
+  h.thumbnails[2].resolve(ok({ success: true, signed_url: 'https://example.com/after' }));
+  await flush();
+  assert.equal(h.render().groups[0].similarItems[0].afterUrl, 'https://example.com/after');
+  h.uploads[0].resolve(ok({ success: true, path: 'customer/one.jpg' }));
+  await work;
+});
+
+test('late photo responses cannot restore an old estimate after reset', async () => {
+  const h = harness();
+  await h.render().addImages([new Blob(['one'])]);
+  const work = h.render().handleAnalyze();
+  await flush();
+  h.uploads[0].resolve(ok({ success: true, path: 'customer/one.jpg' }));
+  await work;
+  h.render().resetEstimateResults();
+  h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/old' })));
+  await flush();
+  assert.equal(h.render().groups.length, 0);
 });
