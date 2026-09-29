@@ -156,7 +156,8 @@ export function normalizeCategory(value) {
 
   if (
     text.includes("아트월") ||
-    text.includes("벽체")
+    text.includes("벽체") ||
+    text.includes("벽면")
   ) {
     return "wall";
   }
@@ -176,6 +177,8 @@ export function getGroupKey(analysis) {
   if (!analysis) {
     return "other";
   }
+
+  if (Object.hasOwn(TARGET_LABELS, analysis.target_type || "")) return analysis.target_type;
 
   return normalizeCategory(
     `${analysis.category || ""} ${
@@ -286,4 +289,112 @@ export function getCategoryLabel(key) {
     key ||
     "기타"
   );
+}
+
+// Estimate scope is separate from the broad category used by film/color controls.
+const TARGET_LABELS = {
+  door: ["문 및 문틀", "방문 및 문틀"],
+  middle_door: ["문 및 문틀", "중문"],
+  fire_door: ["문 및 문틀", "방화문 및 문틀"],
+  kitchen: ["주방 가구", "주방 가구"],
+  closet: ["붙박이장", "붙박이장 문짝"],
+  shoe: ["신발장", "신발장 문짝"],
+  vanity: ["화장대 · 서랍장", "화장대 · 서랍장"],
+  window: ["샷시 및 창틀", "샷시 및 창틀"],
+  molding: ["몰딩", "몰딩"],
+  wall: ["벽면", "벽면"],
+  other: ["기타", "분류 확인 필요"],
+};
+const SCOPES = {
+  kitchen_lower: "싱크대 하부장",
+  kitchen_upper: "싱크대 상부장",
+  kitchen_full: "싱크대 상부장과 하부장",
+  kitchen_fridge: "냉장고장",
+};
+const knownCategory = (value) => {
+  const text = String(value || "").trim();
+  if (Object.hasOwn(TARGET_LABELS, text)) return text;
+  if (text === "벽면") return "wall";
+  if (["문", "문 및 문틀", "문·문틀"].includes(text)) return "door";
+  const key = normalizeCategory(text);
+  return Object.hasOwn(TARGET_LABELS, key) ? key : "other";
+};
+const family = (key) => ["door", "middle_door", "fire_door"].includes(key) ? "door" : key;
+
+export function getConstructionScope(analysis = {}) {
+  if (getGroupKey(analysis) !== "kitchen") return "whole";
+  const explicit = String(analysis.construction_scope || "");
+  if (Object.hasOwn(SCOPES, explicit)) return explicit;
+  // Only target labels, never background descriptions/tags or inferred dimensions.
+  const text = `${analysis.sub_category || ""} ${analysis.category || ""}`.replace(/\s+/g, "");
+  if (/아님|아닌|제외|없음|미포함/.test(text)) return "unknown";
+  const fridge = text.includes("냉장고장");
+  const upper = text.includes("상부장");
+  const lower = text.includes("하부장");
+  if (fridge && (upper || lower)) return "unknown";
+  if (fridge) return "kitchen_fridge";
+  if ((upper && lower) || /싱크대전체|주방전체|상하부장/.test(text)) return "kitchen_full";
+  if (lower) return "kitchen_lower";
+  if (upper) return "kitchen_upper";
+  return "unknown";
+}
+
+export function getEstimateGroupKey(analysis = {}) {
+  return `${getGroupKey(analysis)}:${getConstructionScope(analysis)}`;
+}
+
+export function normalizeAnalysisClassification(analysis) {
+  if (!analysis || typeof analysis !== "object" || Array.isArray(analysis)) {
+    throw new Error("사진 분석 결과 형식이 올바르지 않습니다.");
+  }
+  const categoryKey = knownCategory(analysis.category);
+  const detailKey = knownCategory(analysis.sub_category);
+  const declared = Object.hasOwn(TARGET_LABELS, analysis.target_type || "") ? analysis.target_type : null;
+  const candidates = [declared, categoryKey, detailKey].filter((key) => key && key !== "other");
+  const conflict = new Set(candidates.map(family)).size > 1;
+  const uncertain = conflict || !candidates.length || analysis.classification_confidence === "low";
+  const target = conflict ? "other" : (declared || (detailKey !== "other" ? detailKey : categoryKey));
+  const labels = TARGET_LABELS[target] || TARGET_LABELS.other;
+  const result = {
+    ...analysis,
+    target_type: target,
+    category: labels[0],
+    sub_category: target === "kitchen" ? String(analysis.sub_category || labels[1]) : labels[1],
+    classification_confidence: uncertain ? "low" : (analysis.classification_confidence === "high" ? "high" : "medium"),
+    requires_confirmation: uncertain || target === "other",
+  };
+  result.construction_scope = getConstructionScope(result);
+  const labelScope = getConstructionScope({ ...result, construction_scope: null });
+  if (target === "kitchen" && labelScope !== "unknown" && labelScope !== result.construction_scope) {
+    result.requires_confirmation = true;
+    result.classification_confidence = "low";
+  }
+  if (target === "kitchen") {
+    result.sub_category = SCOPES[result.construction_scope] || "시공 범위 확인 필요";
+    if (result.construction_scope === "unknown") result.requires_confirmation = true;
+  }
+  return result;
+}
+
+export function isMatchingConstructionScope(analysis, candidate) {
+  const key = getGroupKey(analysis);
+  if (key !== getGroupKey(candidate)) return false;
+  if (key !== "kitchen") return key !== "other";
+  const scope = getConstructionScope(analysis);
+  return scope !== "unknown" && scope === getConstructionScope(candidate);
+}
+
+export function selectEstimateCases(rows, analysis, limit = 10) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((item) => Number(item.actual_cost) > 0 && isMatchingConstructionScope(analysis, item))
+    .sort((a, b) => Number(b.similarity || 0) - Number(a.similarity || 0))
+    .filter((item) => {
+      // Without an ID, do not collapse unrelated jobs just because their prices match.
+      const id = item.work_item_id || item.id;
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }).slice(0, limit);
 }
