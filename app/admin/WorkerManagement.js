@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { supabase } from "../../lib/supabase";
 
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
@@ -37,7 +38,34 @@ export default function WorkerManagement({
   updateWorker,
   setWorkerActive,
   createWorkerInvite,
+  loadWorkers,
 }) {
+  const [selfRegistration, setSelfRegistration] = useState(false);
+
+  async function registerMyself(payload) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("로그인을 다시 해주세요.");
+    const response = await fetch("/api/admin/self-worker", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "시공자 계정 연결에 실패했습니다.");
+    await loadWorkers?.();
+    return result;
+  }
+
+  async function linkMyself(worker) {
+    if (!window.confirm(`${worker.name} 시공자를 현재 로그인한 관리자 계정에 연결할까요?`)) return;
+    try {
+      await registerMyself({ workerId: worker.id });
+      setLocalMessage("✅ 내 시공자 계정이 연결되었습니다.");
+    } catch (error) {
+      setLocalMessage(`❌ ${error.message}`);
+    }
+  }
   /* =========================================================
      등록 / 수정
   ========================================================= */
@@ -163,6 +191,7 @@ export default function WorkerManagement({
   ========================================================= */
 
   function openCreateForm() {
+    setSelfRegistration(false);
     setEditingWorker(null);
 
     setForm({
@@ -179,6 +208,7 @@ export default function WorkerManagement({
   ========================================================= */
 
   function openEditForm(worker) {
+    setSelfRegistration(false);
     setEditingWorker(worker);
 
     setForm({
@@ -499,6 +529,15 @@ export default function WorkerManagement({
     };
 
     try {
+      if (selfRegistration && !editingWorker?.id) {
+        await registerMyself(submitForm);
+        setShowForm(false);
+        setSelfRegistration(false);
+        setForm({ ...EMPTY_FORM });
+        setLocalMessage("✅ 내 시공자 계정이 등록되었습니다.");
+        return;
+      }
+
       /* =======================================================
          기존 시공자 수정
       ======================================================= */
@@ -890,6 +929,15 @@ export default function WorkerManagement({
           >
             + 시공자 등록
           </button>
+          <button type="button" onClick={() => {
+            setEditingWorker(null);
+            setForm({ ...EMPTY_FORM });
+            setLocalMessage("");
+            setSelfRegistration(true);
+            setShowForm(true);
+          }} style={{ padding: "10px 13px", borderRadius: 10, border: "1px solid #2563eb", background: "#eff6ff", color: "#1d4ed8", fontWeight: 800, cursor: "pointer" }}>
+            + 관리자 본인 시공자 등록
+          </button>
         </div>
 
         {/* =====================================================
@@ -1127,6 +1175,7 @@ export default function WorkerManagement({
                     worker,
                   )
                 }
+                onLinkSelf={() => linkMyself(worker)}
 
                 onEdit={() =>
                   openEditForm(
@@ -1151,6 +1200,7 @@ export default function WorkerManagement({
 
       {showForm && (
         <WorkerFormModal
+          selfRegistration={selfRegistration}
           editingWorker={
             editingWorker
           }

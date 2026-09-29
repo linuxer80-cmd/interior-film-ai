@@ -634,6 +634,7 @@ export default function SiteManagementTab({
           }
         >
           <WorkerManagement
+            loadWorkers={loadWorkers}
             workers={
               workers
             }

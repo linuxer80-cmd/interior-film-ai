@@ -16,6 +16,7 @@ function formatNumber(value) {
 
 export default function WorkerFormModal({
   editingWorker,
+  selfRegistration = false,
   form,
   loading = false,
   localMessage = "",
@@ -79,7 +80,7 @@ export default function WorkerFormModal({
                 fontWeight: "900",
               }}
             >
-              {isEdit ? "👷 시공자 정보 수정" : "👷 신규 시공자 등록"}
+              {isEdit ? "👷 시공자 정보 수정" : selfRegistration ? "👷 관리자 본인 시공자 등록" : "👷 신규 시공자 등록"}
             </div>
 
             <div

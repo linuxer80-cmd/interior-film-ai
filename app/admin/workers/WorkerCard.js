@@ -4,6 +4,7 @@ export default function WorkerCard({
   worker,
   inviteLoading = false,
   onInvite,
+  onLinkSelf,
   onEdit,
   onActiveChange,
 }) {
@@ -209,6 +210,12 @@ export default function WorkerCard({
           }}
         >
           {/* 계정 초대 */}
+
+          {!accountLinked && active && (
+            <button type="button" onClick={onLinkSelf} style={{ padding: "7px 9px", border: "1px solid #16a34a", borderRadius: 8, background: "#f0fdf4", color: "#166534", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+              내 계정 연결
+            </button>
+          )}
 
           {!accountLinked && active && (
             <button
