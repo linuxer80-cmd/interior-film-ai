@@ -663,7 +663,7 @@ export default function useEstimate({
       const response = await fetch("/api/similar-photo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_slug: normalizedCompanySlug,
-          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side } : { path }),
+          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side === "reference" ? "history" : side } : { path }),
         }),
       });
       const result = await readJsonSafely(response);
@@ -723,10 +723,6 @@ export default function useEstimate({
         ""
       }`,
 
-      `사진 수: ${
-        group.photos.length
-      }`,
-
       ...analyses.map(
         (
           item,
@@ -735,7 +731,7 @@ export default function useEstimate({
           `사진 ${
             index + 1
           }: ${
-            item?.description ||
+            item?.observable_structure || item?.description ||
             ""
           }`
       ),
@@ -745,43 +741,14 @@ export default function useEstimate({
       )}`,
     ].join("\n");
 
-    const response =
-      await fetch(
-        "/api/similar-estimate",
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              company_slug:
-                normalizedCompanySlug,
-
-              text:
-                searchText,
-
-              category:
-                group.category ||
-                null,
-
-              sub_category:
-                group.subCategory ||
-                null,
-
-              construction_scope: group.scope,
-              match_threshold:
-                MATCH_THRESHOLD,
-
-              match_count:
-                20,
-            }),
-        }
-      );
+    const form = new FormData();
+    group.photos.slice(0, 2).forEach((photo) => form.append("images", photo.file));
+    form.append("metadata", JSON.stringify({
+      company_slug: normalizedCompanySlug, text: searchText,
+      category: group.category || null, sub_category: group.subCategory || null,
+      construction_scope: group.scope, match_threshold: MATCH_THRESHOLD, match_count: 50,
+    }));
+    const response = await fetch("/api/similar-estimate", { method: "POST", body: form });
 
     const result =
       await readJsonSafely(
@@ -806,9 +773,9 @@ export default function useEstimate({
           ? result.similar_cases
           : [],
 
-      estimate:
-        result?.estimate ||
-        null,
+      estimate: result?.estimate || null,
+      searchStatus: result?.search_status || "visual_unavailable",
+      searchMessage: result?.search_message || "",
     };
   }
 
@@ -822,16 +789,16 @@ export default function useEstimate({
    */
 
   async function completeSimilarGroup(group) {
-    const { cases, estimate } = await findSimilarCases(group);
-    return { ...group, similarItems: cases.slice(0, 2).map((item) => ({
-      ...item, beforeStatus: "loading", afterStatus: "loading",
+    const { cases, estimate, searchStatus, searchMessage } = await findSimilarCases(group);
+    return { ...group, searchStatus, searchMessage, similarItems: cases.slice(0, 2).map((item) => ({
+      ...item, beforeStatus: "loading", afterStatus: "loading", referenceStatus: item.reference_path ? "loading" : "missing",
     })), estimate };
   }
 
   async function loadSimilarImages(completedGroups, runId) {
     // Update each side independently: one slow request must not hide other photos.
     const tasks = completedGroups.flatMap((group) => (group.similarItems || []).flatMap((item, index) =>
-      ["before", "after"].map((side) => ({ group, item, index, side }))));
+      ["before", "after", ...(item.reference_path ? ["reference"] : [])].map((side) => ({ group, item, index, side }))));
     await mapWithConcurrency(tasks, 6, async ({ group, item, index, side }) => {
       const { url, status } = await getSignedImageUrl(item, side);
       if (runRef.current !== runId) return;
@@ -846,7 +813,7 @@ export default function useEstimate({
   function retrySimilarPhoto(groupKey, index, side) {
     const group = groups.find((entry) => entry.key === groupKey);
     const item = group?.similarItems?.[index];
-    if (!item || !["before", "after"].includes(side) || item[`${side}Status`] === "loading") return;
+    if (!item || !["before", "after", "reference"].includes(side) || item[`${side}Status`] === "loading") return;
     const runId = runRef.current;
     setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
       ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
