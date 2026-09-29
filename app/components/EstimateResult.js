@@ -150,6 +150,12 @@ export default function EstimateResult({
                 장
               </div>
 
+              {group.requiresConfirmation && (
+                <p role="status" style={{ color: "#92400e", background: "#fffbeb", padding: 12, borderRadius: 10 }}>
+                  시공 부위 또는 범위가 명확하지 않아 금액을 계산하지 않았습니다. 대상 전체가 보이는 사진을 추가하거나 상담을 신청해주세요.
+                </p>
+              )}
+
               {/* ============================= */}
               {/* 고객이 등록한 분석 사진 */}
               {/* ============================= */}
