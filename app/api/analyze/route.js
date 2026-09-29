@@ -5,6 +5,7 @@ import {
   makeUsageLimitError,
 } from "../../utils/serverUsageLimit";
 
+import { FILM_TARGET_RULES, ESTIMATE_OBSERVATION_RULES } from "../../utils/visionRules";
 import { normalizeAnalysisClassification } from "../../utils/categoryUtils";
 
 export const runtime = "nodejs";
@@ -352,6 +353,7 @@ function parseAnalysisJson(
 
 function makeClassificationRules() {
   return `
+${FILM_TARGET_RULES}
 사진에서 실제 시공할 주 대상을 하나 정하고 배경에 보이는 물체와 구분한다.
 출입문은 사람이 통과하는 개구부와 건축용 문틀이 근거다.
 수납장의 손잡이/경첩은 출입문 근거가 아니다. 선반과 연속 수납 도어는 가구다.
@@ -737,6 +739,7 @@ ${makeClassificationRules()}
               JSON.stringify({
                 model:
                   AI_MODEL,
+                text: { format: { type: "json_object" } },
 
                 input: [
                   {
@@ -1094,8 +1097,9 @@ ${makeClassificationRules()}
     if (formData.get("purpose") === "estimate") {
       analysisInstruction = `${makeClassificationRules()}
 견적용 시공 부위 분류다. 오염/분위기/시공 권장사항은 쓰지 않는다.
+${ESTIMATE_OBSERVATION_RULES}
 출력 형식:
-{"target_type":"door","construction_scope":"whole","category":"문 및 문틀","sub_category":"방문 및 문틀","classification_confidence":"medium","classification_evidence":"사진에서 확인한 구조 근거","description":"주 대상의 시공 범위와 구조를 짧게 설명","tags":["핵심 구조"]}`;
+{"target_type":"door","construction_scope":"whole","category":"문 및 문틀","sub_category":"방문 및 문틀","classification_confidence":"medium","classification_evidence":"사진에서 확인한 구조 근거","view_completeness":"full","observable_structure":"문 개수, 배치, 개폐 방식, 측판과 거울 구성 중 보이는 사실","description":"주 대상의 시공 범위와 구조를 짧게 설명","tags":["핵심 구조"]}`;
     }
 
     /*
@@ -1144,6 +1148,7 @@ ${makeClassificationRules()}
 
                       image_url:
                         imageDataUrl,
+                      detail: "high",
                     },
                   ],
                 },
