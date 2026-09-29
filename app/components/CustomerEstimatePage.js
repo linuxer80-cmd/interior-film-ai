@@ -274,7 +274,7 @@ function DoorQuantitySelector({
               fontWeight: "900",
             }}
           >
-            동일한 방문·문틀 수량
+            각 방문·문틀 부위의 수량
           </strong>
 
           <div
@@ -285,8 +285,8 @@ function DoorQuantitySelector({
               lineHeight: 1.5,
             }}
           >
-            사진과 같은 방문·문틀이 여러 세트라면
-            수량을 조정해주세요.
+            각각 올린 방문은 이미 별도로 계산합니다.
+            각 부위와 동일한 문이 추가로 있을 때만 수량을 늘려주세요.
           </div>
         </div>
 
@@ -655,6 +655,8 @@ export default function CustomerEstimatePage({
 
     addImages,
     removeImage,
+    updatePhotoOptions,
+    retrySimilarPhoto,
     handleAnalyze,
 
     readJsonSafely,
@@ -2024,6 +2026,7 @@ export default function CustomerEstimatePage({
 
             <div className={styles.uploadCard}>
               <EstimatePhotoUploader
+                onUpdatePhotoOptions={updatePhotoOptions}
                 images={images}
                 loading={loading || savingPhotos}
                 imageLoading={imageLoading}
@@ -2195,6 +2198,7 @@ export default function CustomerEstimatePage({
               </div>
 
               <EstimateResult
+                onRetrySimilarPhoto={retrySimilarPhoto}
                 groups={
                   displayGroups
                 }
