@@ -9,8 +9,9 @@ import {
 } from "../utils/imageUtils";
 
 import {
-  getConstructionScope,
-  getEstimateGroupKey,
+  applyEstimateTarget,
+  buildEstimatePhotoGroups,
+  assignEstimateSubject,
 } from "../utils/categoryUtils";
 
 const MAX_IMAGES = 10;
@@ -560,10 +561,9 @@ export default function useEstimate({
           );
         }
 
-        return current.filter(
-          (item) =>
-            item.id !== id
-        );
+        const remaining = current.filter((item) => item.id !== id);
+        const nextRoot = remaining.find((item) => item.subjectId === id)?.id;
+        return remaining.map((item) => item.subjectId === id ? { ...item, subjectId: nextRoot || item.id } : item);
       }
     );
 
@@ -639,7 +639,7 @@ export default function useEstimate({
       ...imageItem,
 
       analysis:
-        result.analysis,
+        applyEstimateTarget(result.analysis, imageItem.targetChoice),
 
       analysisIndex:
         index,
@@ -655,68 +655,23 @@ export default function useEstimate({
    * =========================================================
    */
 
-  async function getSignedImageUrl(
-    path
-  ) {
-    if (!path) {
-      return null;
-    }
-
-    if (
-      !normalizedCompanySlug
-    ) {
-      return null;
-    }
-
+  async function getSignedImageUrl(item, side) {
+    if (!normalizedCompanySlug) return { url: null, status: "error" };
+    const path = item[`${side}_path`];
+    if (!item.work_item_id && !path) return { url: null, status: "missing" };
     try {
-      const response =
-        await fetch(
-          "/api/similar-photo",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                company_slug:
-                  normalizedCompanySlug,
-
-                path,
-              }),
-          }
-        );
-
-      const result =
-        await readJsonSafely(
-          response
-        );
-
-      if (
-        !response.ok ||
-        !result?.success ||
-        !result?.signed_url
-      ) {
-        console.error(
-          "유사 시공사진 URL 생성 실패:",
-          result?.error
-        );
-
-        return null;
-      }
-
-      return result.signed_url;
+      const response = await fetch("/api/similar-photo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_slug: normalizedCompanySlug,
+          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side } : { path }),
+        }),
+      });
+      const result = await readJsonSafely(response);
+      if (!response.ok || !result?.success) throw new Error(result?.error || "사진 조회 실패");
+      return { url: result.signed_url || null, status: result.signed_url ? "ready" : "missing" };
     } catch (error) {
-      console.error(
-        "유사 시공사진 URL 생성 오류:",
-        error
-      );
-
-      return null;
+      console.warn("유사 시공사진 조회 실패", error);
+      return { url: null, status: "error" };
     }
   }
 
@@ -868,20 +823,53 @@ export default function useEstimate({
 
   async function completeSimilarGroup(group) {
     const { cases, estimate } = await findSimilarCases(group);
-    return { ...group, similarItems: cases.slice(0, 2), estimate };
+    return { ...group, similarItems: cases.slice(0, 2).map((item) => ({
+      ...item, beforeStatus: "loading", afterStatus: "loading",
+    })), estimate };
   }
 
   async function loadSimilarImages(completedGroups, runId) {
-    const withImages = await mapWithConcurrency(completedGroups, 3, async (group) => ({
-      ...group,
-      similarItems: await Promise.all((group.similarItems || []).map(async (item) => {
-        const [beforeUrl, afterUrl] = await Promise.all([
-          getSignedImageUrl(item.before_path), getSignedImageUrl(item.after_path),
-        ]);
-        return { ...item, beforeUrl, afterUrl };
-      })),
+    // Update each side independently: one slow request must not hide other photos.
+    const tasks = completedGroups.flatMap((group) => (group.similarItems || []).flatMap((item, index) =>
+      ["before", "after"].map((side) => ({ group, item, index, side }))));
+    await mapWithConcurrency(tasks, 6, async ({ group, item, index, side }) => {
+      const { url, status } = await getSignedImageUrl(item, side);
+      if (runRef.current !== runId) return;
+      setGroups((current) => current.map((entry) => entry.key !== group.key ? entry : {
+        ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+          ...photo, [`${side}Url`]: url, [`${side}Status`]: status,
+        }),
+      }));
+    });
+  }
+
+  function retrySimilarPhoto(groupKey, index, side) {
+    const group = groups.find((entry) => entry.key === groupKey);
+    const item = group?.similarItems?.[index];
+    if (!item || !["before", "after"].includes(side) || item[`${side}Status`] === "loading") return;
+    const runId = runRef.current;
+    setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
+      ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+        ...photo, [`${side}Url`]: null, [`${side}Status`]: "loading",
+      }),
     }));
-    if (runRef.current === runId) setGroups(withImages);
+    void getSignedImageUrl(item, side).then(({ url, status }) => {
+      if (runRef.current !== runId) return;
+      setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
+        ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+          ...photo, [`${side}Url`]: url, [`${side}Status`]: status,
+        }),
+      }));
+    });
+  }
+
+  function updatePhotoOptions(id, options) {
+    if (busyRef.current || savePromiseRef.current || imageLoading) return;
+    setImages((current) => {
+      if ("subjectId" in options) return assignEstimateSubject(current, id, options.subjectId);
+      return current.map((photo) => photo.id === id ? { ...photo, targetChoice: options.targetChoice || "" } : photo);
+    });
+    resetEstimateResults();
   }
 
   /*
@@ -1311,55 +1299,10 @@ export default function useEstimate({
        */
 
       setMessage(
-        "같은 시공 부위의 사진을 묶고 있습니다..."
+        "사진별 시공 대상을 확인하고 있습니다..."
       );
 
-      const groupMap =
-        new Map();
-
-      for (
-        const photo of analyzedPhotos
-      ) {
-        const key = getEstimateGroupKey(photo.analysis);
-
-        if (
-          !groupMap.has(
-            key
-          )
-        ) {
-          groupMap.set(
-            key,
-            {
-              key,
-              scope: getConstructionScope(photo.analysis),
-              requiresConfirmation: Boolean(photo.analysis?.requires_confirmation || photo.analysis?.classification_confidence === "low"),
-              category:
-                photo.analysis
-                  ?.category ||
-                "시공 부위",
-
-              subCategory:
-                photo.analysis
-                  ?.sub_category ||
-                "",
-
-              photos: [],
-            }
-          );
-        }
-
-        if (photo.analysis?.requires_confirmation || photo.analysis?.classification_confidence === "low") groupMap.get(key).requiresConfirmation = true;
-        groupMap
-          .get(key)
-          .photos.push(
-            photo
-          );
-      }
-
-      const baseGroups =
-        Array.from(
-          groupMap.values()
-        );
+      const baseGroups = buildEstimatePhotoGroups(analyzedPhotos);
 
       /*
        * ===================================================
@@ -1633,6 +1576,8 @@ export default function useEstimate({
     addImages,
 
     removeImage,
+    updatePhotoOptions,
+    retrySimilarPhoto,
 
     handleAnalyze,
 
