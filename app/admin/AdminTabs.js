@@ -8,10 +8,6 @@ const tabs = [
     label: "시공 등록",
   },
   {
-    id: "quick-register",
-    label: "빠른 등록",
-  },
-  {
     id: "sites",
     label: "현장 관리",
   },

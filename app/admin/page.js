@@ -45,6 +45,7 @@ export default function AdminPage() {
     activeTab,
     setActiveTab,
   ] = useState("jobs");
+  const [registerMode, setRegisterMode] = useState("standard");
 
   const activeTabRef =
     useRef("jobs");
@@ -376,6 +377,7 @@ export default function AdminPage() {
   ========================================================= */
 
   function changeTab(tab) {
+    if (tab === "register") setRegisterMode("standard");
     activeTabRef.current =
       tab;
 
@@ -911,17 +913,23 @@ export default function AdminPage() {
         />
       )}
 
-      {activeTab === "quick-register" && (
-        <QuickRegisterTab companyId={companyId} loadJobs={loadJobs} />
-      )}
-
       {/* =====================================================
           시공 등록
       ===================================================== */}
 
-      {activeTab ===
-        "register" && (
+      {activeTab === "register" && registerMode === "quick" && (
+        <>
+          <button type="button" onClick={() => setRegisterMode("standard")}
+            style={{ padding: "10px 14px", marginBottom: 14, border: "1px solid #d1d5db", borderRadius: 9, background: "#fff", fontWeight: 700, cursor: "pointer" }}>
+            ← 일반 시공등록
+          </button>
+          <QuickRegisterTab companyId={companyId} loadJobs={loadJobs} />
+        </>
+      )}
+
+      {activeTab === "register" && registerMode === "standard" && (
         <RegisterTab
+          onQuickRegister={() => setRegisterMode("quick")}
           category={category}
           setCategory={setCategory}
           actualCost={actualCost}

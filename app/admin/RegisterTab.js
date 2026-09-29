@@ -6,6 +6,7 @@ import {
 } from "./adminStyles";
 
 export default function RegisterTab({
+  onQuickRegister,
   category,
   setCategory,
   actualCost,
@@ -33,6 +34,10 @@ export default function RegisterTab({
         <h2 style={{ marginTop: 0 }}>
           시공사례 등록
         </h2>
+        <button type="button" onClick={onQuickRegister}
+          style={{ width: "100%", padding: "12px 14px", marginBottom: 20, border: "1px solid #2563eb", borderRadius: 10, background: "#eff6ff", color: "#1d4ed8", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+          📷 사진으로 빠른 등록
+        </button>
 
         <label style={labelStyle}>
           시공 전 사진
