@@ -83,8 +83,10 @@ function harness() {
         return ok({ analysis: normalize({ ...kitchen('싱크대 하부장'), classification_confidence: 'high' }) });
       }
       if (url === '/api/similar-estimate') {
-        assert.equal(JSON.parse(options.body).construction_scope, 'kitchen_lower');
-        return ok({ success: true, estimate: { min: 90000, max: 110000, average: 100000 }, similar_cases: [{ actual_cost: 100000, work_item_id: '00000000-0000-0000-0000-000000000001', before_path: null, after_path: null }] });
+        assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, 'kitchen_lower');
+        assert.ok(options.body.getAll('images').length >= 1);
+        assert.ok(options.body.getAll('images').length <= 2);
+        return ok({ success: true, search_status: 'verified', estimate: { min: 100000, max: 100000, average: 100000, range_basis: 'observed_cases' }, similar_cases: [{ actual_cost: 100000, visual_verified: true, visual_rank: 1, work_item_id: '00000000-0000-0000-0000-000000000001', before_path: null, after_path: null }] });
       }
       if (url === '/api/similar-photo') { const body = JSON.parse(options.body); assert.equal(body.work_item_id, '00000000-0000-0000-0000-000000000001'); assert.ok(['before', 'after'].includes(body.photo_type)); const task = deferred(); thumbnails.push(task); return task.promise; }
       if (url === '/api/estimate-photo') { const task = deferred(); uploads.push(task); return task.promise; }
