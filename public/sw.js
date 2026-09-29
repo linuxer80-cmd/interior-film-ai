@@ -123,7 +123,7 @@ self.addEventListener(
 
         /*
          * 정확히 같은 페이지가 이미 열려 있으면
-         * 그 창을 앞으로 가져오기
+         * 최신 배정을 다시 읽도록 같은 URL도 이동 후 앞으로 가져오기
          */
         for (const client of clientsList) {
           try {
@@ -131,9 +131,15 @@ self.addEventListener(
               client.url ===
               targetUrl
             ) {
-              await client.focus();
-
-              return;
+              if ("navigate" in client) {
+                const refreshed = await client.navigate(targetUrl);
+                if (refreshed) {
+                  await refreshed.focus();
+                  return;
+                }
+              }
+              // If navigation fails, try another client or a new window.
+              continue;
             }
           } catch {
             // 다음 창 확인
