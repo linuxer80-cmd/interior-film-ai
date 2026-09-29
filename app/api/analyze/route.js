@@ -5,6 +5,8 @@ import {
   makeUsageLimitError,
 } from "../../utils/serverUsageLimit";
 
+import { normalizeAnalysisClassification } from "../../utils/categoryUtils";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -342,171 +344,6 @@ function parseAnalysisJson(
  * =========================================================
  */
 
-function includesAny(
-  text,
-  words
-) {
-  const normalized =
-    String(text || "")
-      .replace(/\s+/g, "")
-      .toLowerCase();
-
-  return words.some(
-    (word) =>
-      normalized.includes(
-        String(word)
-          .replace(/\s+/g, "")
-          .toLowerCase()
-      )
-  );
-}
-
-/*
- * =========================================================
- * AI 결과 후처리
- *
- * AI가 설명에서는 "방문/문틀"이라고 정확하게 봤는데
- * category만 잘못 주방으로 반환하는 경우를 한 번 더 보정합니다.
- * =========================================================
- */
-
-function normalizeAnalysisClassification(
-  analysis
-) {
-  if (
-    !analysis ||
-    typeof analysis !== "object"
-  ) {
-    return analysis;
-  }
-
-  const tags =
-    Array.isArray(
-      analysis.tags
-    )
-      ? analysis.tags
-      : [];
-
-  const fullText = [
-    analysis.category,
-    analysis.sub_category,
-    analysis.description,
-    analysis.classification_evidence,
-    ...tags,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  // Cabinet doors can sit beside a room door. The object named as the
-  // installation target takes precedence over a generic "door" label.
-  const targetEvidence = [
-    analysis.sub_category,
-    analysis.classification_evidence,
-    ...tags,
-  ].filter(Boolean).join(" ");
-  const furnitureText = [analysis.category, targetEvidence].filter(Boolean).join(" ");
-  const wardrobe = includesAny(furnitureText, ["붙박이장", "붙박이 장", "옷장", "wardrobe", "built-in closet"]);
-  const shoeCabinet = includesAny(furnitureText, ["신발장", "현관장", "shoe cabinet"]);
-  if (wardrobe || shoeCabinet) {
-    return {
-      ...analysis,
-      category: wardrobe ? "붙박이장" : "신발장",
-      sub_category: wardrobe ? "붙박이장 문짝" : "신발장 문짝",
-    };
-  }
-
-  /*
-   * 매우 강한 문 계열 특징
-   *
-   * 단순 "문"이라는 글자만 사용하지 않습니다.
-   * 붙박이장문, 신발장문 같은 오판을 피하기 위해
-   * 방문/문틀/방화문/현관문 등의 명확한 단어만 사용합니다.
-   */
-
-  const strongDoor =
-    includesAny(
-      fullText,
-      [
-        "방문",
-        "문틀",
-        "도어프레임",
-        "도어 프레임",
-        "방화문",
-        "현관문",
-        "중문",
-        "출입문",
-        "door frame",
-        "doorframe",
-        "fire door",
-        "entrance door",
-      ]
-    );
-
-  /*
-   * 명확한 주방 특징
-   */
-
-  const strongKitchen =
-    includesAny(
-      fullText,
-      [
-        "싱크대",
-        "싱크볼",
-        "조리대",
-        "상부장",
-        "하부장",
-        "주방가구",
-        "주방 가구",
-        "아일랜드장",
-        "키큰장",
-        "팬트리장",
-        "kitchen cabinet",
-        "upper cabinet",
-        "lower cabinet",
-      ]
-    );
-
-  /*
-   * 문 근거가 존재하고
-   * AI 설명 자체에 확실한 주방 구조 근거가 없다면
-   * 문/문틀로 교정
-   */
-
-  if (
-    strongDoor &&
-    !strongKitchen
-  ) {
-    return {
-      ...analysis,
-
-      category:
-        "문 및 문틀",
-
-      sub_category:
-        includesAny(
-          fullText,
-          [
-            "중문",
-            "슬라이딩도어",
-            "슬라이딩 도어",
-          ]
-        )
-          ? "중문"
-          : includesAny(
-                fullText,
-                [
-                  "방화문",
-                  "현관문",
-                ]
-              )
-            ? "방화문 및 문틀"
-            : "방문 및 문틀",
-    };
-  }
-
-  return analysis;
-}
-
 /*
  * =========================================================
  * 공통 분류 규칙
@@ -515,157 +352,21 @@ function normalizeAnalysisClassification(
 
 function makeClassificationRules() {
   return `
-가장 중요한 작업은 먼저 "사진 속 실제 시공 대상"을 정확히 분류하는 것이다.
-
-아래 기준을 반드시 지켜라.
-
-[1. 문 및 문틀]
-
-다음 특징이 보이면 문/문틀 가능성이 매우 높다.
-
-- 사람이 통과하는 출입구에 설치된 세로형 문짝
-- 문손잡이
-- 문고리
-- 도어락
-- 경첩
-- 문틀
-- 문선
-- 문턱
-- 방 안과 복도 또는 화장실 등을 구분하는 출입문
-- 하나의 큰 세로형 도어 패널
-- 벽의 출입구 안에 설치된 문짝
-- 방문
-- 방화문
-- 현관문
-- 중문
-- 슬라이딩 도어
-
-특히
-"문짝 + 문틀 + 손잡이 또는 경첩"이 확인되면
-주방가구가 아니라 "문 및 문틀"을 우선 선택한다.
-
-단, 수납장 문짝의 손잡이·경첩은 출입문의 증거가 아니다.
-실제로 사람이 통과하는 출입구와 독립된 건축용 문틀이 보여야 한다.
-붙박이장 문, 신발장 문, 냉장고장 문은 출입문으로 분류하지 않는다.
-한 사진에 방문과 붙박이장이 함께 보이면 주요 시공 대상이 무엇인지
-가구의 연속된 수납 도어·선반과 출입구 구조를 구분해 판단한다.
-
-문 표면에 사각 패널이나 몰딩이 있어도
-그것을 싱크대 문짝으로 판단하지 않는다.
-
-문 아래쪽만 확대 촬영된 사진이라도
-경첩, 문틀, 문턱, 출입문 구조가 확인되면
-문으로 판단한다.
-
-[2. 주방 가구 / 싱크대]
-
-주방 가구로 판단하려면
-사진에서 주방이라는 근거가 실제로 확인되어야 한다.
-
-예:
-
-- 싱크볼
-- 수전
-- 조리대 또는 상판
-- 상판 아래에 연속으로 배치된 하부장
-- 벽에 연속으로 설치된 상부장
-- 여러 개의 작은 가구 도어가 반복되는 구조
-- 주방 조리 공간
-- 아일랜드
-- 키큰장
-- 냉장고장
-- 명확한 싱크대 구조
-
-중요:
-
-큰 직사각형 판 하나가 보인다는 이유만으로
-싱크대나 주방가구라고 판단하지 않는다.
-
-문손잡이, 경첩, 문틀, 출입구가 보이는 경우에는
-주방가구보다 문/문틀 판정을 우선한다.
-
-싱크볼, 조리대, 상부장, 하부장 등의
-명확한 주방 근거가 보이지 않으면
-"싱크대 상부장과 하부장"이라고 추측하지 않는다.
-
-상부장과 하부장이 둘 다 실제로 확인되지 않으면
-"상부장과 하부장"이라고 작성하지 않는다.
-
-하부장만 보이면 "싱크대 하부장",
-상부장만 보이면 "싱크대 상부장"으로 작성한다.
-
-[3. 붙박이장]
-
-- 벽면을 따라 설치된 큰 수납장
-- 바닥부터 천장 가까이 이어지는 다수의 수납 도어
-- 옷장 구조
-- 붙박이 수납 구조
-- 열린 수납 칸이나 선반, 여러 장의 가구 도어가 이어진 구조
-- 가구 문짝에 손잡이가 있어도 사람이 드나드는 출입문이 아니다
-
-출입용 방문과 혼동하지 않는다.
-
-[4. 신발장]
-
-- 현관에 설치된 수납장
-- 여러 개의 수납 도어
-- 신발 수납 구조
-
-현관문 자체와 신발장을 구분한다.
-
-[5. 냉장고장]
-
-- 냉장고 주변을 둘러싼 수납장
-- 냉장고 설치 공간과 함께 구성된 장
-
-[6. 샷시 및 창틀]
-
-- 창문 프레임
-- 샷시
-- 창틀
-
-[7. 몰딩]
-
-- 천장 몰딩
-- 걸레받이
-- 벽체 마감 몰딩
-
-[8. 벽면]
-
-- 벽체
-- 아트월
-- 대형 벽면 패널
-
-분류 우선순위:
-
-1. 실제 물체의 용도와 구조를 본다.
-2. 손잡이, 경첩, 문틀, 싱크볼, 조리대 등
-   기능을 증명하는 요소를 확인한다.
-3. 단순한 색상이나 사각형 형태만으로 판단하지 않는다.
-4. 사진에 없는 물체를 추측하지 않는다.
-5. 확실하지 않으면 세부 부위를 과도하게 구체화하지 않는다.
-
-category는 가능하면 아래 명칭 중 하나를 사용한다.
-
-- 문 및 문틀
-- 주방 가구
-- 붙박이장
-- 신발장
-- 냉장고장
-- 샷시 및 창틀
-- 몰딩
-- 벽면
-- 기타
-
-classification_evidence에는
-왜 그 부위라고 판단했는지
-사진에서 직접 확인되는 핵심 근거만 짧게 작성한다.
-
-classification_confidence는 다음 중 하나만 사용한다.
-
-- high
-- medium
-- low
+사진에서 실제 시공할 주 대상을 하나 정하고 배경에 보이는 물체와 구분한다.
+출입문은 사람이 통과하는 개구부와 건축용 문틀이 근거다.
+수납장의 손잡이/경첩은 출입문 근거가 아니다. 선반과 연속 수납 도어는 가구다.
+붙박이장, 신발장, 냉장고장 문짝을 방문으로 분류하지 않는다.
+싱크대는 상판·싱크볼·조리 공간 등 실제 근거를 확인한다.
+상부장/하부장/냉장고장을 구분하고 보이지 않는 부위를 전체 시공으로 추정하지 않는다.
+배경 물체나 "붙박이장 아님" 같은 부정 표현을 주 대상에 넣지 않는다.
+대상이 여러 개라 결정할 수 없거나 사진이 불명확하면 confidence를 low로 둔다.
+category, sub_category는 주 대상 이름만 적고 설명 문장을 넣지 않는다.
+target_type은 door, middle_door, fire_door, kitchen, closet, shoe, vanity, window, molding, wall, other 중 하나다.
+construction_scope는 kitchen_lower, kitchen_upper, kitchen_full, kitchen_fridge, unknown, whole 중 하나다.
+kitchen_full은 상부장과 하부장 둘 다 확인될 때만, 비주방은 whole, 범위 불명확한 주방은 unknown이다.
+classification_confidence는 high, medium, low 중 하나이며 확실하지 않으면 high로 단정하지 않는다.
+classification_evidence는 주 대상의 실제 구조 근거만 한 문장으로 적는다.
+한국어 JSON만 반환한다. description은 2문장 이내, tags는 5개 이내다.
 `;
 }
 
@@ -916,6 +617,8 @@ ${makeClassificationRules()}
 반드시 JSON만 반환한다.
 
 {
+  "target_type": "door",
+  "construction_scope": "whole",
   "category": "대표 시공 부위",
   "sub_category": "실제로 확인되는 구체적인 시공 부위",
   "classification_evidence": "사진에서 직접 확인되는 분류 근거",
@@ -1281,6 +984,8 @@ ${makeClassificationRules()}
 반드시 JSON만 반환한다.
 
 {
+  "target_type": "door",
+  "construction_scope": "whole",
   "category": "대표 시공 부위",
   "sub_category": "실제로 확인되는 구체적인 시공 부위",
   "classification_evidence": "사진에서 직접 확인되는 분류 근거",
@@ -1368,6 +1073,8 @@ ${makeClassificationRules()}
 반드시 JSON만 반환한다.
 
 {
+  "target_type": "door",
+  "construction_scope": "whole",
   "category": "대표 시공 부위",
   "sub_category": "실제로 확인되는 구체적인 시공 부위",
   "classification_evidence": "사진에서 직접 확인되는 분류 근거",
@@ -1379,6 +1086,13 @@ ${makeClassificationRules()}
   ]
 }
 `;
+    }
+
+    if (formData.get("purpose") === "estimate") {
+      analysisInstruction = `${makeClassificationRules()}
+견적용 시공 부위 분류다. 오염/분위기/시공 권장사항은 쓰지 않는다.
+출력 형식:
+{"target_type":"door","construction_scope":"whole","category":"문 및 문틀","sub_category":"방문 및 문틀","classification_confidence":"medium","classification_evidence":"사진에서 확인한 구조 근거","description":"주 대상의 시공 범위와 구조를 짧게 설명","tags":["핵심 구조"]}`;
     }
 
     /*
