@@ -36,4 +36,23 @@
 .companyPlan { color: #637187; font-size: 12px; margin-top: 4px; }
 .companyDetails { padding: 0 15px 15px; }
 .account { border-top: 1px solid #e4e9f1; padding-top: 14px; color: #637187; font-size: 12px; overflow-wrap: anywhere; }
+.bulkFields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.bulkFields:disabled { opacity: .65; }
+.bulkLabel { display: block; font-size: 13px; font-weight: 600; margin: 10px 0; }
+.bulkLabel select, .bulkLabel input { display: block; max-width: 100%; box-sizing: border-box; margin-top: 6px; min-height: 44px; }
+.bulkLabel select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font-size: 14px; }
+.bulkSite { border: 1px solid #d1d5db; border-radius: 12px; padding: 12px; margin-top: 16px; }
+.bulkGroup { border-top: 1px solid #e5e7eb; margin-top: 14px; padding-top: 12px; }
+.bulkGroup strong { display: block; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.bulkSummary { min-height: 44px; box-sizing: border-box; padding: 12px 0; font-size: 13px; cursor: pointer; }
+.bulkPhoto { padding: 12px 0; border-bottom: 1px solid #edf0f5; }
+.bulkPhotoInfo { display: flex; gap: 10px; align-items: center; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; margin-bottom: 10px; }
+.bulkPhotoInfo img { flex-shrink: 0; border-radius: 6px; }
+.bulkGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.bulkGrid label { min-width: 0; font-size: 12px; color: #475569; }
+.bulkGrid input, .bulkGrid select { display: block; width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; margin-top: 5px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; font-size: 14px; background: #fff; }
+.bulkInvalid { outline: 2px solid #dc2626 !important; outline-offset: 2px; scroll-margin-block: 130px; }
+.bulkError { color: #b91c1c; font-size: 13px; line-height: 1.6; margin: 6px 0 12px; overflow-wrap: anywhere; }
+.bulkNotice { border: 1px solid #d7dfeb; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 13px; }
+.bulkFileRepair { margin-top: 12px; }
 @media (max-width:360px) { .page { padding: 16px 12px 70px; } .title { font-size: 20px; } .tabs button { font-size: 11px; } .task { padding: 13px; } }

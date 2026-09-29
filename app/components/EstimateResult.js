@@ -26,14 +26,6 @@ function formatWon(value) {
   );
 }
 
-function formatSimilarity(value) {
-  return (
-    Number(
-      value || 0
-    ) * 100
-  ).toFixed(1);
-}
-
 export default function EstimateResult({
   groups = [],
   imageCount = 0,
@@ -84,18 +76,9 @@ export default function EstimateResult({
            * 유사 시공사례를
            * 유사도 높은 순으로 정렬합니다.
            */
-          const sortedSimilarItems = [
-            ...(group.similarItems ||
-              []),
-          ].sort(
-            (a, b) =>
-              Number(
-                b?.similarity || 0
-              ) -
-              Number(
-                a?.similarity || 0
-              )
-          );
+          const sortedSimilarItems = (group.similarItems || [])
+            .filter((item) => item.visual_verified === true)
+            .slice().sort((a, b) => a.visual_rank - b.visual_rank);
 
           /*
            * 가장 유사한 실제 시공사례
@@ -107,12 +90,6 @@ export default function EstimateResult({
           const bestActualCost =
             Number(
               bestMatch?.actual_cost ||
-                0
-            );
-
-          const bestSimilarity =
-            Number(
-              bestMatch?.similarity ||
                 0
             );
 
@@ -253,8 +230,8 @@ export default function EstimateResult({
                           "#1d4ed8",
                       }}
                     >
-                      가장 유사한 실제
-                      시공 견적
+                      사진으로 비교한 실제
+                      시공금액
                     </div>
 
                     <div
@@ -273,11 +250,7 @@ export default function EstimateResult({
                           "#1d4ed8",
                       }}
                     >
-                      유사도{" "}
-                      {formatSimilarity(
-                        bestSimilarity
-                      )}
-                      %
+                      구조·범위 비교 완료
                     </div>
                   </div>
 
@@ -311,11 +284,7 @@ export default function EstimateResult({
                         "#6b7280",
                     }}
                   >
-                    등록된 실제 시공
-                    데이터 중 현재
-                    사진과 가장 유사한
-                    사례의 실제
-                    시공금액입니다.
+                    {bestMatch.match_reason || "시공 범위와 구조를 비교한 과거 사례의 금액입니다."}
                   </div>
                 </div>
               )}
@@ -348,7 +317,7 @@ export default function EstimateResult({
                         "#374151",
                     }}
                   >
-                    유사 시공 평균 견적
+                    비교 사례 평균 금액
                   </div>
 
                   <div
@@ -387,7 +356,7 @@ export default function EstimateResult({
                         "#4b5563",
                     }}
                   >
-                    예상 범위{" "}
+                    {group.estimate.range_basis === "observed_cases" ? "사례 금액 범위 " : "참고 범위 "}
                     <strong>
                       {formatWon(
                         group
@@ -416,7 +385,7 @@ export default function EstimateResult({
                         .estimate
                         .count
                     }
-                    건 분석 · 신뢰도{" "}
+                    건 분석 · 자료 충분도{" "}
                     <strong>
                       {
                         group
@@ -441,14 +410,11 @@ export default function EstimateResult({
                     lineHeight: 1.6,
                   }}
                 >
-                  ⚠️ 실제 시공 데이터가
-                  부족하여 평균 견적
-                  계산이 어렵습니다.
-                  정확한 상담을
-                  신청해주세요.
+                  {group.searchMessage || "사진으로 비교할 수 있는 같은 시공 범위의 사례가 부족합니다. 정확한 상담을 신청해주세요."}
                 </div>
               )}
 
+              {group.estimate?.price_spread === "wide" && <p style={{ fontSize: 13, color: "#92400e" }}>비교 사례 간 금액 차이가 큽니다. 실측 크기와 세부 시공 범위를 확인해야 합니다.</p>}
               {/* ============================= */}
               {/* 안내 문구 */}
               {/* ============================= */}
@@ -558,8 +524,8 @@ export default function EstimateResult({
                                 "700",
                             }}
                           >
-                            가장 유사한
-                            사례
+                            비교 후보 중
+                            가장 유사한 사례
                           </div>
                         )}
 
@@ -576,14 +542,18 @@ export default function EstimateResult({
                             gap: "7px",
                           }}
                         >
-                          {[ ["before", "시공 전"], ["after", "시공 후"] ].map(([side, alt]) => (
+                          {(item.reference_path && !item.before_path && !item.after_path
+                            ? [["reference", "참고사진 · 전후 미확인"]]
+                            : [["before", "시공 전"], ["after", "시공 후"], ...(item.reference_path ? [["reference", "참고사진 · 전후 미확인"]] : [])]).map(([side, alt]) => (
                             <SimilarCasePhoto key={`${side}:${item[`${side}Url`] || item[`${side}Status`]}`}
                               url={item[`${side}Url`]} status={item[`${side}Status`]} alt={alt}
                               onRetry={() => onRetrySimilarPhoto?.(group.key, caseIndex, side)} />
                           ))}
                         </div>
 
-                        {/* 실제 금액 / 유사도 */}
+                        {item.match_reason && <p style={{ fontSize: 13, lineHeight: 1.6, color: "#475569" }}>{item.match_reason}</p>}
+                        {!!item.differences?.length && <p style={{ fontSize: 12, lineHeight: 1.6, color: "#64748b" }}>차이점: {item.differences.join(" · ")}</p>}
+                        {/* 실제 금액 / 비교 결과 */}
 
                         <div
                           style={{
@@ -635,11 +605,7 @@ export default function EstimateResult({
                                 "12px",
                             }}
                           >
-                            유사도{" "}
-                            {formatSimilarity(
-                              item.similarity
-                            )}
-                            %
+                            구조·범위 비교 완료
                           </div>
                         </div>
                       </div>

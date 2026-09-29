@@ -26,6 +26,10 @@ export function normalizeCategory(value) {
   if (text.includes("냉장고장")) {
     return "kitchen";
   }
+  // A named cabinet/fixture remains that fixture when its label includes "도어".
+  if (/싱크대|주방|상부장|하부장/.test(text)) return "kitchen";
+  if (/화장대|서랍장/.test(text)) return "vanity";
+  if (/샷시|창틀|창문/.test(text)) return "window";
 
   // ----------------------------------------------------
   // 중문
@@ -402,12 +406,14 @@ export function normalizeAnalysisClassification(analysis) {
     throw new Error("사진 분석 결과 형식이 올바르지 않습니다.");
   }
   const categoryKey = knownCategory(analysis.category);
-  const detailKey = knownCategory(analysis.sub_category);
+  const detailKey = ["도어", "문짝", "측판", "상단 수납부", "수납부", "전체"].includes(String(analysis.sub_category || "").trim()) ? "other" : knownCategory(analysis.sub_category);
   const declared = Object.hasOwn(TARGET_LABELS, analysis.target_type || "") ? analysis.target_type : null;
   const candidates = [declared, categoryKey, detailKey].filter((key) => key && key !== "other");
-  const conflict = new Set(candidates.map(family)).size > 1;
-  const uncertain = conflict || !candidates.length || analysis.classification_confidence === "low";
-  const target = conflict ? "other" : (declared || (detailKey !== "other" ? detailKey : categoryKey));
+  const specificDoors = [...new Set(candidates.filter((key) => key === "middle_door" || key === "fire_door"))];
+  const conflict = new Set(candidates.map(family)).size > 1 || specificDoors.length > 1;
+  const incomplete = ["partial", "unclear"].includes(analysis.view_completeness);
+  const uncertain = conflict || incomplete || !candidates.length || analysis.classification_confidence === "low";
+  const target = conflict ? "other" : (specificDoors[0] || declared || (detailKey !== "other" ? detailKey : categoryKey));
   const labels = TARGET_LABELS[target] || TARGET_LABELS.other;
   const result = {
     ...analysis,
@@ -417,8 +423,10 @@ export function normalizeAnalysisClassification(analysis) {
     classification_confidence: uncertain ? "low" : (analysis.classification_confidence === "high" ? "high" : "medium"),
     requires_confirmation: uncertain || target === "other",
   };
-  result.construction_scope = getConstructionScope(result);
-  const labelScope = getConstructionScope({ ...result, construction_scope: null });
+  // Preserve a refrigerator cue from the original category before replacing it
+  // with the generic canonical kitchen label.
+  result.construction_scope = getConstructionScope({ ...analysis, target_type: target });
+  const labelScope = getConstructionScope({ ...analysis, target_type: target, construction_scope: null });
   if (target === "kitchen" && labelScope !== "unknown" && labelScope !== result.construction_scope) {
     result.requires_confirmation = true;
     result.classification_confidence = "low";
@@ -441,7 +449,7 @@ export function isMatchingConstructionScope(analysis, candidate) {
 export function selectEstimateCases(rows, analysis, limit = 10) {
   const seen = new Set();
   return (Array.isArray(rows) ? rows : [])
-    .filter((item) => Number(item.actual_cost) > 0 && isMatchingConstructionScope(analysis, item))
+    .filter((item) => Number.isFinite(Number(item.actual_cost)) && Number(item.actual_cost) > 0 && isMatchingConstructionScope(analysis, item))
     .sort((a, b) => Number(b.similarity || 0) - Number(a.similarity || 0))
     .filter((item) => {
       // Without an ID, do not collapse unrelated jobs just because their prices match.
