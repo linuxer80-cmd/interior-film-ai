@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import ui from "../admin/AdminUi.module.css";
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -366,11 +367,6 @@ export default function SuperAdminPage() {
     }
   }
 
-  function openCompanies() {
-    window.location.href =
-      "/super-admin";
-  }
-
   function openPlans() {
     window.location.href =
       "/super-admin/plans";
@@ -500,52 +496,58 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.header}>
-          <div>
-            <div style={styles.badge}>
-              SUPER ADMIN
-            </div>
-
-            <h1 style={styles.title}>
-              🛡️ 서비스 관리
-            </h1>
-
-            <div style={styles.subtitle}>
-              전체 회사 계정과 서비스 요금제를
-              관리합니다.
-            </div>
-          </div>
-
-          <button
-            type="button"
-            style={styles.adminButton}
-            onClick={() => {
-              window.location.href =
-                "/admin";
-            }}
-          >
-            회사 관리자
-          </button>
+    <main className={ui.page}>
+      <header className={ui.header}>
+        <div>
+          <div className={ui.eyebrow}>SUPER ADMIN</div>
+          <h1 className={ui.title}>서비스 관리</h1>
         </div>
-
-        <div style={styles.loginBox}>
+      </header>
+      <a className={ui.secondary} href="/admin" style={{ width: "100%", justifyContent: "space-between", marginBottom: 20 }}>
+        관리자 페이지로 이동 <span aria-hidden="true">↗</span>
+      </a>
+      <div className={ui.tasks}>
+        <button type="button" className={ui.task} onClick={openNotifications}>
+          <span>새 알림</span>
+          <strong>{notificationUnreadCount.toLocaleString("ko-KR")}<small> 건</small></strong>
+        </button>
+        <button type="button" className={ui.task} onClick={openMaterialOrders}>
+          <span>자재 주문</span>
+          <strong style={{ fontSize: 19 }}>주문 확인 <span aria-hidden="true">↗</span></strong>
+        </button>
+      </div>
+      <section>
+        <div className={ui.sectionHeading}>
           <div>
-            <div style={styles.smallLabel}>
-              슈퍼관리자
-            </div>
-
-            <div style={styles.adminName}>
-              {adminName}
-            </div>
+            <h2>업체 관리</h2>
+            <p className={ui.help} style={{ margin: "6px 0 0" }}>전체 {totalCount} · 운영 {activeCount} · 중지 {inactiveCount}</p>
           </div>
-
-          <div style={styles.email}>
-            {userEmail}
-          </div>
+          <button type="button" className={ui.secondary} onClick={async () => {
+            setMessage("");
+            try {
+              await Promise.all([loadCompanies(), loadNotificationUnreadCount()]);
+              setMessage("✅ 회사 목록을 새로고침했습니다.");
+            } catch (error) { setMessage(`❌ ${error?.message || "새로고침 실패"}`); }
+          }}>새로고침</button>
         </div>
-
+        <input type="search" aria-label="회사명, 대표자, 전화번호 검색" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="회사명, 대표자, 전화번호 검색" style={styles.searchInput} />
+        {message && <div role="status" style={{ ...styles.message, ...(message.startsWith("❌") ? styles.messageError : styles.messageSuccess) }}>{message}</div>}
+        <div style={styles.companyList}>
+          {filteredCompanies.length === 0 ? <div style={styles.empty}>검색 결과가 없습니다.</div> : filteredCompanies.map((company) => (
+            <CompanyCard key={company.id} company={company} changing={changingId === company.id} onManage={() => openCompany(company)} onToggle={() => changeCompanyActive(company)} />
+          ))}
+        </div>
+      </section>
+      <details className={ui.more}>
+        <summary>운영 메뉴 더보기</summary>
+        <div className={ui.moreGrid}>
+          <button type="button" onClick={openPlans}>요금제 관리</button>
+          <button type="button" onClick={openBilling}>결제 관리</button>
+          <button type="button" onClick={openStructureAnalysis}>구조분석 관리</button>
+          <a href="/super-admin/materials">자재 관리</a>
+        </div>
+        <details className={ui.more}>
+          <summary>알림 설정</summary>
         <div style={styles.pushBox}>
           <div style={styles.pushInfo}>
             <div style={styles.pushTitle}>
@@ -605,235 +607,10 @@ export default function SuperAdminPage() {
           </button>
         </div>
 
-        <div style={styles.menuGrid}>
-          <button
-            type="button"
-            style={{
-              ...styles.menuButton,
-              ...styles.menuButtonActive,
-            }}
-            onClick={openCompanies}
-          >
-            <span style={styles.menuIcon}>
-              🏢
-            </span>
-
-            <span>업체 관리</span>
-          </button>
-
-          <button
-            type="button"
-            style={styles.menuButton}
-            onClick={openPlans}
-          >
-            <span style={styles.menuIcon}>
-              💳
-            </span>
-
-            <span>요금제 관리</span>
-          </button>
-
-          <button
-            type="button"
-            style={styles.menuButton}
-            onClick={openStructureAnalysis}
-          >
-            <span style={styles.menuIcon}>
-              🛠️
-            </span>
-
-            <span>구조분석 관리</span>
-          </button>
-
-          <button
-            type="button"
-            style={styles.menuButton}
-            onClick={openNotifications}
-          >
-            <span
-              style={
-                styles.notificationMenuIconWrap
-              }
-            >
-              <span style={styles.menuIcon}>
-                🔔
-              </span>
-
-              {notificationUnreadCount > 0 && (
-                <span
-                  style={
-                    styles.notificationBadge
-                  }
-                >
-                  {notificationUnreadCount > 99
-                    ? "99+"
-                    : notificationUnreadCount}
-                </span>
-              )}
-            </span>
-
-            <span>알림</span>
-          </button>
-
-          <button
-            type="button"
-            style={styles.menuButton}
-            onClick={openBilling}
-          >
-            <span style={styles.menuIcon}>
-              💰
-            </span>
-
-            <span>결제 관리</span>
-          </button>
-
-          <button
-            type="button"
-            style={styles.menuButton}
-            onClick={openMaterialOrders}
-          >
-            <span style={styles.menuIcon}>
-              📦
-            </span>
-
-            <span>주문 확인</span>
-          </button>
-        </div>
-
-        <div style={styles.statsGrid}>
-          <StatCard
-            label="전체 회사"
-            value={totalCount}
-          />
-
-          <StatCard
-            label="활성"
-            value={activeCount}
-          />
-
-          <StatCard
-            label="정지"
-            value={inactiveCount}
-          />
-        </div>
-
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>
-                회사 관리
-              </h2>
-
-              <div
-                style={
-                  styles.sectionDescription
-                }
-              >
-                가입된 회사를 조회하고 서비스
-                이용 상태를 관리합니다.
-              </div>
-            </div>
-
-            <button
-              type="button"
-              style={styles.refreshButton}
-              onClick={async () => {
-                setMessage("");
-
-                try {
-                  await Promise.all([
-                    loadCompanies(),
-                    loadNotificationUnreadCount(),
-                  ]);
-
-                  setMessage(
-                    "✅ 회사 목록을 새로고침했습니다.",
-                  );
-                } catch (error) {
-                  setMessage(
-                    `❌ ${
-                      error?.message ||
-                      "새로고침 실패"
-                    }`,
-                  );
-                }
-              }}
-            >
-              새로고침
-            </button>
-          </div>
-
-          <input
-            type="search"
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-            placeholder="회사명, 대표자, 전화번호 검색"
-            style={styles.searchInput}
-          />
-
-          {message && (
-            <div
-              style={{
-                ...styles.message,
-                ...(message.startsWith("❌")
-                  ? styles.messageError
-                  : styles.messageSuccess),
-              }}
-            >
-              {message}
-            </div>
-          )}
-
-          <div style={styles.companyList}>
-            {filteredCompanies.length === 0 ? (
-              <div style={styles.empty}>
-                검색 결과가 없습니다.
-              </div>
-            ) : (
-              filteredCompanies.map(
-                (company) => (
-                  <CompanyCard
-                    key={company.id}
-                    company={company}
-                    changing={
-                      changingId ===
-                      company.id
-                    }
-                    onManage={() =>
-                      openCompany(company)
-                    }
-                    onToggle={() =>
-                      changeCompanyActive(
-                        company,
-                      )
-                    }
-                  />
-                ),
-              )
-            )}
-          </div>
-        </section>
-      </div>
+        </details>
+        <div className={ui.account}>{adminName} · {userEmail}</div>
+      </details>
     </main>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-}) {
-  return (
-    <div style={styles.statCard}>
-      <div style={styles.statLabel}>
-        {label}
-      </div>
-
-      <div style={styles.statValue}>
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -847,112 +624,28 @@ function CompanyCard({
     company?.is_active === true;
 
   return (
-    <div style={styles.companyCard}>
-      <div style={styles.companyTop}>
-        <div style={{ minWidth: 0 }}>
-          <div style={styles.companyNameRow}>
-            <div style={styles.companyName}>
-              {company.company_name ||
-                "회사명 없음"}
-            </div>
-
-            <span
-              style={{
-                ...styles.statusBadge,
-                ...(active
-                  ? styles.activeBadge
-                  : styles.inactiveBadge),
-              }}
-            >
-              {active ? "활성" : "정지"}
-            </span>
-          </div>
-
-          {company.slug && (
-            <div style={styles.slug}>
-              /{company.slug}
-            </div>
-          )}
+    <details className={ui.company}>
+      <summary>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className={ui.companyName}>{company.company_name || "회사명 없음"}</div>
+          <div className={ui.companyPlan}>{company.subscription_plan || "basic"} · {company.representative_name || "대표자 미등록"}</div>
         </div>
-
-        <button
-          type="button"
-          disabled={changing}
-          onClick={onToggle}
-          style={{
-            ...styles.toggleButton,
-            ...(active
-              ? styles.stopButton
-              : styles.activateButton),
-            opacity:
-              changing ? 0.6 : 1,
-          }}
-        >
-          {changing
-            ? "처리 중..."
-            : active
-              ? "회사 정지"
-              : "활성화"}
-        </button>
+        <span style={{ ...styles.statusBadge, flexShrink: 0, ...(active ? styles.activeBadge : styles.inactiveBadge) }}>{active ? "운영 중" : "일시 중지"}</span>
+      </summary>
+      <div className={ui.companyDetails}>
+        <InfoRow label="대표자" value={company.representative_name || "-"} />
+        <InfoRow label="전화번호" value={company.phone || "-"} />
+        <InfoRow label="요금제" value={company.subscription_plan || "basic"} />
+        <InfoRow label="가입일" value={company.created_at ? new Date(company.created_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "-"} />
+        {company.slug && <InfoRow label="업체 주소" value={`/${company.slug}`} />}
+        <div className={ui.moreGrid} style={{ marginTop: 14 }}>
+          <button type="button" onClick={onManage}>회사 관리</button>
+          <a href={`/super-admin/company/${company.id}#photos`}>업체 사진 보기</a>
+        </div>
+        <button type="button" disabled={changing} onClick={onToggle} style={{ ...styles.toggleButton, minHeight: 44, ...(active ? styles.stopButton : styles.activateButton), opacity: changing ? .6 : 1 }}>{changing ? "처리 중..." : active ? "회사 정지" : "활성화"}</button>
+        <div style={styles.companyId}>ID: {company.id}</div>
       </div>
-
-      <div style={styles.divider} />
-
-      <InfoRow
-        label="대표자"
-        value={
-          company.representative_name ||
-          "-"
-        }
-      />
-
-      <InfoRow
-        label="전화번호"
-        value={company.phone || "-"}
-      />
-
-      <InfoRow
-        label="요금제"
-        value={
-          company.subscription_plan ||
-          "basic"
-        }
-      />
-
-      <InfoRow
-        label="가입일"
-        value={
-          company.created_at
-            ? new Date(
-                company.created_at,
-              ).toLocaleDateString(
-                "ko-KR",
-                {
-                  timeZone:
-                    "Asia/Seoul",
-                },
-              )
-            : "-"
-        }
-      />
-
-      <button
-        type="button"
-        onClick={onManage}
-        style={styles.manageButton}
-      >
-        ⚙️ 회사 관리
-      </button>
-
-      <a href={`/super-admin/company/${company.id}#photos`}
-        style={{ ...styles.manageButton, display: "block", textAlign: "center", textDecoration: "none", marginTop: 8, boxSizing: "border-box" }}>
-        🖼️ 업체 사진 보기
-      </a>
-
-      <div style={styles.companyId}>
-        ID: {company.id}
-      </div>
-    </div>
+    </details>
   );
 }
 
@@ -1268,8 +961,7 @@ const styles = {
     border: "1px solid #d1d5db",
     borderRadius: "10px",
     padding: "0 12px",
-    fontSize: "14px",
-    outline: "none",
+    fontSize: "16px",
     marginBottom: "12px",
   },
 
