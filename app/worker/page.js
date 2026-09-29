@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
+import { loadMyWorkerSites, workerDestination, workerLoginUrl } from "../utils/workerSites";
 
 function workDate(value) {
   if (!value) return "미정";
@@ -52,241 +53,58 @@ export default function WorkerPage() {
     setNotificationMessage,
   ] = useState("");
 
-  /* =========================================================
-     최초 실행
-  ========================================================= */
+  const refreshInFlight = useRef(false);
 
   useEffect(() => {
+    const target = workerDestination(window.location.pathname + window.location.search);
+    if (target !== "/worker") {
+      // The detail API validates assignment; a stale list must not swallow a push link.
+      router.replace(target);
+      return;
+    }
     loadWorkerPage();
-  }, []);
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadWorkerPage({ background: true });
+    };
+    const restore = (event) => { if (event.persisted) refresh(); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", restore);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", restore);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [router]);
 
-  /* =========================================================
-     Push 딥링크 처리
-
-     /worker?site=현장ID
-     → /worker/site/현장ID
-
-     useSearchParams를 사용하지 않음.
-     Next.js prerender/Suspense 오류 방지.
-
-     기존 현장카드 클릭 동작과 동일하게 처리.
-  ========================================================= */
-
-  useEffect(() => {
-    if (
-      loading ||
-      !worker ||
-      sitesLoading ||
-      typeof window ===
-        "undefined"
-    ) {
-      return;
-    }
-
-    const params =
-      new URLSearchParams(
-        window.location.search,
-      );
-
-    const siteId =
-      params.get(
-        "site",
-      );
-
-    if (!siteId) {
-      return;
-    }
-
-    const matchedSite =
-      sites.find(
-        (site) =>
-          String(
-            site?.site_id ||
-              "",
-          ) ===
-          String(
-            siteId,
-          ),
-      );
-
-    /*
-     * 본인에게 실제 배정된 현장만 이동
-     */
-    if (!matchedSite) {
-      return;
-    }
-
-    router.replace(
-      `/worker/site/${matchedSite.site_id}`,
-    );
-  }, [
-    loading,
-    worker,
-    sitesLoading,
-    sites,
-    router,
-  ]);
-
-  /* =========================================================
-     전체 로드
-
-     1. 로그인 확인
-     2. 시공자 계정 확인
-     3. Push 구독 상태 확인
-     4. 본인 배정 현장만 조회
-  ========================================================= */
-
-  async function loadWorkerPage() {
-    setLoading(true);
+  async function loadWorkerPage({ background = false } = {}) {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    if (!background) setLoading(true);
+    setSitesLoading(true);
     setMessage("");
-
     try {
-      /* =====================================================
-         1. 로그인 사용자 확인
-      ===================================================== */
-
-      const {
-        data: { user },
-        error: userError,
-      } =
-        await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
-      if (!user) {
-        router.replace(
-          "/worker/login",
-        );
-
-        return;
-      }
-
-      /* =====================================================
-         2. 현재 로그인 계정의 시공자 정보
-      ===================================================== */
-
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "get_my_worker",
-      );
-
-      if (error) {
-        throw error;
-      }
-
-      const workerData =
-        Array.isArray(data)
-          ? data[0]
-          : data;
-
-      if (
-        !workerData?.worker_id
-      ) {
-        await supabase.auth.signOut();
-
-        router.replace(
-          "/worker/login",
-        );
-
-        return;
-      }
-
-      if (
-        workerData.worker_is_active ===
-        false
-      ) {
-        await supabase.auth.signOut();
-
-        setMessage(
-          "현재 사용이 중지된 시공자 계정입니다. 회사 관리자에게 문의해주세요.",
-        );
-
-        return;
-      }
-
-      setWorker(
-        workerData,
-      );
-
-      /* =====================================================
-         3. Push 구독 상태 확인
-      ===================================================== */
-
-      await syncNotificationStatus();
-
-      /* =====================================================
-         4. 본인에게 배정된 현장만 조회
-      ===================================================== */
-
-      await loadAssignedSites();
+      const result = await loadMyWorkerSites();
+      setWorker(result.worker);
+      setSites(result.sites || []);
+      // Device subscription checks must not delay assignment display.
+      void syncNotificationStatus();
     } catch (error) {
-      console.error(
-        "시공자 페이지 로드 오류:",
-        error,
-      );
-
-      setMessage(
-        `❌ ${
-          error?.message ||
-          "시공자 정보를 불러오지 못했습니다."
-        }`,
-      );
+      console.error("시공자 현장 조회 오류:", error);
+      if (error.status === 401) {
+        setWorker(null);
+        setSites([]);
+        router.replace(workerLoginUrl());
+      } else {
+        // Clear stale personal data on denied access, but distinguish every
+        // failure from a successful empty list in the UI below.
+        setSites([]);
+        setMessage(error.message || "배정 현장을 불러오지 못했습니다.");
+      }
     } finally {
+      refreshInFlight.current = false;
+      setSitesLoading(false);
       setLoading(false);
-    }
-  }
-
-  /* =========================================================
-     본인 배정 현장 조회
-  ========================================================= */
-
-  async function loadAssignedSites() {
-    setSitesLoading(
-      true,
-    );
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "get_my_assigned_sites",
-      );
-
-      if (error) {
-        throw error;
-      }
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      const rows = Array.isArray(data) ? data : [];
-      const visible = await Promise.all(rows.map(async (site) => {
-        if (!token) return site;
-        const response = await fetch(`/api/site-daily-assignments?siteId=${encodeURIComponent(site.site_id)}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-        if (!response.ok) throw new Error("날짜별 배정을 확인하지 못했습니다.");
-        const daily = await response.json();
-        if (!daily.hasDailySchedule) return site; // 기존 현장 배정
-        if (!daily.assignments.length) return null;
-        return { ...site, assigned_dates: daily.assignments, worker_role: daily.assignments.some((item) => item.role === "leader") ? "leader" : "member" };
-      }));
-      setSites(visible.filter(Boolean));
-    } catch (error) {
-      console.error(
-        "배정 현장 조회 오류:",
-        error,
-      );
-
-      setSites([]);
-
-      throw error;
-    } finally {
-      setSitesLoading(
-        false,
-      );
     }
   }
 
@@ -758,6 +576,8 @@ export default function WorkerPage() {
             {message ||
               "시공자 정보를 확인할 수 없습니다."}
           </div>
+
+          <button type="button" onClick={() => loadWorkerPage()} style={{ marginTop: 16, padding: 12, border: "1px solid #cbd5e1", borderRadius: 10, background: "#fff", cursor: "pointer" }}>현장 다시 확인</button>
 
           <button
             type="button"
@@ -1304,9 +1124,17 @@ export default function WorkerPage() {
                   "800",
               }}
             >
-              {sites.length}건
+              {message ? "확인 필요" : `${sites.length}건`}
             </div>
           </div>
+
+          <button type="button" onClick={() => loadWorkerPage({ background: true })} disabled={sitesLoading}
+            style={{ marginTop: 12, padding: "9px 14px", border: "1px solid #cbd5e1", borderRadius: 10, background: "#fff", color: "#334155", fontWeight: 800, cursor: "pointer" }}>
+            {sitesLoading ? "확인 중..." : "↻ 현장 새로고침"}
+          </button>
+          {message && <div role="alert" style={{ marginTop: 12, padding: 14, borderRadius: 10, background: "#fef2f2", color: "#b91c1c", fontSize: 13, lineHeight: 1.6 }}>
+            {message}
+          </div>}
 
           {sitesLoading && (
             <div
@@ -1328,7 +1156,7 @@ export default function WorkerPage() {
             </div>
           )}
 
-          {!sitesLoading &&
+          {!sitesLoading && !message &&
             sites.length ===
               0 && (
               <div
@@ -1394,7 +1222,7 @@ export default function WorkerPage() {
                       1.6,
                   }}
                 >
-                  회사 관리자가 현장에 배정하면 이곳에 일정이 표시됩니다.
+                  회사 관리자가 현장에 배정하면 이곳에 일정이 표시됩니다. 알림을 받았는데 보이지 않으면 새로고침 후, 관리자에게 현재 로그인한 계정의 배정을 확인해주세요.
                 </div>
               </div>
             )}
@@ -1635,6 +1463,7 @@ export default function WorkerPage() {
                           {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 4, fontSize: 13 }}>
                             {workDate(day.work_date)} · {day.role === "leader" ? "팀장" : "팀원"}
                           </div>) : null}
+                          {site.schedule_notice && <p style={{ color: "#b45309", fontSize: 12, lineHeight: 1.6 }}>{site.schedule_notice}</p>}
                         </div>
 
                         <InfoRow

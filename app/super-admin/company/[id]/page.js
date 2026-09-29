@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import CompanyPhotoGallery from "../../CompanyPhotoGallery";
 
 const EMPTY_USAGE = {
   ai_photo_analysis: 0,
@@ -1757,6 +1758,8 @@ export default function SuperAdminCompanyDetailPage() {
             {company?.id}
           </div>
         </section>
+
+        <CompanyPhotoGallery companyId={companyId} companyName={company?.company_name || "업체"} />
 
         {/* 이번 달 사용량 */}
         <section

@@ -944,6 +944,11 @@ function CompanyCard({
         ⚙️ 회사 관리
       </button>
 
+      <a href={`/super-admin/company/${company.id}#photos`}
+        style={{ ...styles.manageButton, display: "block", textAlign: "center", textDecoration: "none", marginTop: 8, boxSizing: "border-box" }}>
+        🖼️ 업체 사진 보기
+      </a>
+
       <div style={styles.companyId}>
         ID: {company.id}
       </div>

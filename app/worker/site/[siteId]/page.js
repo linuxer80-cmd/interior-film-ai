@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { loadMyWorkerSites, workerLoginUrl } from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
 
@@ -24,6 +25,8 @@ export default function WorkerSiteDetailPage() {
   const [site, setSite] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState("");
+  const [materialsMessage, setMaterialsMessage] = useState("");
+  const detailRequest = useRef(0);
 
   // 완료보고 상태
   const [reportLoading, setReportLoading] = useState(true);
@@ -39,6 +42,7 @@ export default function WorkerSiteDetailPage() {
     }
 
     loadSiteDetail();
+    return () => { detailRequest.current += 1; };
   }, [siteId]);
 
   /* =========================================================
@@ -121,125 +125,27 @@ export default function WorkerSiteDetailPage() {
   ========================================================= */
 
   async function loadSiteDetail() {
+    const requestId = ++detailRequest.current;
     setLoading(true);
+    setSite(null);
+    setMaterials([]);
     setMessage("");
-
+    setMaterialsMessage("");
     try {
-      /* 로그인 확인 */
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
-      if (!user) {
-        router.replace("/worker/login");
-        return;
-      }
-
-      /* =====================================================
-         배정된 현장 상세 조회
-      ===================================================== */
-
-      const {
-        data: siteResult,
-        error: siteError,
-      } = await supabase.rpc(
-        "get_my_worker_site_detail",
-        {
-          p_site_id: siteId,
-        }
-      );
-
-      if (siteError) {
-        throw siteError;
-      }
-
-      const siteData = Array.isArray(siteResult)
-        ? siteResult[0]
-        : siteResult;
-
-      if (!siteData?.site_id) {
-        setSite(null);
-        setMaterials([]);
-        setReportStatus(null);
-
-        setMessage(
-          "이 현장을 볼 수 없거나 현재 배정되어 있지 않습니다."
-        );
-
-        return;
-      }
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const response = await fetch(`/api/site-daily-assignments?siteId=${encodeURIComponent(siteId)}`, {
-        headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` }, cache: "no-store",
-      });
-      if (!response.ok) throw new Error("날짜별 담당 정보를 확인하지 못했습니다.");
-      const daily = await response.json();
-      if (daily.hasDailySchedule && !daily.assignments.length) {
-        setSite(null);
-        setMessage("이 날짜에 배정된 작업이 없습니다.");
-        return;
-      }
-      if (daily.hasDailySchedule) {
-        siteData.assigned_dates = daily.assignments;
-        siteData.my_role = daily.assignments.some((item) => item.role === "leader") ? "leader" : "member";
-      }
-
-      setSite(siteData);
-
-      /* =====================================================
-         예정 자재 조회
-      ===================================================== */
-
-      const {
-        data: materialResult,
-        error: materialError,
-      } = await supabase.rpc(
-        "get_my_worker_site_materials",
-        {
-          p_site_id: siteId,
-        }
-      );
-
-      if (materialError) {
-        throw materialError;
-      }
-
-      setMaterials(
-        Array.isArray(materialResult)
-          ? materialResult
-          : []
-      );
-
-      /* =====================================================
-         완료보고 상태 조회
-      ===================================================== */
-
-      await loadReportStatus();
+      const result = await loadMyWorkerSites({ siteId });
+      if (requestId !== detailRequest.current) return;
+      setSite(result.site);
+      setMaterials(result.materials || []);
+      setMaterialsMessage(result.materialsError || "");
+      void loadReportStatus();
     } catch (error) {
-      console.error(
-        "시공자 현장 상세 조회 오류:",
-        error
-      );
-
-      setSite(null);
-      setMaterials([]);
+      if (requestId !== detailRequest.current) return;
+      console.error("시공자 현장 상세 조회 오류:", error);
       setReportStatus(null);
-
-      setMessage(
-        `❌ ${
-          error?.message ||
-          "현장 정보를 불러오지 못했습니다."
-        }`
-      );
+      if (error.status === 401) router.replace(workerLoginUrl());
+      setMessage(error.message || "현장 정보를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestId === detailRequest.current) setLoading(false);
     }
   }
 
@@ -490,6 +396,7 @@ export default function WorkerSiteDetailPage() {
             >
               내 현장 목록으로
             </button>
+            <button type="button" onClick={loadSiteDetail} style={{ marginTop: 12, padding: 12, border: "1px solid #cbd5e1", borderRadius: 10, background: "#fff", cursor: "pointer" }}>현장 다시 확인</button>
           </div>
         </div>
       </main>
@@ -731,6 +638,7 @@ export default function WorkerSiteDetailPage() {
             {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 6, fontSize: 13 }}>
               {workDate(day.work_date)} · {day.role === "leader" ? "팀장" : "팀원"}
             </div>) : null}
+            {site.schedule_notice && <p style={{ color: "#b45309", fontSize: 12, lineHeight: 1.6 }}>{site.schedule_notice}</p>}
           </div>
 
           <InfoRow
@@ -818,11 +726,15 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "800",
               }}
             >
-              {materials.length}건
+              {materialsMessage ? "확인 필요" : `${materials.length}건`}
             </div>
           </div>
 
-          {materials.length === 0 && (
+          {materialsMessage && <div role="alert" style={{ marginTop: 12, color: "#b91c1c", fontSize: 13 }}>
+            {materialsMessage}
+            <button type="button" onClick={loadSiteDetail} style={{ marginLeft: 8 }}>다시 확인</button>
+          </div>}
+          {!materialsMessage && materials.length === 0 && (
             <div
               style={{
                 marginTop: "12px",

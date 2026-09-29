@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import { loadMyWorkerSites, workerDestination } from "../../utils/workerSites";
 
 export default function WorkerLoginPage() {
   const router = useRouter();
@@ -15,17 +16,8 @@ export default function WorkerLoginPage() {
   const [messageType, setMessageType] = useState("error");
 
   async function getMyWorker() {
-    const { data, error } = await supabase.rpc("get_my_worker");
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
-      return null;
-    }
-
-    return data[0];
+    const result = await loadMyWorkerSites({ profileOnly: true });
+    return result.worker;
   }
 
   async function handleLogin(event) {
@@ -97,7 +89,7 @@ export default function WorkerLoginPage() {
       );
 
       setTimeout(() => {
-        router.replace("/worker");
+        router.replace(workerDestination(new URLSearchParams(window.location.search).get("next")));
         router.refresh();
       }, 500);
     } catch (error) {
