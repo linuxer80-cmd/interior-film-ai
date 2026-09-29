@@ -1,5 +1,23 @@
 "use client";
 
+import { useState } from "react";
+
+function SimilarCasePhoto({ url, status, alt, onRetry }) {
+  const [failed, setFailed] = useState(false);
+  const error = failed || status === "error";
+  return <div>
+    {url && !failed ? <img src={url} alt={alt} loading="lazy" decoding="async"
+      onError={() => setFailed(true)}
+      style={{ display: "block", width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 10 }} />
+      : <div role="status" style={{ aspectRatio: "1 / 1", background: "#f3f4f6", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 12, textAlign: "center", padding: 8 }}>
+        <div>{status === "loading" ? "사진 불러오는 중…" : error ? "사진을 불러오지 못했어요" : "등록된 사진 없음"}
+          {error && <button type="button" onClick={onRetry} style={{ display: "block", margin: "8px auto", padding: 6 }}>다시 불러오기</button>}
+        </div>
+      </div>}
+    <div style={{ marginTop: 4, textAlign: "center", fontSize: 12, color: "#6b7280" }}>{alt}</div>
+  </div>;
+}
+
 function formatWon(value) {
   return Number(
     value || 0
@@ -19,6 +37,7 @@ function formatSimilarity(value) {
 export default function EstimateResult({
   groups = [],
   imageCount = 0,
+  onRetrySimilarPhoto,
 }) {
   if (!groups.length) {
     return null;
@@ -142,7 +161,8 @@ export default function EstimateResult({
                   fontSize: "14px",
                 }}
               >
-                같은 부위 사진{" "}
+                {group.photoNumbers?.length ? `사진 ${group.photoNumbers.join(", ")} · ` : ""}
+                {group.photos?.length > 1 ? "직접 묶은 사진 " : "별도 대상 사진 "}
                 {
                   group.photos
                     ?.length
@@ -556,117 +576,11 @@ export default function EstimateResult({
                             gap: "7px",
                           }}
                         >
-                          {[
-                            [
-                              item.beforeUrl,
-                              "시공 전",
-                            ],
-                            [
-                              item.afterUrl,
-                              "시공 후",
-                            ],
-                          ].map(
-                            (
-                              [
-                                url,
-                                alt,
-                              ],
-                              photoIndex
-                            ) =>
-                              url ? (
-                                <div
-                                  key={
-                                    photoIndex
-                                  }
-                                >
-                                  <img
-                                    src={
-                                      url
-                                    }
-                                    alt={
-                                      alt
-                                    }
-                                    loading="lazy"
-                                    decoding="async"
-                                    style={{
-                                      display:
-                                        "block",
-                                      width:
-                                        "100%",
-                                      aspectRatio:
-                                        "1 / 1",
-                                      objectFit:
-                                        "cover",
-                                      borderRadius:
-                                        "10px",
-                                    }}
-                                  />
-
-                                  <div
-                                    style={{
-                                      marginTop:
-                                        "4px",
-                                      textAlign:
-                                        "center",
-                                      fontSize:
-                                        "12px",
-                                      color:
-                                        "#6b7280",
-                                    }}
-                                  >
-                                    {
-                                      alt
-                                    }
-                                  </div>
-                                </div>
-                              ) : (
-                                <div
-                                  key={
-                                    photoIndex
-                                  }
-                                >
-                                  <div
-                                    style={{
-                                      aspectRatio:
-                                        "1 / 1",
-                                      background:
-                                        "#f3f4f6",
-                                      borderRadius:
-                                        "10px",
-                                      display:
-                                        "flex",
-                                      justifyContent:
-                                        "center",
-                                      alignItems:
-                                        "center",
-                                      color:
-                                        "#9ca3af",
-                                      fontSize:
-                                        "12px",
-                                    }}
-                                  >
-                                    사진 없음
-                                  </div>
-
-                                  <div
-                                    style={{
-                                      marginTop:
-                                        "4px",
-                                      textAlign:
-                                        "center",
-                                      fontSize:
-                                        "12px",
-                                      color:
-                                        "#6b7280",
-                                    }}
-                                  >
-                                    {
-                                      alt
-                                    }
-                                  </div>
-                                </div>
-                              )
-                          )}
+                          {[ ["before", "시공 전"], ["after", "시공 후"] ].map(([side, alt]) => (
+                            <SimilarCasePhoto key={`${side}:${item[`${side}Url`] || item[`${side}Status`]}`}
+                              url={item[`${side}Url`]} status={item[`${side}Status`]} alt={alt}
+                              onRetry={() => onRetrySimilarPhoto?.(group.key, caseIndex, side)} />
+                          ))}
                         </div>
 
                         {/* 실제 금액 / 유사도 */}
