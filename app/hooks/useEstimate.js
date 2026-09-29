@@ -9,7 +9,9 @@ import {
 } from "../utils/imageUtils";
 
 import {
-  getGroupKey,
+  applyEstimateTarget,
+  buildEstimatePhotoGroups,
+  assignEstimateSubject,
 } from "../utils/categoryUtils";
 
 const MAX_IMAGES = 10;
@@ -61,6 +63,14 @@ export default function useEstimate({
     totalEstimate,
     setTotalEstimate,
   ] = useState(null);
+
+  const [resultReady, setResultReady] = useState(false);
+  const [savingPhotos, setSavingPhotos] = useState(false);
+  const [storageStatus, setStorageStatus] = useState("");
+  const savePromiseRef = useRef(null);
+  const uploadedPathsRef = useRef(new Map());
+  const runRef = useRef(0);
+  const busyRef = useRef(false);
 
   const usageIdRef =
     useRef(null);
@@ -188,6 +198,10 @@ export default function useEstimate({
    */
 
   function resetEstimateResults() {
+    runRef.current += 1;
+    setResultReady(false);
+    setStorageStatus("");
+    savePromiseRef.current = null;
     setGroups([]);
 
     setTotalEstimate(
@@ -324,6 +338,7 @@ export default function useEstimate({
       "자동견적 사용 가능 여부를 확인하고 있습니다..."
     );
 
+    const missingUploads = images.filter((image) => !uploadedPathsRef.current.has(`${normalizedCompanySlug}:${image.id}`)).length;
     await Promise.all([
       checkUsageBeforeAction({
         eventType:
@@ -340,13 +355,7 @@ export default function useEstimate({
           images.length,
       }),
 
-      checkUsageBeforeAction({
-        eventType:
-          "image_upload",
-
-        quantity:
-          images.length,
-      }),
+      ...(missingUploads ? [checkUsageBeforeAction({ eventType: "image_upload", quantity: missingUploads })] : []),
     ]);
   }
 
@@ -361,6 +370,7 @@ export default function useEstimate({
   async function addImages(
     fileList
   ) {
+    if (busyRef.current || savePromiseRef.current) return;
     const files =
       Array.from(
         fileList || []
@@ -534,6 +544,7 @@ export default function useEstimate({
    */
 
   function removeImage(id) {
+    if (busyRef.current || savePromiseRef.current) return;
     setImages(
       (current) => {
         const target =
@@ -550,10 +561,9 @@ export default function useEstimate({
           );
         }
 
-        return current.filter(
-          (item) =>
-            item.id !== id
-        );
+        const remaining = current.filter((item) => item.id !== id);
+        const nextRoot = remaining.find((item) => item.subjectId === id)?.id;
+        return remaining.map((item) => item.subjectId === id ? { ...item, subjectId: nextRoot || item.id } : item);
       }
     );
 
@@ -581,6 +591,7 @@ export default function useEstimate({
       imageItem.file
     );
 
+    formData.append("purpose", "estimate");
     formData.append(
       "photoType",
       "before"
@@ -628,7 +639,7 @@ export default function useEstimate({
       ...imageItem,
 
       analysis:
-        result.analysis,
+        applyEstimateTarget(result.analysis, imageItem.targetChoice),
 
       analysisIndex:
         index,
@@ -644,68 +655,23 @@ export default function useEstimate({
    * =========================================================
    */
 
-  async function getSignedImageUrl(
-    path
-  ) {
-    if (!path) {
-      return null;
-    }
-
-    if (
-      !normalizedCompanySlug
-    ) {
-      return null;
-    }
-
+  async function getSignedImageUrl(item, side) {
+    if (!normalizedCompanySlug) return { url: null, status: "error" };
+    const path = item[`${side}_path`];
+    if (!item.work_item_id && !path) return { url: null, status: "missing" };
     try {
-      const response =
-        await fetch(
-          "/api/similar-photo",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                company_slug:
-                  normalizedCompanySlug,
-
-                path,
-              }),
-          }
-        );
-
-      const result =
-        await readJsonSafely(
-          response
-        );
-
-      if (
-        !response.ok ||
-        !result?.success ||
-        !result?.signed_url
-      ) {
-        console.error(
-          "유사 시공사진 URL 생성 실패:",
-          result?.error
-        );
-
-        return null;
-      }
-
-      return result.signed_url;
+      const response = await fetch("/api/similar-photo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_slug: normalizedCompanySlug,
+          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side } : { path }),
+        }),
+      });
+      const result = await readJsonSafely(response);
+      if (!response.ok || !result?.success) throw new Error(result?.error || "사진 조회 실패");
+      return { url: result.signed_url || null, status: result.signed_url ? "ready" : "missing" };
     } catch (error) {
-      console.error(
-        "유사 시공사진 URL 생성 오류:",
-        error
-      );
-
-      return null;
+      console.warn("유사 시공사진 조회 실패", error);
+      return { url: null, status: "error" };
     }
   }
 
@@ -719,7 +685,7 @@ export default function useEstimate({
     group
   ) {
     if (
-      !normalizedCompanySlug
+      !normalizedCompanySlug || group.requiresConfirmation
     ) {
       return {
         cases: [],
@@ -807,6 +773,7 @@ export default function useEstimate({
                 group.subCategory ||
                 null,
 
+              construction_scope: group.scope,
               match_threshold:
                 MATCH_THRESHOLD,
 
@@ -854,70 +821,55 @@ export default function useEstimate({
    * =========================================================
    */
 
-  async function completeSimilarGroup(
-    group
-  ) {
-    const similarResult =
-      await findSimilarCases(
-        group
-      );
+  async function completeSimilarGroup(group) {
+    const { cases, estimate } = await findSimilarCases(group);
+    return { ...group, similarItems: cases.slice(0, 2).map((item) => ({
+      ...item, beforeStatus: "loading", afterStatus: "loading",
+    })), estimate };
+  }
 
-    const cases =
-      similarResult.cases;
+  async function loadSimilarImages(completedGroups, runId) {
+    // Update each side independently: one slow request must not hide other photos.
+    const tasks = completedGroups.flatMap((group) => (group.similarItems || []).flatMap((item, index) =>
+      ["before", "after"].map((side) => ({ group, item, index, side }))));
+    await mapWithConcurrency(tasks, 6, async ({ group, item, index, side }) => {
+      const { url, status } = await getSignedImageUrl(item, side);
+      if (runRef.current !== runId) return;
+      setGroups((current) => current.map((entry) => entry.key !== group.key ? entry : {
+        ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+          ...photo, [`${side}Url`]: url, [`${side}Status`]: status,
+        }),
+      }));
+    });
+  }
 
-    const estimate =
-      similarResult.estimate;
+  function retrySimilarPhoto(groupKey, index, side) {
+    const group = groups.find((entry) => entry.key === groupKey);
+    const item = group?.similarItems?.[index];
+    if (!item || !["before", "after"].includes(side) || item[`${side}Status`] === "loading") return;
+    const runId = runRef.current;
+    setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
+      ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+        ...photo, [`${side}Url`]: null, [`${side}Status`]: "loading",
+      }),
+    }));
+    void getSignedImageUrl(item, side).then(({ url, status }) => {
+      if (runRef.current !== runId) return;
+      setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
+        ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
+          ...photo, [`${side}Url`]: url, [`${side}Status`]: status,
+        }),
+      }));
+    });
+  }
 
-    /*
-     * 고객 화면에는 가장 유사한 2건 표시
-     *
-     * 각 사례의 before/after URL도
-     * 서로 동시에 요청합니다.
-     */
-
-    const similarItems =
-      await Promise.all(
-        cases
-          .slice(
-            0,
-            2
-          )
-          .map(
-            async (
-              item
-            ) => {
-              const [
-                beforeUrl,
-                afterUrl,
-              ] =
-                await Promise.all([
-                  getSignedImageUrl(
-                    item.before_path
-                  ),
-
-                  getSignedImageUrl(
-                    item.after_path
-                  ),
-                ]);
-
-              return {
-                ...item,
-
-                beforeUrl,
-
-                afterUrl,
-              };
-            }
-          )
-      );
-
-    return {
-      ...group,
-
-      similarItems,
-
-      estimate,
-    };
+  function updatePhotoOptions(id, options) {
+    if (busyRef.current || savePromiseRef.current || imageLoading) return;
+    setImages((current) => {
+      if ("subjectId" in options) return assignEstimateSubject(current, id, options.subjectId);
+      return current.map((photo) => photo.id === id ? { ...photo, targetChoice: options.targetChoice || "" } : photo);
+    });
+    resetEstimateResults();
   }
 
   /*
@@ -930,6 +882,7 @@ export default function useEstimate({
     imageItem,
     index
   ) {
+    if (uploadedPathsRef.current.has(`${normalizedCompanySlug}:${imageItem.id}`)) return uploadedPathsRef.current.get(`${normalizedCompanySlug}:${imageItem.id}`);
     const formData =
       new FormData();
 
@@ -977,6 +930,7 @@ export default function useEstimate({
       );
     }
 
+    uploadedPathsRef.current.set(`${normalizedCompanySlug}:${imageItem.id}`, result.path);
     return result.path;
   }
 
@@ -1019,7 +973,7 @@ export default function useEstimate({
 
             completedCount += 1;
 
-            setMessage(
+            setStorageStatus(
               `견적 사진 저장 중... ${completedCount}/${images.length}`
             );
 
@@ -1033,7 +987,7 @@ export default function useEstimate({
           } catch (error) {
             completedCount += 1;
 
-            setMessage(
+            setStorageStatus(
               `견적 사진 저장 중... ${completedCount}/${images.length}`
             );
 
@@ -1083,29 +1037,9 @@ export default function useEstimate({
     estimatePhotoPathsRef.current =
       paths;
 
-    if (
-      images.length > 0 &&
-      paths.length === 0
-    ) {
-      throw new Error(
-        failed[0]?.error
-          ?.message ||
-          "자동견적 사진을 서버에 저장하지 못했습니다."
-      );
+    if (failed.length > 0) {
+      throw new Error(`${paths.length}/${images.length}장 저장됨. 실패한 사진은 다시 저장해주세요.`);
     }
-
-    if (
-      failed.length > 0
-    ) {
-      console.warn(
-        "일부 자동견적 사진 저장 실패:",
-        failed.map(
-          (item) =>
-            item.index + 1
-        )
-      );
-    }
-
     return paths;
   }
 
@@ -1114,6 +1048,23 @@ export default function useEstimate({
    * 자동견적 사용 로그
    * =========================================================
    */
+
+  async function ensureEstimatePhotos() {
+    if (savePromiseRef.current) return savePromiseRef.current;
+    setSavingPhotos(true);
+    const task = uploadEstimatePhotos();
+    savePromiseRef.current = task;
+    try {
+      const paths = await task;
+      setStorageStatus("사진 저장 완료");
+      return paths;
+    } catch (error) {
+      setStorageStatus(error.message || "사진 저장 실패. 다시 저장해주세요.");
+      throw error;
+    } finally {
+      if (savePromiseRef.current === task) { savePromiseRef.current = null; setSavingPhotos(false); }
+    }
+  }
 
   async function saveEstimateUsage({
     completedGroups,
@@ -1238,6 +1189,8 @@ export default function useEstimate({
    */
 
   async function handleAnalyze() {
+    if (busyRef.current || savePromiseRef.current) return;
+
     /*
      * =====================================================
      * 사진 확인
@@ -1268,10 +1221,11 @@ export default function useEstimate({
       return;
     }
 
-    setLoading(
-      true
-    );
-
+    busyRef.current = true;
+    const runId = ++runRef.current;
+    setResultReady(false);
+    setStorageStatus("");
+    setLoading(true);
     setGroups([]);
 
     setTotalEstimate(
@@ -1345,56 +1299,10 @@ export default function useEstimate({
        */
 
       setMessage(
-        "같은 시공 부위의 사진을 묶고 있습니다..."
+        "사진별 시공 대상을 확인하고 있습니다..."
       );
 
-      const groupMap =
-        new Map();
-
-      for (
-        const photo of analyzedPhotos
-      ) {
-        const key =
-          getGroupKey(
-            photo.analysis
-          );
-
-        if (
-          !groupMap.has(
-            key
-          )
-        ) {
-          groupMap.set(
-            key,
-            {
-              key,
-
-              category:
-                photo.analysis
-                  ?.category ||
-                "시공 부위",
-
-              subCategory:
-                photo.analysis
-                  ?.sub_category ||
-                "",
-
-              photos: [],
-            }
-          );
-        }
-
-        groupMap
-          .get(key)
-          .photos.push(
-            photo
-          );
-      }
-
-      const baseGroups =
-        Array.from(
-          groupMap.values()
-        );
+      const baseGroups = buildEstimatePhotoGroups(analyzedPhotos);
 
       /*
        * ===================================================
@@ -1405,10 +1313,8 @@ export default function useEstimate({
        * ===================================================
        */
 
-      if (
-        baseGroups.length >
-        0
-      ) {
+      const searchableGroups = baseGroups.filter((group) => !group.requiresConfirmation);
+      if (searchableGroups.length > 0) {
         setMessage(
           "유사 시공사례 검색 가능 여부를 확인하고 있습니다..."
         );
@@ -1418,7 +1324,7 @@ export default function useEstimate({
             "similar_image_search",
 
           quantity:
-            baseGroups.length,
+            searchableGroups.length,
         });
       }
 
@@ -1563,12 +1469,16 @@ export default function useEstimate({
        * ===================================================
        */
 
-      setMessage(
-        "자동견적 사진을 안전하게 저장하고 있습니다..."
-      );
-
-      const photoPaths =
-        await uploadEstimatePhotos();
+      setResultReady(true);
+      setStorageStatus("사진 저장 중...");
+      void loadSimilarImages(completedGroups, runId).catch((error) => console.warn("유사사진 표시 실패", error));
+      let photoPaths = [];
+      try {
+        photoPaths = await ensureEstimatePhotos();
+      } catch (error) {
+        photoPaths = estimatePhotoPathsRef.current;
+        setStorageStatus(error.message || "사진 저장 실패. 다시 저장해주세요.");
+      }
 
       /*
        * ===================================================
@@ -1631,9 +1541,8 @@ export default function useEstimate({
         }`
       );
     } finally {
-      setLoading(
-        false
-      );
+      busyRef.current = false;
+      setLoading(false);
     }
   }
 
@@ -1646,6 +1555,10 @@ export default function useEstimate({
   return {
     images,
 
+    resultReady,
+    storageStatus,
+    savingPhotos,
+    ensureEstimatePhotos,
     loading,
 
     imageLoading,
@@ -1663,6 +1576,8 @@ export default function useEstimate({
     addImages,
 
     removeImage,
+    updatePhotoOptions,
+    retrySimilarPhoto,
 
     handleAnalyze,
 

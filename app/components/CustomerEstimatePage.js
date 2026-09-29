@@ -274,7 +274,7 @@ function DoorQuantitySelector({
               fontWeight: "900",
             }}
           >
-            동일한 방문·문틀 수량
+            각 방문·문틀 부위의 수량
           </strong>
 
           <div
@@ -285,8 +285,8 @@ function DoorQuantitySelector({
               lineHeight: 1.5,
             }}
           >
-            사진과 같은 방문·문틀이 여러 세트라면
-            수량을 조정해주세요.
+            각각 올린 방문은 이미 별도로 계산합니다.
+            각 부위와 동일한 문이 추가로 있을 때만 수량을 늘려주세요.
           </div>
         </div>
 
@@ -640,6 +640,10 @@ export default function CustomerEstimatePage({
 
   const {
     images,
+    resultReady,
+    storageStatus,
+    savingPhotos,
+    ensureEstimatePhotos,
     loading,
     imageLoading,
     message,
@@ -651,6 +655,8 @@ export default function CustomerEstimatePage({
 
     addImages,
     removeImage,
+    updatePhotoOptions,
+    retrySimilarPhoto,
     handleAnalyze,
 
     readJsonSafely,
@@ -731,6 +737,12 @@ export default function CustomerEstimatePage({
       return;
     }
 
+    if (resultReady && groups.length > 0) {
+      analysisLoadingSeenRef.current = false;
+      changeScreen(SCREEN.RESULT);
+      return;
+    }
+
     if (loading) {
       analysisLoadingSeenRef.current =
         true;
@@ -750,6 +762,7 @@ export default function CustomerEstimatePage({
       );
     }
   }, [
+    resultReady,
     loading,
     groups.length,
     screen,
@@ -1348,107 +1361,7 @@ export default function CustomerEstimatePage({
   }
 
   async function uploadLeadPhotos() {
-    if (
-      Array.isArray(
-        estimatePhotoPathsRef.current
-      ) &&
-      estimatePhotoPathsRef.current
-        .length > 0
-    ) {
-      return estimatePhotoPathsRef.current;
-    }
-
-    const paths = [];
-    const uploadErrors = [];
-
-    for (
-      let index = 0;
-      index <
-      images.length;
-      index += 1
-    ) {
-      try {
-        const formData =
-          new FormData();
-
-        formData.append(
-          "image",
-          images[index].file
-        );
-
-        if (
-          companySlug
-        ) {
-          formData.append(
-            "company_slug",
-            companySlug
-          );
-        }
-
-        const response =
-          await fetch(
-            "/api/estimate-photo",
-            {
-              method:
-                "POST",
-
-              body:
-                formData,
-            }
-          );
-
-        const result =
-          await readJsonSafely(
-            response
-          );
-
-        if (
-          !response.ok ||
-          !result?.success ||
-          !result?.path
-        ) {
-          throw new Error(
-            result?.error ||
-              "상담 사진 저장 실패"
-          );
-        }
-
-        paths.push(
-          result.path
-        );
-      } catch (error) {
-        console.error(
-          `상담 사진 ${
-            index + 1
-          } 저장 실패:`,
-          error
-        );
-
-        uploadErrors.push(
-          error?.message ||
-            `상담 사진 ${
-              index + 1
-            } 저장 실패`
-        );
-      }
-    }
-
-    if (
-      images.length >
-        0 &&
-      paths.length ===
-        0
-    ) {
-      throw new Error(
-        uploadErrors[0] ||
-          "상담 사진을 저장하지 못했습니다."
-      );
-    }
-
-    estimatePhotoPathsRef.current =
-      paths;
-
-    return paths;
+    return ensureEstimatePhotos();
   }
 
   async function handleLeadSubmit(
@@ -2113,8 +2026,9 @@ export default function CustomerEstimatePage({
 
             <div className={styles.uploadCard}>
               <EstimatePhotoUploader
+                onUpdatePhotoOptions={updatePhotoOptions}
                 images={images}
-                loading={loading}
+                loading={loading || savingPhotos}
                 imageLoading={imageLoading}
                 message={message}
                 onAddImages={
@@ -2134,7 +2048,7 @@ export default function CustomerEstimatePage({
                 type="button"
                 className={styles.primaryButton}
                 disabled={
-                  loading ||
+                  loading || savingPhotos ||
                   imageLoading
                 }
                 onClick={
@@ -2196,7 +2110,10 @@ export default function CustomerEstimatePage({
             </div>
 
             <div className={styles.analysisInfo}>
-              보통 잠시 후 결과를 확인할 수 있습니다.
+              <span role="status">{message || "사진을 분석하고 있습니다."}</span>
+              {!loading && !resultReady && (
+                <button type="button" onClick={() => changeScreen(SCREEN.UPLOAD)} style={{ display: "block", margin: "12px auto" }}>사진 확인하고 다시 시도</button>
+              )}
             </div>
           </section>
         )}
@@ -2214,6 +2131,12 @@ export default function CustomerEstimatePage({
               </p>
             </div>
 
+            <div role="status" style={{ color: "#64748b", fontSize: 13, marginBottom: 12 }}>
+              {storageStatus}
+              {!loading && !savingPhotos && (storageStatus.includes("저장됨") || storageStatus.includes("실패")) && (
+                <button type="button" onClick={() => ensureEstimatePhotos().catch(() => {})} style={{ marginLeft: 8 }}>사진 다시 저장</button>
+              )}
+            </div>
             <div className={styles.priceCard}>
               <div className={styles.priceLabel}>
                 예상 시공 금액
@@ -2275,6 +2198,7 @@ export default function CustomerEstimatePage({
               </div>
 
               <EstimateResult
+                onRetrySimilarPhoto={retrySimilarPhoto}
                 groups={
                   displayGroups
                 }

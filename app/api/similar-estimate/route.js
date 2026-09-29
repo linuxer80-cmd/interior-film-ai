@@ -8,6 +8,7 @@ import {
 
 import {
   normalizeCategory,
+  selectEstimateCases,
 } from "../../utils/categoryUtils";
 
 export const runtime = "nodejs";
@@ -356,73 +357,10 @@ async function getSimilarCases({
  * =========================================================
  */
 
-function filterSimilarCases({
-  rows,
-  groupKey,
-}) {
-  const safeRows =
-    Array.isArray(rows)
-      ? rows
-      : [];
-
-  const filtered =
-    safeRows
-      .filter((item) => {
-        const itemGroup =
-          normalizeCategory(
-            `${
-              item?.category ||
-              ""
-            } ${
-              item?.sub_category ||
-              ""
-            }`
-          );
-
-        return (
-          itemGroup ===
-            groupKey &&
-          Number(
-            item?.actual_cost ||
-              0
-          ) > 0
-        );
-      })
-      .slice(
-        0,
-        MAX_ESTIMATE_CASES
-      );
-
-  const unique = [];
-
-  const seen =
-    new Set();
-
-  for (
-    const item of filtered
-  ) {
-    const id =
-      item?.work_item_id ||
-      `${
-        item?.category ||
-        ""
-      }-${
-        item?.actual_cost ||
-        ""
-      }`;
-
-    if (
-      seen.has(id)
-    ) {
-      continue;
-    }
-
-    seen.add(id);
-
-    unique.push(item);
-  }
-
-  return unique;
+function filterSimilarCases({ rows, category, subCategory, constructionScope }) {
+  return selectEstimateCases(rows, {
+    category, sub_category: subCategory, construction_scope: constructionScope,
+  }, MAX_ESTIMATE_CASES);
 }
 
 /*
@@ -1008,8 +946,9 @@ export async function POST(
       filterSimilarCases({
         rows:
           rawCases,
-
-        groupKey,
+        category,
+        subCategory,
+        constructionScope: body?.construction_scope,
       });
 
     /*
