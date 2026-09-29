@@ -343,6 +343,60 @@ export function getEstimateGroupKey(analysis = {}) {
   return `${getGroupKey(analysis)}:${getConstructionScope(analysis)}`;
 }
 
+export const ESTIMATE_TARGET_OPTIONS = [
+  ["door", "방문 · 문틀"], ["middle_door", "중문"], ["fire_door", "방화문"],
+  ["closet", "붙박이장"], ["shoe", "신발장"],
+  ["kitchen_fridge", "냉장고장"], ["kitchen_lower", "싱크대 하부장"],
+  ["kitchen_upper", "싱크대 상부장"], ["kitchen_full", "싱크대 상부장 + 하부장"],
+  ["vanity", "화장대 · 서랍장"], ["window", "샷시 · 창틀"],
+  ["molding", "몰딩"], ["wall", "벽면"],
+];
+
+export function applyEstimateTarget(analysis, choice) {
+  if (!ESTIMATE_TARGET_OPTIONS.some(([value]) => value === choice)) return analysis;
+  const target = Object.hasOwn(SCOPES, choice) ? "kitchen" : choice;
+  const labels = TARGET_LABELS[target];
+  return {
+    ...analysis, target_type: target, category: labels[0],
+    sub_category: SCOPES[choice] || labels[1],
+    construction_scope: SCOPES[choice] ? choice : "whole",
+    classification_confidence: "high", requires_confirmation: false,
+    description: SCOPES[choice] || labels[1], tags: [],
+    classification_evidence: "고객이 선택한 시공 대상", user_selected_target: true,
+  };
+}
+
+// A category describes an object's kind, not its physical identity.
+// Only the customer's explicit same-subject selection joins separate photos.
+export function buildEstimatePhotoGroups(photos = []) {
+  const ids = new Set(photos.map((photo) => photo.id));
+  const groups = new Map();
+  photos.forEach((photo, index) => {
+    const analysis = photo.analysis || {};
+    const subjectId = ids.has(photo.subjectId) ? photo.subjectId : photo.id;
+    const key = `${subjectId}:${getEstimateGroupKey(analysis)}`;
+    if (!groups.has(key)) groups.set(key, {
+      key, subjectId, scope: getConstructionScope(analysis),
+      category: analysis.category || "시공 부위", subCategory: analysis.sub_category || "",
+      requiresConfirmation: false, photos: [], photoNumbers: [],
+    });
+    const group = groups.get(key);
+    group.photos.push(photo);
+    group.photoNumbers.push(index + 1);
+    group.requiresConfirmation ||= Boolean(analysis.requires_confirmation || analysis.classification_confidence === "low");
+  });
+  return Array.from(groups.values());
+}
+
+export function assignEstimateSubject(images, id, selectedId) {
+  const index = images.findIndex((photo) => photo.id === id);
+  if (index < 0) return images;
+  const parent = images.slice(0, index).find((photo) => photo.id === selectedId);
+  const subjectId = parent ? (parent.subjectId || parent.id) : id;
+  // Move the selected root and its explicitly linked views together.
+  return images.map((photo) => photo.id === id || photo.subjectId === id ? { ...photo, subjectId } : photo);
+}
+
 export function normalizeAnalysisClassification(analysis) {
   if (!analysis || typeof analysis !== "object" || Array.isArray(analysis)) {
     throw new Error("사진 분석 결과 형식이 올바르지 않습니다.");
