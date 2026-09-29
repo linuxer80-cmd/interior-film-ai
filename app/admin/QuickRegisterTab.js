@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import ui from "./AdminUi.module.css";
 import * as exifr from "exifr";
 import { supabase } from "../../lib/supabase";
 import { PROJECT_ID } from "./adminConstants";
@@ -171,16 +172,20 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
   }
 
   return <section style={sectionStyle}>
-    <h2 style={{ marginTop: 0 }}>⚡ 빠른 시공등록</h2>
-    <p>원본 사진을 여러 장 선택하면 AI가 자동으로 현장·부위·전후를 분류합니다. 불확실한 사진만 확인해주세요.</p>
-    <input type="file" accept="image/*" multiple disabled={busy} onChange={selectFiles} style={inputStyle} />
-    <button type="button" disabled={busy || !photos.length} onClick={analyze} style={{ ...primaryButtonStyle, marginTop: 12 }}>AI 현장·부위·전후 분류</button>
+    <h1 style={{ margin: "0 0 12px", fontSize: 21 }}>시공 데이터 대량 등록</h1>
+    <p className={ui.help}>사진 일괄 선택 → 현장·부위·전후 자동 분류 → 가격 입력 → 일괄 등록</p>
+    <label htmlFor="bulk-photos" style={{ display: "block", fontSize: 14, fontWeight: 700, marginBottom: 9 }}>여러 현장 사진 한 번에 올리기</label>
+    <input id="bulk-photos" type="file" accept="image/*" multiple disabled={busy} onChange={selectFiles} style={inputStyle} />
+    <p className={ui.help} style={{ marginTop: 9 }}>시공 전·후 원본 사진을 함께 선택하세요. 분류 후 실제 시공금액을 입력하고, 확인이 필요한 사진만 수정하면 됩니다.</p>
+    {!!photos.length && <button type="button" disabled={busy} onClick={() => analyze()} className={ui.secondary}>전체 사진 다시 분류</button>}
     {!busy && sites.map(({ site, items, groups }) => <div key={site} style={{ border: "1px solid #d1d5db", borderRadius: 12, padding: 12, marginTop: 16 }}>
       <h3>현장 {site} · {items.length}장</h3>
       <input aria-label={`현장 ${site} 이름`} style={inputStyle} placeholder={siteHint(items[0])} value={siteNames[site] || ""} onChange={(e) => setSiteNames((s) => ({ ...s, [site]: e.target.value }))} />
       {groups.map(([key, group]) => <div key={key} style={{ borderTop: "1px solid #eee", marginTop: 14, paddingTop: 10 }}>
         <strong>{key.replace("||", " / ")} · {group.length}장</strong>
         <input aria-label={`${site} ${key} 실제금액`} inputMode="numeric" placeholder="이 부위 실제금액 (원)" style={{ ...inputStyle, margin: "8px 0" }} value={prices[`${site}||${key}`] || ""} onChange={(e) => setPrices((s) => ({ ...s, [`${site}||${key}`]: e.target.value }))} />
+        <details open={group.some((photo) => photo.type === "unknown" || photo.confidence === "low")}>
+          <summary style={{ minHeight: 44, padding: "12px 0", fontSize: 13, cursor: "pointer" }}>사진·분류 확인{group.some((photo) => photo.type === "unknown" || photo.confidence === "low") ? " · 확인 필요" : " · 펼쳐보기"}</summary>
         {group.map((photo) => <div key={photo.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 0" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}<img src={photo.url} alt="시공 사진" style={{ width: 75, height: 75, objectFit: "cover" }} />
           <div style={{ flex: "1 1 180px", fontSize: 12 }}>{photo.file.name}<br />{photo.takenAt?.slice(0, 10) || "촬영일 없음"} · {photo.latitude == null ? "위치 없음" : "GPS 있음"}<br />{photo.confidence === "low" ? "⚠️ 분류 확인" : `AI 신뢰도 ${photo.confidence}`}</div>
@@ -189,9 +194,10 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
           <input aria-label="세부 부위" placeholder="세부 부위" style={{ width: 95 }} value={photo.subCategory} onChange={(e) => update(photo.id, { subCategory: e.target.value })} />
           <select aria-label="전후 구분" value={photo.type} onChange={(e) => update(photo.id, { type: e.target.value })}>{types.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         </div>)}
+        </details>
       </div>)}
     </div>)}
-    {!!photos.length && <button type="button" disabled={busy} onClick={save} style={{ ...primaryButtonStyle, marginTop: 16 }}>{busy ? "처리 중..." : "확인 후 전체 저장"}</button>}
+    {!!photos.length && <button type="button" disabled={busy} onClick={save} style={{ ...primaryButtonStyle, marginTop: 16 }}>{busy ? "처리 중..." : "입력한 시공 데이터 일괄 등록"}</button>}
     {message && <p role="status" style={{ whiteSpace: "pre-wrap" }}>{message}</p>}
   </section>;
 }

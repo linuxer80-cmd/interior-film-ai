@@ -1,3 +1,5 @@
+import ui from "./AdminUi.module.css";
+
 import {
   inputStyle,
   primaryButtonStyle,
@@ -30,9 +32,14 @@ export default function RegisterTab({
   return (
     <>
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>
-          시공사례 등록
-        </h2>
+        <div className={ui.sectionHeading}>
+          <h2>시공 등록</h2>
+          <a className={ui.secondary} href="/admin/bulk-register">시공 데이터 대량 등록</a>
+        </div>
+        <p className={ui.help}>여러 현장 사진을 한꺼번에 올리려면 대량 등록에서 자동 분류 후 가격을 입력하세요.</p>
+        <div className={ui.singleForm}>
+          <h3 className={ui.singleTitle}>시공 1건 등록</h3>
+        </div>
 
         <label style={labelStyle}>
           시공 전 사진
@@ -177,10 +184,8 @@ export default function RegisterTab({
         </pre>
       )}
 
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0 }}>
-          AI 검색 설정
-        </h3>
+      <details className={ui.more}>
+        <summary>AI 검색 설정</summary>
 
         <div
           style={{
@@ -234,7 +239,7 @@ export default function RegisterTab({
             {settingMessage}
           </div>
         )}
-      </section>
+      </details>
     </>
   );
 }
