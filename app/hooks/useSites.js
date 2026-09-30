@@ -1394,6 +1394,7 @@ export default function useSites({
       async (
         siteId,
         nextStatus,
+        expectedStatus,
       ) => {
         if (
           !companyId ||
@@ -1405,32 +1406,17 @@ export default function useSites({
         }
 
         try {
-          const {
-            data,
-            error,
-          } = await supabase
-            .from("sites")
-            .update({
-              status:
-                nextStatus,
-
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              siteId,
-            )
-            .eq(
-              "company_id",
-              companyId,
-            )
-            .select()
-            .single();
-
-          if (error) {
-            throw error;
-          }
+          const { data: session, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError) throw sessionError;
+          const token = session?.session?.access_token;
+          if (!token) throw new Error("다시 로그인해주세요.");
+          const response = await fetch("/api/admin/site-status", {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ siteId, status: nextStatus, expectedStatus }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || "현장 상태 변경에 실패했습니다.");
+          const data = result.site;
 
           setSites((prev) =>
             prev
