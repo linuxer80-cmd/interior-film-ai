@@ -10,187 +10,105 @@ import {
   formatMeterFromMm,
 } from "./cuttingOptimizer";
 
-const initialRolls = [
-  {
-    id: "roll-1",
+function makeId(prefix = "id") {
+  return `${prefix}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function createRoll() {
+  return {
+    id: makeId("roll"),
     color: "",
     lengthM: "",
     grainDirection: false,
-  },
-];
-
-const initialSections = [
-  {
-    id: "section-1",
-    location: "",
-    part: "",
-    colors: [
-      {
-        id: "color-1",
-        color: "",
-        sizes: [
-          {
-            id: "size-1",
-            width: "",
-            height: "",
-            quantity: 1,
-          },
-        ],
-      },
-    ],
-  },
-];
-
-function makeId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 7)}`;
+  };
 }
 
-function RollDiagram({ roll }) {
-  const usedLength = Math.max(roll.usedLength, 1);
+function createSize() {
+  return {
+    id: makeId("size"),
+    width: "",
+    height: "",
+    quantity: 1,
+  };
+}
 
-  const marks = [];
+function createColorGroup(color = "") {
+  return {
+    id: makeId("color"),
+    color,
+    sizes: [createSize()],
+  };
+}
 
-  for (let y = 0; y <= usedLength; y += 1000) {
-    marks.push(y);
-  }
+function createSection(location = "", color = "") {
+  return {
+    id: makeId("section"),
+    location,
+    part: "",
+    colors: [createColorGroup(color)],
+  };
+}
 
-  if (
-    marks.length === 0 ||
-    marks[marks.length - 1] !== usedLength
-  ) {
-    marks.push(usedLength);
-  }
+function parseBulkSizes(value) {
+  const rows = [];
 
-  return (
-    <div className={styles.diagramScroll}>
-      <svg
-        className={styles.diagram}
-        viewBox={`0 0 ${FILM_WIDTH} ${usedLength}`}
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect
-          x="0"
-          y="0"
-          width={FILM_WIDTH}
-          height={usedLength}
-          fill="#ffffff"
-          stroke="#111827"
-          strokeWidth="5"
-        />
+  String(value || "")
+    .split(/\r?\n/)
+    .forEach((line) => {
+      const numbers = line
+        .replace(/,/g, "")
+        .match(/\d+(?:\.\d+)?/g);
 
-        {marks.map((y) => (
-          <g key={`mark-${y}`}>
-            <line
-              x1="0"
-              y1={y}
-              x2={FILM_WIDTH}
-              y2={y}
-              stroke="#cbd5e1"
-              strokeWidth="3"
-              strokeDasharray="15 12"
-            />
+      if (!numbers || numbers.length < 2) {
+        return;
+      }
 
-            <text
-              x="12"
-              y={Math.min(y + 42, usedLength - 8)}
-              fontSize="36"
-              fill="#475569"
-            >
-              {y.toLocaleString()}mm
-            </text>
-          </g>
-        ))}
+      const width = Math.round(Number(numbers[0]));
+      const height = Math.round(Number(numbers[1]));
 
-        {roll.placements.map((piece, index) => {
-          const hue =
-            (piece.sectionIndex * 67 +
-              piece.colorIndex * 41 +
-              index * 13) %
-            360;
+      const quantity =
+        numbers.length >= 3
+          ? Math.max(
+              1,
+              Math.floor(Number(numbers[2]) || 1)
+            )
+          : 1;
 
-          const clipId = `clip-${roll.id}-${piece.id}`;
+      if (width <= 0 || height <= 0) {
+        return;
+      }
 
-          return (
-            <g key={piece.id}>
-              <defs>
-                <clipPath id={clipId}>
-                  <rect
-                    x={piece.x}
-                    y={piece.y}
-                    width={piece.width}
-                    height={piece.height}
-                  />
-                </clipPath>
-              </defs>
+      rows.push({
+        id: makeId("size"),
+        width,
+        height,
+        quantity,
+      });
+    });
 
-              <rect
-                x={piece.x}
-                y={piece.y}
-                width={piece.width}
-                height={piece.height}
-                fill={`hsl(${hue} 70% 90%)`}
-                stroke="#0f172a"
-                strokeWidth="4"
-              />
+  return rows;
+}
 
-              <g clipPath={`url(#${clipId})`}>
-                <text
-                  x={piece.x + 15}
-                  y={piece.y + 48}
-                  fontSize="40"
-                  fontWeight="700"
-                  fill="#0f172a"
-                >
-                  {piece.location}
-                </text>
-
-                <text
-                  x={piece.x + 15}
-                  y={piece.y + 96}
-                  fontSize="36"
-                  fill="#0f172a"
-                >
-                  {piece.part}
-                </text>
-
-                <text
-                  x={piece.x + 15}
-                  y={piece.y + 142}
-                  fontSize="34"
-                  fill="#334155"
-                >
-                  {piece.originalWidth} × {piece.originalHeight}
-                </text>
-
-                <text
-                  x={piece.x + 15}
-                  y={piece.y + 184}
-                  fontSize="30"
-                  fill="#475569"
-                >
-                  {piece.color}
-                  {piece.rotated ? " · 회전" : ""}
-                </text>
-              </g>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
+function isBlankSize(size) {
+  return !Number(size.width) && !Number(size.height);
 }
 
 export default function FilmCuttingOptimizer() {
-  const [rolls, setRolls] =
-    useState(initialRolls);
+  const [rolls, setRolls] = useState(() => [
+    createRoll(),
+  ]);
 
-  const [sections, setSections] =
-    useState(initialSections);
+  const [sections, setSections] = useState(() => [
+    createSection(),
+  ]);
 
   const [rollMode, setRollMode] =
     useState("waste");
+
+  const [iterations, setIterations] =
+    useState(350);
 
   const [result, setResult] =
     useState(null);
@@ -201,17 +119,59 @@ export default function FilmCuttingOptimizer() {
   const [calculating, setCalculating] =
     useState(false);
 
+  const [bulkEditor, setBulkEditor] =
+    useState(null);
+
   const colors = useMemo(
     () => getUniqueColors(rolls),
     [rolls]
   );
-    function updateRoll(id, field, value) {
+
+  const inputSummary = useMemo(() => {
+    const validRolls = rolls.filter(
+      (roll) =>
+        String(roll.color || "").trim() &&
+        Number(roll.lengthM) > 0
+    );
+
+    let pieceCount = 0;
+    let sizeCount = 0;
+
+    sections.forEach((section) => {
+      section.colors.forEach((group) => {
+        group.sizes.forEach((size) => {
+          if (
+            Number(size.width) > 0 &&
+            Number(size.height) > 0
+          ) {
+            sizeCount += 1;
+
+            pieceCount += Math.max(
+              1,
+              Number(size.quantity) || 1
+            );
+          }
+        });
+      });
+    });
+
+    return {
+      rollCount: validRolls.length,
+      colorCount: colors.length,
+      sectionCount: sections.length,
+      sizeCount,
+      pieceCount,
+    };
+  }, [rolls, sections, colors]);  function updateRoll(id, field, value) {
     setRolls((prev) =>
       prev.map((roll) =>
         roll.id === id
           ? {
               ...roll,
-              [field]: value,
+              [field]:
+                field === "color"
+                  ? String(value).toUpperCase()
+                  : value,
             }
           : roll
       )
@@ -221,25 +181,110 @@ export default function FilmCuttingOptimizer() {
   function addRoll() {
     setRolls((prev) => [
       ...prev,
-      {
-        id: makeId("roll"),
-        color: "",
-        lengthM: "",
-        grainDirection: false,
-      },
+      createRoll(),
     ]);
   }
 
   function removeRoll(id) {
-    setRolls((prev) =>
-      prev.filter((roll) => roll.id !== id)
-    );
+    setRolls((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+
+      return prev.filter(
+        (roll) => roll.id !== id
+      );
+    });
   }
 
-  function updateSection(id, field, value) {
+  function addSection() {
+    setSections((prev) => {
+      const last =
+        prev[prev.length - 1];
+
+      const previousLocation =
+        last?.location || "";
+
+      return [
+        ...prev,
+        createSection(
+          previousLocation,
+          colors[0] || ""
+        ),
+      ];
+    });
+  }
+
+  function removeSection(sectionId) {
+    setSections((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+
+      return prev.filter(
+        (section) =>
+          section.id !== sectionId
+      );
+    });
+  }
+
+  function copySection(sectionId) {
+    setSections((prev) => {
+      const source = prev.find(
+        (section) =>
+          section.id === sectionId
+      );
+
+      if (!source) {
+        return prev;
+      }
+
+      const copied = {
+        ...source,
+
+        id: makeId("section"),
+
+        colors: source.colors.map(
+          (group) => ({
+            ...group,
+
+            id: makeId("color"),
+
+            sizes: group.sizes.map(
+              (size) => ({
+                ...size,
+                id: makeId("size"),
+              })
+            ),
+          })
+        ),
+      };
+
+      const index = prev.findIndex(
+        (section) =>
+          section.id === sectionId
+      );
+
+      const next = [...prev];
+
+      next.splice(
+        index + 1,
+        0,
+        copied
+      );
+
+      return next;
+    });
+  }
+
+  function updateSection(
+    sectionId,
+    field,
+    value
+  ) {
     setSections((prev) =>
       prev.map((section) =>
-        section.id === id
+        section.id === sectionId
           ? {
               ...section,
               [field]: value,
@@ -249,421 +294,597 @@ export default function FilmCuttingOptimizer() {
     );
   }
 
-  function addSection() {
-    setSections((prev) => [
-      ...prev,
-      {
-        id: makeId("section"),
-        location: "",
-        part: "",
-        colors: [
-          {
-            id: makeId("color"),
-            color: colors[0] || "",
-            sizes: [
-              {
-                id: makeId("size"),
-                width: "",
-                height: "",
-                quantity: 1,
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  }
-
-  function removeSection(id) {
+  function addColorGroup(sectionId) {
     setSections((prev) =>
-      prev.filter((section) => section.id !== id)
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
+
+        const usedColors =
+          new Set(
+            section.colors
+              .map((group) =>
+                String(
+                  group.color || ""
+                ).toUpperCase()
+              )
+              .filter(Boolean)
+          );
+
+        const nextColor =
+          colors.find(
+            (color) =>
+              !usedColors.has(color)
+          ) || "";
+
+        if (!nextColor) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors: [
+            ...section.colors,
+            createColorGroup(
+              nextColor
+            ),
+          ],
+        };
+      })
     );
   }
 
-  function addColor(sectionId) {
-    setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: [
-                ...section.colors,
-                {
-                  id: makeId("color"),
-                  color: colors[0] || "",
-                  sizes: [
-                    {
-                      id: makeId("size"),
-                      width: "",
-                      height: "",
-                      quantity: 1,
-                    },
-                  ],
-                },
-              ],
-            }
-          : section
-      )
-    );
-  }
-
-  function updateColor(
+  function removeColorGroup(
     sectionId,
-    colorId,
-    value
+    colorGroupId
   ) {
     setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: section.colors.map(
-                (group) =>
-                  group.id === colorId
-                    ? {
-                        ...group,
-                        color: value,
-                      }
-                    : group
-              ),
-            }
-          : section
-      )
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
+
+        if (
+          section.colors.length <= 1
+        ) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors:
+            section.colors.filter(
+              (group) =>
+                group.id !==
+                colorGroupId
+            ),
+        };
+      })
     );
   }
 
-  function removeColor(
+  function updateColorGroup(
     sectionId,
-    colorId
+    colorGroupId,
+    color
   ) {
     setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: section.colors.filter(
-                (group) =>
-                  group.id !== colorId
-              ),
-            }
-          : section
-      )
-    );
-  }
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
 
-  function addSize(
-    sectionId,
-    colorId
-  ) {
-    setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: section.colors.map(
-                (group) =>
-                  group.id === colorId
-                    ? {
-                        ...group,
-                        sizes: [
-                          ...group.sizes,
-                          {
-                            id: makeId("size"),
-                            width: "",
-                            height: "",
-                            quantity: 1,
-                          },
-                        ],
-                      }
-                    : group
-              ),
-            }
-          : section
-      )
-    );
-  }
+        const normalized =
+          String(color || "")
+            .trim()
+            .toUpperCase();
 
-  function updateSize(
+        const duplicate =
+          section.colors.some(
+            (group) =>
+              group.id !==
+                colorGroupId &&
+              String(
+                group.color || ""
+              )
+                .trim()
+                .toUpperCase() ===
+                normalized
+          );
+
+        if (
+          duplicate &&
+          normalized
+        ) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors:
+            section.colors.map(
+              (group) =>
+                group.id ===
+                colorGroupId
+                  ? {
+                      ...group,
+                      color:
+                        normalized,
+                    }
+                  : group
+            ),
+        };
+      })
+    );
+        }
+    function addSize(
     sectionId,
-    colorId,
-    sizeId,
-    field,
-    value
+    colorGroupId
   ) {
     setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: section.colors.map(
-                (group) =>
-                  group.id === colorId
-                    ? {
-                        ...group,
-                        sizes: group.sizes.map(
-                          (size) =>
-                            size.id === sizeId
-                              ? {
-                                  ...size,
-                                  [field]: value,
-                                }
-                              : size
-                        ),
-                      }
-                    : group
-              ),
-            }
-          : section
-      )
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors:
+            section.colors.map(
+              (group) =>
+                group.id ===
+                colorGroupId
+                  ? {
+                      ...group,
+
+                      sizes: [
+                        ...group.sizes,
+                        createSize(),
+                      ],
+                    }
+                  : group
+            ),
+        };
+      })
     );
   }
 
   function removeSize(
     sectionId,
-    colorId,
+    colorGroupId,
     sizeId
   ) {
     setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              colors: section.colors.map(
-                (group) =>
-                  group.id === colorId
-                    ? {
-                        ...group,
-                        sizes: group.sizes.filter(
-                          (size) =>
-                            size.id !== sizeId
-                        ),
-                      }
-                    : group
-              ),
-            }
-          : section
-      )
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors:
+            section.colors.map(
+              (group) => {
+                if (
+                  group.id !==
+                  colorGroupId
+                ) {
+                  return group;
+                }
+
+                if (
+                  group.sizes.length <=
+                  1
+                ) {
+                  return group;
+                }
+
+                return {
+                  ...group,
+
+                  sizes:
+                    group.sizes.filter(
+                      (size) =>
+                        size.id !==
+                        sizeId
+                    ),
+                };
+              }
+            ),
+        };
+      })
     );
   }
-    function calculate(iterations) {
-    setCalculating(true);
-    setErrors([]);
 
-    setTimeout(() => {
-      const response =
-        optimizeCutting({
-          rolls,
-          sections,
-          rollMode,
-          iterations,
-        });
+  function updateSize(
+    sectionId,
+    colorGroupId,
+    sizeId,
+    field,
+    value
+  ) {
+    setSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
 
-      setResult(
-        response.result || null
-      );
+        return {
+          ...section,
 
-      setErrors(
-        response.errors || []
-      );
+          colors:
+            section.colors.map(
+              (group) => {
+                if (
+                  group.id !==
+                  colorGroupId
+                ) {
+                  return group;
+                }
 
-      setCalculating(false);
-    }, 30);
+                return {
+                  ...group,
+
+                  sizes:
+                    group.sizes.map(
+                      (size) =>
+                        size.id === sizeId
+                          ? {
+                              ...size,
+                              [field]:
+                                value,
+                            }
+                          : size
+                    ),
+                };
+              }
+            ),
+        };
+      })
+    );
   }
 
-  function loadSample() {
-    setRolls([
-      {
-        id: "sample-roll-1",
-        color: "S123",
-        lengthM: 11,
-        grainDirection: false,
-      },
-      {
-        id: "sample-roll-2",
-        color: "S123",
-        lengthM: 20,
-        grainDirection: false,
-      },
-      {
-        id: "sample-roll-3",
-        color: "S231",
-        lengthM: 15,
-        grainDirection: false,
-      },
-      {
-        id: "sample-roll-4",
-        color: "W123",
-        lengthM: 15,
-        grainDirection: true,
-      },
-    ]);
+  function changeQuantity(
+    sectionId,
+    colorGroupId,
+    sizeId,
+    amount
+  ) {
+    setSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) {
+          return section;
+        }
 
-    setSections([
-      {
-        id: "sample-section-1",
-        location: "방1",
-        part: "방문",
-        colors: [
-          {
-            id: "sample-color-1",
-            color: "S123",
-            sizes: [
-              {
-                id: "sample-size-1",
-                width: 600,
-                height: 1900,
-                quantity: 1,
-              },
-            ],
-          },
-          {
-            id: "sample-color-2",
-            color: "S231",
-            sizes: [
-              {
-                id: "sample-size-2",
-                width: 150,
-                height: 2100,
-                quantity: 2,
-              },
-              {
-                id: "sample-size-3",
-                width: 900,
-                height: 150,
-                quantity: 1,
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: "sample-section-2",
-        location: "주방",
-        part: "하부장",
-        colors: [
-          {
-            id: "sample-color-3",
-            color: "W123",
-            sizes: [
-              {
-                id: "sample-size-4",
-                width: 600,
-                height: 800,
-                quantity: 4,
-              },
-            ],
-          },
-        ],
-      },
-    ]);
+        return {
+          ...section,
 
-    setResult(null);
+          colors:
+            section.colors.map(
+              (group) => {
+                if (
+                  group.id !==
+                  colorGroupId
+                ) {
+                  return group;
+                }
+
+                return {
+                  ...group,
+
+                  sizes:
+                    group.sizes.map(
+                      (size) => {
+                        if (
+                          size.id !==
+                          sizeId
+                        ) {
+                          return size;
+                        }
+
+                        const current =
+                          Math.max(
+                            1,
+                            Number(
+                              size.quantity
+                            ) || 1
+                          );
+
+                        const next =
+                          Math.max(
+                            1,
+                            current +
+                              amount
+                          );
+
+                        return {
+                          ...size,
+                          quantity:
+                            next,
+                        };
+                      }
+                    ),
+                };
+              }
+            ),
+        };
+      })
+    );
+  }
+
+  function openBulkEditor(
+    sectionId,
+    colorGroupId
+  ) {
+    setBulkEditor({
+      sectionId,
+      colorGroupId,
+      text: "",
+    });
+  }
+
+  function closeBulkEditor() {
+    setBulkEditor(null);
+  }
+
+  function applyBulkEditor() {
+    if (!bulkEditor) {
+      return;
+    }
+
+    const parsed =
+      parseBulkSizes(
+        bulkEditor.text
+      );
+
+    if (parsed.length === 0) {
+      setErrors([
+        "여러 사이즈 입력 형식을 확인해주세요. 예: 480x2100x2",
+      ]);
+
+      return;
+    }
+
+    setSections((prev) =>
+      prev.map((section) => {
+        if (
+          section.id !==
+          bulkEditor.sectionId
+        ) {
+          return section;
+        }
+
+        return {
+          ...section,
+
+          colors:
+            section.colors.map(
+              (group) => {
+                if (
+                  group.id !==
+                  bulkEditor.colorGroupId
+                ) {
+                  return group;
+                }
+
+                const onlyBlank =
+                  group.sizes.length ===
+                    1 &&
+                  isBlankSize(
+                    group.sizes[0]
+                  );
+
+                return {
+                  ...group,
+
+                  sizes: onlyBlank
+                    ? parsed
+                    : [
+                        ...group.sizes,
+                        ...parsed,
+                      ],
+                };
+              }
+            ),
+        };
+      })
+    );
+
     setErrors([]);
+    setBulkEditor(null);
   }
 
   function resetAll() {
-    setRolls(initialRolls);
-    setSections(initialSections);
+    setRolls([
+      createRoll(),
+    ]);
+
+    setSections([
+      createSection(),
+    ]);
+
     setResult(null);
     setErrors([]);
+    setBulkEditor(null);
   }
 
-  return (
+  function calculate() {
+    setErrors([]);
+    setResult(null);
+    setCalculating(true);
+
+    window.setTimeout(() => {
+      try {
+        const response =
+          optimizeCutting({
+            rolls,
+            sections,
+            rollMode,
+            iterations,
+          });
+
+        setErrors(
+          response.errors || []
+        );
+
+        setResult(
+          response.result || null
+        );
+      } catch (error) {
+        console.error(error);
+
+        setErrors([
+          error?.message ||
+            "재단 계산 중 오류가 발생했습니다.",
+        ]);
+      } finally {
+        setCalculating(false);
+      }
+    }, 30);
+      }
+  
+    return (
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
           <div>
-            <h1>필름 재단 최적화</h1>
-            <p>
-              필름 폭 {FILM_WIDTH}mm ·
-              위치/부위/컬러별 재단
+            <p className={styles.eyebrow}>
+              FILM CUTTING
+            </p>
+
+            <h1 className={styles.title}>
+              필름 재단
+            </h1>
+
+            <p className={styles.description}>
+              폭 {FILM_WIDTH}mm ·
+              컬러별 보유 롤 최적 재단
             </p>
           </div>
 
-          <div className={styles.headerButtons}>
-            <button
-              type="button"
-              onClick={loadSample}
-              className={styles.secondaryButton}
-            >
-              샘플 불러오기
-            </button>
-
-            <button
-              type="button"
-              onClick={resetAll}
-              className={styles.secondaryButton}
-            >
-              초기화
-            </button>
-          </div>
+          <button
+            type="button"
+            className={styles.resetButton}
+            onClick={resetAll}
+          >
+            전체 초기화
+          </button>
         </header>
 
+        <div className={styles.summaryBar}>
+          <SummaryPill
+            label="롤"
+            value={`${inputSummary.rollCount}개`}
+          />
+
+          <SummaryPill
+            label="컬러"
+            value={`${inputSummary.colorCount}종`}
+          />
+
+          <SummaryPill
+            label="부위"
+            value={`${inputSummary.sectionCount}개`}
+          />
+
+          <SummaryPill
+            label="재단"
+            value={`${inputSummary.pieceCount}장`}
+          />
+        </div>
+
         <section className={styles.card}>
-          <div className={styles.sectionTitle}>
+          <div className={styles.cardHeader}>
             <div>
-              <h2>1. 보유 필름 롤</h2>
-              <p>
-                컬러번호와 실제 남아있는
-                롤 길이를 입력하세요.
-              </p>
+              <span className={styles.step}>
+                1
+              </span>
+
+              <div>
+                <h2>보유 필름</h2>
+                <p>
+                  현장에 있는 롤의 컬러와
+                  남은 길이를 입력하세요.
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
+              className={styles.blackButton}
               onClick={addRoll}
-              className={styles.addButton}
             >
-              + 롤 추가
+              + 롤
             </button>
           </div>
 
           <div className={styles.rollList}>
-            {rolls.map((roll, index) => (
-              <div
-                className={styles.rollRow}
-                key={roll.id}
-              >
-                <div className={styles.rowNumber}>
-                  {index + 1}
-                </div>
+            {rolls.map(
+              (roll, index) => (
+                <div
+                  key={roll.id}
+                  className={styles.rollRow}
+                >
+                  <strong
+                    className={
+                      styles.rowIndex
+                    }
+                  >
+                    {index + 1}
+                  </strong>
 
-                <label>
-                  <span>컬러번호</span>
                   <input
+                    className={
+                      styles.colorInput
+                    }
                     value={roll.color}
-                    placeholder="예: S115"
+                    placeholder="S115"
+                    autoCapitalize="characters"
                     onChange={(e) =>
                       updateRoll(
                         roll.id,
                         "color",
-                        e.target.value.toUpperCase()
-                      )
-                    }
-                  />
-                </label>
-
-                <label>
-                  <span>롤 길이(m)</span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    value={roll.lengthM}
-                    placeholder="예: 11"
-                    onChange={(e) =>
-                      updateRoll(
-                        roll.id,
-                        "lengthM",
                         e.target.value
                       )
                     }
                   />
-                </label>
 
-                <label>
-                  <span>필름 방향</span>
+                  <div
+                    className={
+                      styles.lengthInput
+                    }
+                  >
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.1"
+                      value={
+                        roll.lengthM
+                      }
+                      placeholder="11"
+                      onChange={(e) =>
+                        updateRoll(
+                          roll.id,
+                          "lengthM",
+                          e.target.value
+                        )
+                      }
+                    />
+
+                    <span>m</span>
+                  </div>
+
                   <select
+                    className={
+                      styles.grainSelect
+                    }
                     value={
                       roll.grainDirection
                         ? "grain"
@@ -679,125 +900,214 @@ export default function FilmCuttingOptimizer() {
                     }
                   >
                     <option value="free">
-                      결 없음 · 회전 가능
+                      결 없음
                     </option>
 
                     <option value="grain">
-                      결 있음 · 회전 불가
+                      결 있음
                     </option>
                   </select>
-                </label>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    removeRoll(roll.id)
-                  }
-                  className={styles.deleteButton}
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    className={
+                      styles.iconDelete
+                    }
+                    disabled={
+                      rolls.length <= 1
+                    }
+                    onClick={() =>
+                      removeRoll(
+                        roll.id
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            )}
           </div>
         </section>
+
         <section className={styles.card}>
-          <div className={styles.sectionTitle}>
+          <div className={styles.cardHeader}>
             <div>
-              <h2>2. 재단 사이즈</h2>
-              <p>
-                시공 위치와 부위를 만들고
-                그 안에 컬러별 재단 사이즈를 입력하세요.
-              </p>
+              <span className={styles.step}>
+                2
+              </span>
+
+              <div>
+                <h2>재단 입력</h2>
+                <p>
+                  위치와 부위별로 컬러와
+                  사이즈를 입력하세요.
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
+              className={styles.blackButton}
               onClick={addSection}
-              className={styles.addButton}
             >
-              + 시공 부위 추가
+              + 다음 부위
             </button>
           </div>
 
-          <div className={styles.sectionList}>
-            {sections.map(
-              (section, sectionIndex) => (
+          {sections.map(
+            (
+              section,
+              sectionIndex
+            ) => (
+              <article
+                key={section.id}
+                className={
+                  styles.sectionCard
+                }
+              >
                 <div
-                  className={styles.sectionCard}
-                  key={section.id}
+                  className={
+                    styles.sectionHeader
+                  }
                 >
-                  <div className={styles.sectionHeader}>
-                    <strong>
-                      시공 부위 {sectionIndex + 1}
-                    </strong>
+                  <strong>
+                    #{sectionIndex + 1}
+                  </strong>
+
+                  <div
+                    className={
+                      styles.sectionActions
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copySection(
+                          section.id
+                        )
+                      }
+                    >
+                      복사
+                    </button>
 
                     <button
                       type="button"
+                      disabled={
+                        sections.length <=
+                        1
+                      }
                       onClick={() =>
                         removeSection(
                           section.id
                         )
                       }
-                      className={styles.deleteTextButton}
                     >
-                      부위 삭제
+                      삭제
                     </button>
                   </div>
+                </div>
 
-                  <div className={styles.locationGrid}>
-                    <label>
-                      <span>시공 위치</span>
-                      <input
-                        value={
-                          section.location
-                        }
-                        placeholder="예: 방1"
-                        onChange={(e) =>
-                          updateSection(
-                            section.id,
-                            "location",
-                            e.target.value
+                <div
+                  className={
+                    styles.locationRow
+                  }
+                >
+                  <label>
+                    <span>
+                      시공 위치
+                    </span>
+
+                    <input
+                      value={
+                        section.location
+                      }
+                      placeholder="방1"
+                      onChange={(e) =>
+                        updateSection(
+                          section.id,
+                          "location",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    <span>
+                      시공 부위
+                    </span>
+
+                    <input
+                      value={
+                        section.part
+                      }
+                      placeholder="샤시"
+                      onChange={(e) =>
+                        updateSection(
+                          section.id,
+                          "part",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+                {section.colors.map(
+                  (
+                    group,
+                    colorIndex
+                  ) => {
+                    const usedByOther =
+                      new Set(
+                        section.colors
+                          .filter(
+                            (item) =>
+                              item.id !==
+                              group.id
                           )
-                        }
-                      />
-                    </label>
-
-                    <label>
-                      <span>시공 부위</span>
-                      <input
-                        value={section.part}
-                        placeholder="예: 방문"
-                        onChange={(e) =>
-                          updateSection(
-                            section.id,
-                            "part",
-                            e.target.value
+                          .map((item) =>
+                            String(
+                              item.color ||
+                                ""
+                            ).toUpperCase()
                           )
-                        }
-                      />
-                    </label>
-                  </div>
+                          .filter(Boolean)
+                      );
 
-                  {section.colors.map(
-                    (group, colorIndex) => (
+                    return (
                       <div
-                        className={styles.colorCard}
                         key={group.id}
+                        className={
+                          styles.colorBlock
+                        }
                       >
-                        <div className={styles.colorHeader}>
-                          <label>
+                        <div
+                          className={
+                            styles.colorBlockHeader
+                          }
+                        >
+                          <div
+                            className={
+                              styles.colorTitle
+                            }
+                          >
                             <span>
-                              컬러 {colorIndex + 1}
+                              컬러{" "}
+                              {colorIndex +
+                                1}
                             </span>
 
                             <select
-                              value={group.color}
+                              value={
+                                group.color
+                              }
                               onChange={(e) =>
-                                updateColor(
+                                updateColorGroup(
                                   section.id,
                                   group.id,
-                                  e.target.value
+                                  e.target
+                                    .value
                                 )
                               }
                             >
@@ -808,102 +1118,181 @@ export default function FilmCuttingOptimizer() {
                               {colors.map(
                                 (color) => (
                                   <option
-                                    key={color}
-                                    value={color}
+                                    key={
+                                      color
+                                    }
+                                    value={
+                                      color
+                                    }
+                                    disabled={usedByOther.has(
+                                      color
+                                    )}
                                   >
                                     {color}
                                   </option>
                                 )
                               )}
                             </select>
-                          </label>
+                          </div>
 
                           <button
                             type="button"
+                            className={
+                              styles.textDelete
+                            }
+                            disabled={
+                              section.colors
+                                .length <=
+                              1
+                            }
                             onClick={() =>
-                              removeColor(
+                              removeColorGroup(
                                 section.id,
                                 group.id
                               )
                             }
-                            className={styles.deleteTextButton}
                           >
                             컬러 삭제
                           </button>
                         </div>
 
-                        <div className={styles.sizeList}>
+                        <div
+                          className={
+                            styles.sizeList
+                          }
+                        >
                           {group.sizes.map(
-                            (size, sizeIndex) => (
+                            (
+                              size,
+                              sizeIndex
+                            ) => (
                               <div
-                                className={styles.sizeRow}
-                                key={size.id}
+                                key={
+                                  size.id
+                                }
+                                className={
+                                  styles.sizeRow
+                                }
                               >
-                                <strong>
-                                  {sizeIndex + 1}
-                                </strong>
+                                <span
+                                  className={
+                                    styles.sizeIndex
+                                  }
+                                >
+                                  {sizeIndex +
+                                    1}
+                                </span>
 
-                                <label>
-                                  <span>가로 mm</span>
-                                  <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    value={size.width}
-                                    onChange={(e) =>
-                                      updateSize(
-                                        section.id,
-                                        group.id,
-                                        size.id,
-                                        "width",
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                </label>
+                                <input
+                                  className={
+                                    styles.dimensionInput
+                                  }
+                                  type="number"
+                                  inputMode="numeric"
+                                  min="1"
+                                  value={
+                                    size.width
+                                  }
+                                  placeholder="480"
+                                  onChange={(e) =>
+                                    updateSize(
+                                      section.id,
+                                      group.id,
+                                      size.id,
+                                      "width",
+                                      e.target
+                                        .value
+                                    )
+                                  }
+                                />
 
-                                <span className={styles.multiply}>
+                                <span
+                                  className={
+                                    styles.multiply
+                                  }
+                                >
                                   ×
                                 </span>
 
-                                <label>
-                                  <span>세로 mm</span>
-                                  <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    value={size.height}
-                                    onChange={(e) =>
-                                      updateSize(
-                                        section.id,
-                                        group.id,
-                                        size.id,
-                                        "height",
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                </label>
+                                <input
+                                  className={
+                                    styles.dimensionInput
+                                  }
+                                  type="number"
+                                  inputMode="numeric"
+                                  min="1"
+                                  value={
+                                    size.height
+                                  }
+                                  placeholder="2100"
+                                  onChange={(e) =>
+                                    updateSize(
+                                      section.id,
+                                      group.id,
+                                      size.id,
+                                      "height",
+                                      e.target
+                                        .value
+                                    )
+                                  }
+                                />
 
-                                <label>
-                                  <span>수량</span>
-                                  <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    min="1"
-                                    value={size.quantity}
-                                    onChange={(e) =>
-                                      updateSize(
-                                        section.id,
-                                        group.id,
-                                        size.id,
-                                        "quantity",
-                                        e.target.value
+                                <span
+                                  className={
+                                    styles.mm
+                                  }
+                                >
+                                  mm
+                                </span>
+
+                                <QuantityStepper
+                                  value={
+                                    size.quantity
+                                  }
+                                  onMinus={() =>
+                                    changeQuantity(
+                                      section.id,
+                                      group.id,
+                                      size.id,
+                                      -1
+                                    )
+                                  }
+                                  onPlus={() =>
+                                    changeQuantity(
+                                      section.id,
+                                      group.id,
+                                      size.id,
+                                      1
+                                    )
+                                  }
+                                  onChange={(
+                                    value
+                                  ) =>
+                                    updateSize(
+                                      section.id,
+                                      group.id,
+                                      size.id,
+                                      "quantity",
+                                      Math.max(
+                                        1,
+                                        Number(
+                                          value
+                                        ) || 1
                                       )
-                                    }
-                                  />
-                                </label>
+                                    )
+                                  }
+                                />
 
                                 <button
                                   type="button"
+                                  className={
+                                    styles.iconDelete
+                                  }
+                                  disabled={
+                                    group.sizes
+                                      .length <=
+                                    1
+                                  }
                                   onClick={() =>
                                     removeSize(
                                       section.id,
@@ -911,106 +1300,242 @@ export default function FilmCuttingOptimizer() {
                                       size.id
                                     )
                                   }
-                                  className={styles.smallDelete}
                                 >
-                                  삭제
+                                  ×
                                 </button>
                               </div>
                             )
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            addSize(
-                              section.id,
-                              group.id
-                            )
+                        <div
+                          className={
+                            styles.sizeActions
                           }
-                          className={styles.sizeAddButton}
                         >
-                          + 재단 사이즈 추가
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              addSize(
+                                section.id,
+                                group.id
+                              )
+                            }
+                          >
+                            + 사이즈
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openBulkEditor(
+                                section.id,
+                                group.id
+                              )
+                            }
+                          >
+                            여러개 한번에
+                          </button>
+                        </div>
+
+                        {bulkEditor?.sectionId ===
+                          section.id &&
+                          bulkEditor?.colorGroupId ===
+                            group.id && (
+                            <div
+                              className={
+                                styles.bulkBox
+                              }
+                            >
+                              <p>
+                                한 줄에 하나씩
+                                입력하세요.
+                              </p>
+
+                              <textarea
+                                autoFocus
+                                value={
+                                  bulkEditor.text
+                                }
+                                placeholder={
+                                  "480x2100x2\n400x2100\n340x2100"
+                                }
+                                onChange={(e) =>
+                                  setBulkEditor(
+                                    (prev) => ({
+                                      ...prev,
+                                      text:
+                                        e.target
+                                          .value,
+                                    })
+                                  )
+                                }
+                              />
+
+                              <small>
+                                가로 × 세로 ×
+                                수량 / 수량 생략
+                                시 1장
+                              </small>
+
+                              <div
+                                className={
+                                  styles.bulkActions
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  onClick={
+                                    closeBulkEditor
+                                  }
+                                >
+                                  취소
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className={
+                                    styles.applyButton
+                                  }
+                                  onClick={
+                                    applyBulkEditor
+                                  }
+                                >
+                                  적용
+                                </button>
+                              </div>
+                            </div>
+                          )}
                       </div>
+                    );
+                  }
+                )}
+
+                <button
+                  type="button"
+                  className={
+                    styles.addColorButton
+                  }
+                  disabled={
+                    colors.length ===
+                      0 ||
+                    section.colors.filter(
+                      (group) =>
+                        group.color
+                    ).length >=
+                      colors.length
+                  }
+                  onClick={() =>
+                    addColorGroup(
+                      section.id
                     )
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      addColor(section.id)
-                    }
-                    className={styles.colorAddButton}
-                  >
-                    + 컬러 추가
-                  </button>
-                </div>
-              )
-            )}
-          </div>
+                  }
+                >
+                  + 다른 컬러
+                </button>
+              </article>
+            )
+          )}
         </section>
-
         <section className={styles.card}>
-          <h2>3. 최적 재단 계산</h2>
+          <div className={styles.cardHeader}>
+            <div>
+              <span className={styles.step}>
+                3
+              </span>
 
-          <div className={styles.modeBox}>
-            <label>
-              <input
-                type="radio"
-                checked={rollMode === "waste"}
-                onChange={() =>
-                  setRollMode("waste")
-                }
-              />
-              전체 사용 길이 최소
-            </label>
+              <div>
+                <h2>최적 재단 계산</h2>
+                <p>
+                  현재는 기존 최적화 엔진으로
+                  계산합니다.
+                </p>
+              </div>
+            </div>
+          </div>
 
+          <div
+            className={
+              styles.optionRow
+            }
+          >
             <label>
-              <input
-                type="radio"
-                checked={
-                  rollMode === "short-first"
-                }
-                onChange={() =>
+              <span>
+                롤 사용 기준
+              </span>
+
+              <select
+                value={rollMode}
+                onChange={(e) =>
                   setRollMode(
-                    "short-first"
+                    e.target.value
                   )
                 }
-              />
-              짧은 롤 우선 사용
+              >
+                <option value="waste">
+                  사용 길이 최소
+                </option>
+
+                <option value="short-first">
+                  짧은 롤 우선
+                </option>
+              </select>
+            </label>
+
+            <label>
+              <span>
+                계산 정밀도
+              </span>
+
+              <select
+                value={iterations}
+                onChange={(e) =>
+                  setIterations(
+                    Number(
+                      e.target.value
+                    )
+                  )
+                }
+              >
+                <option value={150}>
+                  빠르게
+                </option>
+
+                <option value={350}>
+                  보통
+                </option>
+
+                <option value={800}>
+                  정밀
+                </option>
+              </select>
             </label>
           </div>
 
-          <div className={styles.calculateButtons}>
-            <button
-              type="button"
-              disabled={calculating}
-              onClick={() => calculate(80)}
-              className={styles.quickButton}
-            >
-              빠른 계산
-            </button>
-
-            <button
-              type="button"
-              disabled={calculating}
-              onClick={() => calculate(500)}
-              className={styles.primaryButton}
-            >
-              {calculating
-                ? "계산 중..."
-                : "정밀 최적화"}
-            </button>
-          </div>
+          <button
+            type="button"
+            className={
+              styles.calculateButton
+            }
+            disabled={calculating}
+            onClick={calculate}
+          >
+            {calculating
+              ? "계산 중..."
+              : "최적 재단 계산"}
+          </button>
 
           {errors.length > 0 && (
-            <div className={styles.errorBox}>
+            <div
+              className={
+                styles.errorBox
+              }
+            >
               {errors.map(
                 (error, index) => (
-                  <div key={index}>
-                    • {error}
-                  </div>
+                  <p key={index}>
+                    {error}
+                  </p>
                 )
               )}
             </div>
@@ -1018,95 +1543,250 @@ export default function FilmCuttingOptimizer() {
         </section>
 
         {result && (
-          <section className={styles.resultSection}>
-            <div className={styles.resultSummary}>
-              <h2>재단 결과</h2>
+          <section
+            className={
+              styles.resultArea
+            }
+          >
+            <div
+              className={
+                styles.resultHeader
+              }
+            >
+              <div>
+                <p
+                  className={
+                    styles.eyebrow
+                  }
+                >
+                  RESULT
+                </p>
 
-              <div className={styles.summaryGrid}>
-                <div>
-                  <span>사용 롤</span>
-                  <strong>
-                    {result.summary.usedRollCount}개
-                  </strong>
-                </div>
-
-                <div>
-                  <span>총 사용 길이</span>
-                  <strong>
-                    {formatMeterFromMm(
-                      result.summary.totalUsedLength
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>재단 효율</span>
-                  <strong>
-                    {result.summary.efficiency}%
-                  </strong>
-                </div>
+                <h2>
+                  현재 재단 결과
+                </h2>
               </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setResult(null)
+                }
+              >
+                닫기
+              </button>
+            </div>
+
+            <div
+              className={
+                styles.resultSummary
+              }
+            >
+              <SummaryPill
+                label="사용 롤"
+                value={`${result.summary.usedRollCount}개`}
+              />
+
+              <SummaryPill
+                label="사용 길이"
+                value={formatMeterFromMm(
+                  result.summary.totalUsedLength
+                )}
+              />
+
+              <SummaryPill
+                label="잔여"
+                value={formatMeterFromMm(
+                  result.summary.totalRemainingLength
+                )}
+              />
+
+              <SummaryPill
+                label="효율"
+                value={`${result.summary.efficiency}%`}
+              />
             </div>
 
             {result.usedRolls.map(
               (roll, index) => (
-                <div
-                  className={styles.resultCard}
-                  key={roll.id}
-                >
-                  <div className={styles.resultHeader}>
-                    <div>
-                      <h3>
-                        {roll.color} · ROLL {index + 1}
-                      </h3>
-
-                      <p>
-                        원래 {formatMeterFromMm(
-                          roll.lengthMm
-                        )}
-                        {" · "}
-                        사용 {formatMeterFromMm(
-                          roll.usedLength
-                        )}
-                        {" · "}
-                        잔여 {formatMeterFromMm(
-                          roll.remainingLength
-                        )}
-                      </p>
-                    </div>
-
-                    <strong>
-                      효율 {roll.efficiency}%
-                    </strong>
-                  </div>
-
-                  <RollDiagram roll={roll} />
-                </div>
+                <ResultRollCard
+                  key={`${roll.id}-${index}`}
+                  roll={roll}
+                  index={index}
+                />
               )
-            )}
-
-            {result.unplaced.length > 0 && (
-              <div className={styles.errorBox}>
-                <strong>
-                  배치하지 못한 재단물
-                </strong>
-
-                {result.unplaced.map(
-                  (piece) => (
-                    <div key={piece.id}>
-                      {piece.location} ·
-                      {piece.part} ·
-                      {piece.color} ·
-                      {piece.originalWidth}×
-                      {piece.originalHeight}
-                    </div>
-                  )
-                )}
-              </div>
             )}
           </section>
         )}
       </div>
     </main>
   );
-                    }
+}
+
+function SummaryPill({
+  label,
+  value,
+}) {
+  return (
+    <div
+      className={
+        styles.summaryPill
+      }
+    >
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function QuantityStepper({
+  value,
+  onMinus,
+  onPlus,
+  onChange,
+}) {
+  return (
+    <div
+      className={
+        styles.quantityStepper
+      }
+    >
+      <button
+        type="button"
+        onClick={onMinus}
+        disabled={
+          Number(value) <= 1
+        }
+      >
+        −
+      </button>
+
+      <input
+        type="number"
+        inputMode="numeric"
+        min="1"
+        value={value}
+        onChange={(e) =>
+          onChange(
+            e.target.value
+          )
+        }
+      />
+
+      <button
+        type="button"
+        onClick={onPlus}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function ResultRollCard({
+  roll,
+  index,
+}) {
+  return (
+    <article
+      className={
+        styles.resultRoll
+      }
+    >
+      <div
+        className={
+          styles.resultRollTop
+        }
+      >
+        <div>
+          <small>
+            ROLL {index + 1}
+          </small>
+
+          <h3>
+            {roll.color}
+          </h3>
+        </div>
+
+        <div
+          className={
+            styles.resultRollNumbers
+          }
+        >
+          <span>
+            보유{" "}
+            <b>
+              {formatMeterFromMm(
+                roll.lengthMm
+              )}
+            </b>
+          </span>
+
+          <span>
+            사용{" "}
+            <b>
+              {formatMeterFromMm(
+                roll.usedLength
+              )}
+            </b>
+          </span>
+
+          <span>
+            잔여{" "}
+            <b>
+              {formatMeterFromMm(
+                roll.remainingLength
+              )}
+            </b>
+          </span>
+        </div>
+      </div>
+
+      <div
+        className={
+          styles.resultPieceList
+        }
+      >
+        {roll.placements.map(
+          (piece, pieceIndex) => (
+            <div
+              key={piece.id}
+              className={
+                styles.resultPiece
+              }
+            >
+              <strong>
+                #{pieceIndex + 1}
+              </strong>
+
+              <div>
+                <b>
+                  {piece.location} ·{" "}
+                  {piece.part}
+                </b>
+
+                <span>
+                  {
+                    piece.originalWidth
+                  }
+                  ×
+                  {
+                    piece.originalHeight
+                  }
+                  mm
+                  {piece.rotated
+                    ? " · 회전"
+                    : ""}
+                </span>
+              </div>
+
+              <em>
+                {piece.color}
+              </em>
+            </div>
+          )
+        )}
+      </div>
+    </article>
+  );
+}
