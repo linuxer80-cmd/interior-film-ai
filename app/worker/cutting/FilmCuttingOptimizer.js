@@ -6,7 +6,6 @@ import styles from "./FilmCuttingOptimizer.module.css";
 import {
   FILM_WIDTH,
   optimizeCutting,
-  getUniqueColors,
   formatMeterFromMm,
 } from "./cuttingOptimizer";
 
@@ -51,6 +50,12 @@ function createSection(location = "", color = "") {
   };
 }
 
+function normalizeColor(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
 function parseBulkSizes(value) {
   const rows = [];
 
@@ -65,14 +70,21 @@ function parseBulkSizes(value) {
         return;
       }
 
-      const width = Math.round(Number(numbers[0]));
-      const height = Math.round(Number(numbers[1]));
+      const width = Math.round(
+        Number(numbers[0])
+      );
+
+      const height = Math.round(
+        Number(numbers[1])
+      );
 
       const quantity =
         numbers.length >= 3
           ? Math.max(
               1,
-              Math.floor(Number(numbers[2]) || 1)
+              Math.floor(
+                Number(numbers[2]) || 1
+              )
             )
           : 1;
 
@@ -92,7 +104,10 @@ function parseBulkSizes(value) {
 }
 
 function isBlankSize(size) {
-  return !Number(size.width) && !Number(size.height);
+  return (
+    !Number(size.width) &&
+    !Number(size.height)
+  );
 }
 
 export default function FilmCuttingOptimizer() {
@@ -100,9 +115,9 @@ export default function FilmCuttingOptimizer() {
     createRoll(),
   ]);
 
-  const [sections, setSections] = useState(() => [
-    createSection(),
-  ]);
+  const [sections, setSections] = useState(
+    () => [createSection()]
+  );
 
   const [rollMode, setRollMode] =
     useState("waste");
@@ -122,20 +137,40 @@ export default function FilmCuttingOptimizer() {
   const [bulkEditor, setBulkEditor] =
     useState(null);
 
-  const colors = useMemo(
-    () => getUniqueColors(rolls),
-    [rolls]
-  );
+  /*
+    중요:
+    컬러 목록은 현재 입력한 보유 롤에서 직접 생성합니다.
+
+    S115 11m
+    S115 50m
+    W123 20m
+
+    => 컬러 선택에는
+       S115
+       W123
+       두 개가 표시됩니다.
+  */
+  const colors = useMemo(() => {
+    return [
+      ...new Set(
+        rolls
+          .map((roll) =>
+            normalizeColor(roll.color)
+          )
+          .filter(Boolean)
+      ),
+    ];
+  }, [rolls]);
 
   const inputSummary = useMemo(() => {
     const validRolls = rolls.filter(
       (roll) =>
-        String(roll.color || "").trim() &&
+        normalizeColor(roll.color) &&
         Number(roll.lengthM) > 0
     );
 
-    let pieceCount = 0;
     let sizeCount = 0;
+    let pieceCount = 0;
 
     sections.forEach((section) => {
       section.colors.forEach((group) => {
@@ -162,7 +197,9 @@ export default function FilmCuttingOptimizer() {
       sizeCount,
       pieceCount,
     };
-  }, [rolls, sections, colors]);  function updateRoll(id, field, value) {
+  }, [rolls, sections, colors]);
+
+  function updateRoll(id, field, value) {
     setRolls((prev) =>
       prev.map((roll) =>
         roll.id === id
@@ -170,12 +207,14 @@ export default function FilmCuttingOptimizer() {
               ...roll,
               [field]:
                 field === "color"
-                  ? String(value).toUpperCase()
+                  ? normalizeColor(value)
                   : value,
             }
           : roll
       )
     );
+
+    setResult(null);
   }
 
   function addRoll() {
@@ -183,6 +222,8 @@ export default function FilmCuttingOptimizer() {
       ...prev,
       createRoll(),
     ]);
+
+    setResult(null);
   }
 
   function removeRoll(id) {
@@ -195,6 +236,8 @@ export default function FilmCuttingOptimizer() {
         (roll) => roll.id !== id
       );
     });
+
+    setResult(null);
   }
 
   function addSection() {
@@ -213,6 +256,8 @@ export default function FilmCuttingOptimizer() {
         ),
       ];
     });
+
+    setResult(null);
   }
 
   function removeSection(sectionId) {
@@ -226,6 +271,8 @@ export default function FilmCuttingOptimizer() {
           section.id !== sectionId
       );
     });
+
+    setResult(null);
   }
 
   function copySection(sectionId) {
@@ -241,13 +288,11 @@ export default function FilmCuttingOptimizer() {
 
       const copied = {
         ...source,
-
         id: makeId("section"),
 
         colors: source.colors.map(
           (group) => ({
             ...group,
-
             id: makeId("color"),
 
             sizes: group.sizes.map(
@@ -275,6 +320,8 @@ export default function FilmCuttingOptimizer() {
 
       return next;
     });
+
+    setResult(null);
   }
 
   function updateSection(
@@ -292,8 +339,18 @@ export default function FilmCuttingOptimizer() {
           : section
       )
     );
+
+    setResult(null);
   }
 
+  /*
+    컬러 추가:
+    아직 이 부위에서 사용하지 않은 컬러를
+    자동으로 먼저 선택합니다.
+
+    단, 이후 드롭다운에서는 모든 보유 컬러를
+    자유롭게 선택할 수 있습니다.
+  */
   function addColorGroup(sectionId) {
     setSections((prev) =>
       prev.map((section) => {
@@ -301,39 +358,34 @@ export default function FilmCuttingOptimizer() {
           return section;
         }
 
-        const usedColors =
-          new Set(
-            section.colors
-              .map((group) =>
-                String(
-                  group.color || ""
-                ).toUpperCase()
-              )
-              .filter(Boolean)
-          );
+        const usedColors = new Set(
+          section.colors
+            .map((group) =>
+              normalizeColor(group.color)
+            )
+            .filter(Boolean)
+        );
 
         const nextColor =
           colors.find(
             (color) =>
               !usedColors.has(color)
-          ) || "";
-
-        if (!nextColor) {
-          return section;
-        }
+          ) ||
+          colors[0] ||
+          "";
 
         return {
           ...section,
 
           colors: [
             ...section.colors,
-            createColorGroup(
-              nextColor
-            ),
+            createColorGroup(nextColor),
           ],
         };
       })
     );
+
+    setResult(null);
   }
 
   function removeColorGroup(
@@ -364,41 +416,32 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
+
+    setResult(null);
   }
 
+  /*
+    컬러 선택 제한 제거.
+
+    예:
+    보유 롤
+    S115
+    W123
+
+    방1 / 샤시에서도
+    S115, W123 모두 선택 가능.
+  */
   function updateColorGroup(
     sectionId,
     colorGroupId,
     color
   ) {
+    const normalized =
+      normalizeColor(color);
+
     setSections((prev) =>
       prev.map((section) => {
         if (section.id !== sectionId) {
-          return section;
-        }
-
-        const normalized =
-          String(color || "")
-            .trim()
-            .toUpperCase();
-
-        const duplicate =
-          section.colors.some(
-            (group) =>
-              group.id !==
-                colorGroupId &&
-              String(
-                group.color || ""
-              )
-                .trim()
-                .toUpperCase() ===
-                normalized
-          );
-
-        if (
-          duplicate &&
-          normalized
-        ) {
           return section;
         }
 
@@ -420,8 +463,11 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
-        }
-    function addSize(
+
+    setResult(null);
+  }
+
+  function addSize(
     sectionId,
     colorGroupId
   ) {
@@ -452,6 +498,8 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
+
+    setResult(null);
   }
 
   function removeSize(
@@ -500,6 +548,8 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
+
+    setResult(null);
   }
 
   function updateSize(
@@ -548,6 +598,8 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
+
+    setResult(null);
   }
 
   function changeQuantity(
@@ -596,17 +648,15 @@ export default function FilmCuttingOptimizer() {
                             ) || 1
                           );
 
-                        const next =
-                          Math.max(
-                            1,
-                            current +
-                              amount
-                          );
-
                         return {
                           ...size,
+
                           quantity:
-                            next,
+                            Math.max(
+                              1,
+                              current +
+                                amount
+                            ),
                         };
                       }
                     ),
@@ -616,6 +666,8 @@ export default function FilmCuttingOptimizer() {
         };
       })
     );
+
+    setResult(null);
   }
 
   function openBulkEditor(
@@ -645,7 +697,7 @@ export default function FilmCuttingOptimizer() {
 
     if (parsed.length === 0) {
       setErrors([
-        "여러 사이즈 입력 형식을 확인해주세요. 예: 480x2100x2",
+        "입력 형식을 확인해주세요. 예: 480x2100x2",
       ]);
 
       return;
@@ -698,6 +750,7 @@ export default function FilmCuttingOptimizer() {
 
     setErrors([]);
     setBulkEditor(null);
+    setResult(null);
   }
 
   function resetAll() {
@@ -747,9 +800,9 @@ export default function FilmCuttingOptimizer() {
         setCalculating(false);
       }
     }, 30);
-      }
-  
-    return (
+  }
+
+  return (
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
@@ -770,14 +823,20 @@ export default function FilmCuttingOptimizer() {
 
           <button
             type="button"
-            className={styles.resetButton}
+            className={
+              styles.resetButton
+            }
             onClick={resetAll}
           >
             전체 초기화
           </button>
         </header>
 
-        <div className={styles.summaryBar}>
+        <div
+          className={
+            styles.summaryBar
+          }
+        >
           <SummaryPill
             label="롤"
             value={`${inputSummary.rollCount}개`}
@@ -799,37 +858,60 @@ export default function FilmCuttingOptimizer() {
           />
         </div>
 
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
+        <section
+          className={
+            styles.card
+          }
+        >
+          <div
+            className={
+              styles.cardHeader
+            }
+          >
             <div>
-              <span className={styles.step}>
+              <span
+                className={
+                  styles.step
+                }
+              >
                 1
               </span>
 
               <div>
-                <h2>보유 필름</h2>
+                <h2>
+                  보유 필름
+                </h2>
+
                 <p>
-                  현장에 있는 롤의 컬러와
-                  남은 길이를 입력하세요.
+                  컬러와 실제 남은
+                  롤 길이를 입력하세요.
                 </p>
               </div>
             </div>
 
             <button
               type="button"
-              className={styles.blackButton}
+              className={
+                styles.blackButton
+              }
               onClick={addRoll}
             >
               + 롤
             </button>
           </div>
 
-          <div className={styles.rollList}>
+          <div
+            className={
+              styles.rollList
+            }
+          >
             {rolls.map(
               (roll, index) => (
                 <div
                   key={roll.id}
-                  className={styles.rollRow}
+                  className={
+                    styles.rollRow
+                  }
                 >
                   <strong
                     className={
@@ -843,7 +925,9 @@ export default function FilmCuttingOptimizer() {
                     className={
                       styles.colorInput
                     }
-                    value={roll.color}
+                    value={
+                      roll.color
+                    }
                     placeholder="S115"
                     autoCapitalize="characters"
                     onChange={(e) =>
@@ -894,7 +978,8 @@ export default function FilmCuttingOptimizer() {
                       updateRoll(
                         roll.id,
                         "grainDirection",
-                        e.target.value ===
+                        e.target
+                          .value ===
                           "grain"
                       )
                     }
@@ -930,38 +1015,59 @@ export default function FilmCuttingOptimizer() {
           </div>
         </section>
 
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
+        <section
+          className={
+            styles.card
+          }
+        >
+          <div
+            className={
+              styles.cardHeader
+            }
+          >
             <div>
-              <span className={styles.step}>
+              <span
+                className={
+                  styles.step
+                }
+              >
                 2
               </span>
 
               <div>
-                <h2>재단 입력</h2>
+                <h2>
+                  재단 입력
+                </h2>
+
                 <p>
-                  위치와 부위별로 컬러와
-                  사이즈를 입력하세요.
+                  위치와 부위별로
+                  컬러와 사이즈를
+                  입력하세요.
                 </p>
               </div>
             </div>
 
             <button
               type="button"
-              className={styles.blackButton}
-              onClick={addSection}
+              className={
+                styles.blackButton
+              }
+              onClick={
+                addSection
+              }
             >
               + 다음 부위
             </button>
           </div>
-
           {sections.map(
             (
               section,
               sectionIndex
             ) => (
               <article
-                key={section.id}
+                key={
+                  section.id
+                }
                 className={
                   styles.sectionCard
                 }
@@ -1053,362 +1159,350 @@ export default function FilmCuttingOptimizer() {
                     />
                   </label>
                 </div>
+
                 {section.colors.map(
                   (
                     group,
                     colorIndex
-                  ) => {
-                    const usedByOther =
-                      new Set(
-                        section.colors
-                          .filter(
-                            (item) =>
-                              item.id !==
-                              group.id
-                          )
-                          .map((item) =>
-                            String(
-                              item.color ||
-                                ""
-                            ).toUpperCase()
-                          )
-                          .filter(Boolean)
-                      );
-
-                    return (
+                  ) => (
+                    <div
+                      key={
+                        group.id
+                      }
+                      className={
+                        styles.colorBlock
+                      }
+                    >
                       <div
-                        key={group.id}
                         className={
-                          styles.colorBlock
+                          styles.colorBlockHeader
                         }
                       >
                         <div
                           className={
-                            styles.colorBlockHeader
+                            styles.colorTitle
                           }
                         >
-                          <div
-                            className={
-                              styles.colorTitle
-                            }
-                          >
-                            <span>
-                              컬러{" "}
-                              {colorIndex +
-                                1}
-                            </span>
+                          <span>
+                            컬러{" "}
+                            {colorIndex +
+                              1}
+                          </span>
 
-                            <select
-                              value={
-                                group.color
-                              }
-                              onChange={(e) =>
-                                updateColorGroup(
-                                  section.id,
-                                  group.id,
-                                  e.target
-                                    .value
-                                )
-                              }
-                            >
-                              <option value="">
-                                컬러 선택
-                              </option>
-
-                              {colors.map(
-                                (color) => (
-                                  <option
-                                    key={
-                                      color
-                                    }
-                                    value={
-                                      color
-                                    }
-                                    disabled={usedByOther.has(
-                                      color
-                                    )}
-                                  >
-                                    {color}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
-
-                          <button
-                            type="button"
-                            className={
-                              styles.textDelete
+                          <select
+                            value={
+                              group.color
                             }
-                            disabled={
-                              section.colors
-                                .length <=
-                              1
-                            }
-                            onClick={() =>
-                              removeColorGroup(
+                            onChange={(e) =>
+                              updateColorGroup(
                                 section.id,
-                                group.id
+                                group.id,
+                                e.target
+                                  .value
                               )
                             }
                           >
-                            컬러 삭제
-                          </button>
+                            <option value="">
+                              컬러 선택
+                            </option>
+
+                            {colors.map(
+                              (color) => (
+                                <option
+                                  key={
+                                    color
+                                  }
+                                  value={
+                                    color
+                                  }
+                                >
+                                  {color}
+                                </option>
+                              )
+                            )}
+                          </select>
                         </div>
 
-                        <div
+                        <button
+                          type="button"
                           className={
-                            styles.sizeList
+                            styles.textDelete
+                          }
+                          disabled={
+                            section
+                              .colors
+                              .length <= 1
+                          }
+                          onClick={() =>
+                            removeColorGroup(
+                              section.id,
+                              group.id
+                            )
                           }
                         >
-                          {group.sizes.map(
-                            (
-                              size,
-                              sizeIndex
-                            ) => (
-                              <div
-                                key={
-                                  size.id
-                                }
+                          컬러 삭제
+                        </button>
+                      </div>
+
+                      <div
+                        className={
+                          styles.sizeList
+                        }
+                      >
+                        {group.sizes.map(
+                          (
+                            size,
+                            sizeIndex
+                          ) => (
+                            <div
+                              key={
+                                size.id
+                              }
+                              className={
+                                styles.sizeRow
+                              }
+                            >
+                              <span
                                 className={
-                                  styles.sizeRow
+                                  styles.sizeIndex
                                 }
                               >
-                                <span
-                                  className={
-                                    styles.sizeIndex
-                                  }
-                                >
-                                  {sizeIndex +
-                                    1}
-                                </span>
+                                {sizeIndex +
+                                  1}
+                              </span>
 
-                                <input
-                                  className={
-                                    styles.dimensionInput
-                                  }
-                                  type="number"
-                                  inputMode="numeric"
-                                  min="1"
-                                  value={
-                                    size.width
-                                  }
-                                  placeholder="480"
-                                  onChange={(e) =>
-                                    updateSize(
-                                      section.id,
-                                      group.id,
-                                      size.id,
-                                      "width",
-                                      e.target
-                                        .value
-                                    )
-                                  }
-                                />
-
-                                <span
-                                  className={
-                                    styles.multiply
-                                  }
-                                >
-                                  ×
-                                </span>
-
-                                <input
-                                  className={
-                                    styles.dimensionInput
-                                  }
-                                  type="number"
-                                  inputMode="numeric"
-                                  min="1"
-                                  value={
-                                    size.height
-                                  }
-                                  placeholder="2100"
-                                  onChange={(e) =>
-                                    updateSize(
-                                      section.id,
-                                      group.id,
-                                      size.id,
-                                      "height",
-                                      e.target
-                                        .value
-                                    )
-                                  }
-                                />
-
-                                <span
-                                  className={
-                                    styles.mm
-                                  }
-                                >
-                                  mm
-                                </span>
-
-                                <QuantityStepper
-                                  value={
-                                    size.quantity
-                                  }
-                                  onMinus={() =>
-                                    changeQuantity(
-                                      section.id,
-                                      group.id,
-                                      size.id,
-                                      -1
-                                    )
-                                  }
-                                  onPlus={() =>
-                                    changeQuantity(
-                                      section.id,
-                                      group.id,
-                                      size.id,
-                                      1
-                                    )
-                                  }
-                                  onChange={(
-                                    value
-                                  ) =>
-                                    updateSize(
-                                      section.id,
-                                      group.id,
-                                      size.id,
-                                      "quantity",
-                                      Math.max(
-                                        1,
-                                        Number(
-                                          value
-                                        ) || 1
-                                      )
-                                    )
-                                  }
-                                />
-
-                                <button
-                                  type="button"
-                                  className={
-                                    styles.iconDelete
-                                  }
-                                  disabled={
-                                    group.sizes
-                                      .length <=
-                                    1
-                                  }
-                                  onClick={() =>
-                                    removeSize(
-                                      section.id,
-                                      group.id,
-                                      size.id
-                                    )
-                                  }
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            )
-                          )}
-                        </div>
-
-                        <div
-                          className={
-                            styles.sizeActions
-                          }
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              addSize(
-                                section.id,
-                                group.id
-                              )
-                            }
-                          >
-                            + 사이즈
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openBulkEditor(
-                                section.id,
-                                group.id
-                              )
-                            }
-                          >
-                            여러개 한번에
-                          </button>
-                        </div>
-
-                        {bulkEditor?.sectionId ===
-                          section.id &&
-                          bulkEditor?.colorGroupId ===
-                            group.id && (
-                            <div
-                              className={
-                                styles.bulkBox
-                              }
-                            >
-                              <p>
-                                한 줄에 하나씩
-                                입력하세요.
-                              </p>
-
-                              <textarea
-                                autoFocus
+                              <input
+                                className={
+                                  styles.dimensionInput
+                                }
+                                type="number"
+                                inputMode="numeric"
+                                min="1"
                                 value={
-                                  bulkEditor.text
+                                  size.width
                                 }
-                                placeholder={
-                                  "480x2100x2\n400x2100\n340x2100"
-                                }
+                                placeholder="480"
                                 onChange={(e) =>
-                                  setBulkEditor(
-                                    (prev) => ({
-                                      ...prev,
-                                      text:
-                                        e.target
-                                          .value,
-                                    })
+                                  updateSize(
+                                    section.id,
+                                    group.id,
+                                    size.id,
+                                    "width",
+                                    e.target
+                                      .value
                                   )
                                 }
                               />
 
-                              <small>
-                                가로 × 세로 ×
-                                수량 / 수량 생략
-                                시 1장
-                              </small>
-
-                              <div
+                              <span
                                 className={
-                                  styles.bulkActions
+                                  styles.multiply
                                 }
                               >
-                                <button
-                                  type="button"
-                                  onClick={
-                                    closeBulkEditor
-                                  }
-                                >
-                                  취소
-                                </button>
+                                ×
+                              </span>
 
-                                <button
-                                  type="button"
-                                  className={
-                                    styles.applyButton
-                                  }
-                                  onClick={
-                                    applyBulkEditor
-                                  }
-                                >
-                                  적용
-                                </button>
-                              </div>
+                              <input
+                                className={
+                                  styles.dimensionInput
+                                }
+                                type="number"
+                                inputMode="numeric"
+                                min="1"
+                                value={
+                                  size.height
+                                }
+                                placeholder="2100"
+                                onChange={(e) =>
+                                  updateSize(
+                                    section.id,
+                                    group.id,
+                                    size.id,
+                                    "height",
+                                    e.target
+                                      .value
+                                  )
+                                }
+                              />
+
+                              <span
+                                className={
+                                  styles.mm
+                                }
+                              >
+                                mm
+                              </span>
+
+                              <QuantityStepper
+                                value={
+                                  size.quantity
+                                }
+                                onMinus={() =>
+                                  changeQuantity(
+                                    section.id,
+                                    group.id,
+                                    size.id,
+                                    -1
+                                  )
+                                }
+                                onPlus={() =>
+                                  changeQuantity(
+                                    section.id,
+                                    group.id,
+                                    size.id,
+                                    1
+                                  )
+                                }
+                                onChange={(
+                                  value
+                                ) =>
+                                  updateSize(
+                                    section.id,
+                                    group.id,
+                                    size.id,
+                                    "quantity",
+                                    Math.max(
+                                      1,
+                                      Number(
+                                        value
+                                      ) || 1
+                                    )
+                                  )
+                                }
+                              />
+
+                              <button
+                                type="button"
+                                className={
+                                  styles.iconDelete
+                                }
+                                disabled={
+                                  group
+                                    .sizes
+                                    .length <=
+                                  1
+                                }
+                                onClick={() =>
+                                  removeSize(
+                                    section.id,
+                                    group.id,
+                                    size.id
+                                  )
+                                }
+                              >
+                                ×
+                              </button>
                             </div>
-                          )}
+                          )
+                        )}
                       </div>
-                    );
-                  }
+
+                      <div
+                        className={
+                          styles.sizeActions
+                        }
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            addSize(
+                              section.id,
+                              group.id
+                            )
+                          }
+                        >
+                          + 사이즈
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openBulkEditor(
+                              section.id,
+                              group.id
+                            )
+                          }
+                        >
+                          여러개 한번에
+                        </button>
+                      </div>
+
+                      {bulkEditor?.sectionId ===
+                        section.id &&
+                        bulkEditor?.colorGroupId ===
+                          group.id && (
+                          <div
+                            className={
+                              styles.bulkBox
+                            }
+                          >
+                            <p>
+                              한 줄에 하나씩
+                              입력하세요.
+                            </p>
+
+                            <textarea
+                              autoFocus
+                              value={
+                                bulkEditor.text
+                              }
+                              placeholder={
+                                "480x2100x2\n400x2100\n340x2100"
+                              }
+                              onChange={(
+                                e
+                              ) =>
+                                setBulkEditor(
+                                  (
+                                    prev
+                                  ) => ({
+                                    ...prev,
+
+                                    text:
+                                      e
+                                        .target
+                                        .value,
+                                  })
+                                )
+                              }
+                            />
+
+                            <small>
+                              가로 × 세로 ×
+                              수량 / 수량
+                              생략 시 1장
+                            </small>
+
+                            <div
+                              className={
+                                styles.bulkActions
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={
+                                  closeBulkEditor
+                                }
+                              >
+                                취소
+                              </button>
+
+                              <button
+                                type="button"
+                                className={
+                                  styles.applyButton
+                                }
+                                onClick={
+                                  applyBulkEditor
+                                }
+                              >
+                                적용
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  )
                 )}
 
                 <button
@@ -1417,13 +1511,7 @@ export default function FilmCuttingOptimizer() {
                     styles.addColorButton
                   }
                   disabled={
-                    colors.length ===
-                      0 ||
-                    section.colors.filter(
-                      (group) =>
-                        group.color
-                    ).length >=
-                      colors.length
+                    colors.length === 0
                   }
                   onClick={() =>
                     addColorGroup(
@@ -1437,18 +1525,34 @@ export default function FilmCuttingOptimizer() {
             )
           )}
         </section>
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
+
+        <section
+          className={
+            styles.card
+          }
+        >
+          <div
+            className={
+              styles.cardHeader
+            }
+          >
             <div>
-              <span className={styles.step}>
+              <span
+                className={
+                  styles.step
+                }
+              >
                 3
               </span>
 
               <div>
-                <h2>최적 재단 계산</h2>
+                <h2>
+                  최적 재단 계산
+                </h2>
+
                 <p>
-                  현재는 기존 최적화 엔진으로
-                  계산합니다.
+                  현재 입력값으로
+                  재단 배치를 계산합니다.
                 </p>
               </div>
             </div>
@@ -1465,7 +1569,9 @@ export default function FilmCuttingOptimizer() {
               </span>
 
               <select
-                value={rollMode}
+                value={
+                  rollMode
+                }
                 onChange={(e) =>
                   setRollMode(
                     e.target.value
@@ -1488,7 +1594,9 @@ export default function FilmCuttingOptimizer() {
               </span>
 
               <select
-                value={iterations}
+                value={
+                  iterations
+                }
                 onChange={(e) =>
                   setIterations(
                     Number(
@@ -1517,7 +1625,9 @@ export default function FilmCuttingOptimizer() {
             className={
               styles.calculateButton
             }
-            disabled={calculating}
+            disabled={
+              calculating
+            }
             onClick={calculate}
           >
             {calculating
@@ -1532,7 +1642,10 @@ export default function FilmCuttingOptimizer() {
               }
             >
               {errors.map(
-                (error, index) => (
+                (
+                  error,
+                  index
+                ) => (
                   <p key={index}>
                     {error}
                   </p>
@@ -1608,7 +1721,10 @@ export default function FilmCuttingOptimizer() {
             </div>
 
             {result.usedRolls.map(
-              (roll, index) => (
+              (
+                roll,
+                index
+              ) => (
                 <ResultRollCard
                   key={`${roll.id}-${index}`}
                   roll={roll}
@@ -1633,8 +1749,13 @@ function SummaryPill({
         styles.summaryPill
       }
     >
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -1653,7 +1774,9 @@ function QuantityStepper({
     >
       <button
         type="button"
-        onClick={onMinus}
+        onClick={
+          onMinus
+        }
         disabled={
           Number(value) <= 1
         }
@@ -1675,7 +1798,9 @@ function QuantityStepper({
 
       <button
         type="button"
-        onClick={onPlus}
+        onClick={
+          onPlus
+        }
       >
         +
       </button>
@@ -1748,9 +1873,14 @@ function ResultRollCard({
         }
       >
         {roll.placements.map(
-          (piece, pieceIndex) => (
+          (
+            piece,
+            pieceIndex
+          ) => (
             <div
-              key={piece.id}
+              key={
+                piece.id
+              }
               className={
                 styles.resultPiece
               }
@@ -1761,7 +1891,8 @@ function ResultRollCard({
 
               <div>
                 <b>
-                  {piece.location} ·{" "}
+                  {piece.location}
+                  {" · "}
                   {piece.part}
                 </b>
 
@@ -1789,4 +1920,4 @@ function ResultRollCard({
       </div>
     </article>
   );
-}
+                        }
