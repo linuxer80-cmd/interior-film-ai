@@ -139,7 +139,7 @@ export default function EstimateResult({
                 }}
               >
                 {group.photoNumbers?.length ? `사진 ${group.photoNumbers.join(", ")} · ` : ""}
-                {group.photos?.length > 1 ? "직접 묶은 사진 " : "별도 대상 사진 "}
+                {group.photos?.length > 1 ? (group.subjectSource === "ai" ? "같은 문으로 인식한 사진 " : "직접 묶은 사진 ") : "별도 대상 사진 "}
                 {
                   group.photos
                     ?.length
@@ -149,7 +149,7 @@ export default function EstimateResult({
 
               {group.requiresConfirmation && (
                 <p role="status" style={{ color: "#92400e", background: "#fffbeb", padding: 12, borderRadius: 10 }}>
-                  시공 부위 또는 범위가 명확하지 않아 금액을 계산하지 않았습니다. 대상 전체가 보이는 사진을 추가하거나 상담을 신청해주세요.
+                  {group.subjectRequiresConfirmation ? "같은 문을 촬영한 사진인지 또는 사진 속 문 개수를 확인해야 합니다. 사진 묶음 수정에서 같은 대상/별도 대상을 선택하거나 문별로 사진을 나눠주세요." : "시공 부위 또는 범위가 명확하지 않아 금액을 계산하지 않았습니다. 대상 전체가 보이는 사진을 추가하거나 상담을 신청해주세요."}
                 </p>
               )}
 

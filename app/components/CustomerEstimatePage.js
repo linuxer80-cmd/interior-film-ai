@@ -19,6 +19,8 @@ import useEstimate from "../hooks/useEstimate";
 import { adjustEstimateByFilm } from "../utils/estimatePrice";
 
 import styles from "./CustomerEstimatePage.module.css";
+import DoorQuantitySelector from "./DoorQuantitySelector";
+import { calculateQuantityEstimate, quantityEstimateDetails } from "../utils/doorEstimate";
 
 const SCREEN = {
   HOME: "home",
@@ -69,383 +71,6 @@ function getProgress(screen) {
   return null;
 }
 
-/* =========================================================
-   방문·문틀 수량 판별
-   =========================================================
-
-   수량 적용:
-   - 문,문틀
-   - 문·문틀
-   - 방문
-   - 방문과 문틀
-   - 여닫이 방문
-   - 방문 문짝과 문틀
-
-   수량 제외:
-   - 중문
-   - 방화문
-   - 현관문
-   - 신발장 도어
-   - 붙박이장 도어
-   - 주방가구 도어
-
-   사진 설명 / AI description / tags는 보지 않습니다.
-========================================================= */
-
-function normalizeDoorText(value) {
-  return String(value || "")
-    .replace(/[^가-힣a-zA-Z0-9]/g, "")
-    .toLowerCase();
-}
-
-const VISITOR_DOOR_EXCLUDE_WORDS = [
-  "중문",
-  "방화문",
-  "현관문",
-  "slidingdoor",
-  "firedoor",
-  "entrancedoor",
-];
-
-function isDoorPricingGroup(group) {
-  if (!group) {
-    return false;
-  }
-
-  const category = normalizeDoorText(
-    group?.category
-  );
-
-  const subCategory = normalizeDoorText(
-    group?.subCategory ||
-      group?.sub_category
-  );
-
-  const key = normalizeDoorText(
-    group?.key
-  );
-
-  const label = normalizeDoorText(
-    group?.label ||
-      group?.name ||
-      group?.title
-  );
-
-  const structuredValues = [
-    category,
-    subCategory,
-    key,
-    label,
-  ].filter(Boolean);
-
-  /*
-   * 중문 / 방화문 / 현관문은
-   * 수량 계산에서 무조건 제외
-   */
-  const hasExcludedDoorType =
-    structuredValues.some((value) =>
-      VISITOR_DOOR_EXCLUDE_WORDS.some(
-        (word) =>
-          value.includes(
-            normalizeDoorText(word)
-          )
-      )
-    );
-
-  if (hasExcludedDoorType) {
-    return false;
-  }
-
-  /*
-   * DB의 "문,문틀", "문·문틀", "문/문틀"
-   * → normalize 후 "문문틀"
-   */
-  if (
-    category.includes(
-      "문문틀"
-    )
-  ) {
-    return true;
-  }
-
-  /*
-   * 방문과 문틀
-   * 여닫이 방문
-   * 방문 문짝과 문틀
-   */
-  if (
-    structuredValues.some(
-      (value) =>
-        value.includes(
-          "방문"
-        )
-    )
-  ) {
-    return true;
-  }
-
-  /*
-   * category가 없는 예외 데이터만
-   * subCategory/key/label에서 문문틀 확인
-   */
-  if (
-    !category &&
-    [
-      subCategory,
-      key,
-      label,
-    ].some(
-      (value) =>
-        value.includes(
-          "문문틀"
-        )
-    )
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function clampDoorQuantity(value) {
-  const number =
-    Number(value);
-
-  if (
-    !Number.isFinite(
-      number
-    )
-  ) {
-    return 1;
-  }
-
-  return Math.min(
-    50,
-    Math.max(
-      1,
-      Math.floor(
-        number
-      )
-    )
-  );
-}
-
-function DoorQuantitySelector({
-  quantity,
-  onChange,
-}) {
-  function changeQuantity(
-    value
-  ) {
-    onChange?.(
-      clampDoorQuantity(
-        value
-      )
-    );
-  }
-
-  return (
-    <div
-      style={{
-        marginBottom: "18px",
-        padding: "16px",
-        border:
-          "1px solid #e3e7ec",
-        borderRadius: "14px",
-        background: "#ffffff",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems:
-            "flex-start",
-          justifyContent:
-            "space-between",
-          gap: "12px",
-        }}
-      >
-        <div>
-          <strong
-            style={{
-              display: "block",
-              color: "#20262e",
-              fontSize: "15px",
-              fontWeight: "900",
-            }}
-          >
-            각 방문·문틀 부위의 수량
-          </strong>
-
-          <div
-            style={{
-              marginTop: "5px",
-              color: "#8b95a1",
-              fontSize: "11px",
-              lineHeight: 1.5,
-            }}
-          >
-            각각 올린 방문은 이미 별도로 계산합니다.
-            각 부위와 동일한 문이 추가로 있을 때만 수량을 늘려주세요.
-          </div>
-        </div>
-
-        <span
-          style={{
-            flexShrink: 0,
-            padding: "5px 9px",
-            borderRadius: "999px",
-            background: "#eef4ff",
-            color: "#246bfd",
-            fontSize: "10px",
-            fontWeight: "900",
-          }}
-        >
-          세트 기준
-        </span>
-      </div>
-
-      <div
-        style={{
-          marginTop: "14px",
-          display: "grid",
-          gridTemplateColumns:
-            "52px 1fr 52px",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <button
-          type="button"
-          disabled={
-            quantity <= 1
-          }
-          aria-label="방문·문틀 수량 줄이기"
-          onClick={() =>
-            changeQuantity(
-              quantity - 1
-            )
-          }
-          style={{
-            height: "46px",
-            border:
-              "1px solid #dfe3e8",
-            borderRadius: "11px",
-            background:
-              quantity <= 1
-                ? "#f5f6f8"
-                : "#ffffff",
-            color:
-              quantity <= 1
-                ? "#b5bcc5"
-                : "#303842",
-            fontSize: "24px",
-            cursor:
-              quantity <= 1
-                ? "default"
-                : "pointer",
-          }}
-        >
-          −
-        </button>
-
-        <div
-          style={{
-            height: "46px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent:
-              "center",
-            gap: "5px",
-            borderRadius: "11px",
-            background: "#f6f8fb",
-          }}
-        >
-          <input
-            type="number"
-            min="1"
-            max="50"
-            inputMode="numeric"
-            value={quantity}
-            onChange={(event) =>
-              changeQuantity(
-                event.target.value
-              )
-            }
-            style={{
-              width: "54px",
-              padding: 0,
-              border: 0,
-              outline: "none",
-              background:
-                "transparent",
-              color: "#171b21",
-              fontSize: "20px",
-              fontWeight: "900",
-              textAlign: "right",
-            }}
-          />
-
-          <span
-            style={{
-              color: "#59636f",
-              fontSize: "13px",
-              fontWeight: "800",
-            }}
-          >
-            세트
-          </span>
-        </div>
-
-        <button
-          type="button"
-          disabled={
-            quantity >= 50
-          }
-          aria-label="방문·문틀 수량 늘리기"
-          onClick={() =>
-            changeQuantity(
-              quantity + 1
-            )
-          }
-          style={{
-            height: "46px",
-            border:
-              "1px solid #dfe3e8",
-            borderRadius: "11px",
-            background:
-              quantity >= 50
-                ? "#f5f6f8"
-                : "#ffffff",
-            color:
-              quantity >= 50
-                ? "#b5bcc5"
-                : "#303842",
-            fontSize: "24px",
-            cursor:
-              quantity >= 50
-                ? "default"
-                : "pointer",
-          }}
-        >
-          +
-        </button>
-      </div>
-
-      <div
-        style={{
-          marginTop: "10px",
-          color: "#8b95a1",
-          fontSize: "11px",
-          lineHeight: 1.5,
-        }}
-      >
-        방문과 문틀을 따로 계산하지 않고
-        방문·문틀 1세트 견적에 수량을 반영합니다.
-      </div>
-    </div>
-  );
-}
 
 export default function CustomerEstimatePage({
   companySlug = null,
@@ -648,7 +273,6 @@ export default function CustomerEstimatePage({
     imageLoading,
     message,
     groups,
-    totalEstimate,
 
     usageIdRef,
     estimatePhotoPathsRef,
@@ -687,9 +311,9 @@ export default function CustomerEstimatePage({
   ] = useState({});
 
   const [
-    doorQuantity,
+    doorQuantityOverride,
     setDoorQuantity,
-  ] = useState(1);
+  ] = useState(null);
 
   const [
     customerName,
@@ -943,352 +567,14 @@ export default function CustomerEstimatePage({
     }
   }
 
-  /*
-   * 실제 방문·문틀 그룹이 있을 때만
-   * 수량창 표시
-   */
-  const hasDoorSetGroup =
-    groups.some(
-      (group) =>
-        isDoorPricingGroup(
-          group
-        )
-    );
-
-  useEffect(() => {
-    if (
-      !hasDoorSetGroup &&
-      doorQuantity !== 1
-    ) {
-      setDoorQuantity(
-        1
-      );
-    }
-  }, [
-    hasDoorSetGroup,
-    doorQuantity,
-  ]);
-
-  function getFilmAdjustedGroupEstimate(
-    group
-  ) {
-    if (
-      !group?.estimate
-    ) {
-      return null;
-    }
-
-    if (
-      !selectedFilm
-    ) {
-      return {
-        min:
-          Number(
-            group.estimate.min ||
-              0
-          ),
-
-        max:
-          Number(
-            group.estimate.max ||
-              0
-          ),
-
-        average:
-          Number(
-            group.estimate.average ||
-              0
-          ),
-      };
-    }
-
-    return {
-      min:
-        adjustEstimateByFilm(
-          group.estimate.min,
-          selectedFilm,
-          fireType
-        ),
-
-      max:
-        adjustEstimateByFilm(
-          group.estimate.max,
-          selectedFilm,
-          fireType
-        ),
-
-      average:
-        adjustEstimateByFilm(
-          group.estimate.average,
-          selectedFilm,
-          fireType
-        ),
-    };
-  }
-
-  /*
-   * 부위별 표시 견적
-   *
-   * 방문·문틀 그룹에만 수량 적용.
-   */
-  const displayGroups =
-    groups.map(
-      (group) => {
-        if (
-          !group.estimate
-        ) {
-          return group;
-        }
-
-        const adjusted =
-          getFilmAdjustedGroupEstimate(
-            group
-          );
-
-        const quantity =
-          isDoorPricingGroup(
-            group
-          )
-            ? doorQuantity
-            : 1;
-
-        return {
-          ...group,
-
-          quantity,
-
-          estimate: {
-            ...group.estimate,
-
-            min:
-              Number(
-                adjusted?.min ||
-                  0
-              ) *
-              quantity,
-
-            max:
-              Number(
-                adjusted?.max ||
-                  0
-              ) *
-              quantity,
-
-            average:
-              Number(
-                adjusted?.average ||
-                  0
-              ) *
-              quantity,
-          },
-        };
-      }
-    );
-
-  /*
-   * 원래 totalEstimate에는
-   * 방문·문틀 1세트 금액이 이미 들어있습니다.
-   *
-   * 따라서 추가 세트 금액만 더합니다.
-   */
-  const doorBaseExtra =
-    groups.reduce(
-      (
-        sum,
-        group
-      ) => {
-        if (
-          !group?.estimate ||
-          !isDoorPricingGroup(
-            group
-          ) ||
-          doorQuantity <=
-            1
-        ) {
-          return sum;
-        }
-
-        const extraCount =
-          doorQuantity -
-          1;
-
-        return {
-          min:
-            sum.min +
-            Number(
-              group
-                .estimate
-                .min ||
-                0
-            ) *
-              extraCount,
-
-          max:
-            sum.max +
-            Number(
-              group
-                .estimate
-                .max ||
-                0
-            ) *
-              extraCount,
-
-          average:
-            sum.average +
-            Number(
-              group
-                .estimate
-                .average ||
-                0
-            ) *
-              extraCount,
-        };
-      },
-      {
-        min: 0,
-        max: 0,
-        average: 0,
-      }
-    );
-
-  const doorDisplayExtra =
-    groups.reduce(
-      (
-        sum,
-        group
-      ) => {
-        if (
-          !group?.estimate ||
-          !isDoorPricingGroup(
-            group
-          ) ||
-          doorQuantity <=
-            1
-        ) {
-          return sum;
-        }
-
-        const adjusted =
-          getFilmAdjustedGroupEstimate(
-            group
-          );
-
-        const extraCount =
-          doorQuantity -
-          1;
-
-        return {
-          min:
-            sum.min +
-            Number(
-              adjusted?.min ||
-                0
-            ) *
-              extraCount,
-
-          max:
-            sum.max +
-            Number(
-              adjusted?.max ||
-                0
-            ) *
-              extraCount,
-
-          average:
-            sum.average +
-            Number(
-              adjusted?.average ||
-                0
-            ) *
-              extraCount,
-        };
-      },
-      {
-        min: 0,
-        max: 0,
-        average: 0,
-      }
-    );
-
-  const quantityAdjustedBaseEstimate =
-    totalEstimate
-      ? {
-          ...totalEstimate,
-
-          min:
-            Number(
-              totalEstimate.min ||
-                0
-            ) +
-            doorBaseExtra.min,
-
-          max:
-            Number(
-              totalEstimate.max ||
-                0
-            ) +
-            doorBaseExtra.max,
-
-          average:
-            Number(
-              totalEstimate.average ||
-                0
-            ) +
-            doorBaseExtra.average,
-        }
-      : null;
-
-  const displayTotalEstimate =
-    totalEstimate
-      ? {
-          ...totalEstimate,
-
-          min:
-            (
-              selectedFilm
-                ? adjustEstimateByFilm(
-                    totalEstimate.min,
-                    selectedFilm,
-                    fireType
-                  )
-                : Number(
-                    totalEstimate.min ||
-                      0
-                  )
-            ) +
-            doorDisplayExtra.min,
-
-          max:
-            (
-              selectedFilm
-                ? adjustEstimateByFilm(
-                    totalEstimate.max,
-                    selectedFilm,
-                    fireType
-                  )
-                : Number(
-                    totalEstimate.max ||
-                      0
-                  )
-            ) +
-            doorDisplayExtra.max,
-
-          average:
-            (
-              selectedFilm
-                ? adjustEstimateByFilm(
-                    totalEstimate.average,
-                    selectedFilm,
-                    fireType
-                  )
-                : Number(
-                    totalEstimate.average ||
-                      0
-                  )
-            ) +
-            doorDisplayExtra.average,
-        }
-      : null;
+  const basePricing = calculateQuantityEstimate(groups, doorQuantityOverride);
+  const displayPricing = calculateQuantityEstimate(groups, doorQuantityOverride, (value) =>
+    selectedFilm ? adjustEstimateByFilm(value, selectedFilm, fireType) : Number(value));
+  const hasDoorSetGroup = displayPricing.door.detectedCount > 0;
+  const doorQuantity = displayPricing.door.quantity;
+  const displayGroups = displayPricing.groups;
+  const quantityAdjustedBaseEstimate = basePricing.total;
+  const displayTotalEstimate = displayPricing.total;
 
   function resetEstimateOptions() {
     setSelectedFilm(
@@ -1307,9 +593,7 @@ export default function CustomerEstimatePage({
       {}
     );
 
-    setDoorQuantity(
-      1
-    );
+    setDoorQuantity(null);
 
     setLeadComplete(
       false
@@ -1438,54 +722,7 @@ export default function CustomerEstimatePage({
       const customerPhotoPaths =
         await uploadLeadPhotos();
 
-      const estimateDetails =
-        displayGroups.map(
-          (group) => ({
-            group_key:
-              group.key,
-
-            category:
-              group.category,
-
-            sub_category:
-              group.subCategory,
-
-            photo_count:
-              group.photos.length,
-
-            quantity:
-              isDoorPricingGroup(
-                group
-              )
-                ? doorQuantity
-                : 1,
-
-            estimate_min:
-              group.estimate
-                ?.min ??
-              null,
-
-            estimate_max:
-              group.estimate
-                ?.max ??
-              null,
-
-            estimate_average:
-              group.estimate
-                ?.average ??
-              null,
-
-            confidence:
-              group.estimate
-                ?.confidence ||
-              "데이터 부족",
-
-            similar_count:
-              group.estimate
-                ?.count ||
-              0,
-          })
-        );
+      const estimateDetails = quantityEstimateDetails(displayPricing);
 
       const description =
         groups
@@ -1570,7 +807,7 @@ export default function CustomerEstimatePage({
         hasDoorSetGroup
       ) {
         memoLines.push(
-          `방문·문틀 수량: ${doorQuantity}세트`
+          `방문·문틀: 사진 속 ${displayPricing.door.detectedCount}세트 / 요청 총 ${doorQuantity}세트${displayPricing.door.canScale ? ` / 세트당 평균 ${displayPricing.door.unitEstimate.average.toLocaleString("ko-KR")}원 / 문·문틀 합계 ${displayPricing.door.total.average.toLocaleString("ko-KR")}원` : " / 일부 금액 미산정"}`
         );
       }
 
@@ -1799,7 +1036,7 @@ export default function CustomerEstimatePage({
     setLeadComplete(false);
     setLeadMessage("");
 
-    setDoorQuantity(1);
+    setDoorQuantity(null);
 
     changeScreen(
       SCREEN.HOME
@@ -2151,6 +1388,7 @@ export default function CustomerEstimatePage({
 
             {hasDoorSetGroup && (
               <DoorQuantitySelector
+                summary={displayPricing.door}
                 quantity={
                   doorQuantity
                 }
@@ -2197,6 +1435,10 @@ export default function CustomerEstimatePage({
                 분석된 시공 부위
               </div>
 
+              {hasDoorSetGroup && <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
+                아래 문·문틀 금액은 사진 속 각 1세트의 기준 견적입니다. 위 합계에는 요청한 총수량을 반영합니다.
+                <button type="button" onClick={() => changeScreen(SCREEN.UPLOAD)} style={{ marginLeft: 8 }}>사진 묶음 수정</button>
+              </p>}
               <EstimateResult
                 onRetrySimilarPhoto={retrySimilarPhoto}
                 groups={

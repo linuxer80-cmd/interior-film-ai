@@ -36,7 +36,7 @@ export default function EstimateTotal({
       </div>
 
       <h2>
-        총 예상 시공 견적
+        {totalEstimate.missingCount > 0 ? "계산된 부위의 부분 견적" : "총 예상 시공 견적"}
       </h2>
 
       <div
@@ -69,7 +69,7 @@ export default function EstimateTotal({
           lineHeight: 1.7,
         }}
       >
-        가중 평균 합계{" "}
+        예상 합계{" "}
 
         <strong>
           {formatWon(
