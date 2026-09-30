@@ -83,7 +83,7 @@ function harness({ analyses = null } = {}) {
         return ok({ success: true, photos: options.body.getAll('images').map((_, index) => ({ index, analysis: analyses?.[index] || normalize({ ...kitchen('싱크대 하부장'), classification_confidence: 'high' }) })) });
       }
       if (url === '/api/similar-estimate') {
-        assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, analyses ? 'whole' : 'kitchen_lower');
+        assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, analyses ? scope(analyses[0]) : 'kitchen_lower');
         assert.ok(options.body.getAll('images').length >= 1);
         assert.ok(options.body.getAll('images').length <= 2);
         return ok({ success: true, search_status: 'verified', estimate: { min: 100000, max: 100000, average: 100000, range_basis: 'observed_cases' }, similar_cases: [{ actual_cost: 100000, visual_verified: true, visual_rank: 1, work_item_id: '00000000-0000-0000-0000-000000000001', before_path: null, after_path: null }] });
@@ -245,4 +245,22 @@ test('five uploaded angles of two doors run only two price searches and set a pe
   }
   h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
   await work;
+});
+
+test('cropped but identifiable full kitchen is sent for visual comparison, while an unclear kitchen is not searched', async () => {
+  for (const view_completeness of ['partial', 'unclear']) {
+    const analysis = normalize({ ...kitchen('싱크대 상부장과 하부장'), target_type: 'kitchen', construction_scope: 'kitchen_full', classification_confidence: 'high', view_completeness });
+    const h = harness({ analyses: [analysis] });
+    await h.render().addImages([new Blob(['kitchen'])]);
+    const work = h.render().handleAnalyze();
+    await flush();
+    const searchable = view_completeness === 'partial';
+    assert.equal(h.calls.filter((url) => url === '/api/similar-estimate').length, searchable ? 1 : 0);
+    assert.equal(h.render().groups[0].requiresConfirmation, !searchable);
+    assert.equal(h.render().totalEstimate?.average ?? null, searchable ? 100000 : null);
+    if (!searchable) assert.equal(h.render().groups[0].confirmationReasons[0], 'unclear_view');
+    h.uploads[0].resolve(ok({ success: true, path: 'customer/kitchen.jpg' }));
+    h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+    await work;
+  }
 });
