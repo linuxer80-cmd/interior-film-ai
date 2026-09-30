@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import styles from "./FilmCuttingOptimizer.module.css";
-
 import CuttingInput from "./CuttingInput";
 import CuttingResult from "./CuttingResult";
 
@@ -11,14 +10,8 @@ import {
   optimizeCutting,
 } from "./cuttingOptimizer";
 
-/* =========================================================
-   기본 생성 함수
-========================================================= */
-
 function makeId(prefix = "id") {
-  return `${prefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function normalizeColor(value) {
@@ -64,39 +57,56 @@ function isBlankSize(size) {
   return !Number(size.width) && !Number(size.height);
 }
 
-/* =========================================================
-   여러 사이즈 한번에 입력
-   지원:
-   480x2100
-   480x2100x2
-   480 × 2100 × 2
-   480 2100 2
-========================================================= */
+/*
+  빠른입력 지원
 
+  480.2100.2
+  480x2100x2
+  480*2100*2
+  480×2100×2
+  480 2100 2
+
+  수량 생략:
+  480.2100
+*/
 function parseBulkSizes(value) {
   const result = [];
 
   String(value || "")
     .split(/\r?\n/)
-    .forEach((line) => {
-      const numbers = line
-        .replace(/,/g, "")
-        .match(/\d+(?:\.\d+)?/g);
+    .forEach((rawLine) => {
+      const line = rawLine.trim();
 
-      if (!numbers || numbers.length < 2) return;
+      if (!line) return;
 
-      const width = Math.round(Number(numbers[0]));
-      const height = Math.round(Number(numbers[1]));
+      const normalized = line
+        .replace(/[xX×*]/g, ".")
+        .replace(/,/g, ".")
+        .replace(/\s+/g, ".")
+        .replace(/\.+/g, ".");
 
-      const quantity =
-        numbers.length >= 3
-          ? Math.max(
-              1,
-              Math.floor(Number(numbers[2]) || 1)
-            )
-          : 1;
+      const parts = normalized
+        .split(".")
+        .map((v) => v.trim())
+        .filter(Boolean);
 
-      if (width <= 0 || height <= 0) return;
+      if (parts.length < 2) return;
+
+      const width = Math.round(Number(parts[0]));
+      const height = Math.round(Number(parts[1]));
+      const quantity = Math.max(
+        1,
+        Math.floor(Number(parts[2]) || 1)
+      );
+
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return;
+      }
 
       result.push({
         id: makeId("size"),
@@ -108,10 +118,6 @@ function parseBulkSizes(value) {
 
   return result;
 }
-
-/* =========================================================
-   메인
-========================================================= */
 
 export default function FilmCuttingOptimizer() {
   const [rolls, setRolls] = useState(() => [
@@ -131,12 +137,6 @@ export default function FilmCuttingOptimizer() {
 
   const [bulkEditor, setBulkEditor] = useState(null);
 
-  /* =======================================================
-     보유 롤에서 실제 컬러 목록 생성
-     S115 11m + S115 20m + W123 15m
-     → S115, W123
-  ======================================================= */
-
   const colors = useMemo(() => {
     return [
       ...new Set(
@@ -146,10 +146,6 @@ export default function FilmCuttingOptimizer() {
       ),
     ];
   }, [rolls]);
-
-  /* =======================================================
-     상단 입력 현황
-  ======================================================= */
 
   const summary = useMemo(() => {
     const validRolls = rolls.filter(
@@ -189,12 +185,12 @@ export default function FilmCuttingOptimizer() {
     setErrors([]);
   }
 
-  /* =======================================================
-     롤
-  ======================================================= */
-
   function addRoll() {
-    setRolls((prev) => [...prev, createRoll()]);
+    setRolls((prev) => [
+      ...prev,
+      createRoll(),
+    ]);
+
     clearResult();
   }
 
@@ -202,7 +198,9 @@ export default function FilmCuttingOptimizer() {
     setRolls((prev) => {
       if (prev.length <= 1) return prev;
 
-      return prev.filter((roll) => roll.id !== id);
+      return prev.filter(
+        (roll) => roll.id !== id
+      );
     });
 
     clearResult();
@@ -210,35 +208,30 @@ export default function FilmCuttingOptimizer() {
 
   function updateRoll(id, field, value) {
     setRolls((prev) =>
-      prev.map((roll) => {
-        if (roll.id !== id) return roll;
-
-        return {
-          ...roll,
-          [field]:
-            field === "color"
-              ? normalizeColor(value)
-              : value,
-        };
-      })
+      prev.map((roll) =>
+        roll.id === id
+          ? {
+              ...roll,
+              [field]:
+                field === "color"
+                  ? normalizeColor(value)
+                  : value,
+            }
+          : roll
+      )
     );
 
     clearResult();
   }
 
-  /* =======================================================
-     시공 위치 / 부위
-  ======================================================= */
-
   function addSection() {
     setSections((prev) => {
-      const previousLocation =
-        prev[prev.length - 1]?.location || "";
+      const last = prev[prev.length - 1];
 
       return [
         ...prev,
         createSection(
-          previousLocation,
+          last?.location || "",
           colors[0] || ""
         ),
       ];
@@ -303,7 +296,11 @@ export default function FilmCuttingOptimizer() {
 
       const next = [...prev];
 
-      next.splice(index + 1, 0, copy);
+      next.splice(
+        index + 1,
+        0,
+        copy
+      );
 
       return next;
     });
@@ -311,14 +308,12 @@ export default function FilmCuttingOptimizer() {
     clearResult();
   }
 
-  /* =======================================================
-     컬러
-  ======================================================= */
-
   function addColorGroup(sectionId) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         const usedColors = new Set(
           section.colors
@@ -337,6 +332,7 @@ export default function FilmCuttingOptimizer() {
 
         return {
           ...section,
+
           colors: [
             ...section.colors,
             createColorGroup(nextColor),
@@ -354,7 +350,9 @@ export default function FilmCuttingOptimizer() {
   ) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         if (section.colors.length <= 1) {
           return section;
@@ -364,7 +362,8 @@ export default function FilmCuttingOptimizer() {
           ...section,
 
           colors: section.colors.filter(
-            (group) => group.id !== colorGroupId
+            (group) =>
+              group.id !== colorGroupId
           ),
         };
       })
@@ -382,7 +381,9 @@ export default function FilmCuttingOptimizer() {
 
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         return {
           ...section,
@@ -402,14 +403,15 @@ export default function FilmCuttingOptimizer() {
     clearResult();
   }
 
-  /* =======================================================
-     재단 사이즈
-  ======================================================= */
-
-  function addSize(sectionId, colorGroupId) {
+  function addSize(
+    sectionId,
+    colorGroupId
+  ) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         return {
           ...section,
@@ -439,7 +441,9 @@ export default function FilmCuttingOptimizer() {
   ) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         return {
           ...section,
@@ -477,7 +481,9 @@ export default function FilmCuttingOptimizer() {
   ) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         return {
           ...section,
@@ -515,7 +521,9 @@ export default function FilmCuttingOptimizer() {
   ) {
     setSections((prev) =>
       prev.map((section) => {
-        if (section.id !== sectionId) return section;
+        if (section.id !== sectionId) {
+          return section;
+        }
 
         return {
           ...section,
@@ -556,10 +564,6 @@ export default function FilmCuttingOptimizer() {
     clearResult();
   }
 
-  /* =======================================================
-     여러 사이즈 한번에 입력
-  ======================================================= */
-
   function openBulkEditor(
     sectionId,
     colorGroupId
@@ -584,7 +588,7 @@ export default function FilmCuttingOptimizer() {
 
     if (!parsed.length) {
       setErrors([
-        "입력 형식을 확인해주세요. 예: 480x2100x2",
+        "입력 형식을 확인해주세요. 예: 480.2100.2",
       ]);
 
       return;
@@ -634,23 +638,16 @@ export default function FilmCuttingOptimizer() {
     setResult(null);
   }
 
-  /* =======================================================
-     전체 초기화
-  ======================================================= */
-
   function resetAll() {
     setRolls([createRoll()]);
     setSections([createSection()]);
     setRollMode("waste");
     setIterations(350);
+
     setResult(null);
     setErrors([]);
     setBulkEditor(null);
   }
-
-  /* =======================================================
-     계산
-  ======================================================= */
 
   function calculate() {
     setErrors([]);
@@ -666,8 +663,13 @@ export default function FilmCuttingOptimizer() {
           iterations,
         });
 
-        setErrors(response.errors || []);
-        setResult(response.result || null);
+        setErrors(
+          response.errors || []
+        );
+
+        setResult(
+          response.result || null
+        );
       } catch (error) {
         console.error(error);
 
@@ -681,14 +683,9 @@ export default function FilmCuttingOptimizer() {
     }, 30);
   }
 
-  /* =======================================================
-     화면
-  ======================================================= */
-
   return (
     <main className={styles.page}>
       <div className={styles.container}>
-        {/* 상단 */}
         <header className={styles.header}>
           <div>
             <p className={styles.eyebrow}>
@@ -714,7 +711,6 @@ export default function FilmCuttingOptimizer() {
           </button>
         </header>
 
-        {/* 입력 현황 */}
         <div className={styles.summaryBar}>
           <SummaryPill
             label="롤"
@@ -737,7 +733,6 @@ export default function FilmCuttingOptimizer() {
           />
         </div>
 
-        {/* 입력 */}
         <CuttingInput
           styles={styles}
           rolls={rolls}
@@ -764,7 +759,6 @@ export default function FilmCuttingOptimizer() {
           applyBulkEditor={applyBulkEditor}
         />
 
-        {/* 계산 */}
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
@@ -773,12 +767,11 @@ export default function FilmCuttingOptimizer() {
               </span>
 
               <div>
-                <h2>
-                  최적 재단 계산
-                </h2>
+                <h2>최적 재단 계산</h2>
 
                 <p>
-                  입력된 재단물을 보유 롤에 배치합니다.
+                  입력한 재단물을 보유 롤에
+                  배치합니다.
                 </p>
               </div>
             </div>
@@ -786,9 +779,7 @@ export default function FilmCuttingOptimizer() {
 
           <div className={styles.optionRow}>
             <label>
-              <span>
-                롤 사용 기준
-              </span>
+              <span>롤 사용 기준</span>
 
               <select
                 value={rollMode}
@@ -809,9 +800,7 @@ export default function FilmCuttingOptimizer() {
             </label>
 
             <label>
-              <span>
-                계산 정밀도
-              </span>
+              <span>계산 정밀도</span>
 
               <select
                 value={iterations}
@@ -862,7 +851,6 @@ export default function FilmCuttingOptimizer() {
           )}
         </section>
 
-        {/* 결과 */}
         <CuttingResult
           result={result}
           onClose={() =>
@@ -884,4 +872,4 @@ function SummaryPill({
       <strong>{value}</strong>
     </div>
   );
-    }
+                      }
