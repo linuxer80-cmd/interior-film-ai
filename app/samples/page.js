@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import FilmSampleImage from "../components/FilmSampleImage";
 import { supabase } from "../../lib/supabase";
 
 const PAGE_SIZE = 16;
 
-const SUPABASE_URL = (
-  process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-).replace(/\/$/, "");
 
 /*
  * 소비자 샘플 페이지 대분류
@@ -203,32 +201,6 @@ function unique(values) {
 }
 
 /*
- * Supabase Storage 이미지 주소
- */
-function getSampleUrl(path) {
-  const value = String(path || "").trim();
-
-  if (!value) {
-    return "";
-  }
-
-  if (
-    value.startsWith("http://") ||
-    value.startsWith("https://") ||
-    value.startsWith("data:") ||
-    value.startsWith("/")
-  ) {
-    return value;
-  }
-
-  if (SUPABASE_URL) {
-    return `${SUPABASE_URL}/storage/v1/object/public/${value}`;
-  }
-
-  return value;
-}
-
-/*
  * 현대보닥 제품번호 prefix 분류
  */
 function getProductLine(productCode) {
@@ -310,59 +282,6 @@ function getProductDescription(product) {
     product?.color_family ||
     product?.tone_family ||
     ""
-  );
-}
-
-function SampleImage({
-  product,
-  large = false,
-}) {
-  const imageUrl = getSampleUrl(
-    product?.sample_image_path
-  );
-
-  if (imageUrl) {
-    return (
-      <img
-        src={imageUrl}
-        alt={
-          product?.product_code ||
-          "필름 샘플"
-        }
-        loading={large ? "eager" : "lazy"}
-        decoding="async"
-        style={{
-          display: "block",
-          width: "100%",
-          aspectRatio: "1 / 1",
-          objectFit: "cover",
-          borderRadius: large
-            ? "15px"
-            : "9px",
-          border:
-            "1px solid #e5e7eb",
-          background: "#f9fafb",
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        display: "block",
-        width: "100%",
-        aspectRatio: "1 / 1",
-        borderRadius: large
-          ? "15px"
-          : "9px",
-        border:
-          "1px solid #e5e7eb",
-        background:
-          product?.color_hex ||
-          "#f3f4f6",
-      }}
-    />
   );
 }
 
@@ -1543,7 +1462,7 @@ export default function SamplesPage() {
                           "pointer",
                       }}
                     >
-                      <SampleImage
+                      <FilmSampleImage
                         product={
                           product
                         }
@@ -1952,7 +1871,7 @@ export default function SamplesPage() {
             </div>
 
             {/* 큰 이미지 */}
-            <SampleImage
+            <FilmSampleImage
               product={
                 selected
               }
