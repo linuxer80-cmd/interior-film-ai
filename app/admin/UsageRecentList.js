@@ -107,7 +107,7 @@ export default function UsageRecentList({
                     undefined && (
                     <>
                       {" "}
-                      · 평균{" "}
+                      · 예상 합계{" "}
                       <b>
                         {formatWon(
                           row.estimate_average

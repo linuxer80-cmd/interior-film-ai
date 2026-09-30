@@ -36,7 +36,7 @@ export default function EstimateTotal({
       </div>
 
       <h2>
-        총 예상 시공 견적
+        {totalEstimate.missingCount > 0 ? "계산된 부위의 부분 견적" : "총 예상 시공 견적"}
       </h2>
 
       <div
@@ -69,7 +69,7 @@ export default function EstimateTotal({
           lineHeight: 1.7,
         }}
       >
-        가중 평균 합계{" "}
+        예상 합계{" "}
 
         <strong>
           {formatWon(
@@ -104,13 +104,13 @@ export default function EstimateTotal({
             lineHeight: 1.6,
           }}
         >
-          ⚠️ 데이터가 부족한{" "}
+          ⚠️ 아직 견적이 확정되지 않은{" "}
           {
             totalEstimate
               .missingCount
           }
-          개 부위는 총액에
-          포함되지 않았습니다.
+          개 부위는 위 금액에 포함되지 않았습니다.
+          각 부위의 안내를 확인해주세요.
         </p>
       )}
 

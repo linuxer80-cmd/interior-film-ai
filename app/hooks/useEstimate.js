@@ -14,15 +14,15 @@ import {
   assignEstimateSubject,
 } from "../utils/categoryUtils";
 
+import { mergeDoorViews } from "../utils/doorEstimate";
+
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
 /*
  * 모바일 / 서버 부하를 고려한 동시 처리 수
  *
- * AI 분석:
- * 한꺼번에 너무 많이 보내면 OpenAI/Vercel 요청이 몰릴 수 있으므로
- * 최대 3개씩 처리합니다.
+ * AI 분석: 최대 10장을 한 번에 비교해 같은 문의 다른 각도를 묶습니다.
  *
  * 유사검색:
  * 그룹별 검색은 최대 3개씩 처리합니다.
@@ -30,7 +30,6 @@ const MATCH_THRESHOLD = 0.65;
  * 사진 업로드:
  * 최대 3개씩 처리합니다.
  */
-const AI_ANALYSIS_CONCURRENCY = 3;
 const SIMILAR_SEARCH_CONCURRENCY = 3;
 const PHOTO_UPLOAD_CONCURRENCY = 3;
 
@@ -574,79 +573,26 @@ export default function useEstimate({
 
   /*
    * =========================================================
-   * 사진 한 장 AI 분석
+   * 여러 사진 AI 분석 및 동일 문 판별
    * =========================================================
    */
 
-  async function analyzeOnePhoto(
-    imageItem,
-    index,
-    total
-  ) {
-    const formData =
-      new FormData();
-
-    formData.append(
-      "image",
-      imageItem.file
-    );
-
-    formData.append("purpose", "estimate");
-    formData.append(
-      "photoType",
-      "before"
-    );
-
-    if (
-      normalizedCompanySlug
-    ) {
-      formData.append(
-        "company_slug",
-        normalizedCompanySlug
-      );
+  async function analyzePhotos() {
+    const form = new FormData();
+    form.append("company_slug", normalizedCompanySlug);
+    images.forEach((photo) => form.append("images", photo.file));
+    const response = await fetch("/api/estimate-analyze", { method: "POST", body: form });
+    const result = await readJsonSafely(response);
+    if (!response.ok || !result?.success || !Array.isArray(result.photos) || result.photos.length !== images.length ||
+      new Set(result.photos.map((photo) => photo.index)).size !== images.length ||
+      result.photos.some((photo) => !Number.isInteger(photo.index) || photo.index < 0 || photo.index >= images.length || !photo.analysis)) {
+      throw new Error(result?.error || "사진 분석 결과가 불완전합니다.");
     }
-
-    const response =
-      await fetch(
-        "/api/analyze",
-        {
-          method:
-            "POST",
-
-          body:
-            formData,
-        }
-      );
-
-    const result =
-      await readJsonSafely(
-        response
-      );
-
-    if (
-      !response.ok ||
-      !result?.analysis
-    ) {
-      throw new Error(
-        result?.error ||
-          `${
-            index + 1
-          }번째 사진 분석 실패`
-      );
-    }
-
-    return {
-      ...imageItem,
-
-      analysis:
-        applyEstimateTarget(result.analysis, imageItem.targetChoice),
-
-      analysisIndex:
-        index,
-
-      analysisTotal:
-        total,
-    };
+    const analyses = new Map(result.photos.map((photo) => [photo.index, photo.analysis]));
+    return mergeDoorViews(images.map((photo, index) => ({ ...photo,
+      analysis: applyEstimateTarget(analyses.get(index), photo.targetChoice),
+      analysisIndex: index, analysisTotal: images.length, analysisRecordId: result.analysis_id || null,
+    })));
   }
 
   /*
@@ -742,11 +688,11 @@ export default function useEstimate({
     ].join("\n");
 
     const form = new FormData();
-    group.photos.slice(0, 2).forEach((photo) => form.append("images", photo.file));
+    [...group.photos].sort((a, b) => Number(b.analysis?.view_completeness === "full") - Number(a.analysis?.view_completeness === "full")).slice(0, 2).forEach((photo) => form.append("images", photo.file));
     form.append("metadata", JSON.stringify({
       company_slug: normalizedCompanySlug, text: searchText,
       category: group.category || null, sub_category: group.subCategory || null,
-      construction_scope: group.scope, match_threshold: MATCH_THRESHOLD, match_count: 50,
+      construction_scope: group.scope, analysis_id: group.photos[0]?.analysisRecordId || null, photo_indices: group.photos.map((photo) => photo.analysisIndex), match_threshold: MATCH_THRESHOLD, match_count: 50,
     }));
     const response = await fetch("/api/similar-estimate", { method: "POST", body: form });
 
@@ -1229,35 +1175,10 @@ export default function useEstimate({
        */
 
       setMessage(
-        `AI 사진 분석 중... 0/${images.length}`
+        `사진 ${images.length}장의 시공 부위와 같은 문 여부를 비교하고 있습니다...`
       );
 
-      let analyzedCount = 0;
-
-      const analyzedPhotos =
-        await mapWithConcurrency(
-          images,
-          AI_ANALYSIS_CONCURRENCY,
-          async (
-            imageItem,
-            index
-          ) => {
-            const result =
-              await analyzeOnePhoto(
-                imageItem,
-                index,
-                images.length
-              );
-
-            analyzedCount += 1;
-
-            setMessage(
-              `AI 사진 분석 중... ${analyzedCount}/${images.length}`
-            );
-
-            return result;
-          }
-        );
+      const analyzedPhotos = await analyzePhotos();
 
       /*
        * ===================================================
@@ -1483,7 +1404,7 @@ export default function useEstimate({
           missingCount > 0
         ) {
           setMessage(
-            `⚠️ ${validEstimates.length}개 부위는 견적을 계산했고, ${missingCount}개 부위는 데이터가 부족합니다.`
+            `⚠️ ${validEstimates.length}개 부위의 견적을 계산했습니다. 미산정 ${missingCount}개 부위는 결과 화면의 안내를 확인해주세요.`
           );
         } else {
           setMessage(
@@ -1492,7 +1413,7 @@ export default function useEstimate({
         }
       } else {
         setMessage(
-          "⚠️ 사진 분석은 완료했지만 같은 부위의 실제 시공 데이터가 부족합니다. 정확한 상담을 신청해주세요."
+          "⚠️ 사진 분석은 완료했지만 견적을 확정하지 못했습니다. 결과 화면에서 부위별 확인 사유와 다음 단계를 확인해주세요."
         );
       }
     } catch (error) {

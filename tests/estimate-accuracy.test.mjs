@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import * as categories from '../app/utils/categoryUtils.js';
+import { mergeDoorViews, calculateQuantityEstimate } from '../app/utils/doorEstimate.js';
 
 const { normalizeAnalysisClassification: normalize, getConstructionScope: scope, getEstimateGroupKey: groupKey, selectEstimateCases } = categories;
 const kitchen = (sub_category) => ({ category: '주방 가구', sub_category });
@@ -59,7 +60,7 @@ const flush = () => new Promise(setImmediate);
 
 // Exercise the real hook with React's state/ref contracts and deferred network requests.
 // No AI request, real upload, billing event or customer data is created.
-function harness() {
+function harness({ analyses = null } = {}) {
   const state = [];
   let cursor = 0;
   let id = 0;
@@ -70,7 +71,7 @@ function harness() {
     .replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm, '')
     .replace('export default function useEstimate', 'function useEstimate');
   const context = {
-    ...categories, console: { error() {}, warn() {} }, FormData,
+    ...categories, mergeDoorViews, console: { error() {}, warn() {} }, FormData,
     makeId: () => `id-${++id}`,
     prepareImage: async (file) => ({ file, preview: 'blob:test' }), revokePreviewUrl() {},
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], (value) => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },
@@ -78,12 +79,11 @@ function harness() {
     fetch: async (url, options) => {
       calls.push(url);
       if (url === '/api/usage-limit') return ok({ success: true, allowed: true });
-      if (url === '/api/analyze') {
-        assert.equal(options.body.get('purpose'), 'estimate');
-        return ok({ analysis: normalize({ ...kitchen('싱크대 하부장'), classification_confidence: 'high' }) });
+      if (url === '/api/estimate-analyze') {
+        return ok({ success: true, photos: options.body.getAll('images').map((_, index) => ({ index, analysis: analyses?.[index] || normalize({ ...kitchen('싱크대 하부장'), classification_confidence: 'high' }) })) });
       }
       if (url === '/api/similar-estimate') {
-        assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, 'kitchen_lower');
+        assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, analyses ? scope(analyses[0]) : 'kitchen_lower');
         assert.ok(options.body.getAll('images').length >= 1);
         assert.ok(options.body.getAll('images').length <= 2);
         return ok({ success: true, search_status: 'verified', estimate: { min: 100000, max: 100000, average: 100000, range_basis: 'observed_cases' }, similar_cases: [{ actual_cost: 100000, visual_verified: true, visual_rank: 1, work_item_id: '00000000-0000-0000-0000-000000000001', before_path: null, after_path: null }] });
@@ -219,4 +219,76 @@ test('late photo responses cannot restore an old estimate after reset', async ()
   h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/old' })));
   await flush();
   assert.equal(h.render().groups.length, 0);
+});
+
+
+test('five uploaded angles of two doors run only two price searches and set a per-set quantity basis', async () => {
+  const analyses = ['a', 'a', 'b', 'b', 'b'].map((object_key) => normalize({
+    category: '문 및 문틀', sub_category: '방문 및 문틀', target_type: 'door', construction_scope: 'whole',
+    classification_confidence: 'high', view_completeness: 'full', object_key, object_confidence: 'high',
+    object_evidence: '문턱 및 욕실 타일 줄눈, 인접 설비 일치', door_count: 1,
+  }));
+  const h = harness({ analyses });
+  await h.render().addImages(Array.from({ length: 5 }, (_, i) => new Blob([`photo-${i}`])));
+  const work = h.render().handleAnalyze();
+  await flush();
+  assert.equal(h.render().groups.length, 2);
+  assert.equal(h.calls.filter((call) => call === '/api/estimate-analyze').length, 1);
+  assert.equal(h.calls.filter((call) => call === '/api/similar-estimate').length, 2);
+  const initial = calculateQuantityEstimate(h.render().groups);
+  assert.equal(initial.door.quantity, 2);
+  assert.equal(initial.total.average, 200000);
+  assert.equal(calculateQuantityEstimate(h.render().groups, 5).total.average, 500000);
+  for (let i = 0; i < 5; i++) {
+    await flush();
+    h.uploads[i].resolve(ok({ success: true, path: `customer/${i}.jpg` }));
+  }
+  h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+  await work;
+});
+
+test('cropped but identifiable full kitchen is sent for visual comparison, while an unclear kitchen is not searched', async () => {
+  for (const view_completeness of ['partial', 'unclear']) {
+    const analysis = normalize({ ...kitchen('싱크대 상부장과 하부장'), target_type: 'kitchen', construction_scope: 'kitchen_full', classification_confidence: 'high', view_completeness });
+    const h = harness({ analyses: [analysis] });
+    await h.render().addImages([new Blob(['kitchen'])]);
+    const work = h.render().handleAnalyze();
+    await flush();
+    const searchable = view_completeness === 'partial';
+    assert.equal(h.calls.filter((url) => url === '/api/similar-estimate').length, searchable ? 1 : 0);
+    assert.equal(h.render().groups[0].requiresConfirmation, !searchable);
+    assert.equal(h.render().totalEstimate?.average ?? null, searchable ? 100000 : null);
+    if (!searchable) assert.equal(h.render().groups[0].confirmationReasons[0], 'unclear_view');
+    h.uploads[0].resolve(ok({ success: true, path: 'customer/kitchen.jpg' }));
+    h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+    await work;
+  }
+});
+
+test('two identifiable open doors both reach pricing; unknown counts and uncertain identities cannot become priced sets', async () => {
+  for (const variant of ['confirmed', 'unknown-count', 'multiple-count', 'uncertain-identity', 'unreadable']) {
+    const analyses = ['bath-a', 'bath-b'].map((object_key, index) => normalize({
+      category: '문 및 문틀', sub_category: '방문 및 문틀', target_type: 'door', construction_scope: 'whole',
+      classification_confidence: 'high', view_completeness: index === 1 && variant === 'unreadable' ? 'unclear' : 'partial',
+      object_key, object_confidence: index === 1 && variant === 'uncertain-identity' ? 'low' : 'high',
+      object_evidence: '서로 다른 문틀과 욕실 벽 타일 배치, 열린 일반 방문',
+      door_count: index === 1 && variant === 'unknown-count' ? 0 : index === 1 && variant === 'multiple-count' ? 2 : 1,
+    }));
+    const h = harness({ analyses });
+    await h.render().addImages([new Blob(['open-door-a']), new Blob(['open-door-b'])]);
+    const work = h.render().handleAnalyze();
+    await flush();
+    const pricedCount = variant === 'confirmed' ? 2 : 1;
+    assert.equal(h.calls.filter((url) => url === '/api/similar-estimate').length, pricedCount, variant);
+    assert.equal(h.render().groups.length, 2, variant);
+    const pricing = calculateQuantityEstimate(h.render().groups, 5);
+    assert.equal(pricing.door.canScale, variant === 'confirmed', variant);
+    assert.equal(pricing.total.average, variant === 'confirmed' ? 500000 : 100000, variant);
+    assert.equal(pricing.total.missingCount, 2 - pricedCount, variant);
+    h.uploads.forEach((task, i) => task.resolve(ok({ success: true, path: `customer/door-${i}.jpg` })));
+    h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+    await work;
+    assert.ok(!h.render().message.includes('데이터가 부족'), variant);
+    if (pricedCount === 1) assert.ok(h.render().message.includes('미산정 1개'), variant);
+  }
 });

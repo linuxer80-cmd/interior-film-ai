@@ -364,14 +364,14 @@ export function applyEstimateTarget(analysis, choice) {
     ...analysis, target_type: target, category: labels[0],
     sub_category: SCOPES[choice] || labels[1],
     construction_scope: SCOPES[choice] ? choice : "whole",
-    classification_confidence: "high", requires_confirmation: false,
+    classification_confidence: "high", requires_confirmation: false, confirmation_reason: null,
     description: SCOPES[choice] || labels[1], tags: [],
     classification_evidence: "고객이 선택한 시공 대상", user_selected_target: true,
   };
 }
 
 // A category describes an object's kind, not its physical identity.
-// Only the customer's explicit same-subject selection joins separate photos.
+// Customer choices and verified door identities join alternate views.
 export function buildEstimatePhotoGroups(photos = []) {
   const ids = new Set(photos.map((photo) => photo.id));
   const groups = new Map();
@@ -382,12 +382,16 @@ export function buildEstimatePhotoGroups(photos = []) {
     if (!groups.has(key)) groups.set(key, {
       key, subjectId, scope: getConstructionScope(analysis),
       category: analysis.category || "시공 부위", subCategory: analysis.sub_category || "",
-      requiresConfirmation: false, photos: [], photoNumbers: [],
+      requiresConfirmation: false, confirmationReasons: [], subjectRequiresConfirmation: false, subjectSource: photo.subjectSource || "manual", photos: [], photoNumbers: [],
     });
     const group = groups.get(key);
     group.photos.push(photo);
     group.photoNumbers.push(index + 1);
-    group.requiresConfirmation ||= Boolean(analysis.requires_confirmation || analysis.classification_confidence === "low");
+    group.subjectRequiresConfirmation ||= Boolean(analysis.subject_requires_confirmation);
+    group.requiresConfirmation ||= Boolean(analysis.subject_requires_confirmation || analysis.requires_confirmation || analysis.classification_confidence === "low");
+    if (analysis.requires_confirmation && analysis.confirmation_reason && !group.confirmationReasons.includes(analysis.confirmation_reason)) {
+      group.confirmationReasons.push(analysis.confirmation_reason);
+    }
   });
   return Array.from(groups.values());
 }
@@ -395,10 +399,15 @@ export function buildEstimatePhotoGroups(photos = []) {
 export function assignEstimateSubject(images, id, selectedId) {
   const index = images.findIndex((photo) => photo.id === id);
   if (index < 0) return images;
+  if (selectedId === "auto") return images.map((photo) => {
+    if (photo.id !== id && photo.subjectId !== id) return photo;
+    const { subjectId, ...rest } = photo;
+    return rest;
+  });
   const parent = images.slice(0, index).find((photo) => photo.id === selectedId);
   const subjectId = parent ? (parent.subjectId || parent.id) : id;
   // Move the selected root and its explicitly linked views together.
-  return images.map((photo) => photo.id === id || photo.subjectId === id ? { ...photo, subjectId } : photo);
+  return images.map((photo) => photo.id === id || photo.subjectId === id || (parent && photo.id === subjectId) ? { ...photo, subjectId } : photo);
 }
 
 export function normalizeAnalysisClassification(analysis) {
@@ -411,9 +420,18 @@ export function normalizeAnalysisClassification(analysis) {
   const candidates = [declared, categoryKey, detailKey].filter((key) => key && key !== "other");
   const specificDoors = [...new Set(candidates.filter((key) => key === "middle_door" || key === "fire_door"))];
   const conflict = new Set(candidates.map(family)).size > 1 || specificDoors.length > 1;
-  const incomplete = ["partial", "unclear"].includes(analysis.view_completeness);
-  const uncertain = conflict || incomplete || !candidates.length || analysis.classification_confidence === "low";
   const target = conflict ? "other" : (specificDoors[0] || declared || (detailKey !== "other" ? detailKey : categoryKey));
+  const scope = getConstructionScope({ ...analysis, target_type: target });
+  // Identifying a target is separate from verifying its count, scope and price.
+  // Open/cropped doors can be identifiable; mergeDoorViews still requires a
+  // confirmed single doorway before pricing, followed by visual case comparison.
+  const partialKitchen = target === "kitchen" && ["kitchen_lower", "kitchen_upper", "kitchen_full"].includes(scope);
+  const comparablePartial = partialKitchen || target === "door";
+  const incomplete = analysis.view_completeness === "unclear" || (analysis.view_completeness === "partial" && !comparablePartial);
+  const reason = conflict ? "conflicting_targets" : analysis.view_completeness === "unclear" ? "unclear_view"
+    : incomplete ? "incomplete_view" : !candidates.length || target === "other" ? "unknown_target"
+    : analysis.classification_confidence === "low" ? "low_confidence" : null;
+  const uncertain = Boolean(reason);
   const labels = TARGET_LABELS[target] || TARGET_LABELS.other;
   const result = {
     ...analysis,
@@ -422,18 +440,23 @@ export function normalizeAnalysisClassification(analysis) {
     sub_category: target === "kitchen" ? String(analysis.sub_category || labels[1]) : labels[1],
     classification_confidence: uncertain ? "low" : (analysis.classification_confidence === "high" ? "high" : "medium"),
     requires_confirmation: uncertain || target === "other",
+    confirmation_reason: reason,
   };
   // Preserve a refrigerator cue from the original category before replacing it
   // with the generic canonical kitchen label.
-  result.construction_scope = getConstructionScope({ ...analysis, target_type: target });
+  result.construction_scope = scope;
   const labelScope = getConstructionScope({ ...analysis, target_type: target, construction_scope: null });
   if (target === "kitchen" && labelScope !== "unknown" && labelScope !== result.construction_scope) {
     result.requires_confirmation = true;
     result.classification_confidence = "low";
+    result.confirmation_reason = "conflicting_scope";
   }
   if (target === "kitchen") {
     result.sub_category = SCOPES[result.construction_scope] || "시공 범위 확인 필요";
-    if (result.construction_scope === "unknown") result.requires_confirmation = true;
+    if (result.construction_scope === "unknown") {
+      result.requires_confirmation = true;
+      result.confirmation_reason = "unknown_scope";
+    }
   }
   return result;
 }
