@@ -422,10 +422,12 @@ export function normalizeAnalysisClassification(analysis) {
   const conflict = new Set(candidates.map(family)).size > 1 || specificDoors.length > 1;
   const target = conflict ? "other" : (specificDoors[0] || declared || (detailKey !== "other" ? detailKey : categoryKey));
   const scope = getConstructionScope({ ...analysis, target_type: target });
-  // Knowing the cabinet type/scope is separate from being able to compare its
-  // size. A cropped kitchen can reach visual verification; it is not priced here.
+  // Identifying a target is separate from verifying its count, scope and price.
+  // Open/cropped doors can be identifiable; mergeDoorViews still requires a
+  // confirmed single doorway before pricing, followed by visual case comparison.
   const partialKitchen = target === "kitchen" && ["kitchen_lower", "kitchen_upper", "kitchen_full"].includes(scope);
-  const incomplete = analysis.view_completeness === "unclear" || (analysis.view_completeness === "partial" && !partialKitchen);
+  const comparablePartial = partialKitchen || target === "door";
+  const incomplete = analysis.view_completeness === "unclear" || (analysis.view_completeness === "partial" && !comparablePartial);
   const reason = conflict ? "conflicting_targets" : analysis.view_completeness === "unclear" ? "unclear_view"
     : incomplete ? "incomplete_view" : !candidates.length || target === "other" ? "unknown_target"
     : analysis.classification_confidence === "low" ? "low_confidence" : null;
