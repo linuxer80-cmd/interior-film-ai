@@ -6,6 +6,7 @@ import { supabase } from "../../../../lib/supabase";
 import { loadMyWorkerSites, workerLoginUrl } from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
+import SiteDirections from "../../SiteDirections";
 
 function workDate(value) {
   if (!value) return "미정";
@@ -653,7 +654,7 @@ export default function WorkerSiteDetailPage() {
 
           <InfoRow
             label="주소"
-            value={site.address}
+            value={<SiteDirections site={site} />}
           />
 
           <InfoRow
