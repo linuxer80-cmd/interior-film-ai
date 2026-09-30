@@ -26,7 +26,7 @@ export function sumPay(groups) {
 
 // Inputs are one company's completed sites and assignments. The API scopes
 // both assignments and rate history to worker IDs linked to the signed-in user.
-export function companyMonthPay({ company, workerIds, sites, daily, legacy, rates, month, today = koreanDay() }) {
+export function companyMonthPay({ company, workerIds, sites, daily, legacy, rates, allowanceRates = [], month, today = koreanDay() }) {
   const ownIds = new Set(workerIds);
   const days = monthDays(month).days.filter((day) => day <= today);
   const worked = new Map();
@@ -55,19 +55,25 @@ export function companyMonthPay({ company, workerIds, sites, daily, legacy, rate
   }
   const history = new Map(workerIds.map((id) => [id, rates.filter((rate) => rate.worker_id === id && rate.company_id === company.id)
     .sort((a, b) => b.effective_from.localeCompare(a.effective_from))]));
+  const companyAllowances = allowanceRates.filter((rate) => rate.company_id === company.id)
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from));
   const entries = [...worked].sort(([a], [b]) => b.localeCompare(a)).map(([date, assignments]) => {
     const role = assignments.some((row) => row.role === "leader") ? "leader" : "member";
     const dayRates = [...new Set(assignments.map((row) => row.workerId))].map((id) => {
       const rate = history.get(id)?.find((item) => item.effective_from <= date);
-      return { base: payAmount(rate?.daily_wage), allowance: payAmount(rate?.leader_allowance) };
+      return { base: payAmount(rate?.daily_wage) };
     });
     // Duplicate linked worker records with disagreeing rates need an admin to
     // resolve them. Never choose a larger/smaller wage silently.
     const first = dayRates[0];
+    const companyRate = companyAllowances.find((rate) => rate.effective_from <= date);
+    // Before the first company setting the allowance is zero. A saved invalid
+    // value is unresolved, not silently converted to zero.
+    const allowance = companyRate ? payAmount(companyRate.amount) : 0;
     const pending = assignments.some((row) => !["leader", "member"].includes(row.role)) || !first || first.base === null ||
-      (role === "leader" && first.allowance === null) || dayRates.some((rate) => rate.base !== first.base || (role === "leader" && rate.allowance !== first.allowance));
+      (role === "leader" && allowance === null) || dayRates.some((rate) => rate.base !== first.base);
     const baseAmount = pending ? null : first.base;
-    const allowanceAmount = pending ? null : role === "leader" ? first.allowance : 0;
+    const allowanceAmount = pending ? null : role === "leader" ? allowance : 0;
     const uniqueSites = [...new Map(assignments.map((row) => [row.siteId, { id: row.siteId, name: row.siteName }])).values()];
     return { date, role, sites: uniqueSites, inferred: assignments.some((row) => row.inferred), pending,
       baseAmount, allowanceAmount, totalAmount: pending ? null : baseAmount + allowanceAmount };
