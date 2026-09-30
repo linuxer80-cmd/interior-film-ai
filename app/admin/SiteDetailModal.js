@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
@@ -79,6 +79,18 @@ export default function SiteDetailModal({
 }) {
   const [reportOpen, setReportOpen] =
     useState(false);
+  const taskSections = useRef({});
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("site") !== String(site?.id)) return;
+    const section = params.get("section");
+    const frame = requestAnimationFrame(() => {
+      const target = taskSections.current[section];
+      target?.scrollIntoView({ block: "start" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [site?.id]);
 
   /*
    * 시공자 완료보고 존재 여부
@@ -346,6 +358,7 @@ export default function SiteDetailModal({
               일정 표시 / 변경
           ===================== */}
 
+          <div ref={(element) => { taskSections.current.schedule = element; }} tabIndex={-1} aria-label="시공 일정" style={{ scrollMarginTop: 16 }}>
           <SiteScheduleEditor
             site={site}
             reportOpen={reportOpen}
@@ -356,6 +369,8 @@ export default function SiteDetailModal({
               reloadSites
             }
           />
+
+          </div>
 
           {/* =====================
               현장 기본정보
@@ -395,6 +410,7 @@ export default function SiteDetailModal({
             시공자 완료보고 관리자 검수
         ========================= */}
 
+        <div ref={(element) => { taskSections.current.report = element; }} tabIndex={-1} aria-label="완료보고 검수" style={{ scrollMarginTop: 16 }}>
         <SiteWorkReportReview
           siteId={site.id}
           onReportStateChange={({
@@ -407,6 +423,7 @@ export default function SiteDetailModal({
             );
           }}
         />
+        </div>
 
         {/* =========================
             현장 상태
@@ -592,6 +609,7 @@ export default function SiteDetailModal({
                 시공자 배정
             ===================== */}
 
+            <div ref={(element) => { taskSections.current.assignment = element; }} tabIndex={-1} aria-label="시공자 배정" style={{ scrollMarginTop: 16 }}>
             <SiteWorkerAssignment
               site={site}
               workers={
@@ -613,6 +631,7 @@ export default function SiteDetailModal({
                 handleAssignmentSaved
               }
             />
+            </div>
           </section>
         )}
       </div>

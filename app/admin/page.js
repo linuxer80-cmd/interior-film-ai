@@ -20,6 +20,7 @@ const UsageTab = dynamic(() => import("./UsageTab"));
 const ProfitTab = dynamic(() => import("./ProfitTab"));
 const LeadsTab = dynamic(() => import("./LeadsTab"));
 const SiteManagementTab = dynamic(() => import("./SiteManagementTab"));
+const AdminTodayTasks = dynamic(() => import("./AdminTodayTasks"));
 import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
@@ -44,10 +45,10 @@ export default function AdminPage() {
   const [
     activeTab,
     setActiveTab,
-  ] = useState("jobs");
+  ] = useState("today");
 
   const activeTabRef =
-    useRef("jobs");
+    useRef("today");
 
   const pendingSiteIdRef =
     useRef(null);
@@ -376,6 +377,14 @@ export default function AdminPage() {
   ========================================================= */
 
   function changeTab(tab) {
+    const destination = new URL(window.location.href);
+    destination.searchParams.set("tab", tab);
+    for (const key of ["site", "section", "lead"]) destination.searchParams.delete(key);
+    window.history.replaceState(null, "", destination);
+    if (tab !== "sites") {
+      pendingSiteIdRef.current = null;
+      closeSite();
+    }
     activeTabRef.current =
       tab;
 
@@ -431,6 +440,8 @@ export default function AdminPage() {
       activeTabRef.current = "leads";
       setActiveTab("leads");
       loadLeads(1, "all", params.get("lead"));
+    } else if (["today", "jobs", "usage", "profit"].includes(tab)) {
+      changeTab(tab);
     }
   }, [companyId]);
 
@@ -717,6 +728,7 @@ export default function AdminPage() {
           unreadCount
         }
       />
+      {activeTab === "today" && companyId && <AdminTodayTasks key={companyId} companyId={companyId} />}
                 {activeTab ===
         "jobs" && (
         <JobsTab
