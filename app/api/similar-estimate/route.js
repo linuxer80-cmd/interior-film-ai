@@ -430,6 +430,7 @@ async function insertUsageEvent({
   visualStatus,
   visualUsage,
   candidateCount,
+  analysisId, photoIndices, pricingCases, estimate,
 }) {
   const {
     data,
@@ -459,6 +460,10 @@ async function insertUsageEvent({
           null,
 
         metadata: {
+          analysis_id: typeof analysisId === "string" && /^[0-9a-f-]{36}$/i.test(analysisId) ? analysisId : null,
+          photo_indices: Array.isArray(photoIndices) ? photoIndices.filter((index) => Number.isInteger(index) && index >= 0 && index < 10).slice(0, 10) : [],
+          matched_cases: pricingCases.map((row) => ({ work_item_id: row.work_item_id, actual_cost: Number(row.actual_cost), visual_rank: row.visual_rank, match_reason: row.match_reason })),
+          estimate,
           retrieval_model: EMBEDDING_MODEL,
           visual_model: candidateCount ? VISUAL_MODEL : null,
           visual_status: visualStatus,
@@ -895,6 +900,7 @@ export async function POST(
 
         topSimilarity,
         visualStatus: visual.status, visualUsage: visual.usage, candidateCount,
+        analysisId: body?.analysis_id, photoIndices: body?.photo_indices, pricingCases: filteredCases, estimate,
       });
 
     /*
