@@ -1,1846 +1,907 @@
-"use client";
-
-import { useMemo, useState } from "react";
-import styles from "./FilmCuttingOptimizer.module.css";
-
-import {
-  FILM_WIDTH,
-  optimizeCutting,
-  getUniqueColors,
-  formatMeterFromMm,
-} from "./cuttingOptimizer";
-
-function makeId(prefix = "id") {
-  return `${prefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+.page {
+  min-height: 100vh;
+  background: #f4f6f8;
+  padding: 20px 12px 60px;
+  color: #111827;
 }
 
-function createRoll() {
-  return {
-    id: makeId("roll"),
-    color: "",
-    lengthM: "",
-    grainDirection: false,
-  };
+.container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
 }
 
-function createSize() {
-  return {
-    id: makeId("size"),
-    width: "",
-    height: "",
-    quantity: 1,
-  };
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 4px 2px;
 }
 
-function createColorGroup(color = "") {
-  return {
-    id: makeId("color"),
-    color,
-    sizes: [createSize()],
-  };
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #64748b;
 }
 
-function createSection(color = "") {
-  return {
-    id: makeId("section"),
-    location: "",
-    part: "",
-    colors: [createColorGroup(color)],
-  };
+.title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 900;
+  color: #111827;
 }
 
-function numberText(value) {
-  const n = Number(value);
-
-  if (!Number.isFinite(n)) {
-    return "0";
-  }
-
-  return n.toLocaleString();
+.description {
+  margin: 7px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
 }
 
-export default function FilmCuttingOptimizer() {
-  const [rolls, setRolls] = useState([
-    createRoll(),
-  ]);
+.sampleButton,
+.secondaryButton {
+  min-height: 42px;
+  padding: 0 15px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
 
-  const [sections, setSections] = useState([
-    createSection(),
-  ]);
+.sampleButton:hover,
+.secondaryButton:hover {
+  background: #f8fafc;
+}
 
-  const [rollMode, setRollMode] =
-    useState("waste");
+.card {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
 
-  const [iterations, setIterations] =
-    useState(350);
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 
-  const [result, setResult] =
-    useState(null);
+.sectionHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-  const [errors, setErrors] =
-    useState([]);
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  color: #111827;
+}
 
-  const [calculating, setCalculating] =
-    useState(false);
+.stepNumber {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #111827;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+}
 
-  const colors = useMemo(
-    () => getUniqueColors(rolls),
-    [rolls]
-  );
+.addButton {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
 
-  function addRoll() {
-    setRolls((prev) => [
-      ...prev,
-      createRoll(),
-    ]);
+.addButton:hover {
+  opacity: 0.9;
+}
+
+.notice {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > span,
+.grainField > span,
+.sizeRow label > span {
+  font-size: 12px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.field input,
+.field select,
+.grainField select,
+.colorControls select,
+.sizeRow input {
+  width: 100%;
+  height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 0 11px;
+  color: #111827;
+  font-size: 15px;
+  outline: none;
+}
+
+.field input:focus,
+.field select:focus,
+.grainField select:focus,
+.colorControls select:focus,
+.sizeRow input:focus {
+  border-color: #374151;
+  box-shadow: 0 0 0 2px rgba(55, 65, 81, 0.08);
+}
+
+.unitInput,
+.mmInput {
+  position: relative;
+}
+
+.unitInput input,
+.mmInput input {
+  padding-right: 42px;
+}
+
+.unitInput b,
+.mmInput b {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #64748b;
+  pointer-events: none;
+}
+.rollList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rollRow {
+  display: grid;
+  grid-template-columns: 38px 1fr 160px 230px 60px;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.rollNumber {
+  display: flex;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #e5e7eb;
+  font-size: 14px;
+  font-weight: 900;
+  color: #374151;
+}
+
+.grainField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deleteButton,
+.smallDelete,
+.rowButtons button,
+.colorControls button {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.deleteButton:disabled,
+.smallDelete:disabled,
+.rowButtons button:disabled,
+.colorControls button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sectionList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionBox {
+  overflow: hidden;
+  border: 1px solid #dbe1e8;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.sectionTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.sectionTop strong {
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.rowButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.locationGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 14px;
+}
+
+.colorList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.colorBox {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.colorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f3f4f6;
+}
+
+.colorHeader strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.colorControls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.colorControls select {
+  width: 150px;
+  height: 38px;
+  font-size: 14px;
+}
+
+.colorControls button {
+  height: 38px;
+}
+
+.sizeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.sizeRow {
+  display: grid;
+  grid-template-columns: 34px 1fr 24px 1fr 90px 58px;
+  gap: 8px;
+  align-items: end;
+}
+
+.sizeNumber {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sizeRow label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sizeRow input {
+  height: 42px;
+}
+
+.multiply {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  font-weight: 900;
+  color: #64748b;
+}
+
+.quantity input {
+  text-align: center;
+}
+
+.smallDelete {
+  height: 42px;
+}
+
+.addSizeButton {
+  margin: 0 12px 12px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px dashed #94a3b8;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.addColorButton {
+  width: calc(100% - 28px);
+  min-height: 42px;
+  margin: 0 14px 14px;
+  border: 1px dashed #64748b;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.calculateOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.calculateButton {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.calculateButton:hover {
+  opacity: 0.92;
+}
+
+.calculateButton:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.errorBox {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #fecaca;
+  border-radius: 11px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.errorBox strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.errorBox p {
+  margin: 3px 0;
+}
+
+.resultSection {
+  margin-top: 24px;
+}
+
+.resultTitle {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.resultTitle h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.summaryItem {
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.summaryItem span {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.summaryItem strong {
+  font-size: 20px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.rollResult {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.rollResultHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.rollResultHeader h3 {
+  margin: 6px 0 3px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.rollResultHeader p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.rollBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.rollStats {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 14px;
+}
+
+.rollStats div {
+  min-width: 70px;
+}
+
+.rollStats span {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.rollStats strong {
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.diagramScroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.diagram {
+  min-width: 900px;
+  display: block;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.filmBackground {
+  fill: #ffffff;
+  stroke: #111827;
+  stroke-width: 4;
+}
+
+.pieceRect {
+  fill: #e5e7eb;
+  stroke: #111827;
+  stroke-width: 4;
+}
+
+.pieceTitle {
+  font-size: 46px;
+  font-weight: 900;
+  fill: #111827;
+  pointer-events: none;
+}
+
+.pieceSize {
+  font-size: 40px;
+  font-weight: 800;
+  fill: #334155;
+  pointer-events: none;
+}
+
+.pieceColor {
+  font-size: 34px;
+  font-weight: 800;
+  fill: #475569;
+  pointer-events: none;
+}
+
+.pieceNumber {
+  font-size: 28px;
+  font-weight: 900;
+  fill: #64748b;
+  pointer-events: none;
+}
+
+.rulerLine {
+  stroke: #475569;
+  stroke-width: 4;
+}
+
+.rulerAxis {
+  stroke: #111827;
+  stroke-width: 4;
+}
+
+.rulerText {
+  font-size: 28px;
+  font-weight: 800;
+  fill: #334155;
+  }
+.pieceTable {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.pieceTableHeader,
+.pieceTableRow {
+  display: grid;
+  grid-template-columns: 50px 1fr 1fr 100px 170px;
+  min-width: 650px;
+}
+
+.pieceTableHeader {
+  background: #f3f4f6;
+  font-size: 12px;
+  font-weight: 900;
+  color: #475569;
+}
+
+.pieceTableHeader span,
+.pieceTableRow span {
+  padding: 10px 9px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.pieceTableHeader span:last-child,
+.pieceTableRow span:last-child {
+  border-right: 0;
+}
+
+.pieceTableRow {
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  font-size: 13px;
+  color: #111827;
+}
+
+.pieceTableRow:nth-child(odd) {
+  background: #fafafa;
+}
+
+@media (max-width: 900px) {
+  .rollRow {
+    grid-template-columns: 36px 1fr 120px;
   }
 
-  function removeRoll(id) {
-    setRolls((prev) => {
-      if (prev.length <= 1) {
-        return prev;
-      }
-
-      return prev.filter(
-        (roll) => roll.id !== id
-      );
-    });
+  .grainField {
+    grid-column: 2 / 4;
   }
 
-  function updateRoll(id, field, value) {
-    setRolls((prev) =>
-      prev.map((roll) =>
-        roll.id === id
-          ? {
-              ...roll,
-              [field]: value,
-            }
-          : roll
-      )
-    );
+  .deleteButton {
+    grid-column: 3;
   }
 
-  function addSection() {
-    setSections((prev) => [
-      ...prev,
-      createSection(colors[0] || ""),
-    ]);
+  .sizeRow {
+    grid-template-columns: 30px 1fr 20px 1fr;
   }
 
-  function removeSection(id) {
-    setSections((prev) => {
-      if (prev.length <= 1) {
-        return prev;
-      }
-
-      return prev.filter(
-        (section) => section.id !== id
-      );
-    });
+  .quantity {
+    grid-column: 2 / 3;
   }
 
-  function updateSection(
-    sectionId,
-    field,
-    value
-  ) {
-    setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              [field]: value,
-            }
-          : section
-      )
-    );
+  .smallDelete {
+    grid-column: 4 / 5;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .rollResultHeader {
+    flex-direction: column;
+  }
+
+  .rollStats {
+    width: 100%;
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 10px 8px 40px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .title {
+    font-size: 23px;
+  }
+
+  .sampleButton {
+    width: 100%;
+  }
+
+  .card {
+    padding: 14px 10px;
+    border-radius: 13px;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+  }
+
+  .sectionHeader h2 {
+    font-size: 16px;
+  }
+
+  .addButton {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .rollRow {
+    grid-template-columns: 34px 1fr;
+    gap: 8px;
+  }
+
+  .rollNumber {
+    grid-row: span 2;
+  }
+
+  .grainField {
+    grid-column: 2;
+  }
+
+  .deleteButton {
+    grid-column: 2;
+    width: 100%;
+  }
+
+  .locationGrid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .colorList {
+    padding: 0 10px 10px;
+  }
+
+  .colorHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .colorControls {
+    width: 100%;
+  }
+
+  .colorControls select {
+    flex: 1;
+    width: auto;
+  }
+
+  .sizeList {
+    padding: 9px;
+  }
+
+  .sizeRow {
+    grid-template-columns: 28px 1fr 18px 1fr;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .sizeRow:last-child {
+    border-bottom: 0;
+  }
+
+  .quantity {
+    grid-column: 2 / 4;
+  }
+
+  .smallDelete {
+    grid-column: 4;
+  }
+
+  .multiply {
+    font-size: 16px;
+  }
+
+  .addColorButton {
+    width: calc(100% - 20px);
+    margin: 0 10px 10px;
+  }
+
+  .calculateOptions {
+    grid-template-columns: 1fr;
+  }
+
+  .resultTitle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .summaryItem {
+    padding: 11px;
+  }
+
+  .summaryItem strong {
+    font-size: 16px;
+  }
+
+  .rollResult {
+    padding: 11px 8px;
+  }
+
+  .rollStats {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .rollStats div {
+    padding: 8px;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  .diagram {
+    min-width: 700px;
+  }
+}
+
+@media (max-width: 390px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionTop {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rowButtons {
+    width: 100%;
+  }
+
+  .rowButtons button {
+    flex: 1;
+  }
+
+  .colorControls {
+    flex-direction: column;
+  }
+
+  .colorControls select,
+  .colorControls button {
+    width: 100%;
+  }
     }
-      function addColorGroup(sectionId) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-          colors: [
-            ...section.colors,
-            createColorGroup(
-              colors[0] || ""
-            ),
-          ],
-        };
-      })
-    );
-  }
-
-  function removeColorGroup(
-    sectionId,
-    colorGroupId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        if (
-          section.colors.length <= 1
-        ) {
-          return section;
-        }
-
-        return {
-          ...section,
-          colors:
-            section.colors.filter(
-              (group) =>
-                group.id !==
-                colorGroupId
-            ),
-        };
-      })
-    );
-  }
-
-  function updateColorGroup(
-    sectionId,
-    colorGroupId,
-    value
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors:
-            section.colors.map(
-              (group) =>
-                group.id ===
-                colorGroupId
-                  ? {
-                      ...group,
-                      color:
-                        value,
-                    }
-                  : group
-            ),
-        };
-      })
-    );
-  }
-
-  function addSize(
-    sectionId,
-    colorGroupId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors:
-            section.colors.map(
-              (group) => {
-                if (
-                  group.id !==
-                  colorGroupId
-                ) {
-                  return group;
-                }
-
-                return {
-                  ...group,
-
-                  sizes: [
-                    ...group.sizes,
-                    createSize(),
-                  ],
-                };
-              }
-            ),
-        };
-      })
-    );
-  }
-
-  function removeSize(
-    sectionId,
-    colorGroupId,
-    sizeId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors:
-            section.colors.map(
-              (group) => {
-                if (
-                  group.id !==
-                  colorGroupId
-                ) {
-                  return group;
-                }
-
-                if (
-                  group.sizes.length <=
-                  1
-                ) {
-                  return group;
-                }
-
-                return {
-                  ...group,
-
-                  sizes:
-                    group.sizes.filter(
-                      (size) =>
-                        size.id !==
-                        sizeId
-                    ),
-                };
-              }
-            ),
-        };
-      })
-    );
-  }
-
-  function updateSize(
-    sectionId,
-    colorGroupId,
-    sizeId,
-    field,
-    value
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors:
-            section.colors.map(
-              (group) => {
-                if (
-                  group.id !==
-                  colorGroupId
-                ) {
-                  return group;
-                }
-
-                return {
-                  ...group,
-
-                  sizes:
-                    group.sizes.map(
-                      (size) =>
-                        size.id === sizeId
-                          ? {
-                              ...size,
-                              [field]:
-                                value,
-                            }
-                          : size
-                    ),
-                };
-              }
-            ),
-        };
-      })
-    );
-          }
-  function copySection(sectionId) {
-    const source =
-      sections.find(
-        (section) =>
-          section.id === sectionId
-      );
-
-    if (!source) {
-      return;
-    }
-
-    const copied = {
-      ...source,
-
-      id: makeId("section"),
-
-      colors: source.colors.map(
-        (group) => ({
-          ...group,
-
-          id: makeId("color"),
-
-          sizes: group.sizes.map(
-            (size) => ({
-              ...size,
-              id: makeId("size"),
-            })
-          ),
-        })
-      ),
-    };
-
-    setSections((prev) => [
-      ...prev,
-      copied,
-    ]);
-  }
-
-  function resetResult() {
-    setResult(null);
-    setErrors([]);
-  }
-
-  function calculate() {
-    setCalculating(true);
-    setErrors([]);
-    setResult(null);
-
-    window.setTimeout(() => {
-      try {
-        const response =
-          optimizeCutting({
-            rolls,
-            sections,
-            rollMode,
-            iterations,
-          });
-
-        if (!response.success) {
-          setErrors(
-            response.errors || [
-              "재단 계산에 실패했습니다.",
-            ]
-          );
-
-          if (response.result) {
-            setResult(
-              response.result
-            );
-          }
-
-          return;
-        }
-
-        setResult(response.result);
-      } catch (error) {
-        console.error(error);
-
-        setErrors([
-          error?.message ||
-            "재단 계산 중 오류가 발생했습니다.",
-        ]);
-      } finally {
-        setCalculating(false);
-      }
-    }, 30);
-  }
-
-  function loadSample() {
-    setRolls([
-      {
-        id: makeId("roll"),
-        color: "S115",
-        lengthM: 11,
-        grainDirection: false,
-      },
-      {
-        id: makeId("roll"),
-        color: "S115",
-        lengthM: 20,
-        grainDirection: false,
-      },
-      {
-        id: makeId("roll"),
-        color: "W123",
-        lengthM: 15,
-        grainDirection: true,
-      },
-    ]);
-
-    setSections([
-      {
-        id: makeId("section"),
-        location: "방1",
-        part: "방문",
-
-        colors: [
-          {
-            id: makeId("color"),
-            color: "S115",
-
-            sizes: [
-              {
-                id: makeId("size"),
-                width: 600,
-                height: 1900,
-                quantity: 1,
-              },
-              {
-                id: makeId("size"),
-                width: 150,
-                height: 2100,
-                quantity: 2,
-              },
-            ],
-          },
-          {
-            id: makeId("color"),
-            color: "W123",
-
-            sizes: [
-              {
-                id: makeId("size"),
-                width: 300,
-                height: 1900,
-                quantity: 1,
-              },
-            ],
-          },
-        ],
-      },
-      {
-        id: makeId("section"),
-        location: "방2",
-        part: "붙박이장",
-
-        colors: [
-          {
-            id: makeId("color"),
-            color: "S115",
-
-            sizes: [
-              {
-                id: makeId("size"),
-                width: 450,
-                height: 2200,
-                quantity: 4,
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-
-    resetResult();
-  }
-
-  return (
-    <div className={styles.page}>
-      <div className={styles.container}>
-        <header className={styles.header}>
-          <div>
-            <p className={styles.eyebrow}>
-              INTERIOR FILM CUTTING
-            </p>
-
-            <h1 className={styles.title}>
-              인테리어필름 재단 최적화
-            </h1>
-
-            <p className={styles.description}>
-              폭 {FILM_WIDTH}mm 필름을
-              컬러별 보유 롤에 맞춰
-              자동 배치합니다.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            className={styles.sampleButton}
-            onClick={loadSample}
-          >
-            예시 불러오기
-          </button>
-        </header>
-
-        <section className={styles.card}>
-          <div className={styles.sectionHeader}>
-            <div>
-              <span
-                className={
-                  styles.stepNumber
-                }
-              >
-                1
-              </span>
-
-              <h2>
-                보유 필름 롤
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              className={
-                styles.addButton
-              }
-              onClick={addRoll}
-            >
-              + 롤 추가
-            </button>
-          </div>
-                         <div className={styles.rollList}>
-            {rolls.map(
-              (roll, index) => (
-                <div
-                  className={
-                    styles.rollRow
-                  }
-                  key={roll.id}
-                >
-                  <div
-                    className={
-                      styles.rollNumber
-                    }
-                  >
-                    {index + 1}
-                  </div>
-
-                  <label
-                    className={
-                      styles.field
-                    }
-                  >
-                    <span>
-                      컬러번호
-                    </span>
-
-                    <input
-                      value={roll.color}
-                      placeholder="예: S115"
-                      autoCapitalize="characters"
-                      onChange={(e) =>
-                        updateRoll(
-                          roll.id,
-                          "color",
-                          e.target.value
-                        )
-                      }
-                    />
-                  </label>
-
-                  <label
-                    className={
-                      styles.field
-                    }
-                  >
-                    <span>
-                      롤 길이
-                    </span>
-
-                    <div
-                      className={
-                        styles.unitInput
-                      }
-                    >
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="0.1"
-                        value={
-                          roll.lengthM
-                        }
-                        placeholder="11"
-                        onChange={(e) =>
-                          updateRoll(
-                            roll.id,
-                            "lengthM",
-                            e.target.value
-                          )
-                        }
-                      />
-
-                      <b>m</b>
-                    </div>
-                  </label>
-
-                  <label
-                    className={
-                      styles.grainField
-                    }
-                  >
-                    <span>
-                      결 방향
-                    </span>
-
-                    <select
-                      value={
-                        roll.grainDirection
-                          ? "grain"
-                          : "free"
-                      }
-                      onChange={(e) =>
-                        updateRoll(
-                          roll.id,
-                          "grainDirection",
-                          e.target.value ===
-                            "grain"
-                        )
-                      }
-                    >
-                      <option value="free">
-                        결 없음 · 회전 가능
-                      </option>
-
-                      <option value="grain">
-                        결 있음 · 회전 금지
-                      </option>
-                    </select>
-                  </label>
-
-                  <button
-                    type="button"
-                    className={
-                      styles.deleteButton
-                    }
-                    onClick={() =>
-                      removeRoll(
-                        roll.id
-                      )
-                    }
-                    disabled={
-                      rolls.length <= 1
-                    }
-                  >
-                    삭제
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        </section>
-
-        <section className={styles.card}>
-          <div className={styles.sectionHeader}>
-            <div>
-              <span
-                className={
-                  styles.stepNumber
-                }
-              >
-                2
-              </span>
-
-              <h2>
-                시공 위치 · 부위 · 재단 사이즈
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              className={
-                styles.addButton
-              }
-              onClick={addSection}
-            >
-              + 부위 추가
-            </button>
-          </div>
-
-          {colors.length === 0 && (
-            <div
-              className={
-                styles.notice
-              }
-            >
-              먼저 위에서 컬러번호를
-              입력해주세요.
-            </div>
-          )}
-
-          <div
-            className={
-              styles.sectionList
-            }
-          >
-            {sections.map(
-              (
-                section,
-                sectionIndex
-              ) => (
-                <div
-                  key={
-                    section.id
-                  }
-                  className={
-                    styles.sectionBox
-                  }
-                >
-                  <div
-                    className={
-                      styles.sectionTop
-                    }
-                  >
-                    <strong>
-                      재단 부위{" "}
-                      {sectionIndex +
-                        1}
-                    </strong>
-
-                    <div
-                      className={
-                        styles.rowButtons
-                      }
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          copySection(
-                            section.id
-                          )
-                        }
-                      >
-                        복사
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeSection(
-                            section.id
-                          )
-                        }
-                        disabled={
-                          sections.length <=
-                          1
-                        }
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    className={
-                      styles.locationGrid
-                    }
-                  >
-                    <label
-                      className={
-                        styles.field
-                      }
-                    >
-                      <span>
-                        시공 위치
-                      </span>
-
-                      <input
-                        value={
-                          section.location
-                        }
-                        placeholder="예: 방1"
-                        onChange={(e) =>
-                          updateSection(
-                            section.id,
-                            "location",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </label>
-
-                    <label
-                      className={
-                        styles.field
-                      }
-                    >
-                      <span>
-                        시공 부위
-                      </span>
-
-                      <input
-                        value={
-                          section.part
-                        }
-                        placeholder="예: 방문, 붙박이장, 샤시"
-                        onChange={(e) =>
-                          updateSection(
-                            section.id,
-                            "part",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </label>
-                  </div>       
-                                          <div
-                    className={
-                      styles.colorList
-                    }
-                  >
-                    {section.colors.map(
-                      (
-                        group,
-                        colorIndex
-                      ) => (
-                        <div
-                          key={
-                            group.id
-                          }
-                          className={
-                            styles.colorBox
-                          }
-                        >
-                          <div
-                            className={
-                              styles.colorHeader
-                            }
-                          >
-                            <strong>
-                              컬러{" "}
-                              {colorIndex +
-                                1}
-                            </strong>
-
-                            <div
-                              className={
-                                styles.colorControls
-                              }
-                            >
-                              <select
-                                value={
-                                  group.color
-                                }
-                                onChange={(
-                                  e
-                                ) =>
-                                  updateColorGroup(
-                                    section.id,
-                                    group.id,
-                                    e.target
-                                      .value
-                                  )
-                                }
-                              >
-                                <option value="">
-                                  컬러 선택
-                                </option>
-
-                                {colors.map(
-                                  (
-                                    color
-                                  ) => (
-                                    <option
-                                      value={
-                                        color
-                                      }
-                                      key={
-                                        color
-                                      }
-                                    >
-                                      {
-                                        color
-                                      }
-                                    </option>
-                                  )
-                                )}
-                              </select>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeColorGroup(
-                                    section.id,
-                                    group.id
-                                  )
-                                }
-                                disabled={
-                                  section
-                                    .colors
-                                    .length <=
-                                  1
-                                }
-                              >
-                                컬러 삭제
-                              </button>
-                            </div>
-                          </div>
-
-                          <div
-                            className={
-                              styles.sizeList
-                            }
-                          >
-                            {group.sizes.map(
-                              (
-                                size,
-                                sizeIndex
-                              ) => (
-                                <div
-                                  key={
-                                    size.id
-                                  }
-                                  className={
-                                    styles.sizeRow
-                                  }
-                                >
-                                  <div
-                                    className={
-                                      styles.sizeNumber
-                                    }
-                                  >
-                                    {sizeIndex +
-                                      1}
-                                  </div>
-
-                                  <label>
-                                    <span>
-                                      가로
-                                    </span>
-
-                                    <div
-                                      className={
-                                        styles.mmInput
-                                      }
-                                    >
-                                      <input
-                                        type="number"
-                                        inputMode="numeric"
-                                        min="1"
-                                        value={
-                                          size.width
-                                        }
-                                        placeholder="600"
-                                        onChange={(
-                                          e
-                                        ) =>
-                                          updateSize(
-                                            section.id,
-                                            group.id,
-                                            size.id,
-                                            "width",
-                                            e.target
-                                              .value
-                                          )
-                                        }
-                                      />
-
-                                      <b>
-                                        mm
-                                      </b>
-                                    </div>
-                                  </label>
-
-                                  <div
-                                    className={
-                                      styles.multiply
-                                    }
-                                  >
-                                    ×
-                                  </div>
-
-                                  <label>
-                                    <span>
-                                      세로
-                                    </span>
-
-                                    <div
-                                      className={
-                                        styles.mmInput
-                                      }
-                                    >
-                                      <input
-                                        type="number"
-                                        inputMode="numeric"
-                                        min="1"
-                                        value={
-                                          size.height
-                                        }
-                                        placeholder="1900"
-                                        onChange={(
-                                          e
-                                        ) =>
-                                          updateSize(
-                                            section.id,
-                                            group.id,
-                                            size.id,
-                                            "height",
-                                            e.target
-                                              .value
-                                          )
-                                        }
-                                      />
-
-                                      <b>
-                                        mm
-                                      </b>
-                                    </div>
-                                  </label>
-
-                                  <label
-                                    className={
-                                      styles.quantity
-                                    }
-                                  >
-                                    <span>
-                                      수량
-                                    </span>
-
-                                    <input
-                                      type="number"
-                                      inputMode="numeric"
-                                      min="1"
-                                      value={
-                                        size.quantity
-                                      }
-                                      onChange={(
-                                        e
-                                      ) =>
-                                        updateSize(
-                                          section.id,
-                                          group.id,
-                                          size.id,
-                                          "quantity",
-                                          e.target
-                                            .value
-                                        )
-                                      }
-                                    />
-                                  </label>
-
-                                  <button
-                                    type="button"
-                                    className={
-                                      styles.smallDelete
-                                    }
-                                    disabled={
-                                      group
-                                        .sizes
-                                        .length <=
-                                      1
-                                    }
-                                    onClick={() =>
-                                      removeSize(
-                                        section.id,
-                                        group.id,
-                                        size.id
-                                      )
-                                    }
-                                  >
-                                    삭제
-                                  </button>
-                                </div>
-                              )
-                            )}
-                          </div>
-
-                          <button
-                            type="button"
-                            className={
-                              styles.addSizeButton
-                            }
-                            onClick={() =>
-                              addSize(
-                                section.id,
-                                group.id
-                              )
-                            }
-                          >
-                            + 재단 사이즈 추가
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className={
-                      styles.addColorButton
-                    }
-                    onClick={() =>
-                      addColorGroup(
-                        section.id
-                      )
-                    }
-                  >
-                    + 컬러 추가
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        </section>
-
-        <section className={styles.card}>
-          <div className={styles.sectionHeader}>
-            <div>
-              <span
-                className={
-                  styles.stepNumber
-                }
-              >
-                3
-              </span>
-
-              <h2>
-                재단 계산
-              </h2>
-            </div>
-          </div>
-
-          <div
-            className={
-              styles.calculateOptions
-            }
-          >
-            <label
-              className={
-                styles.field
-              }
-            >
-              <span>
-                롤 사용 기준
-              </span>
-
-              <select
-                value={rollMode}
-                onChange={(e) =>
-                  setRollMode(
-                    e.target.value
-                  )
-                }
-              >
-                <option value="waste">
-                  전체 사용 길이 최소
-                </option>
-
-                <option value="short-first">
-                  짧은 롤 우선 사용
-                </option>
-              </select>
-            </label>
-
-            <label
-              className={
-                styles.field
-              }
-            >
-              <span>
-                계산 정밀도
-              </span>
-
-              <select
-                value={iterations}
-                onChange={(e) =>
-                  setIterations(
-                    Number(
-                      e.target.value
-                    )
-                  )
-                }
-              >
-                <option value={150}>
-                  빠르게
-                </option>
-
-                <option value={350}>
-                  보통
-                </option>
-
-                <option value={800}>
-                  정밀
-                </option>
-
-                <option value={1200}>
-                  매우 정밀
-                </option>
-              </select>
-            </label>
-          </div>
-
-          <button
-            type="button"
-            className={
-              styles.calculateButton
-            }
-            disabled={calculating}
-            onClick={calculate}
-          >
-            {calculating
-              ? "최적 재단 계산 중..."
-              : "최적 재단 계산"}
-          </button>
-
-          {errors.length > 0 && (
-            <div
-              className={
-                styles.errorBox
-              }
-            >
-              <strong>
-                확인해주세요
-              </strong>
-
-              {errors.map(
-                (error, index) => (
-                  <p key={index}>
-                    {error}
-                  </p>
-                )
-              )}
-            </div>
-          )}
-        </section>
-                          {result && (
-          <section
-            className={
-              styles.resultSection
-            }
-          >
-            <div
-              className={
-                styles.resultTitle
-              }
-            >
-              <div>
-                <p
-                  className={
-                    styles.eyebrow
-                  }
-                >
-                  CUTTING RESULT
-                </p>
-
-                <h2>
-                  최적 재단 결과
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                className={
-                  styles.secondaryButton
-                }
-                onClick={resetResult}
-              >
-                결과 닫기
-              </button>
-            </div>
-
-            <div
-              className={
-                styles.summaryGrid
-              }
-            >
-              <SummaryItem
-                label="사용 롤"
-                value={`${result.summary.usedRollCount}개`}
-              />
-
-              <SummaryItem
-                label="총 사용 길이"
-                value={formatMeterFromMm(
-                  result.summary.totalUsedLength
-                )}
-              />
-
-              <SummaryItem
-                label="사용 롤 잔여"
-                value={formatMeterFromMm(
-                  result.summary.totalRemainingLength
-                )}
-              />
-
-              <SummaryItem
-                label="필름 효율"
-                value={`${result.summary.efficiency}%`}
-              />
-            </div>
-
-            {result.usedRolls.map(
-              (roll, index) => (
-                <RollResult
-                  key={
-                    `${roll.id}-${index}`
-                  }
-                  roll={roll}
-                  index={index}
-                />
-              )
-            )}
-
-            {result.unplaced?.length >
-              0 && (
-              <div
-                className={
-                  styles.errorBox
-                }
-              >
-                <strong>
-                  배치되지 않은 재단물
-                </strong>
-
-                {result.unplaced.map(
-                  (piece) => (
-                    <p
-                      key={
-                        piece.id
-                      }
-                    >
-                      {
-                        piece.location
-                      }{" "}
-                      · {piece.part} ·{" "}
-                      {piece.color} ·{" "}
-                      {
-                        piece.originalWidth
-                      }
-                      ×
-                      {
-                        piece.originalHeight
-                      }
-                      mm
-                    </p>
-                  )
-                )}
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SummaryItem({
-  label,
-  value,
-}) {
-  return (
-    <div
-      className={
-        styles.summaryItem
-      }
-    >
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function RollResult({
-  roll,
-  index,
-}) {
-  const usedLength =
-    Math.max(
-      1,
-      roll.usedLength
-    );
-
-  const svgWidth =
-    1380;
-
-  const viewWidth =
-    1380;
-
-  const viewHeight =
-    usedLength;
-
-  const screenHeight =
-    Math.max(
-      500,
-      Math.min(
-        1800,
-        usedLength * 0.14
-      )
-    );
-
-  const rulerX =
-    FILM_WIDTH + 20;
-
-  const meterMarks = [];
-
-  for (
-    let y = 0;
-    y <= usedLength;
-    y += 1000
-  ) {
-    meterMarks.push(y);
-  }
-
-  if (
-    meterMarks[
-      meterMarks.length - 1
-    ] !== usedLength
-  ) {
-    meterMarks.push(
-      usedLength
-    );
-  }
-
-  return (
-    <article
-      className={
-        styles.rollResult
-      }
-    >
-      <div
-        className={
-          styles.rollResultHeader
-        }
-      >
-        <div>
-          <span
-            className={
-              styles.rollBadge
-            }
-          >
-            ROLL {index + 1}
-          </span>
-
-          <h3>
-            {roll.color}
-          </h3>
-
-          <p>
-            {roll.grainDirection
-              ? "결 있음 · 회전 금지"
-              : "결 없음 · 회전 가능"}
-          </p>
-        </div>
-
-        <div
-          className={
-            styles.rollStats
-          }
-        >
-          <div>
-            <span>
-              보유
-            </span>
-            <strong>
-              {formatMeterFromMm(
-                roll.lengthMm
-              )}
-            </strong>
-          </div>
-
-          <div>
-            <span>
-              사용
-            </span>
-            <strong>
-              {formatMeterFromMm(
-                roll.usedLength
-              )}
-            </strong>
-          </div>
-
-          <div>
-            <span>
-              잔여
-            </span>
-            <strong>
-              {formatMeterFromMm(
-                roll.remainingLength
-              )}
-            </strong>
-          </div>
-
-          <div>
-            <span>
-              효율
-            </span>
-            <strong>
-              {roll.efficiency}%
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={
-          styles.diagramScroll
-        }
-      >
-        <svg
-          className={
-            styles.diagram
-          }
-          viewBox={`0 0 ${viewWidth} ${viewHeight}`}
-          width={svgWidth}
-          style={{
-            height:
-              `${screenHeight}px`,
-          }}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`${roll.color} 재단도`}
-        >
-          <rect
-            x="0"
-            y="0"
-            width={FILM_WIDTH}
-            height={usedLength}
-            className={
-              styles.filmBackground
-            }
-          />
-
-          {roll.placements.map(
-            (piece, pieceIndex) => (
-              <g
-                key={
-                  piece.id
-                }
-              >
-                <rect
-                  x={piece.x}
-                  y={piece.y}
-                  width={
-                    piece.width
-                  }
-                  height={
-                    piece.height
-                  }
-                  className={
-                    styles.pieceRect
-                  }
-                />
-
-                <text
-                  x={
-                    piece.x +
-                    piece.width /
-                      2
-                  }
-                  y={
-                    piece.y +
-                    Math.min(
-                      piece.height /
-                        2,
-                      170
-                    )
-                  }
-                  className={
-                    styles.pieceTitle
-                  }
-                  textAnchor="middle"
-                >
-                  {piece.location} ·{" "}
-                  {piece.part}
-                  {piece.quantity >
-                  1
-                    ? ` ${
-                        piece.quantityIndex
-                      }`
-                    : ""}
-                </text>
-
-                <text
-                  x={
-                    piece.x +
-                    piece.width /
-                      2
-                  }
-                  y={
-                    piece.y +
-                    Math.min(
-                      piece.height /
-                        2 +
-                        90,
-                      270
-                    )
-                  }
-                  className={
-                    styles.pieceSize
-                  }
-                  textAnchor="middle"
-                >
-                  {
-                    piece.originalWidth
-                  }
-                  ×
-                  {
-                    piece.originalHeight
-                  }
-                  mm
-                </text>
-
-                <text
-                  x={
-                    piece.x +
-                    piece.width /
-                      2
-                  }
-                  y={
-                    piece.y +
-                    Math.min(
-                      piece.height /
-                        2 +
-                        170,
-                      350
-                    )
-                  }
-                  className={
-                    styles.pieceColor
-                  }
-                  textAnchor="middle"
-                >
-                  {piece.color}
-                  {piece.rotated
-                    ? " · 회전"
-                    : ""}
-                </text>
-
-                <text
-                  x={
-                    piece.x +
-                    12
-                  }
-                  y={
-                    piece.y +
-                    35
-                  }
-                  className={
-                    styles.pieceNumber
-                  }
-                >
-                  #
-                  {pieceIndex +
-                    1}
-                </text>
-              </g>
-            )
-          )}
-
-          {meterMarks.map(
-            (mark) => (
-              <g
-                key={
-                  `mark-${mark}`
-                }
-              >
-                <line
-                  x1={
-                    FILM_WIDTH
-                  }
-                  y1={mark}
-                  x2={
-                    FILM_WIDTH +
-                    25
-                  }
-                  y2={mark}
-                  className={
-                    styles.rulerLine
-                  }
-                />
-
-                <text
-                  x={rulerX + 20}
-                  y={mark + 15}
-                  className={
-                    styles.rulerText
-                  }
-                >
-                  {numberText(
-                    mark
-                  )}
-                  mm
-                </text>
-              </g>
-            )
-          )}
-
-          <line
-            x1={FILM_WIDTH}
-            y1="0"
-            x2={FILM_WIDTH}
-            y2={usedLength}
-            className={
-              styles.rulerAxis
-            }
-          />
-        </svg>
-      </div>
-
-      <div
-        className={
-          styles.pieceTable
-        }
-      >
-        <div
-          className={
-            styles.pieceTableHeader
-          }
-        >
-          <span>#</span>
-          <span>위치</span>
-          <span>부위</span>
-          <span>컬러</span>
-          <span>재단 사이즈</span>
-        </div>
-
-        {roll.placements.map(
-          (piece, pieceIndex) => (
-            <div
-              className={
-                styles.pieceTableRow
-              }
-              key={
-                `table-${piece.id}`
-              }
-            >
-              <span>
-                {pieceIndex + 1}
-              </span>
-
-              <span>
-                {piece.location}
-              </span>
-
-              <span>
-                {piece.part}
-              </span>
-
-              <span>
-                {piece.color}
-              </span>
-
-              <span>
-                {
-                  piece.originalWidth
-                }
-                ×
-                {
-                  piece.originalHeight
-                }
-                mm
-                {piece.rotated
-                  ? " (회전)"
-                  : ""}
-              </span>
-            </div>
-          )
-        )}
-      </div>
-    </article>
-  );
-                     }
-                 
