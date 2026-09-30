@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../../lib/supabase";
 
 const EXPENSE_TYPES = [
@@ -90,6 +90,8 @@ export default function WorkerWorkReport({
   const [beforePreviews, setBeforePreviews] = useState([]);
   const [afterPreviews, setAfterPreviews] = useState([]);
 
+  const submitting = useRef(false);
+  const uploadedFiles = useRef(new Set());
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -248,33 +250,26 @@ export default function WorkerWorkReport({
       };
     }
 
-    const formData = new FormData();
-
-    formData.append("siteId", siteId);
-    formData.append("photoType", photoType);
-
-    files.forEach((file) => {
+    // Record each successful file so a later upload/save failure can be retried
+    // without uploading the earlier files again while this form remains open.
+    for (const file of files) {
+      if (uploadedFiles.current.has(file)) continue;
+      const formData = new FormData();
+      formData.append("siteId", siteId);
+      formData.append("photoType", photoType);
       formData.append("photos", file);
-    });
-
-    const response = await fetch("/api/worker/site-photos", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: formData,
-    });
-
-    const result = await response.json().catch(() => null);
-
-    if (!response.ok || !result?.success) {
-      throw new Error(
-        result?.error ||
-          `${photoType} 사진 등록 중 오류가 발생했습니다.`,
-      );
+      const response = await fetch("/api/worker/site-photos", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || "사진 등록 중 오류가 발생했습니다.");
+      }
+      uploadedFiles.current.add(file);
     }
-
-    return result;
+    return { success: true, count: files.length };
   }
 
   async function saveReport({
@@ -347,7 +342,7 @@ export default function WorkerWorkReport({
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (saving) {
+    if (submitting.current) {
       return;
     }
 
@@ -368,6 +363,7 @@ export default function WorkerWorkReport({
       return;
     }
 
+    submitting.current = true;
     setSaving(true);
 
     try {
@@ -388,28 +384,15 @@ export default function WorkerWorkReport({
         });
       }
 
-      /*
-       * 2. 완료보고 / 실제자재 / 경비
-       *
-       * 이 단계에서는 work_items / work_photos에
-       * 아무것도 등록하지 않습니다.
-       */
-      setMessage("📝 완료보고를 저장하고 있습니다...");
-
-      const reportResult = await saveReport({
-        accessToken,
-      });
-
-      /*
-       * 3. 시공 완료 사진
-       */
+      // Save all evidence while the report is still editable. Only the final
+      // request transitions it to pending and freezes further photo changes.
       setMessage("📷 시공 완료 사진을 등록하고 있습니다...");
-
       const afterResult = await uploadPhotos({
-        accessToken,
-        photoType: "after",
-        files: afterFiles,
+        accessToken, photoType: "after", files: afterFiles,
       });
+
+      setMessage("📝 완료보고와 자재·경비를 저장하고 있습니다...");
+      const reportResult = await saveReport({ accessToken });
 
       /*
        * 중요
@@ -447,6 +430,7 @@ export default function WorkerWorkReport({
         }`,
       );
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
