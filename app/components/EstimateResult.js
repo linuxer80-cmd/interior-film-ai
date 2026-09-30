@@ -27,15 +27,15 @@ function formatWon(value) {
 }
 
 function confirmationMessage(group) {
-  if (group.subjectRequiresConfirmation) return "같은 문을 촬영한 사진인지 또는 사진 속 문 개수를 확인해야 합니다. 같은 대상/별도 대상을 선택하거나 문별로 사진을 나눠주세요.";
+  if (group.subjectRequiresConfirmation) return "사진만으로 같은 문인지 또는 문 개수를 확인하기 어렵습니다. 문과 주변이 함께 보이는 사진을 추가한 뒤 다시 분석하거나 상담을 신청해주세요.";
   const reasons = group.confirmationReasons || [];
   if (reasons.some((reason) => ["unknown_scope", "conflicting_scope"].includes(reason))) {
-    return "싱크대 시공 범위를 확인해야 합니다. 사진 설정에서 상부장만, 하부장만, 상부장+하부장 중 실제 시공할 범위를 선택한 뒤 다시 분석해주세요.";
+    return "사진만으로 싱크대의 시공 범위를 확인하기 어렵습니다. 시공할 상부장이나 하부장이 잘 보이는 사진을 추가한 뒤 다시 분석하거나 상담을 신청해주세요.";
   }
   if (reasons.some((reason) => ["unclear_view", "incomplete_view"].includes(reason))) {
     return "현재 사진에서 견적에 필요한 대상의 구조나 개수를 확인하기 어렵습니다. 대상이 더 잘 보이는 사진을 추가한 뒤 다시 분석해주세요.";
   }
-  return "시공 부위 또는 범위를 확인해야 해서 사례 비교를 아직 진행하지 않았습니다. 사진 설정에서 시공 대상을 선택하거나 사진을 추가한 뒤 다시 분석해주세요.";
+  return "사진만으로 시공 부위나 범위를 확인하기 어렵습니다. 시공할 곳이 잘 보이는 사진을 추가한 뒤 다시 분석하거나 상담을 신청해주세요.";
 }
 
 export default function EstimateResult({
@@ -163,7 +163,7 @@ export default function EstimateResult({
               {group.requiresConfirmation && (
                 <div role="status" style={{ color: "#92400e", background: "#fffbeb", padding: 12, borderRadius: 10, marginTop: 12, lineHeight: 1.6 }}>
                   <p style={{ margin: 0 }}>{confirmationMessage(group)}</p>
-                  {onEditPhotos && <button type="button" onClick={onEditPhotos} style={{ marginTop: 10, padding: "10px 14px", border: "1px solid #d97706", borderRadius: 8, background: "#fff", color: "#92400e", fontWeight: 700 }}>시공 부위·사진 확인하기</button>}
+                  {onEditPhotos && <button type="button" onClick={onEditPhotos} style={{ marginTop: 10, padding: "10px 14px", border: "1px solid #d97706", borderRadius: 8, background: "#fff", color: "#92400e", fontWeight: 700 }}>사진 추가·변경하기</button>}
                 </div>
               )}
 

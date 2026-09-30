@@ -279,7 +279,6 @@ export default function CustomerEstimatePage({
 
     addImages,
     removeImage,
-    updatePhotoOptions,
     retrySimilarPhoto,
     handleAnalyze,
 
@@ -1263,7 +1262,6 @@ export default function CustomerEstimatePage({
 
             <div className={styles.uploadCard}>
               <EstimatePhotoUploader
-                onUpdatePhotoOptions={updatePhotoOptions}
                 images={images}
                 loading={loading || savingPhotos}
                 imageLoading={imageLoading}

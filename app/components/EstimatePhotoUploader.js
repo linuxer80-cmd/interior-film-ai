@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef } from "react";
-import { ESTIMATE_TARGET_OPTIONS } from "../utils/categoryUtils";
 
 export default function EstimatePhotoUploader({
   images = [],
@@ -10,7 +9,6 @@ export default function EstimatePhotoUploader({
   message = "",
   onAddImages,
   onRemoveImage,
-  onUpdatePhotoOptions,
 }) {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -78,8 +76,8 @@ export default function EstimatePhotoUploader({
         }}
       >
         최대 10장까지 선택할 수 있습니다.
-        같은 문을 여러 각도에서 찍은 사진은 AI가 비교해 한 세트로 묶습니다.
-        아래에서 같은 대상 또는 별도 대상으로 직접 지정할 수도 있습니다.
+        사진을 올린 뒤 ‘AI 분석하기’를 눌러주세요.
+        시공 부위와 같은 문을 여러 각도에서 찍었는지는 AI가 확인합니다.
       </p>
 
       {/* 휴대폰 카메라 */}
@@ -206,28 +204,6 @@ export default function EstimatePhotoUploader({
                   />
 
                   <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>사진 {index + 1}</div>
-                  <label style={{ display: "block", marginTop: 8, fontSize: 12 }}>
-                    시공 부위
-                    <select aria-label={`사진 ${index + 1} 시공 부위`} disabled={disabled}
-                      value={item.targetChoice || ""} onChange={(event) => onUpdatePhotoOptions?.(item.id, { targetChoice: event.target.value })}
-                      style={{ width: "100%", minHeight: 40, marginTop: 4, border: "1px solid #d1d5db", borderRadius: 8, background: "white", fontSize: 13 }}>
-                      <option value="">AI 자동 인식</option>
-                      {ESTIMATE_TARGET_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                  </label>
-                  {<label style={{ display: "block", marginTop: 8, fontSize: 12 }}>
-                    다른 사진과 같은 대상인가요?
-                    <select aria-label={`사진 ${index + 1} 같은 대상 선택`} disabled={disabled}
-                      value={item.subjectId || "auto"}
-                      onChange={(event) => onUpdatePhotoOptions?.(item.id, { subjectId: event.target.value })}
-                      style={{ width: "100%", minHeight: 40, marginTop: 4, border: "1px solid #d1d5db", borderRadius: 8, background: "white", fontSize: 13 }}>
-                      <option value="auto">AI가 같은 문인지 비교</option>
-                      <option value={item.id}>별도 대상 (각각 계산)</option>
-                      {images.slice(0, index).filter((photo) => !photo.subjectId || photo.subjectId === photo.id).map((photo) => (
-                        <option key={photo.id} value={photo.id}>사진 {images.findIndex((entry) => entry.id === photo.id) + 1}과 같은 대상</option>
-                      ))}
-                    </select>
-                  </label>}
 
                   <button
                     type="button"
