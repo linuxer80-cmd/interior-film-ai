@@ -371,7 +371,7 @@ export function applyEstimateTarget(analysis, choice) {
 }
 
 // A category describes an object's kind, not its physical identity.
-// Only the customer's explicit same-subject selection joins separate photos.
+// Customer choices and verified door identities join alternate views.
 export function buildEstimatePhotoGroups(photos = []) {
   const ids = new Set(photos.map((photo) => photo.id));
   const groups = new Map();
@@ -382,12 +382,13 @@ export function buildEstimatePhotoGroups(photos = []) {
     if (!groups.has(key)) groups.set(key, {
       key, subjectId, scope: getConstructionScope(analysis),
       category: analysis.category || "시공 부위", subCategory: analysis.sub_category || "",
-      requiresConfirmation: false, photos: [], photoNumbers: [],
+      requiresConfirmation: false, subjectRequiresConfirmation: false, subjectSource: photo.subjectSource || "manual", photos: [], photoNumbers: [],
     });
     const group = groups.get(key);
     group.photos.push(photo);
     group.photoNumbers.push(index + 1);
-    group.requiresConfirmation ||= Boolean(analysis.requires_confirmation || analysis.classification_confidence === "low");
+    group.subjectRequiresConfirmation ||= Boolean(analysis.subject_requires_confirmation);
+    group.requiresConfirmation ||= Boolean(analysis.subject_requires_confirmation || analysis.requires_confirmation || analysis.classification_confidence === "low");
   });
   return Array.from(groups.values());
 }
@@ -395,10 +396,15 @@ export function buildEstimatePhotoGroups(photos = []) {
 export function assignEstimateSubject(images, id, selectedId) {
   const index = images.findIndex((photo) => photo.id === id);
   if (index < 0) return images;
+  if (selectedId === "auto") return images.map((photo) => {
+    if (photo.id !== id && photo.subjectId !== id) return photo;
+    const { subjectId, ...rest } = photo;
+    return rest;
+  });
   const parent = images.slice(0, index).find((photo) => photo.id === selectedId);
   const subjectId = parent ? (parent.subjectId || parent.id) : id;
   // Move the selected root and its explicitly linked views together.
-  return images.map((photo) => photo.id === id || photo.subjectId === id ? { ...photo, subjectId } : photo);
+  return images.map((photo) => photo.id === id || photo.subjectId === id || (parent && photo.id === subjectId) ? { ...photo, subjectId } : photo);
 }
 
 export function normalizeAnalysisClassification(analysis) {
