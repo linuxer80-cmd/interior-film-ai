@@ -6,6 +6,7 @@ import { supabase } from "../../../../lib/supabase";
 import { loadMyWorkerSites, workerLoginUrl } from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
+import SiteDirections from "../../SiteDirections";
 
 function workDate(value) {
   if (!value) return "미정";
@@ -653,7 +654,7 @@ export default function WorkerSiteDetailPage() {
 
           <InfoRow
             label="주소"
-            value={site.address}
+            value={<SiteDirections site={site} />}
           />
 
           <InfoRow
@@ -960,7 +961,7 @@ export default function WorkerSiteDetailPage() {
 
             처리 순서:
 
-            1. 현장 completed
+            완료된 현장도 보고서 미작성/보완 상태라면 제출할 수 있습니다.
             2. 현장 cancelled
             3. 일반 member
             4. 완료보고 상태 조회 중
@@ -999,7 +1000,9 @@ export default function WorkerSiteDetailPage() {
               이 현장은 시공 완료 처리되었습니다.
             </div>
           </section>
-        ) : site.status === "cancelled" ? (
+        ) : null}
+
+        {site.status === "cancelled" ? (
           <section
             style={{
               marginTop: "14px",
@@ -1460,7 +1463,6 @@ export default function WorkerSiteDetailPage() {
 
         {site.my_role === "leader" &&
           site.status !== "cancelled" &&
-          site.status !== "completed" &&
           !reportLoading &&
           !reportStatus?.hasReport && (
             <div

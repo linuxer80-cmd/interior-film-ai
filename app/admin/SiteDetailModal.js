@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
@@ -79,6 +79,7 @@ export default function SiteDetailModal({
 }) {
   const [reportOpen, setReportOpen] =
     useState(false);
+  const taskSections = useRef({});
 
   /*
    * 시공자 완료보고 존재 여부
@@ -92,6 +93,20 @@ export default function SiteDetailModal({
     hasWorkerReport,
     setHasWorkerReport,
   ] = useState(null);
+  const [reviewStatus, setReviewStatus] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("site") !== String(site?.id)) return;
+    const section = params.get("section");
+    const frame = requestAnimationFrame(() => {
+      // The report form appears only after its existence has been checked.
+      const target = taskSections.current[section] || (section === "report-write" && hasWorkerReport ? taskSections.current.report : null);
+      target?.scrollIntoView({ block: "start" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [site?.id, hasWorkerReport]);
 
   const {
     reportSaving,
@@ -114,6 +129,7 @@ export default function SiteDetailModal({
   useEffect(() => {
     setReportOpen(false);
     setHasWorkerReport(null);
+    setReviewStatus(null);
 
     if (
       typeof clearReportMessage ===
@@ -346,6 +362,7 @@ export default function SiteDetailModal({
               일정 표시 / 변경
           ===================== */}
 
+          <div ref={(element) => { taskSections.current.schedule = element; }} tabIndex={-1} aria-label="시공 일정" style={{ scrollMarginTop: 16 }}>
           <SiteScheduleEditor
             site={site}
             reportOpen={reportOpen}
@@ -356,6 +373,8 @@ export default function SiteDetailModal({
               reloadSites
             }
           />
+
+          </div>
 
           {/* =====================
               현장 기본정보
@@ -395,11 +414,14 @@ export default function SiteDetailModal({
             시공자 완료보고 관리자 검수
         ========================= */}
 
+        <div ref={(element) => { taskSections.current.report = element; }} tabIndex={-1} aria-label="완료보고 검수" style={{ scrollMarginTop: 16 }}>
         <SiteWorkReportReview
           siteId={site.id}
           onReportStateChange={({
             hasReport,
+            reviewStatus: nextReviewStatus,
           }) => {
+            setReviewStatus(nextReviewStatus);
             setHasWorkerReport(
               Boolean(
                 hasReport,
@@ -407,13 +429,17 @@ export default function SiteDetailModal({
             );
           }}
         />
+        </div>
 
         {/* =========================
             현장 상태
         ========================= */}
 
         <SiteStatusControl
+          key={site.id}
           site={site}
+          hasReport={hasWorkerReport}
+          reviewStatus={reviewStatus}
           reportOpen={
             reportOpen
           }
@@ -430,11 +456,15 @@ export default function SiteDetailModal({
         ========================= */}
 
         {site.status !==
-          "completed" &&
+          "cancelled" &&
           hasWorkerReport ===
             false && (
             <section
+              ref={(element) => { taskSections.current["report-write"] = element; }}
+              tabIndex={-1}
+              aria-label="완료보고 작성"
               style={{
+                scrollMarginTop: 16,
                 marginTop:
                   "18px",
                 paddingTop:
@@ -478,11 +508,9 @@ export default function SiteDetailModal({
                         "#64748b",
                     }}
                   >
-                    실제 시공 내용,
-                    사용 자재, 현장
-                    경비와 완료사진을
-                    등록한 후 현장을
-                    완료 처리합니다.
+                    {site.status === "completed"
+                      ? "시공은 완료되었지만 보고서가 아직 없습니다. 실제 시공 내용과 완료사진을 등록해주세요."
+                      : "실제 시공 내용, 사용 자재, 현장 경비와 완료사진을 등록합니다. 보고서를 저장하면 현장도 시공 완료로 변경됩니다."}
                   </div>
 
                   {/* =====================
@@ -545,7 +573,7 @@ export default function SiteDetailModal({
         ========================= */}
 
         {site.status ===
-          "completed" && (
+          "completed" && hasWorkerReport === true && (
           <SiteCompletedReport
             companyId={
               companyId
@@ -592,6 +620,7 @@ export default function SiteDetailModal({
                 시공자 배정
             ===================== */}
 
+            <div ref={(element) => { taskSections.current.assignment = element; }} tabIndex={-1} aria-label="시공자 배정" style={{ scrollMarginTop: 16 }}>
             <SiteWorkerAssignment
               site={site}
               workers={
@@ -613,6 +642,7 @@ export default function SiteDetailModal({
                 handleAssignmentSaved
               }
             />
+            </div>
           </section>
         )}
       </div>

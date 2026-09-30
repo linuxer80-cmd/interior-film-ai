@@ -1,32 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import FilmSampleImage from "./components/FilmSampleImage";
 
 const PAGE_SIZE = 12;
-const SUPABASE_URL = (
-  process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-).replace(/\/$/, "");
-
-function getFilmSampleUrl(path) {
-  const value = String(path || "").trim();
-  if (!value) return "";
-
-  if (
-    value.startsWith("http://") ||
-    value.startsWith("https://") ||
-    value.startsWith("data:") ||
-    value.startsWith("/")
-  ) {
-    return value;
-  }
-
-  if (SUPABASE_URL) {
-    return `${SUPABASE_URL}/storage/v1/object/public/${value}`;
-  }
-
-  return value;
-}
-
 const PRODUCT_LINES = [
   { prefix: "OGW", label: "옵티컬 그레인 우드", category: "wood", filter: "wood" },
   { prefix: "SPW", label: "스페셜우드", category: "wood", filter: "wood" },
@@ -246,40 +223,7 @@ function FilterSection({ title, children }) {
 }
 
 function FilmSample({ product, size = "100%" }) {
-  if (product?.sample_image_path) {
-    return (
-      <img
-        src={getFilmSampleUrl(product.sample_image_path)}
-        alt={product.product_code || "필름"}
-        loading="lazy"
-        decoding="async"
-        style={{
-          display: "block",
-          width: size,
-          height: size === "100%" ? "auto" : size,
-          aspectRatio: "1 / 1",
-          objectFit: "cover",
-          borderRadius: "8px",
-          border: "1px solid #e5e7eb",
-          background: "#f9fafb",
-        }}
-      />
-    );
-  }
-
-  return (
-    <span
-      style={{
-        display: "block",
-        width: size,
-        height: size === "100%" ? "auto" : size,
-        aspectRatio: "1 / 1",
-        borderRadius: "8px",
-        border: "1px solid #e5e7eb",
-        background: product?.color_hex || "#ffffff",
-      }}
-    />
-  );
+  return <FilmSampleImage product={product} size={size} />;
 }
 
 export default function FilmColorPicker({

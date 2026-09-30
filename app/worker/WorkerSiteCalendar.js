@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { isUndated, koreanDay, nextWorkDay, shiftMonth, siteStatus, workerMonth } from "../utils/workerCalendar";
+import SiteDirections from "./SiteDirections";
 import styles from "./WorkerSiteCalendar.module.css";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
@@ -17,19 +18,20 @@ const dateLabel = (day) => new Intl.DateTimeFormat("ko-KR", {
 
 function SiteCard({ site, role, onOpen }) {
   const status = statuses[siteStatus(site)] || statuses.scheduled;
-  const address = [site.address, site.address_detail].filter(Boolean).join(" ") || site.region;
   return <article className={styles.siteCard}>
+    <div className={styles.siteBody}>
     <button type="button" className={styles.siteLink} onClick={() => onOpen(site.site_id)}>
       <span className={styles.siteTop}>
         <span className={styles.siteName}>{site.site_name || site.customer_name || "현장"}</span>
         <span className={styles.status} style={{ color: status.color, background: status.background }}>{status.label}</span>
       </span>
       <span className={styles.role} data-leader={role === "leader"}>{role === "leader" ? "👑 책임 팀장" : "👷 팀원"}</span>
-      {address && <span className={styles.address}>{address}</span>}
+    </button>
+      <div className={styles.siteAddress}><SiteDirections site={site} /></div>
       {site.work_type && <span className={styles.workType}>{site.work_type}</span>}
       {site.schedule_notice && <span className={styles.notice}>{site.schedule_notice}</span>}
-      <span className={styles.openLabel}>현장 상세 보기 <span aria-hidden="true">↗</span></span>
-    </button>
+      <button type="button" className={styles.openLabel} onClick={() => onOpen(site.site_id)}>현장 상세 보기 <span aria-hidden="true">↗</span></button>
+    </div>
     {site.customer_phone && <a className={styles.callLink} href={`tel:${site.customer_phone}`}>고객에게 전화</a>}
   </article>;
 }

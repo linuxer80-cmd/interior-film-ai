@@ -954,24 +954,8 @@ export async function POST(request) {
       );
     }
 
-    /* -------------------------------------------------------
-       기존 completed 현장 차단
-    ------------------------------------------------------- */
-
-    if (
-      site.status === "completed"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "이미 시공 완료 처리된 현장입니다.",
-        },
-        {
-          status: 409,
-        }
-      );
-    }
+    // A manager may finish a site before its report is submitted.
+    // Report state below still blocks duplicate/past-approved submissions.
 
     /* -------------------------------------------------------
        기존 완료보고 확인

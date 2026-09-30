@@ -63,6 +63,13 @@ test('missing after photo stays missing rather than repeating the before photo',
   assert.equal(h.signed.length, 0);
 });
 
+test('history reference uses its owned work item and supports a legacy URL without inventing an after image', async () => {
+  const h = route([photo({ photo_type: 'history', storage_path: null, photo_url: 'https://example.supabase.co/storage/v1/object/public/work-photos/history/legacy.jpg' })]);
+  assert.equal((await h.post({ work_item_id: WORK, photo_type: 'history' })).body.signed_url, 'signed:history/legacy.jpg');
+  assert.equal((await h.post({ work_item_id: WORK, photo_type: 'after' })).body.found, false);
+  assert.equal((await h.post({ work_item_id: OTHER, photo_type: 'history' })).status, 404);
+});
+
 test('legacy storage URL is normalized, missing objects fall back to another registered photo', async () => {
   const h = route([photo(), photo({ storage_path: null, photo_url: 'https://example.supabase.co/storage/v1/object/sign/work-photos/history/good.jpg?token=old' })], ['history/1789133498662.jpg']);
   const result = await h.post({ work_item_id: WORK, photo_type: 'before' });

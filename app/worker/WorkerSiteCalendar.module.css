@@ -46,7 +46,7 @@
 .day[data-selected="true"] { background: #2563eb; border-color: #2563eb; color: #fff; box-shadow: 0 3px 8px #2563eb25; }
 .day[data-selected="true"] .dayNumber { color: #fff; }
 .day[data-selected="true"][data-today="true"] .dayNumber { box-shadow: inset 0 0 0 1.5px #ffffffbb; }
-.day:focus-visible, .siteLink:focus-visible, .callLink:focus-visible, .monthActions button:focus-visible, .refreshButton:focus-visible { outline: 3px solid #0f766e; outline-offset: 2px; }
+.day:focus-visible, .siteLink:focus-visible, .callLink:focus-visible, .directionsLink:focus-visible, .directionsHelp a:focus-visible, .openLabel:focus-visible, .monthActions button:focus-visible, .refreshButton:focus-visible { outline: 3px solid #0f766e; outline-offset: 2px; }
 .calendarFooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; color: #64748b; font-size: 11px; }
 .legend { display: flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border: 1px solid #93c5fd; border-radius: 3px; background: #dbeafe; }
@@ -59,16 +59,22 @@
 .agendaCount { padding: 5px 8px; border-radius: 8px; background: #f1f5f9; color: #64748b; font-size: 11px; font-weight: 700; }
 .siteList { display: grid; gap: 12px; }
 .siteCard { border: 1px solid #e2e8f0; border-radius: 13px; overflow: hidden; }
-.siteLink { display: block; width: 100%; padding: 16px; text-align: left; border: 0; background: #fff; color: inherit; font-family: inherit; cursor: pointer; }
+.siteBody { padding: 16px; }
+.siteLink { display: block; width: 100%; padding: 0; text-align: left; border: 0; background: #fff; color: inherit; font-family: inherit; cursor: pointer; }
 .siteTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
 .siteName { font-size: 17px; font-weight: 900; line-height: 1.45; overflow-wrap: anywhere; }
 .status { flex-shrink: 0; padding: 5px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
 .role { display: inline-block; margin-top: 10px; padding: 5px 8px; border-radius: 6px; background: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 800; }
 .role[data-leader="true"] { background: #fff7ed; color: #b45309; }
-.address { display: block; margin-top: 10px; font-size: 13px; line-height: 1.6; color: #475569; overflow-wrap: anywhere; }
+.siteAddress { margin-top: 10px; }
+.addressRow { display: flex; align-items: flex-start; gap: 10px; }
+.address { display: block; flex: 1; min-width: 0; align-self: center; font-size: 13px; line-height: 1.6; color: #475569; overflow-wrap: anywhere; }
+.directionsLink { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0; min-height: 44px; box-sizing: border-box; padding: 8px 11px; border: 1px solid #b7e4c7; border-radius: 9px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.directionsHelp { margin-top: 8px; padding: 10px; border-radius: 9px; background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 400; line-height: 1.6; }
+.directionsHelp a { display: block; padding: 8px 0; color: #166534; font-weight: 700; }
 .workType { display: block; margin-top: 4px; color: #64748b; font-size: 12px; }
 .notice { display: block; margin-top: 8px; color: #b45309; font-size: 12px; line-height: 1.6; }
-.openLabel { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 11px; border-top: 1px solid #eef2f6; color: #2563eb; font-size: 12px; font-weight: 800; }
+.openLabel { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin-top: 10px; padding: 11px 0 0; border: 0; border-top: 1px solid #eef2f6; background: #fff; color: #2563eb; font-family: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .callLink { display: block; min-height: 44px; padding: 13px; border-top: 1px solid #eef2f6; background: #f8fafc; color: #334155; text-align: center; font-size: 12px; font-weight: 800; text-decoration: none; }
 .empty { padding: 22px 12px; border: 1px dashed #dbe3ed; border-radius: 12px; background: #f8fafc; text-align: center; }
 .empty strong { font-size: 13px; color: #475569; }

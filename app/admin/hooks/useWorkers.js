@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { payAmount, payDate } from "../../utils/workerPay";
+import { koreanDay } from "../../utils/workerCalendar";
 
 export default function useWorkers({
   companyId,
@@ -104,6 +106,8 @@ export default function useWorkers({
             name,
             phone,
             daily_wage,
+            leader_allowance,
+            pay_rate_effective_from,
             position,
             specialties,
             memo,
@@ -219,6 +223,12 @@ export default function useWorkers({
         };
       }
 
+      const allowance = payAmount(form?.leader_allowance ?? 0);
+      const effectiveFrom = payDate(form?.pay_rate_effective_from);
+      if (payAmount(dailyWage) === null || allowance === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
+        return { success: false, error: "일당, 팀장수당과 적용 시작일을 확인해주세요." };
+      }
+
       setWorkersLoading(true);
       setWorkersMessage("");
 
@@ -236,8 +246,9 @@ export default function useWorkers({
 
             phone,
 
-            daily_wage:
-              dailyWage,
+            daily_wage: dailyWage,
+            leader_allowance: allowance,
+            pay_rate_effective_from: effectiveFrom,
 
             /*
              * 기존 컬럼은 DB에 그대로 유지한다.
@@ -352,6 +363,12 @@ export default function useWorkers({
         };
       }
 
+      const allowance = payAmount(form?.leader_allowance ?? 0);
+      const effectiveFrom = payDate(form?.pay_rate_effective_from);
+      if (payAmount(dailyWage) === null || allowance === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
+        return { success: false, error: "일당, 팀장수당과 적용 시작일을 확인해주세요." };
+      }
+
       setWorkersLoading(true);
       setWorkersMessage("");
 
@@ -364,8 +381,11 @@ export default function useWorkers({
           .update({
             phone,
 
-            daily_wage:
-              dailyWage,
+            ...(form?.update_pay_rate === false ? {} : {
+              daily_wage: dailyWage,
+              leader_allowance: allowance,
+              pay_rate_effective_from: effectiveFrom,
+            }),
 
             updated_at:
               new Date().toISOString(),

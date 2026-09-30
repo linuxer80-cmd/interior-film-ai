@@ -8,8 +8,10 @@ import {
 
 import {
   normalizeCategory,
-  selectEstimateCases,
 } from "../../utils/categoryUtils";
+
+import { loadVisualCandidates, readVisualSearchRequest, verifyVisualCandidates, VISUAL_MODEL } from "../../../lib/visualCaseSearch";
+import { calculateVisualEstimate, visualSearchMessage } from "../../utils/visualEstimate";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +20,7 @@ const EMBEDDING_MODEL =
   "text-embedding-3-small";
 
 const DEFAULT_MATCH_THRESHOLD = 0.65;
-const DEFAULT_MATCH_COUNT = 20;
+const DEFAULT_MATCH_COUNT = 50;
 
 const MIN_MATCH_THRESHOLD = 0;
 const MAX_MATCH_THRESHOLD = 1;
@@ -26,7 +28,6 @@ const MAX_MATCH_THRESHOLD = 1;
 const MIN_MATCH_COUNT = 1;
 const MAX_MATCH_COUNT = 50;
 
-const MAX_ESTIMATE_CASES = 10;
 
 /*
  * =========================================================
@@ -190,25 +191,6 @@ function roundSimilarity(
   );
 }
 
-function roundMoneyToThousand(
-  value
-) {
-  const number =
-    Number(value);
-
-  if (
-    !Number.isFinite(number)
-  ) {
-    return null;
-  }
-
-  return (
-    Math.round(
-      number / 1000
-    ) * 1000
-  );
-}
-
 /*
  * =========================================================
  * OpenAI Embedding
@@ -232,6 +214,7 @@ async function createEmbedding(
       "https://api.openai.com/v1/embeddings",
       {
         method: "POST",
+        signal: AbortSignal.timeout(12000),
 
         headers: {
           "Content-Type":
@@ -357,12 +340,6 @@ async function getSimilarCases({
  * =========================================================
  */
 
-function filterSimilarCases({ rows, category, subCategory, constructionScope }) {
-  return selectEstimateCases(rows, {
-    category, sub_category: subCategory, construction_scope: constructionScope,
-  }, MAX_ESTIMATE_CASES);
-}
-
 /*
  * =========================================================
  * 실제 시공금액 기반 견적 계산
@@ -371,122 +348,8 @@ function filterSimilarCases({ rows, category, subCategory, constructionScope }) 
  * =========================================================
  */
 
-function calculateEstimate({
-  rows,
-  matchThreshold,
-}) {
-  const cases =
-    Array.isArray(rows)
-      ? rows
-      : [];
-
-  if (!cases.length) {
-    return null;
-  }
-
-  let weightedCostTotal = 0;
-  let weightTotal = 0;
-
-  for (
-    const item of cases
-  ) {
-    const cost =
-      Number(
-        item?.actual_cost ||
-          0
-      );
-
-    const similarity =
-      Number(
-        item?.similarity ||
-          0
-      );
-
-    if (
-      cost > 0 &&
-      similarity >=
-        matchThreshold
-    ) {
-      const weight =
-        similarity *
-        similarity;
-
-      weightedCostTotal +=
-        cost * weight;
-
-      weightTotal +=
-        weight;
-    }
-  }
-
-  if (
-    weightTotal <= 0
-  ) {
-    return null;
-  }
-
-  const weightedAverage =
-    weightedCostTotal /
-    weightTotal;
-
-  const min =
-    roundMoneyToThousand(
-      weightedAverage * 0.9
-    );
-
-  const max =
-    roundMoneyToThousand(
-      weightedAverage * 1.1
-    );
-
-  const average =
-    roundMoneyToThousand(
-      weightedAverage
-    );
-
-  const topSimilarity =
-    Math.max(
-      ...cases.map(
-        (item) =>
-          Number(
-            item?.similarity ||
-              0
-          )
-      )
-    );
-
-  let confidence =
-    "낮음";
-
-  if (
-    cases.length >= 5 &&
-    topSimilarity >= 0.85
-  ) {
-    confidence =
-      "높음";
-  } else if (
-    cases.length >= 2 &&
-    topSimilarity >= 0.75
-  ) {
-    confidence =
-      "보통";
-  }
-
-  return {
-    min,
-    max,
-    average,
-
-    count:
-      cases.length,
-
-    confidence,
-
-    top_similarity:
-      roundSimilarity(
-        topSimilarity
-      ),
-  };
+function calculateEstimate({ rows }) {
+  return calculateVisualEstimate(rows);
 }
 
 /*
@@ -532,11 +395,14 @@ function makePublicCases(
             0
         ),
 
-      similarity:
-        roundSimilarity(
-          item?.similarity
-        ),
+      text_similarity: roundSimilarity(item?.similarity),
 
+      visual_verified: item.visual_verified === true,
+      visual_rank: item.visual_rank,
+      match_reason: item.match_reason,
+      matching_features: item.matching_features,
+      differences: item.differences,
+      reference_path: item.reference_path || null,
       before_path:
         item?.before_path ||
         null,
@@ -561,6 +427,10 @@ async function insertUsageEvent({
   subCategory,
   resultCount,
   topSimilarity,
+  visualStatus,
+  visualUsage,
+  candidateCount,
+  analysisId, photoIndices, pricingCases, estimate,
 }) {
   const {
     data,
@@ -584,13 +454,21 @@ async function insertUsageEvent({
         provider:
           "openai",
 
-        model:
-          EMBEDDING_MODEL,
+        model: candidateCount ? VISUAL_MODEL : EMBEDDING_MODEL,
 
         reference_id:
           null,
 
         metadata: {
+          analysis_id: typeof analysisId === "string" && /^[0-9a-f-]{36}$/i.test(analysisId) ? analysisId : null,
+          photo_indices: Array.isArray(photoIndices) ? photoIndices.filter((index) => Number.isInteger(index) && index >= 0 && index < 10).slice(0, 10) : [],
+          matched_cases: pricingCases.map((row) => ({ work_item_id: row.work_item_id, actual_cost: Number(row.actual_cost), visual_rank: row.visual_rank, match_reason: row.match_reason })),
+          estimate,
+          retrieval_model: EMBEDDING_MODEL,
+          visual_model: candidateCount ? VISUAL_MODEL : null,
+          visual_status: visualStatus,
+          visual_candidate_count: candidateCount,
+          visual_usage: visualUsage,
           company_slug:
             company.slug,
 
@@ -653,8 +531,9 @@ export async function POST(
   request
 ) {
   try {
-    const body =
-      await request.json();
+    let body, images;
+    try { ({ body, images } = await readVisualSearchRequest(request)); }
+    catch { return NextResponse.json({ success: false, error: "비교 사진과 요청 정보를 확인해주세요. 사진은 1~2장, 합계 3MB 이하입니다." }, { status: 400 }); }
 
     const companySlug =
       normalizeCompanySlug(
@@ -765,6 +644,8 @@ export async function POST(
         }
       );
     }
+
+    if (!images.length) return NextResponse.json({ success: true, estimate: null, similar_cases: [], search_status: "images_required", search_message: visualSearchMessage("images_required") });
 
     /*
      * =====================================================
@@ -942,14 +823,18 @@ export async function POST(
      * =====================================================
      */
 
-    const filteredCases =
-      filterSimilarCases({
-        rows:
-          rawCases,
-        category,
-        subCategory,
-        constructionScope: body?.construction_scope,
-      });
+    let visual = { rows: [], status: "no_candidates", usage: null };
+    let candidateCount = 0;
+    try {
+      const analysis = { category, sub_category: subCategory, construction_scope: body?.construction_scope };
+      const candidates = await loadVisualCandidates(supabase, company.id, rawCases, analysis, process.env.NEXT_PUBLIC_SUPABASE_URL);
+      candidateCount = candidates.length;
+      visual = await verifyVisualCandidates({ images, candidates, analysis, apiKey: process.env.OPENAI_API_KEY });
+    } catch (error) {
+      console.warn("시공사례 사진 비교 실패:", error.message);
+      visual = { rows: [], status: "visual_unavailable", usage: error.visualUsage || null };
+    }
+    const filteredCases = visual.rows;
 
     /*
      * =====================================================
@@ -1014,6 +899,8 @@ export async function POST(
           rawCases.length,
 
         topSimilarity,
+        visualStatus: visual.status, visualUsage: visual.usage, candidateCount,
+        analysisId: body?.analysis_id, photoIndices: body?.photo_indices, pricingCases: filteredCases, estimate,
       });
 
     /*
@@ -1062,29 +949,9 @@ export async function POST(
     return NextResponse.json({
       success: true,
 
-      estimate:
-        estimate
-          ? {
-              min:
-                estimate.min,
-
-              max:
-                estimate.max,
-
-              average:
-                estimate.average,
-
-              count:
-                estimate.count,
-
-              confidence:
-                estimate.confidence,
-
-              top_similarity:
-                estimate
-                  .top_similarity,
-            }
-          : null,
+      estimate,
+      search_status: visual.status,
+      search_message: visualSearchMessage(visual.status),
 
       similar_cases:
         makePublicCases(

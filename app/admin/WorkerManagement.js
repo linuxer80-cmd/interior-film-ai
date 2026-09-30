@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { koreanDay } from "../utils/workerCalendar";
+import { payAmount, payDate } from "../utils/workerPay";
 
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
@@ -27,6 +29,8 @@ const EMPTY_FORM = {
   name: "",
   phone: "",
   daily_wage: "",
+  leader_allowance: "0",
+  pay_rate_effective_from: "",
 };
 
 export default function WorkerManagement({
@@ -196,6 +200,7 @@ export default function WorkerManagement({
 
     setForm({
       ...EMPTY_FORM,
+      pay_rate_effective_from: koreanDay(),
     });
 
     setLocalMessage("");
@@ -212,6 +217,8 @@ export default function WorkerManagement({
     setEditingWorker(worker);
 
     setForm({
+      leader_allowance: String(worker?.leader_allowance ?? 0),
+      pay_rate_effective_from: koreanDay(),
       name:
         worker?.name || "",
 
@@ -249,6 +256,7 @@ export default function WorkerManagement({
 
     setForm({
       ...EMPTY_FORM,
+      pay_rate_effective_from: koreanDay(),
     });
 
     setLocalMessage("");
@@ -521,11 +529,25 @@ export default function WorkerManagement({
       return;
     }
 
+    const allowance = payAmount(form.leader_allowance === "" ? 0 : form.leader_allowance);
+    const effectiveFrom = payDate(form.pay_rate_effective_from);
+    const rateChanged = !editingWorker || Number(editingWorker.daily_wage) !== wageNumber || Number(editingWorker.leader_allowance ?? 0) !== allowance;
+    if (payAmount(wageNumber) === null || allowance === null) {
+      setLocalMessage("❌ 일당과 팀장수당은 0~100,000,000원 사이의 정수로 입력해주세요.");
+      return;
+    }
+    if (rateChanged && (!effectiveFrom || effectiveFrom > koreanDay() || (editingWorker?.pay_rate_effective_from && effectiveFrom < editingWorker.pay_rate_effective_from))) {
+      setLocalMessage("❌ 적용 시작일은 이전 단가 적용일 이후부터 오늘 사이로 지정해주세요.");
+      return;
+    }
+
     const submitForm = {
       name: cleanName,
       phone: cleanPhone,
-      daily_wage:
-        cleanDailyWage,
+      daily_wage: cleanDailyWage,
+      leader_allowance: allowance,
+      pay_rate_effective_from: effectiveFrom,
+      update_pay_rate: rateChanged,
     };
 
     try {
@@ -533,7 +555,7 @@ export default function WorkerManagement({
         await registerMyself(submitForm);
         setShowForm(false);
         setSelfRegistration(false);
-        setForm({ ...EMPTY_FORM });
+        setForm({ ...EMPTY_FORM, pay_rate_effective_from: koreanDay() });
         setLocalMessage("✅ 내 시공자 계정이 등록되었습니다.");
         return;
       }
@@ -577,6 +599,7 @@ export default function WorkerManagement({
 
         setForm({
           ...EMPTY_FORM,
+          pay_rate_effective_from: koreanDay(),
         });
 
         setLocalMessage("");
@@ -634,6 +657,7 @@ export default function WorkerManagement({
 
       setForm({
         ...EMPTY_FORM,
+        pay_rate_effective_from: koreanDay(),
       });
 
       setLocalMessage("");
@@ -931,7 +955,7 @@ export default function WorkerManagement({
           </button>
           <button type="button" onClick={() => {
             setEditingWorker(null);
-            setForm({ ...EMPTY_FORM });
+            setForm({ ...EMPTY_FORM, pay_rate_effective_from: koreanDay() });
             setLocalMessage("");
             setSelfRegistration(true);
             setShowForm(true);

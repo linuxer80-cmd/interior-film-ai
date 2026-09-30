@@ -30,7 +30,7 @@ export async function POST(request) {
     if (!/^[a-z0-9-]+$/.test(slug)) {
       return NextResponse.json({ success: false, error: "올바른 업체 정보가 필요합니다." }, { status: 400 });
     }
-    if (workItemId ? (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(workItemId) || !["before", "after"].includes(photoType)) : !requestedPath) {
+    if (workItemId ? (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(workItemId) || !["before", "after", "history"].includes(photoType)) : !requestedPath) {
       return NextResponse.json({ success: false, error: "올바른 시공사진 정보가 필요합니다." }, { status: 400 });
     }
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {

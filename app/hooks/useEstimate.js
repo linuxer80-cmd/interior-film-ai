@@ -14,15 +14,15 @@ import {
   assignEstimateSubject,
 } from "../utils/categoryUtils";
 
+import { mergeDoorViews } from "../utils/doorEstimate";
+
 const MAX_IMAGES = 10;
 const MATCH_THRESHOLD = 0.65;
 
 /*
  * 모바일 / 서버 부하를 고려한 동시 처리 수
  *
- * AI 분석:
- * 한꺼번에 너무 많이 보내면 OpenAI/Vercel 요청이 몰릴 수 있으므로
- * 최대 3개씩 처리합니다.
+ * AI 분석: 최대 10장을 한 번에 비교해 같은 문의 다른 각도를 묶습니다.
  *
  * 유사검색:
  * 그룹별 검색은 최대 3개씩 처리합니다.
@@ -30,7 +30,6 @@ const MATCH_THRESHOLD = 0.65;
  * 사진 업로드:
  * 최대 3개씩 처리합니다.
  */
-const AI_ANALYSIS_CONCURRENCY = 3;
 const SIMILAR_SEARCH_CONCURRENCY = 3;
 const PHOTO_UPLOAD_CONCURRENCY = 3;
 
@@ -574,79 +573,26 @@ export default function useEstimate({
 
   /*
    * =========================================================
-   * 사진 한 장 AI 분석
+   * 여러 사진 AI 분석 및 동일 문 판별
    * =========================================================
    */
 
-  async function analyzeOnePhoto(
-    imageItem,
-    index,
-    total
-  ) {
-    const formData =
-      new FormData();
-
-    formData.append(
-      "image",
-      imageItem.file
-    );
-
-    formData.append("purpose", "estimate");
-    formData.append(
-      "photoType",
-      "before"
-    );
-
-    if (
-      normalizedCompanySlug
-    ) {
-      formData.append(
-        "company_slug",
-        normalizedCompanySlug
-      );
+  async function analyzePhotos() {
+    const form = new FormData();
+    form.append("company_slug", normalizedCompanySlug);
+    images.forEach((photo) => form.append("images", photo.file));
+    const response = await fetch("/api/estimate-analyze", { method: "POST", body: form });
+    const result = await readJsonSafely(response);
+    if (!response.ok || !result?.success || !Array.isArray(result.photos) || result.photos.length !== images.length ||
+      new Set(result.photos.map((photo) => photo.index)).size !== images.length ||
+      result.photos.some((photo) => !Number.isInteger(photo.index) || photo.index < 0 || photo.index >= images.length || !photo.analysis)) {
+      throw new Error(result?.error || "사진 분석 결과가 불완전합니다.");
     }
-
-    const response =
-      await fetch(
-        "/api/analyze",
-        {
-          method:
-            "POST",
-
-          body:
-            formData,
-        }
-      );
-
-    const result =
-      await readJsonSafely(
-        response
-      );
-
-    if (
-      !response.ok ||
-      !result?.analysis
-    ) {
-      throw new Error(
-        result?.error ||
-          `${
-            index + 1
-          }번째 사진 분석 실패`
-      );
-    }
-
-    return {
-      ...imageItem,
-
-      analysis:
-        applyEstimateTarget(result.analysis, imageItem.targetChoice),
-
-      analysisIndex:
-        index,
-
-      analysisTotal:
-        total,
-    };
+    const analyses = new Map(result.photos.map((photo) => [photo.index, photo.analysis]));
+    return mergeDoorViews(images.map((photo, index) => ({ ...photo,
+      analysis: applyEstimateTarget(analyses.get(index), photo.targetChoice),
+      analysisIndex: index, analysisTotal: images.length, analysisRecordId: result.analysis_id || null,
+    })));
   }
 
   /*
@@ -663,7 +609,7 @@ export default function useEstimate({
       const response = await fetch("/api/similar-photo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_slug: normalizedCompanySlug,
-          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side } : { path }),
+          ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side === "reference" ? "history" : side } : { path }),
         }),
       });
       const result = await readJsonSafely(response);
@@ -723,10 +669,6 @@ export default function useEstimate({
         ""
       }`,
 
-      `사진 수: ${
-        group.photos.length
-      }`,
-
       ...analyses.map(
         (
           item,
@@ -735,7 +677,7 @@ export default function useEstimate({
           `사진 ${
             index + 1
           }: ${
-            item?.description ||
+            item?.observable_structure || item?.description ||
             ""
           }`
       ),
@@ -745,43 +687,14 @@ export default function useEstimate({
       )}`,
     ].join("\n");
 
-    const response =
-      await fetch(
-        "/api/similar-estimate",
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              company_slug:
-                normalizedCompanySlug,
-
-              text:
-                searchText,
-
-              category:
-                group.category ||
-                null,
-
-              sub_category:
-                group.subCategory ||
-                null,
-
-              construction_scope: group.scope,
-              match_threshold:
-                MATCH_THRESHOLD,
-
-              match_count:
-                20,
-            }),
-        }
-      );
+    const form = new FormData();
+    [...group.photos].sort((a, b) => Number(b.analysis?.view_completeness === "full") - Number(a.analysis?.view_completeness === "full")).slice(0, 2).forEach((photo) => form.append("images", photo.file));
+    form.append("metadata", JSON.stringify({
+      company_slug: normalizedCompanySlug, text: searchText,
+      category: group.category || null, sub_category: group.subCategory || null,
+      construction_scope: group.scope, analysis_id: group.photos[0]?.analysisRecordId || null, photo_indices: group.photos.map((photo) => photo.analysisIndex), match_threshold: MATCH_THRESHOLD, match_count: 50,
+    }));
+    const response = await fetch("/api/similar-estimate", { method: "POST", body: form });
 
     const result =
       await readJsonSafely(
@@ -806,9 +719,9 @@ export default function useEstimate({
           ? result.similar_cases
           : [],
 
-      estimate:
-        result?.estimate ||
-        null,
+      estimate: result?.estimate || null,
+      searchStatus: result?.search_status || "visual_unavailable",
+      searchMessage: result?.search_message || "",
     };
   }
 
@@ -822,16 +735,16 @@ export default function useEstimate({
    */
 
   async function completeSimilarGroup(group) {
-    const { cases, estimate } = await findSimilarCases(group);
-    return { ...group, similarItems: cases.slice(0, 2).map((item) => ({
-      ...item, beforeStatus: "loading", afterStatus: "loading",
+    const { cases, estimate, searchStatus, searchMessage } = await findSimilarCases(group);
+    return { ...group, searchStatus, searchMessage, similarItems: cases.slice(0, 2).map((item) => ({
+      ...item, beforeStatus: "loading", afterStatus: "loading", referenceStatus: item.reference_path ? "loading" : "missing",
     })), estimate };
   }
 
   async function loadSimilarImages(completedGroups, runId) {
     // Update each side independently: one slow request must not hide other photos.
     const tasks = completedGroups.flatMap((group) => (group.similarItems || []).flatMap((item, index) =>
-      ["before", "after"].map((side) => ({ group, item, index, side }))));
+      ["before", "after", ...(item.reference_path ? ["reference"] : [])].map((side) => ({ group, item, index, side }))));
     await mapWithConcurrency(tasks, 6, async ({ group, item, index, side }) => {
       const { url, status } = await getSignedImageUrl(item, side);
       if (runRef.current !== runId) return;
@@ -846,7 +759,7 @@ export default function useEstimate({
   function retrySimilarPhoto(groupKey, index, side) {
     const group = groups.find((entry) => entry.key === groupKey);
     const item = group?.similarItems?.[index];
-    if (!item || !["before", "after"].includes(side) || item[`${side}Status`] === "loading") return;
+    if (!item || !["before", "after", "reference"].includes(side) || item[`${side}Status`] === "loading") return;
     const runId = runRef.current;
     setGroups((current) => current.map((entry) => entry.key !== groupKey ? entry : {
       ...entry, similarItems: entry.similarItems.map((photo, i) => i !== index ? photo : {
@@ -1262,35 +1175,10 @@ export default function useEstimate({
        */
 
       setMessage(
-        `AI 사진 분석 중... 0/${images.length}`
+        `사진 ${images.length}장의 시공 부위와 같은 문 여부를 비교하고 있습니다...`
       );
 
-      let analyzedCount = 0;
-
-      const analyzedPhotos =
-        await mapWithConcurrency(
-          images,
-          AI_ANALYSIS_CONCURRENCY,
-          async (
-            imageItem,
-            index
-          ) => {
-            const result =
-              await analyzeOnePhoto(
-                imageItem,
-                index,
-                images.length
-              );
-
-            analyzedCount += 1;
-
-            setMessage(
-              `AI 사진 분석 중... ${analyzedCount}/${images.length}`
-            );
-
-            return result;
-          }
-        );
+      const analyzedPhotos = await analyzePhotos();
 
       /*
        * ===================================================
