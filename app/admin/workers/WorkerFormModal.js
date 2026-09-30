@@ -1,5 +1,7 @@
 "use client";
 
+import { koreanDay } from "../../utils/workerCalendar";
+
 function formatNumber(value) {
   if (value === null || value === undefined || value === "") {
     return "";
@@ -92,8 +94,8 @@ export default function WorkerFormModal({
               }}
             >
               {isEdit
-                ? "전화번호와 기본 일당을 수정할 수 있습니다."
-                : "이름, 전화번호, 기본 일당을 입력해주세요."}
+                ? "전화번호, 기본 일당과 팀장수당을 수정할 수 있습니다."
+                : "이름, 전화번호, 기본 일당과 팀장수당을 입력해주세요."}
             </div>
           </div>
 
@@ -197,6 +199,7 @@ export default function WorkerFormModal({
             <input
               type="text"
               inputMode="numeric"
+              aria-label="기본 일당"
               value={formatNumber(form?.daily_wage)}
               disabled={loading}
               onChange={handleWageChange}
@@ -236,9 +239,28 @@ export default function WorkerFormModal({
               lineHeight: "1.5",
             }}
           >
-            기본 일당은 시공자의 기본 급여 기준입니다.
-            현장별 실제 지급액은 추후 현장 정산에서 별도로 관리할 수 있습니다.
+            일반 시공일에는 기본 일당, 팀장으로 배정된 날에는 기본 일당에 팀장수당을 더합니다.
+            같은 업체에서 같은 날 여러 현장을 맡아도 하루 한 번 계산합니다.
           </div>
+
+          <div style={{ height: 16 }} />
+          <FieldLabel>하루 팀장수당 (추가 지급)</FieldLabel>
+          <input aria-label="하루 팀장수당" type="text" inputMode="numeric"
+            value={formatNumber(form?.leader_allowance)} disabled={loading}
+            onChange={(event) => updateField?.("leader_allowance", event.target.value.replace(/[^\d]/g, ""))}
+            placeholder="없으면 0원" style={{ ...inputStyle, textAlign: "right", fontWeight: 800 }} />
+          <p style={{ margin: "7px 0 0", color: "#1d4ed8", fontSize: 12, lineHeight: 1.6 }}>
+            팀장 근무 하루 합계: {(Number(form?.daily_wage || 0) + Number(form?.leader_allowance || 0)).toLocaleString("ko-KR")}원
+          </p>
+          <div style={{ height: 16 }} />
+          <FieldLabel required>단가 적용 시작일</FieldLabel>
+          <input aria-label="단가 적용 시작일" type="date" value={form?.pay_rate_effective_from || ""}
+            min={editingWorker?.pay_rate_effective_from || "2000-01-01"} max={koreanDay()} required disabled={loading}
+            onChange={(event) => updateField?.("pay_rate_effective_from", event.target.value)} style={inputStyle} />
+          <p style={{ margin: "7px 0 0", color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
+            일당·수당을 변경하면 이 날짜부터 새 금액을 적용하고 이전 단가는 보관합니다.
+            이번 달 전체에 적용하려면 월초 날짜를 선택하세요. 같은 적용일의 금액은 수정됩니다.
+          </p>
 
           {/* 메시지 */}
 
