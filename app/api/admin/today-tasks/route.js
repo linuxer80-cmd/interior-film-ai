@@ -33,7 +33,7 @@ export async function GET(request) {
     if (companyError) throw companyError;
     if (!company || company.is_active === false) return json({ error: "업체를 확인할 수 없습니다." }, 403);
     const [sites, reports, assignments, daily, workers] = await Promise.all([
-      allRows(db.from("sites").select("id,site_name,customer_name,status,schedule_start,schedule_end,schedule_date,region,work_type").eq("company_id", companyId).order("id")),
+      allRows(db.from("sites").select("id,site_name,customer_name,status,schedule_start,schedule_end,schedule_date,region,work_type,updated_at").eq("company_id", companyId).order("id")),
       allRows(db.from("work_reports").select("id,site_id,review_status,updated_at,created_at").eq("company_id", companyId).order("id")),
       allRows(db.from("site_workers").select("id,site_id,worker_id,role").eq("company_id", companyId).order("id")),
       allRows(db.from("site_daily_assignments").select("id,site_id,worker_id,role,work_date").eq("company_id", companyId).order("id")),
