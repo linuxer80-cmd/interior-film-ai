@@ -7,6 +7,7 @@ import { payAmount, payDate } from "../utils/workerPay";
 
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
+import CompanyLeaderAllowance from "./workers/CompanyLeaderAllowance";
 import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
 
@@ -29,7 +30,6 @@ const EMPTY_FORM = {
   name: "",
   phone: "",
   daily_wage: "",
-  leader_allowance: "0",
   pay_rate_effective_from: "",
 };
 
@@ -217,7 +217,6 @@ export default function WorkerManagement({
     setEditingWorker(worker);
 
     setForm({
-      leader_allowance: String(worker?.leader_allowance ?? 0),
       pay_rate_effective_from: koreanDay(),
       name:
         worker?.name || "",
@@ -529,11 +528,10 @@ export default function WorkerManagement({
       return;
     }
 
-    const allowance = payAmount(form.leader_allowance === "" ? 0 : form.leader_allowance);
     const effectiveFrom = payDate(form.pay_rate_effective_from);
-    const rateChanged = !editingWorker || Number(editingWorker.daily_wage) !== wageNumber || Number(editingWorker.leader_allowance ?? 0) !== allowance;
-    if (payAmount(wageNumber) === null || allowance === null) {
-      setLocalMessage("❌ 일당과 팀장수당은 0~100,000,000원 사이의 정수로 입력해주세요.");
+    const rateChanged = !editingWorker || payAmount(editingWorker.daily_wage) !== wageNumber;
+    if (payAmount(wageNumber) === null) {
+      setLocalMessage("❌ 기본 일당은 0~100,000,000원 사이의 정수로 입력해주세요.");
       return;
     }
     if (rateChanged && (!effectiveFrom || effectiveFrom > koreanDay() || (editingWorker?.pay_rate_effective_from && effectiveFrom < editingWorker.pay_rate_effective_from))) {
@@ -545,7 +543,6 @@ export default function WorkerManagement({
       name: cleanName,
       phone: cleanPhone,
       daily_wage: cleanDailyWage,
-      leader_allowance: allowance,
       pay_rate_effective_from: effectiveFrom,
       update_pay_rate: rateChanged,
     };
@@ -967,6 +964,8 @@ export default function WorkerManagement({
         {/* =====================================================
             요약
         ===================================================== */}
+
+        <CompanyLeaderAllowance />
 
         <WorkerSummary
           activeCount={

@@ -106,7 +106,6 @@ export default function useWorkers({
             name,
             phone,
             daily_wage,
-            leader_allowance,
             pay_rate_effective_from,
             position,
             specialties,
@@ -223,10 +222,9 @@ export default function useWorkers({
         };
       }
 
-      const allowance = payAmount(form?.leader_allowance ?? 0);
       const effectiveFrom = payDate(form?.pay_rate_effective_from);
-      if (payAmount(dailyWage) === null || allowance === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
-        return { success: false, error: "일당, 팀장수당과 적용 시작일을 확인해주세요." };
+      if (payAmount(dailyWage) === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
+        return { success: false, error: "기본 일당과 적용 시작일을 확인해주세요." };
       }
 
       setWorkersLoading(true);
@@ -247,7 +245,6 @@ export default function useWorkers({
             phone,
 
             daily_wage: dailyWage,
-            leader_allowance: allowance,
             pay_rate_effective_from: effectiveFrom,
 
             /*
@@ -363,10 +360,9 @@ export default function useWorkers({
         };
       }
 
-      const allowance = payAmount(form?.leader_allowance ?? 0);
       const effectiveFrom = payDate(form?.pay_rate_effective_from);
-      if (payAmount(dailyWage) === null || allowance === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
-        return { success: false, error: "일당, 팀장수당과 적용 시작일을 확인해주세요." };
+      if (payAmount(dailyWage) === null || (form?.update_pay_rate !== false && (!effectiveFrom || effectiveFrom > koreanDay()))) {
+        return { success: false, error: "기본 일당과 적용 시작일을 확인해주세요." };
       }
 
       setWorkersLoading(true);
@@ -383,7 +379,6 @@ export default function useWorkers({
 
             ...(form?.update_pay_rate === false ? {} : {
               daily_wage: dailyWage,
-              leader_allowance: allowance,
               pay_rate_effective_from: effectiveFrom,
             }),
 

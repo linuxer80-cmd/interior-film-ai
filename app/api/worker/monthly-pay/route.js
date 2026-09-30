@@ -21,10 +21,11 @@ async function rows(query) {
 
 async function loadCompany(db, company, workerIds, month, today) {
   const own = (table, fields) => db.from(table).select(fields).eq("company_id", company.id).in("worker_id", workerIds).order("id");
-  const [legacy, ownDaily, rates] = await Promise.all([
+  const [legacy, ownDaily, rates, allowanceRates] = await Promise.all([
     rows(own("site_workers", "id,site_id,worker_id,role")),
     rows(own("site_daily_assignments", "id,site_id,worker_id,work_date,role")),
-    rows(own("worker_pay_rates", "id,company_id,worker_id,effective_from,daily_wage,leader_allowance")),
+    rows(own("worker_pay_rates", "id,company_id,worker_id,effective_from,daily_wage")),
+    rows(db.from("company_leader_allowance_rates").select("company_id,effective_from,amount").eq("company_id", company.id).order("effective_from")),
   ]);
   const ids = [...new Set([...legacy, ...ownDaily].map((row) => row.site_id))];
   const sites = [], daily = [];
@@ -37,7 +38,7 @@ async function loadCompany(db, company, workerIds, month, today) {
     if (completed.length) daily.push(...await rows(db.from("site_daily_assignments")
       .select("id,site_id,worker_id,work_date,role").eq("company_id", company.id).in("site_id", completed.map((site) => site.id)).order("id")));
   }
-  return companyMonthPay({ company, workerIds, sites, daily, legacy, rates, month, today });
+  return companyMonthPay({ company, workerIds, sites, daily, legacy, rates, allowanceRates, month, today });
 }
 
 export async function GET(request) {
