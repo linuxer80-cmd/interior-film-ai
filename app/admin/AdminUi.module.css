@@ -56,7 +56,8 @@
 .bulkNotice { border: 1px solid #d7dfeb; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 13px; }
 .bulkFileRepair { margin-top: 12px; }
 .todayDate { margin: 7px 0 0; color: #637187; font-size: 12px; }
-.todayCounts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.todayCounts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+@media (min-width:640px) { .todayCounts { grid-template-columns: repeat(4,minmax(0,1fr)); } }
 .todayCounts button { padding: 14px 8px; min-height: 90px; min-width: 0; text-align: left; border: 1px solid #dfe6f0; border-radius: 12px; background: #fff; color: #334155; cursor: pointer; }
 .todayCounts button > span { display: block; font-size: 12px; font-weight: 700; }
 .todayCounts button > strong { display: block; margin-top: 10px; font-size: 26px; }
@@ -65,6 +66,7 @@
 .todayCounts [data-tone="orange"] > strong { color: #b45309; }
 .todayCounts [data-tone="blue"] > strong { color: #285cce; }
 .todayCounts [data-tone="purple"] > strong { color: #7c3aed; }
+.todayCounts [data-tone="red"] > strong { color: #b91c1c; }
 .todayListHeading { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 22px 0 10px; }
 .todayListHeading h3 { margin: 0; font-size: 15px; }
 .todayListHeading h3 span { margin-left: 5px; color: #637187; font-size: 12px; font-weight: 500; }
@@ -75,6 +77,7 @@
 .todayBadge { padding: 5px 7px; border-radius: 6px; color: #285cce; background: #edf3ff; font-size: 11px; font-weight: 700; }
 .todayBadge[data-tone="orange"] { color: #b45309; background: #fff7ed; }
 .todayBadge[data-tone="purple"] { color: #7c3aed; background: #f5f3ff; }
+.todayBadge[data-tone="red"] { color: #b91c1c; background: #fef2f2; }
 .todayMeta { color: #637187; font-size: 11px; }
 .todaySiteName { display: block; margin-top: 11px; font-size: 15px; overflow-wrap: anywhere; }
 .todayTask p { margin: 7px 0 12px; color: #637187; font-size: 12px; line-height: 1.6; }
