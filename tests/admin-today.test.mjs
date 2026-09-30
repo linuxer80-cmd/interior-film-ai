@@ -22,7 +22,7 @@ test('only the latest report determines review/revision; approved work never res
   assert.equal(build({ sites: [site()], reports }).counts.revision, 1);
   reports.push(report('pending', '2026-10-23T10:00:00Z'));
   const result = build({ sites: [site()], reports });
-  assert.deepEqual(result.counts, { assignment: 0, review: 1, revision: 0 });
+  assert.deepEqual(result.counts, { assignment: 0, review: 1, revision: 0, missing: 0 });
   assert.equal(result.tasks[0].section, 'report');
   assert.equal(build({ sites: [site()], reports: [report(null, '2026-10-22')] }).counts.review, 1);
 });
@@ -33,6 +33,30 @@ test('cancelled sites are excluded; completed reports can still require review',
   assert.equal(result.tasks.length, 1);
   assert.equal(result.tasks[0].siteId, 'done');
   assert.deepEqual(result.todaySites, []);
+});
+
+test('manual completion replaces assignment tasks with missing-report follow-up', () => {
+  const data = { sites: [site('s', { status: 'completed', updated_at: '2026-10-21T15:00:00Z' })] };
+  const result = build(data);
+  assert.deepEqual(result.counts, { assignment: 0, review: 0, revision: 0, missing: 1 });
+  assert.deepEqual(result.todaySites, []);
+  assert.equal(result.tasks[0].section, 'report-write');
+  assert.equal(result.tasks[0].date, TODAY);
+  data.sites[0].status = 'in_progress';
+  assert.equal(build(data).counts.missing, 0);
+  assert.equal(build(data).counts.assignment, 1);
+});
+
+test('later report submission, rejection and approval replace missing follow-up without reopening the site', () => {
+  const data = { sites: [site('s', { status: 'completed' })], reports: [] };
+  for (const [status, kind] of [['pending', 'review'], ['rejected', 'revision'], ['approved', null]]) {
+    data.reports = [report(status, TODAY)];
+    const result = build(data);
+    assert.equal(result.counts.missing, 0);
+    assert.deepEqual(result.tasks.map((t) => t.kind), kind ? [kind] : []);
+    assert.deepEqual(result.todaySites, []);
+    assert.equal(data.sites[0].status, 'completed');
+  }
 });
 
 test('missing/invalid dates stay undated instead of defaulting to today, and link to schedule editing', () => {
@@ -196,5 +220,5 @@ test('database errors cannot masquerade as an empty to-do list', async () => {
   }
   const empty = await harness({ tables: { sites: [] } }).get();
   assert.equal(empty.status, 200);
-  assert.deepEqual(empty.body.counts, { assignment: 0, review: 0, revision: 0 });
+  assert.deepEqual(empty.body.counts, { assignment: 0, review: 0, revision: 0, missing: 0 });
 });
