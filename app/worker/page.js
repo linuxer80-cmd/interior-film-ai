@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { loadMyWorkerSites, workerDestination, workerLoginUrl } from "../utils/workerSites";
 import { enablePushNotifications, getPushSubscriptionStatus } from "../utils/pushSubscription";
 import WorkerSiteCalendar from "./WorkerSiteCalendar";
+import WorkerMonthlyPay from "./WorkerMonthlyPay";
 import styles from "./WorkerSiteCalendar.module.css";
 
 export default function WorkerPage() {
@@ -133,6 +134,7 @@ export default function WorkerPage() {
         {notificationEnabled ? <span className={styles.pushOn}>✓ 알림 켜짐</span> : <button type="button" className={styles.pushButton} onClick={handleEnableNotifications} disabled={notificationLoading}>{notificationLoading ? "설정 중..." : "🔔 현장 알림 켜기"}</button>}
         {notificationMessage && <p className={styles.pushMessage} role="status" style={{ color: notificationMessage.startsWith("✅") ? "#15803d" : "#b91c1c" }}>{notificationMessage}</p>}
       </section>
+      <WorkerMonthlyPay key={worker.worker_id} refreshKey={sites} />
       <WorkerSiteCalendar sites={sites} loading={sitesLoading} error={message}
         onRefresh={() => loadWorkerPage({ background: true })}
         onOpen={(id) => router.push(`/worker/site/${id}`)} />
