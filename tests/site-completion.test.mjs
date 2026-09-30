@@ -47,7 +47,7 @@ function api({ tables = {}, errors = {}, invalid = false, race = false, workerRo
   });
   vm.runInContext(source(photoRoute ? '../app/api/worker/site-photos/route.js' : workerRoute ? '../app/api/worker/site-work-report/route.js' : '../app/api/admin/site-status/route.js') + '\nglobalThis.post = POST;', ctx);
   // Keep real worker authentication, assignment and report-state checks. Stub only downstream persistence.
-  if (workerRoute) vm.runInContext('saveWorkReport = async (args) => recordSave({companyId:args.companyId,siteId:args.siteId}); clearActualMaterials = async () => {}; clearExpenses = async () => {}; saveMaterials = async () => 0; saveExpenses = async () => 0;', ctx);
+  if (workerRoute) vm.runInContext('submitWorkReport = async (args) => { recordSave({companyId:args.worker.company_id,siteId:args.siteId}); return {reportId:"report",materialCount:0,expenseCount:0}; };', ctx);
   if (photoRoute) vm.runInContext('uploadPhoto = async (args) => { recordSave({companyId:args.companyId,siteId:args.siteId}); return "test/photo.jpg"; }; insertPhotoRecord = async () => ({id:"photo"});', ctx);
   const initial = workerRoute ? { siteId: S, work_summary: '시공 완료' } : { siteId: S, status: 'completed', expectedStatus: 'in_progress' };
   return { db, reads, writes, saves, post: (body = initial, token = 'Bearer valid') => ctx.post({
