@@ -32,9 +32,6 @@ export default function CuttingInput({
 }) {
   return (
     <>
-      {/* =====================================================
-          1. 보유 필름
-      ===================================================== */}
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
@@ -42,7 +39,10 @@ export default function CuttingInput({
 
             <div>
               <h2>보유 필름</h2>
-              <p>컬러와 실제 남은 롤 길이를 입력하세요.</p>
+              <p>
+                컬러와 실제 남은 롤 길이를
+                입력하세요.
+              </p>
             </div>
           </div>
 
@@ -110,7 +110,8 @@ export default function CuttingInput({
                   updateRoll(
                     roll.id,
                     "grainDirection",
-                    e.target.value === "grain"
+                    e.target.value ===
+                      "grain"
                   )
                 }
               >
@@ -130,7 +131,6 @@ export default function CuttingInput({
                 onClick={() =>
                   removeRoll(roll.id)
                 }
-                aria-label="롤 삭제"
               >
                 ×
               </button>
@@ -139,9 +139,6 @@ export default function CuttingInput({
         </div>
       </section>
 
-      {/* =====================================================
-          2. 재단 입력
-      ===================================================== */}
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
@@ -150,19 +147,11 @@ export default function CuttingInput({
             <div>
               <h2>재단 입력</h2>
               <p>
-                위치와 부위별로 컬러와 사이즈를
-                입력하세요.
+                위치와 부위별로 컬러와
+                사이즈를 입력하세요.
               </p>
             </div>
           </div>
-
-          <button
-            type="button"
-            className={styles.blackButton}
-            onClick={addSection}
-          >
-            + 다음 부위
-          </button>
         </div>
 
         {colors.length === 0 && (
@@ -177,385 +166,423 @@ export default function CuttingInput({
               fontWeight: 800,
             }}
           >
-            먼저 위에서 사용할 필름 컬러를
+            먼저 보유 필름의 컬러번호를
             입력하세요.
           </div>
         )}
 
-        {sections.map((section, sectionIndex) => (
-          <article
-            key={section.id}
-            className={styles.sectionCard}
-          >
-            {/* 부위 상단 */}
-            <div className={styles.sectionHeader}>
-              <strong>
-                #{sectionIndex + 1}
-              </strong>
+        {sections.map(
+          (section, sectionIndex) => (
+            <article
+              key={section.id}
+              className={styles.sectionCard}
+            >
+              <div className={styles.sectionHeader}>
+                <strong>
+                  #{sectionIndex + 1}
+                </strong>
 
-              <div className={styles.sectionActions}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    copySection(section.id)
-                  }
-                >
-                  복사
-                </button>
-
-                <button
-                  type="button"
-                  disabled={sections.length <= 1}
-                  onClick={() =>
-                    removeSection(section.id)
-                  }
-                >
-                  삭제
-                </button>
-              </div>
-            </div>
-
-            {/* 위치 / 부위 */}
-            <div className={styles.locationRow}>
-              <label>
-                <span>시공 위치</span>
-
-                <input
-                  value={section.location}
-                  placeholder="예: 방1"
-                  onChange={(e) =>
-                    updateSection(
-                      section.id,
-                      "location",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
-
-              <label>
-                <span>시공 부위</span>
-
-                <input
-                  value={section.part}
-                  placeholder="예: 샤시"
-                  onChange={(e) =>
-                    updateSection(
-                      section.id,
-                      "part",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
-            </div>
-
-            {/* 컬러별 재단 */}
-            {section.colors.map(
-              (group, colorIndex) => (
                 <div
-                  key={group.id}
-                  className={styles.colorBlock}
+                  className={
+                    styles.sectionActions
+                  }
                 >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copySection(
+                        section.id
+                      )
+                    }
+                  >
+                    복사
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      sections.length <= 1
+                    }
+                    onClick={() =>
+                      removeSection(
+                        section.id
+                      )
+                    }
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.locationRow}>
+                <label>
+                  <span>시공 위치</span>
+
+                  <input
+                    value={section.location}
+                    placeholder="예: 방1"
+                    onChange={(e) =>
+                      updateSection(
+                        section.id,
+                        "location",
+                        e.target.value
+                      )
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>시공 부위</span>
+
+                  <input
+                    value={section.part}
+                    placeholder="예: 샤시"
+                    onChange={(e) =>
+                      updateSection(
+                        section.id,
+                        "part",
+                        e.target.value
+                      )
+                    }
+                  />
+                </label>
+              </div>
+
+              {section.colors.map(
+                (group, colorIndex) => (
                   <div
+                    key={group.id}
                     className={
-                      styles.colorBlockHeader
+                      styles.colorBlock
                     }
                   >
                     <div
                       className={
-                        styles.colorTitle
+                        styles.colorBlockHeader
                       }
                     >
-                      <span>
-                        컬러 {colorIndex + 1}
-                      </span>
+                      <div
+                        className={
+                          styles.colorTitle
+                        }
+                      >
+                        <span>
+                          컬러 {colorIndex + 1}
+                        </span>
 
-                      <select
-                        value={group.color}
-                        onChange={(e) =>
-                          updateColorGroup(
+                        <select
+                          value={group.color}
+                          onChange={(e) =>
+                            updateColorGroup(
+                              section.id,
+                              group.id,
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">
+                            컬러 선택
+                          </option>
+
+                          {colors.map(
+                            (color) => (
+                              <option
+                                key={color}
+                                value={color}
+                              >
+                                {color}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={
+                          styles.textDelete
+                        }
+                        disabled={
+                          section.colors
+                            .length <= 1
+                        }
+                        onClick={() =>
+                          removeColorGroup(
                             section.id,
-                            group.id,
-                            e.target.value
+                            group.id
                           )
                         }
                       >
-                        <option value="">
-                          컬러 선택
-                        </option>
-
-                        {colors.map((color) => (
-                          <option
-                            key={color}
-                            value={color}
-                          >
-                            {color}
-                          </option>
-                        ))}
-                      </select>
+                        컬러 삭제
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      className={
-                        styles.textDelete
-                      }
-                      disabled={
-                        section.colors.length <= 1
-                      }
-                      onClick={() =>
-                        removeColorGroup(
-                          section.id,
-                          group.id
-                        )
-                      }
-                    >
-                      컬러 삭제
-                    </button>
-                  </div>
-
-                  {/* 재단 사이즈 목록 */}
-                  <div className={styles.sizeList}>
-                    {group.sizes.map(
-                      (size, sizeIndex) => (
-                        <div
-                          key={size.id}
-                          className={
-                            styles.sizeRow
-                          }
-                        >
-                          <span
+                    <div className={styles.sizeList}>
+                      {group.sizes.map(
+                        (size, sizeIndex) => (
+                          <div
+                            key={size.id}
                             className={
-                              styles.sizeIndex
+                              styles.sizeRow
                             }
                           >
-                            {sizeIndex + 1}
-                          </span>
+                            <span
+                              className={
+                                styles.sizeIndex
+                              }
+                            >
+                              {sizeIndex + 1}
+                            </span>
 
-                          <input
-                            className={
-                              styles.dimensionInput
-                            }
-                            type="number"
-                            inputMode="numeric"
-                            min="1"
-                            value={size.width}
-                            placeholder="480"
-                            aria-label="가로 사이즈"
-                            onChange={(e) =>
-                              updateSize(
-                                section.id,
-                                group.id,
-                                size.id,
-                                "width",
-                                e.target.value
-                              )
-                            }
-                          />
-
-                          <span
-                            className={
-                              styles.multiply
-                            }
-                          >
-                            ×
-                          </span>
-
-                          <input
-                            className={
-                              styles.dimensionInput
-                            }
-                            type="number"
-                            inputMode="numeric"
-                            min="1"
-                            value={size.height}
-                            placeholder="2100"
-                            aria-label="세로 사이즈"
-                            onChange={(e) =>
-                              updateSize(
-                                section.id,
-                                group.id,
-                                size.id,
-                                "height",
-                                e.target.value
-                              )
-                            }
-                          />
-
-                          <span className={styles.mm}>
-                            mm
-                          </span>
-
-                          <QuantityStepper
-                            className={
-                              styles.quantityStepper
-                            }
-                            value={size.quantity}
-                            onMinus={() =>
-                              changeQuantity(
-                                section.id,
-                                group.id,
-                                size.id,
-                                -1
-                              )
-                            }
-                            onPlus={() =>
-                              changeQuantity(
-                                section.id,
-                                group.id,
-                                size.id,
-                                1
-                              )
-                            }
-                            onChange={(value) =>
-                              updateSize(
-                                section.id,
-                                group.id,
-                                size.id,
-                                "quantity",
-                                Math.max(
-                                  1,
-                                  Number(value) || 1
+                            <input
+                              className={
+                                styles.dimensionInput
+                              }
+                              type="number"
+                              inputMode="numeric"
+                              min="1"
+                              value={size.width}
+                              placeholder="480"
+                              onChange={(e) =>
+                                updateSize(
+                                  section.id,
+                                  group.id,
+                                  size.id,
+                                  "width",
+                                  e.target.value
                                 )
+                              }
+                            />
+
+                            <span
+                              className={
+                                styles.multiply
+                              }
+                            >
+                              ×
+                            </span>
+
+                            <input
+                              className={
+                                styles.dimensionInput
+                              }
+                              type="number"
+                              inputMode="numeric"
+                              min="1"
+                              value={size.height}
+                              placeholder="2100"
+                              onChange={(e) =>
+                                updateSize(
+                                  section.id,
+                                  group.id,
+                                  size.id,
+                                  "height",
+                                  e.target.value
+                                )
+                              }
+                            />
+
+                            <span className={styles.mm}>
+                              mm
+                            </span>
+
+                            <QuantityStepper
+                              className={
+                                styles.quantityStepper
+                              }
+                              value={size.quantity}
+                              onMinus={() =>
+                                changeQuantity(
+                                  section.id,
+                                  group.id,
+                                  size.id,
+                                  -1
+                                )
+                              }
+                              onPlus={() =>
+                                changeQuantity(
+                                  section.id,
+                                  group.id,
+                                  size.id,
+                                  1
+                                )
+                              }
+                              onChange={(value) =>
+                                updateSize(
+                                  section.id,
+                                  group.id,
+                                  size.id,
+                                  "quantity",
+                                  Math.max(
+                                    1,
+                                    Number(value) ||
+                                      1
+                                  )
+                                )
+                              }
+                            />
+
+                            <button
+                              type="button"
+                              className={
+                                styles.iconDelete
+                              }
+                              disabled={
+                                group.sizes
+                                  .length <= 1
+                              }
+                              onClick={() =>
+                                removeSize(
+                                  section.id,
+                                  group.id,
+                                  size.id
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div
+                      className={
+                        styles.sizeActions
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          addSize(
+                            section.id,
+                            group.id
+                          )
+                        }
+                      >
+                        + 사이즈
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openBulkEditor(
+                            section.id,
+                            group.id
+                          )
+                        }
+                      >
+                        여러개 한번에
+                      </button>
+                    </div>
+
+                    {bulkEditor?.sectionId ===
+                      section.id &&
+                      bulkEditor?.colorGroupId ===
+                        group.id && (
+                        <div
+                          className={
+                            styles.bulkBox
+                          }
+                        >
+                          <p>
+                            가로.세로.수량
+                          </p>
+
+                          <textarea
+                            autoFocus
+                            value={
+                              bulkEditor.text
+                            }
+                            placeholder={
+                              "480.2100.2\n400.2100\n340.2100.3"
+                            }
+                            onChange={(e) =>
+                              setBulkEditor(
+                                (prev) => ({
+                                  ...prev,
+                                  text:
+                                    e.target
+                                      .value,
+                                })
                               )
                             }
                           />
 
-                          <button
-                            type="button"
+                          <small>
+                            예: 480.2100.2
+                            <br />
+                            = 480×2100 2장
+                            <br />
+                            수량 생략 시 1장
+                          </small>
+
+                          <div
                             className={
-                              styles.iconDelete
+                              styles.bulkActions
                             }
-                            disabled={
-                              group.sizes.length <= 1
-                            }
-                            onClick={() =>
-                              removeSize(
-                                section.id,
-                                group.id,
-                                size.id
-                              )
-                            }
-                            aria-label="사이즈 삭제"
                           >
-                            ×
-                          </button>
+                            <button
+                              type="button"
+                              onClick={
+                                closeBulkEditor
+                              }
+                            >
+                              취소
+                            </button>
+
+                            <button
+                              type="button"
+                              className={
+                                styles.applyButton
+                              }
+                              onClick={
+                                applyBulkEditor
+                              }
+                            >
+                              적용
+                            </button>
+                          </div>
                         </div>
-                      )
-                    )}
+                      )}
                   </div>
+                )
+              )}
 
-                  {/* 사이즈 추가 / 여러 개 입력 */}
-                  <div className={styles.sizeActions}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        addSize(
-                          section.id,
-                          group.id
-                        )
-                      }
-                    >
-                      + 사이즈
-                    </button>
+              <button
+                type="button"
+                className={
+                  styles.addColorButton
+                }
+                disabled={
+                  colors.length === 0
+                }
+                onClick={() =>
+                  addColorGroup(
+                    section.id
+                  )
+                }
+              >
+                + 다른 컬러
+              </button>
+            </article>
+          )
+        )}
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openBulkEditor(
-                          section.id,
-                          group.id
-                        )
-                      }
-                    >
-                      여러개 한번에
-                    </button>
-                  </div>
-
-                  {/* 여러 사이즈 한번에 입력 */}
-                  {bulkEditor?.sectionId ===
-                    section.id &&
-                    bulkEditor?.colorGroupId ===
-                      group.id && (
-                      <div className={styles.bulkBox}>
-                        <p>
-                          한 줄에 하나씩
-                          입력하세요.
-                        </p>
-
-                        <textarea
-                          autoFocus
-                          value={
-                            bulkEditor.text
-                          }
-                          placeholder={
-                            "480x2100x2\n400x2100\n340x2100"
-                          }
-                          onChange={(e) =>
-                            setBulkEditor(
-                              (prev) => ({
-                                ...prev,
-                                text:
-                                  e.target.value,
-                              })
-                            )
-                          }
-                        />
-
-                        <small>
-                          가로 × 세로 × 수량
-                          <br />
-                          수량 생략 시 1장
-                        </small>
-
-                        <div
-                          className={
-                            styles.bulkActions
-                          }
-                        >
-                          <button
-                            type="button"
-                            onClick={
-                              closeBulkEditor
-                            }
-                          >
-                            취소
-                          </button>
-
-                          <button
-                            type="button"
-                            className={
-                              styles.applyButton
-                            }
-                            onClick={
-                              applyBulkEditor
-                            }
-                          >
-                            적용
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                </div>
-              )
-            )}
-
-            {/* 한 부위에 다른 컬러 추가 */}
-            <button
-              type="button"
-              className={
-                styles.addColorButton
-              }
-              disabled={colors.length === 0}
-              onClick={() =>
-                addColorGroup(section.id)
-              }
-            >
-              + 다른 컬러
-            </button>
-          </article>
-        ))}
+        {/* 항상 모든 입력의 가장 마지막 */}
+        <button
+          type="button"
+          className={styles.blackButton}
+          onClick={addSection}
+          style={{
+            width: "100%",
+            minHeight: 48,
+            marginTop: 4,
+            fontSize: 14,
+          }}
+        >
+          + 다음 부위
+        </button>
       </section>
     </>
   );
@@ -579,7 +606,6 @@ function QuantityStepper({
         type="button"
         onClick={onMinus}
         disabled={quantity <= 1}
-        aria-label="수량 감소"
       >
         −
       </button>
@@ -589,19 +615,19 @@ function QuantityStepper({
         inputMode="numeric"
         min="1"
         value={quantity}
-        aria-label="수량"
         onChange={(e) =>
-          onChange(e.target.value)
+          onChange(
+            e.target.value
+          )
         }
       />
 
       <button
         type="button"
         onClick={onPlus}
-        aria-label="수량 증가"
       >
         +
       </button>
     </div>
   );
-                    }
+                      }
