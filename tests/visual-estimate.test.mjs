@@ -67,14 +67,29 @@ test('known kitchen scope reaches visual comparison despite cropping, without in
   }
 });
 
-test('unidentified kitchen scope, unreadable views, conflicting scopes and partial doors still require confirmation', () => {
+test('identifiable open doors can reach comparison without assuming a price or changing their observed count', () => {
+  for (const door_count of [0, 1, 2]) {
+    const analysis = normalizeAnalysisClassification({ category: '문 및 문틀', sub_category: '방문', target_type: 'door',
+      view_completeness: 'partial', classification_confidence: 'high', door_count,
+      observable_structure: '문짝과 건축용 문틀이 보이는 열린 욕실 방문, 상단 가장자리 미확인' });
+    assert.equal(analysis.target_type, 'door');
+    assert.equal(analysis.requires_confirmation, false);
+    assert.equal(analysis.view_completeness, 'partial');
+    assert.equal(analysis.door_count, door_count);
+    assert.equal(analysis.estimate, undefined);
+  }
+});
+
+test('unidentified scopes, unreadable doors, low confidence and conflicting targets still require confirmation', () => {
   const base = { ...lower, target_type: 'kitchen', classification_confidence: 'high', view_completeness: 'partial' };
   for (const [analysis, reason] of [
     [{ ...base, view_completeness: 'unclear' }, 'unclear_view'],
     [{ ...base, classification_confidence: 'low' }, 'low_confidence'],
     [{ ...base, sub_category: '주방 가구', construction_scope: 'unknown' }, 'unknown_scope'],
     [{ ...base, sub_category: '상부장과 하부장' }, 'conflicting_scope'],
-    [{ category: '문 및 문틀', target_type: 'door', view_completeness: 'partial', classification_confidence: 'high' }, 'incomplete_view'],
+    [{ category: '문 및 문틀', target_type: 'door', view_completeness: 'unclear', classification_confidence: 'high' }, 'unclear_view'],
+    [{ category: '문 및 문틀', target_type: 'door', view_completeness: 'partial', classification_confidence: 'low' }, 'low_confidence'],
+    [{ category: '문 및 문틀', sub_category: '붙박이장', target_type: 'door', view_completeness: 'partial', classification_confidence: 'high' }, 'conflicting_targets'],
     [{ category: '냉장고장', view_completeness: 'partial', classification_confidence: 'high' }, 'incomplete_view'],
   ]) {
     const normalized = normalizeAnalysisClassification(analysis);

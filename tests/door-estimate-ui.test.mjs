@@ -19,6 +19,7 @@ async function compile(path, imports, globals = {}) {
   return context.exports.default;
 }
 const Selector = await compile('../app/components/DoorQuantitySelector.js', (name) => name === 'react' ? React : pricing);
+const Total = await compile('../app/components/EstimateTotal.js', () => React);
 const groups = [190000, 195000].map((average, i) => ({ key: `door-${i}`, category: '문 및 문틀', subCategory: '방문 및 문틀', photos: [], estimate: { min: average, max: average, average } }));
 
 test('visible selector names the two detected sets and prices requested five from one-set average', () => {
@@ -31,6 +32,17 @@ test('visible selector names the two detected sets and prices requested five fro
   const html = renderToStaticMarkup(React.createElement(Selector, { summary: five.door, quantity: 5 }));
   assert.ok(html.includes('962,500'));
   assert.ok(!html.includes('1,925,000'));
+});
+
+test('one unpriced door is displayed as a partial estimate without falsely blaming the database', () => {
+  const partial = pricing.calculateQuantityEstimate([groups[0], { ...groups[1], estimate: null, requiresConfirmation: true }]);
+  const html = renderToStaticMarkup(React.createElement(Total, { totalEstimate: partial.total }));
+  assert.ok(html.includes('계산된 부위의 부분 견적'));
+  assert.ok(html.includes('190,000'));
+  assert.ok(html.includes('아직 견적이 확정되지 않은'));
+  assert.ok(html.includes('위 금액에 포함되지 않았습니다'));
+  assert.ok(!html.includes('데이터가 부족'));
+  assert.ok(!html.includes('총 예상 시공 견적'));
 });
 
 test('actual customer page uses total set count once in result, film preview and consultation', async () => {

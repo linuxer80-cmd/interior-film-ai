@@ -104,13 +104,13 @@ export default function EstimateTotal({
             lineHeight: 1.6,
           }}
         >
-          ⚠️ 데이터가 부족한{" "}
+          ⚠️ 아직 견적이 확정되지 않은{" "}
           {
             totalEstimate
               .missingCount
           }
-          개 부위는 총액에
-          포함되지 않았습니다.
+          개 부위는 위 금액에 포함되지 않았습니다.
+          각 부위의 안내를 확인해주세요.
         </p>
       )}
 

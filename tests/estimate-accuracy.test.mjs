@@ -264,3 +264,31 @@ test('cropped but identifiable full kitchen is sent for visual comparison, while
     await work;
   }
 });
+
+test('two identifiable open doors both reach pricing; unknown counts and uncertain identities cannot become priced sets', async () => {
+  for (const variant of ['confirmed', 'unknown-count', 'multiple-count', 'uncertain-identity', 'unreadable']) {
+    const analyses = ['bath-a', 'bath-b'].map((object_key, index) => normalize({
+      category: '문 및 문틀', sub_category: '방문 및 문틀', target_type: 'door', construction_scope: 'whole',
+      classification_confidence: 'high', view_completeness: index === 1 && variant === 'unreadable' ? 'unclear' : 'partial',
+      object_key, object_confidence: index === 1 && variant === 'uncertain-identity' ? 'low' : 'high',
+      object_evidence: '서로 다른 문틀과 욕실 벽 타일 배치, 열린 일반 방문',
+      door_count: index === 1 && variant === 'unknown-count' ? 0 : index === 1 && variant === 'multiple-count' ? 2 : 1,
+    }));
+    const h = harness({ analyses });
+    await h.render().addImages([new Blob(['open-door-a']), new Blob(['open-door-b'])]);
+    const work = h.render().handleAnalyze();
+    await flush();
+    const pricedCount = variant === 'confirmed' ? 2 : 1;
+    assert.equal(h.calls.filter((url) => url === '/api/similar-estimate').length, pricedCount, variant);
+    assert.equal(h.render().groups.length, 2, variant);
+    const pricing = calculateQuantityEstimate(h.render().groups, 5);
+    assert.equal(pricing.door.canScale, variant === 'confirmed', variant);
+    assert.equal(pricing.total.average, variant === 'confirmed' ? 500000 : 100000, variant);
+    assert.equal(pricing.total.missingCount, 2 - pricedCount, variant);
+    h.uploads.forEach((task, i) => task.resolve(ok({ success: true, path: `customer/door-${i}.jpg` })));
+    h.thumbnails.forEach((task) => task.resolve(ok({ success: true, signed_url: 'https://example.com/photo' })));
+    await work;
+    assert.ok(!h.render().message.includes('데이터가 부족'), variant);
+    if (pricedCount === 1) assert.ok(h.render().message.includes('미산정 1개'), variant);
+  }
+});
