@@ -1,52 +1,82 @@
 export const FILM_WIDTH = 1220;
 
-const DEFAULT_ITERATIONS = 350;
-const MAX_ITERATIONS = 1500;
+const toNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
-function n(value) {
-  const v = Number(value);
-  return Number.isFinite(v) ? v : 0;
+const txt = (v) => String(v ?? "").trim();
+const colorKey = (v) => txt(v).toUpperCase();
+const round1 = (v) => Math.round(v * 10) / 10;
+
+export function formatMeterFromMm(value) {
+  return `${(toNum(value) / 1000).toFixed(2)}m`;
 }
 
-function text(value) {
-  return String(value ?? "").trim();
-}
-
-function colorKey(value) {
-  return text(value).toUpperCase();
-}
-
-function shuffle(list) {
-  const out = [...list];
-
-  for (let i = out.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-
-  return out;
-}
-
-function clonePieces(list) {
-  return list.map((item) => ({ ...item }));
+export function getUniqueColors(rolls = []) {
+  return [
+    ...new Set(
+      rolls.map((r) => colorKey(r.color)).filter(Boolean)
+    ),
+  ];
 }
 
 function normalizeRolls(rolls = []) {
-  return rolls.map((roll, index) => ({
-    id: roll.id || `roll-${index + 1}`,
-    index,
+  return rolls
+    .map((roll, index) => ({
+      id: roll.id || `roll-${index + 1}`,
+      index,
+      color: colorKey(roll.color),
+      lengthM: toNum(roll.lengthM),
+      lengthMm: Math.round(toNum(roll.lengthM) * 1000),
+      grainDirection: roll.grainDirection === true,
+    }))
+    .filter((roll) => roll.color || roll.lengthMm > 0);
+}
 
-    color: colorKey(roll.color),
+function validSize(size) {
+  return toNum(size?.width) > 0 || toNum(size?.height) > 0;
+}
 
-    lengthM: n(roll.lengthM),
+function getColorGrainMap(rolls) {
+  const map = new Map();
 
-    lengthMm: Math.round(
-      n(roll.lengthM) * 1000
-    ),
+  rolls.forEach((roll) => {
+    if (!map.has(roll.color)) {
+      map.set(roll.color, roll.grainDirection);
+    } else if (roll.grainDirection) {
+      // 같은 컬러에서 설정이 섞이면 안전하게 결 있음으로 처리
+      map.set(roll.color, true);
+    }
+  });
 
-    grainDirection:
-      roll.grainDirection === true,
-  }));
+  return map;
+}
+
+function orientationsForDimensions(width, height, canRotate) {
+  const result = [];
+
+  if (width <= FILM_WIDTH) {
+    result.push({
+      width,
+      height,
+      rotated: false,
+    });
+  }
+
+  if (
+    canRotate &&
+    height <= FILM_WIDTH &&
+    width !== height
+  ) {
+    result.push({
+      width: height,
+      height: width,
+      rotated: true,
+    });
+  }
+
+  return result;
 }
 
 export function validateCuttingInput({
@@ -54,1241 +84,702 @@ export function validateCuttingInput({
   sections = [],
 }) {
   const errors = [];
+  const normalizedRolls = normalizeRolls(rolls);
 
-  const normalizedRolls =
-    normalizeRolls(rolls);
-
-  if (normalizedRolls.length === 0) {
-    errors.push(
-      "보유 필름 롤을 1개 이상 입력해주세요."
-    );
+  if (!normalizedRolls.length) {
+    errors.push("보유 필름 롤을 1개 이상 입력해주세요.");
   }
 
-  normalizedRolls.forEach(
-    (roll, index) => {
-      if (!roll.color) {
-        errors.push(
-          `${index + 1}번 롤의 컬러번호를 입력해주세요.`
-        );
-      }
-
-      if (roll.lengthMm <= 0) {
-        errors.push(
-          `${index + 1}번 롤의 길이를 확인해주세요.`
-        );
-      }
+  normalizedRolls.forEach((roll, index) => {
+    if (!roll.color) {
+      errors.push(`${index + 1}번 롤의 컬러번호를 입력해주세요.`);
     }
-  );
 
-  if (
-    !Array.isArray(sections) ||
-    sections.length === 0
-  ) {
-    errors.push(
-      "시공 위치와 부위를 1개 이상 입력해주세요."
-    );
-  }
+    if (roll.lengthMm <= 0) {
+      errors.push(`${index + 1}번 롤의 길이를 확인해주세요.`);
+    }
+  });
 
-  sections.forEach(
-    (section, sectionIndex) => {
-      const location =
-        text(section.location);
+  const rollsByColor = new Map();
 
-      const part =
-        text(section.part);
+  normalizedRolls.forEach((roll) => {
+    if (!rollsByColor.has(roll.color)) {
+      rollsByColor.set(roll.color, []);
+    }
 
-      if (!location) {
-        errors.push(
-          `${sectionIndex + 1}번 항목의 시공 위치를 입력해주세요.`
-        );
-      }
+    rollsByColor.get(roll.color).push(roll);
+  });
 
-      if (!part) {
-        errors.push(
-          `${sectionIndex + 1}번 항목의 시공 부위를 입력해주세요.`
-        );
-      }
+  let actualPieceCount = 0;
 
-      if (
-        !Array.isArray(section.colors) ||
-        section.colors.length === 0
-      ) {
-        errors.push(
-          `${location || `${sectionIndex + 1}번 위치`} / ${
-            part || "부위"
-          }에 컬러를 추가해주세요.`
-        );
+  sections.forEach((section, sectionIndex) => {
+    const location = txt(section.location);
+    const part = txt(section.part);
 
-        return;
-      }
+    (section.colors || []).forEach((group) => {
+      const color = colorKey(group.color);
 
-      section.colors.forEach(
-        (group, colorIndex) => {
-          const color =
-            colorKey(group.color);
+      (group.sizes || []).forEach((size, sizeIndex) => {
+        // 완전히 빈 행은 계산에서 무시
+        if (!validSize(size)) return;
 
-          const sameColorRolls =
-            normalizedRolls.filter(
-              (roll) =>
-                roll.color === color
-            );
+        actualPieceCount += 1;
 
-          if (!color) {
-            errors.push(
-              `${location || "위치"} / ${
-                part || "부위"
-              }의 컬러 ${colorIndex + 1}을 선택해주세요.`
-            );
+        const width = Math.round(toNum(size.width));
+        const height = Math.round(toNum(size.height));
 
-            return;
-          }
-
-          if (
-            sameColorRolls.length === 0
-          ) {
-            errors.push(
-              `${location} / ${part}에서 사용하는 ${color} 롤이 등록되어 있지 않습니다.`
-            );
-          }
-
-          if (
-            !Array.isArray(group.sizes) ||
-            group.sizes.length === 0
-          ) {
-            errors.push(
-              `${location} / ${part} / ${color}의 재단 사이즈를 입력해주세요.`
-            );
-
-            return;
-          }
-
-          group.sizes.forEach(
-            (size, sizeIndex) => {
-              const width =
-                Math.round(
-                  n(size.width)
-                );
-
-              const height =
-                Math.round(
-                  n(size.height)
-                );
-
-              const quantity =
-                Math.floor(
-                  n(size.quantity)
-                );
-
-              if (
-                width <= 0 ||
-                height <= 0
-              ) {
-                errors.push(
-                  `${location} / ${part} / ${color}의 ${
-                    sizeIndex + 1
-                  }번 가로·세로를 확인해주세요.`
-                );
-
-                return;
-              }
-
-              if (
-                quantity <= 0
-              ) {
-                errors.push(
-                  `${location} / ${part} / ${color}의 ${
-                    sizeIndex + 1
-                  }번 수량을 확인해주세요.`
-                );
-              }
-
-              if (
-                sameColorRolls.length >
-                0
-              ) {
-                const canFitSomeRoll =
-                  sameColorRolls.some(
-                    (roll) => {
-                      if (
-                        roll.grainDirection
-                      ) {
-                        return (
-                          width <=
-                            FILM_WIDTH &&
-                          height <=
-                            roll.lengthMm
-                        );
-                      }
-
-                      const normal =
-                        width <=
-                          FILM_WIDTH &&
-                        height <=
-                          roll.lengthMm;
-
-                      const rotated =
-                        height <=
-                          FILM_WIDTH &&
-                        width <=
-                          roll.lengthMm;
-
-                      return (
-                        normal ||
-                        rotated
-                      );
-                    }
-                  );
-
-                if (!canFitSomeRoll) {
-                  errors.push(
-                    `${location} / ${part} / ${color} ${width}×${height}mm는 등록된 ${color} 롤에 들어가지 않습니다.`
-                  );
-                }
-              }
-            }
+        if (!location) {
+          errors.push(
+            `${sectionIndex + 1}번 항목의 시공 위치를 입력해주세요.`
           );
         }
-      );
-    }
-  );
+
+        if (!part) {
+          errors.push(
+            `${location || `${sectionIndex + 1}번 위치`}의 시공 부위를 입력해주세요.`
+          );
+        }
+
+        if (!color) {
+          errors.push(
+            `${location || "위치"} / ${part || "부위"}의 컬러를 선택해주세요.`
+          );
+          return;
+        }
+
+        if (width <= 0 || height <= 0) {
+          errors.push(
+            `${location} / ${part} / ${color}의 ${
+              sizeIndex + 1
+            }번 가로·세로를 확인해주세요.`
+          );
+          return;
+        }
+
+        const colorRolls = rollsByColor.get(color) || [];
+
+        if (!colorRolls.length) {
+          errors.push(
+            `${location} / ${part}에서 사용하는 ${color} 롤이 없습니다.`
+          );
+          return;
+        }
+
+        const hasGrain = colorRolls.some((r) => r.grainDirection);
+        const maxRollLength = Math.max(
+          ...colorRolls.map((r) => r.lengthMm)
+        );
+
+        const orientations = orientationsForDimensions(
+          width,
+          height,
+          !hasGrain
+        );
+
+        const canFit = orientations.some(
+          (o) => o.height <= maxRollLength
+        );
+
+        if (!canFit) {
+          errors.push(
+            `${location} / ${part} / ${color} ${width}×${height}mm는 등록된 롤에 들어가지 않습니다.`
+          );
+        }
+      });
+    });
+  });
+
+  if (actualPieceCount === 0) {
+    errors.push("재단 사이즈를 1개 이상 입력해주세요.");
+  }
 
   return {
-    valid:
-      errors.length === 0,
-
+    valid: errors.length === 0,
     errors,
   };
 }
-function expandSections(
-  sections = []
-) {
-  const pieces = [];
 
+function expandPieces(sections, grainMap) {
+  const pieces = [];
   let sequence = 1;
 
-  sections.forEach(
-    (section, sectionIndex) => {
-      const location =
-        text(section.location);
+  sections.forEach((section, sectionIndex) => {
+    const location = txt(section.location);
+    const part = txt(section.part);
 
-      const part =
-        text(section.part);
+    (section.colors || []).forEach((group, colorIndex) => {
+      const color = colorKey(group.color);
 
-      (
-        section.colors || []
-      ).forEach(
-        (group, colorIndex) => {
-          const color =
-            colorKey(group.color);
+      if (!color) return;
 
-          (
-            group.sizes || []
-          ).forEach(
-            (size, sizeIndex) => {
-              const width =
-                Math.round(
-                  n(size.width)
-                );
+      const canRotate = !grainMap.get(color);
 
-              const height =
-                Math.round(
-                  n(size.height)
-                );
+      (group.sizes || []).forEach((size, sizeIndex) => {
+        if (!validSize(size)) return;
 
-              const quantity =
-                Math.max(
-                  1,
-                  Math.floor(
-                    n(size.quantity) ||
-                      1
-                  )
-                );
+        const width = Math.round(toNum(size.width));
+        const height = Math.round(toNum(size.height));
 
-              for (
-                let q = 0;
-                q < quantity;
-                q += 1
-              ) {
-                pieces.push({
-                  id:
-                    `piece-${sequence++}`,
+        if (width <= 0 || height <= 0) return;
 
-                  sectionIndex,
+        const quantity = Math.max(
+          1,
+          Math.floor(toNum(size.quantity) || 1)
+        );
 
-                  colorIndex,
+        for (let q = 0; q < quantity; q += 1) {
+          pieces.push({
+            id: `piece-${sequence++}`,
+            sectionIndex,
+            colorIndex,
+            sizeIndex,
+            quantityIndex: q + 1,
 
-                  sizeIndex,
+            location,
+            part,
+            color,
 
-                  location,
+            originalWidth: width,
+            originalHeight: height,
 
-                  part,
+            width,
+            height,
+            area: width * height,
 
-                  color,
-
-                  originalWidth:
-                    width,
-
-                  originalHeight:
-                    height,
-
-                  width,
-
-                  height,
-
-                  area:
-                    width *
-                    height,
-
-                  quantity,
-
-                  quantityIndex:
-                    q + 1,
-
-                  label:
-                    quantity > 1
-                      ? `${location} · ${part} ${q + 1}`
-                      : `${location} · ${part}`,
-                });
-              }
-            }
-          );
+            canRotate,
+            rotated: false,
+          });
         }
-      );
-    }
-  );
+      });
+    });
+  });
 
   return pieces;
 }
 
-function orientationsFor(
-  piece,
-  roll
-) {
-  const result = [];
-
-  if (
-    piece.width <=
-      FILM_WIDTH &&
-    piece.height <=
-      roll.lengthMm
-  ) {
-    result.push({
-      width:
-        piece.width,
-
-      height:
-        piece.height,
-
-      rotated:
-        false,
-    });
-  }
-
-  if (
-    !roll.grainDirection &&
-    piece.height <=
-      FILM_WIDTH &&
-    piece.width <=
-      roll.lengthMm &&
-    piece.width !==
-      piece.height
-  ) {
-    result.push({
-      width:
-        piece.height,
-
-      height:
-        piece.width,
-
-      rotated:
-        true,
-    });
-  }
-
-  return result;
-}
-
-function intersects(a, b) {
-  return !(
-    b.x >=
-      a.x + a.width ||
-    b.x + b.width <=
-      a.x ||
-    b.y >=
-      a.y + a.height ||
-    b.y + b.height <=
-      a.y
+function pieceOrientations(piece) {
+  return orientationsForDimensions(
+    piece.originalWidth,
+    piece.originalHeight,
+    piece.canRotate
   );
 }
 
-function contains(
-  outer,
-  inner
-) {
-  return (
-    inner.x >=
-      outer.x &&
-    inner.y >=
-      outer.y &&
-    inner.x +
-      inner.width <=
-      outer.x +
-        outer.width &&
-    inner.y +
-      inner.height <=
-      outer.y +
-        outer.height
-  );
-}
+/*
+  기준 조각 선정
 
-function splitFreeRect(
-  freeRect,
-  usedRect
-) {
-  if (
-    !intersects(
-      freeRect,
-      usedRect
-    )
-  ) {
-    return [freeRect];
-  }
+  1순위: 폭 600mm 초과
+  2순위: 세로 길이가 긴 것
+  3순위: 폭이 넓은 것
+*/
+function chooseAnchor(remaining) {
+  const candidates = [];
 
-  const out = [];
-
-  const freeRight =
-    freeRect.x +
-    freeRect.width;
-
-  const freeBottom =
-    freeRect.y +
-    freeRect.height;
-
-  const usedRight =
-    usedRect.x +
-    usedRect.width;
-
-  const usedBottom =
-    usedRect.y +
-    usedRect.height;
-
-  if (
-    usedRect.y >
-    freeRect.y
-  ) {
-    out.push({
-      x:
-        freeRect.x,
-
-      y:
-        freeRect.y,
-
-      width:
-        freeRect.width,
-
-      height:
-        usedRect.y -
-        freeRect.y,
+  remaining.forEach((piece) => {
+    pieceOrientations(piece).forEach((o) => {
+      candidates.push({
+        piece,
+        ...o,
+        wide: o.width > 600,
+      });
     });
-  }
+  });
 
-  if (
-    usedBottom <
-    freeBottom
-  ) {
-    out.push({
-      x:
-        freeRect.x,
-
-      y:
-        usedBottom,
-
-      width:
-        freeRect.width,
-
-      height:
-        freeBottom -
-        usedBottom,
-    });
-  }
-
-  if (
-    usedRect.x >
-    freeRect.x
-  ) {
-    out.push({
-      x:
-        freeRect.x,
-
-      y:
-        freeRect.y,
-
-      width:
-        usedRect.x -
-        freeRect.x,
-
-      height:
-        freeRect.height,
-    });
-  }
-
-  if (
-    usedRight <
-    freeRight
-  ) {
-    out.push({
-      x:
-        usedRight,
-
-      y:
-        freeRect.y,
-
-      width:
-        freeRight -
-        usedRight,
-
-      height:
-        freeRect.height,
-    });
-  }
-
-  return out.filter(
-    (rect) =>
-      rect.width > 0 &&
-      rect.height > 0
-  );
-}
-
-function pruneFreeRects(
-  rects
-) {
-  return rects.filter(
-    (rect, index) => {
-      for (
-        let i = 0;
-        i < rects.length;
-        i += 1
-      ) {
-        if (
-          i !== index &&
-          contains(
-            rects[i],
-            rect
-          )
-        ) {
-          return false;
-        }
-      }
-
-      return true;
+  candidates.sort((a, b) => {
+    if (a.wide !== b.wide) {
+      return a.wide ? -1 : 1;
     }
-  );
+
+    if (b.height !== a.height) {
+      return b.height - a.height;
+    }
+
+    if (b.width !== a.width) {
+      return b.width - a.width;
+    }
+
+    return b.piece.area - a.piece.area;
+  });
+
+  return candidates[0] || null;
 }
+/*
+  기준 조각 옆 남는 폭에 들어갈 조각 조합 검색.
 
-function updateFreeRects(
-  freeRects,
-  placed
+  우선:
+  - 폭 합이 1220에 가까움
+  - 기준 조각과 길이가 같음
+  - 길이 차이가 작음
+  - 조각 수가 지나치게 많지 않음
+
+  모든 조각은 같은 재단 차수의 시작점에 맞춰 배치합니다.
+  짧은 조각 아래쪽에는 난단이 생길 수 있지만,
+  기준 길이 끝에서 한 번에 가로 절단 가능합니다.
+*/
+function findBestFillers(
+  remaining,
+  anchorId,
+  remainingWidth,
+  batchHeight
 ) {
-  let next = [];
+  if (remainingWidth <= 0) {
+    return [];
+  }
 
-  freeRects.forEach(
-    (rect) => {
-      next.push(
-        ...splitFreeRect(
-          rect,
-          placed
+  const candidates = remaining
+    .filter((piece) => piece.id !== anchorId)
+    .map((piece) => {
+      const options = pieceOrientations(piece)
+        .filter(
+          (o) =>
+            o.width <= remainingWidth &&
+            o.height <= batchHeight
         )
-      );
+        .map((o) => {
+          const gap = batchHeight - o.height;
+
+          let lengthBonus = 0;
+
+          if (gap === 0) lengthBonus = 500000;
+          else if (gap <= 50) lengthBonus = 350000;
+          else if (gap <= 100) lengthBonus = 230000;
+          else if (gap <= 200) lengthBonus = 120000;
+          else if (gap <= 300) lengthBonus = 50000;
+          else lengthBonus = -gap * 120;
+
+          return {
+            piece,
+            ...o,
+            gap,
+            optionScore:
+              o.width * 10000 +
+              lengthBonus -
+              1500, // 조각 수가 너무 많아지는 것 약간 감점
+          };
+        });
+
+      return {
+        piece,
+        options,
+      };
+    })
+    .filter((item) => item.options.length);
+
+  /*
+    0~남은폭(mm) DP.
+    한 조각에서는 한 방향만 선택 가능.
+  */
+  let dp = Array(remainingWidth + 1).fill(null);
+
+  dp[0] = {
+    score: 0,
+    picks: [],
+  };
+
+  candidates.forEach((candidate) => {
+    const next = dp.map((state) =>
+      state
+        ? {
+            score: state.score,
+            picks: state.picks,
+          }
+        : null
+    );
+
+    for (let used = 0; used <= remainingWidth; used += 1) {
+      const state = dp[used];
+
+      if (!state) continue;
+
+      candidate.options.forEach((option) => {
+        const newWidth = used + option.width;
+
+        if (newWidth > remainingWidth) return;
+
+        const newScore =
+          state.score + option.optionScore;
+
+        if (
+          !next[newWidth] ||
+          newScore > next[newWidth].score
+        ) {
+          next[newWidth] = {
+            score: newScore,
+            picks: [
+              ...state.picks,
+              option,
+            ],
+          };
+        }
+      });
     }
+
+    dp = next;
+  });
+
+  let best = {
+    finalScore: -Infinity,
+    picks: [],
+    usedWidth: 0,
+  };
+
+  dp.forEach((state, usedWidth) => {
+    if (!state) return;
+
+    const left = remainingWidth - usedWidth;
+
+    let finalScore =
+      state.score +
+      usedWidth * 25000 -
+      left * 18000;
+
+    // 남는 폭 0이면 매우 높은 가점
+    if (left === 0) {
+      finalScore += 5000000;
+    } else if (left <= 20) {
+      finalScore += 2500000;
+    } else if (left <= 50) {
+      finalScore += 1200000;
+    }
+
+    if (finalScore > best.finalScore) {
+      best = {
+        finalScore,
+        picks: state.picks,
+        usedWidth,
+      };
+    }
+  });
+
+  return best.picks;
+}
+
+function buildOneBatch(remaining) {
+  const anchor = chooseAnchor(remaining);
+
+  if (!anchor) return null;
+
+  const batchHeight = anchor.height;
+
+  const fillers = findBestFillers(
+    remaining,
+    anchor.piece.id,
+    FILM_WIDTH - anchor.width,
+    batchHeight
   );
 
-  return pruneFreeRects(
-    next
+  const selections = [
+    {
+      piece: anchor.piece,
+      width: anchor.width,
+      height: anchor.height,
+      rotated: anchor.rotated,
+      anchor: true,
+    },
+    ...fillers.map((f) => ({
+      piece: f.piece,
+      width: f.width,
+      height: f.height,
+      rotated: f.rotated,
+      anchor: false,
+    })),
+  ];
+
+  /*
+    폭이 넓은 조각부터 왼쪽에 배치.
+    동일 폭이면 긴 조각 우선.
+  */
+  selections.sort((a, b) => {
+    if (a.anchor !== b.anchor) {
+      return a.anchor ? -1 : 1;
+    }
+
+    if (b.width !== a.width) {
+      return b.width - a.width;
+    }
+
+    return b.height - a.height;
+  });
+
+  let x = 0;
+
+  const placements = selections.map((selection) => {
+    const placed = {
+      ...selection.piece,
+
+      x,
+      y: 0,
+
+      width: selection.width,
+      height: selection.height,
+      rotated: selection.rotated,
+
+      isAnchor: selection.anchor,
+    };
+
+    x += selection.width;
+
+    return placed;
+  });
+
+  const usedArea = placements.reduce(
+    (sum, piece) => sum + piece.width * piece.height,
+    0
   );
-      }
-function createRollState(
-  roll
-) {
+
+  const totalArea = FILM_WIDTH * batchHeight;
+
+  return {
+    height: batchHeight,
+    type:
+      anchor.width > 600
+        ? "wide-long"
+        : "long",
+
+    anchorId: anchor.piece.id,
+
+    placements,
+
+    pieceIds: new Set(
+      placements.map((piece) => piece.id)
+    ),
+
+    usedWidth: x,
+    wasteWidth: FILM_WIDTH - x,
+
+    usedArea,
+    wasteArea: Math.max(0, totalArea - usedArea),
+
+    efficiency:
+      totalArea > 0
+        ? round1((usedArea / totalArea) * 100)
+        : 0,
+  };
+}
+
+function buildBatchesForColor(pieces) {
+  let remaining = [...pieces];
+  const batches = [];
+
+  while (remaining.length) {
+    const batch = buildOneBatch(remaining);
+
+    if (!batch) break;
+
+    batches.push(batch);
+
+    remaining = remaining.filter(
+      (piece) => !batch.pieceIds.has(piece.id)
+    );
+  }
+
+  return {
+    batches,
+    remaining,
+  };
+}
+
+function createRollState(roll) {
   return {
     ...roll,
 
     placements: [],
+    batches: [],
 
-    usedLength:
-      0,
+    usedLength: 0,
+    remainingLength: roll.lengthMm,
 
-    remainingLength:
-      roll.lengthMm,
-
-    usedArea:
-      0,
-
-    efficiency:
-      0,
-
-    freeRects: [
-      {
-        x: 0,
-
-        y: 0,
-
-        width:
-          FILM_WIDTH,
-
-        height:
-          roll.lengthMm,
-      },
-    ],
+    usedArea: 0,
+    efficiency: 0,
   };
 }
 
-function findBestPlacement(
-  roll,
-  piece,
-  placementMode
-) {
-  let best = null;
-
-  const orientations =
-    orientationsFor(
-      piece,
-      roll
-    );
-
-  orientations.forEach(
-    (orientation) => {
-      roll.freeRects.forEach(
-        (freeRect) => {
-          if (
-            orientation.width >
-              freeRect.width ||
-            orientation.height >
-              freeRect.height
-          ) {
-            return;
-          }
-
-          const x =
-            freeRect.x;
-
-          const y =
-            freeRect.y;
-
-          const newUsedLength =
-            Math.max(
-              roll.usedLength,
-              y +
-                orientation.height
-            );
-
-          const lengthIncrease =
-            newUsedLength -
-            roll.usedLength;
-
-          const remainW =
-            freeRect.width -
-            orientation.width;
-
-          const remainH =
-            freeRect.height -
-            orientation.height;
-
-          const shortSide =
-            Math.min(
-              remainW,
-              remainH
-            );
-
-          const longSide =
-            Math.max(
-              remainW,
-              remainH
-            );
-
-          let score;
-
-          if (
-            placementMode ===
-            "tight"
-          ) {
-            score =
-              shortSide *
-                100000 +
-              longSide *
-                100 +
-              lengthIncrease *
-                10 +
-              y;
-          } else if (
-            placementMode ===
-            "length"
-          ) {
-            score =
-              lengthIncrease *
-                1000000 +
-              y * 100 +
-              shortSide *
-                10 +
-              longSide;
-          } else {
-            score =
-              lengthIncrease *
-                1000000 +
-              shortSide *
-                1000 +
-              longSide +
-              y * 0.01;
-          }
-
-          if (
-            !best ||
-            score <
-              best.score
-          ) {
-            best = {
-              x,
-
-              y,
-
-              width:
-                orientation.width,
-
-              height:
-                orientation.height,
-
-              rotated:
-                orientation.rotated,
-
-              newUsedLength,
-
-              score,
-            };
-          }
-        }
-      );
-    }
-  );
-
-  return best;
-}
-
-function placePiece(
-  roll,
-  piece,
-  placement
-) {
-  const placed = {
-    ...piece,
-
-    x:
-      placement.x,
-
-    y:
-      placement.y,
-
-    width:
-      placement.width,
-
-    height:
-      placement.height,
-
-    rotated:
-      placement.rotated,
-  };
-
-  roll.placements.push(
-    placed
-  );
-
-  roll.freeRects =
-    updateFreeRects(
-      roll.freeRects,
-      placed
-    );
-
-  roll.usedLength =
-    Math.max(
-      roll.usedLength,
-      placed.y +
-        placed.height
-    );
-
-  roll.usedArea +=
-    placed.width *
-    placed.height;
-
-  roll.remainingLength =
-    Math.max(
-      0,
-      roll.lengthMm -
-        roll.usedLength
-    );
-
-  const consumedArea =
-    FILM_WIDTH *
-    Math.max(
-      1,
-      roll.usedLength
-    );
-
-  roll.efficiency =
-    (
-      roll.usedArea /
-      consumedArea
-    ) * 100;
-}
-
-function findBestRoll(
-  rolls,
-  piece,
-  placementMode,
+function chooseRollForBatch(
+  rollStates,
+  color,
+  batchHeight,
   rollMode
 ) {
-  let best = null;
-
-  rolls.forEach(
-    (roll) => {
-      if (
-        roll.color !==
-        piece.color
-      ) {
-        return;
-      }
-
-      const placement =
-        findBestPlacement(
-          roll,
-          piece,
-          placementMode
-        );
-
-      if (!placement) {
-        return;
-      }
-
-      const projectedLength =
-        Math.max(
-          roll.usedLength,
-          placement.y +
-            placement.height
-        );
-
-      const lengthIncrease =
-        projectedLength -
-        roll.usedLength;
-
-      const remaining =
-        roll.lengthMm -
-        projectedLength;
-
-      const isNewRoll =
-        roll.placements
-          .length === 0;
-
-      let score =
-        placement.score;
-
-      if (
-        rollMode ===
-        "short-first"
-      ) {
-        score +=
-          roll.lengthMm *
-            100 +
-          remaining *
-            10;
-      } else {
-        score +=
-          lengthIncrease *
-            100000 +
-          remaining;
-      }
-
-      if (isNewRoll) {
-        score += 1500;
-      }
-
-      if (
-        !best ||
-        score <
-          best.score
-      ) {
-        best = {
-          roll,
-
-          placement,
-
-          score,
-        };
-      }
-    }
+  const eligible = rollStates.filter(
+    (roll) =>
+      roll.color === color &&
+      roll.remainingLength >= batchHeight
   );
 
-  return best;
+  if (!eligible.length) return null;
+
+  eligible.sort((a, b) => {
+    const aAfter =
+      a.remainingLength - batchHeight;
+
+    const bAfter =
+      b.remainingLength - batchHeight;
+
+    if (rollMode === "short-first") {
+      if (a.lengthMm !== b.lengthMm) {
+        return a.lengthMm - b.lengthMm;
+      }
+
+      return aAfter - bAfter;
+    }
+
+    /*
+      기본 모드:
+      현재 배치를 넣고 가장 적게 남는 롤 우선.
+      이미 사용 중인 롤이면 약간 우선.
+    */
+    const aScore =
+      aAfter +
+      (a.placements.length ? -500 : 0);
+
+    const bScore =
+      bAfter +
+      (b.placements.length ? -500 : 0);
+
+    return aScore - bScore;
+  });
+
+  return eligible[0];
 }
 
-function packOnce({
-  rolls,
-  pieces,
-  placementMode,
-  rollMode,
-}) {
-  const rollStates =
-    rolls.map(
-      createRollState
-    );
+function placeBatchOnRoll(roll, batch) {
+  const start = roll.usedLength;
+  const end = start + batch.height;
 
-  const unplaced = [];
+  const placements = batch.placements.map((piece) => ({
+    ...piece,
+    y: start,
+  }));
 
-  pieces.forEach(
-    (piece) => {
-      const best =
-        findBestRoll(
-          rollStates,
-          piece,
-          placementMode,
-          rollMode
-        );
+  roll.placements.push(...placements);
 
-      if (!best) {
-        unplaced.push(
-          piece
-        );
+  roll.batches.push({
+    index: roll.batches.length,
+    start,
+    end,
+    height: batch.height,
+    type: batch.type,
 
-        return;
-      }
+    usedWidth: batch.usedWidth,
+    wasteWidth: batch.wasteWidth,
 
-      placePiece(
-        best.roll,
-        piece,
-        best.placement
-      );
-    }
+    usedArea: batch.usedArea,
+    wasteArea: batch.wasteArea,
+    efficiency: batch.efficiency,
+
+    pieceIds: placements.map((piece) => piece.id),
+  });
+
+  roll.usedLength = end;
+  roll.remainingLength = Math.max(
+    0,
+    roll.lengthMm - roll.usedLength
   );
 
-  return finalizeResult(
-    rollStates,
-    unplaced
+  roll.usedArea += batch.usedArea;
+
+  const consumedArea =
+    FILM_WIDTH * Math.max(1, roll.usedLength);
+
+  roll.efficiency = round1(
+    (roll.usedArea / consumedArea) * 100
   );
-    }
+        }
 function finalizeResult(
-  rolls,
+  rollStates,
   unplaced
 ) {
-  rolls.forEach(
-    (roll) => {
-      roll.usedLength =
-        Math.round(
-          roll.usedLength
-        );
-
-      roll.remainingLength =
-        Math.max(
-          0,
-          roll.lengthMm -
-            roll.usedLength
-        );
-
-      roll.efficiency =
-        Math.round(
-          roll.efficiency *
-            10
-        ) / 10;
-
-      roll.placements.sort(
-        (a, b) =>
-          a.y !== b.y
-            ? a.y - b.y
-            : a.x - b.x
-      );
-    }
+  const usedRolls = rollStates.filter(
+    (roll) => roll.placements.length > 0
   );
 
-  const usedRolls =
-    rolls.filter(
-      (roll) =>
-        roll.placements
-          .length > 0
-    );
+  const unusedRolls = rollStates.filter(
+    (roll) => roll.placements.length === 0
+  );
 
-  const unusedRolls =
-    rolls.filter(
-      (roll) =>
-        roll.placements
-          .length === 0
-    );
+  usedRolls.forEach((roll) => {
+    roll.placements.sort((a, b) => {
+      if (a.y !== b.y) return a.y - b.y;
+      return a.x - b.x;
+    });
 
-  const totalUsedLength =
-    usedRolls.reduce(
-      (sum, roll) =>
-        sum +
-        roll.usedLength,
-      0
+    roll.batches.sort(
+      (a, b) => a.start - b.start
     );
+  });
 
-  const totalOriginalLength =
-    usedRolls.reduce(
-      (sum, roll) =>
-        sum +
-        roll.lengthMm,
-      0
-    );
+  const totalUsedLength = usedRolls.reduce(
+    (sum, roll) => sum + roll.usedLength,
+    0
+  );
 
-  const totalRemainingLength =
-    usedRolls.reduce(
-      (sum, roll) =>
-        sum +
-        roll.remainingLength,
-      0
-    );
+  const totalRemainingLength = usedRolls.reduce(
+    (sum, roll) => sum + roll.remainingLength,
+    0
+  );
 
-  const totalPieceArea =
-    usedRolls.reduce(
-      (sum, roll) =>
-        sum +
-        roll.usedArea,
-      0
-    );
+  const totalPieceArea = usedRolls.reduce(
+    (sum, roll) => sum + roll.usedArea,
+    0
+  );
 
-  const totalConsumedArea =
-    usedRolls.reduce(
-      (sum, roll) =>
-        sum +
-        FILM_WIDTH *
-          roll.usedLength,
-      0
-    );
-
-  const wastedArea =
-    Math.max(
-      0,
-      totalConsumedArea -
-        totalPieceArea
-    );
+  const totalConsumedArea = usedRolls.reduce(
+    (sum, roll) =>
+      sum + FILM_WIDTH * roll.usedLength,
+    0
+  );
 
   const efficiency =
     totalConsumedArea > 0
-      ? (
-          totalPieceArea /
-          totalConsumedArea
-        ) * 100
+      ? round1(
+          (totalPieceArea / totalConsumedArea) * 100
+        )
       : 0;
 
-  const byColor = {};
-
-  usedRolls.forEach(
-    (roll) => {
-      if (
-        !byColor[
-          roll.color
-        ]
-      ) {
-        byColor[
-          roll.color
-        ] = {
-          color:
-            roll.color,
-
-          usedRolls:
-            0,
-
-          usedLength:
-            0,
-
-          remainingLength:
-            0,
-
-          pieceCount:
-            0,
-        };
-      }
-
-      byColor[
-        roll.color
-      ].usedRolls += 1;
-
-      byColor[
-        roll.color
-      ].usedLength +=
-        roll.usedLength;
-
-      byColor[
-        roll.color
-      ].remainingLength +=
-        roll.remainingLength;
-
-      byColor[
-        roll.color
-      ].pieceCount +=
-        roll.placements.length;
-    }
+  const totalBatchCount = usedRolls.reduce(
+    (sum, roll) => sum + roll.batches.length,
+    0
   );
 
   return {
-    success:
-      unplaced.length === 0,
+    success: unplaced.length === 0,
 
-    rolls,
-
+    rolls: rollStates,
     usedRolls,
-
     unusedRolls,
-
     unplaced,
 
-    byColor:
-      Object.values(
-        byColor
-      ),
-
     summary: {
-      usedRollCount:
-        usedRolls.length,
+      usedRollCount: usedRolls.length,
+      unusedRollCount: unusedRolls.length,
 
-      unusedRollCount:
-        unusedRolls.length,
-
+      totalBatchCount,
       totalUsedLength,
-
-      totalOriginalLength,
-
       totalRemainingLength,
 
       totalPieceArea,
-
       totalConsumedArea,
 
-      wastedArea,
-
-      efficiency:
-        Math.round(
-          efficiency *
-            10
-        ) / 10,
+      efficiency,
     },
   };
 }
 
-function scoreResult(
-  result,
-  rollMode
-) {
-  if (
-    result.unplaced
-      .length > 0
-  ) {
-    return (
-      1_000_000_000_000 +
-      result.unplaced
-        .length *
-        1_000_000_000 +
-      result.summary
-        .totalUsedLength
-    );
-  }
+/*
+  새 핵심 알고리즘
 
-  const s =
-    result.summary;
-
-  if (
-    rollMode ===
-    "short-first"
-  ) {
-    const openedLength =
-      result.usedRolls.reduce(
-        (sum, roll) =>
-          sum +
-          roll.lengthMm,
-        0
-      );
-
-    return (
-      openedLength *
-        10000 +
-      s.totalUsedLength *
-        100 +
-      s.wastedArea /
-        1000 +
-      s.usedRollCount *
-        10
-    );
-  }
-
-  return (
-    s.totalUsedLength *
-      100000 +
-    s.wastedArea +
-    s.usedRollCount *
-      1000
-  );
-}
-
-function createOrders(
-  pieces
-) {
-  return [
-    [...pieces].sort(
-      (a, b) =>
-        b.area -
-        a.area
-    ),
-
-    [...pieces].sort(
-      (a, b) =>
-        Math.max(
-          b.width,
-          b.height
-        ) -
-        Math.max(
-          a.width,
-          a.height
-        )
-    ),
-
-    [...pieces].sort(
-      (a, b) =>
-        b.height -
-          a.height ||
-        b.width -
-          a.width
-    ),
-
-    [...pieces].sort(
-      (a, b) =>
-        b.width -
-          a.width ||
-        b.height -
-          a.height
-    ),
-
-    [...pieces].sort(
-      (a, b) =>
-        a.color.localeCompare(
-          b.color
-        ) ||
-        b.area -
-          a.area
-    ),
-
-    [...pieces].sort(
-      (a, b) =>
-        a.sectionIndex -
-          b.sectionIndex ||
-        a.colorIndex -
-          b.colorIndex ||
-        b.area -
-          a.area
-    ),
-  ];
-      }
+  컬러별:
+  1. 폭 600 초과 + 긴 것 우선
+  2. 그 다음 긴 것
+  3. 기준 조각 옆 남는 폭에
+     길이가 같거나 비슷한 조각 조합
+  4. 한 Batch가 끝나면 가로 절단
+  5. 다음 Batch는 새 페이지
+*/
 export function optimizeCutting({
   rolls = [],
   sections = [],
-
   rollMode = "waste",
-
-  iterations =
-    DEFAULT_ITERATIONS,
 } = {}) {
   const validation =
     validateCuttingInput({
@@ -1296,190 +787,127 @@ export function optimizeCutting({
       sections,
     });
 
-  if (
-    !validation.valid
-  ) {
+  if (!validation.valid) {
     return {
-      success:
-        false,
-
-      errors:
-        validation.errors,
-
-      result:
-        null,
+      success: false,
+      errors: validation.errors,
+      result: null,
     };
   }
 
   const normalizedRolls =
-    normalizeRolls(
-      rolls
+    normalizeRolls(rolls);
+
+  const grainMap =
+    getColorGrainMap(
+      normalizedRolls
     );
 
   const pieces =
-    expandSections(
-      sections
+    expandPieces(
+      sections,
+      grainMap
     );
 
-  const placementModes = [
-    "balanced",
-    "length",
-    "tight",
-  ];
-
-  const baseOrders =
-    createOrders(
-      pieces
+  const rollStates =
+    normalizedRolls.map(
+      createRollState
     );
 
-  let bestResult =
-    null;
+  const piecesByColor =
+    new Map();
 
-  let bestScore =
-    Infinity;
+  pieces.forEach((piece) => {
+    if (!piecesByColor.has(piece.color)) {
+      piecesByColor.set(piece.color, []);
+    }
 
-  const testOrder =
-    (order) => {
-      placementModes.forEach(
-        (placementMode) => {
-          const result =
-            packOnce({
-              rolls:
-                normalizedRolls,
+    piecesByColor
+      .get(piece.color)
+      .push(piece);
+  });
 
-              pieces:
-                clonePieces(
-                  order
-                ),
+  const unplaced = [];
 
-              placementMode,
+  /*
+    컬러별로 완전히 독립 계산
+  */
+  for (const [color, colorPieces] of piecesByColor.entries()) {
+    const {
+      batches,
+      remaining,
+    } = buildBatchesForColor(colorPieces);
 
-              rollMode,
-            });
+    if (remaining.length) {
+      unplaced.push(...remaining);
+    }
 
-          const score =
-            scoreResult(
-              result,
-              rollMode
-            );
+    /*
+      긴 Batch부터 먼저 롤에 배정.
+      긴 장척을 뒤로 미뤄 롤이 쪼개지는 문제 방지.
+    */
+    batches.sort((a, b) => {
+      if (a.type !== b.type) {
+        if (a.type === "wide-long") return -1;
+        if (b.type === "wide-long") return 1;
+      }
 
-          if (
-            score <
-            bestScore
-          ) {
-            bestScore =
-              score;
+      if (b.height !== a.height) {
+        return b.height - a.height;
+      }
 
-            bestResult =
-              result;
-          }
-        }
+      return b.usedWidth - a.usedWidth;
+    });
+
+    for (const batch of batches) {
+      const roll =
+        chooseRollForBatch(
+          rollStates,
+          color,
+          batch.height,
+          rollMode
+        );
+
+      if (!roll) {
+        unplaced.push(
+          ...batch.placements.map((p) => ({
+            ...p,
+            x: 0,
+            y: 0,
+          }))
+        );
+
+        continue;
+      }
+
+      placeBatchOnRoll(
+        roll,
+        batch
       );
-    };
-
-  baseOrders.forEach(
-    testOrder
-  );
-
-  const safeIterations =
-    Math.max(
-      0,
-
-      Math.min(
-        Math.floor(
-          n(iterations) ||
-            DEFAULT_ITERATIONS
-        ),
-
-        MAX_ITERATIONS
-      )
-    );
-
-  for (
-    let i = 0;
-    i <
-    safeIterations;
-    i += 1
-  ) {
-    testOrder(
-      shuffle(
-        pieces
-      )
-    );
+    }
   }
 
-  if (!bestResult) {
+  const result =
+    finalizeResult(
+      rollStates,
+      unplaced
+    );
+
+  if (unplaced.length) {
     return {
-      success:
-        false,
-
-      errors: [
-        "재단 결과를 계산하지 못했습니다.",
-      ],
-
-      result:
-        null,
-    };
-  }
-
-  if (
-    bestResult.unplaced
-      .length > 0
-  ) {
-    return {
-      success:
-        false,
+      success: false,
 
       errors: [
         "현재 등록된 롤 길이로 모든 재단물을 배치할 수 없습니다.",
       ],
 
-      result:
-        bestResult,
+      result,
     };
   }
 
   return {
-    success:
-      true,
-
-    errors:
-      [],
-
-    result:
-      bestResult,
+    success: true,
+    errors: [],
+    result,
   };
-}
-
-export function formatMm(
-  value
-) {
-  return `${Math.round(
-    n(value)
-  ).toLocaleString()}mm`;
-}
-
-export function formatMeterFromMm(
-  value
-) {
-  return `${(
-    n(value) / 1000
-  ).toFixed(2)}m`;
-}
-
-export function getUniqueColors(
-  rolls = []
-) {
-  return [
-    ...new Set(
-      normalizeRolls(
-        rolls
-      )
-        .map(
-          (roll) =>
-            roll.color
-        )
-        .filter(Boolean)
-    ),
-  ];
-}
+  }
