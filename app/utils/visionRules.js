@@ -19,5 +19,9 @@ export const ESTIMATE_OBSERVATION_RULES = `
 view_completeness는 견적 대상 자체가 충분히 보이면 full, 일부가 잘렸으면 partial, 식별 불가면 unclear이다.
 observable_structure에는 문 개수·배치·개폐 방식·측판/거울 구성 중 직접 확인한 내용만 간결하게 적는다.
 수량은 전체가 보일 때만 확정하며 보이는 문 개수를 전체 문 개수로 바꾸지 않는다.
-partial/unclear이면 classification_confidence를 low로 두고 추가로 필요한 사진을 classification_evidence에 적는다.
+classification_confidence는 물체 종류와 시공 범위를 구분할 수 있는 확신이며 전체 크기나 실측값의 확신이 아니다.
+싱크대 상판·싱크볼과 상부장/하부장 구조가 명확하면 일부 가장자리가 잘렸거나 생활용품에 가려졌어도 종류와 범위는 high/medium일 수 있다. partial이라는 이유만으로 low로 낮추지 않는다.
+예: ㄱ자 싱크대의 상부장과 하부장이 보이고 끝부분만 조금 잘린 사진은 kitchen_full로 분류할 수 있다. 하부장만 보이는 사진은 kitchen_lower이며 보이지 않는 상부장을 포함하지 않는다.
+주 대상을 식별할 수 없거나 상부장/하부장 범위를 구분할 근거가 없으면 low로 두고 classification_evidence에 필요한 확인 내용을 적는다.
+partial/unclear이면 보이지 않는 범위를 observable_structure에 명시한다. 금액 비교에 충분한 구조와 규모인지는 실제 시공사례 사진 비교 단계에서 별도로 검증한다.
 `;
