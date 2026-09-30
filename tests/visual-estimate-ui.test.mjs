@@ -13,7 +13,7 @@ const { code } = await swc.transform(fs.readFileSync(new URL('../app/components/
 });
 const context = { React, exports: {}, require: name => { assert.equal(name, 'react'); return React; } };
 vm.createContext(context); vm.runInContext(code, context);
-const render = (group) => renderToStaticMarkup(React.createElement(context.exports.default, { imageCount: 1, groups: [{ key: 'a', category: '싱크대', subCategory: '하부장', photos: [], ...group }] }));
+const render = (group) => renderToStaticMarkup(React.createElement(context.exports.default, { imageCount: 1, onEditPhotos() {}, groups: [{ key: 'a', category: '싱크대', subCategory: '하부장', photos: [], ...group }] }));
 
 test('customer result shows visual reasons, not a description score or an unverified price', () => {
   const html = render({ similarItems: [
@@ -38,4 +38,18 @@ test('failed visual comparison explains the failure and does not render an avera
   const html = render({ estimate: null, similarItems: [], searchMessage: '사진 비교를 완료하지 못해 금액을 계산하지 않았습니다.' });
   assert.ok(html.includes('사진 비교를 완료하지 못해 금액을 계산하지 않았습니다.'));
   assert.ok(!html.includes('비교 사례 평균 금액'));
+});
+
+test('blocked classification shows a scope correction action and never falsely claims a failed case search', () => {
+  const html = render({ requiresConfirmation: true, confirmationReasons: ['unknown_scope'], estimate: null });
+  assert.ok(html.includes('상부장만, 하부장만, 상부장+하부장'));
+  assert.ok(html.includes('시공 부위·사진 확인하기'));
+  assert.ok(!html.includes('사례가 부족합니다'));
+  assert.ok(!html.includes('비교 사례 평균 금액'));
+});
+
+test('a completed search with no candidates still displays its actual shortage message', () => {
+  const html = render({ requiresConfirmation: false, estimate: null, searchStatus: 'no_candidates' });
+  assert.ok(html.includes('사례가 부족합니다'));
+  assert.ok(!html.includes('시공 부위·사진 확인하기'));
 });

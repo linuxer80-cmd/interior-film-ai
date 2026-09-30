@@ -30,6 +30,9 @@ export async function POST(request) {
         openai_usage: result.usage, photos: result.photos.map(({ index, analysis }) => ({ index,
           target_type: analysis.target_type, object_key: analysis.object_key,
           object_confidence: analysis.object_confidence, object_evidence: analysis.object_evidence,
+          construction_scope: analysis.construction_scope, view_completeness: analysis.view_completeness,
+          classification_confidence: analysis.classification_confidence, classification_evidence: analysis.classification_evidence,
+          requires_confirmation: analysis.requires_confirmation, confirmation_reason: analysis.confirmation_reason,
         })) },
     }).select("id").single();
     if (usageError) console.error("Estimate analysis usage record failed:", usageError.code);

@@ -49,8 +49,38 @@ test('cabinet doors retain their actual furniture category; original refrigerato
   assert.equal(fridge.requires_confirmation, false);
   assert.equal(normalizeAnalysisClassification({ category: '문 및 문틀', sub_category: '중문', target_type: 'door' }).target_type, 'middle_door');
   assert.equal(normalizeAnalysisClassification({ category: '방화문', sub_category: '중문' }).requires_confirmation, true);
-  assert.equal(normalizeAnalysisClassification({ ...lower, classification_confidence: 'high', view_completeness: 'partial' }).requires_confirmation, true);
+  assert.equal(normalizeAnalysisClassification({ ...lower, classification_confidence: 'high', view_completeness: 'partial' }).requires_confirmation, false);
   assert.equal(selectEstimateCases([candidate(1, { actual_cost: Infinity })], lower).length, 0);
+});
+
+test('known kitchen scope reaches visual comparison despite cropping, without inventing a price or dimensions', () => {
+  for (const construction_scope of ['kitchen_lower', 'kitchen_upper', 'kitchen_full']) {
+    const analysis = normalizeAnalysisClassification({ category: '주방 가구', target_type: 'kitchen', construction_scope,
+      view_completeness: 'partial', classification_confidence: 'medium', observable_structure: 'ㄱ자 배치, 끝부분 미확인' });
+    assert.equal(analysis.requires_confirmation, false);
+    assert.equal(analysis.construction_scope, construction_scope);
+    assert.equal(analysis.view_completeness, 'partial');
+    assert.equal(analysis.classification_confidence, 'medium');
+    assert.equal(analysis.estimate, undefined);
+    // The price comparison still rejects a photo whose missing area prevents a scale comparison.
+    assert.equal(selectVisuallyVerifiedCases([candidate(1)], result([match(1, { scale_match: 'uncertain' })])).length, 0);
+  }
+});
+
+test('unidentified kitchen scope, unreadable views, conflicting scopes and partial doors still require confirmation', () => {
+  const base = { ...lower, target_type: 'kitchen', classification_confidence: 'high', view_completeness: 'partial' };
+  for (const [analysis, reason] of [
+    [{ ...base, view_completeness: 'unclear' }, 'unclear_view'],
+    [{ ...base, classification_confidence: 'low' }, 'low_confidence'],
+    [{ ...base, sub_category: '주방 가구', construction_scope: 'unknown' }, 'unknown_scope'],
+    [{ ...base, sub_category: '상부장과 하부장' }, 'conflicting_scope'],
+    [{ category: '문 및 문틀', target_type: 'door', view_completeness: 'partial', classification_confidence: 'high' }, 'incomplete_view'],
+    [{ category: '냉장고장', view_completeness: 'partial', classification_confidence: 'high' }, 'incomplete_view'],
+  ]) {
+    const normalized = normalizeAnalysisClassification(analysis);
+    assert.equal(normalized.requires_confirmation, true);
+    assert.equal(normalized.confirmation_reason, reason);
+  }
 });
 
 function database() {
