@@ -1404,7 +1404,7 @@ export default function useEstimate({
           missingCount > 0
         ) {
           setMessage(
-            `⚠️ ${validEstimates.length}개 부위는 견적을 계산했고, ${missingCount}개 부위는 데이터가 부족합니다.`
+            `⚠️ ${validEstimates.length}개 부위의 견적을 계산했습니다. 미산정 ${missingCount}개 부위는 결과 화면의 안내를 확인해주세요.`
           );
         } else {
           setMessage(
@@ -1413,7 +1413,7 @@ export default function useEstimate({
         }
       } else {
         setMessage(
-          "⚠️ 사진 분석은 완료했지만 같은 부위의 실제 시공 데이터가 부족합니다. 정확한 상담을 신청해주세요."
+          "⚠️ 사진 분석은 완료했지만 견적을 확정하지 못했습니다. 결과 화면에서 부위별 확인 사유와 다음 단계를 확인해주세요."
         );
       }
     } catch (error) {
