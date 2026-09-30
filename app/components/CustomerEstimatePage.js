@@ -1441,6 +1441,7 @@ export default function CustomerEstimatePage({
               </p>}
               <EstimateResult
                 onRetrySimilarPhoto={retrySimilarPhoto}
+                onEditPhotos={() => changeScreen(SCREEN.UPLOAD)}
                 groups={
                   displayGroups
                 }
