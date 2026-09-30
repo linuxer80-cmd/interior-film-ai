@@ -40,10 +40,11 @@ test('failed visual comparison explains the failure and does not render an avera
   assert.ok(!html.includes('비교 사례 평균 금액'));
 });
 
-test('blocked classification shows a scope correction action and never falsely claims a failed case search', () => {
+test('blocked classification offers photo changes and never refers to removed manual selectors or a failed case search', () => {
   const html = render({ requiresConfirmation: true, confirmationReasons: ['unknown_scope'], estimate: null });
-  assert.ok(html.includes('상부장만, 하부장만, 상부장+하부장'));
-  assert.ok(html.includes('시공 부위·사진 확인하기'));
+  assert.ok(html.includes('시공할 상부장이나 하부장이 잘 보이는 사진'));
+  assert.ok(html.includes('사진 추가·변경하기'));
+  assert.ok(!html.includes('사진 설정'));
   assert.ok(!html.includes('사례가 부족합니다'));
   assert.ok(!html.includes('비교 사례 평균 금액'));
 });
@@ -51,5 +52,5 @@ test('blocked classification shows a scope correction action and never falsely c
 test('a completed search with no candidates still displays its actual shortage message', () => {
   const html = render({ requiresConfirmation: false, estimate: null, searchStatus: 'no_candidates' });
   assert.ok(html.includes('사례가 부족합니다'));
-  assert.ok(!html.includes('시공 부위·사진 확인하기'));
+  assert.ok(!html.includes('사진 추가·변경하기'));
 });
