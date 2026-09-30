@@ -4,198 +4,66 @@ import React, { useMemo } from "react";
 
 const FILM_WIDTH = 1220;
 
-function num(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.round(n) : 0;
+const n = (v) => {
+  const x = Number(v);
+  return Number.isFinite(x) ? Math.round(x) : 0;
+};
+
+const meter = (mm) => `${(n(mm) / 1000).toFixed(2)}m`;
+
+function getPages(roll) {
+  if (Array.isArray(roll?.batches) && roll.batches.length) {
+    return roll.batches.map((batch, index) => ({
+      index,
+      start: n(batch.start),
+      end: n(batch.end),
+      type: batch.type || "batch",
+      usedWidth: n(batch.usedWidth),
+      wasteWidth: n(batch.wasteWidth),
+    }));
+  }
+
+  const used = Math.max(0, n(roll?.usedLength));
+
+  return used > 0
+    ? [
+        {
+          index: 0,
+          start: 0,
+          end: used,
+          type: "fallback",
+          usedWidth: 0,
+          wasteWidth: 0,
+        },
+      ]
+    : [];
 }
 
-function meterText(mm) {
-  return `${(num(mm) / 1000).toFixed(2)}m`;
-}
+function pagePieces(placements, page) {
+  return placements.filter((piece) => {
+    const top = n(piece.y);
+    const bottom = top + n(piece.height);
 
-function getPieceTop(piece) {
-  return num(piece.y);
-}
-
-function getPieceBottom(piece) {
-  return num(piece.y) + num(piece.height);
-}
-
-/*
-  어떤 조각도 통과하지 않는 Y 위치만
-  가로 절단 가능 위치로 판단합니다.
-*/
-function findSafeCutLines(placements, usedLength) {
-  const candidates = new Set([
-    0,
-    num(usedLength),
-  ]);
-
-  placements.forEach((piece) => {
-    candidates.add(getPieceTop(piece));
-    candidates.add(getPieceBottom(piece));
+    return bottom > page.start && top < page.end;
   });
-
-  return [...candidates]
-    .filter(
-      (line) =>
-        line >= 0 &&
-        line <= num(usedLength)
-    )
-    .sort((a, b) => a - b)
-    .filter((line) => {
-      if (
-        line === 0 ||
-        line === num(usedLength)
-      ) {
-        return true;
-      }
-
-      return !placements.some((piece) => {
-        const top = getPieceTop(piece);
-        const bottom = getPieceBottom(piece);
-
-        return (
-          top < line &&
-          bottom > line
-        );
-      });
-    });
 }
 
-/*
-  안전 절단선마다 페이지를 나눕니다.
+function range(start, end, step) {
+  const out = [];
 
-  너무 짧은 구간이 계속 생기는 것을 막기 위해
-  최소 약 700mm 이상 진행된 안전 절단선을 우선합니다.
+  let value =
+    Math.ceil(start / step) * step;
 
-  단, 가장 긴 조각이 끝나는 지점처럼
-  실제 배치상 의미 있는 안전 절단선은 유지됩니다.
-*/
-function createCutPages(
-  placements,
-  usedLength
-) {
-  const safeLines =
-    findSafeCutLines(
-      placements,
-      usedLength
-    );
-
-  if (safeLines.length <= 2) {
-    return [
-      {
-        index: 0,
-        start: 0,
-        end: num(usedLength),
-      },
-    ];
+  while (value <= end) {
+    out.push(value);
+    value += step;
   }
 
-  const pages = [];
-  let start = 0;
-
-  while (start < num(usedLength)) {
-    const candidates =
-      safeLines.filter(
-        (line) => line > start
-      );
-
-    if (!candidates.length) {
-      break;
-    }
-
-    /*
-      현재 시작점 이후의 조각 중
-      가장 먼저 의미 있게 끝나는 안전선을 찾습니다.
-    */
-    const meaningful =
-      candidates.find(
-        (line) =>
-          line - start >= 700
-      );
-
-    const end =
-      meaningful ||
-      candidates[
-        candidates.length - 1
-      ];
-
-    pages.push({
-      index: pages.length,
-      start,
-      end,
-    });
-
-    start = end;
-  }
-
-  if (
-    pages.length === 0 ||
-    pages[
-      pages.length - 1
-    ].end < num(usedLength)
-  ) {
-    pages.push({
-      index: pages.length,
-      start:
-        pages.length > 0
-          ? pages[
-              pages.length - 1
-            ].end
-          : 0,
-      end: num(usedLength),
-    });
-  }
-
-  return pages.filter(
-    (page) =>
-      page.end > page.start
-  );
+  return out;
 }
 
-function getPiecesForPage(
-  placements,
-  start,
-  end
-) {
-  return placements.filter(
-    (piece) => {
-      const top =
-        getPieceTop(piece);
-
-      const bottom =
-        getPieceBottom(piece);
-
-      return (
-        bottom > start &&
-        top < end
-      );
-    }
-  );
-}
-
-function makeTicks(
-  start,
-  end,
-  step
-) {
-  const result = [];
-
-  let current =
-    Math.ceil(start / step) *
-    step;
-
-  while (current <= end) {
-    result.push(current);
-    current += step;
-  }
-
-  return result;
-}
-
-function getPieceColor(index) {
-  const colors = [
+function fillColor(index) {
+  const palette = [
     "#dbeafe",
     "#dcfce7",
     "#fef3c7",
@@ -204,109 +72,100 @@ function getPieceColor(index) {
     "#cffafe",
   ];
 
-  return colors[
-    index % colors.length
-  ];
+  return palette[index % palette.length];
 }
-function GridLines({
-  pageStart,
-  pageEnd,
+
+function Grid({
+  page,
   left,
   top,
 }) {
   const pageLength =
-    pageEnd - pageStart;
+    page.end - page.start;
 
-  const verticalTicks =
-    makeTicks(
-      0,
-      FILM_WIDTH,
-      10
-    );
+  const xTicks = range(
+    0,
+    FILM_WIDTH,
+    10
+  );
 
-  const horizontalTicks =
-    makeTicks(
-      pageStart,
-      pageEnd,
-      10
-    );
+  const yTicks = range(
+    page.start,
+    page.end,
+    10
+  );
 
   return (
     <>
-      {/* 폭 방향: 1cm 세로선 */}
-      {verticalTicks.map(
-        (tick) => {
-          const x =
-            left + tick;
+      {/* 폭 방향 세로선 */}
+      {xTicks.map((tick) => {
+        const x =
+          left + tick;
 
-          const is100 =
-            tick % 100 === 0;
+        const major100 =
+          tick % 100 === 0;
 
-          const is1000 =
-            tick % 1000 === 0;
+        const major1000 =
+          tick % 1000 === 0;
 
-          const edge =
-            tick === 0 ||
-            tick === FILM_WIDTH;
+        const edge =
+          tick === 0 ||
+          tick === FILM_WIDTH;
 
-          return (
-            <g
-              key={`vx-${tick}`}
-            >
-              <line
-                x1={x}
-                y1={top}
-                x2={x}
-                y2={
-                  top +
-                  pageLength
+        return (
+          <g key={`x-${tick}`}>
+            <line
+              x1={x}
+              y1={top}
+              x2={x}
+              y2={
+                top +
+                pageLength
+              }
+              stroke={
+                edge
+                  ? "#111827"
+                  : major1000
+                  ? "#64748b"
+                  : major100
+                  ? "#94a3b8"
+                  : "#e5e7eb"
+              }
+              strokeWidth={
+                edge
+                  ? 3
+                  : major1000
+                  ? 2
+                  : major100
+                  ? 1.15
+                  : 0.45
+              }
+            />
+
+            {major100 && (
+              <text
+                x={x}
+                y={top - 16}
+                textAnchor="middle"
+                fontSize={
+                  major1000
+                    ? 22
+                    : 15
                 }
-                stroke={
-                  edge
-                    ? "#334155"
-                    : is1000
-                    ? "#64748b"
-                    : is100
-                    ? "#94a3b8"
-                    : "#e2e8f0"
+                fontWeight={
+                  major1000
+                    ? 900
+                    : 700
                 }
-                strokeWidth={
-                  edge
-                    ? 3
-                    : is1000
-                    ? 2
-                    : is100
-                    ? 1.2
-                    : 0.45
-                }
-              />
+                fill="#475569"
+              >
+                {tick}
+              </text>
+            )}
+          </g>
+        );
+      })}
 
-              {is100 && (
-                <text
-                  x={x}
-                  y={top - 17}
-                  textAnchor="middle"
-                  fontSize={
-                    is1000
-                      ? 22
-                      : 16
-                  }
-                  fontWeight={
-                    is1000
-                      ? "900"
-                      : "700"
-                  }
-                  fill="#475569"
-                >
-                  {tick}
-                </text>
-              )}
-            </g>
-          );
-        }
-      )}
-
-      {/* 1220mm 끝 숫자 */}
       <text
         x={
           left +
@@ -314,104 +173,96 @@ function GridLines({
         }
         y={top - 42}
         textAnchor="end"
-        fontSize="19"
+        fontSize="18"
         fontWeight="900"
         fill="#111827"
       >
         1220mm
       </text>
 
-      {/* 길이 방향: 1cm 가로선 */}
-      {horizontalTicks.map(
-        (absolute) => {
-          const local =
-            absolute -
-            pageStart;
+      {/* 롤 진행 방향 가로선 */}
+      {yTicks.map((absolute) => {
+        const local =
+          absolute -
+          page.start;
 
-          const y =
-            top + local;
+        const y =
+          top + local;
 
-          const isMeter =
-            absolute %
-              1000 ===
-            0;
+        const major100 =
+          absolute % 100 === 0;
 
-          const is100 =
-            absolute %
-              100 ===
-            0;
+        const major1000 =
+          absolute % 1000 === 0;
 
-          return (
-            <g
-              key={`hy-${absolute}`}
-            >
-              <line
-                x1={left}
-                y1={y}
-                x2={
-                  left +
-                  FILM_WIDTH
-                }
-                y2={y}
-                stroke={
-                  isMeter
-                    ? "#64748b"
-                    : is100
-                    ? "#94a3b8"
-                    : "#e2e8f0"
-                }
-                strokeWidth={
-                  isMeter
-                    ? 2.2
-                    : is100
-                    ? 1.2
-                    : 0.45
-                }
-              />
+        return (
+          <g
+            key={`y-${absolute}`}
+          >
+            <line
+              x1={left}
+              y1={y}
+              x2={
+                left +
+                FILM_WIDTH
+              }
+              y2={y}
+              stroke={
+                major1000
+                  ? "#64748b"
+                  : major100
+                  ? "#94a3b8"
+                  : "#e5e7eb"
+              }
+              strokeWidth={
+                major1000
+                  ? 2.2
+                  : major100
+                  ? 1.15
+                  : 0.45
+              }
+            />
 
-              {isMeter ? (
-                <text
-                  x={left - 15}
-                  y={y + 8}
-                  textAnchor="end"
-                  fontSize="24"
-                  fontWeight="900"
-                  fill="#1d4ed8"
-                >
-                  {meterText(
-                    absolute
-                  )}
-                </text>
-              ) : is100 ? (
-                <text
-                  x={left - 15}
-                  y={y + 6}
-                  textAnchor="end"
-                  fontSize="14"
-                  fontWeight="700"
-                  fill="#64748b"
-                >
-                  {absolute %
-                    1000}
-                </text>
-              ) : null}
-            </g>
-          );
-        }
-      )}
+            {major1000 ? (
+              <text
+                x={left - 14}
+                y={y + 7}
+                textAnchor="end"
+                fontSize="23"
+                fontWeight="900"
+                fill="#1d4ed8"
+              >
+                {meter(
+                  absolute
+                )}
+              </text>
+            ) : major100 ? (
+              <text
+                x={left - 14}
+                y={y + 5}
+                textAnchor="end"
+                fontSize="14"
+                fontWeight="700"
+                fill="#64748b"
+              >
+                {absolute %
+                  1000}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
 
-      {/* 페이지 시작 누적거리 */}
+      {/* 페이지 시작 누적 거리 */}
       <text
-        x={left - 15}
+        x={left - 14}
         y={top + 7}
         textAnchor="end"
-        fontSize="22"
+        fontSize="20"
         fontWeight="900"
         fill="#1d4ed8"
       >
-        {meterText(
-          pageStart
-        )}
+        {meter(page.start)}
       </text>
     </>
   );
@@ -425,45 +276,33 @@ function PieceText({
   width,
   height,
 }) {
-  const originalWidth =
-    num(piece.originalWidth);
+  const ow =
+    n(piece.originalWidth);
 
-  const originalHeight =
-    num(piece.originalHeight);
+  const oh =
+    n(piece.originalHeight);
 
-  const centerX =
+  const cx =
     x + width / 2;
 
-  const centerY =
+  const cy =
     y + height / 2;
 
   /*
-    작은 칸도 치수는 절대 생략하지 않습니다.
+    폭이 매우 좁은 조각은
+    치수를 세로로 회전시켜 반드시 표시
   */
   if (
-    width < 170 ||
-    height < 170
+    width < 110 &&
+    height > 180
   ) {
-    const rotate =
-      width < 90 &&
-      height > 150;
-
     return (
       <>
         <text
-          x={centerX}
-          y={
-            rotate
-              ? centerY - 30
-              : centerY - 10
-          }
+          x={cx}
+          y={cy - 36}
           textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={
-            width < 70
-              ? 16
-              : 20
-          }
+          fontSize="17"
           fontWeight="900"
           fill="#111827"
         >
@@ -471,45 +310,71 @@ function PieceText({
         </text>
 
         <text
-          x={centerX}
-          y={
-            rotate
-              ? centerY + 15
-              : centerY + 20
-          }
+          x={cx}
+          y={cy + 12}
           textAnchor="middle"
-          dominantBaseline="middle"
           fontSize={
-            width < 70
+            width < 65
               ? 12
-              : 16
+              : 15
           }
           fontWeight="900"
-          fill="#334155"
-          transform={
-            rotate
-              ? `rotate(-90 ${centerX} ${centerY + 15})`
-              : undefined
-          }
+          fill="#111827"
+          transform={`rotate(-90 ${cx} ${cy + 12})`}
         >
-          {originalWidth}×
-          {originalHeight}
+          {ow}×{oh}
         </text>
       </>
     );
   }
 
+  /*
+    높이가 낮거나 폭이 좁은 조각도
+    번호와 사이즈는 반드시 표시
+  */
+  if (
+    height < 155 ||
+    width < 180
+  ) {
+    return (
+      <>
+        <text
+          x={cx}
+          y={cy - 10}
+          textAnchor="middle"
+          fontSize="17"
+          fontWeight="900"
+          fill="#111827"
+        >
+          #{number}
+        </text>
+
+        <text
+          x={cx}
+          y={cy + 18}
+          textAnchor="middle"
+          fontSize="14"
+          fontWeight="900"
+          fill="#111827"
+        >
+          {ow}×{oh}
+        </text>
+      </>
+    );
+  }
+
+  const fs =
+    width >= 350
+      ? 22
+      : 17;
+
   return (
     <>
       <text
-        x={centerX}
-        y={centerY - 52}
+        x={cx}
+        y={cy - 52}
         textAnchor="middle"
-        fontSize={
-          width > 350
-            ? 28
-            : 21
-        }
+        fontSize={fs + 3}
         fontWeight="900"
         fill="#111827"
       >
@@ -517,14 +382,10 @@ function PieceText({
       </text>
 
       <text
-        x={centerX}
-        y={centerY - 17}
+        x={cx}
+        y={cy - 19}
         textAnchor="middle"
-        fontSize={
-          width > 350
-            ? 24
-            : 18
-        }
+        fontSize={fs}
         fontWeight="800"
         fill="#111827"
       >
@@ -532,14 +393,10 @@ function PieceText({
       </text>
 
       <text
-        x={centerX}
-        y={centerY + 16}
+        x={cx}
+        y={cy + 11}
         textAnchor="middle"
-        fontSize={
-          width > 350
-            ? 23
-            : 17
-        }
+        fontSize={fs - 1}
         fontWeight="700"
         fill="#334155"
       >
@@ -547,27 +404,22 @@ function PieceText({
       </text>
 
       <text
-        x={centerX}
-        y={centerY + 52}
+        x={cx}
+        y={cy + 44}
         textAnchor="middle"
-        fontSize={
-          width > 350
-            ? 25
-            : 18
-        }
+        fontSize={fs}
         fontWeight="900"
         fill="#111827"
       >
-        {originalWidth}×
-        {originalHeight}
+        {ow}×{oh}
       </text>
 
       {piece.rotated && (
         <text
-          x={centerX}
-          y={centerY + 80}
+          x={cx}
+          y={cy + 70}
           textAnchor="middle"
-          fontSize="15"
+          fontSize="14"
           fontWeight="900"
           fill="#b45309"
         >
@@ -576,60 +428,183 @@ function PieceText({
       )}
     </>
   );
-    }
+}
+
+function PagePieceList({
+  pieces,
+  placements,
+}) {
+  return (
+    <div
+      style={{
+        borderTop:
+          "1px solid #e5e7eb",
+        padding:
+          "8px 10px 10px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 900,
+          color: "#64748b",
+          marginBottom: 6,
+        }}
+      >
+        이 차수 재단 목록
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 5,
+        }}
+      >
+        {pieces.map((piece) => {
+          const number =
+            placements.findIndex(
+              (p) =>
+                p.id === piece.id
+            ) + 1;
+
+          return (
+            <div
+              key={`list-${piece.id}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "34px 1fr auto",
+                gap: 7,
+                alignItems:
+                  "center",
+                padding: "7px 8px",
+                borderRadius: 7,
+                background:
+                  "#f8fafc",
+              }}
+            >
+              <strong
+                style={{
+                  fontSize: 11,
+                }}
+              >
+                #{number}
+              </strong>
+
+              <div
+                style={{
+                  minWidth: 0,
+                }}
+              >
+                <b
+                  style={{
+                    display:
+                      "block",
+                    fontSize: 12,
+                  }}
+                >
+                  {piece.location}
+                  {" · "}
+                  {piece.part}
+                </b>
+
+                <span
+                  style={{
+                    fontSize: 11,
+                    color:
+                      "#64748b",
+                  }}
+                >
+                  {n(
+                    piece.originalWidth
+                  )}
+                  ×
+                  {n(
+                    piece.originalHeight
+                  )}
+                  mm
+                  {piece.rotated
+                    ? " · 회전"
+                    : ""}
+                </span>
+              </div>
+
+              <strong
+                style={{
+                  fontSize: 11,
+                  color:
+                    "#475569",
+                }}
+              >
+                {piece.color}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 function CutPage({
   page,
   placements,
   totalPages,
 }) {
-  const LEFT = 120;
+  const LEFT = 115;
   const RIGHT = 35;
-  const TOP = 80;
-  const BOTTOM = 75;
+  const TOP = 78;
+  const BOTTOM = 64;
 
   const pageLength =
-    page.end - page.start;
+    page.end -
+    page.start;
 
   const svgWidth =
-    LEFT + FILM_WIDTH + RIGHT;
+    LEFT +
+    FILM_WIDTH +
+    RIGHT;
 
   const svgHeight =
-    TOP + pageLength + BOTTOM;
+    TOP +
+    pageLength +
+    BOTTOM;
 
   const pieces =
-    getPiecesForPage(
+    pagePieces(
       placements,
-      page.start,
-      page.end
+      page
     );
 
   return (
     <section
       style={{
-        marginBottom: 22,
-        border: "1px solid #d1d5db",
-        borderRadius: 14,
+        marginBottom: 18,
+        border:
+          "1px solid #d1d5db",
+        borderRadius: 13,
         overflow: "hidden",
-        background: "#ffffff",
+        background: "#fff",
       }}
     >
       <div
         style={{
           display: "flex",
+          justifyContent:
+            "space-between",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          padding: "11px 12px",
+          gap: 8,
+          padding:
+            "10px 11px",
+          background:
+            "#f8fafc",
           borderBottom:
             "1px solid #e5e7eb",
-          background: "#f8fafc",
         }}
       >
         <div>
           <strong
             style={{
               fontSize: 16,
-              fontWeight: 900,
             }}
           >
             {page.index + 1}차 재단
@@ -637,36 +612,47 @@ function CutPage({
 
           <div
             style={{
-              marginTop: 3,
+              marginTop: 2,
               fontSize: 12,
               fontWeight: 700,
               color: "#64748b",
             }}
           >
-            {meterText(page.start)}
-            {" ~ "}
-            {meterText(page.end)}
+            {meter(
+              page.start
+            )}{" "}
+            ~{" "}
+            {meter(
+              page.end
+            )}
+            {" · 길이 "}
+            {meter(
+              pageLength
+            )}
           </div>
         </div>
 
         <div
           style={{
-            padding: "7px 9px",
-            borderRadius: 8,
-            background: "#fee2e2",
+            padding: "6px 8px",
+            borderRadius: 7,
+            background:
+              "#fee2e2",
             color: "#b91c1c",
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 900,
           }}
         >
-          {meterText(page.end)}
-          에서 가로 절단
+          {meter(
+            page.end
+          )}{" "}
+          가로 절단
         </div>
       </div>
 
       <div
         style={{
-          padding: 6,
+          padding: 5,
           overflowX: "auto",
           WebkitOverflowScrolling:
             "touch",
@@ -680,58 +666,63 @@ function CutPage({
             width: "100%",
             minWidth: 620,
             height: "auto",
-            background: "#ffffff",
+            background: "#fff",
           }}
         >
+          {/* 필름 영역 */}
           <rect
             x={LEFT}
             y={TOP}
             width={FILM_WIDTH}
             height={pageLength}
-            fill="#ffffff"
+            fill="#fff"
             stroke="#111827"
             strokeWidth="4"
           />
 
-          <GridLines
-            pageStart={page.start}
-            pageEnd={page.end}
+          {/* 1cm / 10cm / 1m 격자 */}
+          <Grid
+            page={page}
             left={LEFT}
             top={TOP}
           />
 
+          {/* 재단 조각 */}
           {pieces.map((piece) => {
             const globalIndex =
               placements.findIndex(
-                (item) =>
-                  item.id === piece.id
+                (p) =>
+                  p.id === piece.id
               );
 
             const x =
-              LEFT + num(piece.x);
+              LEFT +
+              n(piece.x);
 
             const y =
               TOP +
-              num(piece.y) -
+              n(piece.y) -
               page.start;
 
             const width =
-              num(piece.width);
+              n(piece.width);
 
             const height =
-              num(piece.height);
+              n(piece.height);
 
             return (
-              <g key={piece.id}>
+              <g
+                key={piece.id}
+              >
                 <rect
                   x={x}
                   y={y}
                   width={width}
                   height={height}
-                  fill={getPieceColor(
+                  fill={fillColor(
                     globalIndex
                   )}
-                  fillOpacity="0.88"
+                  fillOpacity="0.9"
                   stroke="#111827"
                   strokeWidth="3"
                 />
@@ -739,7 +730,8 @@ function CutPage({
                 <PieceText
                   piece={piece}
                   number={
-                    globalIndex + 1
+                    globalIndex +
+                    1
                   }
                   x={x}
                   y={y}
@@ -750,28 +742,40 @@ function CutPage({
             );
           })}
 
+          {/* 가로 절단선 */}
           <line
             x1={LEFT}
-            y1={TOP + pageLength}
-            x2={LEFT + FILM_WIDTH}
-            y2={TOP + pageLength}
+            y1={
+              TOP +
+              pageLength
+            }
+            x2={
+              LEFT +
+              FILM_WIDTH
+            }
+            y2={
+              TOP +
+              pageLength
+            }
             stroke="#dc2626"
             strokeWidth="8"
           />
 
           <text
-            x={LEFT - 15}
+            x={LEFT - 14}
             y={
               TOP +
               pageLength +
-              8
+              7
             }
             textAnchor="end"
-            fontSize="23"
+            fontSize="21"
             fontWeight="900"
             fill="#dc2626"
           >
-            {meterText(page.end)}
+            {meter(
+              page.end
+            )}
           </text>
 
           <text
@@ -783,10 +787,10 @@ function CutPage({
             y={
               TOP +
               pageLength -
-              14
+              13
             }
             textAnchor="end"
-            fontSize="21"
+            fontSize="19"
             fontWeight="900"
             fill="#dc2626"
           >
@@ -795,252 +799,58 @@ function CutPage({
         </svg>
       </div>
 
+      <PagePieceList
+        pieces={pieces}
+        placements={
+          placements
+        }
+      />
+
       <div
         style={{
-          padding: "8px 12px 11px",
+          padding:
+            "7px 10px",
           borderTop:
             "1px solid #e5e7eb",
-          fontSize: 11,
-          color: "#64748b",
+          fontSize: 10,
           fontWeight: 700,
+          color: "#64748b",
         }}
       >
-        페이지 {page.index + 1}
-        {" / "}
+        페이지{" "}
+        {page.index + 1}/
         {totalPages}
-        {" · 시작 "}
-        {meterText(page.start)}
-        {" · 종료 "}
-        {meterText(page.end)}
+        {" · "}
+        폭 1220mm
+        {" · "}
+        1cm 격자
+        {" · "}
+        10cm 숫자
+        {" · "}
+        1m 누적 표시
       </div>
     </section>
   );
 }
-function PieceList({
-  placements,
-}) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        border:
-          "1px solid #e5e7eb",
-        borderRadius: 10,
-        overflow: "hidden",
-        background: "#ffffff",
-      }}
-    >
-      <div
-        style={{
-          padding: "9px 10px",
-          background: "#f8fafc",
-          borderBottom:
-            "1px solid #e5e7eb",
-          fontSize: 13,
-          fontWeight: 900,
-          color: "#111827",
-        }}
-      >
-        전체 재단 목록
-      </div>
 
-      {placements.map(
-        (piece, index) => (
-          <div
-            key={
-              `list-${piece.id}`
-            }
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "38px 1fr auto",
-              gap: 8,
-              alignItems: "center",
-              padding: "8px 10px",
-              borderBottom:
-                index ===
-                placements.length - 1
-                  ? "0"
-                  : "1px solid #e5e7eb",
-            }}
-          >
-            <strong
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent:
-                  "center",
-                minHeight: 30,
-                borderRadius: 6,
-                background: "#e5e7eb",
-                fontSize: 11,
-              }}
-            >
-              #{index + 1}
-            </strong>
-
-            <div
-              style={{
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 900,
-                  color: "#111827",
-                }}
-              >
-                {piece.location}
-                {" · "}
-                {piece.part}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 2,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#475569",
-                }}
-              >
-                {num(
-                  piece.originalWidth
-                )}
-                ×
-                {num(
-                  piece.originalHeight
-                )}
-                mm
-                {piece.rotated
-                  ? " · 회전"
-                  : ""}
-              </div>
-            </div>
-
-            <strong
-              style={{
-                fontSize: 11,
-                color: "#475569",
-              }}
-            >
-              {piece.color}
-            </strong>
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-function RollHeader({
-  roll,
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent:
-          "space-between",
-        alignItems: "flex-start",
-        gap: 12,
-        marginBottom: 12,
-        padding: 12,
-        border:
-          "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#ffffff",
-      }}
-    >
-      <div>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            color: "#64748b",
-          }}
-        >
-          CUTTING PLAN
-        </div>
-
-        <h3
-          style={{
-            margin: "3px 0 0",
-            fontSize: 22,
-            fontWeight: 900,
-            color: "#111827",
-          }}
-        >
-          {roll.color}
-        </h3>
-
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-            color: "#64748b",
-            fontWeight: 700,
-          }}
-        >
-          {roll.grainDirection
-            ? "결 있음 · 회전 금지"
-            : "결 없음 · 회전 가능"}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(3, auto)",
-          gap: 7,
-        }}
-      >
-        <StatBox
-          label="보유"
-          value={meterText(
-            roll.lengthMm
-          )}
-        />
-
-        <StatBox
-          label="사용"
-          value={meterText(
-            roll.usedLength
-          )}
-        />
-
-        <StatBox
-          label="잔여"
-          value={meterText(
-            roll.remainingLength
-          )}
-        />
-      </div>
-    </div>
-  );
-}
-
-function StatBox({
+function Stat({
   label,
   value,
 }) {
   return (
     <div
       style={{
-        minWidth: 62,
-        padding: "7px 8px",
-        borderRadius: 8,
+        minWidth: 60,
+        padding: "6px 7px",
+        borderRadius: 7,
         background: "#f1f5f9",
       }}
     >
       <span
         style={{
           display: "block",
-          marginBottom: 2,
-          fontSize: 10,
+          fontSize: 9,
           color: "#64748b",
-          fontWeight: 700,
         }}
       >
         {label}
@@ -1048,16 +858,15 @@ function StatBox({
 
       <strong
         style={{
-          fontSize: 12,
-          color: "#111827",
-          fontWeight: 900,
+          fontSize: 11,
         }}
       >
         {value}
       </strong>
     </div>
   );
-              }
+}
+
 export default function CuttingDiagram({
   roll,
 }) {
@@ -1068,41 +877,29 @@ export default function CuttingDiagram({
       ? roll.placements
       : [];
 
-  const usedLength =
-    Math.max(
-      0,
-      num(
-        roll?.usedLength
-      )
+  const pages =
+    useMemo(
+      () =>
+        getPages(
+          roll
+        ),
+      [roll]
     );
-
-  const pages = useMemo(
-    () =>
-      createCutPages(
-        placements,
-        usedLength
-      ),
-    [
-      placements,
-      usedLength,
-    ]
-  );
 
   if (
     !roll ||
-    usedLength <= 0 ||
-    placements.length === 0
+    !placements.length ||
+    !pages.length
   ) {
     return (
       <div
         style={{
-          padding: 14,
+          padding: 12,
           border:
             "1px solid #e5e7eb",
-          borderRadius: 10,
-          background: "#ffffff",
+          borderRadius: 9,
           color: "#64748b",
-          fontSize: 13,
+          fontSize: 12,
         }}
       >
         표시할 재단 결과가 없습니다.
@@ -1113,52 +910,110 @@ export default function CuttingDiagram({
   return (
     <div
       style={{
-        marginTop: 14,
+        marginTop: 12,
       }}
     >
-      <RollHeader
-        roll={roll}
-      />
-
+      {/* 롤 요약 */}
       <div
         style={{
+          display: "flex",
+          justifyContent:
+            "space-between",
+          alignItems:
+            "flex-start",
+          gap: 10,
           marginBottom: 10,
-          padding: "9px 11px",
-          borderRadius: 9,
-          background: "#eff6ff",
-          color: "#1e40af",
-          fontSize: 12,
-          fontWeight: 800,
-          lineHeight: 1.5,
+          padding: 10,
+          border:
+            "1px solid #e5e7eb",
+          borderRadius: 10,
+          background: "#fff",
         }}
       >
-        폭 1220mm · 1cm 격자 ·
-        10cm 숫자 표시 ·
-        1m마다 누적 미터 표시
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 900,
+              color: "#64748b",
+            }}
+          >
+            CUTTING PLAN
+          </div>
+
+          <h3
+            style={{
+              margin: "2px 0 0",
+              fontSize: 20,
+            }}
+          >
+            {roll.color}
+          </h3>
+
+          <div
+            style={{
+              marginTop: 3,
+              fontSize: 11,
+              fontWeight: 700,
+              color: "#64748b",
+            }}
+          >
+            {roll.grainDirection
+              ? "결 있음 · 회전 금지"
+              : "결 없음 · 회전 가능"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent:
+              "flex-end",
+            gap: 5,
+          }}
+        >
+          <Stat
+            label="보유"
+            value={meter(
+              roll.lengthMm
+            )}
+          />
+
+          <Stat
+            label="사용"
+            value={meter(
+              roll.usedLength
+            )}
+          />
+
+          <Stat
+            label="잔여"
+            value={meter(
+              roll.remainingLength
+            )}
+          />
+
+          <Stat
+            label="효율"
+            value={`${roll.efficiency || 0}%`}
+          />
+        </div>
       </div>
 
-      {pages.map(
-        (page) => (
-          <CutPage
-            key={
-              `${page.start}-${page.end}`
-            }
-            page={page}
-            placements={
-              placements
-            }
-            totalPages={
-              pages.length
-            }
-          />
-        )
-      )}
-
-      <PieceList
-        placements={
-          placements
-        }
-      />
+      {/* 재단 차수별 페이지 */}
+      {pages.map((page) => (
+        <CutPage
+          key={`${page.start}-${page.end}`}
+          page={page}
+          placements={
+            placements
+          }
+          totalPages={
+            pages.length
+          }
+        />
+      ))}
     </div>
   );
-            }
+              }
