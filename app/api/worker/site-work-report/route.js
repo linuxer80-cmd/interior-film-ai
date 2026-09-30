@@ -56,24 +56,6 @@ function cleanText(value) {
   return text || null;
 }
 
-function toNumberOrNull(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return null;
-  }
-
-  return number;
-}
-
 function getBearerToken(request) {
   const authorization =
     request.headers.get("authorization") || "";
@@ -314,341 +296,23 @@ async function getExistingReport({
   return data || null;
 }
 
-/* =========================================================
-   완료보고 저장
-
-   현장당 기존 report가 있으면 update,
-   없으면 insert.
-
-   하지만 POST 진입 전에
-   pending / approved 중복 제출을 차단한다.
-========================================================= */
-
-async function saveWorkReport({
-  supabase,
-  companyId,
-  siteId,
-  workerId,
-  userId,
-  workRegion,
-  workSummary,
-  memo,
-}) {
-  const now =
-    new Date().toISOString();
-
-  const {
-    data: existing,
-    error: existingError,
-  } = await supabase
-    .from("work_reports")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("site_id", siteId)
-    .limit(1)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  const payload = {
-    company_id: companyId,
-    site_id: siteId,
-    worker_id: workerId,
-    work_region:
-      cleanText(workRegion),
-    work_summary:
-      cleanText(workSummary),
-    memo:
-      cleanText(memo),
-    completed_at: now,
-    created_by: userId,
-    updated_at: now,
-
-    // 시공자 제출 직후는 항상 관리자 검수대기
-    review_status: "pending",
-
-    // 이전 검수값 초기화
-    reviewed_at: null,
-    reviewed_by: null,
-    approved_amount: null,
-    review_memo: null,
-  };
-
-  if (existing?.id) {
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("work_reports")
-      .update(payload)
-      .eq("id", existing.id)
-      .select("*")
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return data;
-  }
-
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("work_reports")
-    .insert({
-      ...payload,
-      created_at: now,
-    })
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
+// The database commits the report, actual materials and expenses together.
+// This function is callable only by the server's service role; all identities
+// come from verifyWorkerSiteAccess, never the request body.
+async function submitWorkReport({ supabase, worker, user, siteId, workRegion, workSummary, memo, materials, expenses }) {
+  const { data, error } = await supabase.rpc("submit_worker_work_report", {
+    p_company_id: worker.company_id,
+    p_site_id: siteId,
+    p_worker_id: worker.id,
+    p_user_id: user.id,
+    p_work_region: workRegion,
+    p_work_summary: workSummary,
+    p_memo: memo,
+    p_materials: materials,
+    p_expenses: expenses,
+  });
+  if (error) throw error;
   return data;
-}
-
-/* =========================================================
-   기존 actual 자재 삭제
-
-   보고서 저장 전에 기존 actual 자재를 정리해서
-   같은 현장에 중복 자재가 쌓이지 않도록 한다.
-========================================================= */
-
-async function clearActualMaterials({
-  supabase,
-  companyId,
-  siteId,
-}) {
-  const {
-    error,
-  } = await supabase
-    .from("site_materials")
-    .delete()
-    .eq("company_id", companyId)
-    .eq("site_id", siteId)
-    .eq("material_type", "actual");
-
-  if (error) {
-    throw error;
-  }
-}
-
-/* =========================================================
-   실제 사용 자재 저장
-========================================================= */
-
-async function saveMaterials({
-  supabase,
-  companyId,
-  siteId,
-  userId,
-  materials,
-}) {
-  if (
-    !Array.isArray(materials) ||
-    materials.length === 0
-  ) {
-    return 0;
-  }
-
-  const now =
-    new Date().toISOString();
-
-  const rows = materials
-    .map((item) => {
-      const quantity =
-        toNumberOrNull(item?.quantity);
-
-      const unitPrice =
-        toNumberOrNull(item?.unit_price);
-
-      let totalPrice = null;
-
-      if (
-        quantity !== null &&
-        unitPrice !== null
-      ) {
-        totalPrice =
-          quantity * unitPrice;
-      }
-
-      return {
-        company_id: companyId,
-        site_id: siteId,
-
-        film_product_id:
-          item?.film_product_id || null,
-
-        brand:
-          cleanText(item?.brand),
-
-        product_code:
-          cleanText(item?.product_code),
-
-        product_name:
-          cleanText(item?.product_name),
-
-        quantity,
-        unit:
-          cleanText(item?.unit),
-
-        unit_price: unitPrice,
-        total_price: totalPrice,
-
-        memo:
-          cleanText(item?.memo),
-
-        created_by: userId,
-
-        created_at: now,
-        updated_at: now,
-
-        material_type: "actual",
-      };
-    })
-    .filter((item) => {
-      return (
-        item.brand ||
-        item.product_code ||
-        item.product_name ||
-        item.quantity !== null ||
-        item.memo
-      );
-    });
-
-  if (rows.length === 0) {
-    return 0;
-  }
-
-  const {
-    error,
-  } = await supabase
-    .from("site_materials")
-    .insert(rows);
-
-  if (error) {
-    throw error;
-  }
-
-  return rows.length;
-}
-
-/* =========================================================
-   기존 경비 삭제
-========================================================= */
-
-async function clearExpenses({
-  supabase,
-  companyId,
-  siteId,
-}) {
-  const {
-    error,
-  } = await supabase
-    .from("site_expenses")
-    .delete()
-    .eq("company_id", companyId)
-    .eq("site_id", siteId)
-    .or("description.is.null,description.not.like.수익관리/%");
-
-  if (error) {
-    throw error;
-  }
-}
-
-/* =========================================================
-   경비 저장
-========================================================= */
-
-async function saveExpenses({
-  supabase,
-  companyId,
-  siteId,
-  workerId,
-  userId,
-  expenses,
-}) {
-  if (
-    !Array.isArray(expenses) ||
-    expenses.length === 0
-  ) {
-    return 0;
-  }
-
-  const now =
-    new Date().toISOString();
-
-  const allowedTypes = new Set([
-    "parking",
-    "meal",
-    "fuel",
-    "toll",
-    "material",
-    "other",
-  ]);
-
-  const rows = expenses
-    .map((item) => {
-      const amount =
-        toNumberOrNull(item?.amount);
-
-      const rawType =
-        cleanText(item?.expense_type);
-
-      const expenseType =
-        allowedTypes.has(rawType)
-          ? rawType
-          : "other";
-
-      return {
-        company_id: companyId,
-        site_id: siteId,
-        worker_id: workerId,
-
-        expense_type: expenseType,
-
-        amount,
-
-        description:
-          cleanText(item?.description),
-
-        expense_date:
-          cleanText(item?.expense_date),
-
-        created_by: userId,
-
-        created_at: now,
-        updated_at: now,
-      };
-    })
-    .filter((item) => {
-      return (
-        item.amount !== null ||
-        item.description
-      );
-    });
-
-  if (rows.length === 0) {
-    return 0;
-  }
-
-  const {
-    error,
-  } = await supabase
-    .from("site_expenses")
-    .insert(rows);
-
-  if (error) {
-    throw error;
-  }
-
-  return rows.length;
 }
 
 /* =========================================================
@@ -1014,91 +678,11 @@ export async function POST(request) {
       );
     }
 
-    /* -------------------------------------------------------
-       완료보고 저장
-    ------------------------------------------------------- */
-
-    const report =
-      await saveWorkReport({
-        supabase,
-
-        companyId:
-          worker.company_id,
-
-        siteId,
-
-        workerId:
-          worker.id,
-
-        userId:
-          user.id,
-
-        workRegion,
-        workSummary,
-        memo,
-      });
-
-    /* -------------------------------------------------------
-       실제 사용 자재 저장
-
-       rejected 후 재제출인 경우에도
-       기존 actual 자재를 지우고 새 값으로 저장
-    ------------------------------------------------------- */
-
-    await clearActualMaterials({
-      supabase,
-
-      companyId:
-        worker.company_id,
-
-      siteId,
+    // Photos are uploaded before this call. A failure rolls back every report
+    // and cost change, so a retry never encounters a half-submitted report.
+    const report = await submitWorkReport({
+      supabase, worker, user, siteId, workRegion, workSummary, memo, materials, expenses,
     });
-
-    const materialCount =
-      await saveMaterials({
-        supabase,
-
-        companyId:
-          worker.company_id,
-
-        siteId,
-
-        userId:
-          user.id,
-
-        materials,
-      });
-
-    /* -------------------------------------------------------
-       경비 저장
-    ------------------------------------------------------- */
-
-    await clearExpenses({
-      supabase,
-
-      companyId:
-        worker.company_id,
-
-      siteId,
-    });
-
-    const expenseCount =
-      await saveExpenses({
-        supabase,
-
-        companyId:
-          worker.company_id,
-
-        siteId,
-
-        workerId:
-          worker.id,
-
-        userId:
-          user.id,
-
-        expenses,
-      });
 
     /* -------------------------------------------------------
        중요
@@ -1121,7 +705,7 @@ export async function POST(request) {
       success: true,
 
       reportId:
-        report.id,
+        report.reportId,
 
       review_status:
         "pending",
@@ -1132,8 +716,8 @@ export async function POST(request) {
       role:
         assignment.role,
 
-      materialCount,
-      expenseCount,
+      materialCount: report.materialCount,
+      expenseCount: report.expenseCount,
 
       message:
         "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
@@ -1152,7 +736,7 @@ export async function POST(request) {
           "완료보고 저장 중 오류가 발생했습니다.",
       },
       {
-        status: 500,
+        status: error?.code === "P0001" ? 409 : error?.code === "42501" ? 403 : /^22|^23/.test(error?.code || "") ? 400 : 500,
       }
     );
   }
