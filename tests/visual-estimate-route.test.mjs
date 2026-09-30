@@ -67,6 +67,9 @@ test('complete endpoint prices only visually verified company-owned work and rec
   assert.equal(response.body.similar_cases[0].actual_cost, 400000);
   assert.equal(h.calls.length, 2);
   assert.equal(h.logs[0].metadata.visual_usage.input_tokens, 123);
+  assert.equal(h.logs[0].metadata.matched_cases[0].work_item_id, WORK);
+  assert.equal(h.logs[0].metadata.matched_cases[0].actual_cost, 400000);
+  assert.equal(h.logs[0].metadata.estimate.average, 400000);
 });
 
 test('vision failure and scope mismatch return no estimate even with .99 text similarity', async () => {
