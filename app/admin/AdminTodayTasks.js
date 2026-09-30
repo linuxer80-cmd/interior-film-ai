@@ -8,6 +8,7 @@ import ui from "./AdminUi.module.css";
 const groups = [
   { id: "assignment", label: "일정·배정 확인", action: "배정 확인", tone: "orange" },
   { id: "review", label: "검수 대기", action: "완료보고 검수", tone: "blue" },
+  { id: "missing", label: "완료보고 미작성", action: "완료보고 작성", tone: "red" },
   { id: "revision", label: "보완 요청", action: "보완 내용 확인", tone: "purple" },
 ];
 const siteLink = (id, section = "") => `/admin?${new URLSearchParams({ tab: "sites", site: id, ...(section ? { section } : {}) })}`;
@@ -74,7 +75,7 @@ export default function AdminTodayTasks({ companyId }) {
       <div><h2>오늘 할 일</h2><p className={ui.todayDate}>{data?.today ? `${data.today.replaceAll("-", ". ")} · 한국 시간 기준` : "오늘 처리할 업무를 모아봅니다."}</p></div>
       <button type="button" className={ui.secondary} onClick={refresh} disabled={loading}>{loading ? "확인 중…" : "↻ 새로고침"}</button>
     </div>
-    <p className={ui.help}>오늘까지 확인할 배정과 검수 대기를 먼저 보여드립니다. 보완 요청은 시공자의 재제출을 기다리는 업무입니다.</p>
+    <p className={ui.help}>오늘까지 확인할 배정과 검수 대기를 먼저 보여드립니다. 시공 완료 후 빠진 보고서도 여기서 확인할 수 있습니다.</p>
     {loading ? <div className={ui.todayEmpty} role="status">현장 일정과 완료보고를 확인하고 있습니다…</div>
       : error ? <div className={ui.todayError} role="alert">{error}</div> : data && <>
       <div className={ui.todayCounts} aria-label="업무별 할 일">
@@ -87,7 +88,7 @@ export default function AdminTodayTasks({ companyId }) {
         <h3>{filter === "all" ? "확인할 업무" : groups.find((g) => g.id === filter).label} <span>{visible.length}건</span></h3>
         {filter !== "all" && <button type="button" className={ui.todayTextButton} onClick={() => selectFilter("all")}>전체 보기</button>}
       </div>
-      {!visible.length ? <div className={ui.todayEmpty}>{filter === "all" ? "현재 확인할 배정·검수·보완 업무가 없습니다." : "이 항목에 확인할 업무가 없습니다."}</div>
+      {!visible.length ? <div className={ui.todayEmpty}>{filter === "all" ? "현재 확인할 배정·보고서·검수 업무가 없습니다." : "이 항목에 확인할 업무가 없습니다."}</div>
         : <ul className={ui.todayList}>{visible.slice(0, limit).map((task) => {
           const group = groups.find((g) => g.id === task.kind);
           return <li key={task.id}><a href={siteLink(task.siteId, task.section)} className={ui.todayTask}>

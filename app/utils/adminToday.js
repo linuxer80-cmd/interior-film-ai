@@ -35,10 +35,15 @@ export function buildAdminToday({ sites = [], reports = [], assignments = [], da
     const report = latest.get(site.id);
     const reviewStatus = report && (report.review_status || "pending");
 
+    if (site.status === "completed" && !report) {
+      tasks.push({ ...base, id: `${site.id}:missing`, kind: "missing", date: day(site.updated_at) || end,
+        section: "report-write", reason: "시공은 완료되었지만 완료보고가 없습니다. 보고서를 작성하거나 팀장의 제출을 확인해주세요." });
+    }
+
     if (reviewStatus === "pending" || reviewStatus === "rejected") {
       tasks.push({ ...base, id: `${site.id}:report`, kind: reviewStatus === "pending" ? "review" : "revision",
         date: day(report.updated_at || report.created_at), section: "report",
-        reason: reviewStatus === "pending" ? "시공자가 제출한 완료보고를 검수해주세요." : "시공자에게 요청한 보완 진행 상황을 확인해주세요." });
+        reason: reviewStatus === "pending" ? "등록된 완료보고를 검수해주세요." : "시공자에게 요청한 보완 진행 상황을 확인해주세요." });
     }
     if (!activeStatuses.has(site.status)) continue;
 
@@ -63,9 +68,10 @@ export function buildAdminToday({ sites = [], reports = [], assignments = [], da
     if (reason) tasks.push({ ...base, id: `${site.id}:assignment`, kind: "assignment", date, section: validRange ? "assignment" : "schedule", reason,
       overdue: Boolean(validRange && end < today) });
   }
-  const rank = (task) => task.kind === "assignment" && task.date && task.date <= today ? 0 : task.kind === "review" ? 1 : task.kind === "assignment" ? 2 : 3;
+  const rank = (task) => task.kind === "assignment" && task.date && task.date <= today ? 0 : task.kind === "review" ? 1 : task.kind === "missing" ? 2 : task.kind === "assignment" ? 3 : 4;
   tasks.sort((a, b) => rank(a) - rank(b) || (a.date || "9999").localeCompare(b.date || "9999") || a.id.localeCompare(b.id));
   todaySites.sort((a, b) => a.name.localeCompare(b.name, "ko") || a.siteId.localeCompare(b.siteId));
   return { today, counts: { assignment: tasks.filter((t) => t.kind === "assignment").length,
-    review: tasks.filter((t) => t.kind === "review").length, revision: tasks.filter((t) => t.kind === "revision").length }, tasks, todaySites };
+    review: tasks.filter((t) => t.kind === "review").length, revision: tasks.filter((t) => t.kind === "revision").length,
+    missing: tasks.filter((t) => t.kind === "missing").length }, tasks, todaySites };
 }

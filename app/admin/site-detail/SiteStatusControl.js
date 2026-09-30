@@ -1,291 +1,54 @@
 "use client";
 
-/* =========================================================
-   현장 상태 관리
-========================================================= */
+import { useRef, useState } from "react";
 
-export default function SiteStatusControl({
-  site,
-  reportOpen = false,
-  updateSiteStatus,
-}) {
-  if (!site || reportOpen) {
-    return null;
-  }
+const choices = [
+  ["consulting", "상담중"], ["scheduled", "시공 예정"],
+  ["in_progress", "시공 중"], ["cancelled", "취소"],
+  ["completed", "✓ 시공 완료"],
+];
+const reportLabels = { pending: "검수 대기", approved: "승인 완료", rejected: "보완 요청" };
 
-  /* =======================================================
-     상태 변경
-  ======================================================= */
+export default function SiteStatusControl({ site, reportOpen = false, updateSiteStatus, hasReport = null, reviewStatus = null }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const busy = useRef(false);
+  if (!site || reportOpen) return null;
 
   async function changeStatus(nextStatus) {
-    if (
-      typeof updateSiteStatus !== "function"
-    ) {
-      return;
+    if (busy.current || nextStatus === site.status || typeof updateSiteStatus !== "function") return;
+    busy.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await updateSiteStatus(site.id, nextStatus, site.status);
+      if (!result?.success) throw new Error(result?.error || "현장 상태를 변경하지 못했습니다.");
+    } catch (err) {
+      setError(err.message || "현장 상태를 변경하지 못했습니다.");
+    } finally {
+      busy.current = false;
+      setSaving(false);
     }
-
-    /*
-     * completed 상태는 여기서 직접 변경하지 않습니다.
-     *
-     * 완료보고가 정상 저장된 뒤
-     * 기존 완료보고 로직에서 자동으로 완료 처리합니다.
-     */
-
-    if (nextStatus === "completed") {
-      return;
-    }
-
-    await updateSiteStatus(
-      site.id,
-      nextStatus,
-    );
   }
 
-  /* =======================================================
-     화면
-  ======================================================= */
-
-  return (
-    <section
-      style={{
-        marginTop: "18px",
-
-        paddingTop: "14px",
-
-        borderTop:
-          "1px solid #e5e7eb",
-      }}
-    >
-      {/* =========================
-          제목
-      ========================= */}
-
-      <div
-        style={{
-          marginBottom: "8px",
-
-          fontSize: "13px",
-
-          fontWeight: "800",
-
-          color: "#334155",
-        }}
-      >
-        현장 상태
-      </div>
-
-      {/* =========================
-          완료된 현장
-      ========================= */}
-
-      {site.status ===
-      "completed" ? (
-        <CompletedStatus />
-      ) : (
-        <>
-          {/* =====================
-              상태 변경 버튼
-          ===================== */}
-
-          <div
-            style={{
-              display: "grid",
-
-              gridTemplateColumns:
-                "1fr 1fr",
-
-              gap: "7px",
-            }}
-          >
-            <StatusButton
-              active={
-                site.status ===
-                "consulting"
-              }
-              onClick={() =>
-                changeStatus(
-                  "consulting",
-                )
-              }
-            >
-              상담중
-            </StatusButton>
-
-            <StatusButton
-              active={
-                site.status ===
-                "scheduled"
-              }
-              onClick={() =>
-                changeStatus(
-                  "scheduled",
-                )
-              }
-            >
-              시공 예정
-            </StatusButton>
-
-            <StatusButton
-              active={
-                site.status ===
-                "in_progress"
-              }
-              onClick={() =>
-                changeStatus(
-                  "in_progress",
-                )
-              }
-            >
-              시공 중
-            </StatusButton>
-
-            <StatusButton
-              active={
-                site.status ===
-                "cancelled"
-              }
-              onClick={() =>
-                changeStatus(
-                  "cancelled",
-                )
-              }
-            >
-              취소
-            </StatusButton>
-          </div>
-
-          {/* =====================
-              상담중 안내
-          ===================== */}
-
-          {site.status ===
-            "consulting" && (
-            <div
-              style={{
-                marginTop: "8px",
-
-                padding: "10px",
-
-                borderRadius: "9px",
-
-                background: "#fff7ed",
-
-                color: "#9a3412",
-
-                fontSize: "11px",
-
-                fontWeight: "700",
-
-                lineHeight: "1.5",
-              }}
-            >
-              상담중 현장입니다. 일정이
-              확정되면 위의 일정 변경에서
-              시작 날짜와 종료 날짜를 저장하면 시공
-              예정으로 자동 변경됩니다.
-            </div>
-          )}
-
-          {/* =====================
-              완료 안내
-          ===================== */}
-
-          <div
-            style={{
-              marginTop: "8px",
-
-              padding: "10px",
-
-              borderRadius: "9px",
-
-              background: "#f8fafc",
-
-              color: "#64748b",
-
-              fontSize: "11px",
-
-              lineHeight: "1.5",
-            }}
-          >
-            시공 완료 상태는 아래
-            완료보고를 저장하면 자동으로
-            변경됩니다.
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-/* =========================================================
-   완료 상태
-========================================================= */
-
-function CompletedStatus() {
-  return (
-    <div
-      style={{
-        padding: "12px",
-
-        border:
-          "1px solid #bbf7d0",
-
-        borderRadius: "10px",
-
-        background: "#f0fdf4",
-
-        color: "#166534",
-
-        fontSize: "13px",
-
-        fontWeight: "800",
-
-        textAlign: "center",
-      }}
-    >
-      ✅ 시공 완료된 현장입니다.
+  return <section aria-label="현장 상태" aria-busy={saving} style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid #e5e7eb" }}>
+    <h3 style={{ margin: "0 0 10px", fontSize: 14, color: "#334155" }}>현장 상태</h3>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {choices.map(([value, label]) => <button type="button" key={value} disabled={saving} aria-pressed={site.status === value}
+        onClick={() => changeStatus(value)} style={{ gridColumn: value === "completed" ? "1 / -1" : undefined,
+          minHeight: 44, border: `1px solid ${site.status === value ? "#111827" : "#cbd5e1"}`, borderRadius: 9, padding: "10px 8px",
+          background: site.status === value ? (value === "completed" ? "#15803d" : "#111827") : "#fff",
+          color: site.status === value ? "#fff" : "#334155", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? .65 : 1 }}>
+        {label}
+      </button>)}
     </div>
-  );
+    {saving && <p role="status" style={{ fontSize: 12 }}>현장 상태를 저장하고 있습니다…</p>}
+    {error && <p role="alert" style={{ color: "#b91c1c", fontSize: 13, lineHeight: 1.6 }}>{error}</p>}
+    <div style={{ marginTop: 10, padding: 12, borderRadius: 9, background: "#f8fafc", color: "#475569", fontSize: 12, lineHeight: 1.7 }}>
+      <strong>완료보고 · {hasReport === null ? "확인 중" : hasReport ? (reportLabels[reviewStatus] || "검수 대기") : "미작성"}</strong>
+      <div>{site.status === "completed" ? "현장은 시공 완료 상태입니다. 보고서 작성과 검수는 이후에도 진행할 수 있습니다." : "관리자가 보고서 없이 시공 완료로 변경할 수 있습니다. 보고서 작성·검수 상태는 별도로 관리합니다."}</div>
+      {site.status === "completed" && <div>잘못 완료했다면 위에서 ‘시공 중’ 등으로 되돌릴 수 있습니다.</div>}
+      {site.status === "consulting" && <div>시작 날짜와 종료 날짜를 저장하면 시공 예정으로 변경됩니다.</div>}
+    </div>
+  </section>;
 }
-
-/* =========================================================
-   상태 버튼
-========================================================= */
-
-function StatusButton({
-  active,
-  onClick,
-  children,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: active
-          ? "1px solid #111827"
-          : "1px solid #cbd5e1",
-
-        borderRadius: "9px",
-
-        padding: "10px 8px",
-
-        background: active
-          ? "#111827"
-          : "#ffffff",
-
-        color: active
-          ? "#ffffff"
-          : "#334155",
-
-        fontSize: "12px",
-
-        fontWeight: "800",
-
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-                 }

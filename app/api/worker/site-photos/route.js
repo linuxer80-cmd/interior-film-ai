@@ -732,25 +732,20 @@ export async function POST(
       );
     }
 
-    /*
-     * 완료된 현장에 새로운 사진을 계속 추가하는 것은
-     * 데이터가 바뀌는 문제가 있으므로 막습니다.
-     */
-
-    if (
-      site.status ===
-      "completed"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "이미 완료된 현장에는 사진을 추가할 수 없습니다.",
-        },
-        {
-          status: 409,
-        },
-      );
+    // A completed site may still need its first report or a correction.
+    // Freeze submitted/approved report evidence independently of site status.
+    const { data: report, error: reportError } = await supabase.from("work_reports")
+      .select("review_status").eq("company_id", worker.company_id).eq("site_id", site.id)
+      .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (reportError) throw reportError;
+    if (report && report.review_status !== "rejected") {
+      return NextResponse.json({ success: false, error: "검수 대기 또는 승인된 보고서에는 사진을 추가할 수 없습니다. 보완 요청 후 다시 제출해주세요." }, { status: 409 });
+    }
+    if (site.status === "completed" && assignment.role !== "leader") {
+      const { data: dailyLeader, error: leaderError } = await supabase.from("site_daily_assignments")
+        .select("id").eq("company_id", worker.company_id).eq("site_id", site.id).eq("worker_id", worker.id).eq("role", "leader").limit(1);
+      if (leaderError) throw leaderError;
+      if (!dailyLeader?.length) return NextResponse.json({ success: false, error: "완료된 현장의 보고서 사진은 책임 팀장만 등록할 수 있습니다." }, { status: 403 });
     }
 
     /* -------------------------------------------------------
