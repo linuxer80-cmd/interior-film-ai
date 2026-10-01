@@ -1,7 +1,5 @@
 "use client";
 
-import React from "react";
-
 const FILM_WIDTH = 1220;
 
 function n(value) {
@@ -14,15 +12,15 @@ function meter(mm) {
 }
 
 function range(start, end, step) {
-  const values = [];
+  const result = [];
   let value = Math.ceil(start / step) * step;
 
   while (value <= end) {
-    values.push(value);
+    result.push(value);
     value += step;
   }
 
-  return values;
+  return result;
 }
 
 function fillColor(index) {
@@ -38,12 +36,10 @@ function fillColor(index) {
   return colors[Math.max(0, index) % colors.length];
 }
 
-/*
-  실제 배치 좌표에서 가로 전체를 자를 수 있는 위치 검색.
+/* =========================================================
+   가로로 완전히 절단 가능한 위치 검색
+========================================================= */
 
-  해당 Y 위치를 통과하는 조각이 하나도 없으면
-  그 지점에서 1220mm 전체 가로 절단이 가능합니다.
-*/
 function findSafeCutLines(placements, usedLength) {
   const used = n(usedLength);
   const candidates = new Set([0, used]);
@@ -60,9 +56,7 @@ function findSafeCutLines(placements, usedLength) {
     .filter((y) => y >= 0 && y <= used)
     .sort((a, b) => a - b)
     .filter((y) => {
-      if (y === 0 || y === used) {
-        return true;
-      }
+      if (y === 0 || y === used) return true;
 
       return !placements.some((piece) => {
         const top = n(piece.y);
@@ -73,10 +67,10 @@ function findSafeCutLines(placements, usedLength) {
     });
 }
 
-/*
-  가로로 완전히 자를 수 있는 위치마다
-  재단 페이지를 새로 만듭니다.
-*/
+/* =========================================================
+   실제 안전 절단선마다 페이지 생성
+========================================================= */
+
 export function getCutPages(roll) {
   const placements = Array.isArray(roll?.placements)
     ? roll.placements
@@ -117,18 +111,21 @@ function getPagePieces(placements, page) {
     const top = n(piece.y);
     const bottom = top + n(piece.height);
 
-    return (
-      bottom > page.start &&
-      top < page.end
-    );
+    return bottom > page.start && top < page.end;
   });
 }
 
-/*
-  조각 내부 텍스트.
+/* =========================================================
+   조각 내부 글자
 
-  작은 조각도 가로×세로 사이즈는 절대 생략하지 않습니다.
-*/
+   중요:
+   - 사이즈가 가장 중요
+   - 칸보다 글자가 커져도 허용
+   - 다른 조각 영역까지 글자가 넘어가도 표시
+   - 모든 색상 사각형을 먼저 그린 뒤 글자를 그리므로
+     다른 사각형이 글자를 덮지 않음
+========================================================= */
+
 function PieceText({
   piece,
   number,
@@ -143,17 +140,30 @@ function PieceText({
   const cx = x + width / 2;
   const cy = y + height / 2;
 
-  // 매우 좁고 긴 조각
-  if (width < 95 && height >= 170) {
+  const textOutline = {
+    paintOrder: "stroke",
+    stroke: "#ffffff",
+    strokeWidth: 5,
+    strokeLinejoin: "round",
+  };
+
+  /*
+    아주 좁고 긴 필름
+
+    사이즈를 세로로 돌려서 크게 표시.
+    칸 폭보다 글씨가 커도 괜찮음.
+  */
+  if (width < 105 && height >= 200) {
     return (
       <>
         <text
           x={cx}
-          y={cy - 34}
+          y={cy - 55}
           textAnchor="middle"
-          fontSize={width < 55 ? 13 : 16}
+          fontSize="22"
           fontWeight="900"
           fill="#111827"
+          style={textOutline}
         >
           #{number}
         </text>
@@ -162,10 +172,12 @@ function PieceText({
           x={cx}
           y={cy + 10}
           textAnchor="middle"
-          fontSize={width < 55 ? 10 : 13}
+          dominantBaseline="middle"
+          fontSize="27"
           fontWeight="900"
-          fill="#111827"
+          fill="#0f172a"
           transform={`rotate(-90 ${cx} ${cy + 10})`}
+          style={textOutline}
         >
           {ow}×{oh}
         </text>
@@ -173,28 +185,35 @@ function PieceText({
     );
   }
 
-  // 작거나 낮은 조각
-  if (width < 190 || height < 180) {
+  /*
+    좁거나 높이가 낮은 필름
+
+    위치/부위는 생략 가능하지만
+    번호와 사이즈는 크게 표시.
+  */
+  if (width < 210 || height < 190) {
     return (
       <>
         <text
           x={cx}
-          y={cy - 10}
+          y={cy - 18}
           textAnchor="middle"
-          fontSize="15"
+          fontSize="21"
           fontWeight="900"
           fill="#111827"
+          style={textOutline}
         >
           #{number}
         </text>
 
         <text
           x={cx}
-          y={cy + 18}
+          y={cy + 24}
           textAnchor="middle"
-          fontSize="12"
+          fontSize="28"
           fontWeight="900"
-          fill="#111827"
+          fill="#0f172a"
+          style={textOutline}
         >
           {ow}×{oh}
         </text>
@@ -202,50 +221,70 @@ function PieceText({
     );
   }
 
-  const fontSize = width >= 350 ? 20 : 16;
+  /*
+    일반 조각
+
+    사이즈를 가장 크게.
+  */
+  const locationSize =
+    width >= 500 ? 23 : 19;
+
+  const partSize =
+    width >= 500 ? 21 : 18;
+
+  const dimensionSize =
+    width >= 500
+      ? 34
+      : width >= 300
+      ? 31
+      : 28;
 
   return (
     <>
       <text
         x={cx}
-        y={cy - 50}
+        y={cy - 68}
         textAnchor="middle"
-        fontSize={fontSize + 3}
+        fontSize="23"
         fontWeight="900"
         fill="#111827"
+        style={textOutline}
       >
         #{number}
       </text>
 
       <text
         x={cx}
-        y={cy - 18}
+        y={cy - 34}
         textAnchor="middle"
-        fontSize={fontSize}
+        fontSize={locationSize}
         fontWeight="900"
         fill="#111827"
+        style={textOutline}
       >
         {piece.location}
       </text>
 
       <text
         x={cx}
-        y={cy + 12}
+        y={cy}
         textAnchor="middle"
-        fontSize={fontSize - 1}
-        fontWeight="700"
+        fontSize={partSize}
+        fontWeight="800"
         fill="#334155"
+        style={textOutline}
       >
         {piece.part}
       </text>
 
       <text
         x={cx}
-        y={cy + 45}
+        y={cy + 48}
         textAnchor="middle"
-        fontSize={fontSize}
+        fontSize={dimensionSize}
         fontWeight="900"
-        fill="#111827"
+        fill="#0f172a"
+        style={textOutline}
       >
         {ow}×{oh}
       </text>
@@ -253,11 +292,12 @@ function PieceText({
       {piece.rotated && (
         <text
           x={cx}
-          y={cy + 70}
+          y={cy + 80}
           textAnchor="middle"
-          fontSize="12"
+          fontSize="16"
           fontWeight="900"
           fill="#b45309"
+          style={textOutline}
         >
           회전
         </text>
@@ -266,13 +306,14 @@ function PieceText({
   );
 }
 
-/*
-  그리드는 반드시 조각 색상 위에 그립니다.
+/* =========================================================
+   그리드
 
-  10mm   = 1cm 흐린 선
-  100mm  = 10cm 조금 진한 선 + 숫자
-  1000mm = 1m 굵은 선 + 누적거리
-*/
+   10mm   = 1cm 흐린선
+   100mm  = 10cm 진한선 + 숫자
+   1000mm = 1m 진한선 + 누적 미터
+========================================================= */
+
 function GridOverlay({
   page,
   left,
@@ -295,7 +336,7 @@ function GridOverlay({
 
   return (
     <g pointerEvents="none">
-      {/* 폭 방향 세로선 */}
+      {/* 폭 방향 */}
       {xTicks.map((tick) => {
         const x = left + tick;
 
@@ -324,14 +365,14 @@ function GridOverlay({
                   ? 2
                   : is100
                   ? 1
-                  : 0.45
+                  : 0.4
               }
               opacity={
                 is1000
-                  ? 0.8
+                  ? 0.78
                   : is100
-                  ? 0.48
-                  : 0.18
+                  ? 0.45
+                  : 0.16
               }
             />
 
@@ -341,10 +382,14 @@ function GridOverlay({
                 y={top - 14}
                 textAnchor="middle"
                 fontSize={
-                  is1000 ? 19 : 13
+                  is1000
+                    ? 19
+                    : 13
                 }
                 fontWeight={
-                  is1000 ? 900 : 700
+                  is1000
+                    ? 900
+                    : 700
                 }
                 fill="#475569"
               >
@@ -366,7 +411,7 @@ function GridOverlay({
         1220mm
       </text>
 
-      {/* 길이 방향 가로선 */}
+      {/* 길이 방향 */}
       {yTicks.map((absolute) => {
         const local =
           absolute - page.start;
@@ -399,14 +444,14 @@ function GridOverlay({
                   ? 2.2
                   : is100
                   ? 1
-                  : 0.45
+                  : 0.4
               }
               opacity={
                 is1000
-                  ? 0.8
+                  ? 0.78
                   : is100
-                  ? 0.48
-                  : 0.18
+                  ? 0.45
+                  : 0.16
               }
             />
 
@@ -437,7 +482,6 @@ function GridOverlay({
         );
       })}
 
-      {/* 현재 페이지 시작 누적거리 */}
       <text
         x={left - 14}
         y={top + 7}
@@ -452,6 +496,12 @@ function GridOverlay({
   );
 }
 
+/* =========================================================
+   재단도
+
+   현재 페이지 한 장만 표시
+========================================================= */
+
 export default function CuttingDiagram({
   roll,
   pageIndex = 0,
@@ -461,7 +511,8 @@ export default function CuttingDiagram({
       ? roll.placements
       : [];
 
-  const pages = getCutPages(roll);
+  const pages =
+    getCutPages(roll);
 
   if (
     !roll ||
@@ -482,12 +533,14 @@ export default function CuttingDiagram({
     );
   }
 
-  const safeIndex = Math.min(
-    Math.max(0, pageIndex),
-    pages.length - 1
-  );
+  const safeIndex =
+    Math.min(
+      Math.max(0, pageIndex),
+      pages.length - 1
+    );
 
-  const page = pages[safeIndex];
+  const page =
+    pages[safeIndex];
 
   const pieces =
     getPagePieces(
@@ -523,7 +576,7 @@ export default function CuttingDiagram({
         flexDirection: "column",
       }}
     >
-      {/* 현재 페이지 정보 */}
+      {/* 페이지 정보 */}
       <div
         style={{
           display: "flex",
@@ -578,7 +631,7 @@ export default function CuttingDiagram({
         </div>
       </div>
 
-      {/* 재단도 한 장만 전체 화면에 맞춤 */}
+      {/* 재단 이미지 */}
       <div
         style={{
           flex: 1,
@@ -599,10 +652,10 @@ export default function CuttingDiagram({
             display: "block",
             width: "100%",
             height: "100%",
-            maxHeight: "100%",
+            overflow: "visible",
           }}
         >
-          {/* 필름 흰 바탕 */}
+          {/* 흰 필름 */}
           <rect
             x={LEFT}
             y={TOP}
@@ -611,7 +664,7 @@ export default function CuttingDiagram({
             fill="#ffffff"
           />
 
-          {/* 조각 색상 먼저 */}
+          {/* 조각 배경 먼저 */}
           {pieces.map((piece) => {
             const index =
               placements.findIndex(
@@ -620,7 +673,8 @@ export default function CuttingDiagram({
               );
 
             const x =
-              LEFT + n(piece.x);
+              LEFT +
+              n(piece.x);
 
             const y =
               TOP +
@@ -635,19 +689,48 @@ export default function CuttingDiagram({
                 width={n(piece.width)}
                 height={n(piece.height)}
                 fill={fillColor(index)}
-                fillOpacity="0.58"
+                fillOpacity="0.55"
               />
             );
           })}
 
-          {/* 그리드는 조각 위 */}
+          {/* 그리드 */}
           <GridOverlay
             page={page}
             left={LEFT}
             top={TOP}
           />
 
-          {/* 테두리 + 부위 + 사이즈 */}
+          {/* 조각 테두리 */}
+          {pieces.map((piece) => {
+            const x =
+              LEFT +
+              n(piece.x);
+
+            const y =
+              TOP +
+              n(piece.y) -
+              page.start;
+
+            return (
+              <rect
+                key={`border-${piece.id}`}
+                x={x}
+                y={y}
+                width={n(piece.width)}
+                height={n(piece.height)}
+                fill="none"
+                stroke="#111827"
+                strokeWidth="3"
+              />
+            );
+          })}
+
+          {/*
+            글자를 가장 마지막에 그립니다.
+            따라서 다른 칸으로 넘어가도
+            글씨가 사라지지 않습니다.
+          */}
           {pieces.map((piece) => {
             const index =
               placements.findIndex(
@@ -656,42 +739,24 @@ export default function CuttingDiagram({
               );
 
             const x =
-              LEFT + n(piece.x);
+              LEFT +
+              n(piece.x);
 
             const y =
               TOP +
               n(piece.y) -
               page.start;
 
-            const width =
-              n(piece.width);
-
-            const height =
-              n(piece.height);
-
             return (
-              <g
-                key={`piece-${piece.id}`}
-              >
-                <rect
-                  x={x}
-                  y={y}
-                  width={width}
-                  height={height}
-                  fill="none"
-                  stroke="#111827"
-                  strokeWidth="3"
-                />
-
-                <PieceText
-                  piece={piece}
-                  number={index + 1}
-                  x={x}
-                  y={y}
-                  width={width}
-                  height={height}
-                />
-              </g>
+              <PieceText
+                key={`text-${piece.id}`}
+                piece={piece}
+                number={index + 1}
+                x={x}
+                y={y}
+                width={n(piece.width)}
+                height={n(piece.height)}
+              />
             );
           })}
 
@@ -709,18 +774,12 @@ export default function CuttingDiagram({
           {/* 가로 절단선 */}
           <line
             x1={LEFT}
-            y1={
-              TOP +
-              pageLength
-            }
+            y1={TOP + pageLength}
             x2={
               LEFT +
               FILM_WIDTH
             }
-            y2={
-              TOP +
-              pageLength
-            }
+            y2={TOP + pageLength}
             stroke="#dc2626"
             strokeWidth="8"
           />
@@ -740,6 +799,13 @@ export default function CuttingDiagram({
             fontSize="17"
             fontWeight="900"
             fill="#dc2626"
+            style={{
+              paintOrder:
+                "stroke",
+              stroke:
+                "#ffffff",
+              strokeWidth: 4,
+            }}
           >
             {meter(page.end)}
             {" 가로 절단"}
