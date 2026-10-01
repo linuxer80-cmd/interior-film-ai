@@ -1,38 +1,29 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
+import CuttingDiagram, { getCutPages } from "./CuttingDiagram";
+import { formatMeterFromMm } from "./cuttingOptimizer";
 
-import CuttingDiagram, {
-  getCutPages,
-} from "./CuttingDiagram";
+const TEXT_SCALE_KEY = "cutting-diagram-text-scale";
+const MIN_TEXT_SCALE = 60;
+const MAX_TEXT_SCALE = 220;
+const DEFAULT_TEXT_SCALE = 130;
+const STEP = 10;
 
-import {
-  formatMeterFromMm,
-} from "./cuttingOptimizer";
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
-export default function CuttingResult({
-  result,
-  onClose,
-}) {
-  const [rollIndex, setRollIndex] =
-    useState(0);
+export default function CuttingResult({ result, onClose }) {
+  const [rollIndex, setRollIndex] = useState(0);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [completed, setCompleted] = useState(false);
+  const [textScalePercent, setTextScalePercent] =
+    useState(DEFAULT_TEXT_SCALE);
 
-  const [pageIndex, setPageIndex] =
-    useState(0);
-
-  const [completed, setCompleted] =
-    useState(false);
-
-  const usedRolls =
-    Array.isArray(
-      result?.usedRolls
-    )
-      ? result.usedRolls
-      : [];
+  const usedRolls = Array.isArray(result?.usedRolls)
+    ? result.usedRolls
+    : [];
 
   useEffect(() => {
     if (!result) return;
@@ -42,55 +33,72 @@ export default function CuttingResult({
     setCompleted(false);
   }, [result]);
 
-  /*
-    결과 화면에서는 뒤 페이지가 스크롤되지 않도록 처리
-  */
+  useEffect(() => {
+    try {
+      const saved = Number(
+        window.localStorage.getItem(TEXT_SCALE_KEY)
+      );
+
+      if (
+        Number.isFinite(saved) &&
+        saved >= MIN_TEXT_SCALE &&
+        saved <= MAX_TEXT_SCALE
+      ) {
+        setTextScalePercent(saved);
+      }
+    } catch {
+      // localStorage 사용 불가 시 기본값 사용
+    }
+  }, []);
+
   useEffect(() => {
     if (!result) return;
 
-    const oldOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow =
-      "hidden";
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.body.style.overflow =
-        oldOverflow;
+      document.body.style.overflow = oldOverflow;
     };
   }, [result]);
 
-  const currentRoll =
-    usedRolls[rollIndex] ||
-    null;
-
-  const pages =
-    useMemo(
-      () =>
-        currentRoll
-          ? getCutPages(
-              currentRoll
-            )
-          : [],
-      [currentRoll]
+  function setTextScale(value) {
+    const next = clamp(
+      Math.round(Number(value) / STEP) * STEP,
+      MIN_TEXT_SCALE,
+      MAX_TEXT_SCALE
     );
 
-  if (!result) {
-    return null;
+    setTextScalePercent(next);
+
+    try {
+      window.localStorage.setItem(
+        TEXT_SCALE_KEY,
+        String(next)
+      );
+    } catch {
+      // 저장 실패해도 현재 화면에서는 정상 사용
+    }
   }
+
+  function changeTextScale(amount) {
+    setTextScale(textScalePercent + amount);
+  }
+
+  const currentRoll = usedRolls[rollIndex] || null;
+
+  const pages = useMemo(
+    () => (currentRoll ? getCutPages(currentRoll) : []),
+    [currentRoll]
+  );
+
+  if (!result) return null;
 
   if (!usedRolls.length) {
     return (
       <FullScreen>
-        <div
-          style={{
-            margin: "auto",
-            textAlign: "center",
-          }}
-        >
-          <h2>
-            재단 결과가 없습니다.
-          </h2>
+        <div style={{ margin: "auto", textAlign: "center" }}>
+          <h2>재단 결과가 없습니다.</h2>
 
           <button
             type="button"
@@ -104,17 +112,9 @@ export default function CuttingResult({
     );
   }
 
-  /*
-    모든 컬러 재단 완료 화면
-  */
   if (completed) {
     const colors = [
-      ...new Set(
-        usedRolls.map(
-          (roll) =>
-            roll.color
-        )
-      ),
+      ...new Set(usedRolls.map((roll) => roll.color)),
     ];
 
     return (
@@ -164,38 +164,30 @@ export default function CuttingResult({
               maxWidth: 450,
             }}
           >
-            {colors.map(
-              (color) => (
-                <div
-                  key={color}
+            {colors.map((color) => (
+              <div
+                key={color}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "12px 14px",
+                  marginBottom: 6,
+                  borderRadius: 10,
+                  background: "#f1f5f9",
+                }}
+              >
+                <strong>{color}</strong>
+
+                <span
                   style={{
-                    display: "flex",
-                    justifyContent:
-                      "space-between",
-                    padding:
-                      "12px 14px",
-                    marginBottom: 6,
-                    borderRadius: 10,
-                    background:
-                      "#f1f5f9",
+                    color: "#15803d",
+                    fontWeight: 900,
                   }}
                 >
-                  <strong>
-                    {color}
-                  </strong>
-
-                  <span
-                    style={{
-                      color:
-                        "#15803d",
-                      fontWeight: 900,
-                    }}
-                  >
-                    완료 ✓
-                  </span>
-                </div>
-              )
-            )}
+                  완료 ✓
+                </span>
+              </div>
+            ))}
           </div>
 
           <div
@@ -206,15 +198,9 @@ export default function CuttingResult({
             }}
           >
             총 사용 길이{" "}
-            <strong
-              style={{
-                color: "#111827",
-              }}
-            >
+            <strong style={{ color: "#111827" }}>
               {formatMeterFromMm(
-                result.summary
-                  ?.totalUsedLength ||
-                  0
+                result.summary?.totalUsedLength || 0
               )}
             </strong>
           </div>
@@ -230,9 +216,7 @@ export default function CuttingResult({
             onClick={() => {
               setRollIndex(0);
               setPageIndex(0);
-              setCompleted(
-                false
-              );
+              setCompleted(false);
             }}
           >
             처음부터 다시 보기
@@ -255,122 +239,71 @@ export default function CuttingResult({
     );
   }
 
-  const safePageIndex =
-    Math.min(
-      Math.max(
-        0,
-        pageIndex
-      ),
-      Math.max(
-        0,
-        pages.length - 1
-      )
-    );
+  const safePageIndex = Math.min(
+    Math.max(0, pageIndex),
+    Math.max(0, pages.length - 1)
+  );
 
   const isLastPage =
-    safePageIndex >=
-    pages.length - 1;
+    safePageIndex >= pages.length - 1;
 
-  const isFirstPage =
-    safePageIndex === 0;
+  const isFirstPage = safePageIndex === 0;
 
-  const nextRoll =
-    usedRolls[
-      rollIndex + 1
-    ] || null;
-
-  const previousRoll =
-    usedRolls[
-      rollIndex - 1
-    ] || null;
+  const nextRoll = usedRolls[rollIndex + 1] || null;
+  const previousRoll = usedRolls[rollIndex - 1] || null;
 
   const sameColorNext =
     nextRoll &&
-    nextRoll.color ===
-      currentRoll.color;
+    nextRoll.color === currentRoll.color;
 
   const nextDifferentColor =
     nextRoll &&
-    nextRoll.color !==
-      currentRoll.color;
+    nextRoll.color !== currentRoll.color;
 
   function goNext() {
-    /*
-      같은 롤의 다음 재단 차수
-    */
     if (!isLastPage) {
-      setPageIndex(
-        safePageIndex + 1
-      );
-
+      setPageIndex(safePageIndex + 1);
       return;
     }
 
-    /*
-      다음 롤 또는 다음 컬러
-    */
     if (nextRoll) {
-      setRollIndex(
-        rollIndex + 1
-      );
-
+      setRollIndex(rollIndex + 1);
       setPageIndex(0);
-
       return;
     }
 
-    /*
-      마지막 컬러 마지막 페이지
-    */
     setCompleted(true);
   }
 
   function goPrevious() {
     if (!isFirstPage) {
-      setPageIndex(
-        safePageIndex - 1
-      );
-
+      setPageIndex(safePageIndex - 1);
       return;
     }
 
-    if (!previousRoll) {
-      return;
-    }
+    if (!previousRoll) return;
 
     const previousPages =
-      getCutPages(
-        previousRoll
-      );
+      getCutPages(previousRoll);
 
-    setRollIndex(
-      rollIndex - 1
-    );
+    setRollIndex(rollIndex - 1);
 
     setPageIndex(
-      Math.max(
-        0,
-        previousPages.length -
-          1
-      )
+      Math.max(0, previousPages.length - 1)
     );
   }
 
-  let nextButtonText =
-    "다음 재단 보기 →";
+  let nextButtonText = "다음 재단 보기 →";
 
   if (isLastPage) {
     if (sameColorNext) {
       nextButtonText =
         `다음 ${currentRoll.color} 롤 재단하기 →`;
-    } else if (
-      nextDifferentColor
-    ) {
+    } else if (nextDifferentColor) {
       nextButtonText =
         `${nextRoll.color} 재단하기 →`;
     } else {
-      nextButtonText =
-        "전체 재단 완료";
+      nextButtonText = "전체 재단 완료";
     }
   }
 
@@ -384,24 +317,19 @@ export default function CuttingResult({
           minHeight: 0,
         }}
       >
-        {/* 상단 */}
         <header
           style={{
             flex: "0 0 auto",
-            padding:
-              "10px 12px 8px",
-            borderBottom:
-              "1px solid #e5e7eb",
+            padding: "8px 12px",
+            borderBottom: "1px solid #e5e7eb",
             background: "#ffffff",
           }}
         >
           <div
             style={{
               display: "flex",
-              justifyContent:
-                "space-between",
-              alignItems:
-                "center",
+              justifyContent: "space-between",
+              alignItems: "center",
               gap: 10,
             }}
           >
@@ -409,22 +337,18 @@ export default function CuttingResult({
               <div
                 style={{
                   fontSize: 10,
-                  color:
-                    "#64748b",
+                  color: "#64748b",
                   fontWeight: 900,
                 }}
               >
-                ROLL{" "}
-                {rollIndex + 1}
+                ROLL {rollIndex + 1}
               </div>
 
               <div
                 style={{
                   display: "flex",
-                  alignItems:
-                    "baseline",
+                  alignItems: "baseline",
                   gap: 8,
-                  marginTop: 1,
                 }}
               >
                 <h2
@@ -434,22 +358,16 @@ export default function CuttingResult({
                     fontWeight: 900,
                   }}
                 >
-                  {
-                    currentRoll.color
-                  }
+                  {currentRoll.color}
                 </h2>
 
                 <strong
                   style={{
-                    color:
-                      "#2563eb",
+                    color: "#2563eb",
                     fontSize: 14,
                   }}
                 >
-                  {safePageIndex +
-                    1}
-                  /
-                  {pages.length}
+                  {safePageIndex + 1}/{pages.length}
                 </strong>
               </div>
             </div>
@@ -460,14 +378,10 @@ export default function CuttingResult({
               style={{
                 width: 40,
                 height: 40,
-                border:
-                  "1px solid #d1d5db",
+                border: "1px solid #d1d5db",
                 borderRadius: 10,
-                background:
-                  "#ffffff",
+                background: "#ffffff",
                 fontSize: 22,
-                cursor:
-                  "pointer",
               }}
             >
               ×
@@ -478,7 +392,7 @@ export default function CuttingResult({
             style={{
               display: "flex",
               gap: 6,
-              marginTop: 7,
+              marginTop: 6,
               overflowX: "auto",
             }}
           >
@@ -503,62 +417,129 @@ export default function CuttingResult({
               )}
             />
           </div>
+
+          {/* 재단 이미지 글씨 크기 조절 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "auto 38px 1fr 52px 38px",
+              gap: 6,
+              alignItems: "center",
+              marginTop: 7,
+              padding: "6px 8px",
+              borderRadius: 9,
+              background: "#f8fafc",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 900,
+                color: "#475569",
+                whiteSpace: "nowrap",
+              }}
+            >
+              도면 글씨
+            </span>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeTextScale(-STEP)
+              }
+              disabled={
+                textScalePercent <=
+                MIN_TEXT_SCALE
+              }
+              style={fontButton}
+            >
+              −
+            </button>
+
+            <input
+              type="range"
+              min={MIN_TEXT_SCALE}
+              max={MAX_TEXT_SCALE}
+              step={STEP}
+              value={textScalePercent}
+              onChange={(e) =>
+                setTextScale(
+                  Number(e.target.value)
+                )
+              }
+              style={{
+                width: "100%",
+              }}
+            />
+
+            <strong
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: "#111827",
+              }}
+            >
+              {textScalePercent}%
+            </strong>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeTextScale(STEP)
+              }
+              disabled={
+                textScalePercent >=
+                MAX_TEXT_SCALE
+              }
+              style={fontButton}
+            >
+              +
+            </button>
+          </div>
         </header>
 
-        {/* 재단 이미지 */}
         <main
           style={{
             flex: 1,
             minHeight: 0,
-            padding:
-              "7px 8px",
+            padding: "7px 8px",
             overflow: "hidden",
           }}
         >
           <CuttingDiagram
             roll={currentRoll}
-            pageIndex={
-              safePageIndex
+            pageIndex={safePageIndex}
+            textScale={
+              textScalePercent / 100
             }
           />
         </main>
 
-        {/* 하단 조작 */}
         <footer
           style={{
             flex: "0 0 auto",
             padding:
               "9px 10px calc(9px + env(safe-area-inset-bottom))",
-            borderTop:
-              "1px solid #e5e7eb",
-            background:
-              "#ffffff",
+            borderTop: "1px solid #e5e7eb",
+            background: "#ffffff",
           }}
         >
-          {/* 마지막 페이지 컬러 종료 안내 */}
           {isLastPage &&
             !sameColorNext && (
               <div
                 style={{
                   marginBottom: 7,
-                  padding:
-                    "8px 10px",
+                  padding: "8px 10px",
                   borderRadius: 8,
-                  background:
-                    "#dcfce7",
-                  color:
-                    "#166534",
+                  background: "#dcfce7",
+                  color: "#166534",
                   fontSize: 12,
                   fontWeight: 900,
-                  textAlign:
-                    "center",
+                  textAlign: "center",
                 }}
               >
-                ✓{" "}
-                {
-                  currentRoll.color
-                }{" "}
-                재단 종료
+                ✓ {currentRoll.color} 재단 종료
                 {nextDifferentColor &&
                   ` · 다음 ${nextRoll.color}`}
               </div>
@@ -569,24 +550,16 @@ export default function CuttingResult({
               <div
                 style={{
                   marginBottom: 7,
-                  padding:
-                    "8px 10px",
+                  padding: "8px 10px",
                   borderRadius: 8,
-                  background:
-                    "#eff6ff",
-                  color:
-                    "#1d4ed8",
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
                   fontSize: 12,
                   fontWeight: 900,
-                  textAlign:
-                    "center",
+                  textAlign: "center",
                 }}
               >
-                ✓ 현재{" "}
-                {
-                  currentRoll.color
-                }{" "}
-                롤 재단 완료
+                ✓ 현재 {currentRoll.color} 롤 재단 완료
               </div>
             )}
 
@@ -605,12 +578,8 @@ export default function CuttingResult({
               !isFirstPage) && (
               <button
                 type="button"
-                onClick={
-                  goPrevious
-                }
-                style={
-                  secondaryButton
-                }
+                onClick={goPrevious}
+                style={secondaryButton}
               >
                 ← 이전
               </button>
@@ -619,9 +588,7 @@ export default function CuttingResult({
             <button
               type="button"
               onClick={goNext}
-              style={
-                primaryButton
-              }
+              style={primaryButton}
             >
               {nextButtonText}
             </button>
@@ -632,20 +599,16 @@ export default function CuttingResult({
   );
 }
 
-function FullScreen({
-  children,
-}) {
+function FullScreen({ children }) {
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 99999,
-        background:
-          "#f4f6f8",
+        background: "#f4f6f8",
         overflow: "hidden",
-        overscrollBehavior:
-          "none",
+        overscrollBehavior: "none",
       }}
     >
       {children}
@@ -653,15 +616,11 @@ function FullScreen({
   );
 }
 
-function Chip({
-  label,
-  value,
-}) {
+function Chip({ label, value }) {
   return (
     <span
       style={{
-        display:
-          "inline-flex",
+        display: "inline-flex",
         gap: 4,
         alignItems: "center",
         padding: "5px 7px",
@@ -685,6 +644,17 @@ function Chip({
   );
 }
 
+const fontButton = {
+  width: 38,
+  height: 32,
+  border: "1px solid #cbd5e1",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#111827",
+  fontSize: 20,
+  fontWeight: 900,
+};
+
 const primaryButton = {
   minHeight: 48,
   border: 0,
@@ -698,8 +668,7 @@ const primaryButton = {
 
 const secondaryButton = {
   minHeight: 48,
-  border:
-    "1px solid #cbd5e1",
+  border: "1px solid #cbd5e1",
   borderRadius: 11,
   background: "#ffffff",
   color: "#334155",
