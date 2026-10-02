@@ -37,17 +37,11 @@ function normalizeRolls(rolls = []) {
       index,
       color: colorKey(roll.color),
 
-      lengthM:
-        toNum(
-          roll.lengthM
-        ),
+      lengthM: toNum(roll.lengthM),
 
-      lengthMm:
-        Math.round(
-          toNum(
-            roll.lengthM
-          ) * 1000
-        ),
+      lengthMm: Math.round(
+        toNum(roll.lengthM) * 1000
+      ),
 
       grainDirection:
         roll.grainDirection === true,
@@ -70,18 +64,12 @@ function getColorGrainMap(rolls) {
   const map = new Map();
 
   rolls.forEach((roll) => {
-    if (
-      !map.has(
-        roll.color
-      )
-    ) {
+    if (!map.has(roll.color)) {
       map.set(
         roll.color,
         roll.grainDirection
       );
-    } else if (
-      roll.grainDirection
-    ) {
+    } else if (roll.grainDirection) {
       map.set(
         roll.color,
         true
@@ -99,10 +87,7 @@ function orientationsForDimensions(
 ) {
   const result = [];
 
-  if (
-    width <=
-    FILM_WIDTH
-  ) {
+  if (width <= FILM_WIDTH) {
     result.push({
       width,
       height,
@@ -132,35 +117,23 @@ export function validateCuttingInput({
   const errors = [];
 
   const normalizedRolls =
-    normalizeRolls(
-      rolls
-    );
+    normalizeRolls(rolls);
 
-  if (
-    !normalizedRolls.length
-  ) {
+  if (!normalizedRolls.length) {
     errors.push(
       "보유 필름 롤을 1개 이상 입력해주세요."
     );
   }
 
   normalizedRolls.forEach(
-    (
-      roll,
-      index
-    ) => {
-      if (
-        !roll.color
-      ) {
+    (roll, index) => {
+      if (!roll.color) {
         errors.push(
           `${index + 1}번 롤의 컬러번호를 입력해주세요.`
         );
       }
 
-      if (
-        roll.lengthMm <=
-        0
-      ) {
+      if (roll.lengthMm <= 0) {
         errors.push(
           `${index + 1}번 롤의 길이를 확인해주세요.`
         );
@@ -168,31 +141,20 @@ export function validateCuttingInput({
     }
   );
 
-  const rollsByColor =
-    new Map();
+  const rollsByColor = new Map();
 
-  normalizedRolls.forEach(
-    (roll) => {
-      if (
-        !rollsByColor.has(
-          roll.color
-        )
-      ) {
-        rollsByColor.set(
-          roll.color,
-          []
-        );
-      }
-
-      rollsByColor
-        .get(
-          roll.color
-        )
-        .push(
-          roll
-        );
+  normalizedRolls.forEach((roll) => {
+    if (!rollsByColor.has(roll.color)) {
+      rollsByColor.set(
+        roll.color,
+        []
+      );
     }
-  );
+
+    rollsByColor
+      .get(roll.color)
+      .push(roll);
+  });
 
   let actualPieceCount = 0;
 
@@ -202,56 +164,35 @@ export function validateCuttingInput({
       sectionIndex
     ) => {
       const location =
-        txt(
-          section.location
-        );
+        txt(section.location);
 
       const part =
-        txt(
-          section.part
-        );
+        txt(section.part);
 
-      (
-        section.colors ||
-        []
-      ).forEach(
+      (section.colors || []).forEach(
         (group) => {
           const color =
-            colorKey(
-              group.color
-            );
+            colorKey(group.color);
 
-          (
-            group.sizes ||
-            []
-          ).forEach(
+          (group.sizes || []).forEach(
             (
               size,
               sizeIndex
             ) => {
-              if (
-                !validSize(
-                  size
-                )
-              ) {
+              if (!validSize(size)) {
                 return;
               }
 
-              actualPieceCount +=
-                1;
+              actualPieceCount += 1;
 
               const width =
                 Math.round(
-                  toNum(
-                    size.width
-                  )
+                  toNum(size.width)
                 );
 
               const height =
                 Math.round(
-                  toNum(
-                    size.height
-                  )
+                  toNum(size.height)
                 );
 
               const quantity =
@@ -261,17 +202,13 @@ export function validateCuttingInput({
                   ) || 1
                 );
 
-              if (
-                !location
-              ) {
+              if (!location) {
                 errors.push(
                   `${sectionIndex + 1}번 항목의 시공 위치를 입력해주세요.`
                 );
               }
 
-              if (
-                !part
-              ) {
+              if (!part) {
                 errors.push(
                   `${
                     location ||
@@ -280,9 +217,7 @@ export function validateCuttingInput({
                 );
               }
 
-              if (
-                !color
-              ) {
+              if (!color) {
                 errors.push(
                   `${
                     location ||
@@ -309,10 +244,7 @@ export function validateCuttingInput({
                 return;
               }
 
-              if (
-                quantity <=
-                0
-              ) {
+              if (quantity <= 0) {
                 errors.push(
                   `${location} / ${part} / ${color}의 ${
                     sizeIndex + 1
@@ -325,9 +257,7 @@ export function validateCuttingInput({
                   color
                 ) || [];
 
-              if (
-                !colorRolls.length
-              ) {
+              if (!colorRolls.length) {
                 errors.push(
                   `${location} / ${part}에서 사용하는 ${color} 롤이 없습니다.`
                 );
@@ -363,9 +293,7 @@ export function validateCuttingInput({
                     maxRollLength
                 );
 
-              if (
-                !canFit
-              ) {
+              if (!canFit) {
                 errors.push(
                   `${location} / ${part} / ${color} ${width}×${height}mm는 등록된 롤에 들어가지 않습니다.`
                 );
@@ -377,10 +305,7 @@ export function validateCuttingInput({
     }
   );
 
-  if (
-    actualPieceCount ===
-    0
-  ) {
+  if (actualPieceCount === 0) {
     errors.push(
       "재단 사이즈를 1개 이상 입력해주세요."
     );
@@ -388,9 +313,7 @@ export function validateCuttingInput({
 
   return {
     valid:
-      errors.length ===
-      0,
-
+      errors.length === 0,
     errors,
   };
 }
@@ -400,7 +323,6 @@ function expandPieces(
   grainMap
 ) {
   const pieces = [];
-
   let sequence = 1;
 
   sections.forEach(
@@ -409,67 +331,43 @@ function expandPieces(
       sectionIndex
     ) => {
       const location =
-        txt(
-          section.location
-        );
+        txt(section.location);
 
       const part =
-        txt(
-          section.part
-        );
+        txt(section.part);
 
-      (
-        section.colors ||
-        []
-      ).forEach(
+      (section.colors || []).forEach(
         (
           group,
           colorIndex
         ) => {
           const color =
-            colorKey(
-              group.color
-            );
+            colorKey(group.color);
 
-          if (
-            !color
-          ) {
+          if (!color) {
             return;
           }
 
           const canRotate =
-            !grainMap.get(
-              color
-            );
+            !grainMap.get(color);
 
-          (
-            group.sizes ||
-            []
-          ).forEach(
+          (group.sizes || []).forEach(
             (
               size,
               sizeIndex
             ) => {
-              if (
-                !validSize(
-                  size
-                )
-              ) {
+              if (!validSize(size)) {
                 return;
               }
 
               const width =
                 Math.round(
-                  toNum(
-                    size.width
-                  )
+                  toNum(size.width)
                 );
 
               const height =
                 Math.round(
-                  toNum(
-                    size.height
-                  )
+                  toNum(size.height)
                 );
 
               if (
@@ -491,8 +389,7 @@ function expandPieces(
 
               for (
                 let q = 0;
-                q <
-                quantity;
+                q < quantity;
                 q += 1
               ) {
                 pieces.push({
@@ -539,9 +436,7 @@ function expandPieces(
   return pieces;
 }
 
-function pieceOrientations(
-  piece
-) {
+function pieceOrientations(piece) {
   return orientationsForDimensions(
     piece.originalWidth,
     piece.originalHeight,
@@ -569,13 +464,9 @@ function isLongOrientation(
   );
 }
 
-function piecePriority(
-  piece
-) {
+function piecePriority(piece) {
   const options =
-    pieceOrientations(
-      piece
-    );
+    pieceOrientations(piece);
 
   let wideLong = 0;
   let long = 0;
@@ -633,16 +524,12 @@ function intersects(
 ) {
   return !(
     b.x >=
-      a.x +
-        a.width ||
-    b.x +
-      b.width <=
+      a.x + a.width ||
+    b.x + b.width <=
       a.x ||
     b.y >=
-      a.y +
-        a.height ||
-    b.y +
-      b.height <=
+      a.y + a.height ||
+    b.y + b.height <=
       a.y
   );
 }
@@ -787,9 +674,7 @@ function splitFreeRect(
   );
 }
 
-function pruneFreeRects(
-  rects
-) {
+function pruneFreeRects(rects) {
   return rects.filter(
     (
       rect,
@@ -797,8 +682,7 @@ function pruneFreeRects(
     ) => {
       for (
         let i = 0;
-        i <
-        rects.length;
+        i < rects.length;
         i += 1
       ) {
         if (
@@ -865,6 +749,7 @@ function createEmptyBatch(
     rowUsedWidth: 0,
   };
 }
+
 function placeOnBatch(
   batch,
   piece,
@@ -933,9 +818,7 @@ function findBestRow(
     FILM_WIDTH -
     anchorOrientation.width;
 
-  if (
-    room <= 0
-  ) {
+  if (room <= 0) {
     return [
       {
         piece:
@@ -1053,9 +936,7 @@ function findBestRow(
         const state =
           dp[used];
 
-        if (
-          !state
-        ) {
+        if (!state) {
           continue;
         }
 
@@ -1119,9 +1000,7 @@ function findBestRow(
       state,
       usedWidth
     ) => {
-      if (
-        !state
-      ) {
+      if (!state) {
         return;
       }
 
@@ -1428,9 +1307,7 @@ function fillBatch2D(
 
   let changed = true;
 
-  while (
-    changed
-  ) {
+  while (changed) {
     changed = false;
 
     for (
@@ -1451,9 +1328,7 @@ function fillBatch2D(
           piece
         );
 
-      if (
-        !placement
-      ) {
+      if (!placement) {
         continue;
       }
 
@@ -1472,8 +1347,7 @@ function fillBatch2D(
   }
 
   return placedIds;
-}
-
+    }
 function finalizeBatch(
   batch
 ) {
@@ -1806,6 +1680,8 @@ function createRollState(
     usedArea: 0,
 
     efficiency: 0,
+
+    openedOrder: null,
   };
 }
 
@@ -1922,6 +1798,7 @@ function cloneColorRolls(
       )
   );
 }
+
 function estimateAdditionalLength(
   pieces
 ) {
@@ -2056,9 +1933,7 @@ function isBetterPlan(
   next,
   current
 ) {
-  if (
-    !current
-  ) {
+  if (!current) {
     return true;
   }
 
@@ -2105,13 +1980,10 @@ function isBetterPlan(
 }
 
 /*
-  지정된 롤 순서를 절대 변경하지 않고 사용.
+  지정한 롤 순서대로 사용.
 
-  짧은 롤 우선 모드에서는
-  이 함수에 5m → 10m → 15m → 50m 순으로 들어옵니다.
-
-  현재 롤에 더 이상 들어갈 수 있는 재단 Batch가
-  없을 때만 다음 롤로 넘어갑니다.
+  현재 롤에 재단물이 하나라도 들어가면
+  다음 롤로 넘어가지 않습니다.
 */
 function packColorByOrder(
   pieces,
@@ -2126,6 +1998,8 @@ function packColorByOrder(
   let remaining =
     [...pieces];
 
+  let openSequence = 1;
+
   for (
     const rollIndex of
     orderIndexes
@@ -2135,9 +2009,7 @@ function packColorByOrder(
         rollIndex
       ];
 
-    if (
-      !roll
-    ) {
+    if (!roll) {
       continue;
     }
 
@@ -2151,28 +2023,30 @@ function packColorByOrder(
     ) {
       guard += 1;
 
-      /*
-        이 롤에 실제로 들어갈 수 있는 높이 안에서만
-        가장 좋은 Batch를 새로 계산
-      */
       const best =
         buildBestBatch(
           remaining,
           roll.remainingLength
         );
 
+      /*
+        현재 롤 잔량에 들어가는 재단물이
+        정말 하나도 없을 때만 다음 롤
+      */
       if (
         !best?.batch ||
         !best.batch
           .placements.length
       ) {
-        /*
-          현재 롤에 남은 재단물 중
-          들어갈 수 있는 것이 없음.
-
-          여기서만 다음 롤로 넘어감.
-        */
         break;
+      }
+
+      if (
+        roll.openedOrder ==
+        null
+      ) {
+        roll.openedOrder =
+          openSequence++;
       }
 
       placeBatchOnRoll(
@@ -2203,10 +2077,10 @@ function packColorByOrder(
 }
 
 /*
-  사용 길이 최소 모드용.
+  사용 길이 최소 모드.
 
-  모든 롤을 동시에 비교하여
-  현재 Batch를 어느 롤에 넣는 것이 좋은지 선택.
+  한 롤을 열면 그 롤에 더 이상
+  재단물을 넣을 수 없을 때까지 계속 사용합니다.
 */
 function packColorAdaptive(
   pieces,
@@ -2221,13 +2095,15 @@ function packColorAdaptive(
     [...pieces];
 
   let guard = 0;
+  let openSequence = 1;
 
-  while (
-    remaining.length &&
-    guard < 20000
-  ) {
-    guard += 1;
+  /*
+    현재 실제 작업 중인 롤
+  */
+  let activeRollIndex =
+    null;
 
+  function findBestNewRoll() {
     let bestChoice =
       null;
 
@@ -2236,6 +2112,17 @@ function packColorAdaptive(
         roll,
         rollIndex
       ) => {
+        /*
+          이미 사용한 롤은
+          새 롤 후보에서 제외
+        */
+        if (
+          roll.usedLength >
+          0
+        ) {
+          return;
+        }
+
         if (
           roll.remainingLength <=
           0
@@ -2250,7 +2137,9 @@ function packColorAdaptive(
           );
 
         if (
-          !candidate?.batch
+          !candidate?.batch ||
+          !candidate.batch
+            .placements.length
         ) {
           return;
         }
@@ -2280,14 +2169,6 @@ function packColorAdaptive(
         }
 
         if (
-          roll.usedLength >
-          0
-        ) {
-          pairScore +=
-            500000;
-        }
-
-        if (
           !bestChoice ||
           pairScore >
             bestChoice.score
@@ -2305,26 +2186,102 @@ function packColorAdaptive(
       }
     );
 
+    return bestChoice;
+  }
+
+  while (
+    remaining.length &&
+    guard < 20000
+  ) {
+    guard += 1;
+
+    /*
+      1순위:
+      이미 열어놓은 현재 롤 계속 사용
+    */
     if (
-      !bestChoice
+      activeRollIndex !==
+      null
     ) {
+      const activeRoll =
+        states[
+          activeRollIndex
+        ];
+
+      if (
+        activeRoll &&
+        activeRoll.remainingLength >
+          0
+      ) {
+        const candidate =
+          buildBestBatch(
+            remaining,
+            activeRoll.remainingLength
+          );
+
+        /*
+          현재 롤에 한 조각이라도
+          들어가는 재단 Batch가 있으면
+          무조건 현재 롤 사용
+        */
+        if (
+          candidate?.batch &&
+          candidate.batch
+            .placements.length
+        ) {
+          placeBatchOnRoll(
+            activeRoll,
+            candidate.batch
+          );
+
+          remaining =
+            removeBatchPieces(
+              remaining,
+              candidate.batch
+            );
+
+          continue;
+        }
+      }
+
+      /*
+        현재 롤에 정말 아무것도 못 넣을 때만 종료
+      */
+      activeRollIndex =
+        null;
+    }
+
+    /*
+      2순위:
+      그때만 새 롤 선택
+    */
+    const nextChoice =
+      findBestNewRoll();
+
+    if (!nextChoice) {
       break;
     }
 
-    const roll =
+    const newRoll =
       states[
-        bestChoice.rollIndex
+        nextChoice.rollIndex
       ];
 
+    newRoll.openedOrder =
+      openSequence++;
+
+    activeRollIndex =
+      nextChoice.rollIndex;
+
     placeBatchOnRoll(
-      roll,
-      bestChoice.batch
+      newRoll,
+      nextChoice.batch
     );
 
     remaining =
       removeBatchPieces(
         remaining,
-        bestChoice.batch
+        nextChoice.batch
       );
   }
 
@@ -2358,26 +2315,18 @@ function makeIndexOrder(
 }
 
 /*
-  ============================================================
-  컬러별 롤 선택 정책
-  ============================================================
+  short-first:
+  무조건 짧은 롤부터.
 
-  short-first
-  → 무조건 짧은 롤부터
-  → 다른 계획과 비교하지 않음
-
-  waste
-  → 여러 전략을 비교해서
-    실제 사용 길이가 가장 적은 결과 선택
+  waste:
+  여러 계획을 비교.
 */
 function optimizeColorAgainstRolls(
   pieces,
   colorRolls,
   rollMode
 ) {
-  if (
-    !colorRolls.length
-  ) {
+  if (!colorRolls.length) {
     return {
       rolls: [],
 
@@ -2391,9 +2340,7 @@ function optimizeColorAgainstRolls(
           ),
 
         totalUsedLength: 0,
-
         wasteArea: 0,
-
         usedRollCount: 0,
       },
     };
@@ -2404,14 +2351,6 @@ function optimizeColorAgainstRolls(
       colorRolls.length
     );
 
-  /*
-    가장 짧은 롤부터 정렬
-
-    예:
-    15m, 5m, 50m, 10m
-    ↓
-    5m, 10m, 15m, 50m
-  */
   const shortFirst =
     [...baseOrder].sort(
       (
@@ -2425,16 +2364,11 @@ function optimizeColorAgainstRolls(
             .lengthMm;
 
         if (
-          lengthDiff !==
-          0
+          lengthDiff !== 0
         ) {
           return lengthDiff;
         }
 
-        /*
-          길이가 같으면
-          사용자가 입력한 기존 순서 유지
-        */
         return (
           colorRolls[a]
             .index -
@@ -2445,22 +2379,8 @@ function optimizeColorAgainstRolls(
     );
 
   /*
-    =====================================================
-    짧은 롤 우선
-    =====================================================
-
-    여기서는 다른 최적화 결과와
-    절대 비교하지 않습니다.
-
-    5m
-    ↓
-    10m
-    ↓
-    15m
-    ↓
-    50m
-
-    순서로 강제 사용.
+    짧은 롤 우선은
+    다른 계산과 비교하지 않고 강제
   */
   if (
     rollMode ===
@@ -2472,15 +2392,6 @@ function optimizeColorAgainstRolls(
       shortFirst
     );
   }
-
-  /*
-    =====================================================
-    사용 길이 최소
-    =====================================================
-
-    이 모드에서만
-    여러 배치 전략 비교.
-  */
 
   const longFirst =
     [...baseOrder].sort(
@@ -2495,8 +2406,7 @@ function optimizeColorAgainstRolls(
             .lengthMm;
 
         if (
-          lengthDiff !==
-          0
+          lengthDiff !== 0
         ) {
           return lengthDiff;
         }
@@ -2512,9 +2422,6 @@ function optimizeColorAgainstRolls(
 
   const plans = [];
 
-  /*
-    입력한 롤 순서
-  */
   plans.push(
     packColorByOrder(
       pieces,
@@ -2523,10 +2430,6 @@ function optimizeColorAgainstRolls(
     )
   );
 
-  /*
-    짧은 롤 순서도
-    사용 길이 최소 계산 후보에는 포함 가능.
-  */
   plans.push(
     packColorByOrder(
       pieces,
@@ -2535,9 +2438,6 @@ function optimizeColorAgainstRolls(
     )
   );
 
-  /*
-    긴 롤 먼저
-  */
   plans.push(
     packColorByOrder(
       pieces,
@@ -2546,9 +2446,6 @@ function optimizeColorAgainstRolls(
     )
   );
 
-  /*
-    전체 롤을 매 순간 비교
-  */
   plans.push(
     packColorAdaptive(
       pieces,
@@ -2579,12 +2476,81 @@ function finalizeResult(
   rollStates,
   unplaced
 ) {
+  const colorOrder =
+    new Map();
+
+  rollStates.forEach(
+    (roll) => {
+      if (
+        !colorOrder.has(
+          roll.color
+        )
+      ) {
+        colorOrder.set(
+          roll.color,
+          colorOrder.size
+        );
+      }
+    }
+  );
+
+  /*
+    실제 개봉한 롤 순서로 결과 정렬
+  */
   const usedRolls =
-    rollStates.filter(
-      (roll) =>
-        roll.placements
-          .length > 0
-    );
+    rollStates
+      .filter(
+        (roll) =>
+          roll.placements
+            .length > 0
+      )
+      .sort(
+        (
+          a,
+          b
+        ) => {
+          const colorDiff =
+            (
+              colorOrder.get(
+                a.color
+              ) ?? 9999
+            ) -
+            (
+              colorOrder.get(
+                b.color
+              ) ?? 9999
+            );
+
+          if (
+            colorDiff !== 0
+          ) {
+            return colorDiff;
+          }
+
+          const aOpened =
+            a.openedOrder ??
+            999999;
+
+          const bOpened =
+            b.openedOrder ??
+            999999;
+
+          if (
+            aOpened !==
+            bOpened
+          ) {
+            return (
+              aOpened -
+              bOpened
+            );
+          }
+
+          return (
+            a.index -
+            b.index
+          );
+        }
+      );
 
   const unusedRolls =
     rollStates.filter(
@@ -2690,16 +2656,13 @@ function finalizeResult(
 
   return {
     success:
-      unplaced.length ===
-      0,
+      unplaced.length === 0,
 
     rolls:
       rollStates,
 
     usedRolls,
-
     unusedRolls,
-
     unplaced,
 
     summary: {
@@ -2735,9 +2698,7 @@ export function optimizeCutting({
       sections,
     });
 
-  if (
-    !validation.valid
-  ) {
+  if (!validation.valid) {
     return {
       success: false,
 
@@ -2781,12 +2742,8 @@ export function optimizeCutting({
       }
 
       piecesByColor
-        .get(
-          piece.color
-        )
-        .push(
-          piece
-        );
+        .get(piece.color)
+        .push(piece);
     }
   );
 
@@ -2809,9 +2766,7 @@ export function optimizeCutting({
     );
 
   const unplaced = [];
-
-  const shortageMessages =
-    [];
+  const shortageMessages = [];
 
   for (
     const [
@@ -2834,10 +2789,6 @@ export function optimizeCutting({
         rollMode
       );
 
-    /*
-      선택된 결과를
-      전체 롤 상태에 반영
-    */
     plan.rolls.forEach(
       (
         plannedRoll
@@ -2859,9 +2810,6 @@ export function optimizeCutting({
       }
     );
 
-    /*
-      가진 롤에 전부 들어가지 않은 경우
-    */
     if (
       plan.remaining.length
     ) {
@@ -2874,8 +2822,7 @@ export function optimizeCutting({
           .shortageMm;
 
       if (
-        shortageMm >
-        0
+        shortageMm > 0
       ) {
         const shortageMeter =
           Math.ceil(
@@ -2926,4 +2873,4 @@ export function optimizeCutting({
 
     result,
   };
-    }
+      }
