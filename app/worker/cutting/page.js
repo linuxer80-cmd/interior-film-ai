@@ -1,4 +1,4 @@
-import FilmCuttingOptimizer from "./FilmCuttingOptimizer";
+import CuttingWorkspace from "./CuttingWorkspace";
 
 export const metadata = {
   title: "필름 재단 최적화",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function CuttingPage() {
-  return <FilmCuttingOptimizer />;
+  return <CuttingWorkspace />;
     }
