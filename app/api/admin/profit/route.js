@@ -26,8 +26,8 @@ const json = (body, status = 200) =>
   });
 
 const money = (value) => {
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
 };
 
 const validDate = (value) =>
@@ -58,7 +58,7 @@ async function admin(request) {
         persistSession: false,
         autoRefreshToken: false,
       },
-    },
+    }
   );
 
   const {
@@ -110,6 +110,7 @@ async function allRows(query) {
 
   for (let offset = 0; offset < 10000; offset += 500) {
     const { data, error } = await query.range(offset, offset + 499);
+
     if (error) throw error;
 
     rows.push(...(data || []));
@@ -120,14 +121,266 @@ async function allRows(query) {
   throw new Error("조회 결과가 너무 많습니다. 기간을 줄여주세요.");
 }
 
+function day(value) {
+  if (!value) return null;
+
+  if (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return validDate(value) ? value : null;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(date);
+}
+
+function assignmentDays(site) {
+  if (Array.isArray(site.work_dates)) {
+    return [...new Set(site.work_dates.filter(validDate))].sort();
+  }
+
+  const first = day(site.schedule_start);
+  const last = day(site.schedule_end) || first;
+
+  if (!first || !last || last < first) return [];
+
+  const count =
+    Math.round((Date.parse(last) - Date.parse(first)) / 86400000) + 1;
+
+  if (count > 3660) {
+    throw new Error("현장 시공기간이 너무 깁니다.");
+  }
+
+  return Array.from({ length: count }, (_, index) =>
+    new Date(Date.parse(first) + index * 86400000)
+      .toISOString()
+      .slice(0, 10)
+  );
+}
+
+function rateValue(value) {
+  if (value == null || value === "") return null;
+
+  const number = Number(value);
+
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function assignedLabor(
+  site,
+  daily,
+  people,
+  rates,
+  companyRates,
+  currentAllowance
+) {
+  const dates = assignmentDays(site);
+  const allowed = new Set(dates);
+
+  // 날짜별 배정이 있으면 그 배정만 사용합니다.
+  // 날짜별 배정이 없는 이전 현장은 현장 배정과 시공일을 사용합니다.
+  const rows = daily.length
+    ? daily
+    : (site.site_workers || []).flatMap((row) =>
+        dates.map((work_date) => ({ ...row, work_date }))
+      );
+
+  const unique = new Map();
+
+  for (const row of rows) {
+    const date = day(row.work_date);
+    const person = people.get(row.worker_id);
+
+    if (
+      !date ||
+      !person ||
+      (Array.isArray(site.work_dates) && !allowed.has(date))
+    ) {
+      continue;
+    }
+
+    const key = `${row.worker_id}:${date}`;
+
+    if (!unique.has(key) || row.role === "leader") {
+      unique.set(key, { ...row, date });
+    }
+  }
+
+  const groups = new Map();
+
+  for (const row of unique.values()) {
+    const person = people.get(row.worker_id);
+
+    const history = rates.filter(
+      (rate) => rate.worker_id === row.worker_id
+    );
+
+    const rate = history.find(
+      (rate) => rate.effective_from <= row.date
+    );
+
+    const base = rateValue(
+      rate?.daily_wage ??
+        (history.length ? null : person.daily_wage)
+    );
+
+    const companyRate = companyRates.find(
+      (rate) => rate.effective_from <= row.date
+    );
+
+    const hasCompanyAllowance =
+      companyRates.length > 0 || !!currentAllowance;
+
+    const allowance =
+      row.role === "leader"
+        ? rateValue(
+            hasCompanyAllowance
+              ? companyRate?.amount ??
+                  (currentAllowance?.effective_from <= row.date
+                    ? currentAllowance.amount
+                    : null)
+              : rate?.leader_allowance ??
+                  (history.length ? null : person.leader_allowance)
+          )
+        : 0;
+
+    const group = groups.get(row.worker_id) || {
+      workerId: row.worker_id,
+      name: person.name || "시공자",
+      days: 0,
+      leaderDays: 0,
+      memberDays: 0,
+      base: 0,
+      allowance: 0,
+      pending: 0,
+      amount: 0,
+    };
+
+    group.days += 1;
+    group[row.role === "leader" ? "leaderDays" : "memberDays"] += 1;
+
+    if (base == null || allowance == null) {
+      group.pending += 1;
+    } else {
+      group.base += base;
+      group.allowance += allowance;
+      group.amount += base + allowance;
+    }
+
+    groups.set(row.worker_id, group);
+  }
+
+  return [...groups.values()];
+}
+
+function resolveLabor(site, automated, expenses, people) {
+  const manual = [];
+  const reports = [];
+
+  const names = [...people.values()].sort(
+    (a, b) => (b.name || "").length - (a.name || "").length
+  );
+
+  for (const item of expenses) {
+    if (item.description?.startsWith(REPORT_LABOR)) {
+      let detail = null;
+
+      try {
+        detail = JSON.parse(
+          item.description.slice(REPORT_LABOR.length)
+        );
+      } catch {}
+
+      reports.push({
+        workerId: detail?.workerId || null,
+        name: detail?.name || "시공자 미분류",
+        description: detail
+          ? `완료보고 ${detail.days}일 × 일당 ${money(
+              detail.dailyWage
+            ).toLocaleString("ko-KR")}원 + 팀장수당 ${money(
+              detail.allowance
+            ).toLocaleString("ko-KR")}원`
+          : "완료보고 인건비",
+        amount: money(item.amount),
+      });
+    } else if (
+      item.description?.startsWith(`${PREFIX}${TYPES.labor}:`)
+    ) {
+      const description = item.description
+        .slice(item.description.indexOf(":") + 1)
+        .trim();
+
+      const person = names.find(
+        (person) =>
+          person.name &&
+          (description === person.name ||
+            description.startsWith(`${person.name} `))
+      );
+
+      manual.push({
+        workerId: person?.id || null,
+        name: person?.name || "현장 인건비 직접 입력",
+        description,
+        amount: money(item.amount),
+      });
+    }
+  }
+
+  // 시공자를 특정하지 않은 수기 금액은 현장 전체 합계입니다.
+  if (manual.some((row) => !row.workerId)) return manual;
+
+  const manualIds = new Set(manual.map((row) => row.workerId));
+
+  const reportRows = reports.filter(
+    (row) => !manualIds.has(row.workerId)
+  );
+
+  const covered = new Set([
+    ...manualIds,
+    ...reportRows.map((row) => row.workerId),
+  ]);
+
+  const automatic = reportRows.some((row) => !row.workerId)
+    ? []
+    : automated
+        .filter((row) => !covered.has(row.workerId))
+        .map((row) => ({
+          workerId: row.workerId,
+          name: row.name,
+          amount: row.amount,
+          description:
+            `자동 계산 · 팀장 ${row.leaderDays}일 / 팀원 ${row.memberDays}일` +
+            ` · 일당 합계 ${row.base.toLocaleString("ko-KR")}원` +
+            ` + 팀장수당 ${row.allowance.toLocaleString("ko-KR")}원` +
+            (row.pending
+              ? ` · 단가 확인 필요 ${row.pending}일`
+              : ""),
+        }));
+
+  return [...manual, ...reportRows, ...automatic];
+}
+
 export async function GET(request) {
   try {
     const auth = await admin(request);
-    if (auth.error) return json({ error: auth.error }, auth.status);
+
+    if (auth.error) {
+      return json({ error: auth.error }, auth.status);
+    }
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
+
     const fromTime = Date.parse(`${from}T00:00:00Z`);
     const toTime = Date.parse(`${to}T00:00:00Z`);
 
@@ -137,255 +390,309 @@ export async function GET(request) {
       fromTime > toTime ||
       toTime - fromTime > 366 * 86400000
     ) {
-      return json({ error: "기간은 최대 1년으로 지정해주세요." }, 400);
+      return json(
+        { error: "기간은 최대 1년으로 지정해주세요." },
+        400
+      );
     }
 
     const { db, companyId } = auth;
-    const nextDay = new Date(toTime + 86400000)
-      .toISOString()
-      .slice(0, 10);
 
     const sites = await allRows(
       db
         .from("sites")
         .select(
-          "id,site_name,customer_name,schedule_start,contract_amount,status,site_workers(company_id,role,worker_id,workers(id,company_id,name,daily_wage))",
+          "id,site_name,customer_name,schedule_start,schedule_end,work_dates,contract_amount,status,site_workers(company_id,role,worker_id,workers(id,company_id,name,daily_wage,leader_allowance))"
         )
         .eq("company_id", companyId)
         .neq("status", "cancelled")
         .gte("schedule_start", `${from}T00:00:00+09:00`)
-        .lt("schedule_start", `${nextDay}T00:00:00+09:00`)
-        .order("schedule_start", { ascending: true }),
+        .lt(
+          "schedule_start",
+          new Date(toTime + 86400000).toISOString().slice(0, 10) +
+            "T00:00:00+09:00"
+        )
+        .order("schedule_start")
+        .order("id")
     );
 
     const materials = [];
     const expenses = [];
+    const daily = [];
 
     for (let index = 0; index < sites.length; index += 100) {
-      const ids = sites.slice(index, index + 100).map((site) => site.id);
-      if (!ids.length) continue;
+      const ids = sites
+        .slice(index, index + 100)
+        .map((site) => site.id);
 
-      const [materialRows, expenseRows] = await Promise.all([
+      const results = await Promise.all([
         allRows(
           db
             .from("site_materials")
             .select(
-              "site_id,brand,product_code,product_name,quantity,unit,unit_price,total_price",
+              "id,site_id,brand,product_code,product_name,quantity,unit,unit_price,total_price"
             )
             .eq("company_id", companyId)
             .eq("material_type", "actual")
             .in("site_id", ids)
-            .order("site_id"),
+            .order("id")
         ),
         allRows(
           db
             .from("site_expenses")
             .select(
-              "id,site_id,expense_type,amount,description,expense_date",
+              "id,site_id,expense_type,amount,description,expense_date"
             )
             .eq("company_id", companyId)
             .in("site_id", ids)
-            .order("site_id"),
+            .order("id")
+        ),
+        allRows(
+          db
+            .from("site_daily_assignments")
+            .select("id,site_id,worker_id,work_date,role")
+            .eq("company_id", companyId)
+            .in("site_id", ids)
+            .order("id")
         ),
       ]);
 
-      materials.push(...materialRows);
-      expenses.push(...expenseRows);
+      materials.push(...results[0]);
+      expenses.push(...results[1]);
+      daily.push(...results[2]);
     }
 
-    const materialBySite = new Map();
-
-    for (const item of materials) {
-      const amount = money(
-        item.total_price ??
-          money(item.quantity) * money(item.unit_price),
-      );
-
-      materialBySite.set(
-        item.site_id,
-        (materialBySite.get(item.site_id) || 0) + amount,
-      );
-    }
-
-    const breakdown = { labor: [], material: [], expense: [] };
-
-    const siteNames = new Map(
-      sites.map((site) => [
-        site.id,
-        site.site_name || site.customer_name || "이름 없는 현장",
-      ]),
-    );
-
-    const workerNames = new Map(
-      sites.flatMap((site) =>
-        (site.site_workers || [])
-          .filter(
-            (row) =>
-              row.company_id === companyId &&
-              row.workers?.company_id === companyId,
-          )
-          .map((row) => [row.workers.name, row.workers.name]),
-      ),
-    );
-
-    for (const item of materials) {
-      breakdown.material.push({
-        siteId: item.site_id,
-        siteName: siteNames.get(item.site_id),
-        brand: item.brand?.trim() || "브랜드 미입력",
-        product:
-          [item.product_code, item.product_name]
-            .filter(Boolean)
-            .join(" · ") || "제품 미입력",
-        quantity: money(item.quantity),
-        unit: item.unit || "m",
-        amount: money(
-          item.total_price ??
-            money(item.quantity) * money(item.unit_price),
+    const workerIds = [
+      ...new Set([
+        ...daily.map((row) => row.worker_id),
+        ...sites.flatMap((site) =>
+          (site.site_workers || [])
+            .filter((row) => row.company_id === companyId)
+            .map((row) => row.worker_id)
         ),
-      });
+      ]),
+    ];
+
+    const people = new Map();
+    const rates = [];
+
+    for (let index = 0; index < workerIds.length; index += 100) {
+      const ids = workerIds.slice(index, index + 100);
+
+      const [workers, history] = await Promise.all([
+        allRows(
+          db
+            .from("workers")
+            .select("id,name,daily_wage,leader_allowance")
+            .eq("company_id", companyId)
+            .in("id", ids)
+            .order("id")
+        ),
+        allRows(
+          db
+            .from("worker_pay_rates")
+            .select(
+              "id,worker_id,effective_from,daily_wage,leader_allowance"
+            )
+            .eq("company_id", companyId)
+            .in("worker_id", ids)
+            .order("effective_from", { ascending: false })
+            .order("id")
+        ),
+      ]);
+
+      workers.forEach((worker) => people.set(worker.id, worker));
+      rates.push(...history);
     }
 
-    const costsBySite = new Map();
+    rates.sort((a, b) =>
+      b.effective_from.localeCompare(a.effective_from)
+    );
 
-    for (const item of expenses) {
-      const bucket = costsBySite.get(item.site_id) || {
-        labor: 0,
-        material: 0,
-        expense: 0,
-        entries: [],
-      };
+    const [companyRates, current] = await Promise.all([
+      allRows(
+        db
+          .from("company_leader_allowance_rates")
+          .select("company_id,effective_from,amount")
+          .eq("company_id", companyId)
+          .order("effective_from", { ascending: false })
+      ),
+      db
+        .from("company_leader_allowances")
+        .select("amount,effective_from")
+        .eq("company_id", companyId)
+        .maybeSingle(),
+    ]);
 
-      const reportLabor = item.description?.startsWith(REPORT_LABOR);
+    if (current.error) throw current.error;
 
-      const category =
-        reportLabor ||
-        item.description?.startsWith(`${PREFIX}${TYPES.labor}:`)
+    const breakdown = {
+      labor: [],
+      material: [],
+      expense: [],
+    };
+
+    const result = sites.map((site) => {
+      const siteName =
+        site.site_name || site.customer_name || "이름 없는 현장";
+
+      const siteExpenses = expenses.filter(
+        (item) => item.site_id === site.id
+      );
+
+      const automated = assignedLabor(
+        site,
+        daily.filter((row) => row.site_id === site.id),
+        people,
+        rates,
+        companyRates,
+        current.data
+      );
+
+      const laborRows = resolveLabor(
+        site,
+        automated,
+        siteExpenses,
+        people
+      );
+
+      const labor = laborRows.reduce(
+        (sum, row) => sum + row.amount,
+        0
+      );
+
+      breakdown.labor.push(
+        ...laborRows.map((row) => ({
+          ...row,
+          siteId: site.id,
+          siteName,
+        }))
+      );
+
+      let material = 0;
+      let expense = 0;
+      const entries = [];
+
+      for (const item of materials.filter(
+        (item) => item.site_id === site.id
+      )) {
+        const amount = money(
+          item.total_price ??
+            money(item.quantity) * money(item.unit_price)
+        );
+
+        material += amount;
+
+        breakdown.material.push({
+          siteId: site.id,
+          siteName,
+          brand: item.brand?.trim() || "브랜드 미입력",
+          product:
+            [item.product_code, item.product_name]
+              .filter(Boolean)
+              .join(" · ") || "제품 미입력",
+          quantity: money(item.quantity),
+          unit: item.unit || "m",
+          amount,
+        });
+      }
+
+      for (const item of siteExpenses) {
+        const isLabor =
+          item.description?.startsWith(REPORT_LABOR) ||
+          item.description?.startsWith(
+            `${PREFIX}${TYPES.labor}:`
+          );
+
+        const category = isLabor
           ? "labor"
           : item.expense_type === "material" ||
               item.description?.startsWith(
-                `${PREFIX}${TYPES.material}:`,
+                `${PREFIX}${TYPES.material}:`
               )
             ? "material"
             : "expense";
 
-      bucket[category] += money(item.amount);
+        const detail = item.description?.startsWith(PREFIX)
+          ? item.description
+              .slice(item.description.indexOf(":") + 1)
+              .trim()
+          : item.description?.trim() || "내용 미입력";
 
-      const detail = item.description?.startsWith(PREFIX)
-        ? item.description
-            .slice(item.description.indexOf(":") + 1)
-            .trim()
-        : item.description?.trim() || "내용 미입력";
+        if (category === "material") {
+          material += money(item.amount);
 
-      if (category === "labor") {
-        let labor = null;
+          breakdown.material.push({
+            siteId: site.id,
+            siteName,
+            brand: "브랜드 미입력",
+            product: detail,
+            quantity: null,
+            unit: "",
+            amount: money(item.amount),
+          });
+        } else if (category === "expense") {
+          expense += money(item.amount);
 
-        if (reportLabor) {
-          try {
-            labor = JSON.parse(
-              item.description.slice(REPORT_LABOR.length),
-            );
-          } catch {}
+          breakdown.expense.push({
+            siteId: site.id,
+            siteName,
+            category:
+              item.expense_type &&
+              item.expense_type !== "other"
+                ? EXPENSE_LABELS[item.expense_type] ||
+                  item.expense_type
+                : detail.split(":")[0].trim(),
+            description: detail,
+            amount: money(item.amount),
+          });
         }
 
-        const name = [...workerNames.keys()]
-          .sort((a, b) => b.length - a.length)
-          .find(
-            (candidate) =>
-              detail === candidate ||
-              detail.startsWith(`${candidate} `),
-          );
-
-        breakdown.labor.push({
-          siteId: item.site_id,
-          siteName: siteNames.get(item.site_id),
-          name: labor?.name || name || "시공자 미분류",
-          description: labor
-            ? `${labor.days}일 × 일당 ${money(labor.dailyWage).toLocaleString("ko-KR")}원 + 팀장수당 합계 ${money(labor.allowance).toLocaleString("ko-KR")}원`
-            : detail,
-          amount: money(item.amount),
-        });
-      } else if (category === "material") {
-        breakdown.material.push({
-          siteId: item.site_id,
-          siteName: siteNames.get(item.site_id),
-          brand: "브랜드 미입력",
-          product: detail,
-          quantity: null,
-          unit: "",
-          amount: money(item.amount),
-        });
-      } else {
-        breakdown.expense.push({
-          siteId: item.site_id,
-          siteName: siteNames.get(item.site_id),
-          category:
-            item.expense_type &&
-            item.expense_type !== "other" &&
-            item.expense_type !== "material"
-              ? EXPENSE_LABELS[item.expense_type] || item.expense_type
-              : item.description?.startsWith(PREFIX)
-                ? detail.split(":")[0].trim()
-                : detail,
-          description: detail,
-          amount: money(item.amount),
-        });
+        if (item.description?.startsWith(PREFIX)) {
+          entries.push({
+            ...item,
+            description: detail,
+            category,
+          });
+        }
       }
 
-      if (item.description?.startsWith(PREFIX)) {
-        bucket.entries.push({
-          ...item,
-          description: item.description
-            .slice(item.description.indexOf(":") + 1)
-            .trim(),
-          category,
-        });
-      }
-
-      costsBySite.set(item.site_id, bucket);
-    }
-
-    const result = sites.map((site) => {
-      const costs = costsBySite.get(site.id) || {
-        labor: 0,
-        material: 0,
-        expense: 0,
-        entries: [],
-      };
+      const site_workers = [
+        ...new Map(
+          [
+            ...(site.site_workers || []).filter(
+              (row) => row.company_id === companyId
+            ),
+            ...daily.filter(
+              (row) => row.site_id === site.id
+            ),
+          ]
+            .filter((row) => people.has(row.worker_id))
+            .map((row) => [
+              row.worker_id,
+              {
+                role: row.role,
+                worker_id: row.worker_id,
+                workers: people.get(row.worker_id),
+              },
+            ])
+        ).values(),
+      ];
 
       const revenue = money(site.contract_amount);
-      const material =
-        (materialBySite.get(site.id) || 0) + costs.material;
-      const profit =
-        revenue - costs.labor - material - costs.expense;
-
-      const site_workers = (site.site_workers || [])
-        .filter(
-          (assignment) =>
-            assignment.company_id === companyId &&
-            assignment.workers?.company_id === companyId,
-        )
-        .map(({ role, worker_id, workers }) => ({
-          role,
-          worker_id,
-          workers: {
-            id: workers.id,
-            name: workers.name,
-            daily_wage: workers.daily_wage,
-          },
-        }));
 
       return {
         ...site,
         site_workers,
         revenue,
-        labor: costs.labor,
+        labor,
         material,
-        expense: costs.expense,
-        profit,
-        entries: costs.entries,
+        expense,
+        profit: revenue - labor - material - expense,
+        entries,
         missingContract:
-          site.contract_amount == null || site.contract_amount === "",
+          site.contract_amount == null ||
+          site.contract_amount === "",
       };
     });
 
@@ -400,22 +707,36 @@ export async function GET(request) {
         ]) {
           sum[key] += item[key];
         }
+
         return sum;
       },
-      { revenue: 0, labor: 0, material: 0, expense: 0, profit: 0 },
+      {
+        revenue: 0,
+        labor: 0,
+        material: 0,
+        expense: 0,
+        profit: 0,
+      }
     );
 
     return json({ sites: result, totals, breakdown });
   } catch (error) {
     console.error("profit GET", error);
-    return json({ error: "수익 자료를 불러오지 못했습니다." }, 500);
+
+    return json(
+      { error: "수익 자료를 불러오지 못했습니다." },
+      500
+    );
   }
 }
 
 export async function POST(request) {
   try {
     const auth = await admin(request);
-    if (auth.error) return json({ error: auth.error }, auth.status);
+
+    if (auth.error) {
+      return json({ error: auth.error }, auth.status);
+    }
 
     const body = await request.json().catch(() => ({}));
     const type = TYPES[body.type];
@@ -435,7 +756,7 @@ export async function POST(request) {
     ) {
       return json(
         { error: "구분, 현장, 금액, 내용을 확인해주세요." },
-        400,
+        400
       );
     }
 
@@ -451,20 +772,24 @@ export async function POST(request) {
     if (siteError) throw siteError;
 
     if (!site) {
-      return json({ error: "현장을 찾을 수 없습니다." }, 404);
+      return json(
+        { error: "현장을 찾을 수 없습니다." },
+        404
+      );
     }
 
     if (site.status === "cancelled") {
       return json(
         { error: "취소된 현장에는 비용을 추가할 수 없습니다." },
-        409,
+        409
       );
     }
 
     const { error } = await db.from("site_expenses").insert({
       company_id: companyId,
       site_id: site.id,
-      expense_type: body.type === "material" ? "material" : "other",
+      expense_type:
+        body.type === "material" ? "material" : "other",
       amount,
       description: `${PREFIX}${type}: ${description}`,
       expense_date: new Date().toISOString().slice(0, 10),
@@ -472,22 +797,33 @@ export async function POST(request) {
     });
 
     if (error) throw error;
+
     return json({ success: true });
   } catch (error) {
     console.error("profit POST", error);
-    return json({ error: "비용을 저장하지 못했습니다." }, 500);
+
+    return json(
+      { error: "비용을 저장하지 못했습니다." },
+      500
+    );
   }
 }
 
 export async function DELETE(request) {
   try {
     const auth = await admin(request);
-    if (auth.error) return json({ error: auth.error }, auth.status);
+
+    if (auth.error) {
+      return json({ error: auth.error }, auth.status);
+    }
 
     const { id } = await request.json().catch(() => ({}));
 
     if (!id) {
-      return json({ error: "삭제할 내역을 선택해주세요." }, 400);
+      return json(
+        { error: "삭제할 내역을 선택해주세요." },
+        400
+      );
     }
 
     const { error } = await auth.db
@@ -498,9 +834,14 @@ export async function DELETE(request) {
       .like("description", `${PREFIX}%`);
 
     if (error) throw error;
+
     return json({ success: true });
   } catch (error) {
     console.error("profit DELETE", error);
-    return json({ error: "비용 내역을 삭제하지 못했습니다." }, 500);
+
+    return json(
+      { error: "비용 내역을 삭제하지 못했습니다." },
+      500
+    );
   }
-      }
+                 }
