@@ -2,558 +2,928 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-const won = value => `${Number(value || 0).toLocaleString("ko-KR")}원`;
-const today = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-const monthStart = () => `${today().slice(0, 7)}-01`;
-const kinds = {
-  labor: "시공자 인건비",
-  material: "추가 자재비",
-  expense: "기타 경비"
-};
-const costLabels = kinds;
-const colors = {
-  labor: "#2563eb",
-  material: "#7c3aed",
-  expense: "#ea580c"
-};
-const group = (rows, key) => Object.entries((rows || []).reduce((map, row) => {
-  const label = row[key] || "미분류";
-  if (!map[label]) {
-    map[label] = {
-      amount: 0,
-      rows: []
-    };
-  }
-  map[label].amount += Number(row.amount || 0);
-  map[label].rows.push(row);
-  return map;
-}, {})).map(([label, value]) => ({
-  label,
-  ...value
-})).sort((a, b) => b.amount - a.amount);
-function Breakdown({
-  data,
-  type,
-  title,
-  itemKey
+import ApprovedWorkAiRegister from "./ApprovedWorkAiRegister";
+import ActualMaterialEditor from "./ActualMaterialEditor";
+export default function SiteWorkReportReview({
+  siteId,
+  onReportStateChange
 }) {
-  const [open, setOpen] = useState("");
-  const [productOpen, setProductOpen] = useState("");
-  const list = group(data.breakdown?.[type], itemKey);
-  const total = Number(data.totals[type] || 0);
-  return <section style={{
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 14,
-    padding: 16
-  }}>
-      <h3 style={{
-      margin: "0 0 4px"
-    }}>{title}</h3>
-
-      <strong style={{
-      color: colors[type],
-      fontSize: 20
-    }}>
-        {won(total)}
-      </strong>
-
-      {!list.length && <p style={{
-      color: "#64748b",
-      fontSize: 13
-    }}>
-          등록된 비용이 없습니다.
-        </p>}
-
-      <div style={{
-      display: "grid",
-      gap: 9,
-      marginTop: 12
-    }}>
-        {list.map(entry => <div key={entry.label}>
-            <button type="button" aria-expanded={open === entry.label} onClick={() => {
-          setOpen(open === entry.label ? "" : entry.label);
-          setProductOpen("");
-        }} style={{
-          display: "flex",
-          width: "100%",
-          justifyContent: "space-between",
-          gap: 8,
-          border: 0,
-          background: "transparent",
-          textAlign: "left",
-          padding: "4px 0",
-          cursor: "pointer",
-          fontSize: 14
-        }}>
-              <span>
-                {entry.label} <small>({entry.rows.length}건)</small>
-              </span>
-
-              <strong>
-                {won(entry.amount)}{" "}
-                {open === entry.label ? "⌃" : "⌄"}
-              </strong>
-            </button>
-
-            <div role="img" aria-label={`${entry.label} ${won(entry.amount)}, 전체 ${title}의 ${total ? Math.round(entry.amount / total * 100) : 0}%`} style={{
-          height: 10,
-          borderRadius: 10,
-          background: "#f1f5f9",
-          overflow: "hidden"
-        }}>
-              <div style={{
-            height: "100%",
-            width: `${total ? Math.min(100, entry.amount / total * 100) : 0}%`,
-            background: colors[type],
-            borderRadius: 10
-          }} />
-            </div>
-
-            {open === entry.label && <div style={{
-          padding: "8px 4px 8px 12px",
-          borderLeft: `3px solid ${colors[type]}`,
-          fontSize: 13
-        }}>
-                {type === "material" ? group(entry.rows, "product").map(product => <div key={product.label} style={{
-            padding: "5px 0",
-            borderBottom: "1px solid #f1f5f9"
-          }}>
-                        <button type="button" aria-expanded={productOpen === product.label} onClick={() => setProductOpen(productOpen === product.label ? "" : product.label)} style={{
-              width: "100%",
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              border: 0,
-              padding: 0,
-              background: "transparent",
-              textAlign: "left",
-              cursor: "pointer"
-            }}>
-                          <span>
-                            {product.label} ({product.rows.length}건)
-                          </span>
-                          <strong>
-                            {won(product.amount)}{" "}
-                            {productOpen === product.label ? "⌃" : "⌄"}
-                          </strong>
-                        </button>
-
-                        {productOpen === product.label && product.rows.map((row, index) => <div key={index} style={{
-              padding: "5px 0 0 10px",
-              color: "#475569"
-            }}>
-                              {row.siteName} ·{" "}
-                              {row.quantity == null ? "수기 입력" : `${row.quantity.toLocaleString("ko-KR")}${row.unit}`}{" "}
-                              · {won(row.amount)}
-                            </div>)}
-                      </div>) : entry.rows.map((row, index) => <div key={index} style={{
-            padding: "5px 0",
-            borderBottom: "1px solid #f1f5f9",
-            color: "#475569"
-          }}>
-                        {row.siteName} · {row.description} ·{" "}
-                        {won(row.amount)}
-                      </div>)}
-              </div>}
-          </div>)}
-      </div>
-    </section>;
-}
-export default function ProfitTab() {
-  const [view, setView] = useState("summary");
-  const [from, setFrom] = useState(monthStart);
-  const [to, setTo] = useState(today);
+  const [view, setView] = useState("content");
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [selected, setSelected] = useState("");
-  const [kind, setKind] = useState("labor");
-  const [worker, setWorker] = useState("");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [saving, setSaving] = useState(false);
-  async function request(method, payload, query = "") {
-    const {
-      data: {
-        session
+  const [approvedAmount, setApprovedAmount] = useState("");
+  const [reviewMemo, setReviewMemo] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+  useEffect(() => {
+    if (!siteId) {
+      setLoading(false);
+      setData(null);
+      if (typeof onReportStateChange === "function") {
+        onReportStateChange({
+          hasReport: false,
+          reviewStatus: null
+        });
       }
-    } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error("관리자로 다시 로그인해주세요.");
-    }
-    const response = await fetch(`/api/admin/profit${query}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        ...(payload ? {
-          "Content-Type": "application/json"
-        } : {})
-      },
-      ...(payload ? {
-        body: JSON.stringify(payload)
-      } : {}),
-      cache: "no-store"
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || "요청에 실패했습니다.");
-    }
-    return result;
-  }
-  async function load() {
-    if (!from || !to || from > to) {
-      setError("조회 기간을 확인해주세요.");
       return;
     }
+    setApprovedAmount("");
+    setReviewMemo("");
+    setActionMessage("");
+    setActionError("");
+    loadReview();
+  }, [siteId]);
+  async function loadReview() {
     setLoading(true);
-    setError("");
+    setErrorMessage("");
+    setData(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      setData(await request("GET", null, `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`));
-    } catch (cause) {
-      setError(cause.message);
+      const {
+        data: sessionData,
+        error: sessionError
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw new Error(`로그인 세션 확인 실패: ${sessionError.message || "알 수 없는 오류"}`);
+      }
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("관리자 로그인 세션이 없습니다. 다시 로그인해주세요.");
+      }
+      const response = await fetch(`/api/admin/site-work-report-review?siteId=${encodeURIComponent(siteId)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json"
+        },
+        cache: "no-store",
+        signal: controller.signal
+      });
+      const responseText = await response.text();
+      let result = null;
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("검수 API JSON 변환 오류:", parseError, responseText);
+          throw new Error(`서버 응답 형식 오류 (HTTP ${response.status})`);
+        }
+      }
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || `완료보고 조회 실패 (HTTP ${response.status})`);
+      }
+      setData(result);
+      if (typeof onReportStateChange === "function") {
+        onReportStateChange({
+          hasReport: Boolean(result?.hasReport && result?.report),
+          reviewStatus: result?.review?.status || result?.report?.review_status || null
+        });
+      }
+      if (result?.review?.approvedAmount !== null && result?.review?.approvedAmount !== undefined) {
+        setApprovedAmount(formatNumberInput(result.review.approvedAmount));
+      }
+      if (result?.review?.memo) {
+        setReviewMemo(result.review.memo);
+      }
+    } catch (error) {
+      console.error("완료보고 검수자료 조회 오류:", error);
       setData(null);
+      setErrorMessage(error?.name === "AbortError" ? "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요." : error?.message || "완료보고 검수자료를 불러오지 못했습니다.");
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }
-  useEffect(() => {
-    load();
-  }, []);
-  const current = data?.sites.find(site => site.id === selected);
-  const assigned = (current?.site_workers || []).map(row => row.workers).filter(Boolean);
-  function chooseWorker(id) {
-    setWorker(id);
-    const person = assigned.find(item => item.id === id);
-    if (person) {
-      setDescription(`${person.name} 인건비`);
-      setAmount(person.daily_wage ? String(person.daily_wage) : "");
-    }
-  }
-  async function save(event) {
-    event.preventDefault();
-    if (!current) return;
-    setSaving(true);
-    setError("");
-    try {
-      await request("POST", {
-        siteId: current.id,
-        type: kind,
-        amount: Number(String(amount).replaceAll(",", "")),
-        description
-      });
-      setAmount("");
-      setDescription("");
-      setWorker("");
-      await load();
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function remove(id) {
-    if (!window.confirm("이 비용 내역을 삭제하시겠습니까?")) {
+  async function submitReviewAction(action) {
+    if (actionLoading) return;
+    setActionMessage("");
+    setActionError("");
+    const numericAmount = String(approvedAmount || "").replace(/,/g, "").replace(/원/g, "").trim();
+    if (action === "approve" && numericAmount === "") {
+      setActionError("실제 시공금액을 입력해주세요.");
       return;
     }
-    setSaving(true);
-    setError("");
+    if (action === "approve" && (!Number.isFinite(Number(numericAmount)) || Number(numericAmount) < 0)) {
+      setActionError("실제 시공금액을 올바르게 입력해주세요.");
+      return;
+    }
+    if (action === "reject" && !reviewMemo.trim()) {
+      setActionError("보완 요청 사유를 입력해주세요.");
+      return;
+    }
+    if (action === "approve" && !window.confirm(`실제 시공금액 ${formatMoney(numericAmount)}으로 검수 승인하시겠습니까?\n\n아직 AI 견적자료에는 등록되지 않습니다.`)) {
+      return;
+    }
+    if (action === "reject" && !window.confirm("이 완료보고를 보완 요청하시겠습니까?\n\n시공자는 보완 사유를 확인한 후 다시 제출할 수 있습니다.")) {
+      return;
+    }
+    setActionLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      await request("DELETE", {
-        id
+      const {
+        data: sessionData,
+        error: sessionError
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw new Error(`로그인 세션 확인 실패: ${sessionError.message || "알 수 없는 오류"}`);
+      }
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("관리자 로그인 세션이 없습니다. 다시 로그인해주세요.");
+      }
+      const response = await fetch("/api/admin/site-work-report-review/action", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        cache: "no-store",
+        signal: controller.signal,
+        body: JSON.stringify({
+          siteId,
+          action,
+          approvedAmount: action === "approve" ? Number(numericAmount) : null,
+          reviewMemo: reviewMemo.trim()
+        })
       });
-      await load();
-    } catch (cause) {
-      setError(cause.message);
+      const responseText = await response.text();
+      let result = null;
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("검수 처리 API JSON 변환 오류:", parseError, responseText);
+          throw new Error(`서버 응답 형식 오류 (HTTP ${response.status})`);
+        }
+      }
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || `검수 처리 실패 (HTTP ${response.status})`);
+      }
+      setActionMessage(result?.message || (action === "approve" ? "검수 승인이 저장되었습니다." : "보완 요청이 저장되었습니다."));
+      await loadReview();
+    } catch (error) {
+      console.error("완료보고 검수 처리 오류:", error);
+      setActionError(error?.name === "AbortError" ? "검수 처리가 15초 이상 걸려 중단되었습니다. 다시 확인해주세요." : error?.message || "검수 처리 중 오류가 발생했습니다.");
     } finally {
-      setSaving(false);
+      clearTimeout(timeoutId);
+      setActionLoading(false);
     }
   }
-  const card = {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: 14
-  };
-  const field = {
-    width: "100%",
-    padding: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    boxSizing: "border-box",
-    fontSize: 14
-  };
-  return <section style={{
-    display: "grid",
-    gap: 14
-  }}>
-      <div style={card}>
-        <h2 style={{
-        margin: "0 0 8px"
-      }}>📊 현장 수익</h2>
-
-        <p style={{
-        color: "#475569",
-        fontSize: 13,
-        lineHeight: 1.5
-      }}>
-          시공 시작일 기준 계약금액 − 인건비 − 실제 사용 자재비
-          − 경비입니다. 계약금액 기준 예상 수익이며
-          입금·세금·본사 공통비는 반영하지 않습니다.
-        </p>
-
+  function handleAmountChange(event) {
+    const digits = (event.target.value || "").replace(/[^\d]/g, "");
+    setApprovedAmount(digits ? new Intl.NumberFormat("ko-KR").format(Number(digits)) : "");
+    if (actionError) setActionError("");
+  }
+  function formatNumberInput(value) {
+    if (value === null || value === undefined || value === "") {
+      return "";
+    }
+    const number = Number(String(value).replace(/,/g, ""));
+    return Number.isFinite(number) ? new Intl.NumberFormat("ko-KR").format(number) : "";
+  }
+  function formatDateTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(date);
+  }
+  function formatMoney(value) {
+    const number = Number(String(value ?? "").replace(/,/g, ""));
+    return Number.isFinite(number) ? `${new Intl.NumberFormat("ko-KR").format(number)}원` : "0원";
+  }
+  function getExpenseLabel(type) {
+    switch (type) {
+      case "parking":
+        return "주차비";
+      case "meal":
+        return "식비";
+      case "fuel":
+        return "유류비";
+      case "toll":
+        return "통행료";
+      case "material":
+        return "추가 자재비";
+      default:
+        return "기타";
+    }
+  }
+  function getReviewInfo(status) {
+    switch (status) {
+      case "approved":
+        return {
+          icon: "🟢",
+          title: "관리자 승인 완료",
+          label: "승인 완료",
+          background: "#f0fdf4",
+          border: "#bbf7d0",
+          color: "#166534"
+        };
+      case "rejected":
+        return {
+          icon: "🔴",
+          title: "보완 요청",
+          label: "보완 필요",
+          background: "#fef2f2",
+          border: "#fecaca",
+          color: "#b91c1c"
+        };
+      default:
+        return {
+          icon: "🟠",
+          title: "시공자 완료보고",
+          label: "검수 대기",
+          background: "#fffbeb",
+          border: "#fde68a",
+          color: "#92400e"
+        };
+    }
+  }
+  if (loading) {
+    return <section style={sectionStyle}>
         <div style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 8,
-        alignItems: "end"
+        color: "#64748b",
+        fontSize: "13px",
+        fontWeight: "800"
       }}>
-          <label>
-            시작일
-            <input aria-label="수익 조회 시작일" type="date" value={from} onChange={event => setFrom(event.target.value)} style={field} />
-          </label>
-
-          <label>
-            종료일
-            <input aria-label="수익 조회 종료일" type="date" value={to} onChange={event => setTo(event.target.value)} style={field} />
-          </label>
-
-          <button type="button" onClick={load} disabled={loading} style={{
-          ...field,
-          width: "auto",
-          background: "#111827",
-          color: "white"
-        }}>
-            {loading ? "조회 중..." : "조회"}
-          </button>
+          시공자 완료보고를 확인하고 있습니다...
+        </div>
+      </section>;
+  }
+  if (errorMessage) {
+    return <section style={{
+      ...sectionStyle,
+      border: "1px solid #fecaca"
+    }}>
+        <div style={{
+        color: "#b91c1c",
+        fontSize: "13px",
+        fontWeight: "900"
+      }}>
+          ❌ 완료보고 조회 오류
         </div>
 
-        {error && <p role="alert" style={{
-        color: "#b91c1c"
+        <div style={{
+        marginTop: "8px",
+        color: "#7f1d1d",
+        fontSize: "12px",
+        lineHeight: 1.6
       }}>
-            ❌ {error}
-          </p>}
+          {errorMessage}
+        </div>
+
+        <button type="button" onClick={loadReview} style={blackButtonStyle}>
+          다시 불러오기
+        </button>
+      </section>;
+  }
+  if (!data?.hasReport || !data?.report) return null;
+  const report = data.report;
+  const worker = data.worker;
+  const materials = Array.isArray(data.materials) ? data.materials : [];
+  const expenses = Array.isArray(data.expenses) ? data.expenses : [];
+  const beforePhotos = Array.isArray(data.beforePhotos) ? data.beforePhotos : [];
+  const afterPhotos = Array.isArray(data.afterPhotos) ? data.afterPhotos : [];
+  const reviewStatus = data?.review?.status || report?.review_status || "pending";
+  const review = getReviewInfo(reviewStatus);
+  const totalExpense = expenses.reduce((sum, item) => {
+    const amount = Number(item?.amount);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+  return <section style={{
+    ...sectionStyle,
+    border: `1px solid ${review.border}`
+  }}><nav aria-label="화면 메뉴" style={{
+      display: "flex",
+      gap: 6,
+      flexWrap: "wrap",
+      padding: "8px 0",
+      marginBottom: 12
+    }}>{[["content", "📝 시공내용"], ["photos", "📷 사진"], ["cost", "📦 자재·경비"], ["review", "✅ 검수"]].map(([key, label]) => <button key={key} type="button" aria-pressed={view === key} disabled={actionLoading} onClick={() => setView(key)} style={{
+        flex: "1 1 80px",
+        padding: "12px 8px",
+        borderRadius: 12,
+        border: view === key ? "1px solid #2563eb" : "1px solid #e2e8f0",
+        background: view === key ? "#eff6ff" : "white",
+        color: view === key ? "#1d4ed8" : "#475569",
+        fontWeight: 800,
+        fontSize: 13,
+        cursor: "pointer"
+      }}>{label}</button>)}</nav>
+      <div style={headerStyle}>
+        <div>
+          <div style={{
+          color: "#111827",
+          fontSize: "16px",
+          fontWeight: "900"
+        }}>
+            {review.icon} {review.title}
+          </div>
+
+          <div style={{
+          marginTop: "5px",
+          color: review.color,
+          fontSize: "12px",
+          fontWeight: "900"
+        }}>
+            {review.label}
+          </div>
+        </div>
+
+        <div style={{
+        padding: "6px 10px",
+        borderRadius: "999px",
+        background: review.background,
+        border: `1px solid ${review.border}`,
+        color: review.color,
+        fontSize: "10px",
+        fontWeight: "900"
+      }}>
+          {review.label}
+        </div>
       </div>
 
-      {data && <><nav aria-label="화면 메뉴" style={{
-        display: "flex",
-        gap: 6,
-        flexWrap: "wrap",
-        padding: "8px 0",
-        marginBottom: 12
-      }}>{[["summary", "📊 요약"], ["cost", "💰 비용분석"], ["sites", "🏠 현장별 수익"]].map(([key, label]) => <button key={key} type="button" aria-pressed={view === key} disabled={saving} onClick={() => setView(key)} style={{
-          flex: "1 1 80px",
-          padding: "12px 8px",
-          borderRadius: 12,
-          border: view === key ? "1px solid #2563eb" : "1px solid #e2e8f0",
-          background: view === key ? "#eff6ff" : "white",
-          color: view === key ? "#1d4ed8" : "#475569",
-          fontWeight: 800,
-          fontSize: 13,
-          cursor: "pointer"
-        }}>{label}</button>)}</nav>
-          <div hidden={view !== "summary"}><div style={{
-          ...card,
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: 12
-        }}>
-            {[["계약 매출", data.totals.revenue], ["인건비", data.totals.labor], ["자재비", data.totals.material], ["기타 경비", data.totals.expense], ["예상 수익", data.totals.profit]].map(([label, value]) => <div key={label}>
-                <div style={{
+      {reviewStatus === "pending" && <NoticeBox background="#fffbeb" color="#92400e">
+          시공자가 완료보고를 제출했습니다.
+          <br />
+          시공 내용, 사진, 실제 사용 자재와 경비를 확인해주세요.
+          <br />
+          아직 AI 견적자료로 등록되지 않았습니다.
+        </NoticeBox>}
+
+      <div hidden={view !== "content"}><ReviewBlock title="👷 제출 시공자">
+        <ReviewRow label="이름" value={worker?.name || "시공자 정보 없음"} />
+
+        {worker?.phone && <ReviewRow label="전화" value={worker.phone} />}
+
+        <ReviewRow label="제출일" value={formatDateTime(report.completed_at || report.updated_at || report.created_at)} />
+      </ReviewBlock></div>
+
+      <div hidden={view !== "content"}><ReviewBlock title="🛠️ 실제 시공 내용">
+        {report.work_region && <ReviewRow label="시공지역" value={report.work_region} />}
+
+        <div style={contentBoxStyle}>
+          {report.work_summary || "등록된 시공 내용이 없습니다."}
+        </div>
+
+        {report.memo && <div style={contentBoxStyle}>
+            <SmallLabel>시공자 메모</SmallLabel>
+            <div style={{
+            marginTop: "5px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word"
+          }}>
+              {report.memo}
+            </div>
+          </div>}
+      </ReviewBlock></div>
+
+      <div hidden={view !== "photos"}><ReviewBlock title={`📷 시공 전 사진 · ${beforePhotos.length}장`}>
+        {beforePhotos.length === 0 ? <EmptyText>
+            등록된 시공 전 사진이 없습니다.
+          </EmptyText> : <PhotoGrid photos={beforePhotos} />}
+      </ReviewBlock></div>
+
+      <div hidden={view !== "photos"}><ReviewBlock title={`📸 시공 완료 사진 · ${afterPhotos.length}장`}>
+        {afterPhotos.length === 0 ? <EmptyText>
+            등록된 완료 사진이 없습니다.
+          </EmptyText> : <PhotoGrid photos={afterPhotos} />}
+      </ReviewBlock></div>
+
+      <div hidden={view !== "cost"}><ReviewBlock title={`📦 실제 사용 자재 · ${materials.length}건`}>
+        <ActualMaterialEditor key={siteId} siteId={siteId} materials={materials} onSaved={loadReview} />
+      </ReviewBlock></div>
+
+      <div hidden={view !== "cost"}><ReviewBlock title={`💳 현장 경비 · ${expenses.length}건`}>
+        {expenses.length === 0 ? <EmptyText>
+            등록된 현장 경비가 없습니다.
+          </EmptyText> : <>
+            <div style={{
+            display: "grid",
+            gap: "9px"
+          }}>
+              {expenses.map((expense, index) => <div key={expense.id || `${expense.expense_type}-${index}`} style={itemCardStyle}>
+                  <div style={headerStyle}>
+                    <strong style={{
+                  fontSize: "12px"
+                }}>
+                      {getExpenseLabel(expense.expense_type)}
+                    </strong>
+
+                    <strong>
+                      {formatMoney(expense.amount)}
+                    </strong>
+                  </div>
+
+                  {expense.description && <div style={{
+                marginTop: "7px",
+                color: "#64748b",
+                fontSize: "11px",
+                whiteSpace: "pre-wrap"
+              }}>
+                      {expense.description}
+                    </div>}
+
+                  {expense.expense_date && <div style={{
+                marginTop: "5px",
+                color: "#94a3b8",
+                fontSize: "10px"
+              }}>
+                      {expense.expense_date}
+                    </div>}
+                </div>)}
+            </div>
+
+            <div style={{
+            marginTop: "10px",
+            padding: "12px",
+            borderRadius: "10px",
+            background: "#f8fafc",
+            textAlign: "right"
+          }}>
+              <span style={{
               color: "#64748b",
-              fontSize: 12
+              fontSize: "11px",
+              fontWeight: "800"
             }}>
-                  {label}
-                </div>
-                <strong style={{
-              color: label === "예상 수익" ? "#166534" : "#111827"
-            }}>
-                  {won(value)}
-                </strong>
-              </div>)}
-          </div></div>
-
-          <div hidden={view !== "summary"}><div style={card}>
-            <h3 style={{
-            margin: "0 0 10px"
-          }}>비용 구성</h3>
-
-            {data.totals.labor + data.totals.material + data.totals.expense > 0 ? <>
-                <div role="img" aria-label="인건비, 자재비, 경비 비율" style={{
-              display: "flex",
-              height: 22,
-              borderRadius: 9,
-              overflow: "hidden"
-            }}>
-                  {["labor", "material", "expense"].map(type => <div key={type} style={{
-                width: `${100 * data.totals[type] / (data.totals.labor + data.totals.material + data.totals.expense)}%`,
-                background: colors[type]
-              }} />)}
-                </div>
-
-                <div style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 12,
-              marginTop: 8,
-              fontSize: 12
-            }}>
-                  {[["labor", "인건비"], ["material", "자재비"], ["expense", "경비"]].map(([key, label]) => <span key={key}>
-                      <i style={{
-                  display: "inline-block",
-                  width: 9,
-                  height: 9,
-                  borderRadius: 2,
-                  background: colors[key],
-                  marginRight: 4
-                }} />
-                      {label} {won(data.totals[key])}
-                    </span>)}
-                </div>
-              </> : <span>등록된 비용이 없습니다.</span>}
-          </div></div>
-
-          <div hidden={view !== "cost"}><Breakdown data={data} type="labor" title="시공자별 인건비" itemKey="name" /></div>
-
-          <div hidden={view !== "cost"}><Breakdown data={data} type="material" title="브랜드별 자재비" itemKey="brand" /></div>
-
-          <div hidden={view !== "cost"}><Breakdown data={data} type="expense" title="품목별 경비" itemKey="category" /></div>
-
-          <div hidden={view !== "sites"}>{data.sites.length === 0 && <div style={card}>
-              이 기간에 시공 시작일이 등록된 현장이 없습니다.
-            </div>}</div>
-
-          <div hidden={view !== "sites"}>{data.sites.map(site => <div key={site.id} style={card}>
-              <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-            flexWrap: "wrap"
-          }}>
-                <strong>
-                  {site.site_name || site.customer_name || "이름 없는 현장"}
-                </strong>
-                <span>
-                  {String(site.schedule_start).slice(0, 10)}
-                </span>
-              </div>
-
-              <div style={{
-            fontSize: 13,
-            lineHeight: 1.7,
-            marginTop: 8
-          }}>
-                계약 {won(site.revenue)} · 인건비 {won(site.labor)}
-                {" · "}자재 {won(site.material)} · 경비{" "}
-                {won(site.expense)}
-              </div>
+                경비 합계
+              </span>
 
               <strong style={{
-            color: site.profit < 0 ? "#b91c1c" : "#166534"
-          }}>
-                예상 수익 {won(site.profit)}
+              marginLeft: "8px",
+              fontSize: "15px"
+            }}>
+                {formatMoney(totalExpense)}
               </strong>
+            </div>
+          </>}
+      </ReviewBlock></div>
 
-              {site.missingContract && <p style={{
-            color: "#b45309",
-            fontSize: 12
+      <div hidden={view !== "review"}>{reviewStatus === "pending" && <div style={{
+        marginTop: "18px",
+        padding: "15px",
+        borderRadius: "12px",
+        background: "#f8fafc",
+        border: "1px solid #cbd5e1"
+      }}>
+          <div style={{
+          color: "#111827",
+          fontSize: "14px",
+          fontWeight: "900"
+        }}>
+            🔎 관리자 검수
+          </div>
+
+          <div style={{
+          marginTop: "6px",
+          color: "#64748b",
+          fontSize: "11px",
+          lineHeight: 1.6
+        }}>
+            시공 내용과 사진을 확인한 후 실제 시공금액을
+            입력하고 승인해주세요.
+          </div>
+
+          <div style={{
+          marginTop: "16px"
+        }}>
+            <label style={labelStyle}>
+              실제 시공금액 *
+            </label>
+
+            <div style={{
+            position: "relative"
           }}>
-                  ⚠️ 계약금액 미입력: 매출 0원으로 집계됩니다.
-                </p>}
+              <input type="text" inputMode="numeric" value={approvedAmount} onChange={handleAmountChange} disabled={actionLoading} placeholder="예: 500,000" style={{
+              ...inputStyle,
+              padding: "12px 42px 12px 12px"
+            }} />
 
-              <div>
-                <button type="button" onClick={() => {
-              setSelected(selected === site.id ? "" : site.id);
-              setWorker("");
-            }} style={{
-              marginTop: 10,
-              ...field,
-              width: "auto"
+              <div style={{
+              position: "absolute",
+              right: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "#64748b",
+              fontSize: "12px",
+              fontWeight: "900"
             }}>
-                  {selected === site.id ? "비용 입력 닫기" : "인건비·추가 비용 입력"}
-                </button>
+                원
               </div>
+            </div>
 
-              {selected === site.id && <div style={{
-            borderTop: "1px solid #e2e8f0",
-            marginTop: 12,
-            paddingTop: 12
+            <div style={hintStyle}>
+              고객 계약금액이 아니라 실제 시공 결과를
+              기준으로 확정한 금액을 입력합니다.
+            </div>
+          </div>
+
+          <div style={{
+          marginTop: "14px"
+        }}>
+            <label style={labelStyle}>
+              검수 메모 / 보완 요청 사유
+            </label>
+
+            <textarea value={reviewMemo} onChange={event => {
+            setReviewMemo(event.target.value);
+            if (actionError) setActionError("");
+          }} disabled={actionLoading} placeholder="승인 메모 또는 시공자에게 전달할 보완 내용을 입력하세요." rows={4} style={{
+            ...inputStyle,
+            resize: "vertical",
+            fontFamily: "inherit"
+          }} />
+
+            <div style={hintStyle}>
+              보완 요청을 할 때는 사유 입력이 필수입니다.
+            </div>
+          </div>
+
+          {actionError && <MessageBox error>
+              ❌ {actionError}
+            </MessageBox>}
+
+          {actionMessage && <MessageBox>
+              ✅ {actionMessage}
+            </MessageBox>}
+
+          <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "9px",
+          marginTop: "15px"
+        }}>
+            <button type="button" disabled={actionLoading} onClick={() => submitReviewAction("reject")} style={{
+            width: "100%",
+            border: "1px solid #fecaca",
+            borderRadius: "10px",
+            background: actionLoading ? "#f1f5f9" : "#fef2f2",
+            color: actionLoading ? "#94a3b8" : "#b91c1c",
+            padding: "12px 8px",
+            fontSize: "12px",
+            fontWeight: "900"
           }}>
-                  <p style={{
-              fontSize: 12,
-              color: "#64748b"
-            }}>
-                    날짜별 팀장·팀원 배정으로 일당과 팀장수당을
-                    자동 계산합니다. 시공자를 선택해 인건비를
-                    직접 저장하면 해당 시공자의 자동 계산 대신
-                    입력한 총액을 사용합니다. 시공자를 특정하지
-                    않은 인건비는 현장 전체 합계로 적용됩니다.
-                    완료보고의 실제 자재와 경비도 자동 합산됩니다.
-                  </p>
+              {actionLoading ? "처리 중..." : "🔴 보완 요청"}
+            </button>
 
-                  <form onSubmit={save} style={{
-              display: "grid",
-              gap: 8
-            }}>
-                    <select aria-label="비용 구분" value={kind} onChange={event => {
-                setKind(event.target.value);
-                setWorker("");
-                setAmount("");
-                setDescription("");
-              }} style={field}>
-                      {Object.entries(kinds).map(([key, label]) => <option key={key} value={key}>
-                          {label}
-                        </option>)}
-                    </select>
+            <button type="button" disabled={actionLoading} onClick={() => submitReviewAction("approve")} style={{
+            width: "100%",
+            border: "none",
+            borderRadius: "10px",
+            background: actionLoading ? "#94a3b8" : "#16a34a",
+            color: "#ffffff",
+            padding: "12px 8px",
+            fontSize: "12px",
+            fontWeight: "900"
+          }}>
+              {actionLoading ? "처리 중..." : "🟢 검수 승인"}
+            </button>
+          </div>
 
-                    {kind === "labor" && <select aria-label="담당 시공자" value={worker} onChange={event => chooseWorker(event.target.value)} style={field}>
-                        <option value="">
-                          시공자 선택 (또는 직접 입력)
-                        </option>
+          <NoticeBox background="#fffbeb" color="#92400e">
+            ⚠️ 이번 단계의 검수 승인은 완료보고 상태와
+            실제 시공금액만 저장합니다.
+            <br />
+            아직 완료사진을 AI 유사견적용 시공 DB에
+            등록하지 않습니다.
+          </NoticeBox>
+        </div>}</div>
 
-                        {assigned.map(person => <option key={person.id} value={person.id}>
-                            {person.name} · 일당{" "}
-                            {won(person.daily_wage)}
-                          </option>)}
-                      </select>}
+      <div hidden={view !== "review"}>{reviewStatus === "approved" && <>
+          <NoticeBox background="#f0fdf4" color="#166534">
+            <strong>
+              🟢 관리자 검수 승인 완료
+            </strong>
 
-                    <input aria-label="비용 내용" placeholder="내용 (예: 정근호 2일 인건비)" value={description} maxLength={120} onChange={event => setDescription(event.target.value)} style={field} required />
-
-                    <input aria-label="비용 금액" inputMode="numeric" placeholder="금액 (원)" value={amount} onChange={event => setAmount(event.target.value.replace(/[^\d]/g, ""))} style={field} required />
-
-                    <button type="submit" disabled={saving} style={{
-                ...field,
-                background: "#111827",
-                color: "white"
-              }}>
-                      {saving ? "저장 중..." : "비용 저장"}
-                    </button>
-                  </form>
-
-                  {site.entries.map(entry => <div key={entry.id} style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              alignItems: "center",
-              borderBottom: "1px solid #f1f5f9",
-              padding: "8px 0",
-              fontSize: 13
-            }}>
-                      <span>
-                        {costLabels[entry.category] || "비용"}
-                        {" · "}{entry.description}
-                        {" · "}{won(entry.amount)}
-                      </span>
-
-                      <button type="button" disabled={saving} onClick={() => remove(entry.id)}>
-                        삭제
-                      </button>
-                    </div>)}
+            {data?.review?.approvedAmount !== null && data?.review?.approvedAmount !== undefined && <div style={{
+            marginTop: "9px"
+          }}>
+                  실제 시공금액{" "}
+                  <strong>
+                    {formatMoney(data.review.approvedAmount)}
+                  </strong>
                 </div>}
-            </div>)}</div>
-        </>}
+
+            {data?.review?.memo && <div style={{
+            marginTop: "9px",
+            whiteSpace: "pre-wrap"
+          }}>
+                {data.review.memo}
+              </div>}
+
+            {data?.review?.reviewedAt && <div style={{
+            marginTop: "8px",
+            fontSize: "10px"
+          }}>
+                검수일{" "}
+                {formatDateTime(data.review.reviewedAt)}
+              </div>}
+
+            <div style={{
+            marginTop: "11px",
+            paddingTop: "10px",
+            borderTop: "1px solid #bbf7d0",
+            fontSize: "10px",
+            color: "#64748b"
+          }}>
+              관리자 검수 승인이 완료되었습니다.
+              <br />
+              아래에서 AI 견적자료 등록을 진행할 수
+              있습니다.
+            </div>
+          </NoticeBox>
+
+          <ApprovedWorkAiRegister siteId={siteId} report={report} materials={materials} beforePhotos={beforePhotos} afterPhotos={afterPhotos} onRegistered={loadReview} />
+        </>}</div>
+
+      <div hidden={view !== "review"}>{reviewStatus === "rejected" && <NoticeBox background="#fef2f2" color="#b91c1c">
+          <strong>
+            🔴 관리자 보완 요청
+          </strong>
+
+          <div style={{
+          marginTop: "9px",
+          whiteSpace: "pre-wrap"
+        }}>
+            {data?.review?.memo || "보완 요청 사유가 등록되지 않았습니다."}
+          </div>
+
+          {data?.review?.reviewedAt && <div style={{
+          marginTop: "8px",
+          fontSize: "10px"
+        }}>
+              검수일{" "}
+              {formatDateTime(data.review.reviewedAt)}
+            </div>}
+
+          <div style={{
+          marginTop: "11px",
+          paddingTop: "10px",
+          borderTop: "1px solid #fecaca",
+          fontSize: "10px"
+        }}>
+            시공자가 보완 내용을 확인한 뒤 완료보고를
+            다시 제출하면 검수 상태가 다시 검수 대기로
+            변경됩니다.
+          </div>
+        </NoticeBox>}</div>
     </section>;
+}
+const sectionStyle = {
+  marginTop: "14px",
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  padding: "18px"
+};
+const headerStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "10px"
+};
+const itemCardStyle = {
+  padding: "12px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "10px",
+  background: "#f8fafc"
+};
+const contentBoxStyle = {
+  marginTop: "8px",
+  padding: "12px",
+  borderRadius: "10px",
+  background: "#f8fafc",
+  color: "#334155",
+  fontSize: "13px",
+  fontWeight: "800",
+  lineHeight: 1.7,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word"
+};
+const labelStyle = {
+  display: "block",
+  color: "#334155",
+  fontSize: "12px",
+  fontWeight: "900",
+  marginBottom: "7px"
+};
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  background: "#ffffff",
+  color: "#111827",
+  padding: "12px",
+  fontSize: "13px",
+  outline: "none"
+};
+const hintStyle = {
+  marginTop: "5px",
+  color: "#94a3b8",
+  fontSize: "10px",
+  lineHeight: 1.5
+};
+const blackButtonStyle = {
+  width: "100%",
+  marginTop: "12px",
+  border: "none",
+  borderRadius: "10px",
+  background: "#111827",
+  color: "#ffffff",
+  padding: "11px",
+  fontSize: "12px",
+  fontWeight: "900"
+};
+function ReviewBlock({
+  title,
+  children
+}) {
+  return <div style={{
+    marginTop: "16px",
+    paddingTop: "16px",
+    borderTop: "1px solid #e2e8f0"
+  }}>
+      <div style={{
+      marginBottom: "10px",
+      color: "#111827",
+      fontSize: "13px",
+      fontWeight: "900"
+    }}>
+        {title}
+      </div>
+
+      {children}
+    </div>;
+}
+function ReviewRow({
+  label,
+  value
+}) {
+  return <div style={{
+    display: "grid",
+    gridTemplateColumns: "80px minmax(0, 1fr)",
+    gap: "10px",
+    padding: "7px 0",
+    borderBottom: "1px solid #f1f5f9"
+  }}>
+      <div style={{
+      color: "#64748b",
+      fontSize: "11px",
+      fontWeight: "800"
+    }}>
+        {label}
+      </div>
+
+      <div style={{
+      color: "#111827",
+      fontSize: "12px",
+      fontWeight: "800",
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word"
+    }}>
+        {value || "-"}
+      </div>
+    </div>;
+}
+function SmallLabel({
+  children
+}) {
+  return <div style={{
+    color: "#64748b",
+    fontSize: "10px",
+    fontWeight: "800"
+  }}>
+      {children}
+    </div>;
+}
+function EmptyText({
+  children
+}) {
+  return <div style={{
+    padding: "13px",
+    borderRadius: "10px",
+    background: "#f8fafc",
+    border: "1px dashed #cbd5e1",
+    color: "#64748b",
+    fontSize: "11px",
+    lineHeight: 1.6,
+    textAlign: "center"
+  }}>
+      {children}
+    </div>;
+}
+function NoticeBox({
+  children,
+  background,
+  color
+}) {
+  return <div style={{
+    marginTop: "14px",
+    padding: "13px",
+    borderRadius: "10px",
+    background,
+    color,
+    fontSize: "12px",
+    fontWeight: "800",
+    lineHeight: 1.7
+  }}>
+      {children}
+    </div>;
+}
+function MessageBox({
+  children,
+  error = false
+}) {
+  return <div style={{
+    marginTop: "12px",
+    padding: "11px",
+    borderRadius: "9px",
+    background: error ? "#fef2f2" : "#f0fdf4",
+    border: error ? "1px solid #fecaca" : "1px solid #bbf7d0",
+    color: error ? "#b91c1c" : "#166534",
+    fontSize: "11px",
+    fontWeight: "800",
+    lineHeight: 1.6
+  }}>
+      {children}
+    </div>;
+}
+function PhotoGrid({
+  photos
+}) {
+  return <div style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "9px"
+  }}>
+      {photos.map((photo, index) => <PhotoCard key={photo.id || `${photo.storage_path}-${index}`} photo={photo} index={index} />)}
+    </div>;
+}
+function PhotoCard({
+  photo,
+  index
+}) {
+  const imageUrl = photo?.signed_url || photo?.photo_url || "";
+  if (!imageUrl) {
+    return <div style={{
+      aspectRatio: "1 / 1",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "10px",
+      border: "1px solid #e2e8f0",
+      borderRadius: "11px",
+      background: "#f8fafc",
+      color: "#94a3b8",
+      fontSize: "11px",
+      fontWeight: "800",
+      textAlign: "center"
+    }}>
+        사진을 불러올 수 없습니다.
+      </div>;
+  }
+  return <a href={imageUrl} target="_blank" rel="noreferrer" style={{
+    position: "relative",
+    display: "block",
+    aspectRatio: "1 / 1",
+    overflow: "hidden",
+    borderRadius: "11px",
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc"
+  }}>
+      <img src={imageUrl} alt={`시공사진 ${index + 1}`} loading="lazy" style={{
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: "block"
+    }} />
+
+      <div style={{
+      position: "absolute",
+      left: "6px",
+      bottom: "6px",
+      padding: "3px 6px",
+      borderRadius: "999px",
+      background: "rgba(15,23,42,0.72)",
+      color: "#ffffff",
+      fontSize: "10px",
+      fontWeight: "900"
+    }}>
+        사진 {index + 1}
+      </div>
+    </a>;
 }
