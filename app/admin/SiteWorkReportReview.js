@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import ApprovedWorkAiRegister from "./ApprovedWorkAiRegister";
+import ActualMaterialEditor from "./ActualMaterialEditor";
 
 export default function SiteWorkReportReview({
   siteId,
@@ -11,7 +12,6 @@ export default function SiteWorkReportReview({
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState(null);
-
   const [approvedAmount, setApprovedAmount] = useState("");
   const [reviewMemo, setReviewMemo] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -37,7 +37,6 @@ export default function SiteWorkReportReview({
     setReviewMemo("");
     setActionMessage("");
     setActionError("");
-
     loadReview();
   }, [siteId]);
 
@@ -47,10 +46,7 @@ export default function SiteWorkReportReview({
     setData(null);
 
     const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const {
@@ -74,23 +70,22 @@ export default function SiteWorkReportReview({
         );
       }
 
-      const apiUrl =
+      const response = await fetch(
         `/api/admin/site-work-report-review?siteId=${encodeURIComponent(
           siteId
-        )}`;
-
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
-        signal: controller.signal,
-      });
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
 
       const responseText = await response.text();
-
       let result = null;
 
       if (responseText) {
@@ -109,31 +104,18 @@ export default function SiteWorkReportReview({
         }
       }
 
-      if (!response.ok) {
+      if (!response.ok || !result?.success) {
         throw new Error(
           result?.error ||
             `완료보고 조회 실패 (HTTP ${response.status})`
         );
       }
 
-      if (!result?.success) {
-        throw new Error(
-          result?.error ||
-            "완료보고 검수자료 조회에 실패했습니다."
-        );
-      }
-
       setData(result);
 
-      /*
-       * 부모에게 시공자 완료보고 존재 여부와
-       * 현재 검수상태를 전달합니다.
-       */
       if (typeof onReportStateChange === "function") {
         onReportStateChange({
-          hasReport: Boolean(
-            result?.hasReport && result?.report
-          ),
+          hasReport: Boolean(result?.hasReport && result?.report),
           reviewStatus:
             result?.review?.status ||
             result?.report?.review_status ||
@@ -154,23 +136,15 @@ export default function SiteWorkReportReview({
         setReviewMemo(result.review.memo);
       }
     } catch (error) {
-      console.error(
-        "완료보고 검수자료 조회 오류:",
-        error
-      );
-
+      console.error("완료보고 검수자료 조회 오류:", error);
       setData(null);
 
-      if (error?.name === "AbortError") {
-        setErrorMessage(
-          "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요."
-        );
-      } else {
-        setErrorMessage(
-          error?.message ||
-            "완료보고 검수자료를 불러오지 못했습니다."
-        );
-      }
+      setErrorMessage(
+        error?.name === "AbortError"
+          ? "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요."
+          : error?.message ||
+              "완료보고 검수자료를 불러오지 못했습니다."
+      );
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
@@ -198,47 +172,39 @@ export default function SiteWorkReportReview({
       (!Number.isFinite(Number(numericAmount)) ||
         Number(numericAmount) < 0)
     ) {
-      setActionError(
-        "실제 시공금액을 올바르게 입력해주세요."
-      );
+      setActionError("실제 시공금액을 올바르게 입력해주세요.");
+      return;
+    }
+
+    if (action === "reject" && !reviewMemo.trim()) {
+      setActionError("보완 요청 사유를 입력해주세요.");
+      return;
+    }
+
+    if (
+      action === "approve" &&
+      !window.confirm(
+        `실제 시공금액 ${formatMoney(
+          numericAmount
+        )}으로 검수 승인하시겠습니까?\n\n아직 AI 견적자료에는 등록되지 않습니다.`
+      )
+    ) {
       return;
     }
 
     if (
       action === "reject" &&
-      !reviewMemo.trim()
-    ) {
-      setActionError(
-        "보완 요청 사유를 입력해주세요."
-      );
-      return;
-    }
-
-    if (action === "approve") {
-      const confirmed = window.confirm(
-        `실제 시공금액 ${formatMoney(
-          numericAmount
-        )}으로 검수 승인하시겠습니까?\n\n아직 AI 견적자료에는 등록되지 않습니다.`
-      );
-
-      if (!confirmed) return;
-    }
-
-    if (action === "reject") {
-      const confirmed = window.confirm(
+      !window.confirm(
         "이 완료보고를 보완 요청하시겠습니까?\n\n시공자는 보완 사유를 확인한 후 다시 제출할 수 있습니다."
-      );
-
-      if (!confirmed) return;
+      )
+    ) {
+      return;
     }
 
     setActionLoading(true);
 
     const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const {
@@ -277,16 +243,13 @@ export default function SiteWorkReportReview({
             siteId,
             action,
             approvedAmount:
-              action === "approve"
-                ? Number(numericAmount)
-                : null,
+              action === "approve" ? Number(numericAmount) : null,
             reviewMemo: reviewMemo.trim(),
           }),
         }
       );
 
       const responseText = await response.text();
-
       let result = null;
 
       if (responseText) {
@@ -305,17 +268,10 @@ export default function SiteWorkReportReview({
         }
       }
 
-      if (!response.ok) {
+      if (!response.ok || !result?.success) {
         throw new Error(
           result?.error ||
             `검수 처리 실패 (HTTP ${response.status})`
-        );
-      }
-
-      if (!result?.success) {
-        throw new Error(
-          result?.error ||
-            "검수 결과를 저장하지 못했습니다."
         );
       }
 
@@ -328,21 +284,13 @@ export default function SiteWorkReportReview({
 
       await loadReview();
     } catch (error) {
-      console.error(
-        "완료보고 검수 처리 오류:",
-        error
-      );
+      console.error("완료보고 검수 처리 오류:", error);
 
-      if (error?.name === "AbortError") {
-        setActionError(
-          "검수 처리가 15초 이상 걸려 중단되었습니다. 다시 확인해주세요."
-        );
-      } else {
-        setActionError(
-          error?.message ||
-            "검수 처리 중 오류가 발생했습니다."
-        );
-      }
+      setActionError(
+        error?.name === "AbortError"
+          ? "검수 처리가 15초 이상 걸려 중단되었습니다. 다시 확인해주세요."
+          : error?.message || "검수 처리 중 오류가 발생했습니다."
+      );
     } finally {
       clearTimeout(timeoutId);
       setActionLoading(false);
@@ -350,55 +298,34 @@ export default function SiteWorkReportReview({
   }
 
   function handleAmountChange(event) {
-    const raw = event.target.value || "";
-    const digits = raw.replace(/[^\d]/g, "");
-
-    if (!digits) {
-      setApprovedAmount("");
-      return;
-    }
+    const digits = (event.target.value || "").replace(/[^\d]/g, "");
 
     setApprovedAmount(
-      new Intl.NumberFormat("ko-KR").format(
-        Number(digits)
-      )
+      digits
+        ? new Intl.NumberFormat("ko-KR").format(Number(digits))
+        : ""
     );
 
-    if (actionError) {
-      setActionError("");
-    }
+    if (actionError) setActionError("");
   }
 
   function formatNumberInput(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
+    if (value === null || value === undefined || value === "") {
       return "";
     }
 
-    const number = Number(
-      String(value).replace(/,/g, "")
-    );
+    const number = Number(String(value).replace(/,/g, ""));
 
-    if (!Number.isFinite(number)) {
-      return "";
-    }
-
-    return new Intl.NumberFormat("ko-KR").format(
-      number
-    );
+    return Number.isFinite(number)
+      ? new Intl.NumberFormat("ko-KR").format(number)
+      : "";
   }
 
   function formatDateTime(value) {
     if (!value) return "-";
 
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
+    if (Number.isNaN(date.getTime())) return "-";
 
     return new Intl.DateTimeFormat("ko-KR", {
       timeZone: "Asia/Seoul",
@@ -413,45 +340,11 @@ export default function SiteWorkReportReview({
   }
 
   function formatMoney(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return "0원";
-    }
+    const number = Number(String(value ?? "").replace(/,/g, ""));
 
-    const number = Number(
-      String(value).replace(/,/g, "")
-    );
-
-    if (!Number.isFinite(number)) {
-      return "0원";
-    }
-
-    return `${new Intl.NumberFormat(
-      "ko-KR"
-    ).format(number)}원`;
-  }
-
-  function formatQuantity(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return "-";
-    }
-
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-      return String(value);
-    }
-
-    return new Intl.NumberFormat("ko-KR", {
-      maximumFractionDigits: 2,
-    }).format(number);
+    return Number.isFinite(number)
+      ? `${new Intl.NumberFormat("ko-KR").format(number)}원`
+      : "0원";
   }
 
   function getExpenseLabel(type) {
@@ -482,7 +375,6 @@ export default function SiteWorkReportReview({
           border: "#bbf7d0",
           color: "#166534",
         };
-
       case "rejected":
         return {
           icon: "🔴",
@@ -492,7 +384,6 @@ export default function SiteWorkReportReview({
           border: "#fecaca",
           color: "#b91c1c",
         };
-
       default:
         return {
           icon: "🟠",
@@ -561,50 +452,32 @@ export default function SiteWorkReportReview({
     );
   }
 
-  if (!data?.hasReport || !data?.report) {
-    return null;
-  }
+  if (!data?.hasReport || !data?.report) return null;
 
   const report = data.report;
   const worker = data.worker;
-
   const materials = Array.isArray(data.materials)
     ? data.materials
     : [];
-
   const expenses = Array.isArray(data.expenses)
     ? data.expenses
     : [];
-
-  const beforePhotos = Array.isArray(
-    data.beforePhotos
-  )
+  const beforePhotos = Array.isArray(data.beforePhotos)
     ? data.beforePhotos
     : [];
-
-  const afterPhotos = Array.isArray(
-    data.afterPhotos
-  )
+  const afterPhotos = Array.isArray(data.afterPhotos)
     ? data.afterPhotos
     : [];
 
   const reviewStatus =
-    data?.review?.status ||
-    report?.review_status ||
-    "pending";
+    data?.review?.status || report?.review_status || "pending";
 
   const review = getReviewInfo(reviewStatus);
 
-  const totalExpense = expenses.reduce(
-    (sum, item) => {
-      const amount = Number(item?.amount);
-
-      return Number.isFinite(amount)
-        ? sum + amount
-        : sum;
-    },
-    0
-  );
+  const totalExpense = expenses.reduce((sum, item) => {
+    const amount = Number(item?.amount);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
 
   return (
     <section
@@ -653,14 +526,10 @@ export default function SiteWorkReportReview({
       </div>
 
       {reviewStatus === "pending" && (
-        <NoticeBox
-          background="#fffbeb"
-          color="#92400e"
-        >
+        <NoticeBox background="#fffbeb" color="#92400e">
           시공자가 완료보고를 제출했습니다.
           <br />
-          시공 내용, 사진, 실제 사용 자재와
-          경비를 확인해주세요.
+          시공 내용, 사진, 실제 사용 자재와 경비를 확인해주세요.
           <br />
           아직 AI 견적자료로 등록되지 않았습니다.
         </NoticeBox>
@@ -669,17 +538,11 @@ export default function SiteWorkReportReview({
       <ReviewBlock title="👷 제출 시공자">
         <ReviewRow
           label="이름"
-          value={
-            worker?.name ||
-            "시공자 정보 없음"
-          }
+          value={worker?.name || "시공자 정보 없음"}
         />
 
         {worker?.phone && (
-          <ReviewRow
-            label="전화"
-            value={worker.phone}
-          />
+          <ReviewRow label="전화" value={worker.phone} />
         )}
 
         <ReviewRow
@@ -748,97 +611,14 @@ export default function SiteWorkReportReview({
       <ReviewBlock
         title={`📦 실제 사용 자재 · ${materials.length}건`}
       >
-        {materials.length === 0 ? (
-          <EmptyText>
-            등록된 실제 사용 자재가 없습니다.
-          </EmptyText>
-        ) : (
-          <div style={{ display: "grid", gap: "9px" }}>
-            {materials.map((material, index) => {
-              const quantityText = [
-                formatQuantity(material.quantity),
-                material.unit,
-              ]
-                .filter(Boolean)
-                .join(" ");
-
-              return (
-                <div
-                  key={
-                    material.id ||
-                    `${material.product_code}-${index}`
-                  }
-                  style={itemCardStyle}
-                >
-                  <div style={headerStyle}>
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      {material.brand && (
-                        <SmallLabel>
-                          {material.brand}
-                        </SmallLabel>
-                      )}
-
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#111827",
-                          fontSize: "13px",
-                          fontWeight: "900",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {material.product_code ||
-                          material.product_name ||
-                          "자재"}
-                      </div>
-
-                      {material.product_name &&
-                        material.product_name !==
-                          material.product_code && (
-                          <div
-                            style={{
-                              marginTop: "3px",
-                              color: "#64748b",
-                              fontSize: "11px",
-                            }}
-                          >
-                            {material.product_name}
-                          </div>
-                        )}
-                    </div>
-
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {quantityText}
-                    </strong>
-                  </div>
-
-                  {material.memo && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        color: "#64748b",
-                        fontSize: "11px",
-                      }}
-                    >
-                      메모 {material.memo}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <ActualMaterialEditor
+          key={siteId}
+          siteId={siteId}
+          materials={materials}
+          onSaved={loadReview}
+        />
       </ReviewBlock>
+
       <ReviewBlock
         title={`💳 현장 경비 · ${expenses.length}건`}
       >
@@ -858,14 +638,8 @@ export default function SiteWorkReportReview({
                   style={itemCardStyle}
                 >
                   <div style={headerStyle}>
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                      }}
-                    >
-                      {getExpenseLabel(
-                        expense.expense_type
-                      )}
+                    <strong style={{ fontSize: "12px" }}>
+                      {getExpenseLabel(expense.expense_type)}
                     </strong>
 
                     <strong>
@@ -961,8 +735,8 @@ export default function SiteWorkReportReview({
               lineHeight: 1.6,
             }}
           >
-            시공 내용과 사진을 확인한 후 실제
-            시공금액을 입력하고 승인해주세요.
+            시공 내용과 사진을 확인한 후 실제 시공금액을
+            입력하고 승인해주세요.
           </div>
 
           <div style={{ marginTop: "16px" }}>
@@ -980,8 +754,7 @@ export default function SiteWorkReportReview({
                 placeholder="예: 500,000"
                 style={{
                   ...inputStyle,
-                  padding:
-                    "12px 42px 12px 12px",
+                  padding: "12px 42px 12px 12px",
                 }}
               />
 
@@ -1001,9 +774,8 @@ export default function SiteWorkReportReview({
             </div>
 
             <div style={hintStyle}>
-              고객 계약금액이 아니라 실제 시공
-              결과를 기준으로 확정한 금액을
-              입력합니다.
+              고객 계약금액이 아니라 실제 시공 결과를
+              기준으로 확정한 금액을 입력합니다.
             </div>
           </div>
 
@@ -1016,10 +788,7 @@ export default function SiteWorkReportReview({
               value={reviewMemo}
               onChange={(event) => {
                 setReviewMemo(event.target.value);
-
-                if (actionError) {
-                  setActionError("");
-                }
+                if (actionError) setActionError("");
               }}
               disabled={actionLoading}
               placeholder="승인 메모 또는 시공자에게 전달할 보완 내용을 입력하세요."
@@ -1032,8 +801,7 @@ export default function SiteWorkReportReview({
             />
 
             <div style={hintStyle}>
-              보완 요청을 할 때는 사유 입력이
-              필수입니다.
+              보완 요청을 할 때는 사유 입력이 필수입니다.
             </div>
           </div>
 
@@ -1060,9 +828,7 @@ export default function SiteWorkReportReview({
             <button
               type="button"
               disabled={actionLoading}
-              onClick={() =>
-                submitReviewAction("reject")
-              }
+              onClick={() => submitReviewAction("reject")}
               style={{
                 width: "100%",
                 border: "1px solid #fecaca",
@@ -1086,9 +852,7 @@ export default function SiteWorkReportReview({
             <button
               type="button"
               disabled={actionLoading}
-              onClick={() =>
-                submitReviewAction("approve")
-              }
+              onClick={() => submitReviewAction("approve")}
               style={{
                 width: "100%",
                 border: "none",
@@ -1108,34 +872,25 @@ export default function SiteWorkReportReview({
             </button>
           </div>
 
-          <NoticeBox
-            background="#fffbeb"
-            color="#92400e"
-          >
-            ⚠️ 이번 단계의 검수 승인은
-            완료보고 상태와 실제 시공금액만
-            저장합니다.
+          <NoticeBox background="#fffbeb" color="#92400e">
+            ⚠️ 이번 단계의 검수 승인은 완료보고 상태와
+            실제 시공금액만 저장합니다.
             <br />
-            아직 완료사진을 AI 유사견적용 시공
-            DB에 등록하지 않습니다.
+            아직 완료사진을 AI 유사견적용 시공 DB에
+            등록하지 않습니다.
           </NoticeBox>
         </div>
       )}
 
       {reviewStatus === "approved" && (
         <>
-          <NoticeBox
-            background="#f0fdf4"
-            color="#166534"
-          >
+          <NoticeBox background="#f0fdf4" color="#166534">
             <strong>
               🟢 관리자 검수 승인 완료
             </strong>
 
-            {data?.review?.approvedAmount !==
-              null &&
-              data?.review?.approvedAmount !==
-                undefined && (
+            {data?.review?.approvedAmount !== null &&
+              data?.review?.approvedAmount !== undefined && (
                 <div style={{ marginTop: "9px" }}>
                   실제 시공금액{" "}
                   <strong>
@@ -1165,9 +920,7 @@ export default function SiteWorkReportReview({
                 }}
               >
                 검수일{" "}
-                {formatDateTime(
-                  data.review.reviewedAt
-                )}
+                {formatDateTime(data.review.reviewedAt)}
               </div>
             )}
 
@@ -1175,8 +928,7 @@ export default function SiteWorkReportReview({
               style={{
                 marginTop: "11px",
                 paddingTop: "10px",
-                borderTop:
-                  "1px solid #bbf7d0",
+                borderTop: "1px solid #bbf7d0",
                 fontSize: "10px",
                 color: "#64748b",
               }}
@@ -1200,10 +952,7 @@ export default function SiteWorkReportReview({
       )}
 
       {reviewStatus === "rejected" && (
-        <NoticeBox
-          background="#fef2f2"
-          color="#b91c1c"
-        >
+        <NoticeBox background="#fef2f2" color="#b91c1c">
           <strong>
             🔴 관리자 보완 요청
           </strong>
@@ -1226,9 +975,7 @@ export default function SiteWorkReportReview({
               }}
             >
               검수일{" "}
-              {formatDateTime(
-                data.review.reviewedAt
-              )}
+              {formatDateTime(data.review.reviewedAt)}
             </div>
           )}
 
@@ -1236,14 +983,13 @@ export default function SiteWorkReportReview({
             style={{
               marginTop: "11px",
               paddingTop: "10px",
-              borderTop:
-                "1px solid #fecaca",
+              borderTop: "1px solid #fecaca",
               fontSize: "10px",
             }}
           >
-            시공자가 보완 내용을 확인한 뒤
-            완료보고를 다시 제출하면 검수 상태가
-            다시 검수 대기로 변경됩니다.
+            시공자가 보완 내용을 확인한 뒤 완료보고를
+            다시 제출하면 검수 상태가 다시 검수 대기로
+            변경됩니다.
           </div>
         </NoticeBox>
       )}
@@ -1331,8 +1077,7 @@ function ReviewBlock({ title, children }) {
       style={{
         marginTop: "16px",
         paddingTop: "16px",
-        borderTop:
-          "1px solid #e2e8f0",
+        borderTop: "1px solid #e2e8f0",
       }}
     >
       <div
@@ -1356,12 +1101,10 @@ function ReviewRow({ label, value }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns:
-          "80px minmax(0, 1fr)",
+        gridTemplateColumns: "80px minmax(0, 1fr)",
         gap: "10px",
         padding: "7px 0",
-        borderBottom:
-          "1px solid #f1f5f9",
+        borderBottom: "1px solid #f1f5f9",
       }}
     >
       <div
@@ -1410,8 +1153,7 @@ function EmptyText({ children }) {
         padding: "13px",
         borderRadius: "10px",
         background: "#f8fafc",
-        border:
-          "1px dashed #cbd5e1",
+        border: "1px dashed #cbd5e1",
         color: "#64748b",
         fontSize: "11px",
         lineHeight: 1.6,
@@ -1423,11 +1165,7 @@ function EmptyText({ children }) {
   );
 }
 
-function NoticeBox({
-  children,
-  background,
-  color,
-}) {
+function NoticeBox({ children, background, color }) {
   return (
     <div
       style={{
@@ -1446,25 +1184,18 @@ function NoticeBox({
   );
 }
 
-function MessageBox({
-  children,
-  error = false,
-}) {
+function MessageBox({ children, error = false }) {
   return (
     <div
       style={{
         marginTop: "12px",
         padding: "11px",
         borderRadius: "9px",
-        background: error
-          ? "#fef2f2"
-          : "#f0fdf4",
+        background: error ? "#fef2f2" : "#f0fdf4",
         border: error
           ? "1px solid #fecaca"
           : "1px solid #bbf7d0",
-        color: error
-          ? "#b91c1c"
-          : "#166534",
+        color: error ? "#b91c1c" : "#166534",
         fontSize: "11px",
         fontWeight: "800",
         lineHeight: 1.6,
@@ -1480,8 +1211,7 @@ function PhotoGrid({ photos }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns:
-          "repeat(2, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         gap: "9px",
       }}
     >
@@ -1501,9 +1231,7 @@ function PhotoGrid({ photos }) {
 
 function PhotoCard({ photo, index }) {
   const imageUrl =
-    photo?.signed_url ||
-    photo?.photo_url ||
-    "";
+    photo?.signed_url || photo?.photo_url || "";
 
   if (!imageUrl) {
     return (
@@ -1514,8 +1242,7 @@ function PhotoCard({ photo, index }) {
           alignItems: "center",
           justifyContent: "center",
           padding: "10px",
-          border:
-            "1px solid #e2e8f0",
+          border: "1px solid #e2e8f0",
           borderRadius: "11px",
           background: "#f8fafc",
           color: "#94a3b8",
@@ -1540,8 +1267,7 @@ function PhotoCard({ photo, index }) {
         aspectRatio: "1 / 1",
         overflow: "hidden",
         borderRadius: "11px",
-        border:
-          "1px solid #e2e8f0",
+        border: "1px solid #e2e8f0",
         background: "#f8fafc",
       }}
     >
@@ -1564,8 +1290,7 @@ function PhotoCard({ photo, index }) {
           bottom: "6px",
           padding: "3px 6px",
           borderRadius: "999px",
-          background:
-            "rgba(15,23,42,0.72)",
+          background: "rgba(15,23,42,0.72)",
           color: "#ffffff",
           fontSize: "10px",
           fontWeight: "900",
@@ -1575,4 +1300,4 @@ function PhotoCard({ photo, index }) {
       </div>
     </a>
   );
-}
+          }
