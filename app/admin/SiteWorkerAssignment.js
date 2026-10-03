@@ -3,18 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-function validDay(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
-  const date = new Date(`${value}T00:00:00Z`);
-  return (
-    !Number.isNaN(date.getTime()) &&
-    date.toISOString().slice(0, 10) === value
-  );
-}
-
 function localDay(value) {
   if (!value) return "";
-  if (validDay(value)) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -26,13 +17,23 @@ function localDay(value) {
     day: "2-digit",
   }).formatToParts(date);
 
-  const get = (type) => parts.find((part) => part.type === type)?.value;
+  const get = (type) =>
+    parts.find((part) => part.type === type)?.value;
+
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function dayList(site) {
   if (Array.isArray(site?.work_dates)) {
-    return [...new Set(site.work_dates.filter(validDay))].sort();
+    return [
+      ...new Set(
+        site.work_dates.filter(
+          (date) =>
+            typeof date === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(date)
+        )
+      ),
+    ].sort();
   }
 
   const first = localDay(site?.schedule_start);
@@ -41,54 +42,48 @@ function dayList(site) {
   if (!first || last < first) return [];
 
   const days = [];
-  const current = new Date(`${first}T00:00:00Z`);
+  const cursor = new Date(`${first}T00:00:00Z`);
 
   while (days.length < 366) {
-    const day = current.toISOString().slice(0, 10);
-    if (day > last) break;
-    days.push(day);
-    current.setUTCDate(current.getUTCDate() + 1);
+    const date = cursor.toISOString().slice(0, 10);
+    if (date > last) break;
+    days.push(date);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return days;
 }
 
-function dateLabel(value) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(new Date(`${value}T00:00:00Z`));
-}
-
-async function requestAssignments(method, siteId, payload) {
+async function api(method, siteId, payload) {
   const { data, error } = await supabase.auth.getSession();
-
   if (error) throw error;
+  if (!data?.session) {
+    throw new Error("관리자로 다시 로그인해주세요.");
+  }
 
-  const token = data?.session?.access_token;
-  if (!token) throw new Error("관리자로 다시 로그인해주세요.");
-
-  const url =
-    "/api/site-daily-assignments" +
-    (method === "GET" ? `?siteId=${encodeURIComponent(siteId)}` : "");
-
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(payload ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(payload ? { body: JSON.stringify(payload) } : {}),
-    cache: "no-store",
-  });
+  const response = await fetch(
+    `/api/site-daily-assignments${
+      method === "GET"
+        ? `?siteId=${encodeURIComponent(siteId)}`
+        : ""
+    }`,
+    {
+      method,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+        ...(payload ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    }
+  );
 
   const result = await response.json();
 
   if (!response.ok || result.success === false) {
-    throw new Error(result.error || "날짜별 배정 요청에 실패했습니다.");
+    throw new Error(
+      result.error || "날짜별 배정 요청에 실패했습니다."
+    );
   }
 
   return result;
@@ -104,9 +99,9 @@ export default function SiteWorkerAssignment({
 }) {
   const dates = dayList(site);
   const datesKey = dates.join(",");
-  const explicitDates = Array.isArray(site?.work_dates);
   const siteId = site?.id;
-  const formKey = `${siteId || ""}:${explicitDates}:${datesKey}`;
+  const explicit = Array.isArray(site?.work_dates);
+  const formKey = `${siteId}:${explicit}:${datesKey}`;
 
   const [assignments, setAssignments] = useState({});
   const [loading, setLoading] = useState(false);
@@ -115,26 +110,32 @@ export default function SiteWorkerAssignment({
   const [readyKey, setReadyKey] = useState("");
   const [retry, setRetry] = useState(0);
 
+  const callbacks = useRef({});
   const savingRef = useRef(false);
   const currentKey = useRef(formKey);
-  currentKey.current = formKey;
 
-  const callbacks = useRef({});
   callbacks.current = { loadWorkers, loadSiteWorkers, onSaved };
+  currentKey.current = formKey;
 
   const activeWorkers = workers.filter(
     (worker) => worker.is_active !== false
   );
 
-  const locked =
-    ["completed", "cancelled", "canceled"].includes(site?.status);
+  const locked = [
+    "completed",
+    "cancelled",
+    "canceled",
+  ].includes(site?.status);
 
-  const ready = readyKey === formKey;
-  const disabled = saving || loading || workersLoading || !ready || locked;
+  const disabled =
+    saving ||
+    loading ||
+    workersLoading ||
+    readyKey !== formKey ||
+    locked;
 
   useEffect(() => {
     if (!siteId) return;
-
     let cancelled = false;
 
     async function load() {
@@ -147,9 +148,9 @@ export default function SiteWorkerAssignment({
         await callbacks.current.loadWorkers?.();
 
         const [daily, legacy] = await Promise.all([
-          requestAssignments("GET", siteId),
-          explicitDates
-            ? Promise.resolve([])
+          api("GET", siteId),
+          explicit
+            ? []
             : callbacks.current.loadSiteWorkers?.(siteId) || [],
         ]);
 
@@ -159,15 +160,15 @@ export default function SiteWorkerAssignment({
           ? daily.assignments
           : [];
 
-        const legacyRows = Array.isArray(legacy) ? legacy : [];
         const initial = {};
-        const selectedDates = datesKey ? datesKey.split(",") : [];
 
-        for (const date of selectedDates) {
+        for (const date of datesKey ? datesKey.split(",") : []) {
           const rows =
-            explicitDates || daily.hasDailySchedule
+            explicit || daily.hasDailySchedule
               ? dailyRows.filter((row) => row.work_date === date)
-              : legacyRows;
+              : Array.isArray(legacy)
+                ? legacy
+                : [];
 
           const leaderId =
             rows.find((row) => row.role === "leader")?.worker_id || "";
@@ -179,7 +180,8 @@ export default function SiteWorkerAssignment({
                 rows
                   .filter(
                     (row) =>
-                      row.role === "member" && row.worker_id !== leaderId
+                      row.role === "member" &&
+                      row.worker_id !== leaderId
                   )
                   .map((row) => row.worker_id)
               ),
@@ -190,9 +192,7 @@ export default function SiteWorkerAssignment({
         setAssignments(initial);
         setReadyKey(formKey);
       } catch (error) {
-        if (!cancelled) {
-          setMessage(`❌ ${error?.message || "배정을 불러오지 못했습니다."}`);
-        }
+        if (!cancelled) setMessage(`❌ ${error.message}`);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -203,7 +203,7 @@ export default function SiteWorkerAssignment({
     return () => {
       cancelled = true;
     };
-  }, [siteId, explicitDates, datesKey, formKey, retry]);
+  }, [siteId, explicit, datesKey, formKey, retry]);
 
   function change(date, patch) {
     if (disabled) return;
@@ -220,7 +220,7 @@ export default function SiteWorkerAssignment({
   }
 
   async function save() {
-    if (savingRef.current || disabled || !dates.length || !siteId) return;
+    if (savingRef.current || disabled || !dates.length) return;
 
     const savedKey = formKey;
     savingRef.current = true;
@@ -243,22 +243,24 @@ export default function SiteWorkerAssignment({
         };
       });
 
-      await requestAssignments("POST", siteId, { siteId, days });
+      await api("POST", siteId, { siteId, days });
 
       if (currentKey.current !== savedKey) return;
 
-      setMessage("✅ 날짜별 팀장과 팀원 배정이 저장되었습니다.");
+      setMessage("✅ 날짜별 담당자가 저장되었습니다.");
 
       try {
         await callbacks.current.onSaved?.();
       } catch {
         if (currentKey.current === savedKey) {
-          setMessage("✅ 배정은 저장되었습니다. 현장 목록을 새로고침해주세요.");
+          setMessage(
+            "✅ 배정은 저장되었습니다. 현장 목록을 새로고침해주세요."
+          );
         }
       }
     } catch (error) {
       if (currentKey.current === savedKey) {
-        setMessage(`❌ ${error?.message || "배정 저장에 실패했습니다."}`);
+        setMessage(`❌ ${error.message}`);
       }
     } finally {
       savingRef.current = false;
@@ -270,36 +272,31 @@ export default function SiteWorkerAssignment({
 
   return (
     <section
-      style={{
-        padding: 16,
-        background: "#fff",
-        borderRadius: 12,
-      }}
+      style={{ padding: 16, background: "#fff", borderRadius: 12 }}
     >
-      <h3 style={{ margin: "0 0 10px" }}>👷 날짜별 담당 시공자</h3>
+      <h3>👷 날짜별 담당 시공자</h3>
 
-      <p
-        style={{
-          color: "#64748b",
-          fontSize: 13,
-          lineHeight: 1.6,
-        }}
-      >
+      <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
         선택한 시공일마다 팀장과 팀원을 지정하세요.
         시공자에게는 본인이 배정된 날짜만 표시됩니다.
       </p>
 
       {locked && (
-        <p style={{ color: "#9a3412", fontSize: 13 }}>
-          완료되거나 취소된 현장은 배정을 변경할 수 없습니다.
-        </p>
+        <p>완료되거나 취소된 현장은 배정을 변경할 수 없습니다.</p>
       )}
 
       {loading || workersLoading ? (
         <p>담당자를 불러오는 중...</p>
       ) : !dates.length ? (
         <p>먼저 시공 날짜를 선택하고 저장해주세요.</p>
-      ) : ready ? (
+      ) : readyKey !== formKey ? (
+        <button
+          type="button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          담당자 다시 불러오기
+        </button>
+      ) : (
         dates.map((date) => {
           const day = assignments[date] || {
             leaderId: "",
@@ -308,7 +305,9 @@ export default function SiteWorkerAssignment({
 
           const missingLeader =
             day.leaderId &&
-            !activeWorkers.some((worker) => worker.id === day.leaderId);
+            !activeWorkers.some(
+              (worker) => worker.id === day.leaderId
+            );
 
           return (
             <div
@@ -320,16 +319,14 @@ export default function SiteWorkerAssignment({
                 marginBottom: 12,
               }}
             >
-              <strong style={{ color: "#1d4ed8" }}>
-                {dateLabel(date)}
-              </strong>
+              <strong style={{ color: "#1d4ed8" }}>{date}</strong>
 
               <label style={{ display: "block", marginTop: 12 }}>
                 👑 팀장
                 <select
                   aria-label={`${date} 팀장`}
-                  value={day.leaderId}
                   disabled={disabled}
+                  value={day.leaderId}
                   onChange={(event) =>
                     change(date, {
                       leaderId: event.target.value,
@@ -341,13 +338,9 @@ export default function SiteWorkerAssignment({
                   style={{
                     display: "block",
                     width: "100%",
-                    boxSizing: "border-box",
                     padding: 12,
                     marginTop: 6,
-                    border: "1px solid #cbd5e1",
                     borderRadius: 8,
-                    background: "#fff",
-                    fontSize: 14,
                   }}
                 >
                   <option value="">팀장 미배정</option>
@@ -366,4 +359,93 @@ export default function SiteWorkerAssignment({
                 </select>
               </label>
 
+              <div style={{ margin: "14px 0 8px" }}>👷 팀원</div>
+
               <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(130px, 1fr))",
+                  gap: 8,
+                }}
+              >
+                {activeWorkers
+                  .filter((worker) => worker.id !== day.leaderId)
+                  .map((worker) => (
+                    <label
+                      key={worker.id}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        padding: 10,
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={day.memberIds.includes(worker.id)}
+                        onChange={(event) =>
+                          change(date, {
+                            memberIds: event.target.checked
+                              ? [
+                                  ...new Set([
+                                    ...day.memberIds,
+                                    worker.id,
+                                  ]),
+                                ]
+                              : day.memberIds.filter(
+                                  (id) => id !== worker.id
+                                ),
+                          })
+                        }
+                      />
+                      {worker.name}
+                    </label>
+                  ))}
+              </div>
+
+              {!activeWorkers.length && (
+                <p>시공자 관리에서 시공자를 등록해주세요.</p>
+              )}
+            </div>
+          );
+        })
+      )}
+
+      {message && (
+        <p
+          role="status"
+          style={{
+            color: message.startsWith("✅")
+              ? "#166534"
+              : "#b91c1c",
+            fontSize: 13,
+          }}
+        >
+          {message}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={save}
+        disabled={disabled || !dates.length}
+        style={{
+          width: "100%",
+          padding: 14,
+          border: "none",
+          borderRadius: 10,
+          background: "#111827",
+          color: "#fff",
+          fontWeight: 800,
+          opacity: disabled || !dates.length ? 0.5 : 1,
+        }}
+      >
+        {saving ? "저장 중..." : "날짜별 담당자 저장"}
+      </button>
+    </section>
+  );
+      }
