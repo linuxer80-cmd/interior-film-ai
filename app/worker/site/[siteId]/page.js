@@ -3,23 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
-import { loadMyWorkerSites, workerLoginUrl } from "../../../utils/workerSites";
+import {
+  loadMyWorkerSites,
+  workerLoginUrl,
+} from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
 import SiteDirections from "../../SiteDirections";
+import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
+import FilmThumbnail from "../../cutting/FilmThumbnail";
 
 function workDate(value) {
   if (!value) return "미정";
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value);
-  return Number.isNaN(date.getTime()) ? "미정" : new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short",
-  }).format(date);
+  const date = new Date(
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? `${value}T00:00:00+09:00`
+      : value
+  );
+  return Number.isNaN(date.getTime())
+    ? "미정"
+    : new Intl.DateTimeFormat("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+      }).format(date);
 }
 
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
   const params = useParams();
-
   const siteId = params?.siteId;
 
   const [loading, setLoading] = useState(true);
@@ -28,27 +42,16 @@ export default function WorkerSiteDetailPage() {
   const [message, setMessage] = useState("");
   const [materialsMessage, setMaterialsMessage] = useState("");
   const detailRequest = useRef(0);
-
-  // 완료보고 상태
   const [reportLoading, setReportLoading] = useState(true);
   const [reportStatus, setReportStatus] = useState(null);
 
-  /* =========================================================
-     최초 실행
-  ========================================================= */
-
   useEffect(() => {
-    if (!siteId) {
-      return;
-    }
-
+    if (!siteId) return;
     loadSiteDetail();
-    return () => { detailRequest.current += 1; };
+    return () => {
+      detailRequest.current += 1;
+    };
   }, [siteId]);
-
-  /* =========================================================
-     완료보고 상태 조회
-  ========================================================= */
 
   async function loadReportStatus() {
     setReportLoading(true);
@@ -59,12 +62,9 @@ export default function WorkerSiteDetailPage() {
         error: sessionError,
       } = await supabase.auth.getSession();
 
-      if (sessionError) {
-        throw sessionError;
-      }
+      if (sessionError) throw sessionError;
 
-      const accessToken =
-        sessionData?.session?.access_token;
+      const accessToken = sessionData?.session?.access_token;
 
       if (!accessToken) {
         setReportStatus(null);
@@ -72,14 +72,10 @@ export default function WorkerSiteDetailPage() {
       }
 
       const response = await fetch(
-        `/api/worker/site-work-report?siteId=${encodeURIComponent(
-          siteId
-        )}`,
+        `/api/worker/site-work-report?siteId=${encodeURIComponent(siteId)}`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         }
       );
@@ -88,42 +84,23 @@ export default function WorkerSiteDetailPage() {
 
       if (!response.ok || !result?.success) {
         throw new Error(
-          result?.error ||
-            "완료보고 상태를 확인하지 못했습니다."
+          result?.error || "완료보고 상태를 확인하지 못했습니다."
         );
       }
 
       if (!result?.hasReport || !result?.report) {
-        setReportStatus({
-          hasReport: false,
-          report: null,
-        });
-
+        setReportStatus({ hasReport: false, report: null });
         return;
       }
 
-      setReportStatus({
-        hasReport: true,
-        report: result.report,
-      });
+      setReportStatus({ hasReport: true, report: result.report });
     } catch (error) {
-      console.error(
-        "완료보고 상태 조회 오류:",
-        error
-      );
-
-      // 완료보고 상태 조회가 실패했다고 해서
-      // 현장 상세 전체를 막지는 않는다.
-      // 단, 중복 제출은 서버 POST에서 다시 차단된다.
+      console.error("완료보고 상태 조회 오류:", error);
       setReportStatus(null);
     } finally {
       setReportLoading(false);
     }
   }
-
-  /* =========================================================
-     현장 상세 + 예정 자재 조회
-  ========================================================= */
 
   async function loadSiteDetail() {
     const requestId = ++detailRequest.current;
@@ -132,38 +109,35 @@ export default function WorkerSiteDetailPage() {
     setMaterials([]);
     setMessage("");
     setMaterialsMessage("");
+
     try {
       const result = await loadMyWorkerSites({ siteId });
       if (requestId !== detailRequest.current) return;
+
       setSite(result.site);
       setMaterials(result.materials || []);
       setMaterialsMessage(result.materialsError || "");
       void loadReportStatus();
     } catch (error) {
       if (requestId !== detailRequest.current) return;
+
       console.error("시공자 현장 상세 조회 오류:", error);
       setReportStatus(null);
+
       if (error.status === 401) router.replace(workerLoginUrl());
-      setMessage(error.message || "현장 정보를 불러오지 못했습니다.");
+
+      setMessage(
+        error.message || "현장 정보를 불러오지 못했습니다."
+      );
     } finally {
       if (requestId === detailRequest.current) setLoading(false);
     }
   }
 
-  /* =========================================================
-     날짜 + 시간
-  ========================================================= */
-
   function formatDateTime(value) {
-    if (!value) {
-      return "-";
-    }
-
+    if (!value) return "-";
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
+    if (Number.isNaN(date.getTime())) return "-";
 
     return new Intl.DateTimeFormat("ko-KR", {
       timeZone: "Asia/Seoul",
@@ -177,33 +151,18 @@ export default function WorkerSiteDetailPage() {
     }).format(date);
   }
 
-  /* =========================================================
-     수량 표시
-  ========================================================= */
-
   function formatQuantity(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
+    if (value === null || value === undefined || value === "") {
       return "";
     }
 
     const number = Number(value);
-
-    if (Number.isNaN(number)) {
-      return String(value);
-    }
+    if (Number.isNaN(number)) return String(value);
 
     return new Intl.NumberFormat("ko-KR", {
       maximumFractionDigits: 2,
     }).format(number);
   }
-
-  /* =========================================================
-     상태
-  ========================================================= */
 
   function getStatusInfo(status) {
     switch (status) {
@@ -213,22 +172,18 @@ export default function WorkerSiteDetailPage() {
           background: "#eff6ff",
           color: "#1d4ed8",
         };
-
       case "completed":
         return {
           label: "시공 완료",
           background: "#f0fdf4",
           color: "#15803d",
         };
-
       case "cancelled":
         return {
           label: "취소",
           background: "#fef2f2",
           color: "#b91c1c",
         };
-
-      case "scheduled":
       default:
         return {
           label: "시공 예정",
@@ -237,10 +192,6 @@ export default function WorkerSiteDetailPage() {
         };
     }
   }
-
-  /* =========================================================
-     역할
-  ========================================================= */
 
   function getRoleInfo(role) {
     if (role === "leader") {
@@ -265,10 +216,6 @@ export default function WorkerSiteDetailPage() {
   function getRoleLabel(role) {
     return getRoleInfo(role).label;
   }
-
-  /* =========================================================
-     로딩
-  ========================================================= */
 
   if (loading) {
     return (
@@ -296,10 +243,6 @@ export default function WorkerSiteDetailPage() {
     );
   }
 
-  /* =========================================================
-     접근 불가 / 현장 없음
-  ========================================================= */
-
   if (!site) {
     return (
       <main
@@ -319,9 +262,7 @@ export default function WorkerSiteDetailPage() {
         >
           <button
             type="button"
-            onClick={() => {
-              router.push("/worker");
-            }}
+            onClick={() => router.push("/worker")}
             style={{
               border: "none",
               background: "transparent",
@@ -345,14 +286,7 @@ export default function WorkerSiteDetailPage() {
               textAlign: "center",
             }}
           >
-            <div
-              style={{
-                fontSize: "32px",
-              }}
-            >
-              🏠
-            </div>
-
+            <div style={{ fontSize: "32px" }}>🏠</div>
             <div
               style={{
                 marginTop: "12px",
@@ -363,7 +297,6 @@ export default function WorkerSiteDetailPage() {
             >
               현장 정보를 볼 수 없습니다.
             </div>
-
             <div
               style={{
                 marginTop: "8px",
@@ -373,15 +306,11 @@ export default function WorkerSiteDetailPage() {
                 whiteSpace: "pre-wrap",
               }}
             >
-              {message ||
-                "현재 배정된 현장이 아닙니다."}
+              {message || "현재 배정된 현장이 아닙니다."}
             </div>
-
             <button
               type="button"
-              onClick={() => {
-                router.push("/worker");
-              }}
+              onClick={() => router.push("/worker")}
               style={{
                 width: "100%",
                 marginTop: "20px",
@@ -397,7 +326,20 @@ export default function WorkerSiteDetailPage() {
             >
               내 현장 목록으로
             </button>
-            <button type="button" onClick={loadSiteDetail} style={{ marginTop: 12, padding: 12, border: "1px solid #cbd5e1", borderRadius: 10, background: "#fff", cursor: "pointer" }}>현장 다시 확인</button>
+            <button
+              type="button"
+              onClick={loadSiteDetail}
+              style={{
+                marginTop: 12,
+                padding: 12,
+                border: "1px solid #cbd5e1",
+                borderRadius: 10,
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              현장 다시 확인
+            </button>
           </div>
         </div>
       </main>
@@ -406,10 +348,6 @@ export default function WorkerSiteDetailPage() {
 
   const status = getStatusInfo(site.status);
   const role = getRoleInfo(site.my_role);
-
-  /* =========================================================
-     메인
-  ========================================================= */
 
   return (
     <main
@@ -443,9 +381,7 @@ export default function WorkerSiteDetailPage() {
         >
           <button
             type="button"
-            onClick={() => {
-              router.push("/worker");
-            }}
+            onClick={() => router.push("/worker")}
             style={{
               flex: "0 0 auto",
               width: "38px",
@@ -461,13 +397,7 @@ export default function WorkerSiteDetailPage() {
           >
             ←
           </button>
-
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
                 color: "#64748b",
@@ -477,7 +407,6 @@ export default function WorkerSiteDetailPage() {
             >
               시공자 전용
             </div>
-
             <div
               style={{
                 marginTop: "2px",
@@ -517,12 +446,7 @@ export default function WorkerSiteDetailPage() {
               gap: "12px",
             }}
           >
-            <div
-              style={{
-                flex: 1,
-                minWidth: 0,
-              }}
-            >
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
                   color: "#111827",
@@ -531,11 +455,8 @@ export default function WorkerSiteDetailPage() {
                   wordBreak: "break-word",
                 }}
               >
-                {site.site_name ||
-                  site.customer_name ||
-                  "현장"}
+                {site.site_name || site.customer_name || "현장"}
               </div>
-
               {site.customer_name && (
                 <div
                   style={{
@@ -549,7 +470,6 @@ export default function WorkerSiteDetailPage() {
                 </div>
               )}
             </div>
-
             <div
               style={{
                 flex: "0 0 auto",
@@ -583,7 +503,6 @@ export default function WorkerSiteDetailPage() {
             >
               이 현장에서 내 역할
             </div>
-
             <div
               style={{
                 marginTop: "5px",
@@ -594,7 +513,6 @@ export default function WorkerSiteDetailPage() {
             >
               {role.label}
             </div>
-
             <div
               style={{
                 marginTop: "4px",
@@ -625,7 +543,6 @@ export default function WorkerSiteDetailPage() {
             >
               시공 일정
             </div>
-
             <div
               style={{
                 marginTop: "5px",
@@ -634,33 +551,44 @@ export default function WorkerSiteDetailPage() {
                 fontWeight: "900",
               }}
             >
-              📅 {site.assigned_dates ? "내 작업 날짜" : `${workDate(site.schedule_start)}${site.schedule_end && workDate(site.schedule_end) !== workDate(site.schedule_start) ? ` ~ ${workDate(site.schedule_end)}` : ""}`}
+              📅{" "}
+              {site.assigned_dates
+                ? "내 작업 날짜"
+                : `${workDate(site.schedule_start)}${
+                    site.schedule_end &&
+                    workDate(site.schedule_end) !== workDate(site.schedule_start)
+                      ? ` ~ ${workDate(site.schedule_end)}`
+                      : ""
+                  }`}
             </div>
-            {site.assigned_dates ? site.assigned_dates.map((day) => <div key={day.work_date} style={{ marginTop: 6, fontSize: 13 }}>
-              {workDate(day.work_date)} · {day.role === "leader" ? "팀장" : "팀원"}
-            </div>) : null}
-            {site.schedule_notice && <p style={{ color: "#b45309", fontSize: 12, lineHeight: 1.6 }}>{site.schedule_notice}</p>}
+            {site.assigned_dates
+              ? site.assigned_dates.map(day => (
+                  <div
+                    key={day.work_date}
+                    style={{ marginTop: 6, fontSize: 13 }}
+                  >
+                    {workDate(day.work_date)} ·{" "}
+                    {day.role === "leader" ? "팀장" : "팀원"}
+                  </div>
+                ))
+              : null}
+            {site.schedule_notice && (
+              <p
+                style={{
+                  color: "#b45309",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}
+              >
+                {site.schedule_notice}
+              </p>
+            )}
           </div>
 
-          <InfoRow
-            label="담당"
-            value={getRoleLabel(site.my_role)}
-          />
-
-          <InfoRow
-            label="지역"
-            value={site.region}
-          />
-
-          <InfoRow
-            label="주소"
-            value={<SiteDirections site={site} />}
-          />
-
-          <InfoRow
-            label="시공"
-            value={site.work_type}
-          />
+          <InfoRow label="담당" value={getRoleLabel(site.my_role)} />
+          <InfoRow label="지역" value={site.region} />
+          <InfoRow label="주소" value={<SiteDirections site={site} />} />
+          <InfoRow label="시공" value={site.work_type} />
         </section>
 
         {site.work_description && (
@@ -673,10 +601,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              🛠️ 작업 내용
-            </SectionTitle>
-
+            <SectionTitle>🛠️ 작업 내용</SectionTitle>
             <div
               style={{
                 marginTop: "12px",
@@ -712,10 +637,7 @@ export default function WorkerSiteDetailPage() {
               gap: "10px",
             }}
           >
-            <SectionTitle>
-              📦 예정 자재
-            </SectionTitle>
-
+            <SectionTitle>📦 예정 자재</SectionTitle>
             <div
               style={{
                 flex: "0 0 auto",
@@ -731,10 +653,22 @@ export default function WorkerSiteDetailPage() {
             </div>
           </div>
 
-          {materialsMessage && <div role="alert" style={{ marginTop: 12, color: "#b91c1c", fontSize: 13 }}>
-            {materialsMessage}
-            <button type="button" onClick={loadSiteDetail} style={{ marginLeft: 8 }}>다시 확인</button>
-          </div>}
+          {materialsMessage && (
+            <div
+              role="alert"
+              style={{ marginTop: 12, color: "#b91c1c", fontSize: 13 }}
+            >
+              {materialsMessage}
+              <button
+                type="button"
+                onClick={loadSiteDetail}
+                style={{ marginLeft: 8 }}
+              >
+                다시 확인
+              </button>
+            </div>
+          )}
+
           {!materialsMessage && materials.length === 0 && (
             <div
               style={{
@@ -761,142 +695,118 @@ export default function WorkerSiteDetailPage() {
                 marginTop: "12px",
               }}
             >
-              {materials.map(
-                (material, index) => {
-                  const quantity =
-                    formatQuantity(
-                      material.quantity
-                    );
+              {materials.map((material, index) => {
+                const quantity = formatQuantity(material.quantity);
+                const quantityText = [quantity, material.unit]
+                  .filter(Boolean)
+                  .join(" ");
 
-                  const quantityText = [
-                    quantity,
-                    material.unit,
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
+                return (
+                  <div
+                    key={
+                      material.material_id ||
+                      `${material.product_code}-${index}`
+                    }
+                    style={{
+                      padding: "14px",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "11px",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <FilmThumbnail material={material} />
 
-                  return (
-                    <div
-                      key={
-                        material.material_id ||
-                        `${material.product_code}-${index}`
-                      }
-                      style={{
-                        padding: "14px",
-                        border:
-                          "1px solid #e2e8f0",
-                        borderRadius: "11px",
-                        background: "#f8fafc",
-                      }}
-                    >
-                      {material.brand && (
-                        <div
-                          style={{
-                            color: "#64748b",
-                            fontSize: "11px",
-                            fontWeight: "800",
-                          }}
-                        >
-                          {material.brand}
-                        </div>
-                      )}
-
+                    {material.brand && (
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          justifyContent:
-                            "space-between",
-                          gap: "12px",
-                          marginTop:
-                            material.brand
-                              ? "5px"
-                              : 0,
+                          color: "#64748b",
+                          fontSize: "11px",
+                          fontWeight: "800",
                         }}
                       >
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: "#111827",
-                              fontSize: "15px",
-                              fontWeight: "900",
-                              wordBreak:
-                                "break-word",
-                            }}
-                          >
-                            {material.product_code ||
-                              material.product_name ||
-                              "자재"}
-                          </div>
-
-                          {material.product_name &&
-                            material.product_name !==
-                              material.product_code && (
-                              <div
-                                style={{
-                                  marginTop: "3px",
-                                  color: "#64748b",
-                                  fontSize: "12px",
-                                  fontWeight: "700",
-                                  wordBreak:
-                                    "break-word",
-                                }}
-                              >
-                                {
-                                  material.product_name
-                                }
-                              </div>
-                            )}
-                        </div>
-
-                        {quantityText && (
-                          <div
-                            style={{
-                              flex: "0 0 auto",
-                              padding: "6px 9px",
-                              borderRadius: "8px",
-                              background: "#ffffff",
-                              border:
-                                "1px solid #e2e8f0",
-                              color: "#111827",
-                              fontSize: "13px",
-                              fontWeight: "900",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {quantityText}
-                          </div>
-                        )}
+                        {material.brand}
                       </div>
+                    )}
 
-                      {material.memo && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        marginTop: material.brand ? "5px" : 0,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            marginTop: "10px",
-                            padding: "9px 10px",
-                            borderRadius: "8px",
-                            background: "#ffffff",
-                            color: "#475569",
-                            fontSize: "12px",
-                            lineHeight: 1.6,
-                            whiteSpace: "pre-wrap",
+                            color: "#111827",
+                            fontSize: "15px",
+                            fontWeight: "900",
                             wordBreak: "break-word",
                           }}
                         >
-                          메모 {material.memo}
+                          {material.product_code ||
+                            material.product_name ||
+                            "자재"}
+                        </div>
+                        {material.product_name &&
+                          material.product_name !== material.product_code && (
+                            <div
+                              style={{
+                                marginTop: "3px",
+                                color: "#64748b",
+                                fontSize: "12px",
+                                fontWeight: "700",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {material.product_name}
+                            </div>
+                          )}
+                      </div>
+                      {quantityText && (
+                        <div
+                          style={{
+                            flex: "0 0 auto",
+                            padding: "6px 9px",
+                            borderRadius: "8px",
+                            background: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            color: "#111827",
+                            fontSize: "13px",
+                            fontWeight: "900",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {quantityText}
                         </div>
                       )}
                     </div>
-                  );
-                }
-              )}
+
+                    {material.memo && (
+                      <div
+                        style={{
+                          marginTop: "10px",
+                          padding: "9px 10px",
+                          borderRadius: "8px",
+                          background: "#ffffff",
+                          color: "#475569",
+                          fontSize: "12px",
+                          lineHeight: 1.6,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        메모 {material.memo}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
+
           <div
             style={{
               marginTop: "10px",
@@ -908,6 +818,8 @@ export default function WorkerSiteDetailPage() {
             관리자에서 등록한 예정 사용 자재입니다.
           </div>
         </section>
+
+        <SiteCuttingMaterials siteId={siteId} materials={materials} />
 
         <WorkerRequestPhotos siteId={siteId} />
 
@@ -921,10 +833,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              📞 고객 연락
-            </SectionTitle>
-
+            <SectionTitle>📞 고객 연락</SectionTitle>
             <div
               style={{
                 marginTop: "10px",
@@ -935,7 +844,6 @@ export default function WorkerSiteDetailPage() {
             >
               {site.customer_phone}
             </div>
-
             <a
               href={`tel:${site.customer_phone}`}
               style={{
@@ -956,21 +864,6 @@ export default function WorkerSiteDetailPage() {
           </section>
         )}
 
-        {/* ===================================================
-            현장 작업 / 완료보고
-
-            처리 순서:
-
-            완료된 현장도 보고서 미작성/보완 상태라면 제출할 수 있습니다.
-            2. 현장 cancelled
-            3. 일반 member
-            4. 완료보고 상태 조회 중
-            5. pending
-            6. approved
-            7. rejected
-            8. 보고서 없음 → leader 작성폼
-        =================================================== */}
-
         {site.status === "completed" ? (
           <section
             style={{
@@ -981,10 +874,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              ✅ 시공 완료
-            </SectionTitle>
-
+            <SectionTitle>✅ 시공 완료</SectionTitle>
             <div
               style={{
                 marginTop: "12px",
@@ -1012,10 +902,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              📋 현장 작업
-            </SectionTitle>
-
+            <SectionTitle>📋 현장 작업</SectionTitle>
             <div
               style={{
                 marginTop: "12px",
@@ -1041,10 +928,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              📋 완료보고
-            </SectionTitle>
-
+            <SectionTitle>📋 완료보고</SectionTitle>
             <div
               style={{
                 marginTop: "12px",
@@ -1070,10 +954,7 @@ export default function WorkerSiteDetailPage() {
               padding: "18px",
             }}
           >
-            <SectionTitle>
-              📋 완료보고
-            </SectionTitle>
-
+            <SectionTitle>📋 완료보고</SectionTitle>
             <div
               style={{
                 marginTop: "12px",
@@ -1108,16 +989,8 @@ export default function WorkerSiteDetailPage() {
                 gap: "12px",
               }}
             >
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <SectionTitle>
-                  🟠 완료보고 제출 완료
-                </SectionTitle>
-
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <SectionTitle>🟠 완료보고 제출 완료</SectionTitle>
                 <div
                   style={{
                     marginTop: "5px",
@@ -1129,7 +1002,6 @@ export default function WorkerSiteDetailPage() {
                   관리자 검수 대기
                 </div>
               </div>
-
               <div
                 style={{
                   flex: "0 0 auto",
@@ -1145,7 +1017,6 @@ export default function WorkerSiteDetailPage() {
                 검수 대기
               </div>
             </div>
-
             <div
               style={{
                 marginTop: "14px",
@@ -1162,10 +1033,9 @@ export default function WorkerSiteDetailPage() {
               <br />
               관리자가 시공 내용과 사진을 확인하고 있습니다.
               <br />
-              실제 시공금액 확인 및 승인 전에는 AI
-              견적자료로 등록되지 않습니다.
+              실제 시공금액 확인 및 승인 전에는 AI 견적자료로
+              등록되지 않습니다.
             </div>
-
             {reportStatus?.report?.work_summary && (
               <div
                 style={{
@@ -1184,7 +1054,6 @@ export default function WorkerSiteDetailPage() {
                 >
                   제출한 시공 내용
                 </div>
-
                 <div
                   style={{
                     marginTop: "5px",
@@ -1200,7 +1069,6 @@ export default function WorkerSiteDetailPage() {
                 </div>
               </div>
             )}
-
             {reportStatus?.report?.completed_at && (
               <div
                 style={{
@@ -1210,10 +1078,7 @@ export default function WorkerSiteDetailPage() {
                   lineHeight: 1.5,
                 }}
               >
-                제출일시{" "}
-                {formatDateTime(
-                  reportStatus.report.completed_at
-                )}
+                제출일시 {formatDateTime(reportStatus.report.completed_at)}
               </div>
             )}
           </section>
@@ -1236,16 +1101,8 @@ export default function WorkerSiteDetailPage() {
                 gap: "12px",
               }}
             >
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <SectionTitle>
-                  🟢 완료보고 승인 완료
-                </SectionTitle>
-
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <SectionTitle>🟢 완료보고 승인 완료</SectionTitle>
                 <div
                   style={{
                     marginTop: "5px",
@@ -1257,7 +1114,6 @@ export default function WorkerSiteDetailPage() {
                   관리자 검수 완료
                 </div>
               </div>
-
               <div
                 style={{
                   flex: "0 0 auto",
@@ -1273,7 +1129,6 @@ export default function WorkerSiteDetailPage() {
                 승인 완료
               </div>
             </div>
-
             <div
               style={{
                 marginTop: "14px",
@@ -1288,7 +1143,6 @@ export default function WorkerSiteDetailPage() {
             >
               관리자가 완료보고 검수를 완료했습니다.
             </div>
-
             {reportStatus?.report?.review_memo && (
               <div
                 style={{
@@ -1307,7 +1161,6 @@ export default function WorkerSiteDetailPage() {
                 >
                   관리자 메모
                 </div>
-
                 <div
                   style={{
                     marginTop: "5px",
@@ -1322,7 +1175,6 @@ export default function WorkerSiteDetailPage() {
                 </div>
               </div>
             )}
-
             {reportStatus?.report?.reviewed_at && (
               <div
                 style={{
@@ -1331,20 +1183,13 @@ export default function WorkerSiteDetailPage() {
                   fontSize: "10px",
                 }}
               >
-                검수일시{" "}
-                {formatDateTime(
-                  reportStatus.report.reviewed_at
-                )}
+                검수일시 {formatDateTime(reportStatus.report.reviewed_at)}
               </div>
             )}
           </section>
         ) : reportStatus?.hasReport &&
           reportStatus?.report?.review_status === "rejected" ? (
-          <section
-            style={{
-              marginTop: "14px",
-            }}
-          >
+          <section style={{ marginTop: "14px" }}>
             <div
               style={{
                 marginBottom: "12px",
@@ -1362,16 +1207,8 @@ export default function WorkerSiteDetailPage() {
                   gap: "12px",
                 }}
               >
-                <div
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <SectionTitle>
-                    🔴 완료보고 보완 필요
-                  </SectionTitle>
-
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <SectionTitle>🔴 완료보고 보완 필요</SectionTitle>
                   <div
                     style={{
                       marginTop: "5px",
@@ -1383,7 +1220,6 @@ export default function WorkerSiteDetailPage() {
                     관리자가 보완을 요청했습니다.
                   </div>
                 </div>
-
                 <div
                   style={{
                     flex: "0 0 auto",
@@ -1399,7 +1235,6 @@ export default function WorkerSiteDetailPage() {
                   보완 필요
                 </div>
               </div>
-
               {reportStatus?.report?.review_memo ? (
                 <div
                   style={{
@@ -1436,7 +1271,6 @@ export default function WorkerSiteDetailPage() {
                 </div>
               )}
             </div>
-
             <WorkerWorkReport
               siteId={siteId}
               site={site}
@@ -1446,11 +1280,7 @@ export default function WorkerSiteDetailPage() {
             />
           </section>
         ) : (
-          <section
-            style={{
-              marginTop: "14px",
-            }}
-          >
+          <section style={{ marginTop: "14px" }}>
             <WorkerWorkReport
               siteId={siteId}
               site={site}
@@ -1477,9 +1307,9 @@ export default function WorkerSiteDetailPage() {
                 lineHeight: 1.7,
               }}
             >
-              제출한 완료보고와 시공사진은 관리자 검수 후
-              처리됩니다. 관리자가 실제 시공금액을 확인하고
-              승인하기 전에는 AI 견적자료로 등록되지 않습니다.
+              제출한 완료보고와 시공사진은 관리자 검수 후 처리됩니다.
+              관리자가 실제 시공금액을 확인하고 승인하기 전에는
+              AI 견적자료로 등록되지 않습니다.
             </div>
           )}
 
@@ -1502,10 +1332,6 @@ export default function WorkerSiteDetailPage() {
   );
 }
 
-/* =========================================================
-   섹션 제목
-========================================================= */
-
 function SectionTitle({ children }) {
   return (
     <div
@@ -1520,17 +1346,8 @@ function SectionTitle({ children }) {
   );
 }
 
-/* =========================================================
-   정보 한 줄
-========================================================= */
-
-function InfoRow({
-  label,
-  value,
-}) {
-  if (!value) {
-    return null;
-  }
+function InfoRow({ label, value }) {
+  if (!value) return null;
 
   return (
     <div
@@ -1553,7 +1370,6 @@ function InfoRow({
       >
         {label}
       </div>
-
       <div
         style={{
           flex: 1,
@@ -1567,4 +1383,4 @@ function InfoRow({
       </div>
     </div>
   );
-                    }
+                  }
