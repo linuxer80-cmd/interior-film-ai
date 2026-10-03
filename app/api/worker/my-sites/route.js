@@ -36,7 +36,10 @@ async function rows(query, optionalDailyTable = false) {
   const result = [];
 
   for (let offset = 0; offset < 50000; offset += 500) {
-    const { data, error } = await query.range(offset, offset + 499);
+    const { data, error } = await query.range(
+      offset,
+      offset + 499
+    );
 
     if (
       optionalDailyTable &&
@@ -69,8 +72,8 @@ function localDay(value) {
     day: "2-digit",
   }).formatToParts(date);
 
-  const get = (type) =>
-    parts.find((part) => part.type === type)?.value;
+  const get = type =>
+    parts.find(part => part.type === type)?.value;
 
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
@@ -99,7 +102,12 @@ async function companySites(
   };
 
   const [legacy, ownDaily] = await Promise.all([
-    rows(scoped("site_workers", "id,site_id,worker_id,role")),
+    rows(
+      scoped(
+        "site_workers",
+        "id,site_id,worker_id,role"
+      )
+    ),
     rows(
       scoped(
         "site_daily_assignments",
@@ -110,7 +118,9 @@ async function companySites(
   ]);
 
   const ids = [
-    ...new Set([...legacy, ...ownDaily].map((item) => item.site_id)),
+    ...new Set(
+      [...legacy, ...ownDaily].map(item => item.site_id)
+    ),
   ];
 
   const result = [];
@@ -140,26 +150,25 @@ async function companySites(
 
     for (const site of sites) {
       const allDates = daily.filter(
-        (item) => item.site_id === site.id
+        item => item.site_id === site.id
       );
 
       const explicit = Array.isArray(site.work_dates);
-      const allowed = explicit ? new Set(site.work_dates) : null;
+      const allowed = explicit
+        ? new Set(site.work_dates)
+        : null;
 
       const myDates = allDates.filter(
-        (item) =>
+        item =>
           ownIds.has(item.worker_id) &&
           (!allowed || allowed.has(item.work_date))
       );
 
       const myLegacy = legacy.filter(
-        (item) => item.site_id === site.id
+        item => item.site_id === site.id
       );
 
-      // 여러 날짜 방식에서는 실제 날짜별 배정이 반드시 있어야 합니다.
       if (explicit && !myDates.length) continue;
-
-      // 날짜별 배정이 있으면 오래된 현장별 배정으로 접근하지 못합니다.
       if (allDates.length && !myDates.length) continue;
       if (!myDates.length && !myLegacy.length) continue;
 
@@ -180,9 +189,9 @@ async function companySites(
         a.work_date.localeCompare(b.work_date)
       );
 
-      const role = (dates.length ? dates : myLegacy).some(
-        (row) => row.role === "leader"
-      )
+      const role = (
+        dates.length ? dates : myLegacy
+      ).some(row => row.role === "leader")
         ? "leader"
         : "member";
 
@@ -190,7 +199,7 @@ async function companySites(
       const end = localDay(site.schedule_end) || start;
 
       const scheduleNotice = dates.some(
-        (day) =>
+        day =>
           (start && day.work_date < start) ||
           (end && day.work_date > end)
       )
@@ -199,9 +208,8 @@ async function companySites(
 
       result.push({
         ...site,
-        // 다른 시공자의 날짜는 응답에 포함하지 않습니다.
         work_dates: explicit
-          ? dates.map((day) => day.work_date)
+          ? dates.map(day => day.work_date)
           : null,
         site_id: site.id,
         site_status: site.status,
@@ -211,7 +219,8 @@ async function companySites(
           ? {
               assigned_dates: dates,
               schedule_start: dates[0].work_date,
-              schedule_end: dates[dates.length - 1].work_date,
+              schedule_end:
+                dates[dates.length - 1].work_date,
             }
           : {}),
         schedule_notice: scheduleNotice,
@@ -222,6 +231,53 @@ async function companySites(
   return result;
 }
 
+function normalizeFilmBrand(value) {
+  const brand = String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9가-힣]/g, "");
+
+  return [
+    "현대",
+    "현대보닥",
+    "현대보닥BODAQ",
+    "HYUNDAIBODAQ",
+    "BODAQ",
+  ].includes(brand)
+    ? "HYUNDAIBODAQ"
+    : brand;
+}
+
+function materialSample(material, products) {
+  if (material.film_product_id) {
+    return (
+      products.find(
+        product => product.id === material.film_product_id
+      )?.sample_image_path || null
+    );
+  }
+
+  const brand = normalizeFilmBrand(material.brand);
+
+  const code = String(material.product_code || "")
+    .trim()
+    .toUpperCase();
+
+  if (!brand || !code) return null;
+
+  const matches = products.filter(
+    product =>
+      normalizeFilmBrand(product.brand) === brand &&
+      String(product.product_code || "")
+        .trim()
+        .toUpperCase() === code
+  );
+
+  // 같은 브랜드·코드에 여러 제품이 있으면 임의로 선택하지 않습니다.
+  return matches.length === 1
+    ? matches[0].sample_image_path || null
+    : null;
+}
+
 export async function GET(request) {
   try {
     const token = request.headers
@@ -229,14 +285,20 @@ export async function GET(request) {
       ?.match(/^Bearer (.+)$/i)?.[1];
 
     if (!token) {
-      return json({ error: "시공자 로그인이 필요합니다." }, 401);
+      return json(
+        { error: "시공자 로그인이 필요합니다." },
+        401
+      );
     }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!url || !key) {
-      return json({ error: "서버 설정을 확인해주세요." }, 503);
+      return json(
+        { error: "서버 설정을 확인해주세요." },
+        503
+      );
     }
 
     const db = createClient(url, key, {
@@ -251,7 +313,10 @@ export async function GET(request) {
 
     if (authError || !auth?.user) {
       return json(
-        { error: "로그인이 만료되었습니다. 다시 로그인해주세요." },
+        {
+          error:
+            "로그인이 만료되었습니다. 다시 로그인해주세요.",
+        },
         401
       );
     }
@@ -260,10 +325,12 @@ export async function GET(request) {
     const siteId = searchParams.get("siteId");
 
     if (siteId !== null && !uuid.test(siteId)) {
-      return json({ error: "현장 주소를 확인해주세요." }, 400);
+      return json(
+        { error: "현장 주소를 확인해주세요." },
+        400
+      );
     }
 
-    // 로그인 계정에 실제 연결된 시공자 ID만 사용합니다.
     const [linked, profileResult] = await Promise.all([
       rows(
         db
@@ -301,18 +368,22 @@ export async function GET(request) {
         .select("id,is_active")
         .in(
           "id",
-          [...new Set(linked.map((worker) => worker.company_id))]
+          [
+            ...new Set(
+              linked.map(worker => worker.company_id)
+            ),
+          ]
         )
         .order("id")
     );
 
     const activeCompanies = new Set(
       companies
-        .filter((company) => company.is_active !== false)
-        .map((company) => company.id)
+        .filter(company => company.is_active !== false)
+        .map(company => company.id)
     );
 
-    const workers = linked.filter((worker) =>
+    const workers = linked.filter(worker =>
       activeCompanies.has(worker.company_id)
     );
 
@@ -332,19 +403,24 @@ export async function GET(request) {
       worker_is_active: true,
     };
 
-    if (searchParams.get("profileOnly") === "1" && !siteId) {
+    if (
+      searchParams.get("profileOnly") === "1" &&
+      !siteId
+    ) {
       return json({ worker });
     }
 
     const sites = (
       await Promise.all(
-        [...activeCompanies].map((companyId) =>
+        [...activeCompanies].map(companyId =>
           companySites(
             db,
             companyId,
             workers
-              .filter((item) => item.company_id === companyId)
-              .map((item) => item.id),
+              .filter(
+                item => item.company_id === companyId
+              )
+              .map(item => item.id),
             siteId
           )
         )
@@ -361,7 +437,9 @@ export async function GET(request) {
       return json({ worker, sites });
     }
 
-    const site = sites.find((item) => item.site_id === siteId);
+    const site = sites.find(
+      item => item.site_id === siteId
+    );
 
     if (!site) {
       return json(
@@ -373,7 +451,6 @@ export async function GET(request) {
       );
     }
 
-    // 예정 자재만 반환하며 가격·수익 정보는 제외합니다.
     let materials = [];
     let materialsError = null;
 
@@ -383,7 +460,7 @@ export async function GET(request) {
           db
             .from("site_materials")
             .select(
-              "id,brand,product_code,product_name,quantity,unit,memo"
+              "id,film_product_id,brand,product_code,product_name,quantity,unit,memo"
             )
             .eq("company_id", site.company_id)
             .eq("site_id", siteId)
@@ -395,9 +472,101 @@ export async function GET(request) {
         material_id: id,
       }));
     } catch (error) {
-      console.error("시공자 예정 자재 조회 오류:", error);
+      console.error(
+        "시공자 예정 자재 조회 오류:",
+        error
+      );
+
       materialsError =
         "예정 자재를 불러오지 못했습니다. 다시 확인해주세요.";
+    }
+
+    const productIds = [
+      ...new Set(
+        materials
+          .map(item => item.film_product_id)
+          .filter(Boolean)
+      ),
+    ];
+
+    const productCodes = [
+      ...new Set(
+        materials
+          .filter(item => !item.film_product_id)
+          .flatMap(item => {
+            const code = String(
+              item.product_code || ""
+            ).trim();
+
+            return code
+              ? [
+                  code,
+                  code.toUpperCase(),
+                  code.toLowerCase(),
+                ]
+              : [];
+          })
+      ),
+    ];
+
+    try {
+      const productsById = new Map();
+      const fields =
+        "id,brand,product_code,sample_image_path";
+
+      for (
+        let offset = 0;
+        offset < productIds.length;
+        offset += 100
+      ) {
+        const products = await rows(
+          db
+            .from("film_products")
+            .select(fields)
+            .in(
+              "id",
+              productIds.slice(offset, offset + 100)
+            )
+            .order("id")
+        );
+
+        products.forEach(product =>
+          productsById.set(product.id, product)
+        );
+      }
+
+      for (
+        let offset = 0;
+        offset < productCodes.length;
+        offset += 100
+      ) {
+        const products = await rows(
+          db
+            .from("film_products")
+            .select(fields)
+            .in(
+              "product_code",
+              productCodes.slice(offset, offset + 100)
+            )
+            .order("id")
+        );
+
+        products.forEach(product =>
+          productsById.set(product.id, product)
+        );
+      }
+
+      const products = [...productsById.values()];
+
+      materials = materials.map(material => ({
+        ...material,
+        sample_image_path: materialSample(
+          material,
+          products
+        ),
+      }));
+    } catch (error) {
+      console.error("필름 샘플 조회 오류:", error);
     }
 
     return json({
