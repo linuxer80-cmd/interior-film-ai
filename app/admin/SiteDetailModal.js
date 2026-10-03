@@ -6,7 +6,6 @@ import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
 import SiteWorkReportReview from "./SiteWorkReportReview";
-
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
 
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
@@ -15,35 +14,27 @@ import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
 
-/* =========================================================
-   현장 상태 표시 정보
-========================================================= */
-
 const STATUS_INFO = {
   consulting: {
     label: "상담중",
     background: "#fff7ed",
     color: "#c2410c",
   },
-
   scheduled: {
     label: "시공 예정",
     background: "#eff6ff",
     color: "#1d4ed8",
   },
-
   in_progress: {
     label: "시공 중",
     background: "#fff7ed",
     color: "#c2410c",
   },
-
   completed: {
     label: "시공 완료",
     background: "#f0fdf4",
     color: "#15803d",
   },
-
   cancelled: {
     label: "취소",
     background: "#f8fafc",
@@ -51,62 +42,56 @@ const STATUS_INFO = {
   },
 };
 
-/* =========================================================
-   현장 상세
-========================================================= */
+const MENUS = [
+  { id: "info", label: "현장정보", icon: "🏠" },
+  { id: "schedule", label: "일정배정", icon: "📅" },
+  { id: "materials", label: "자재", icon: "📦" },
+  { id: "photos", label: "요청사진", icon: "📷" },
+  { id: "report", label: "완료보고", icon: "📝" },
+];
+
+const SECTION_MENU = {
+  schedule: "schedule",
+  assignment: "schedule",
+  report: "report",
+  "report-write": "report",
+};
+
+const action = {
+  minHeight: 44,
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  background: "#fff",
+  color: "#334155",
+  padding: "10px 14px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
 
 export default function SiteDetailModal({
   companyId,
-
   site,
   onClose,
-
   updateSiteBasicInfo,
   updateSiteSchedule,
   updateSiteStatus,
-
   addSiteRequestPhotos,
   deleteSiteRequestPhoto,
-
   workers = [],
   workersLoading = false,
-
   loadWorkers,
   loadSiteWorkers,
   assignSiteWorkers,
-
   reloadSites,
 }) {
-  const [reportOpen, setReportOpen] =
-    useState(false);
-  const taskSections = useRef({});
-
-  /*
-   * 시공자 완료보고 존재 여부
-   *
-   * null  = 확인 중 / 조회 오류
-   * false = 시공자 완료보고 없음
-   * true  = 시공자 완료보고 있음
-   */
-
-  const [
-    hasWorkerReport,
-    setHasWorkerReport,
-  ] = useState(null);
+  const [menu, setMenu] = useState("info");
+  const [visited, setVisited] = useState({ info: true });
+  const [reportOpen, setReportOpen] = useState(false);
+  const [hasWorkerReport, setHasWorkerReport] = useState(null);
   const [reviewStatus, setReviewStatus] = useState(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("site") !== String(site?.id)) return;
-    const section = params.get("section");
-    const frame = requestAnimationFrame(() => {
-      // The report form appears only after its existence has been checked.
-      const target = taskSections.current[section] || (section === "report-write" && hasWorkerReport ? taskSections.current.report : null);
-      target?.scrollIntoView({ block: "start" });
-      target?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [site?.id, hasWorkerReport]);
+  const taskSections = useRef({});
+  const scrollBody = useRef(null);
 
   const {
     reportSaving,
@@ -118,120 +103,133 @@ export default function SiteDetailModal({
     reloadSites,
   });
 
-  const status =
-    STATUS_INFO[site?.status] ||
-    STATUS_INFO.consulting;
-
-  /* =======================================================
-     현장 변경 시 상태 초기화
-  ======================================================= */
-
   useEffect(() => {
     setReportOpen(false);
     setHasWorkerReport(null);
     setReviewStatus(null);
+    clearReportMessage?.();
 
-    if (
-      typeof clearReportMessage ===
-      "function"
-    ) {
-      clearReportMessage();
+    const params = new URLSearchParams(window.location.search);
+
+    const nextMenu =
+      params.get("site") === String(site?.id)
+        ? SECTION_MENU[params.get("section")] || "info"
+        : "info";
+
+    setMenu(nextMenu);
+    setVisited({
+      info: true,
+      [nextMenu]: true,
+    });
+
+    if (scrollBody.current) {
+      scrollBody.current.scrollTop = 0;
     }
-  }, [
-    site?.id,
-    clearReportMessage,
-  ]);
+  }, [site?.id, clearReportMessage]);
 
-  /* =======================================================
-     시공자 배정 저장 후
-  ======================================================= */
+  // 오늘 할 일에서 연결된 기존 메뉴 이동을 유지합니다.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("site") !== String(site?.id)) return;
+
+    const section = params.get("section");
+    const targetMenu = SECTION_MENU[section];
+
+    if (!targetMenu || targetMenu !== menu) return;
+
+    const frame = requestAnimationFrame(() => {
+      const target =
+        taskSections.current[section] ||
+        (
+          section === "report-write" && hasWorkerReport
+            ? taskSections.current.report
+            : null
+        );
+
+      target?.scrollIntoView({ block: "start" });
+      target?.focus({ preventScroll: true });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [site?.id, menu, hasWorkerReport]);
+
+  const hasSite = Boolean(site);
+
+  useEffect(() => {
+    if (!hasSite) return;
+
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [hasSite]);
+
+  function chooseMenu(id) {
+    setVisited(previous => ({
+      ...previous,
+      [id]: true,
+    }));
+
+    setMenu(id);
+
+    if (scrollBody.current) {
+      scrollBody.current.scrollTop = 0;
+    }
+  }
+
+  function closeModal() {
+    if (!reportSaving) onClose?.();
+  }
 
   async function handleAssignmentSaved() {
-    if (
-      typeof reloadSites ===
-      "function"
-    ) {
+    if (typeof reloadSites === "function") {
       await reloadSites();
     }
   }
 
-  /* =======================================================
-     완료보고 열기
-  ======================================================= */
-
   function openWorkReport() {
-    if (
-      typeof clearReportMessage ===
-      "function"
-    ) {
-      clearReportMessage();
-    }
-
+    clearReportMessage?.();
     setReportOpen(true);
   }
 
-  /* =======================================================
-     완료보고 닫기
-  ======================================================= */
-
   function closeWorkReport() {
-    if (reportSaving) {
-      return;
-    }
+    if (reportSaving) return;
 
     setReportOpen(false);
-
-    if (
-      typeof clearReportMessage ===
-      "function"
-    ) {
-      clearReportMessage();
-    }
+    clearReportMessage?.();
   }
 
-  /* =======================================================
-     완료보고 저장
-  ======================================================= */
+  async function handleWorkReportSave(payload) {
+    const success = await submitWorkReport(payload);
 
-  async function handleWorkReportSave(
-    payload,
-  ) {
-    const success =
-      await submitWorkReport(
-        payload,
-      );
-
-    if (!success) {
-      return false;
-    }
+    if (!success) return false;
 
     setReportOpen(false);
-
-    if (
-      typeof onClose ===
-      "function"
-    ) {
-      onClose();
-    }
+    onClose?.();
 
     return true;
   }
 
-  /* =======================================================
-     현장 없음
-  ======================================================= */
+  if (!site) return null;
 
-  if (!site) {
-    return null;
-  }
+  const status =
+    STATUS_INFO[site.status] || STATUS_INFO.consulting;
 
-  /* =======================================================
-     화면
-  ======================================================= */
+  const reviewLabel =
+    reviewStatus === "pending"
+      ? "검수 대기"
+      : reviewStatus === "approved"
+        ? "승인 완료"
+        : reviewStatus === "rejected"
+          ? "보완 요청"
+          : "";
 
   return (
     <div
-      onClick={onClose}
+      onClick={closeModal}
       style={{
         position: "fixed",
         inset: 0,
@@ -239,413 +237,430 @@ export default function SiteDetailModal({
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
-        padding: "24px 12px",
-        background:
-          "rgba(15,23,42,0.55)",
-        overflowY: "auto",
+        padding: "12px",
+        boxSizing: "border-box",
+        background: "rgba(15,23,42,0.55)",
       }}
     >
       <div
-        onClick={(event) =>
-          event.stopPropagation()
-        }
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-site-detail-title"
+        onClick={event => event.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: "600px",
-          padding: "16px",
-          borderRadius: "16px",
-          background: "#ffffff",
-          boxShadow:
-            "0 20px 50px rgba(0,0,0,0.20)",
+          maxWidth: 760,
+          maxHeight: "calc(100dvh - 24px)",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#f8fafc",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.20)",
         }}
       >
-        {/* =========================
-            상세 상단
-        ========================= */}
-
-        <div
+        <header
           style={{
-            display: "flex",
-            justifyContent:
-              "space-between",
-            alignItems: "flex-start",
-            gap: "10px",
+            flexShrink: 0,
+            padding: "14px 12px 12px",
+            background: "#fff",
+            borderBottom: "1px solid #e2e8f0",
           }}
         >
-          <div>
-            {/* =====================
-                현장명
-            ===================== */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <small
+                style={{
+                  color: "#64748b",
+                  fontSize: 11,
+                }}
+              >
+                관리자 · 현장 상세
+              </small>
 
-            <div
-              style={{
-                fontSize: "19px",
-                fontWeight: "900",
-                color: "#111827",
-              }}
-            >
-              {site.site_name ||
-                site.customer_name ||
-                "현장명 미정"}
-            </div>
+              <h2
+                id="admin-site-detail-title"
+                style={{
+                  margin: "4px 0 8px",
+                  fontSize: 19,
+                  color: "#111827",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {site.site_name ||
+                  site.customer_name ||
+                  "현장명 미정"}
+              </h2>
 
-            {/* =====================
-                상태 배지
-            ===================== */}
-
-            <div
-              style={{
-                marginTop: "5px",
-              }}
-            >
               <span
                 style={{
-                  display:
-                    "inline-block",
-                  padding:
-                    "5px 8px",
-                  borderRadius:
-                    "999px",
-                  background:
-                    status.background,
-                  color:
-                    status.color,
-                  fontSize:
-                    "11px",
-                  fontWeight:
-                    "800",
+                  display: "inline-block",
+                  padding: "5px 8px",
+                  borderRadius: 20,
+                  background: status.background,
+                  color: status.color,
+                  fontSize: 11,
+                  fontWeight: 800,
                 }}
               >
                 {status.label}
               </span>
             </div>
-          </div>
 
-          {/* =====================
-              닫기
-          ===================== */}
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={reportSaving}
-            style={{
-              border: "none",
-              background:
-                "transparent",
-              fontSize: "26px",
-              color: "#64748b",
-              cursor:
-                reportSaving
-                  ? "not-allowed"
-                  : "pointer",
-              opacity:
-                reportSaving
-                  ? 0.5
-                  : 1,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* =========================
-            일정 + 기본정보
-        ========================= */}
-
-        <div
-          style={{
-            marginTop: "10px",
-          }}
-        >
-          {/* =====================
-              일정 표시 / 변경
-          ===================== */}
-
-          <div ref={(element) => { taskSections.current.schedule = element; }} tabIndex={-1} aria-label="시공 일정" style={{ scrollMarginTop: 16 }}>
-          <SiteScheduleEditor
-            site={site}
-            reportOpen={reportOpen}
-            updateSiteSchedule={
-              updateSiteSchedule
-            }
-            reloadSites={
-              reloadSites
-            }
-          />
-
-          </div>
-
-          {/* =====================
-              현장 기본정보
-          ===================== */}
-
-          <SiteBasicInfo
-            site={site}
-            updateSiteBasicInfo={
-              updateSiteBasicInfo
-            }
-          />
-        </div>
-
-        {/* =========================
-            예정 시공 자재
-        ========================= */}
-
-        <SiteMaterials
-          site={site}
-        />
-
-        {/* =========================
-            요청 사진
-        ========================= */}
-
-        <SiteRequestPhotos
-          site={site}
-          addSiteRequestPhotos={
-            addSiteRequestPhotos
-          }
-          deleteSiteRequestPhoto={
-            deleteSiteRequestPhoto
-          }
-        />
-
-        {/* =========================
-            시공자 완료보고 관리자 검수
-        ========================= */}
-
-        <div ref={(element) => { taskSections.current.report = element; }} tabIndex={-1} aria-label="완료보고 검수" style={{ scrollMarginTop: 16 }}>
-        <SiteWorkReportReview
-          siteId={site.id}
-          onReportStateChange={({
-            hasReport,
-            reviewStatus: nextReviewStatus,
-          }) => {
-            setReviewStatus(nextReviewStatus);
-            setHasWorkerReport(
-              Boolean(
-                hasReport,
-              ),
-            );
-          }}
-        />
-        </div>
-
-        {/* =========================
-            현장 상태
-        ========================= */}
-
-        <SiteStatusControl
-          key={site.id}
-          site={site}
-          hasReport={hasWorkerReport}
-          reviewStatus={reviewStatus}
-          reportOpen={
-            reportOpen
-          }
-          updateSiteStatus={
-            updateSiteStatus
-          }
-        />
-
-        {/* =========================
-            시공 완료 보고 작성
-
-            시공자 완료보고가 없는 현장에서만
-            기존 관리자 직접 완료보고를 사용합니다.
-        ========================= */}
-
-        {site.status !==
-          "cancelled" &&
-          hasWorkerReport ===
-            false && (
-            <section
-              ref={(element) => { taskSections.current["report-write"] = element; }}
-              tabIndex={-1}
-              aria-label="완료보고 작성"
+            <button
+              type="button"
+              aria-label="현장 상세 닫기"
+              onClick={closeModal}
+              disabled={reportSaving}
               style={{
-                scrollMarginTop: 16,
-                marginTop:
-                  "18px",
-                paddingTop:
-                  "14px",
-                borderTop:
-                  "1px solid #e5e7eb",
+                ...action,
+                padding: "4px 12px",
+                fontSize: 24,
+                opacity: reportSaving ? 0.5 : 1,
               }}
             >
-              {!reportOpen ? (
-                <>
-                  {/* =====================
-                      제목
-                  ===================== */}
+              ×
+            </button>
+          </div>
 
-                  <div
+          <nav
+            aria-label="현장 상세 메뉴"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gap: 4,
+              marginTop: 12,
+            }}
+          >
+            {MENUS.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={menu === item.id}
+                aria-controls={`admin-site-panel-${item.id}`}
+                onClick={() => chooseMenu(item.id)}
+                style={{
+                  minHeight: 60,
+                  padding: "7px 1px",
+                  borderRadius: 10,
+                  border:
+                    menu === item.id
+                      ? "1px solid #2563eb"
+                      : "1px solid #e2e8f0",
+                  background:
+                    menu === item.id ? "#eff6ff" : "#f8fafc",
+                  color:
+                    menu === item.id ? "#1d4ed8" : "#475569",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 18,
+                    marginBottom: 4,
+                  }}
+                >
+                  {item.icon}
+                </span>
+
+                {item.label}
+
+                {item.id === "report" && reviewLabel && (
+                  <small
                     style={{
-                      fontSize:
-                        "14px",
-                      fontWeight:
-                        "900",
-                      color:
-                        "#111827",
+                      display: "block",
+                      marginTop: 3,
+                      fontSize: 9,
                     }}
                   >
-                    ✅ 시공 완료 보고
-                  </div>
+                    {reviewLabel}
+                  </small>
+                )}
+              </button>
+            ))}
+          </nav>
 
-                  {/* =====================
-                      설명
-                  ===================== */}
+          {reportOpen && menu !== "report" && (
+            <button
+              type="button"
+              onClick={() => chooseMenu("report")}
+              style={{
+                ...action,
+                width: "100%",
+                marginTop: 10,
+                color: "#15803d",
+              }}
+            >
+              작성 중인 완료보고로 돌아가기 →
+            </button>
+          )}
+        </header>
 
-                  <div
-                    style={{
-                      marginTop:
-                        "5px",
-                      fontSize:
-                        "12px",
-                      lineHeight:
-                        "1.5",
-                      color:
-                        "#64748b",
-                    }}
-                  >
-                    {site.status === "completed"
-                      ? "시공은 완료되었지만 보고서가 아직 없습니다. 실제 시공 내용과 완료사진을 등록해주세요."
-                      : "실제 시공 내용, 사용 자재, 현장 경비와 완료사진을 등록합니다. 보고서를 저장하면 현장도 시공 완료로 변경됩니다."}
-                  </div>
+        <div
+          ref={scrollBody}
+          style={{
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            minHeight: 0,
+            padding:
+              "4px 14px calc(18px + env(safe-area-inset-bottom))",
+          }}
+        >
+          <section
+            id="admin-site-panel-info"
+            aria-label="현장정보"
+            hidden={menu !== "info"}
+          >
+            <SiteBasicInfo
+              key={site.id}
+              site={site}
+              updateSiteBasicInfo={updateSiteBasicInfo}
+            />
 
-                  {/* =====================
-                      완료보고 작성
-                  ===================== */}
+            <SiteStatusControl
+              key={site.id}
+              site={site}
+              hasReport={hasWorkerReport}
+              reviewStatus={reviewStatus}
+              reportOpen={reportOpen}
+              updateSiteStatus={updateSiteStatus}
+            />
+          </section>
 
-                  <button
-                    type="button"
-                    onClick={
-                      openWorkReport
-                    }
-                    style={{
-                      width:
-                        "100%",
-                      marginTop:
-                        "10px",
-                      padding:
-                        "12px",
-                      border:
-                        "none",
-                      borderRadius:
-                        "10px",
-                      background:
-                        "#16a34a",
-                      color:
-                        "#ffffff",
-                      fontSize:
-                        "13px",
-                      fontWeight:
-                        "900",
-                      cursor:
-                        "pointer",
-                    }}
-                  >
-                    ✅ 시공 완료 보고 작성
-                  </button>
-                </>
-              ) : (
-                <SiteWorkReport
+          {visited.schedule && (
+            <section
+              id="admin-site-panel-schedule"
+              aria-label="일정과 시공자 배정"
+              hidden={menu !== "schedule"}
+            >
+              <div
+                ref={element => {
+                  taskSections.current.schedule = element;
+                }}
+                tabIndex={-1}
+                aria-label="시공 일정"
+                style={{ scrollMarginTop: 12 }}
+              >
+                <SiteScheduleEditor
+                  key={site.id}
                   site={site}
-                  saving={
-                    reportSaving
-                  }
-                  message={
-                    reportMessage
-                  }
-                  onSave={
-                    handleWorkReportSave
-                  }
-                  onCancel={
-                    closeWorkReport
-                  }
+                  reportOpen={reportOpen}
+                  updateSiteSchedule={updateSiteSchedule}
+                  reloadSites={reloadSites}
                 />
+              </div>
+
+              {!reportOpen ? (
+                <section
+                  style={{
+                    marginTop: 16,
+                    paddingTop: 14,
+                    borderTop: "1px solid #e2e8f0",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: "0 0 10px",
+                      fontSize: 15,
+                    }}
+                  >
+                    👷 담당 시공자 배정
+                  </h3>
+
+                  <div
+                    ref={element => {
+                      taskSections.current.assignment = element;
+                    }}
+                    tabIndex={-1}
+                    aria-label="시공자 배정"
+                    style={{ scrollMarginTop: 12 }}
+                  >
+                    <SiteWorkerAssignment
+                      key={site.id}
+                      site={site}
+                      workers={workers}
+                      workersLoading={workersLoading}
+                      loadWorkers={loadWorkers}
+                      loadSiteWorkers={loadSiteWorkers}
+                      assignSiteWorkers={assignSiteWorkers}
+                      onSaved={handleAssignmentSaved}
+                    />
+                  </div>
+                </section>
+              ) : (
+                <p
+                  style={{
+                    fontSize: 13,
+                    lineHeight: 1.7,
+                    color: "#64748b",
+                  }}
+                >
+                  완료보고 작성 중입니다. 보고서 작성을 마치거나
+                  취소한 뒤 시공자를 배정해주세요.
+                </p>
               )}
             </section>
           )}
 
-        {/* =========================
-            저장된 시공 완료 보고
-        ========================= */}
-
-        {site.status ===
-          "completed" && hasWorkerReport === true && (
-          <SiteCompletedReport
-            companyId={
-              companyId
-            }
-            site={site}
-          />
-        )}
-
-        {/* =========================
-            팀장 / 시공자 배정
-        ========================= */}
-
-        {!reportOpen && (
-          <section
-            style={{
-              marginTop:
-                "18px",
-              paddingTop:
-                "14px",
-              borderTop:
-                "1px solid #e5e7eb",
-            }}
-          >
-            {/* =====================
-                제목
-            ===================== */}
-
-            <div
-              style={{
-                marginBottom:
-                  "10px",
-                fontSize:
-                  "14px",
-                fontWeight:
-                  "900",
-                color:
-                  "#111827",
-              }}
+          {visited.materials && (
+            <section
+              id="admin-site-panel-materials"
+              aria-label="예정 자재"
+              hidden={menu !== "materials"}
             >
-              👷 담당 시공자 배정
+              <SiteMaterials
+                key={site.id}
+                site={site}
+              />
+            </section>
+          )}
+
+          {visited.photos && (
+            <section
+              id="admin-site-panel-photos"
+              aria-label="고객 요청사진"
+              hidden={menu !== "photos"}
+            >
+              <SiteRequestPhotos
+                key={site.id}
+                site={site}
+                addSiteRequestPhotos={addSiteRequestPhotos}
+                deleteSiteRequestPhoto={deleteSiteRequestPhoto}
+              />
+            </section>
+          )}
+
+          <section
+            id="admin-site-panel-report"
+            aria-label="완료보고와 검수"
+            hidden={menu !== "report"}
+          >
+            <div
+              ref={element => {
+                taskSections.current.report = element;
+              }}
+              tabIndex={-1}
+              aria-label="완료보고 검수"
+              style={{ scrollMarginTop: 12 }}
+            >
+              <SiteWorkReportReview
+                key={site.id}
+                siteId={site.id}
+                onReportStateChange={({
+                  hasReport,
+                  reviewStatus: nextReviewStatus,
+                }) => {
+                  setReviewStatus(nextReviewStatus);
+                  setHasWorkerReport(Boolean(hasReport));
+                }}
+              />
             </div>
 
-            {/* =====================
-                시공자 배정
-            ===================== */}
+            {site.status !== "cancelled" &&
+              hasWorkerReport === false && (
+                <section
+                  ref={element => {
+                    taskSections.current["report-write"] = element;
+                  }}
+                  tabIndex={-1}
+                  aria-label="완료보고 작성"
+                  style={{
+                    scrollMarginTop: 12,
+                    marginTop: 16,
+                    paddingTop: 14,
+                    borderTop: "1px solid #e2e8f0",
+                  }}
+                >
+                  {!reportOpen ? (
+                    <>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: 15,
+                        }}
+                      >
+                        ✅ 시공 완료 보고
+                      </h3>
 
-            <div ref={(element) => { taskSections.current.assignment = element; }} tabIndex={-1} aria-label="시공자 배정" style={{ scrollMarginTop: 16 }}>
-            <SiteWorkerAssignment
-              site={site}
-              workers={
-                workers
-              }
-              workersLoading={
-                workersLoading
-              }
-              loadWorkers={
-                loadWorkers
-              }
-              loadSiteWorkers={
-                loadSiteWorkers
-              }
-              assignSiteWorkers={
-                assignSiteWorkers
-              }
-              onSaved={
-                handleAssignmentSaved
-              }
-            />
-            </div>
+                      <p
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.7,
+                          color: "#64748b",
+                        }}
+                      >
+                        {site.status === "completed"
+                          ? "시공은 완료되었지만 보고서가 아직 없습니다. 실제 시공 내용과 완료사진을 등록해주세요."
+                          : "실제 시공 내용, 사용 자재, 현장 경비와 완료사진을 등록합니다. 저장하면 현장도 시공 완료로 변경됩니다."}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={openWorkReport}
+                        style={{
+                          ...action,
+                          width: "100%",
+                          border: "none",
+                          background: "#16a34a",
+                          color: "#fff",
+                        }}
+                      >
+                        ✅ 시공 완료 보고 작성
+                      </button>
+                    </>
+                  ) : (
+                    <SiteWorkReport
+                      key={site.id}
+                      site={site}
+                      saving={reportSaving}
+                      message={reportMessage}
+                      onSave={handleWorkReportSave}
+                      onCancel={closeWorkReport}
+                    />
+                  )}
+                </section>
+              )}
+
+            {site.status === "completed" &&
+              hasWorkerReport === true && (
+                <details
+                  style={{
+                    marginTop: 16,
+                    borderTop: "1px solid #e2e8f0",
+                    paddingTop: 14,
+                  }}
+                >
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 800,
+                    }}
+                  >
+                    저장된 시공 완료 자료 보기
+                  </summary>
+
+                  <SiteCompletedReport
+                    key={site.id}
+                    companyId={companyId}
+                    site={site}
+                  />
+                </details>
+              )}
           </section>
-        )}
+        </div>
       </div>
     </div>
   );
-                     }
+                   }
