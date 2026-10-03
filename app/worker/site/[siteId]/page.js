@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import {
@@ -11,71 +16,134 @@ import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
 import SiteDirections from "../../SiteDirections";
 import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
-import FilmThumbnail from "../../cutting/FilmThumbnail";
 
-function workDate(value) {
+const menus = [
+  { id: "info", label: "현장정보", icon: "🏠" },
+  { id: "film", label: "필름·재단", icon: "✂️" },
+  { id: "photos", label: "요청사진", icon: "📷" },
+  { id: "report", label: "완료보고", icon: "📝" },
+];
+
+const card = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 18,
+  marginTop: 12,
+};
+
+const action = {
+  minHeight: 44,
+  padding: "10px 14px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  background: "#fff",
+  color: "#334155",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const muted = {
+  color: "#64748b",
+  fontSize: 13,
+  lineHeight: 1.7,
+};
+
+const statusMap = {
+  scheduled: {
+    label: "시공 예정",
+    color: "#1d4ed8",
+    background: "#eff6ff",
+  },
+  in_progress: {
+    label: "시공 중",
+    color: "#1d4ed8",
+    background: "#eff6ff",
+  },
+  completed: {
+    label: "시공 완료",
+    color: "#15803d",
+    background: "#f0fdf4",
+  },
+  cancelled: {
+    label: "취소",
+    color: "#b91c1c",
+    background: "#fef2f2",
+  },
+};
+
+function dateText(value, withTime = false) {
   if (!value) return "미정";
+
   const date = new Date(
     /^\d{4}-\d{2}-\d{2}$/.test(value)
       ? `${value}T00:00:00+09:00`
       : value
   );
-  return Number.isNaN(date.getTime())
-    ? "미정"
-    : new Intl.DateTimeFormat("ko-KR", {
-        timeZone: "Asia/Seoul",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        weekday: "short",
-      }).format(date);
+
+  if (Number.isNaN(date.getTime())) return "미정";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    ...(withTime
+      ? {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }
+      : {}),
+  }).format(date);
 }
 
 export default function WorkerSiteDetailPage() {
   const router = useRouter();
-  const params = useParams();
-  const siteId = params?.siteId;
+  const siteId = useParams()?.siteId;
 
   const [loading, setLoading] = useState(true);
   const [site, setSite] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState("");
   const [materialsMessage, setMaterialsMessage] = useState("");
-  const detailRequest = useRef(0);
+
+  const [tab, setTab] = useState("info");
+  const [visited, setVisited] = useState({ info: true });
+
   const [reportLoading, setReportLoading] = useState(true);
   const [reportStatus, setReportStatus] = useState(null);
+  const [reportError, setReportError] = useState("");
 
-  useEffect(() => {
-    if (!siteId) return;
-    loadSiteDetail();
-    return () => {
-      detailRequest.current += 1;
-    };
-  }, [siteId]);
+  const detailRequest = useRef(0);
+  const reportRequest = useRef(0);
 
-  async function loadReportStatus() {
+  const loadReportStatus = useCallback(async () => {
+    const requestId = ++reportRequest.current;
+
     setReportLoading(true);
+    setReportError("");
 
     try {
-      const {
-        data: sessionData,
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
 
-      if (sessionError) throw sessionError;
+      if (error) throw error;
 
-      const accessToken = sessionData?.session?.access_token;
+      const token = data?.session?.access_token;
 
-      if (!accessToken) {
-        setReportStatus(null);
-        return;
+      if (!token) {
+        throw new Error("시공자로 다시 로그인해주세요.");
       }
 
       const response = await fetch(
-        `/api/worker/site-work-report?siteId=${encodeURIComponent(siteId)}`,
+        `/api/worker/site-work-report?siteId=${encodeURIComponent(
+          siteId
+        )}`,
         {
-          method: "GET",
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
           cache: "no-store",
         }
       );
@@ -84,161 +152,97 @@ export default function WorkerSiteDetailPage() {
 
       if (!response.ok || !result?.success) {
         throw new Error(
-          result?.error || "완료보고 상태를 확인하지 못했습니다."
+          result?.error ||
+            "완료보고 상태를 확인하지 못했습니다."
         );
       }
 
-      if (!result?.hasReport || !result?.report) {
-        setReportStatus({ hasReport: false, report: null });
-        return;
+      if (requestId === reportRequest.current) {
+        setReportStatus({
+          hasReport: Boolean(result.hasReport && result.report),
+          report: result.report || null,
+        });
       }
-
-      setReportStatus({ hasReport: true, report: result.report });
     } catch (error) {
-      console.error("완료보고 상태 조회 오류:", error);
-      setReportStatus(null);
+      if (requestId === reportRequest.current) {
+        setReportStatus(null);
+        setReportError(
+          error.message ||
+            "완료보고 상태를 확인하지 못했습니다."
+        );
+      }
     } finally {
-      setReportLoading(false);
+      if (requestId === reportRequest.current) {
+        setReportLoading(false);
+      }
     }
-  }
+  }, [siteId]);
 
-  async function loadSiteDetail() {
+  const loadSiteDetail = useCallback(async () => {
     const requestId = ++detailRequest.current;
+
     setLoading(true);
-    setSite(null);
-    setMaterials([]);
     setMessage("");
     setMaterialsMessage("");
 
     try {
       const result = await loadMyWorkerSites({ siteId });
+
       if (requestId !== detailRequest.current) return;
 
       setSite(result.site);
       setMaterials(result.materials || []);
       setMaterialsMessage(result.materialsError || "");
+
       void loadReportStatus();
     } catch (error) {
       if (requestId !== detailRequest.current) return;
 
-      console.error("시공자 현장 상세 조회 오류:", error);
-      setReportStatus(null);
-
-      if (error.status === 401) router.replace(workerLoginUrl());
-
+      setSite(null);
+      setMaterials([]);
       setMessage(
-        error.message || "현장 정보를 불러오지 못했습니다."
+        error.message ||
+          "현장 정보를 불러오지 못했습니다."
       );
+
+      if (error.status === 401) {
+        router.replace(workerLoginUrl());
+      }
     } finally {
-      if (requestId === detailRequest.current) setLoading(false);
+      if (requestId === detailRequest.current) {
+        setLoading(false);
+      }
     }
-  }
+  }, [siteId, router, loadReportStatus]);
 
-  function formatDateTime(value) {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
+  useEffect(() => {
+    setTab("info");
+    setVisited({ info: true });
+    setSite(null);
+    setMaterials([]);
+    setReportStatus(null);
+    setReportError("");
 
-    return new Intl.DateTimeFormat("ko-KR", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
-  }
+    if (siteId) void loadSiteDetail();
 
-  function formatQuantity(value) {
-    if (value === null || value === undefined || value === "") {
-      return "";
-    }
-
-    const number = Number(value);
-    if (Number.isNaN(number)) return String(value);
-
-    return new Intl.NumberFormat("ko-KR", {
-      maximumFractionDigits: 2,
-    }).format(number);
-  }
-
-  function getStatusInfo(status) {
-    switch (status) {
-      case "in_progress":
-        return {
-          label: "시공 중",
-          background: "#eff6ff",
-          color: "#1d4ed8",
-        };
-      case "completed":
-        return {
-          label: "시공 완료",
-          background: "#f0fdf4",
-          color: "#15803d",
-        };
-      case "cancelled":
-        return {
-          label: "취소",
-          background: "#fef2f2",
-          color: "#b91c1c",
-        };
-      default:
-        return {
-          label: "시공 예정",
-          background: "#f8fafc",
-          color: "#475569",
-        };
-    }
-  }
-
-  function getRoleInfo(role) {
-    if (role === "leader") {
-      return {
-        label: "👑 책임 팀장",
-        description: "이 현장의 책임 팀장입니다.",
-        background: "#fff7ed",
-        color: "#c2410c",
-        border: "#fed7aa",
-      };
-    }
-
-    return {
-      label: "👤 팀원",
-      description: "이 현장의 일반 팀원입니다.",
-      background: "#eff6ff",
-      color: "#1d4ed8",
-      border: "#bfdbfe",
+    return () => {
+      detailRequest.current += 1;
+      reportRequest.current += 1;
     };
-  }
+  }, [siteId, loadSiteDetail]);
 
-  function getRoleLabel(role) {
-    return getRoleInfo(role).label;
+  function chooseTab(id) {
+    setVisited(previous => ({
+      ...previous,
+      [id]: true,
+    }));
+    setTab(id);
   }
 
   if (loading) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          background: "#f8fafc",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "20px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            color: "#64748b",
-            fontSize: "14px",
-            fontWeight: "800",
-          }}
-        >
-          현장 정보를 불러오고 있습니다...
-        </div>
+      <main style={{ padding: 24, ...muted }}>
+        현장 정보를 불러오고 있습니다…
       </main>
     );
   }
@@ -247,107 +251,49 @@ export default function WorkerSiteDetailPage() {
     return (
       <main
         style={{
-          minHeight: "100vh",
-          background: "#f8fafc",
-          padding: "20px",
-          boxSizing: "border-box",
+          maxWidth: 680,
+          margin: "0 auto",
+          padding: 20,
         }}
       >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "620px",
-            margin: "40px auto 0",
-          }}
-        >
+        <a href="/worker" style={{ color: "#2563eb" }}>
+          ← 내 현장으로
+        </a>
+
+        <section style={card}>
+          <h2>현장 정보를 볼 수 없습니다.</h2>
+
+          <p role="alert" style={muted}>
+            {message || "현재 배정된 현장이 아닙니다."}
+          </p>
+
           <button
             type="button"
-            onClick={() => router.push("/worker")}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: "#475569",
-              fontSize: "14px",
-              fontWeight: "800",
-              cursor: "pointer",
-              padding: "6px 0",
-            }}
+            style={action}
+            onClick={loadSiteDetail}
           >
-            ← 내 현장으로
+            다시 확인
           </button>
-
-          <div
-            style={{
-              marginTop: "16px",
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "16px",
-              padding: "24px",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: "32px" }}>🏠</div>
-            <div
-              style={{
-                marginTop: "12px",
-                color: "#111827",
-                fontSize: "17px",
-                fontWeight: "900",
-              }}
-            >
-              현장 정보를 볼 수 없습니다.
-            </div>
-            <div
-              style={{
-                marginTop: "8px",
-                color: "#64748b",
-                fontSize: "13px",
-                lineHeight: 1.6,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {message || "현재 배정된 현장이 아닙니다."}
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/worker")}
-              style={{
-                width: "100%",
-                marginTop: "20px",
-                border: "none",
-                borderRadius: "10px",
-                background: "#111827",
-                color: "#ffffff",
-                padding: "12px",
-                fontSize: "13px",
-                fontWeight: "800",
-                cursor: "pointer",
-              }}
-            >
-              내 현장 목록으로
-            </button>
-            <button
-              type="button"
-              onClick={loadSiteDetail}
-              style={{
-                marginTop: 12,
-                padding: 12,
-                border: "1px solid #cbd5e1",
-                borderRadius: 10,
-                background: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              현장 다시 확인
-            </button>
-          </div>
-        </div>
+        </section>
       </main>
     );
   }
 
-  const status = getStatusInfo(site.status);
-  const role = getRoleInfo(site.my_role);
+  const status = statusMap[site.status] || statusMap.scheduled;
+
+  const report = reportStatus?.hasReport
+    ? reportStatus.report
+    : null;
+
+  const reportLabel = reportLoading
+    ? ""
+    : report?.review_status === "pending"
+      ? "검수 대기"
+      : report?.review_status === "approved"
+        ? "승인 완료"
+        : report?.review_status === "rejected"
+          ? "보완 요청"
+          : "";
 
   return (
     <main
@@ -355,994 +301,371 @@ export default function WorkerSiteDetailPage() {
         minHeight: "100vh",
         background: "#f8fafc",
         color: "#111827",
-        paddingBottom: "50px",
+        paddingBottom: 28,
       }}
     >
       <header
         style={{
-          background: "#ffffff",
-          borderBottom: "1px solid #e2e8f0",
           position: "sticky",
           top: 0,
           zIndex: 10,
+          background: "#fff",
+          borderBottom: "1px solid #e2e8f0",
         }}
       >
         <div
           style={{
-            width: "100%",
-            maxWidth: "720px",
+            maxWidth: 720,
             margin: "0 auto",
-            padding: "13px 16px",
-            boxSizing: "border-box",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
+            padding: "12px 16px",
           }}
         >
-          <button
-            type="button"
-            onClick={() => router.push("/worker")}
+          <div
             style={{
-              flex: "0 0 auto",
-              width: "38px",
-              height: "38px",
-              border: "1px solid #e2e8f0",
-              borderRadius: "10px",
-              background: "#ffffff",
-              color: "#111827",
-              fontSize: "20px",
-              fontWeight: "900",
-              cursor: "pointer",
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
             }}
           >
-            ←
-          </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
+            <button
+              type="button"
+              aria-label="내 현장으로 돌아가기"
+              onClick={() => router.push("/worker")}
               style={{
-                color: "#64748b",
-                fontSize: "11px",
-                fontWeight: "700",
+                ...action,
+                fontSize: 22,
               }}
             >
-              시공자 전용
+              ←
+            </button>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <small style={{ color: "#64748b" }}>
+                현장 상세 ·{" "}
+                {site.my_role === "leader"
+                  ? "책임 팀장"
+                  : "팀원"}
+              </small>
+
+              <h1
+                style={{
+                  margin: "3px 0 0",
+                  fontSize: 19,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {site.site_name || site.customer_name || "현장"}
+              </h1>
             </div>
-            <div
+
+            <span
               style={{
-                marginTop: "2px",
-                color: "#111827",
-                fontSize: "18px",
-                fontWeight: "900",
+                color: status.color,
+                background: status.background,
+                padding: "6px 9px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 800,
+                whiteSpace: "nowrap",
               }}
             >
-              현장 상세
-            </div>
+              {status.label}
+            </span>
           </div>
+
+          <nav
+            aria-label="현장 상세 메뉴"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 5,
+              marginTop: 12,
+            }}
+          >
+            {menus.map(menu => (
+              <button
+                key={menu.id}
+                type="button"
+                aria-pressed={tab === menu.id}
+                aria-controls={`site-panel-${menu.id}`}
+                onClick={() => chooseTab(menu.id)}
+                style={{
+                  border:
+                    tab === menu.id
+                      ? "1px solid #2563eb"
+                      : "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  minHeight: 62,
+                  padding: "7px 2px",
+                  background:
+                    tab === menu.id ? "#eff6ff" : "#f8fafc",
+                  color:
+                    tab === menu.id ? "#1d4ed8" : "#475569",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    marginBottom: 4,
+                    fontSize: 18,
+                  }}
+                >
+                  {menu.icon}
+                </span>
+
+                {menu.label}
+
+                {menu.id === "report" && reportLabel && (
+                  <small
+                    style={{
+                      display: "block",
+                      fontSize: 10,
+                      marginTop: 3,
+                    }}
+                  >
+                    {reportLabel}
+                  </small>
+                )}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
       <div
         style={{
-          width: "100%",
-          maxWidth: "720px",
+          maxWidth: 720,
           margin: "0 auto",
-          padding: "16px",
-          boxSizing: "border-box",
+          padding: "0 16px",
         }}
       >
         <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "16px",
-            padding: "18px",
-          }}
+          id="site-panel-info"
+          aria-label="현장정보"
+          hidden={tab !== "info"}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  color: "#111827",
-                  fontSize: "20px",
-                  fontWeight: "900",
-                  wordBreak: "break-word",
-                }}
-              >
-                {site.site_name || site.customer_name || "현장"}
-              </div>
-              {site.customer_name && (
-                <div
-                  style={{
-                    marginTop: "5px",
-                    color: "#64748b",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                  }}
-                >
-                  고객 {site.customer_name}
-                </div>
-              )}
-            </div>
-            <div
+          <div style={card}>
+            <h2
               style={{
-                flex: "0 0 auto",
-                padding: "6px 10px",
-                borderRadius: "999px",
-                background: status.background,
-                color: status.color,
-                fontSize: "11px",
-                fontWeight: "900",
+                margin: "0 0 12px",
+                fontSize: 16,
               }}
             >
-              {status.label}
-            </div>
-          </div>
+              📅 내 작업 일정
+            </h2>
 
-          <div
-            style={{
-              marginTop: "15px",
-              padding: "13px 14px",
-              borderRadius: "11px",
-              background: role.background,
-              border: `1px solid ${role.border}`,
-            }}
-          >
-            <div
-              style={{
-                color: role.color,
-                fontSize: "11px",
-                fontWeight: "800",
-              }}
-            >
-              이 현장에서 내 역할
-            </div>
-            <div
-              style={{
-                marginTop: "5px",
-                color: role.color,
-                fontSize: "16px",
-                fontWeight: "900",
-              }}
-            >
-              {role.label}
-            </div>
-            <div
-              style={{
-                marginTop: "4px",
-                color: "#64748b",
-                fontSize: "11px",
-                fontWeight: "700",
-                lineHeight: 1.5,
-              }}
-            >
-              {role.description}
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: "15px",
-              padding: "13px",
-              borderRadius: "11px",
-              background: "#f8fafc",
-            }}
-          >
-            <div
-              style={{
-                color: "#64748b",
-                fontSize: "11px",
-                fontWeight: "700",
-              }}
-            >
-              시공 일정
-            </div>
-            <div
-              style={{
-                marginTop: "5px",
-                color: "#111827",
-                fontSize: "14px",
-                fontWeight: "900",
-              }}
-            >
-              📅{" "}
-              {site.assigned_dates
-                ? "내 작업 날짜"
-                : `${workDate(site.schedule_start)}${
-                    site.schedule_end &&
-                    workDate(site.schedule_end) !== workDate(site.schedule_start)
-                      ? ` ~ ${workDate(site.schedule_end)}`
-                      : ""
-                  }`}
-            </div>
-            {site.assigned_dates
-              ? site.assigned_dates.map(day => (
+            {site.assigned_dates?.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {site.assigned_dates.map(day => (
                   <div
                     key={day.work_date}
-                    style={{ marginTop: 6, fontSize: 13 }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 9,
+                      background: "#f1f5f9",
+                      fontSize: 13,
+                    }}
                   >
-                    {workDate(day.work_date)} ·{" "}
+                    <strong>{dateText(day.work_date)}</strong>
+                    {" · "}
                     {day.role === "leader" ? "팀장" : "팀원"}
                   </div>
-                ))
-              : null}
+                ))}
+              </div>
+            ) : (
+              <p style={muted}>
+                {dateText(site.schedule_start)}
+                {site.schedule_end &&
+                dateText(site.schedule_end) !==
+                  dateText(site.schedule_start)
+                  ? ` ~ ${dateText(site.schedule_end)}`
+                  : ""}
+              </p>
+            )}
+
             {site.schedule_notice && (
-              <p
-                style={{
-                  color: "#b45309",
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                }}
-              >
+              <p style={{ ...muted, color: "#b45309" }}>
                 {site.schedule_notice}
               </p>
             )}
           </div>
 
-          <InfoRow label="담당" value={getRoleLabel(site.my_role)} />
-          <InfoRow label="지역" value={site.region} />
-          <InfoRow label="주소" value={<SiteDirections site={site} />} />
-          <InfoRow label="시공" value={site.work_type} />
+          <div style={card}>
+            <h2
+              style={{
+                margin: "0 0 12px",
+                fontSize: 16,
+              }}
+            >
+              🏠 현장정보
+            </h2>
+
+            <InfoRow label="고객" value={site.customer_name} />
+            <InfoRow label="지역" value={site.region} />
+            <InfoRow
+              label="주소"
+              value={<SiteDirections site={site} />}
+            />
+            <InfoRow label="시공" value={site.work_type} />
+
+            {site.work_description && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "#f8fafc",
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>
+                  작업 내용
+                </strong>
+
+                <p
+                  style={{
+                    ...muted,
+                    margin: "6px 0 0",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {site.work_description}
+                </p>
+              </div>
+            )}
+
+            {site.customer_phone && (
+              <a
+                href={`tel:${site.customer_phone}`}
+                style={{
+                  ...action,
+                  display: "block",
+                  textDecoration: "none",
+                  textAlign: "center",
+                  marginTop: 14,
+                }}
+              >
+                📞 고객 전화 · {site.customer_phone}
+              </a>
+            )}
+          </div>
         </section>
 
-        {site.work_description && (
+        {visited.film && (
           <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
+            id="site-panel-film"
+            aria-label="필름과 재단"
+            hidden={tab !== "film"}
           >
-            <SectionTitle>🛠️ 작업 내용</SectionTitle>
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "13px",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                color: "#334155",
-                fontSize: "13px",
-                lineHeight: 1.7,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {site.work_description}
-            </div>
-          </section>
-        )}
+            {materialsMessage ? (
+              <div role="alert" style={card}>
+                <p
+                  style={{
+                    ...muted,
+                    color: "#b91c1c",
+                  }}
+                >
+                  {materialsMessage}
+                </p>
 
-        <section
-          style={{
-            marginTop: "14px",
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "16px",
-            padding: "18px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "10px",
-            }}
-          >
-            <SectionTitle>📦 예정 자재</SectionTitle>
-            <div
-              style={{
-                flex: "0 0 auto",
-                padding: "5px 9px",
-                borderRadius: "999px",
-                background: "#f1f5f9",
-                color: "#475569",
-                fontSize: "11px",
-                fontWeight: "800",
-              }}
-            >
-              {materialsMessage ? "확인 필요" : `${materials.length}건`}
-            </div>
-          </div>
+                <button
+                  type="button"
+                  style={action}
+                  onClick={loadSiteDetail}
+                >
+                  다시 확인
+                </button>
+              </div>
+            ) : (
+              <>
+                <SiteCuttingMaterials
+                  siteId={siteId}
+                  materials={materials}
+                />
 
-          {materialsMessage && (
-            <div
-              role="alert"
-              style={{ marginTop: 12, color: "#b91c1c", fontSize: 13 }}
-            >
-              {materialsMessage}
-              <button
-                type="button"
-                onClick={loadSiteDetail}
-                style={{ marginLeft: 8 }}
-              >
-                다시 확인
-              </button>
-            </div>
-          )}
-
-          {!materialsMessage && materials.length === 0 && (
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "18px 12px",
-                border: "1px dashed #cbd5e1",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                color: "#64748b",
-                fontSize: "12px",
-                lineHeight: 1.6,
-                textAlign: "center",
-              }}
-            >
-              등록된 예정 자재가 없습니다.
-            </div>
-          )}
-
-          {materials.length > 0 && (
-            <div
-              style={{
-                display: "grid",
-                gap: "10px",
-                marginTop: "12px",
-              }}
-            >
-              {materials.map((material, index) => {
-                const quantity = formatQuantity(material.quantity);
-                const quantityText = [quantity, material.unit]
-                  .filter(Boolean)
-                  .join(" ");
-
-                return (
-                  <div
-                    key={
-                      material.material_id ||
-                      `${material.product_code}-${index}`
-                    }
-                    style={{
-                      padding: "14px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "11px",
-                      background: "#f8fafc",
-                    }}
-                  >
-                    <FilmThumbnail material={material} />
-
-                    {material.brand && (
-                      <div
-                        style={{
-                          color: "#64748b",
-                          fontSize: "11px",
-                          fontWeight: "800",
-                        }}
-                      >
-                        {material.brand}
-                      </div>
-                    )}
-
-                    <div
+                {materials.some(material => material.memo) && (
+                  <details style={card}>
+                    <summary
                       style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        marginTop: material.brand ? "5px" : 0,
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        fontSize: 13,
                       }}
                     >
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      자재별 메모 보기
+                    </summary>
+
+                    {materials
+                      .filter(material => material.memo)
+                      .map(material => (
                         <div
-                          style={{
-                            color: "#111827",
-                            fontSize: "15px",
-                            fontWeight: "900",
-                            wordBreak: "break-word",
-                          }}
+                          key={material.material_id}
+                          style={{ marginTop: 12 }}
                         >
-                          {material.product_code ||
-                            material.product_name ||
-                            "자재"}
+                          <strong style={{ fontSize: 13 }}>
+                            {[
+                              material.brand,
+                              material.product_code ||
+                                material.product_name,
+                            ]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </strong>
+
+                          <p
+                            style={{
+                              ...muted,
+                              margin: "4px 0",
+                              whiteSpace: "pre-wrap",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {material.memo}
+                          </p>
                         </div>
-                        {material.product_name &&
-                          material.product_name !== material.product_code && (
-                            <div
-                              style={{
-                                marginTop: "3px",
-                                color: "#64748b",
-                                fontSize: "12px",
-                                fontWeight: "700",
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {material.product_name}
-                            </div>
-                          )}
-                      </div>
-                      {quantityText && (
-                        <div
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "6px 9px",
-                            borderRadius: "8px",
-                            background: "#ffffff",
-                            border: "1px solid #e2e8f0",
-                            color: "#111827",
-                            fontSize: "13px",
-                            fontWeight: "900",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {quantityText}
-                        </div>
-                      )}
-                    </div>
-
-                    {material.memo && (
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          padding: "9px 10px",
-                          borderRadius: "8px",
-                          background: "#ffffff",
-                          color: "#475569",
-                          fontSize: "12px",
-                          lineHeight: 1.6,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        메모 {material.memo}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div
-            style={{
-              marginTop: "10px",
-              color: "#94a3b8",
-              fontSize: "10px",
-              lineHeight: 1.5,
-            }}
-          >
-            관리자에서 등록한 예정 사용 자재입니다.
-          </div>
-        </section>
-
-        <SiteCuttingMaterials siteId={siteId} materials={materials} />
-
-        <WorkerRequestPhotos siteId={siteId} />
-
-        {site.customer_phone && (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <SectionTitle>📞 고객 연락</SectionTitle>
-            <div
-              style={{
-                marginTop: "10px",
-                color: "#334155",
-                fontSize: "14px",
-                fontWeight: "800",
-              }}
-            >
-              {site.customer_phone}
-            </div>
-            <a
-              href={`tel:${site.customer_phone}`}
-              style={{
-                display: "block",
-                marginTop: "12px",
-                padding: "13px",
-                borderRadius: "10px",
-                background: "#111827",
-                color: "#ffffff",
-                textAlign: "center",
-                textDecoration: "none",
-                fontSize: "14px",
-                fontWeight: "900",
-              }}
-            >
-              📞 고객에게 전화
-            </a>
+                      ))}
+                  </details>
+                )}
+              </>
+            )}
           </section>
         )}
 
-        {site.status === "completed" ? (
+        {visited.photos && (
           <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #bbf7d0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
+            id="site-panel-photos"
+            aria-label="요청사진"
+            hidden={tab !== "photos"}
           >
-            <SectionTitle>✅ 시공 완료</SectionTitle>
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#f0fdf4",
-                color: "#166534",
-                fontSize: "12px",
-                fontWeight: "800",
-                lineHeight: 1.7,
-              }}
-            >
-              이 현장은 시공 완료 처리되었습니다.
-            </div>
-          </section>
-        ) : null}
-
-        {site.status === "cancelled" ? (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #fecaca",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <SectionTitle>📋 현장 작업</SectionTitle>
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#fef2f2",
-                color: "#b91c1c",
-                fontSize: "12px",
-                fontWeight: "800",
-                lineHeight: 1.7,
-              }}
-            >
-              취소된 현장에는 완료보고를 등록할 수 없습니다.
-            </div>
-          </section>
-        ) : site.my_role !== "leader" ? (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <SectionTitle>📋 완료보고</SectionTitle>
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                color: "#64748b",
-                fontSize: "12px",
-                fontWeight: "800",
-                lineHeight: 1.7,
-              }}
-            >
-              완료보고는 이 현장의 책임 팀장이 등록합니다.
-            </div>
-          </section>
-        ) : reportLoading ? (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <SectionTitle>📋 완료보고</SectionTitle>
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                color: "#64748b",
-                fontSize: "12px",
-                fontWeight: "800",
-                lineHeight: 1.7,
-              }}
-            >
-              완료보고 상태를 확인하고 있습니다...
-            </div>
-          </section>
-        ) : reportStatus?.hasReport &&
-          reportStatus?.report?.review_status === "pending" ? (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #fde68a",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <SectionTitle>🟠 완료보고 제출 완료</SectionTitle>
-                <div
-                  style={{
-                    marginTop: "5px",
-                    color: "#92400e",
-                    fontSize: "12px",
-                    fontWeight: "900",
-                  }}
-                >
-                  관리자 검수 대기
-                </div>
-              </div>
-              <div
-                style={{
-                  flex: "0 0 auto",
-                  padding: "6px 9px",
-                  borderRadius: "999px",
-                  background: "#fffbeb",
-                  color: "#92400e",
-                  border: "1px solid #fde68a",
-                  fontSize: "10px",
-                  fontWeight: "900",
-                }}
-              >
-                검수 대기
-              </div>
-            </div>
-            <div
-              style={{
-                marginTop: "14px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#fffbeb",
-                color: "#92400e",
-                fontSize: "12px",
-                fontWeight: "700",
-                lineHeight: 1.7,
-              }}
-            >
-              완료보고가 정상적으로 제출되었습니다.
-              <br />
-              관리자가 시공 내용과 사진을 확인하고 있습니다.
-              <br />
-              실제 시공금액 확인 및 승인 전에는 AI 견적자료로
-              등록되지 않습니다.
-            </div>
-            {reportStatus?.report?.work_summary && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  padding: "13px",
-                  borderRadius: "10px",
-                  background: "#f8fafc",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#94a3b8",
-                    fontSize: "10px",
-                    fontWeight: "800",
-                  }}
-                >
-                  제출한 시공 내용
-                </div>
-                <div
-                  style={{
-                    marginTop: "5px",
-                    color: "#334155",
-                    fontSize: "12px",
-                    fontWeight: "800",
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {reportStatus.report.work_summary}
-                </div>
-              </div>
-            )}
-            {reportStatus?.report?.completed_at && (
-              <div
-                style={{
-                  marginTop: "10px",
-                  color: "#94a3b8",
-                  fontSize: "10px",
-                  lineHeight: 1.5,
-                }}
-              >
-                제출일시 {formatDateTime(reportStatus.report.completed_at)}
-              </div>
-            )}
-          </section>
-        ) : reportStatus?.hasReport &&
-          reportStatus?.report?.review_status === "approved" ? (
-          <section
-            style={{
-              marginTop: "14px",
-              background: "#ffffff",
-              border: "1px solid #bbf7d0",
-              borderRadius: "16px",
-              padding: "18px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <SectionTitle>🟢 완료보고 승인 완료</SectionTitle>
-                <div
-                  style={{
-                    marginTop: "5px",
-                    color: "#166534",
-                    fontSize: "12px",
-                    fontWeight: "900",
-                  }}
-                >
-                  관리자 검수 완료
-                </div>
-              </div>
-              <div
-                style={{
-                  flex: "0 0 auto",
-                  padding: "6px 9px",
-                  borderRadius: "999px",
-                  background: "#f0fdf4",
-                  color: "#166534",
-                  border: "1px solid #bbf7d0",
-                  fontSize: "10px",
-                  fontWeight: "900",
-                }}
-              >
-                승인 완료
-              </div>
-            </div>
-            <div
-              style={{
-                marginTop: "14px",
-                padding: "14px",
-                borderRadius: "10px",
-                background: "#f0fdf4",
-                color: "#166534",
-                fontSize: "12px",
-                fontWeight: "800",
-                lineHeight: 1.7,
-              }}
-            >
-              관리자가 완료보고 검수를 완료했습니다.
-            </div>
-            {reportStatus?.report?.review_memo && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  padding: "13px",
-                  borderRadius: "10px",
-                  background: "#f8fafc",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#94a3b8",
-                    fontSize: "10px",
-                    fontWeight: "800",
-                  }}
-                >
-                  관리자 메모
-                </div>
-                <div
-                  style={{
-                    marginTop: "5px",
-                    color: "#334155",
-                    fontSize: "12px",
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {reportStatus.report.review_memo}
-                </div>
-              </div>
-            )}
-            {reportStatus?.report?.reviewed_at && (
-              <div
-                style={{
-                  marginTop: "10px",
-                  color: "#94a3b8",
-                  fontSize: "10px",
-                }}
-              >
-                검수일시 {formatDateTime(reportStatus.report.reviewed_at)}
-              </div>
-            )}
-          </section>
-        ) : reportStatus?.hasReport &&
-          reportStatus?.report?.review_status === "rejected" ? (
-          <section style={{ marginTop: "14px" }}>
-            <div
-              style={{
-                marginBottom: "12px",
-                background: "#ffffff",
-                border: "1px solid #fecaca",
-                borderRadius: "16px",
-                padding: "18px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <SectionTitle>🔴 완료보고 보완 필요</SectionTitle>
-                  <div
-                    style={{
-                      marginTop: "5px",
-                      color: "#b91c1c",
-                      fontSize: "12px",
-                      fontWeight: "900",
-                    }}
-                  >
-                    관리자가 보완을 요청했습니다.
-                  </div>
-                </div>
-                <div
-                  style={{
-                    flex: "0 0 auto",
-                    padding: "6px 9px",
-                    borderRadius: "999px",
-                    background: "#fef2f2",
-                    color: "#b91c1c",
-                    border: "1px solid #fecaca",
-                    fontSize: "10px",
-                    fontWeight: "900",
-                  }}
-                >
-                  보완 필요
-                </div>
-              </div>
-              {reportStatus?.report?.review_memo ? (
-                <div
-                  style={{
-                    marginTop: "14px",
-                    padding: "14px",
-                    borderRadius: "10px",
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    lineHeight: 1.7,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  관리자 요청사항
-                  <br />
-                  {reportStatus.report.review_memo}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    marginTop: "14px",
-                    padding: "14px",
-                    borderRadius: "10px",
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  완료보고 내용을 확인한 후 다시 제출해주세요.
-                </div>
-              )}
-            </div>
-            <WorkerWorkReport
+            <WorkerRequestPhotos
+              key={siteId}
               siteId={siteId}
-              site={site}
-              onSubmitted={async () => {
-                await loadSiteDetail();
-              }}
-            />
-          </section>
-        ) : (
-          <section style={{ marginTop: "14px" }}>
-            <WorkerWorkReport
-              siteId={siteId}
-              site={site}
-              onSubmitted={async () => {
-                await loadSiteDetail();
-              }}
             />
           </section>
         )}
 
-        {site.my_role === "leader" &&
-          site.status !== "cancelled" &&
-          !reportLoading &&
-          !reportStatus?.hasReport && (
-            <div
-              style={{
-                marginTop: "10px",
-                padding: "12px",
-                borderRadius: "10px",
-                border: "1px solid #fde68a",
-                background: "#fffbeb",
-                color: "#92400e",
-                fontSize: "11px",
-                lineHeight: 1.7,
-              }}
-            >
-              제출한 완료보고와 시공사진은 관리자 검수 후 처리됩니다.
-              관리자가 실제 시공금액을 확인하고 승인하기 전에는
-              AI 견적자료로 등록되지 않습니다.
-            </div>
-          )}
-
-        <div
-          style={{
-            marginTop: "14px",
-            padding: "12px",
-            borderRadius: "10px",
-            background: "#f1f5f9",
-            color: "#64748b",
-            fontSize: "11px",
-            lineHeight: 1.6,
-            textAlign: "center",
-          }}
-        >
-          본인에게 배정된 현장 정보만 조회할 수 있습니다.
-        </div>
+        {visited.report && (
+          <section
+            id="site-panel-report"
+            aria-label="완료보고"
+            hidden={tab !== "report"}
+          >
+            <ReportPanel
+              site={site}
+              siteId={siteId}
+              report={report}
+              loading={reportLoading}
+              error={reportError}
+              onRetry={loadReportStatus}
+              onSubmitted={loadReportStatus}
+            />
+          </section>
+        )}
       </div>
     </main>
-  );
-}
-
-function SectionTitle({ children }) {
-  return (
-    <div
-      style={{
-        color: "#111827",
-        fontSize: "15px",
-        fontWeight: "900",
-      }}
-    >
-      {children}
-    </div>
   );
 }
 
@@ -1354,33 +677,246 @@ function InfoRow({ label, value }) {
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: "12px",
-        marginTop: "12px",
-        fontSize: "13px",
-        lineHeight: 1.6,
+        gap: 12,
+        marginTop: 10,
+        fontSize: 13,
+        lineHeight: 1.7,
       }}
     >
-      <div
+      <span
         style={{
-          width: "46px",
-          flex: "0 0 46px",
+          flex: "0 0 40px",
           color: "#94a3b8",
-          fontWeight: "700",
+          fontWeight: 700,
         }}
       >
         {label}
-      </div>
+      </span>
+
       <div
         style={{
           flex: 1,
           minWidth: 0,
-          color: "#334155",
-          fontWeight: "800",
-          wordBreak: "break-word",
+          overflowWrap: "anywhere",
         }}
       >
         {value}
       </div>
     </div>
   );
-                  }
+}
+
+function ReportPanel({
+  site,
+  siteId,
+  report,
+  loading,
+  error,
+  onRetry,
+  onSubmitted,
+}) {
+  if (site.status === "cancelled") {
+    return (
+      <div style={card}>
+        <h2 style={{ fontSize: 16 }}>취소된 현장</h2>
+        <p style={muted}>
+          취소된 현장에는 완료보고를 등록할 수 없습니다.
+        </p>
+      </div>
+    );
+  }
+
+  if (site.my_role !== "leader") {
+    return (
+      <div style={card}>
+        <h2 style={{ fontSize: 16 }}>완료보고</h2>
+        <p style={muted}>
+          이 현장의 책임 팀장이 완료보고를 작성합니다.
+        </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={card}>
+        <p style={muted}>
+          완료보고 상태를 확인하고 있습니다…
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={card}>
+        <p
+          role="alert"
+          style={{
+            ...muted,
+            color: "#b91c1c",
+          }}
+        >
+          {error}
+        </p>
+
+        <button
+          type="button"
+          style={action}
+          onClick={onRetry}
+        >
+          다시 확인
+        </button>
+      </div>
+    );
+  }
+
+  const review = report?.review_status;
+
+  if (review === "pending" || review === "approved") {
+    return (
+      <div style={card}>
+        <h2
+          style={{
+            margin: "0 0 10px",
+            fontSize: 17,
+            color:
+              review === "approved" ? "#15803d" : "#b45309",
+          }}
+        >
+          {review === "approved"
+            ? "🟢 완료보고 승인 완료"
+            : "🟠 완료보고 제출 완료"}
+        </h2>
+
+        <p style={muted}>
+          {review === "approved"
+            ? "관리자가 완료보고 검수를 완료했습니다."
+            : "관리자가 시공 내용과 사진을 확인하고 있습니다. 승인 전에는 AI 견적자료로 등록되지 않습니다."}
+        </p>
+
+        {report.work_summary && (
+          <details style={{ marginTop: 14 }}>
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              제출한 시공 내용
+            </summary>
+
+            <p
+              style={{
+                ...muted,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {report.work_summary}
+            </p>
+          </details>
+        )}
+
+        {report.review_memo && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              background: "#f8fafc",
+              marginTop: 12,
+            }}
+          >
+            <strong style={{ fontSize: 13 }}>
+              관리자 메모
+            </strong>
+
+            <p
+              style={{
+                ...muted,
+                margin: "5px 0 0",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {report.review_memo}
+            </p>
+          </div>
+        )}
+
+        <p
+          style={{
+            ...muted,
+            fontSize: 11,
+          }}
+        >
+          {review === "approved" ? "검수일시" : "제출일시"}
+          {" "}
+          {dateText(
+            review === "approved"
+              ? report.reviewed_at
+              : report.completed_at,
+            true
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {site.status === "completed" && (
+        <div
+          style={{
+            ...card,
+            background: "#f0fdf4",
+          }}
+        >
+          <p
+            style={{
+              ...muted,
+              margin: 0,
+              color: "#15803d",
+            }}
+          >
+            ✅ 시공 완료 현장입니다. 완료보고를 작성하거나
+            보완할 수 있습니다.
+          </p>
+        </div>
+      )}
+
+      {review === "rejected" && (
+        <div
+          style={{
+            ...card,
+            background: "#fef2f2",
+          }}
+        >
+          <strong style={{ color: "#b91c1c" }}>
+            🔴 관리자 보완 요청
+          </strong>
+
+          <p
+            style={{
+              ...muted,
+              marginBottom: 0,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {report.review_memo ||
+              "완료보고 내용을 확인한 후 다시 제출해주세요."}
+          </p>
+        </div>
+      )}
+
+      <WorkerWorkReport
+        key={siteId}
+        siteId={siteId}
+        site={site}
+        onSubmitted={onSubmitted}
+      />
+    </>
+  );
+}
