@@ -1,114 +1,92 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./FilmCuttingOptimizer.module.css";
 import CuttingInput from "./CuttingInput";
 import CuttingResult from "./CuttingResult";
+import { FILM_WIDTH, optimizeCutting } from "./cuttingOptimizer";
 
-import {
-  FILM_WIDTH,
-  optimizeCutting,
-} from "./cuttingOptimizer";
+const DRAFT_KEY = "film-cutting-draft-v1";
 
-function makeId(prefix = "id") {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+const makeId = (prefix = "id") =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-function normalizeColor(value) {
-  return String(value || "").trim().toUpperCase();
-}
+const normalizeColor = value =>
+  String(value || "").trim().toUpperCase();
 
-function createRoll() {
-  return {
-    id: makeId("roll"),
-    color: "",
-    lengthM: "",
-    grainDirection: false,
-  };
-}
+const createRoll = () => ({
+  id: makeId("roll"),
+  color: "",
+  lengthM: "",
+  grainDirection: false,
+});
 
-function createSize() {
-  return {
-    id: makeId("size"),
-    width: "",
-    height: "",
-    quantity: 1,
-  };
-}
+const createSize = () => ({
+  id: makeId("size"),
+  width: "",
+  height: "",
+  quantity: 1,
+});
 
-function createColorGroup(color = "") {
-  return {
-    id: makeId("color"),
-    color,
-    sizes: [createSize()],
-  };
-}
+const createColorGroup = (color = "") => ({
+  id: makeId("color"),
+  color,
+  sizes: [createSize()],
+});
 
-function createSection(location = "", color = "") {
-  return {
-    id: makeId("section"),
-    location,
-    part: "",
-    colors: [createColorGroup(color)],
-  };
-}
+const createSection = (location = "", color = "") => ({
+  id: makeId("section"),
+  location,
+  part: "",
+  colors: [createColorGroup(color)],
+});
 
-function isBlankSize(size) {
-  return !Number(size.width) && !Number(size.height);
-}
+const isBlankSize = size =>
+  !String(size.width ?? "").trim() &&
+  !String(size.height ?? "").trim();
 
-/*
-  빠른입력 지원
-
-  480.2100.2
-  480x2100x2
-  480*2100*2
-  480×2100×2
-  480 2100 2
-
-  수량 생략:
-  480.2100
-*/
 function parseBulkSizes(value) {
-  const result = [];
+  const sizes = [];
+  const errors = [];
 
   String(value || "")
     .split(/\r?\n/)
-    .forEach((rawLine) => {
-      const line = rawLine.trim();
-
+    .forEach((raw, index) => {
+      const line = raw.trim();
       if (!line) return;
 
-      const normalized = line
-        .replace(/[xX×*]/g, ".")
-        .replace(/,/g, ".")
-        .replace(/\s+/g, ".")
-        .replace(/\.+/g, ".");
-
-      const parts = normalized
-        .split(".")
-        .map((v) => v.trim())
-        .filter(Boolean);
-
-      if (parts.length < 2) return;
-
-      const width = Math.round(Number(parts[0]));
-      const height = Math.round(Number(parts[1]));
-      const quantity = Math.max(
-        1,
-        Math.floor(Number(parts[2]) || 1)
-      );
+      const parts = line
+        .replace(/[xX×*,\s]+/g, ".")
+        .split(".");
 
       if (
-        !Number.isFinite(width) ||
-        !Number.isFinite(height) ||
-        width <= 0 ||
-        height <= 0
+        parts.length < 2 ||
+        parts.length > 3 ||
+        parts.some(part => !/^\d+$/.test(part))
       ) {
+        errors.push(
+          `${index + 1}행: 가로.세로.수량 형식으로 입력해주세요.`
+        );
         return;
       }
 
-      result.push({
+      const [width, height] = parts.map(Number);
+      const quantity = parts.length === 3 ? Number(parts[2]) : 1;
+
+      if (
+        ![width, height, quantity].every(Number.isSafeInteger) ||
+        width <= 0 ||
+        height <= 0 ||
+        quantity < 1 ||
+        quantity > 500
+      ) {
+        errors.push(
+          `${index + 1}행: 크기는 양수, 수량은 1~500 정수로 입력해주세요.`
+        );
+        return;
+      }
+
+      sizes.push({
         id: makeId("size"),
         width,
         height,
@@ -116,107 +94,241 @@ function parseBulkSizes(value) {
       });
     });
 
-  return result;
+  return { sizes, errors };
+}
+
+function validDraft(draft) {
+  return (
+    draft?.version === 1 &&
+    Array.isArray(draft.rolls) &&
+    draft.rolls.length > 0 &&
+    draft.rolls.length <= 100 &&
+    draft.rolls.every(
+      roll => roll && typeof roll.id === "string"
+    ) &&
+    Array.isArray(draft.sections) &&
+    draft.sections.length > 0 &&
+    draft.sections.length <= 500 &&
+    draft.sections.every(
+      section =>
+        section &&
+        typeof section.id === "string" &&
+        Array.isArray(section.colors) &&
+        section.colors.length > 0 &&
+        section.colors.every(
+          group =>
+            group &&
+            typeof group.id === "string" &&
+            Array.isArray(group.sizes) &&
+            group.sizes.length > 0 &&
+            group.sizes.every(
+              size => size && typeof size.id === "string"
+            )
+        )
+    )
+  );
 }
 
 export default function FilmCuttingOptimizer() {
-  const [rolls, setRolls] = useState(() => [
-    createRoll(),
-  ]);
-
-  const [sections, setSections] = useState(() => [
-    createSection(),
-  ]);
-
+  const [rolls, setRolls] = useState(() => [createRoll()]);
+  const [sections, setSections] = useState(() => [createSection()]);
   const [rollMode, setRollMode] = useState("waste");
-  const [iterations, setIterations] = useState(350);
-
   const [result, setResult] = useState(null);
   const [errors, setErrors] = useState([]);
   const [calculating, setCalculating] = useState(false);
-
   const [bulkEditor, setBulkEditor] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
 
-  const colors = useMemo(() => {
-    return [
+  const calculationTimer = useRef(null);
+  const calculationLock = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      const draft = raw ? JSON.parse(raw) : null;
+
+      if (validDraft(draft)) {
+        setRolls(draft.rolls);
+        setSections(draft.sections);
+        setRollMode(
+          draft.rollMode === "short-first" ? "short-first" : "waste"
+        );
+        setSaveStatus("이전에 입력한 내용을 불러왔습니다.");
+      }
+    } catch {
+      setSaveStatus(
+        "자동 저장을 사용할 수 없습니다. 화면을 닫기 전에 입력 내용을 확인해주세요."
+      );
+    }
+
+    setDraftReady(true);
+
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(calculationTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({
+            version: 1,
+            rolls,
+            sections,
+            rollMode,
+          })
+        );
+
+        setSaveStatus(
+          "현재 기기에 입력 내용을 자동 저장했습니다."
+        );
+      } catch {
+        setSaveStatus(
+          "저장 공간이 부족하거나 자동 저장을 사용할 수 없습니다."
+        );
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [rolls, sections, rollMode, draftReady]);
+
+  const colors = useMemo(
+    () => [
       ...new Set(
         rolls
-          .map((roll) => normalizeColor(roll.color))
+          .map(roll => normalizeColor(roll.color))
           .filter(Boolean)
       ),
-    ];
-  }, [rolls]);
+    ],
+    [rolls]
+  );
 
-  const summary = useMemo(() => {
-    const validRolls = rolls.filter(
-      (roll) =>
-        normalizeColor(roll.color) &&
-        Number(roll.lengthM) > 0
-    );
+  const summary = useMemo(
+    () => ({
+      rollCount: rolls.filter(
+        roll =>
+          normalizeColor(roll.color) &&
+          Number(roll.lengthM) > 0
+      ).length,
 
-    let pieceCount = 0;
-
-    sections.forEach((section) => {
-      section.colors.forEach((group) => {
-        group.sizes.forEach((size) => {
-          if (
-            Number(size.width) > 0 &&
-            Number(size.height) > 0
-          ) {
-            pieceCount += Math.max(
-              1,
-              Number(size.quantity) || 1
-            );
-          }
-        });
-      });
-    });
-
-    return {
-      rollCount: validRolls.length,
       colorCount: colors.length,
       sectionCount: sections.length,
-      pieceCount,
-    };
-  }, [rolls, sections, colors]);
+
+      pieceCount: sections.reduce(
+        (sum, section) =>
+          sum +
+          section.colors.reduce(
+            (count, group) =>
+              count +
+              group.sizes.reduce(
+                (number, size) =>
+                  number +
+                  (Number(size.width) > 0 &&
+                  Number(size.height) > 0 &&
+                  Number.isSafeInteger(Number(size.quantity)) &&
+                  Number(size.quantity) > 0
+                    ? Number(size.quantity)
+                    : 0),
+                0
+              ),
+            0
+          ),
+        0
+      ),
+    }),
+    [rolls, sections, colors]
+  );
 
   function clearResult() {
     setResult(null);
     setErrors([]);
   }
 
-  function addRoll() {
-    setRolls((prev) => [
-      ...prev,
-      createRoll(),
-    ]);
+  function changeSections(update) {
+    if (calculationLock.current) return;
 
+    setSections(update);
+    clearResult();
+  }
+
+  function changeGroup(sectionId, groupId, update) {
+    changeSections(previous =>
+      previous.map(section =>
+        section.id === sectionId
+          ? {
+              ...section,
+              colors: section.colors.map(group =>
+                group.id === groupId ? update(group) : group
+              ),
+            }
+          : section
+      )
+    );
+  }
+
+  function addRoll() {
+    setRolls(previous => [...previous, createRoll()]);
     clearResult();
   }
 
   function removeRoll(id) {
-    setRolls((prev) => {
-      if (prev.length <= 1) return prev;
-
-      return prev.filter(
-        (roll) => roll.id !== id
-      );
-    });
+    setRolls(previous =>
+      previous.length > 1
+        ? previous.filter(roll => roll.id !== id)
+        : previous
+    );
 
     clearResult();
   }
 
   function updateRoll(id, field, value) {
-    setRolls((prev) =>
-      prev.map((roll) =>
+    const nextValue =
+      field === "color" ? normalizeColor(value) : value;
+
+    if (field === "color" && nextValue) {
+      const previousColor = normalizeColor(
+        rolls.find(roll => roll.id === id)?.color
+      );
+
+      const renameUnique =
+        previousColor &&
+        !rolls.some(
+          roll =>
+            roll.id !== id &&
+            normalizeColor(roll.color) === previousColor
+        );
+
+      const firstColor = colors.length === 0;
+
+      if (renameUnique || firstColor) {
+        setSections(previous =>
+          previous.map(section => ({
+            ...section,
+            colors: section.colors.map(group =>
+              (renameUnique &&
+                normalizeColor(group.color) === previousColor) ||
+              (firstColor && !normalizeColor(group.color))
+                ? { ...group, color: nextValue }
+                : group
+            ),
+          }))
+        );
+      }
+    }
+
+    setRolls(previous =>
+      previous.map(roll =>
         roll.id === id
-          ? {
-              ...roll,
-              [field]:
-                field === "color"
-                  ? normalizeColor(value)
-                  : value,
-            }
+          ? { ...roll, [field]: nextValue }
           : roll
       )
     );
@@ -225,349 +337,159 @@ export default function FilmCuttingOptimizer() {
   }
 
   function addSection() {
-    setSections((prev) => {
-      const last = prev[prev.length - 1];
-
-      return [
-        ...prev,
-        createSection(
-          last?.location || "",
-          colors[0] || ""
-        ),
-      ];
-    });
-
-    clearResult();
+    changeSections(previous => [
+      ...previous,
+      createSection(
+        previous.at(-1)?.location || "",
+        colors[0] || ""
+      ),
+    ]);
   }
 
-  function removeSection(sectionId) {
-    setSections((prev) => {
-      if (prev.length <= 1) return prev;
-
-      return prev.filter(
-        (section) => section.id !== sectionId
-      );
-    });
-
-    clearResult();
+  function removeSection(id) {
+    changeSections(previous =>
+      previous.length > 1
+        ? previous.filter(section => section.id !== id)
+        : previous
+    );
   }
 
-  function updateSection(sectionId, field, value) {
-    setSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              [field]: value,
-            }
+  function updateSection(id, field, value) {
+    changeSections(previous =>
+      previous.map(section =>
+        section.id === id
+          ? { ...section, [field]: value }
           : section
       )
     );
-
-    clearResult();
   }
 
-  function copySection(sectionId) {
-    setSections((prev) => {
-      const source = prev.find(
-        (section) => section.id === sectionId
+  function copySection(id) {
+    changeSections(previous => {
+      const index = previous.findIndex(
+        section => section.id === id
       );
 
-      if (!source) return prev;
+      if (index < 0) return previous;
+
+      const source = previous[index];
 
       const copy = {
         ...source,
         id: makeId("section"),
-
-        colors: source.colors.map((group) => ({
+        colors: source.colors.map(group => ({
           ...group,
           id: makeId("color"),
-
-          sizes: group.sizes.map((size) => ({
+          sizes: group.sizes.map(size => ({
             ...size,
             id: makeId("size"),
           })),
         })),
       };
 
-      const index = prev.findIndex(
-        (section) => section.id === sectionId
-      );
-
-      const next = [...prev];
-
-      next.splice(
-        index + 1,
-        0,
-        copy
-      );
+      const next = [...previous];
+      next.splice(index + 1, 0, copy);
 
       return next;
     });
-
-    clearResult();
   }
 
-  function addColorGroup(sectionId) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
+  function addColorGroup(id) {
+    changeSections(previous =>
+      previous.map(section => {
+        if (section.id !== id) return section;
 
-        const usedColors = new Set(
-          section.colors
-            .map((group) =>
-              normalizeColor(group.color)
-            )
-            .filter(Boolean)
+        const used = new Set(
+          section.colors.map(group => normalizeColor(group.color))
         );
-
-        const nextColor =
-          colors.find(
-            (color) => !usedColors.has(color)
-          ) ||
-          colors[0] ||
-          "";
 
         return {
           ...section,
-
           colors: [
             ...section.colors,
-            createColorGroup(nextColor),
+            createColorGroup(
+              colors.find(color => !used.has(color)) ||
+                colors[0] ||
+                ""
+            ),
           ],
         };
       })
     );
-
-    clearResult();
   }
 
-  function removeColorGroup(
-    sectionId,
-    colorGroupId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        if (section.colors.length <= 1) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.filter(
-            (group) =>
-              group.id !== colorGroupId
-          ),
-        };
-      })
-    );
-
-    clearResult();
-  }
-
-  function updateColorGroup(
-    sectionId,
-    colorGroupId,
-    color
-  ) {
-    const normalized = normalizeColor(color);
-
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.map((group) =>
-            group.id === colorGroupId
-              ? {
-                  ...group,
-                  color: normalized,
-                }
-              : group
-          ),
-        };
-      })
-    );
-
-    clearResult();
-  }
-
-  function addSize(
-    sectionId,
-    colorGroupId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.map((group) =>
-            group.id === colorGroupId
-              ? {
-                  ...group,
-                  sizes: [
-                    ...group.sizes,
-                    createSize(),
-                  ],
-                }
-              : group
-          ),
-        };
-      })
-    );
-
-    clearResult();
-  }
-
-  function removeSize(
-    sectionId,
-    colorGroupId,
-    sizeId
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.map((group) => {
-            if (group.id !== colorGroupId) {
-              return group;
-            }
-
-            if (group.sizes.length <= 1) {
-              return group;
-            }
-
-            return {
-              ...group,
-
-              sizes: group.sizes.filter(
-                (size) => size.id !== sizeId
+  function removeColorGroup(id, groupId) {
+    changeSections(previous =>
+      previous.map(section =>
+        section.id === id && section.colors.length > 1
+          ? {
+              ...section,
+              colors: section.colors.filter(
+                group => group.id !== groupId
               ),
-            };
-          }),
-        };
-      })
+            }
+          : section
+      )
     );
-
-    clearResult();
   }
 
-  function updateSize(
-    sectionId,
-    colorGroupId,
-    sizeId,
-    field,
-    value
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
+  function updateColorGroup(id, groupId, color) {
+    changeGroup(id, groupId, group => ({
+      ...group,
+      color: normalizeColor(color),
+    }));
+  }
 
-        return {
-          ...section,
+  function addSize(id, groupId) {
+    changeGroup(id, groupId, group => ({
+      ...group,
+      sizes: [...group.sizes, createSize()],
+    }));
+  }
 
-          colors: section.colors.map((group) => {
-            if (group.id !== colorGroupId) {
-              return group;
-            }
+  function removeSize(id, groupId, sizeId) {
+    changeGroup(id, groupId, group =>
+      group.sizes.length > 1
+        ? {
+            ...group,
+            sizes: group.sizes.filter(size => size.id !== sizeId),
+          }
+        : group
+    );
+  }
 
-            return {
-              ...group,
+  function updateSize(id, groupId, sizeId, field, value) {
+    changeGroup(id, groupId, group => ({
+      ...group,
+      sizes: group.sizes.map(size =>
+        size.id === sizeId
+          ? { ...size, [field]: value }
+          : size
+      ),
+    }));
+  }
 
-              sizes: group.sizes.map((size) =>
-                size.id === sizeId
-                  ? {
-                      ...size,
-                      [field]: value,
-                    }
-                  : size
+  function changeQuantity(id, groupId, sizeId, amount) {
+    changeGroup(id, groupId, group => ({
+      ...group,
+      sizes: group.sizes.map(size =>
+        size.id === sizeId
+          ? {
+              ...size,
+              quantity: Math.max(
+                1,
+                Math.min(
+                  500,
+                  Math.floor(Number(size.quantity) || 1) + amount
+                )
               ),
-            };
-          }),
-        };
-      })
-    );
-
-    clearResult();
-  }
-
-  function changeQuantity(
-    sectionId,
-    colorGroupId,
-    sizeId,
-    amount
-  ) {
-    setSections((prev) =>
-      prev.map((section) => {
-        if (section.id !== sectionId) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.map((group) => {
-            if (group.id !== colorGroupId) {
-              return group;
             }
-
-            return {
-              ...group,
-
-              sizes: group.sizes.map((size) => {
-                if (size.id !== sizeId) {
-                  return size;
-                }
-
-                const current = Math.max(
-                  1,
-                  Number(size.quantity) || 1
-                );
-
-                return {
-                  ...size,
-
-                  quantity: Math.max(
-                    1,
-                    current + amount
-                  ),
-                };
-              }),
-            };
-          }),
-        };
-      })
-    );
-
-    clearResult();
+          : size
+      ),
+    }));
   }
 
-  function openBulkEditor(
-    sectionId,
-    colorGroupId
-  ) {
+  function openBulkEditor(sectionId, colorGroupId) {
     setBulkEditor({
       sectionId,
       colorGroupId,
@@ -582,103 +504,81 @@ export default function FilmCuttingOptimizer() {
   function applyBulkEditor() {
     if (!bulkEditor) return;
 
-    const parsed = parseBulkSizes(
-      bulkEditor.text
-    );
+    const parsed = parseBulkSizes(bulkEditor.text);
 
-    if (!parsed.length) {
-      setErrors([
-        "입력 형식을 확인해주세요. 예: 480.2100.2",
-      ]);
+    if (parsed.errors.length || !parsed.sizes.length) {
+      window.alert(
+        parsed.errors.length
+          ? parsed.errors.slice(0, 10).join("\n")
+          : "사이즈를 입력해주세요. 예: 480.2100.2"
+      );
 
       return;
     }
 
-    setSections((prev) =>
-      prev.map((section) => {
-        if (
-          section.id !==
-          bulkEditor.sectionId
-        ) {
-          return section;
-        }
-
-        return {
-          ...section,
-
-          colors: section.colors.map((group) => {
-            if (
-              group.id !==
-              bulkEditor.colorGroupId
-            ) {
-              return group;
-            }
-
-            const onlyBlank =
-              group.sizes.length === 1 &&
-              isBlankSize(group.sizes[0]);
-
-            return {
-              ...group,
-
-              sizes: onlyBlank
-                ? parsed
-                : [
-                    ...group.sizes,
-                    ...parsed,
-                  ],
-            };
-          }),
-        };
+    changeGroup(
+      bulkEditor.sectionId,
+      bulkEditor.colorGroupId,
+      group => ({
+        ...group,
+        sizes:
+          group.sizes.length === 1 &&
+          isBlankSize(group.sizes[0])
+            ? parsed.sizes
+            : [...group.sizes, ...parsed.sizes],
       })
     );
 
     setBulkEditor(null);
-    setErrors([]);
-    setResult(null);
   }
 
   function resetAll() {
+    if (
+      !window.confirm(
+        "입력한 롤과 재단 사이즈를 모두 초기화하시겠습니까?"
+      )
+    ) {
+      return;
+    }
+
     setRolls([createRoll()]);
     setSections([createSection()]);
     setRollMode("waste");
-    setIterations(350);
-
-    setResult(null);
-    setErrors([]);
+    clearResult();
     setBulkEditor(null);
   }
 
   function calculate() {
-    setErrors([]);
-    setResult(null);
+    if (calculationLock.current) return;
+
+    calculationLock.current = true;
+    clearResult();
     setCalculating(true);
 
-    window.setTimeout(() => {
+    calculationTimer.current = window.setTimeout(() => {
       try {
         const response = optimizeCutting({
           rolls,
           sections,
           rollMode,
-          iterations,
         });
 
-        setErrors(
-          response.errors || []
-        );
-
-        setResult(
-          response.result || null
-        );
+        if (mounted.current) {
+          setErrors(response.errors || []);
+          setResult(response.result || null);
+        }
       } catch (error) {
-        console.error(error);
-
-        setErrors([
-          error?.message ||
-            "재단 계산 중 오류가 발생했습니다.",
-        ]);
+        if (mounted.current) {
+          setErrors([
+            error?.message || "재단 계산 중 오류가 발생했습니다.",
+          ]);
+        }
       } finally {
-        setCalculating(false);
+        calculationLock.current = false;
+
+        if (mounted.current) {
+          setCalculating(false);
+        }
       }
     }, 30);
   }
@@ -688,17 +588,11 @@ export default function FilmCuttingOptimizer() {
       <div className={styles.container}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>
-              FILM CUTTING
-            </p>
-
-            <h1 className={styles.title}>
-              필름 재단
-            </h1>
+            <p className={styles.eyebrow}>FILM CUTTING</p>
+            <h1 className={styles.title}>필름 재단</h1>
 
             <p className={styles.description}>
-              폭 {FILM_WIDTH}mm · 컬러별 보유 롤
-              최적 재단
+              폭 {FILM_WIDTH}mm · 컬러별 보유 롤 최적 재단
             </p>
           </div>
 
@@ -706,72 +600,76 @@ export default function FilmCuttingOptimizer() {
             type="button"
             className={styles.resetButton}
             onClick={resetAll}
+            disabled={calculating || !draftReady}
           >
             전체 초기화
           </button>
         </header>
 
+        <p
+          role="status"
+          style={{
+            color: "#64748b",
+            fontSize: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          {saveStatus || "입력 내용을 준비하고 있습니다…"}
+        </p>
+
         <div className={styles.summaryBar}>
-          <SummaryPill
-            label="롤"
-            value={`${summary.rollCount}개`}
-          />
-
-          <SummaryPill
-            label="컬러"
-            value={`${summary.colorCount}종`}
-          />
-
-          <SummaryPill
-            label="부위"
-            value={`${summary.sectionCount}개`}
-          />
-
-          <SummaryPill
-            label="재단"
-            value={`${summary.pieceCount}장`}
-          />
+          <SummaryPill label="롤" value={`${summary.rollCount}개`} />
+          <SummaryPill label="컬러" value={`${summary.colorCount}종`} />
+          <SummaryPill label="부위" value={`${summary.sectionCount}개`} />
+          <SummaryPill label="재단" value={`${summary.pieceCount}장`} />
         </div>
 
-        <CuttingInput
-          styles={styles}
-          rolls={rolls}
-          sections={sections}
-          colors={colors}
-          bulkEditor={bulkEditor}
-          setBulkEditor={setBulkEditor}
-          addRoll={addRoll}
-          removeRoll={removeRoll}
-          updateRoll={updateRoll}
-          addSection={addSection}
-          removeSection={removeSection}
-          copySection={copySection}
-          updateSection={updateSection}
-          addColorGroup={addColorGroup}
-          removeColorGroup={removeColorGroup}
-          updateColorGroup={updateColorGroup}
-          addSize={addSize}
-          removeSize={removeSize}
-          updateSize={updateSize}
-          changeQuantity={changeQuantity}
-          openBulkEditor={openBulkEditor}
-          closeBulkEditor={closeBulkEditor}
-          applyBulkEditor={applyBulkEditor}
-        />
+        <fieldset
+          disabled={calculating || !draftReady}
+          style={{
+            border: 0,
+            padding: 0,
+            margin: 0,
+            minWidth: 0,
+          }}
+        >
+          <CuttingInput
+            styles={styles}
+            rolls={rolls}
+            sections={sections}
+            colors={colors}
+            bulkEditor={bulkEditor}
+            setBulkEditor={setBulkEditor}
+            addRoll={addRoll}
+            removeRoll={removeRoll}
+            updateRoll={updateRoll}
+            addSection={addSection}
+            removeSection={removeSection}
+            copySection={copySection}
+            updateSection={updateSection}
+            addColorGroup={addColorGroup}
+            removeColorGroup={removeColorGroup}
+            updateColorGroup={updateColorGroup}
+            addSize={addSize}
+            removeSize={removeSize}
+            updateSize={updateSize}
+            changeQuantity={changeQuantity}
+            openBulkEditor={openBulkEditor}
+            closeBulkEditor={closeBulkEditor}
+            applyBulkEditor={applyBulkEditor}
+          />
+        </fieldset>
 
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <span className={styles.step}>
-                3
-              </span>
+              <span className={styles.step}>3</span>
 
               <div>
                 <h2>최적 재단 계산</h2>
-
                 <p>
-                  입력한 재단물을 보유 롤에
-                  배치합니다.
+                  같은 길이는 함께 배치하고 남는 난단에
+                  작은 재단물을 넣습니다.
                 </p>
               </div>
             </div>
@@ -782,94 +680,63 @@ export default function FilmCuttingOptimizer() {
               <span>롤 사용 기준</span>
 
               <select
+                disabled={calculating || !draftReady}
                 value={rollMode}
-                onChange={(e) =>
-                  setRollMode(
-                    e.target.value
-                  )
-                }
+                onChange={event => {
+                  setRollMode(event.target.value);
+                  clearResult();
+                }}
               >
-                <option value="waste">
-                  사용 길이 최소
-                </option>
-
-                <option value="short-first">
-                  짧은 롤 우선
-                </option>
-              </select>
-            </label>
-
-            <label>
-              <span>계산 정밀도</span>
-
-              <select
-                value={iterations}
-                onChange={(e) =>
-                  setIterations(
-                    Number(
-                      e.target.value
-                    )
-                  )
-                }
-              >
-                <option value={150}>
-                  빠르게
-                </option>
-
-                <option value={350}>
-                  보통
-                </option>
-
-                <option value={800}>
-                  정밀
-                </option>
+                <option value="waste">사용 길이 최소</option>
+                <option value="short-first">짧은 롤 우선</option>
               </select>
             </label>
           </div>
 
+          <p
+            style={{
+              color: "#64748b",
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            짧은 롤 우선은 짧은 롤부터 사용합니다.
+            현재 롤에 들어갈 재단물이 남아 있으면
+            다음 롤로 넘어가지 않습니다.
+          </p>
+
           <button
             type="button"
             className={styles.calculateButton}
-            disabled={calculating}
+            disabled={calculating || !draftReady}
             onClick={calculate}
           >
-            {calculating
-              ? "계산 중..."
-              : "최적 재단 계산"}
+            {calculating ? "계산 중..." : "최적 재단 계산"}
           </button>
 
           {errors.length > 0 && (
-            <div className={styles.errorBox}>
-              {errors.map(
-                (error, index) => (
-                  <p key={index}>
-                    • {error}
-                  </p>
-                )
-              )}
+            <div role="alert" className={styles.errorBox}>
+              {errors.map((error, index) => (
+                <p key={index}>• {error}</p>
+              ))}
             </div>
           )}
         </section>
 
         <CuttingResult
           result={result}
-          onClose={() =>
-            setResult(null)
-          }
+          onClose={() => setResult(null)}
         />
       </div>
     </main>
   );
 }
 
-function SummaryPill({
-  label,
-  value,
-}) {
+function SummaryPill({ label, value }) {
   return (
     <div className={styles.summaryPill}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );
-                      }
+        }
