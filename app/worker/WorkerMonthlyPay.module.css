@@ -1,31 +1,204 @@
-.card { background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 22px; margin-bottom: 20px; color: #172033; }
-.heading, .monthNav, .companyHeading, .entryHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.heading h2 { margin: 0; font-size: 19px; }
-.refresh, .monthNav button { min-height: 44px; border: 1px solid #dbe2ea; border-radius: 10px; background: #fff; color: #334155; cursor: pointer; font: inherit; font-weight: 700; }
-.refresh { padding: 0 12px; font-size: 12px; }
-.monthNav { justify-content: center; margin: 16px 0 12px; }
-.monthNav button { min-width: 44px; font-size: 26px; }
-.monthNav strong { min-width: 135px; text-align: center; }
-.card button:disabled { opacity: .4; cursor: default; }
-.card button:focus-visible, .card summary:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
-.total { font-size: clamp(27px, 6vw, 36px); font-weight: 850; letter-spacing: -.03em; margin: 16px 0 20px; text-align: center; overflow-wrap: anywhere; }
-.days { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.days div { background: #f1f5f9; border-radius: 12px; padding: 14px; display: grid; gap: 6px; }
-.days div:first-child { background: #eff6ff; color: #1d4ed8; }
-.days span { font-size: 13px; }
-.days strong { font-size: 23px; }
-.breakdown { display: grid; gap: 10px; margin: 18px 0; font-size: 14px; }
-.breakdown div { display: flex; justify-content: space-between; gap: 12px; }
-.breakdown dt { color: #64748b; }
-.breakdown dd { margin: 0; font-weight: 750; text-align: right; }
-.note, .warning, .error { font-size: 12px; line-height: 1.65; margin: 12px 0 0; color: #64748b; overflow-wrap: anywhere; }
-.warning { background: #fffbeb; color: #92400e; padding: 10px; border-radius: 8px; }
-.error { color: #b91c1c; }
-.company { border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: 10px; }
-.companyHeading { flex-wrap: wrap; font-size: 14px; padding: 4px 0; }
-.card summary { padding: 13px 0; min-height: 44px; box-sizing: border-box; cursor: pointer; color: #334155; font-size: 13px; font-weight: 700; }
-.entries { padding: 0; margin: 0; list-style: none; }
-.entries li { padding: 13px 0; border-top: 1px solid #f1f5f9; }
-.entryHeading { align-items: flex-start; flex-wrap: wrap; font-size: 13px; }
-.entries p { font-size: 12px; line-height: 1.5; color: #64748b; margin: 6px 0 0; overflow-wrap: anywhere; }
-@media (max-width: 380px) { .card { padding: 16px; } .heading h2 { font-size: 17px; } }
+.card {
+  background: #fff;
+  border: 1px solid var(--film-line, #e7eaf0);
+  border-radius: 22px;
+  padding: 22px;
+  margin-bottom: 20px;
+  color: #172033;
+  box-shadow: var(--film-shadow, 0 5px 24px #23395506);
+}
+
+.heading,
+.monthNav,
+.companyHeading,
+.entryHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.refresh,
+.monthNav button {
+  min-height: 44px;
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.refresh {
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.monthNav {
+  justify-content: center;
+  margin: 16px 0 12px;
+}
+
+.monthNav button {
+  min-width: 44px;
+  font-size: 26px;
+}
+
+.monthNav strong {
+  min-width: 135px;
+  text-align: center;
+}
+
+.card button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.card button:focus-visible,
+.card summary:focus-visible {
+  outline: 3px solid #60a5fa;
+  outline-offset: 3px;
+}
+
+.total {
+  font-size: clamp(27px, 6vw, 36px);
+  font-weight: 850;
+  letter-spacing: -.03em;
+  margin: 16px 0 20px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.days div {
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.days div:first-child {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.days span {
+  font-size: 13px;
+}
+
+.days strong {
+  font-size: 23px;
+}
+
+.breakdown {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+  font-size: 14px;
+}
+
+.breakdown div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.breakdown dt {
+  color: #64748b;
+}
+
+.breakdown dd {
+  margin: 0;
+  font-weight: 750;
+  text-align: right;
+}
+
+.note,
+.warning,
+.error {
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 12px 0 0;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.warning {
+  background: #fffbeb;
+  color: #92400e;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.company {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.companyHeading {
+  flex-wrap: wrap;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.card summary {
+  padding: 13px 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  cursor: pointer;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.entries {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.entries li {
+  padding: 13px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.entryHeading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.entries p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 380px) {
+  .card {
+    padding: 16px;
+  }
+
+  .heading h2 {
+    font-size: 17px;
+  }
+}
