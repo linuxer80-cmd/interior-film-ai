@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import ToolIllustration from "../components/ui/ToolIllustration";
 import ui from "../admin/AdminUi.module.css";
 import {
   disablePushNotifications,
@@ -19,8 +20,8 @@ export default function SuperAdminPage() {
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [notificationUnreadCount, setNotificationUnreadCount] =
-    useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -33,9 +34,7 @@ export default function SuperAdminPage() {
     } = await supabase.auth.getUser();
 
     if (authError) {
-      throw new Error(
-        `로그인 확인 실패: ${authError.message}`,
-      );
+      throw new Error(`로그인 확인 실패: ${authError.message}`);
     }
 
     const user = authData?.user;
@@ -46,73 +45,50 @@ export default function SuperAdminPage() {
 
     setUserEmail(user.email || "");
 
-    const { data, error } = await supabase.rpc(
-      "get_super_admin_status",
-    );
+    const { data, error } = await supabase.rpc("get_super_admin_status");
 
     if (error) {
-      throw new Error(
-        `슈퍼관리자 확인 실패: ${error.message}`,
-      );
+      throw new Error(`슈퍼관리자 확인 실패: ${error.message}`);
     }
 
-    const status = Array.isArray(data)
-      ? data[0]
-      : data;
+    const status = Array.isArray(data) ? data[0] : data;
 
     if (!status?.is_super_admin) {
-      throw new Error(
-        "슈퍼관리자 권한이 없습니다.",
-      );
+      throw new Error("슈퍼관리자 권한이 없습니다.");
     }
 
     setAuthorized(true);
-    setAdminName(
-      status?.name || "슈퍼관리자",
-    );
+    setAdminName(status?.name || "슈퍼관리자");
 
     return true;
   }, []);
 
   const loadCompanies = useCallback(async () => {
     const { data, error } = await supabase.rpc(
-      "super_admin_get_companies",
+      "super_admin_get_companies"
     );
 
     if (error) {
-      throw new Error(
-        `회사 목록 조회 실패: ${error.message}`,
-      );
+      throw new Error(`회사 목록 조회 실패: ${error.message}`);
     }
 
-    setCompanies(
-      Array.isArray(data) ? data : [],
-    );
+    setCompanies(Array.isArray(data) ? data : []);
   }, []);
 
-  const loadNotificationUnreadCount =
-    useCallback(async () => {
-      const { data, error } = await supabase.rpc(
-        "get_unread_notification_count",
-      );
+  const loadNotificationUnreadCount = useCallback(async () => {
+    const { data, error } = await supabase.rpc(
+      "get_unread_notification_count"
+    );
 
-      if (error) {
-        console.error(
-          "알림 개수 조회:",
-          error,
-        );
-        return;
-      }
+    if (error) {
+      console.error("알림 개수 조회:", error);
+      return;
+    }
 
-      const count =
-        Number(
-          Array.isArray(data)
-            ? data[0]
-            : data,
-        ) || 0;
+    const count = Number(Array.isArray(data) ? data[0] : data) || 0;
 
-      setNotificationUnreadCount(count);
-    }, []);
+    setNotificationUnreadCount(count);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -131,19 +107,13 @@ export default function SuperAdminPage() {
           loadNotificationUnreadCount(),
         ]);
       } catch (error) {
-        console.error(
-          "슈퍼관리자 초기화:",
-          error,
-        );
+        console.error("슈퍼관리자 초기화:", error);
 
         if (!alive) return;
 
         setAuthorized(false);
         setMessage(
-          `❌ ${
-            error?.message ||
-            "페이지를 불러오지 못했습니다."
-          }`,
+          `❌ ${error?.message || "페이지를 불러오지 못했습니다."}`
         );
       } finally {
         if (alive) {
@@ -164,36 +134,28 @@ export default function SuperAdminPage() {
   ]);
 
   useEffect(() => {
-    if (!authorized) {
-      return;
-    }
+    if (!authorized) return;
 
     const channel = supabase
-      .channel(
-        "super-admin-home-notifications-realtime",
-      )
+      .channel("super-admin-home-notifications-realtime")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "notifications",
-          filter:
-            "recipient_type=eq.super_admin",
+          filter: "recipient_type=eq.super_admin",
         },
         () => {
           loadNotificationUnreadCount();
-        },
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [
-    authorized,
-    loadNotificationUnreadCount,
-  ]);
+  }, [authorized, loadNotificationUnreadCount]);
 
   const loadPushStatus = useCallback(async () => {
     const supported = isPushSupported();
@@ -206,18 +168,10 @@ export default function SuperAdminPage() {
     }
 
     try {
-      const status =
-        await getPushSubscriptionStatus();
-
-      setPushEnabled(
-        Boolean(status?.enabled),
-      );
+      const status = await getPushSubscriptionStatus();
+      setPushEnabled(Boolean(status?.enabled));
     } catch (error) {
-      console.error(
-        "Push 상태 확인:",
-        error,
-      );
-
+      console.error("Push 상태 확인:", error);
       setPushEnabled(false);
     }
   }, []);
@@ -226,10 +180,7 @@ export default function SuperAdminPage() {
     if (!authorized) return;
 
     loadPushStatus();
-  }, [
-    authorized,
-    loadPushStatus,
-  ]);
+  }, [authorized, loadPushStatus]);
 
   async function handleEnablePush() {
     setPushLoading(true);
@@ -237,23 +188,13 @@ export default function SuperAdminPage() {
 
     try {
       await enablePushNotifications();
-
       setPushEnabled(true);
-      setPushMessage(
-        "✅ 이 휴대폰의 알림이 켜졌습니다.",
-      );
+      setPushMessage("✅ 이 휴대폰의 알림이 켜졌습니다.");
     } catch (error) {
-      console.error(
-        "Push 알림 켜기:",
-        error,
-      );
-
+      console.error("Push 알림 켜기:", error);
       setPushEnabled(false);
       setPushMessage(
-        `❌ ${
-          error?.message ||
-          "휴대폰 알림 등록에 실패했습니다."
-        }`,
+        `❌ ${error?.message || "휴대폰 알림 등록에 실패했습니다."}`
       );
     } finally {
       setPushLoading(false);
@@ -262,7 +203,7 @@ export default function SuperAdminPage() {
 
   async function handleDisablePush() {
     const confirmed = window.confirm(
-      "이 휴대폰의 슈퍼관리자 Push 알림을 끌까요?",
+      "이 휴대폰의 슈퍼관리자 Push 알림을 끌까요?"
     );
 
     if (!confirmed) return;
@@ -272,22 +213,12 @@ export default function SuperAdminPage() {
 
     try {
       await disablePushNotifications();
-
       setPushEnabled(false);
-      setPushMessage(
-        "✅ 이 휴대폰의 알림을 껐습니다.",
-      );
+      setPushMessage("✅ 이 휴대폰의 알림을 껐습니다.");
     } catch (error) {
-      console.error(
-        "Push 알림 끄기:",
-        error,
-      );
-
+      console.error("Push 알림 끄기:", error);
       setPushMessage(
-        `❌ ${
-          error?.message ||
-          "휴대폰 알림 해제에 실패했습니다."
-        }`,
+        `❌ ${error?.message || "휴대폰 알림 해제에 실패했습니다."}`
       );
     } finally {
       setPushLoading(false);
@@ -297,17 +228,11 @@ export default function SuperAdminPage() {
   async function changeCompanyActive(company) {
     if (!company?.id) return;
 
-    const nextActive =
-      !Boolean(company.is_active);
-
-    const actionText = nextActive
-      ? "활성화"
-      : "정지";
+    const nextActive = !Boolean(company.is_active);
+    const actionText = nextActive ? "활성화" : "정지";
 
     const confirmed = window.confirm(
-      `${
-        company.company_name || "회사"
-      }를 ${actionText}할까요?`,
+      `${company.company_name || "회사"}를 ${actionText}할까요?`
     );
 
     if (!confirmed) return;
@@ -321,92 +246,70 @@ export default function SuperAdminPage() {
         {
           p_company_id: company.id,
           p_is_active: nextActive,
-        },
+        }
       );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      const updated = Array.isArray(data)
-        ? data[0]
-        : data;
+      const updated = Array.isArray(data) ? data[0] : data;
 
       setCompanies((current) =>
         current.map((item) =>
           item.id === company.id
             ? {
                 ...item,
-                is_active:
-                  updated?.is_active ??
-                  nextActive,
+                is_active: updated?.is_active ?? nextActive,
               }
-            : item,
-        ),
+            : item
+        )
       );
 
       setMessage(
         `✅ ${company.company_name} ${
           nextActive ? "활성화" : "정지"
-        } 완료`,
+        } 완료`
       );
     } catch (error) {
-      console.error(
-        "회사 상태 변경:",
-        error,
-      );
-
+      console.error("회사 상태 변경:", error);
       setMessage(
         `❌ 회사 상태 변경 실패: ${
-          error?.message ||
-          "오류가 발생했습니다."
-        }`,
+          error?.message || "오류가 발생했습니다."
+        }`
       );
     } finally {
       setChangingId(null);
     }
   }
 
-  function openPlans() {
-    window.location.href =
-      "/super-admin/plans";
+  async function refreshCompanies() {
+    setMessage("");
+
+    try {
+      await Promise.all([
+        loadCompanies(),
+        loadNotificationUnreadCount(),
+      ]);
+
+      setMessage("✅ 회사 목록을 새로고침했습니다.");
+    } catch (error) {
+      setMessage(`❌ ${error?.message || "새로고침 실패"}`);
+    }
   }
 
-  function openStructureAnalysis() {
-    window.location.href =
-      "/super-admin/structure";
-  }
-
-  function openNotifications() {
-    window.location.href =
-      "/super-admin/notifications";
-  }
-
-  function openBilling() {
-    window.location.href =
-      "/super-admin/billing";
-  }
-
-  function openMaterialOrders() {
-    window.location.href =
-      "/super-admin/material-orders";
+  function openPage(path) {
+    window.location.href = path;
   }
 
   function openCompany(company) {
     if (!company?.id) return;
 
-    window.location.href =
-      `/super-admin/company/${company.id}`;
+    openPage(`/super-admin/company/${company.id}`);
   }
 
   const filteredCompanies = useMemo(() => {
-    const keyword = search
-      .trim()
-      .toLowerCase();
+    const keyword = search.trim().toLowerCase();
 
-    if (!keyword) {
-      return companies;
-    }
+    if (!keyword) return companies;
 
     return companies.filter((company) => {
       const text = [
@@ -423,35 +326,26 @@ export default function SuperAdminPage() {
 
       return text.includes(keyword);
     });
-  }, [
-    companies,
-    search,
-  ]);
+  }, [companies, search]);
 
   const totalCount = companies.length;
-
   const activeCount = companies.filter(
-    (item) => item.is_active === true,
+    (item) => item.is_active === true
   ).length;
-
-  const inactiveCount =
-    totalCount - activeCount;
+  const inactiveCount = totalCount - activeCount;
 
   if (loading) {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.loadingIcon}>
-            🛡️
-          </div>
+          <div style={styles.loadingIcon}>🛡️</div>
 
           <div style={styles.loadingTitle}>
             슈퍼관리자 확인 중...
           </div>
 
           <div style={styles.loadingText}>
-            관리자 권한과 회사 정보를
-            불러오고 있습니다.
+            관리자 권한과 회사 정보를 불러오고 있습니다.
           </div>
         </div>
       </main>
@@ -462,20 +356,16 @@ export default function SuperAdminPage() {
     return (
       <main style={styles.page}>
         <div style={styles.centerBox}>
-          <div style={styles.deniedIcon}>
-            🔒
-          </div>
+          <div style={styles.deniedIcon}>🔒</div>
 
-          <h2 style={styles.deniedTitle}>
-            접근할 수 없습니다
-          </h2>
+          <h2 style={styles.deniedTitle}>접근할 수 없습니다</h2>
 
           <div style={styles.deniedText}>
             슈퍼관리자 전용 페이지입니다.
           </div>
 
           {message && (
-            <div style={styles.errorBox}>
+            <div role="alert" style={styles.errorBox}>
               {message}
             </div>
           )}
@@ -483,10 +373,7 @@ export default function SuperAdminPage() {
           <button
             type="button"
             style={styles.homeButton}
-            onClick={() => {
-              window.location.href =
-                "/admin";
-            }}
+            onClick={() => openPage("/admin")}
           >
             관리자 페이지로 이동
           </button>
@@ -499,169 +386,293 @@ export default function SuperAdminPage() {
     <main className={ui.page}>
       <header className={ui.header}>
         <div>
-          <div className={ui.eyebrow}>SUPER ADMIN</div>
+          <div className={ui.eyebrow}>필름장이 · 슈퍼관리자</div>
           <h1 className={ui.title}>서비스 관리</h1>
         </div>
       </header>
-      <a className={ui.secondary} href="/admin" style={{ width: "100%", justifyContent: "space-between", marginBottom: 20 }}>
-        관리자 페이지로 이동 <span aria-hidden="true">↗</span>
+
+      <a
+        className={ui.secondary}
+        href="/admin"
+        style={{
+          width: "100%",
+          justifyContent: "space-between",
+          marginBottom: 20,
+          boxSizing: "border-box",
+        }}
+      >
+        관리자 페이지로 이동
+        <span aria-hidden="true">↗</span>
       </a>
+
       <div className={ui.tasks}>
-        <button type="button" className={ui.task} onClick={openNotifications}>
+        <button
+          type="button"
+          className={ui.task}
+          onClick={() => openPage("/super-admin/notifications")}
+        >
+          <ToolIllustration kind="report" size={46} />
           <span>새 알림</span>
-          <strong>{notificationUnreadCount.toLocaleString("ko-KR")}<small> 건</small></strong>
+
+          <strong>
+            {notificationUnreadCount.toLocaleString("ko-KR")}
+            <small> 건</small>
+          </strong>
         </button>
-        <button type="button" className={ui.task} onClick={openMaterialOrders}>
+
+        <button
+          type="button"
+          className={ui.task}
+          onClick={() => openPage("/super-admin/material-orders")}
+        >
+          <ToolIllustration kind="film" size={46} />
           <span>자재 주문</span>
-          <strong style={{ fontSize: 19 }}>주문 확인 <span aria-hidden="true">↗</span></strong>
+
+          <strong style={{ fontSize: 19 }}>
+            주문 확인 <span aria-hidden="true">↗</span>
+          </strong>
         </button>
       </div>
+
       <section>
         <div className={ui.sectionHeading}>
           <div>
             <h2>업체 관리</h2>
-            <p className={ui.help} style={{ margin: "6px 0 0" }}>전체 {totalCount} · 운영 {activeCount} · 중지 {inactiveCount}</p>
-          </div>
-          <button type="button" className={ui.secondary} onClick={async () => {
-            setMessage("");
-            try {
-              await Promise.all([loadCompanies(), loadNotificationUnreadCount()]);
-              setMessage("✅ 회사 목록을 새로고침했습니다.");
-            } catch (error) { setMessage(`❌ ${error?.message || "새로고침 실패"}`); }
-          }}>새로고침</button>
-        </div>
-        <input type="search" aria-label="회사명, 대표자, 전화번호 검색" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="회사명, 대표자, 전화번호 검색" style={styles.searchInput} />
-        {message && <div role="status" style={{ ...styles.message, ...(message.startsWith("❌") ? styles.messageError : styles.messageSuccess) }}>{message}</div>}
-        <div style={styles.companyList}>
-          {filteredCompanies.length === 0 ? <div style={styles.empty}>검색 결과가 없습니다.</div> : filteredCompanies.map((company) => (
-            <CompanyCard key={company.id} company={company} changing={changingId === company.id} onManage={() => openCompany(company)} onToggle={() => changeCompanyActive(company)} />
-          ))}
-        </div>
-      </section>
-      <details className={ui.more}>
-        <summary>운영 메뉴 더보기</summary>
-        <div className={ui.moreGrid}>
-          <button type="button" onClick={openPlans}>요금제 관리</button>
-          <button type="button" onClick={openBilling}>결제 관리</button>
-          <button type="button" onClick={openStructureAnalysis}>구조분석 관리</button>
-          <a href="/super-admin/materials">자재 관리</a>
-        </div>
-        <details className={ui.more}>
-          <summary>알림 설정</summary>
-        <div style={styles.pushBox}>
-          <div style={styles.pushInfo}>
-            <div style={styles.pushTitle}>
-              📱 휴대폰 Push 알림
-            </div>
 
-            <div style={styles.pushDescription}>
-              {pushSupported
-                ? pushEnabled
-                  ? "이 휴대폰은 슈퍼관리자 알림을 받을 수 있습니다."
-                  : "앱을 닫아도 신규 업체·결제·만료 등의 알림을 받을 수 있습니다."
-                : "현재 브라우저에서는 Web Push 알림을 지원하지 않습니다."}
-            </div>
-
-            {pushMessage && (
-              <div
-                style={{
-                  ...styles.pushMessage,
-                  ...(pushMessage.startsWith("❌")
-                    ? styles.pushMessageError
-                    : styles.pushMessageSuccess),
-                }}
-              >
-                {pushMessage}
-              </div>
-            )}
+            <p className={ui.help} style={{ margin: "6px 0 0" }}>
+              전체 {totalCount} · 운영 {activeCount} · 중지 {inactiveCount}
+            </p>
           </div>
 
           <button
             type="button"
-            disabled={
-              !pushSupported ||
-              pushLoading
-            }
-            onClick={
-              pushEnabled
-                ? handleDisablePush
-                : handleEnablePush
-            }
-            style={{
-              ...styles.pushButton,
-              ...(pushEnabled
-                ? styles.pushButtonEnabled
-                : styles.pushButtonDisabled),
-              opacity:
-                !pushSupported ||
-                pushLoading
-                  ? 0.55
-                  : 1,
-            }}
+            className={ui.secondary}
+            onClick={refreshCompanies}
           >
-            {pushLoading
-              ? "처리 중..."
-              : pushEnabled
-                ? "✅ 알림 켜짐"
-                : "🔔 알림 켜기"}
+            새로고침
           </button>
         </div>
 
+        <input
+          type="search"
+          aria-label="회사명, 대표자, 전화번호 검색"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="회사명, 대표자, 전화번호 검색"
+          style={styles.searchInput}
+        />
+
+        {message && (
+          <div
+            role="status"
+            style={{
+              ...styles.message,
+              ...(message.startsWith("❌")
+                ? styles.messageError
+                : styles.messageSuccess),
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        <div style={styles.companyList}>
+          {filteredCompanies.length === 0 ? (
+            <div style={styles.empty}>검색 결과가 없습니다.</div>
+          ) : (
+            filteredCompanies.map((company) => (
+              <CompanyCard
+                key={company.id}
+                company={company}
+                changing={changingId === company.id}
+                onManage={() => openCompany(company)}
+                onToggle={() => changeCompanyActive(company)}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <details className={ui.more}>
+        <summary>운영 메뉴 더보기</summary>
+
+        <div className={ui.moreGrid}>
+          <button
+            type="button"
+            onClick={() => openPage("/super-admin/plans")}
+          >
+            요금제 관리
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openPage("/super-admin/billing")}
+          >
+            결제 관리
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openPage("/super-admin/structure")}
+          >
+            구조분석 관리
+          </button>
+
+          <a href="/super-admin/materials">자재 관리</a>
+        </div>
+
+        <details className={ui.more}>
+          <summary>알림 설정</summary>
+
+          <div style={styles.pushBox}>
+            <div style={styles.pushInfo}>
+              <div style={styles.pushTitle}>📱 휴대폰 Push 알림</div>
+
+              <div style={styles.pushDescription}>
+                {pushSupported
+                  ? pushEnabled
+                    ? "이 휴대폰은 슈퍼관리자 알림을 받을 수 있습니다."
+                    : "앱을 닫아도 신규 업체·결제·만료 등의 알림을 받을 수 있습니다."
+                  : "현재 브라우저에서는 Web Push 알림을 지원하지 않습니다."}
+              </div>
+
+              {pushMessage && (
+                <div
+                  role="status"
+                  style={{
+                    ...styles.pushMessage,
+                    color: pushMessage.startsWith("❌")
+                      ? "#991b1b"
+                      : "#166534",
+                  }}
+                >
+                  {pushMessage}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              disabled={!pushSupported || pushLoading}
+              onClick={
+                pushEnabled ? handleDisablePush : handleEnablePush
+              }
+              style={{
+                ...styles.pushButton,
+                ...(pushEnabled
+                  ? styles.pushButtonEnabled
+                  : styles.pushButtonDisabled),
+                opacity: !pushSupported || pushLoading ? 0.55 : 1,
+              }}
+            >
+              {pushLoading
+                ? "처리 중..."
+                : pushEnabled
+                  ? "✅ 알림 켜짐"
+                  : "🔔 알림 켜기"}
+            </button>
+          </div>
         </details>
-        <div className={ui.account}>{adminName} · {userEmail}</div>
+
+        <div className={ui.account}>
+          {adminName} · {userEmail}
+        </div>
       </details>
     </main>
   );
 }
 
-function CompanyCard({
-  company,
-  changing,
-  onToggle,
-  onManage,
-}) {
-  const active =
-    company?.is_active === true;
+function CompanyCard({ company, changing, onToggle, onManage }) {
+  const active = company?.is_active === true;
 
   return (
     <details className={ui.company}>
       <summary>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={ui.companyName}>{company.company_name || "회사명 없음"}</div>
-          <div className={ui.companyPlan}>{company.subscription_plan || "basic"} · {company.representative_name || "대표자 미등록"}</div>
+          <div className={ui.companyName}>
+            {company.company_name || "회사명 없음"}
+          </div>
+
+          <div className={ui.companyPlan}>
+            {company.subscription_plan || "basic"} ·{" "}
+            {company.representative_name || "대표자 미등록"}
+          </div>
         </div>
-        <span style={{ ...styles.statusBadge, flexShrink: 0, ...(active ? styles.activeBadge : styles.inactiveBadge) }}>{active ? "운영 중" : "일시 중지"}</span>
+
+        <span
+          style={{
+            ...styles.statusBadge,
+            flexShrink: 0,
+            ...(active ? styles.activeBadge : styles.inactiveBadge),
+          }}
+        >
+          {active ? "운영 중" : "일시 중지"}
+        </span>
       </summary>
+
       <div className={ui.companyDetails}>
-        <InfoRow label="대표자" value={company.representative_name || "-"} />
+        <InfoRow
+          label="대표자"
+          value={company.representative_name || "-"}
+        />
+
         <InfoRow label="전화번호" value={company.phone || "-"} />
-        <InfoRow label="요금제" value={company.subscription_plan || "basic"} />
-        <InfoRow label="가입일" value={company.created_at ? new Date(company.created_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "-"} />
-        {company.slug && <InfoRow label="업체 주소" value={`/${company.slug}`} />}
+
+        <InfoRow
+          label="요금제"
+          value={company.subscription_plan || "basic"}
+        />
+
+        <InfoRow
+          label="가입일"
+          value={
+            company.created_at
+              ? new Date(company.created_at).toLocaleDateString(
+                  "ko-KR",
+                  { timeZone: "Asia/Seoul" }
+                )
+              : "-"
+          }
+        />
+
+        {company.slug && (
+          <InfoRow label="업체 주소" value={`/${company.slug}`} />
+        )}
+
         <div className={ui.moreGrid} style={{ marginTop: 14 }}>
-          <button type="button" onClick={onManage}>회사 관리</button>
-          <a href={`/super-admin/company/${company.id}#photos`}>업체 사진 보기</a>
+          <button type="button" onClick={onManage}>
+            회사 관리
+          </button>
+
+          <a href={`/super-admin/company/${company.id}#photos`}>
+            업체 사진 보기
+          </a>
         </div>
-        <button type="button" disabled={changing} onClick={onToggle} style={{ ...styles.toggleButton, minHeight: 44, ...(active ? styles.stopButton : styles.activateButton), opacity: changing ? .6 : 1 }}>{changing ? "처리 중..." : active ? "회사 정지" : "활성화"}</button>
+
+        <button
+          type="button"
+          disabled={changing}
+          onClick={onToggle}
+          style={{
+            ...styles.toggleButton,
+            ...(active ? styles.stopButton : styles.activateButton),
+            opacity: changing ? 0.6 : 1,
+          }}
+        >
+          {changing ? "처리 중..." : active ? "회사 정지" : "활성화"}
+        </button>
+
         <div style={styles.companyId}>ID: {company.id}</div>
       </div>
     </details>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}) {
+function InfoRow({ label, value }) {
   return (
     <div style={styles.infoRow}>
-      <span style={styles.infoLabel}>
-        {label}
-      </span>
-
-      <span style={styles.infoValue}>
-        {value}
-      </span>
+      <span style={styles.infoLabel}>{label}</span>
+      <span style={styles.infoValue}>{value}</span>
     </div>
   );
 }
@@ -669,107 +680,28 @@ function InfoRow({
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "#f3f4f6",
-    color: "#111827",
+    background: "var(--film-bg, #f8f7f3)",
+    color: "#243247",
     padding: "18px 14px 50px",
-  },
-
-  container: {
-    width: "100%",
-    maxWidth: "900px",
-    margin: "0 auto",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "12px",
-    marginBottom: "16px",
-  },
-
-  badge: {
-    display: "inline-block",
-    padding: "5px 8px",
-    borderRadius: "999px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: "1px",
-    marginBottom: "7px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "26px",
-    fontWeight: 900,
-    letterSpacing: "-0.6px",
-  },
-
-  subtitle: {
-    marginTop: "5px",
-    color: "#6b7280",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  adminButton: {
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    background: "#ffffff",
-    padding: "10px 12px",
-    fontWeight: 800,
-    fontSize: "12px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-
-  loginBox: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "12px",
-    background: "#ffffff",
-    borderRadius: "14px",
-    padding: "14px",
-    border: "1px solid #e5e7eb",
-    marginBottom: "14px",
-  },
-
-  smallLabel: {
-    fontSize: "11px",
-    color: "#6b7280",
-    marginBottom: "3px",
-  },
-
-  adminName: {
-    fontSize: "15px",
-    fontWeight: 900,
-  },
-
-  email: {
-    fontSize: "12px",
-    color: "#6b7280",
-    textAlign: "right",
-    wordBreak: "break-all",
+    boxSizing: "border-box",
   },
 
   pushBox: {
     display: "flex",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
     gap: "12px",
     background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "14px",
-    padding: "14px",
+    border: "1px solid #e4eaf2",
+    borderRadius: "18px",
+    padding: "16px",
     marginBottom: "14px",
   },
 
   pushInfo: {
     minWidth: 0,
-    flex: 1,
+    flex: "1 1 180px",
   },
 
   pushTitle: {
@@ -778,44 +710,36 @@ const styles = {
   },
 
   pushDescription: {
-    marginTop: "4px",
-    color: "#6b7280",
-    fontSize: "11px",
-    lineHeight: 1.5,
+    marginTop: "6px",
+    color: "#7b8798",
+    fontSize: "12px",
+    lineHeight: 1.7,
   },
 
   pushMessage: {
-    marginTop: "6px",
-    fontSize: "11px",
+    marginTop: "8px",
+    fontSize: "12px",
     fontWeight: 700,
-  },
-
-  pushMessageSuccess: {
-    color: "#166534",
-  },
-
-  pushMessageError: {
-    color: "#991b1b",
+    lineHeight: 1.7,
   },
 
   pushButton: {
     flexShrink: 0,
     minWidth: "104px",
-    minHeight: "40px",
+    minHeight: "44px",
     border: 0,
-    borderRadius: "10px",
-    padding: "9px 11px",
+    borderRadius: "14px",
+    padding: "10px 12px",
     fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    WebkitTapHighlightColor:
-      "transparent",
+    WebkitTapHighlightColor: "transparent",
     touchAction: "manipulation",
   },
 
   pushButtonDisabled: {
-    background: "#111827",
+    background: "var(--film-blue, #3478ed)",
     color: "#ffffff",
   },
 
@@ -824,153 +748,25 @@ const styles = {
     color: "#166534",
   },
 
-  menuGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "8px",
-    marginBottom: "14px",
-  },
-
-  menuButton: {
-    minHeight: "62px",
-    border: "1px solid #d1d5db",
-    borderRadius: "14px",
-    background: "#ffffff",
-    color: "#111827",
-    fontSize: "14px",
-    fontWeight: 900,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    WebkitTapHighlightColor:
-      "transparent",
-    touchAction: "manipulation",
-  },
-
-  menuButtonActive: {
-    background: "#111827",
-    color: "#ffffff",
-    borderColor: "#111827",
-  },
-
-  menuIcon: {
-    fontSize: "18px",
-    lineHeight: 1,
-  },
-
-  notificationMenuIconWrap: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  notificationBadge: {
-    position: "absolute",
-    top: "-12px",
-    right: "-14px",
-    minWidth: "18px",
-    height: "18px",
-    padding: "0 5px",
-    borderRadius: "999px",
-    background: "#dc2626",
-    color: "#ffffff",
-    fontSize: "10px",
-    fontWeight: 900,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxSizing: "border-box",
-    border: "2px solid #ffffff",
-  },
-
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(3, minmax(0, 1fr))",
-    gap: "8px",
-    marginBottom: "14px",
-  },
-
-  statCard: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "14px",
-    padding: "14px 10px",
-    textAlign: "center",
-  },
-
-  statLabel: {
-    fontSize: "12px",
-    color: "#6b7280",
-    fontWeight: 700,
-  },
-
-  statValue: {
-    marginTop: "5px",
-    fontSize: "25px",
-    fontWeight: 900,
-  },
-
-  section: {
-    background: "#ffffff",
-    borderRadius: "16px",
-    padding: "15px",
-    border: "1px solid #e5e7eb",
-  },
-
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "10px",
-    marginBottom: "13px",
-  },
-
-  sectionTitle: {
-    margin: 0,
-    fontSize: "19px",
-    fontWeight: 900,
-  },
-
-  sectionDescription: {
-    marginTop: "4px",
-    color: "#6b7280",
-    fontSize: "12px",
-    lineHeight: 1.5,
-  },
-
-  refreshButton: {
-    border: "1px solid #d1d5db",
-    background: "#ffffff",
-    borderRadius: "9px",
-    padding: "8px 10px",
-    fontSize: "12px",
-    fontWeight: 800,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-
   searchInput: {
     width: "100%",
     boxSizing: "border-box",
-    minHeight: "44px",
-    border: "1px solid #d1d5db",
-    borderRadius: "10px",
-    padding: "0 12px",
+    minHeight: "50px",
+    border: "1px solid #dfe6ef",
+    borderRadius: "15px",
+    background: "#ffffff",
+    color: "#243247",
+    padding: "12px 14px",
     fontSize: "16px",
-    marginBottom: "12px",
+    marginBottom: "14px",
   },
 
   message: {
-    padding: "10px",
-    borderRadius: "9px",
-    marginBottom: "12px",
+    padding: "13px",
+    borderRadius: "14px",
+    marginBottom: "14px",
     fontSize: "13px",
-    lineHeight: 1.5,
+    lineHeight: 1.7,
   },
 
   messageSuccess: {
@@ -980,53 +776,20 @@ const styles = {
   },
 
   messageError: {
-    background: "#fef2f2",
+    background: "#fff1f2",
     color: "#991b1b",
     border: "1px solid #fecaca",
   },
 
   companyList: {
     display: "grid",
-    gap: "10px",
-  },
-
-  companyCard: {
-    border: "1px solid #e5e7eb",
-    borderRadius: "13px",
-    padding: "13px",
-    background: "#fafafa",
-  },
-
-  companyTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "10px",
-  },
-
-  companyNameRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "7px",
-    flexWrap: "wrap",
-  },
-
-  companyName: {
-    fontSize: "17px",
-    fontWeight: 900,
-    wordBreak: "break-word",
-  },
-
-  slug: {
-    marginTop: "3px",
-    color: "#9ca3af",
-    fontSize: "11px",
+    gap: "12px",
   },
 
   statusBadge: {
-    padding: "4px 7px",
+    padding: "6px 9px",
     borderRadius: "999px",
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 900,
   },
 
@@ -1041,9 +804,11 @@ const styles = {
   },
 
   toggleButton: {
+    minHeight: "44px",
+    marginTop: "14px",
     border: 0,
-    borderRadius: "9px",
-    padding: "9px 11px",
+    borderRadius: "14px",
+    padding: "10px 14px",
     fontWeight: 900,
     fontSize: "12px",
     cursor: "pointer",
@@ -1060,78 +825,61 @@ const styles = {
     color: "#166534",
   },
 
-  divider: {
-    height: "1px",
-    background: "#e5e7eb",
-    margin: "12px 0",
-  },
-
   infoRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: "12px",
-    padding: "4px 0",
+    padding: "7px 0",
     fontSize: "13px",
   },
 
   infoLabel: {
-    color: "#6b7280",
+    color: "#7b8798",
+    flexShrink: 0,
   },
 
   infoValue: {
     fontWeight: 700,
     textAlign: "right",
-    wordBreak: "break-word",
-  },
-
-  manageButton: {
-    width: "100%",
-    minHeight: "43px",
-    marginTop: "13px",
-    border: 0,
-    borderRadius: "10px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "13px",
-    fontWeight: 900,
-    cursor: "pointer",
-    WebkitTapHighlightColor:
-      "transparent",
-    touchAction: "manipulation",
+    overflowWrap: "anywhere",
   },
 
   companyId: {
-    marginTop: "9px",
-    paddingTop: "8px",
-    borderTop:
-      "1px dashed #e5e7eb",
+    marginTop: "12px",
+    paddingTop: "10px",
+    borderTop: "1px dashed #e4eaf2",
     color: "#9ca3af",
     fontSize: "10px",
     wordBreak: "break-all",
   },
 
   empty: {
-    padding: "35px 10px",
+    padding: "35px 14px",
     textAlign: "center",
-    color: "#9ca3af",
+    color: "#7b8798",
     fontSize: "14px",
+    background: "#ffffff",
+    border: "1px solid #e4eaf2",
+    borderRadius: "20px",
   },
 
   centerBox: {
     width: "100%",
     maxWidth: "420px",
-    margin: "100px auto 0",
+    boxSizing: "border-box",
+    margin: "80px auto 0",
     background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "18px",
+    border: "1px solid #e4eaf2",
+    borderRadius: "24px",
     padding: "28px 20px",
     textAlign: "center",
+    boxShadow: "0 8px 28px rgba(48, 77, 116, 0.05)",
   },
 
   loadingIcon: {
     fontSize: "40px",
-    marginBottom: "10px",
+    marginBottom: "12px",
   },
 
   loadingTitle: {
@@ -1140,10 +888,10 @@ const styles = {
   },
 
   loadingText: {
-    marginTop: "7px",
-    color: "#6b7280",
+    marginTop: "8px",
+    color: "#7b8798",
     fontSize: "13px",
-    lineHeight: 1.6,
+    lineHeight: 1.7,
   },
 
   deniedIcon: {
@@ -1151,32 +899,32 @@ const styles = {
   },
 
   deniedTitle: {
-    margin: "12px 0 5px",
+    margin: "12px 0 8px",
     fontSize: "20px",
   },
 
   deniedText: {
-    color: "#6b7280",
+    color: "#7b8798",
     fontSize: "13px",
   },
 
   errorBox: {
-    marginTop: "15px",
-    padding: "10px",
-    borderRadius: "9px",
-    background: "#fef2f2",
+    marginTop: "16px",
+    padding: "12px",
+    borderRadius: "14px",
+    background: "#fff1f2",
     color: "#991b1b",
     fontSize: "12px",
-    lineHeight: 1.5,
+    lineHeight: 1.7,
   },
 
   homeButton: {
-    marginTop: "16px",
+    marginTop: "18px",
     width: "100%",
-    minHeight: "44px",
+    minHeight: "48px",
     border: 0,
-    borderRadius: "10px",
-    background: "#111827",
+    borderRadius: "14px",
+    background: "var(--film-blue, #3478ed)",
     color: "#ffffff",
     fontWeight: 900,
     cursor: "pointer",
