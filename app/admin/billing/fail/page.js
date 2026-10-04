@@ -1,235 +1,236 @@
 "use client";
 
-import {
-  Suspense,
-} from "react";
-
-import {
-  useSearchParams,
-} from "next/navigation";
-
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 function BillingFailContent() {
-  const searchParams =
-    useSearchParams();
+  const searchParams = useSearchParams();
 
-  const code =
-    searchParams.get("code") ||
-    "";
-
+  const code = searchParams.get("code") || "";
   const message =
     searchParams.get("message") ||
     "카드 등록이 완료되지 않았습니다.";
 
-  const checkoutSessionId =
-    searchParams.get(
-      "checkoutSessionId",
-    );
-
-
-  function goBilling() {
-    window.location.href =
-      "/admin/billing";
-  }
-
-
-  function goAdmin() {
-    window.location.href =
-      "/admin";
-  }
-
+  const checkoutSessionId = searchParams.get("checkoutSessionId");
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        padding: "30px 16px",
-        color: "#111827",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "520px",
-          margin: "0 auto",
-        }}
-      >
-        <section
-          style={{
-            background: "#ffffff",
-            border:
-              "1px solid #e2e8f0",
-            borderRadius: "18px",
-            padding: "24px 18px",
-            boxShadow:
-              "0 1px 4px rgba(15,23,42,0.06)",
-          }}
-        >
-          <div
-            style={{
-              width: "52px",
-              height: "52px",
-              margin:
-                "0 auto 18px",
-              borderRadius: "50%",
-              background: "#fee2e2",
-              display: "flex",
-              alignItems: "center",
-              justifyContent:
-                "center",
-              color: "#b91c1c",
-              fontSize: "24px",
-              fontWeight: "900",
-            }}
-          >
+    <main style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.brand}>필름장이</div>
+
+        <section style={styles.card}>
+          <div aria-hidden="true" style={styles.icon}>
             !
           </div>
 
-
-          <h1
-            style={{
-              margin:
-                "0 0 10px",
-              textAlign: "center",
-              fontSize: "21px",
-              color: "#b91c1c",
-            }}
-          >
-            카드 등록이 취소되었습니다
+          <h1 style={styles.title}>
+            카드 등록을 완료하지 못했어요
           </h1>
 
-
-          <div
-            style={{
-              textAlign: "center",
-              color: "#475569",
-              fontSize: "14px",
-              lineHeight: "1.7",
-            }}
-          >
+          <p role="status" style={styles.description}>
             {message}
+          </p>
+
+          <div style={styles.guide}>
+            다시 진행하려면 요금제·결제 관리 화면에서
+            카드 등록을 진행해주세요.
+            <br />
+            결제 여부는 결제 내역에서 확인할 수 있습니다.
           </div>
 
-
-          {code && (
-            <div
-              style={{
-                marginTop: "14px",
-                padding: "10px",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                color: "#64748b",
-                fontSize: "12px",
-                wordBreak:
-                  "break-all",
-              }}
-            >
-              오류 코드: {code}
-            </div>
-          )}
-
-
-          {checkoutSessionId && (
-            <div
-              style={{
-                marginTop: "8px",
-                color: "#94a3b8",
-                fontSize: "10px",
-                textAlign: "center",
-                wordBreak:
-                  "break-all",
-              }}
-            >
-              결제 세션:{" "}
-              {checkoutSessionId}
-            </div>
-          )}
-
-
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px",
-              borderRadius: "10px",
-              background: "#f8fafc",
-              color: "#64748b",
-              fontSize: "12px",
-              lineHeight: "1.6",
-            }}
-          >
-            카드 등록이 완료되지 않았기 때문에
-            결제는 발생하지 않았으며 요금제도 변경되지 않습니다.
-            다시 진행하려면 요금제 화면에서 유료 요금제를 선택해주세요.
-          </div>
-
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "1fr 1fr",
-              gap: "10px",
-              marginTop: "20px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={goAdmin}
-              style={{
-                border:
-                  "1px solid #cbd5e1",
-                borderRadius: "10px",
-                padding: "11px 10px",
-                background: "#ffffff",
-                color: "#334155",
-                fontWeight: "800",
-                cursor: "pointer",
-              }}
-            >
+          <div style={styles.actions}>
+            <Link href="/admin" style={styles.secondary}>
               관리자 홈
-            </button>
+            </Link>
 
-            <button
-              type="button"
-              onClick={goBilling}
-              style={{
-                border: "none",
-                borderRadius: "10px",
-                padding: "11px 10px",
-                background: "#111827",
-                color: "#ffffff",
-                fontWeight: "800",
-                cursor: "pointer",
-              }}
-            >
-              다시 시도
-            </button>
+            <Link href="/admin/billing" style={styles.primary}>
+              다시 시도 →
+            </Link>
           </div>
+
+          {(code || checkoutSessionId) && (
+            <details style={styles.details}>
+              <summary style={styles.summary}>
+                오류 상세정보
+              </summary>
+
+              {code && (
+                <div style={styles.errorDetail}>
+                  오류 코드: {code}
+                </div>
+              )}
+
+              {checkoutSessionId && (
+                <div style={styles.errorDetail}>
+                  결제 세션: {checkoutSessionId}
+                </div>
+              )}
+            </details>
+          )}
         </section>
       </div>
     </main>
   );
 }
 
-
 export default function BillingFailPage() {
   return (
     <Suspense
       fallback={
-        <main
-          style={{
-            minHeight: "100vh",
-            background: "#f8fafc",
-            padding: "40px 16px",
-            color: "#111827",
-          }}
-        >
-          결제 결과를 확인하는 중...
+        <main style={styles.page}>
+          <div style={styles.container}>
+            <section style={styles.card}>
+              <p style={styles.description}>
+                결제 결과를 확인하는 중...
+              </p>
+            </section>
+          </div>
         </main>
       }
     >
       <BillingFailContent />
     </Suspense>
   );
-                }
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    boxSizing: "border-box",
+    background: "var(--film-bg, #f8f7f3)",
+    padding: "40px 18px 60px",
+    color: "#243247",
+  },
+
+  container: {
+    width: "100%",
+    maxWidth: "480px",
+    margin: "0 auto",
+  },
+
+  brand: {
+    marginBottom: "20px",
+    textAlign: "center",
+    color: "#3268bd",
+    fontSize: "18px",
+    fontWeight: 900,
+    letterSpacing: "-0.5px",
+  },
+
+  card: {
+    background: "#ffffff",
+    border: "1px solid #e4eaf2",
+    borderRadius: "24px",
+    padding: "30px 22px 24px",
+    boxShadow: "0 8px 28px rgba(48, 77, 116, 0.05)",
+  },
+
+  icon: {
+    width: "72px",
+    height: "72px",
+    margin: "0 auto 22px",
+    borderRadius: "24px",
+    background: "#fff0e6",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#d97732",
+    fontSize: "36px",
+    fontWeight: 900,
+  },
+
+  title: {
+    margin: "0 0 12px",
+    textAlign: "center",
+    fontSize: "22px",
+    lineHeight: 1.4,
+    letterSpacing: "-0.7px",
+    color: "#243247",
+  },
+
+  description: {
+    margin: 0,
+    textAlign: "center",
+    color: "#7b8798",
+    fontSize: "14px",
+    lineHeight: 1.8,
+    overflowWrap: "anywhere",
+  },
+
+  guide: {
+    marginTop: "22px",
+    padding: "16px",
+    borderRadius: "16px",
+    background: "#f3f7fc",
+    color: "#50617a",
+    fontSize: "13px",
+    lineHeight: 1.8,
+  },
+
+  actions: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "10px",
+    marginTop: "24px",
+  },
+
+  secondary: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "50px",
+    boxSizing: "border-box",
+    border: "1px solid #dfe6ef",
+    borderRadius: "15px",
+    padding: "12px 8px",
+    background: "#ffffff",
+    color: "#50617a",
+    fontSize: "14px",
+    fontWeight: 800,
+    textDecoration: "none",
+    textAlign: "center",
+  },
+
+  primary: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "50px",
+    boxSizing: "border-box",
+    border: "1px solid transparent",
+    borderRadius: "15px",
+    padding: "12px 8px",
+    background: "var(--film-blue, #3478ed)",
+    color: "#ffffff",
+    fontSize: "14px",
+    fontWeight: 800,
+    textDecoration: "none",
+    textAlign: "center",
+    boxShadow: "0 5px 14px rgba(52, 120, 237, 0.16)",
+  },
+
+  details: {
+    marginTop: "24px",
+    paddingTop: "16px",
+    borderTop: "1px solid #eef2f7",
+  },
+
+  summary: {
+    cursor: "pointer",
+    color: "#7b8798",
+    fontSize: "12px",
+    fontWeight: 700,
+  },
+
+  errorDetail: {
+    marginTop: "10px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    background: "#f8fafc",
+    color: "#7b8798",
+    fontSize: "11px",
+    lineHeight: 1.7,
+    overflowWrap: "anywhere",
+  },
+};
