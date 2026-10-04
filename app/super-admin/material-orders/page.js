@@ -3,103 +3,63 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import ToolIllustration from "../../components/ui/ToolIllustration";
 
 const STATUS_OPTIONS = [
-  { value: "all", label: "전체 주문" },
-  { value: "paid", label: "결제 완료" },
-  { value: "preparing", label: "상품 준비중" },
-  { value: "shipped", label: "발송 완료" },
-  { value: "delivered", label: "배송 완료" },
-  { value: "cancel_requested", label: "취소 요청" },
-  { value: "cancelled", label: "취소 완료" },
-  { value: "payment_failed", label: "결제 실패" },
+  ["all", "전체 주문"],
+  ["paid", "결제 완료"],
+  ["preparing", "상품 준비중"],
+  ["shipped", "발송 완료"],
+  ["delivered", "배송 완료"],
+  ["cancel_requested", "취소 요청"],
+  ["cancelled", "취소 완료"],
+  ["payment_failed", "결제 실패"],
 ];
 
 const STATUS_INFO = {
-  payment_pending: {
-    label: "결제 대기",
-    color: "#b45309",
-    background: "#fff7ed",
-  },
-  paid: {
-    label: "결제 완료",
-    color: "#2563eb",
-    background: "#eff6ff",
-  },
-  preparing: {
-    label: "상품 준비중",
-    color: "#7c3aed",
-    background: "#f5f3ff",
-  },
-  shipped: {
-    label: "발송 완료",
-    color: "#0891b2",
-    background: "#ecfeff",
-  },
-  delivered: {
-    label: "배송 완료",
-    color: "#15803d",
-    background: "#f0fdf4",
-  },
-  cancel_requested: {
-    label: "취소 요청",
-    color: "#c2410c",
-    background: "#fff7ed",
-  },
-  cancelled: {
-    label: "취소 완료",
-    color: "#6b7280",
-    background: "#f3f4f6",
-  },
-  payment_failed: {
-    label: "결제 실패",
-    color: "#dc2626",
-    background: "#fef2f2",
-  },
+  payment_pending: ["결제 대기", "#a16207", "#fff7df"],
+  paid: ["결제 완료", "#3268bd", "#eaf3ff"],
+  preparing: ["상품 준비중", "#7c3aed", "#f5f3ff"],
+  shipped: ["발송 완료", "#0891b2", "#ecfeff"],
+  delivered: ["배송 완료", "#047857", "#ecfdf5"],
+  cancel_requested: ["취소 요청", "#c2410c", "#fff7ed"],
+  cancelled: ["취소 완료", "#7b8798", "#f1f3f6"],
+  payment_failed: ["결제 실패", "#b91c1c", "#fff1f2"],
 };
 
+const DETAIL_MENUS = [
+  ["items", "주문 자재"],
+  ["shipping", "배송지"],
+  ["payment", "결제"],
+  ["status", "상태변경"],
+];
+
 function money(value) {
-  const number = Number(value || 0);
-  return `${number.toLocaleString("ko-KR")}원`;
+  return `${Number(value || 0).toLocaleString("ko-KR")}원`;
 }
 
 function meter(value) {
-  const number = Number(value || 0);
-
-  if (Number.isInteger(number)) {
-    return `${number}m`;
-  }
-
-  return `${number.toLocaleString("ko-KR")}m`;
+  return `${Number(value || 0).toLocaleString("ko-KR")}m`;
 }
 
 function dateTime(value) {
-  if (!value) {
-    return "-";
-  }
+  if (!value) return "-";
 
   const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
 
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("ko-KR", {
+  return date.toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  });
 }
 
 function getItemCode(item) {
-  return (
-    item.product_code ||
-    item.material_code ||
-    item.code ||
-    "-"
-  );
+  return item.product_code || item.material_code || item.code || "-";
 }
 
 function getItemName(item) {
@@ -132,46 +92,26 @@ function getItemUnitPrice(item) {
 }
 
 function getItemTotal(item) {
-  const savedTotal =
+  const saved =
     item.total_amount ??
     item.line_total_amount ??
     item.subtotal_amount;
 
-  if (
-    savedTotal !== undefined &&
-    savedTotal !== null
-  ) {
-    return Number(savedTotal || 0);
-  }
-
-  return (
-    Number(getItemQuantity(item)) *
-    Number(getItemUnitPrice(item))
-  );
+  return saved !== undefined && saved !== null
+    ? Number(saved || 0)
+    : Number(getItemQuantity(item)) * Number(getItemUnitPrice(item));
 }
 
 function StatusBadge({ status }) {
-  const info = STATUS_INFO[status] || {
-    label: status || "상태 미확인",
-    color: "#374151",
-    background: "#f3f4f6",
-  };
+  const [label, color, background] = STATUS_INFO[status] || [
+    status || "상태 미확인",
+    "#7b8798",
+    "#f1f3f6",
+  ];
 
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        minHeight: 34,
-        padding: "6px 12px",
-        borderRadius: 999,
-        color: info.color,
-        background: info.background,
-        fontSize: 14,
-        fontWeight: 900,
-      }}
-    >
-      {info.label}
+    <span style={{ ...styles.badge, color, background }}>
+      {label}
     </span>
   );
 }
@@ -184,64 +124,52 @@ export default function SuperAdminMaterialOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] =
-    useState("success");
-  const [expandedIds, setExpandedIds] =
-    useState({});
+  const [messageType, setMessageType] = useState("success");
+  const [expandedIds, setExpandedIds] = useState({});
 
-  const apiFetch = useCallback(
-    async (url, options = {}) => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  const apiFetch = useCallback(async (url, options = {}) => {
+    const { data, error } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
 
-      if (!session?.access_token) {
-        throw new Error("로그인이 필요합니다.");
-      }
+    if (error || !token) {
+      throw new Error("로그인이 필요합니다.");
+    }
 
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.body
-            ? {
-                "Content-Type": "application/json",
-              }
-            : {}),
-          Authorization:
-            `Bearer ${session.access_token}`,
-          ...(options.headers || {}),
-        },
-        cache: "no-store",
-      });
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.body
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...(options.headers || {}),
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
 
-      const rawText = await response.text();
-      let result = {};
+    const rawText = await response.text();
+    let result = {};
 
-      if (rawText) {
-        try {
-          result = JSON.parse(rawText);
-        } catch {
-          throw new Error(
-            `서버 응답을 읽을 수 없습니다. 상태코드: ${response.status}`,
-          );
-        }
-      }
-
-      if (
-        !response.ok ||
-        result.ok === false
-      ) {
+    if (rawText) {
+      try {
+        result = JSON.parse(rawText);
+      } catch {
         throw new Error(
-          result.error ||
-            result.message ||
-            `요청 실패: ${response.status}`,
+          `서버 응답을 읽을 수 없습니다. 상태코드: ${response.status}`
         );
       }
+    }
 
-      return result;
-    },
-    [],
-  );
+    if (!response.ok || result.ok === false) {
+      throw new Error(
+        result.error ||
+          result.message ||
+          `요청 실패: ${response.status}`
+      );
+    }
+
+    return result;
+  }, []);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -261,51 +189,38 @@ export default function SuperAdminMaterialOrdersPage() {
       const query = params.toString();
 
       const result = await apiFetch(
-        `/api/super-admin/material-orders${
-          query ? `?${query}` : ""
-        }`,
+        `/api/super-admin/material-orders${query ? `?${query}` : ""}`
       );
 
-      setOrders(result.orders || []);
+      setOrders(Array.isArray(result.orders) ? result.orders : []);
 
-      const requestedOrderId =
-        new URLSearchParams(
-          window.location.search,
-        ).get("orderId");
+      const requestedId = new URLSearchParams(
+        window.location.search
+      ).get("orderId");
 
-      if (requestedOrderId) {
+      if (requestedId) {
         setExpandedIds((current) => ({
           ...current,
-          [requestedOrderId]: true,
+          [requestedId]: true,
         }));
 
         window.setTimeout(() => {
-          const target =
-            document.getElementById(
-              `material-order-${requestedOrderId}`,
-            );
-
-          target?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
+          document
+            .getElementById(`material-order-${requestedId}`)
+            ?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
         }, 300);
       }
     } catch (error) {
       setOrders([]);
       setMessageType("error");
-      setMessage(
-        error.message ||
-          "주문을 불러오지 못했습니다.",
-      );
+      setMessage(error.message || "주문을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [
-    apiFetch,
-    appliedSearch,
-    statusFilter,
-  ]);
+  }, [apiFetch, appliedSearch, statusFilter]);
 
   useEffect(() => {
     loadOrders();
@@ -321,9 +236,7 @@ export default function SuperAdminMaterialOrdersPage() {
     };
 
     for (const order of orders) {
-      if (
-        result[order.status] !== undefined
-      ) {
+      if (Object.prototype.hasOwnProperty.call(result, order.status)) {
         result[order.status] += 1;
       }
     }
@@ -333,33 +246,35 @@ export default function SuperAdminMaterialOrdersPage() {
 
   function submitSearch(event) {
     event.preventDefault();
-    setAppliedSearch(searchInput.trim());
+
+    if (updatingId) return;
+
+    const next = searchInput.trim();
+
+    if (next === appliedSearch) {
+      loadOrders();
+    } else {
+      setAppliedSearch(next);
+    }
   }
 
-  function toggleOrder(orderId) {
+  function toggleOrder(id) {
     setExpandedIds((current) => ({
       ...current,
-      [orderId]: !current[orderId],
+      [id]: !current[id],
     }));
   }
 
-  async function changeStatus(
-    order,
-    nextStatus,
-  ) {
-    const nextLabel =
-      STATUS_INFO[nextStatus]?.label ||
-      nextStatus;
+  async function changeStatus(order, nextStatus) {
+    if (updatingId || loading || order.status === nextStatus) return;
+
+    const label = STATUS_INFO[nextStatus]?.[0] || nextStatus;
 
     const confirmed = window.confirm(
-      `${
-        order.order_number || "이 주문"
-      }을(를) '${nextLabel}' 상태로 변경할까요?`,
+      `${order.order_number || "이 주문"}을(를) '${label}' 상태로 변경할까요?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setUpdatingId(order.id);
     setMessage("");
@@ -373,260 +288,87 @@ export default function SuperAdminMaterialOrdersPage() {
             orderId: order.id,
             status: nextStatus,
           }),
-        },
+        }
       );
 
       setOrders((current) =>
         current.map((item) =>
           item.id === order.id
-            ? {
-                ...item,
-                ...result.order,
-              }
-            : item,
-        ),
+            ? { ...item, ...result.order }
+            : item
+        )
       );
 
       setMessageType("success");
       setMessage(
-        `${
-          order.order_number || "주문"
-        } 상태를 '${nextLabel}'로 변경했습니다.`,
+        `${order.order_number || "주문"} 상태를 '${label}'로 변경했습니다.`
       );
     } catch (error) {
       setMessageType("error");
-      setMessage(
-        error.message ||
-          "상태 변경에 실패했습니다.",
-      );
-
-      window.alert(
-        error.message ||
-          "상태 변경에 실패했습니다.",
-      );
+      setMessage(error.message || "상태 변경에 실패했습니다.");
     } finally {
       setUpdatingId("");
     }
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f6f7fb",
-        color: "#111827",
-        padding: "24px 16px 80px",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 980,
-          margin: "0 auto",
-        }}
-      >
-        <header
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 14,
-            marginBottom: 24,
-          }}
-        >
+    <main style={styles.page}>
+      <div style={styles.container}>
+        <header style={styles.header}>
           <Link
             href="/super-admin"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 52,
-              height: 52,
-              flexShrink: 0,
-              border:
-                "1px solid #d7dae2",
-              borderRadius: 16,
-              background: "#ffffff",
-              color: "#111827",
-              textDecoration: "none",
-              fontSize: 26,
-              fontWeight: 900,
-            }}
+            aria-label="슈퍼관리자로 돌아가기"
+            style={styles.back}
           >
             ←
           </Link>
 
-          <div>
-            <div
-              style={{
-                display: "inline-flex",
-                padding: "7px 13px",
-                borderRadius: 999,
-                background: "#111827",
-                color: "#ffffff",
-                fontSize: 14,
-                fontWeight: 900,
-                marginBottom: 10,
-              }}
-            >
-              슈퍼관리자
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize:
-                  "clamp(30px, 7vw, 48px)",
-                lineHeight: 1.15,
-                letterSpacing: "-0.04em",
-              }}
-            >
-              자재 주문관리
-            </h1>
-
-            <p
-              style={{
-                margin: "10px 0 0",
-                color: "#6b7280",
-                fontSize: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              결제된 주문과 배송지를 확인하고
-              발송 상태를 관리합니다.
-            </p>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <small style={styles.eyebrow}>필름장이 · 슈퍼관리자</small>
+            <h1 style={styles.title}>자재 주문관리</h1>
+            <p style={styles.help}>결제된 주문과 발송 현황을 확인하세요.</p>
           </div>
+
+          <ToolIllustration kind="film" size={52} />
         </header>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
+        <section style={styles.statsGrid} aria-label="조회 주문 요약">
           {[
-            [
-              "조회 주문",
-              counts.total,
-              "#111827",
-            ],
-            [
-              "결제 완료",
-              counts.paid,
-              "#2563eb",
-            ],
-            [
-              "준비중",
-              counts.preparing,
-              "#7c3aed",
-            ],
-            [
-              "발송 완료",
-              counts.shipped,
-              "#0891b2",
-            ],
-          ].map(
-            ([label, value, color]) => (
-              <div
-                key={label}
-                style={{
-                  padding: 20,
-                  border:
-                    "1px solid #e1e3e9",
-                  borderRadius: 22,
-                  background: "#ffffff",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 14,
-                    fontWeight: 800,
-                    marginBottom: 6,
-                  }}
-                >
-                  {label}
-                </div>
-
-                <div
-                  style={{
-                    color,
-                    fontSize: 34,
-                    fontWeight: 950,
-                  }}
-                >
-                  {value}
-                </div>
-              </div>
-            ),
-          )}
+            ["조회 주문", counts.total],
+            ["결제 완료", counts.paid],
+            ["준비중", counts.preparing],
+            ["발송 완료", counts.shipped],
+          ].map(([label, value]) => (
+            <div key={label} style={styles.statCard}>
+              <div style={styles.help}>{label}</div>
+              <strong style={styles.statValue}>
+                {value.toLocaleString("ko-KR")}
+              </strong>
+            </div>
+          ))}
         </section>
 
-        <section
-          style={{
-            padding: 20,
-            border:
-              "1px solid #e1e3e9",
-            borderRadius: 24,
-            background: "#ffffff",
-            marginBottom: 20,
-          }}
-        >
+        <section style={styles.card}>
           <form onSubmit={submitSearch}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 8,
-                fontWeight: 900,
-              }}
-            >
+            <label htmlFor="order-search" style={styles.label}>
               주문 검색
             </label>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-              }}
-            >
+            <div style={styles.searchRow}>
               <input
+                id="order-search"
+                type="search"
                 value={searchInput}
-                onChange={(event) =>
-                  setSearchInput(
-                    event.target.value,
-                  )
-                }
+                disabled={Boolean(updatingId)}
+                onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="주문번호·받는 분·전화번호"
-                style={{
-                  flex: 1,
-                  width: "100%",
-                  minWidth: 0,
-                  height: 52,
-                  padding: "0 15px",
-                  border:
-                    "1px solid #d7dae2",
-                  borderRadius: 15,
-                  background: "#ffffff",
-                  fontSize: 16,
-                  outline: "none",
-                }}
+                style={styles.input}
               />
 
               <button
                 type="submit"
-                style={{
-                  flexShrink: 0,
-                  minWidth: 82,
-                  height: 52,
-                  border: 0,
-                  borderRadius: 15,
-                  background: "#111827",
-                  color: "#ffffff",
-                  fontSize: 16,
-                  fontWeight: 900,
-                }}
+                disabled={loading || Boolean(updatingId)}
+                style={styles.primary}
               >
                 검색
               </button>
@@ -634,64 +376,36 @@ export default function SuperAdminMaterialOrdersPage() {
           </form>
 
           <label
-            style={{
-              display: "block",
-              margin: "18px 0 8px",
-              fontWeight: 900,
-            }}
+            htmlFor="order-status"
+            style={{ ...styles.label, marginTop: 16 }}
           >
             주문 상태
           </label>
 
           <select
+            id="order-status"
             value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(
-                event.target.value,
-              )
-            }
-            style={{
-              width: "100%",
-              height: 52,
-              padding: "0 14px",
-              border:
-                "1px solid #d7dae2",
-              borderRadius: 15,
-              background: "#ffffff",
-              color: "#111827",
-              fontSize: 16,
-              fontWeight: 800,
-            }}
+            disabled={Boolean(updatingId)}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            style={styles.input}
           >
-            {STATUS_OPTIONS.map(
-              (option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              ),
-            )}
+            {STATUS_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </section>
 
         {message && (
           <div
+            role="status"
             style={{
-              padding: "14px 16px",
-              marginBottom: 18,
-              borderRadius: 15,
+              ...styles.message,
               background:
-                messageType === "error"
-                  ? "#fef2f2"
-                  : "#f0fdf4",
+                messageType === "error" ? "#fff1f2" : "#ecfdf5",
               color:
-                messageType === "error"
-                  ? "#b91c1c"
-                  : "#15803d",
-              fontWeight: 800,
-              lineHeight: 1.5,
+                messageType === "error" ? "#b91c1c" : "#047857",
             }}
           >
             {message}
@@ -699,612 +413,36 @@ export default function SuperAdminMaterialOrdersPage() {
         )}
 
         {loading ? (
-          <div
-            style={{
-              padding: 50,
-              textAlign: "center",
-              borderRadius: 24,
-              background: "#ffffff",
-              color: "#6b7280",
-              fontWeight: 800,
-            }}
-          >
-            주문을 불러오는 중입니다.
-          </div>
+          <div style={styles.empty}>주문을 불러오는 중입니다.</div>
         ) : orders.length === 0 ? (
-          <div
-            style={{
-              padding: "60px 20px",
-              textAlign: "center",
-              border:
-                "1px solid #e1e3e9",
-              borderRadius: 24,
-              background: "#ffffff",
-              color: "#6b7280",
-              fontWeight: 800,
-              lineHeight: 1.7,
-            }}
-          >
+          <div style={styles.empty}>
             조건에 맞는 자재 주문이 없습니다.
           </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gap: 16,
-            }}
-          >
-            {orders.map((order) => {
-              const expanded = Boolean(
-                expandedIds[order.id],
-              );
-
-              const address =
-                order.shipping_address || {};
-
-              const disabled =
-                updatingId === order.id;
-
-              return (
-                <article
-                  id={`material-order-${order.id}`}
-                  key={order.id}
-                  style={{
-                    overflow: "hidden",
-                    border:
-                      "1px solid #e1e3e9",
-                    borderRadius: 24,
-                    background: "#ffffff",
-                    boxShadow:
-                      "0 8px 24px rgba(17,24,39,0.04)",
-                    scrollMarginTop: 20,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleOrder(order.id)
-                    }
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      padding: 20,
-                      border: 0,
-                      background: "#ffffff",
-                      color: "#111827",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems:
-                          "flex-start",
-                        justifyContent:
-                          "space-between",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            fontSize: 13,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {dateTime(
-                            order.created_at,
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: 5,
-                            fontSize: 19,
-                            fontWeight: 950,
-                          }}
-                        >
-                          {order.order_number ||
-                            "주문번호 없음"}
-                        </div>
-                      </div>
-
-                      <StatusBadge
-                        status={order.status}
-                      />
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
-                        gap: 12,
-                        marginTop: 16,
-                        paddingTop: 15,
-                        borderTop:
-                          "1px solid #eef0f4",
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: "#6b7280",
-                          fontWeight: 800,
-                        }}
-                      >
-                        상품{" "}
-                        {order.items?.length ||
-                          0}
-                        종
-                      </span>
-
-                      <strong
-                        style={{
-                          color: "#7c3aed",
-                          fontSize: 19,
-                        }}
-                      >
-                        {money(
-                          order.total_amount ??
-                            order.final_amount ??
-                            order.amount,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 12,
-                        textAlign: "center",
-                        color: "#6b7280",
-                        fontSize: 14,
-                        fontWeight: 800,
-                      }}
-                    >
-                      {expanded
-                        ? "주문 상세 닫기 ▲"
-                        : "주문 상세 보기 ▼"}
-                    </div>
-                  </button>
-
-                  {expanded && (
-                    <div
-                      style={{
-                        padding:
-                          "0 20px 22px",
-                      }}
-                    >
-                      <section
-                        style={{
-                          padding: 16,
-                          borderRadius: 17,
-                          background:
-                            "#f7f7fa",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin:
-                              "0 0 12px",
-                            fontSize: 17,
-                          }}
-                        >
-                          주문 자재
-                        </h3>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 10,
-                          }}
-                        >
-                          {(
-                            order.items || []
-                          ).map(
-                            (
-                              item,
-                              index,
-                            ) => (
-                              <div
-                                key={
-                                  item.id ||
-                                  `${order.id}-${index}`
-                                }
-                                style={{
-                                  padding: 14,
-                                  border:
-                                    "1px solid #e2e4e9",
-                                  borderRadius: 14,
-                                  background:
-                                    "#ffffff",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display:
-                                      "flex",
-                                    justifyContent:
-                                      "space-between",
-                                    gap: 10,
-                                  }}
-                                >
-                                  <div>
-                                    <strong
-                                      style={{
-                                        display:
-                                          "block",
-                                        fontSize: 17,
-                                      }}
-                                    >
-                                      {getItemCode(
-                                        item,
-                                      )}
-                                    </strong>
-
-                                    <span
-                                      style={{
-                                        display:
-                                          "block",
-                                        marginTop: 4,
-                                        color:
-                                          "#6b7280",
-                                        fontSize: 14,
-                                      }}
-                                    >
-                                      {getItemName(
-                                        item,
-                                      )}
-                                    </span>
-                                  </div>
-
-                                  <strong
-                                    style={{
-                                      color:
-                                        "#7c3aed",
-                                      whiteSpace:
-                                        "nowrap",
-                                    }}
-                                  >
-                                    {meter(
-                                      getItemQuantity(
-                                        item,
-                                      ),
-                                    )}
-                                  </strong>
-                                </div>
-
-                                <div
-                                  style={{
-                                    marginTop: 10,
-                                    color:
-                                      "#4b5563",
-                                    fontSize: 14,
-                                  }}
-                                >
-                                  단가{" "}
-                                  {money(
-                                    getItemUnitPrice(
-                                      item,
-                                    ),
-                                  )}
-                                  /m · 상품금액{" "}
-                                  {money(
-                                    getItemTotal(
-                                      item,
-                                    ),
-                                  )}
-                                </div>
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </section>
-
-                      <section
-                        style={{
-                          padding: 16,
-                          borderRadius: 17,
-                          background:
-                            "#f7f7fa",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin:
-                              "0 0 10px",
-                            fontSize: 17,
-                          }}
-                        >
-                          배송지
-                        </h3>
-
-                        <div
-                          style={{
-                            lineHeight: 1.75,
-                            color: "#374151",
-                          }}
-                        >
-                          <strong>
-                            {address.recipient_name ||
-                              order.recipient_name ||
-                              "받는 분 미등록"}
-                          </strong>
-
-                          <br />
-
-                          {address.recipient_phone ||
-                            order.recipient_phone ||
-                            "전화번호 미등록"}
-
-                          <br />
-
-                          {address.postal_code && (
-                            <>
-                              [
-                              {
-                                address.postal_code
-                              }
-                              ]{" "}
-                            </>
-                          )}
-
-                          {address.address_line1 ||
-                            order.address_line1 ||
-                            "주소 미등록"}
-
-                          {address.address_line2 && (
-                            <>
-                              {" "}
-                              {
-                                address.address_line2
-                              }
-                            </>
-                          )}
-
-                          {(address.delivery_note ||
-                            order.delivery_note) && (
-                            <>
-                              <br />
-                              배송 요청:{" "}
-                              {address.delivery_note ||
-                                order.delivery_note}
-                            </>
-                          )}
-                        </div>
-                      </section>
-
-                      <section
-                        style={{
-                          padding: 16,
-                          borderRadius: 17,
-                          background:
-                            "#f7f7fa",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin:
-                              "0 0 10px",
-                            fontSize: 17,
-                          }}
-                        >
-                          결제 정보
-                        </h3>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 7,
-                            color: "#4b5563",
-                            fontSize: 14,
-                          }}
-                        >
-                          <div>
-                            결제 상태:{" "}
-                            <strong>
-                              {order.payment_status ||
-                                "-"}
-                            </strong>
-                          </div>
-
-                          <div>
-                            공급가액:{" "}
-                            <strong>
-                              {money(
-                                order.subtotal_amount ??
-                                  order.supply_amount,
-                              )}
-                            </strong>
-                          </div>
-
-                          <div>
-                            부가세:{" "}
-                            <strong>
-                              {money(
-                                order.vat_amount,
-                              )}
-                            </strong>
-                          </div>
-
-                          <div>
-                            배송비:{" "}
-                            <strong>
-                              {money(
-                                order.shipping_fee,
-                              )}
-                            </strong>
-                          </div>
-
-                          <div
-                            style={{
-                              paddingTop: 8,
-                              borderTop:
-                                "1px solid #dedfe5",
-                              color: "#111827",
-                              fontSize: 17,
-                            }}
-                          >
-                            총 결제금액:{" "}
-                            <strong>
-                              {money(
-                                order.total_amount ??
-                                  order.final_amount ??
-                                  order.amount,
-                              )}
-                            </strong>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section
-                        style={{
-                          padding: 16,
-                          border:
-                            "1px solid #ddd6fe",
-                          borderRadius: 17,
-                          background:
-                            "#faf8ff",
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin:
-                              "0 0 12px",
-                            fontSize: 17,
-                          }}
-                        >
-                          주문 상태 변경
-                        </h3>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "repeat(2, minmax(0, 1fr))",
-                            gap: 9,
-                          }}
-                        >
-                          {[
-                            [
-                              "paid",
-                              "결제 완료",
-                            ],
-                            [
-                              "preparing",
-                              "상품 준비중",
-                            ],
-                            [
-                              "shipped",
-                              "발송 완료",
-                            ],
-                            [
-                              "delivered",
-                              "배송 완료",
-                            ],
-                            [
-                              "cancelled",
-                              "주문 취소",
-                            ],
-                          ].map(
-                            ([
-                              value,
-                              label,
-                            ]) => {
-                              const selected =
-                                order.status ===
-                                value;
-
-                              return (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  disabled={
-                                    disabled ||
-                                    selected
-                                  }
-                                  onClick={() =>
-                                    changeStatus(
-                                      order,
-                                      value,
-                                    )
-                                  }
-                                  style={{
-                                    minHeight: 48,
-                                    padding:
-                                      "10px 8px",
-                                    border: selected
-                                      ? "2px solid #7c3aed"
-                                      : "1px solid #d7d2e5",
-                                    borderRadius: 14,
-                                    background:
-                                      selected
-                                        ? "#7c3aed"
-                                        : "#ffffff",
-                                    color:
-                                      selected
-                                        ? "#ffffff"
-                                        : "#111827",
-                                    fontSize: 14,
-                                    fontWeight: 900,
-                                    opacity:
-                                      disabled
-                                        ? 0.55
-                                        : 1,
-                                  }}
-                                >
-                                  {selected
-                                    ? "현재 상태"
-                                    : label}
-                                </button>
-                              );
-                            },
-                          )}
-                        </div>
-
-                        {disabled && (
-                          <div
-                            style={{
-                              marginTop: 10,
-                              color: "#7c3aed",
-                              textAlign:
-                                "center",
-                              fontSize: 14,
-                              fontWeight: 800,
-                            }}
-                          >
-                            상태를 변경하는
-                            중입니다.
-                          </div>
-                        )}
-                      </section>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
+          <div style={styles.list}>
+            {orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                expanded={Boolean(expandedIds[order.id])}
+                disabled={Boolean(updatingId)}
+                updating={updatingId === order.id}
+                onToggle={() => toggleOrder(order.id)}
+                onStatusChange={(status) => changeStatus(order, status)}
+              />
+            ))}
           </div>
         )}
 
         <button
           type="button"
           onClick={loadOrders}
-          disabled={loading}
+          disabled={loading || Boolean(updatingId)}
           style={{
+            ...styles.button,
             width: "100%",
-            minHeight: 54,
             marginTop: 18,
-            border:
-              "1px solid #d7dae2",
-            borderRadius: 16,
-            background: "#ffffff",
-            color: "#111827",
-            fontSize: 16,
-            fontWeight: 900,
-            opacity: loading ? 0.6 : 1,
+            ...(loading || updatingId ? styles.disabled : {}),
           }}
         >
           주문 목록 새로고침
@@ -1312,4 +450,531 @@ export default function SuperAdminMaterialOrdersPage() {
       </div>
     </main>
   );
-      }
+}
+
+function OrderCard({
+  order,
+  expanded,
+  disabled,
+  updating,
+  onToggle,
+  onStatusChange,
+}) {
+  const [menu, setMenu] = useState("items");
+  const address = order.shipping_address || {};
+  const items = Array.isArray(order.items) ? order.items : [];
+  const total = order.total_amount ?? order.final_amount ?? order.amount;
+
+  return (
+    <article
+      id={`material-order-${order.id}`}
+      style={styles.orderCard}
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={`order-details-${order.id}`}
+        onClick={onToggle}
+        style={styles.orderHeader}
+      >
+        <div style={styles.orderTop}>
+          <div style={{ minWidth: 0 }}>
+            <div style={styles.help}>{dateTime(order.created_at)}</div>
+            <strong style={styles.orderNumber}>
+              {order.order_number || "주문번호 없음"}
+            </strong>
+          </div>
+
+          <StatusBadge status={order.status} />
+        </div>
+
+        <div style={styles.orderTotal}>
+          <span style={styles.help}>상품 {items.length}종</span>
+          <strong style={styles.amount}>{money(total)}</strong>
+        </div>
+
+        <div style={styles.expandLabel}>
+          {expanded ? "주문 상세 닫기 ▲" : "주문 상세 보기 ▼"}
+        </div>
+      </button>
+
+      {expanded && (
+        <div
+          id={`order-details-${order.id}`}
+          style={styles.orderBody}
+        >
+          <nav aria-label="주문 상세 메뉴" style={styles.menus}>
+            {DETAIL_MENUS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={menu === id}
+                onClick={() => setMenu(id)}
+                style={{
+                  ...styles.menuButton,
+                  ...(menu === id ? styles.selected : {}),
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {menu === "items" && (
+            <section style={styles.panel}>
+              <h3 style={styles.sectionTitle}>주문 자재</h3>
+
+              {items.length === 0 ? (
+                <p style={styles.help}>등록된 주문 자재가 없습니다.</p>
+              ) : (
+                <div style={{ ...styles.list, marginTop: 14 }}>
+                  {items.map((item, index) => (
+                    <div
+                      key={item.id || `${order.id}-${index}`}
+                      style={styles.itemCard}
+                    >
+                      <div style={styles.orderTop}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={styles.itemCode}>
+                            {getItemCode(item)}
+                          </strong>
+                          <div style={styles.help}>
+                            {getItemName(item)}
+                          </div>
+                        </div>
+
+                        <strong style={styles.amount}>
+                          {meter(getItemQuantity(item))}
+                        </strong>
+                      </div>
+
+                      <div style={styles.help}>
+                        단가 {money(getItemUnitPrice(item))}/m
+                      </div>
+                      <div style={styles.help}>
+                        상품금액 {money(getItemTotal(item))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {menu === "shipping" && (
+            <section style={styles.panel}>
+              <h3 style={styles.sectionTitle}>배송지</h3>
+
+              <div style={styles.address}>
+                <strong>
+                  {address.recipient_name ||
+                    order.recipient_name ||
+                    "받는 분 미등록"}
+                </strong>
+
+                <div>
+                  {address.recipient_phone ||
+                    order.recipient_phone ||
+                    "전화번호 미등록"}
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  {(address.postal_code || order.postal_code) && (
+                    <span>
+                      [{address.postal_code || order.postal_code}]{" "}
+                    </span>
+                  )}
+
+                  {address.address_line1 ||
+                    order.address_line1 ||
+                    "주소 미등록"}
+
+                  {(address.address_line2 || order.address_line2) && (
+                    <div>
+                      {address.address_line2 || order.address_line2}
+                    </div>
+                  )}
+                </div>
+
+                {(address.delivery_note || order.delivery_note) && (
+                  <div style={styles.deliveryNote}>
+                    배송 요청:{" "}
+                    {address.delivery_note || order.delivery_note}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {menu === "payment" && (
+            <section style={styles.panel}>
+              <h3 style={styles.sectionTitle}>결제 정보</h3>
+
+              <div style={{ marginTop: 14 }}>
+                <InfoRow
+                  label="결제 상태"
+                  value={order.payment_status || "-"}
+                />
+                <InfoRow
+                  label="공급가액"
+                  value={money(
+                    order.subtotal_amount ?? order.supply_amount
+                  )}
+                />
+                <InfoRow label="부가세" value={money(order.vat_amount)} />
+                <InfoRow label="배송비" value={money(order.shipping_fee)} />
+
+                <div style={styles.orderTotal}>
+                  <strong>총 결제금액</strong>
+                  <strong style={styles.amount}>{money(total)}</strong>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {menu === "status" && (
+            <section style={styles.panel}>
+              <h3 style={styles.sectionTitle}>주문 상태 변경</h3>
+
+              <div style={styles.statusGrid}>
+                {[
+                  ["paid", "결제 완료"],
+                  ["preparing", "상품 준비중"],
+                  ["shipped", "발송 완료"],
+                  ["delivered", "배송 완료"],
+                  ["cancelled", "주문 취소"],
+                ].map(([value, label]) => {
+                  const selected = order.status === value;
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={disabled || selected}
+                      onClick={() => onStatusChange(value)}
+                      style={{
+                        ...styles.button,
+                        ...(selected ? styles.selected : {}),
+                        ...(disabled ? styles.disabled : {}),
+                        ...(value === "cancelled" && !selected
+                          ? { color: "#b91c1c" }
+                          : {}),
+                      }}
+                    >
+                      {label}
+                      {selected && " ✓"}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {updating && (
+                <p role="status" style={styles.help}>
+                  상태를 변경하는 중입니다.
+                </p>
+              )}
+            </section>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={styles.infoRow}>
+      <span style={{ color: "#7b8798" }}>{label}</span>
+      <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    boxSizing: "border-box",
+    background: "var(--film-bg, #f8f7f3)",
+    color: "#243247",
+    padding: "24px 16px 60px",
+  },
+  container: {
+    width: "100%",
+    maxWidth: 760,
+    margin: "0 auto",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 24,
+  },
+  back: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
+    background: "#ffffff",
+    color: "#50617a",
+    fontSize: 24,
+    textDecoration: "none",
+  },
+  eyebrow: {
+    color: "#7b8798",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  title: {
+    margin: "6px 0",
+    fontSize: 26,
+    letterSpacing: "-0.7px",
+  },
+  help: {
+    margin: "5px 0 0",
+    color: "#7b8798",
+    fontSize: 12,
+    lineHeight: 1.7,
+    overflowWrap: "anywhere",
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+    marginBottom: 16,
+  },
+  statCard: {
+    minWidth: 0,
+    padding: 16,
+    border: "1px solid #e4eaf2",
+    borderRadius: 18,
+    background: "#ffffff",
+  },
+  statValue: {
+    display: "block",
+    marginTop: 8,
+    fontSize: 27,
+    color: "#3268bd",
+    overflowWrap: "anywhere",
+  },
+  card: {
+    padding: 18,
+    marginBottom: 16,
+    border: "1px solid #e4eaf2",
+    borderRadius: 22,
+    background: "#ffffff",
+  },
+  label: {
+    display: "block",
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#50617a",
+  },
+  searchRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+  },
+  input: {
+    width: "100%",
+    minWidth: 0,
+    minHeight: 48,
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
+    background: "#fbfcfe",
+    color: "#243247",
+    fontSize: 16,
+  },
+  primary: {
+    minHeight: 44,
+    padding: "10px 16px",
+    border: "none",
+    borderRadius: 14,
+    background: "var(--film-blue, #3478ed)",
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  button: {
+    minHeight: 44,
+    padding: "10px 12px",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
+    background: "#ffffff",
+    color: "#50617a",
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  message: {
+    padding: 14,
+    marginBottom: 16,
+    borderRadius: 14,
+    fontSize: 13,
+    lineHeight: 1.7,
+    overflowWrap: "anywhere",
+  },
+  empty: {
+    padding: "40px 18px",
+    border: "1px solid #e4eaf2",
+    borderRadius: 22,
+    background: "#ffffff",
+    color: "#7b8798",
+    textAlign: "center",
+    fontSize: 13,
+  },
+  list: {
+    display: "grid",
+    gap: 14,
+  },
+  orderCard: {
+    border: "1px solid #e4eaf2",
+    borderRadius: 22,
+    background: "#ffffff",
+    overflow: "hidden",
+    boxShadow: "0 6px 20px rgba(48,77,116,0.04)",
+    scrollMarginTop: 20,
+  },
+  orderHeader: {
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: 18,
+    border: "none",
+    background: "#ffffff",
+    color: "#243247",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  orderTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  orderNumber: {
+    display: "block",
+    marginTop: 6,
+    fontSize: 17,
+    overflowWrap: "anywhere",
+  },
+  badge: {
+    display: "inline-block",
+    padding: "6px 9px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  orderTotal: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingTop: 14,
+    marginTop: 14,
+    borderTop: "1px solid #e4eaf2",
+    fontSize: 13,
+  },
+  amount: {
+    color: "#3268bd",
+    fontSize: 17,
+    overflowWrap: "anywhere",
+  },
+  expandLabel: {
+    marginTop: 14,
+    color: "#7b8798",
+    fontSize: 11,
+    fontWeight: 700,
+    textAlign: "center",
+  },
+  orderBody: {
+    padding: "0 14px 16px",
+  },
+  menus: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 5,
+    marginBottom: 14,
+  },
+  menuButton: {
+    minHeight: 44,
+    padding: "8px 2px",
+    border: "1px solid #dfe6ef",
+    borderRadius: 12,
+    background: "#ffffff",
+    color: "#50617a",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  selected: {
+    background: "#eaf3ff",
+    color: "#3268bd",
+    borderColor: "#3478ed",
+  },
+  panel: {
+    padding: 16,
+    borderRadius: 18,
+    background: "#f3f7fc",
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 16,
+  },
+  itemCard: {
+    padding: 14,
+    border: "1px solid #e4eaf2",
+    borderRadius: 15,
+    background: "#ffffff",
+  },
+  itemCode: {
+    display: "block",
+    fontSize: 17,
+    overflowWrap: "anywhere",
+  },
+  address: {
+    marginTop: 14,
+    color: "#50617a",
+    fontSize: 14,
+    lineHeight: 1.9,
+    overflowWrap: "anywhere",
+  },
+  deliveryNote: {
+    padding: 12,
+    marginTop: 14,
+    borderRadius: 12,
+    background: "#ffffff",
+    fontSize: 12,
+    whiteSpace: "pre-wrap",
+  },
+  infoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: "7px 0",
+    fontSize: 13,
+    lineHeight: 1.7,
+  },
+  statusGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+    marginTop: 16,
+  },
+  disabled: {
+    opacity: 0.5,
+    cursor: "not-allowed",
+  },
+};
