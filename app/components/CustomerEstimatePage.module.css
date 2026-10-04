@@ -1,14 +1,14 @@
 .page {
-  --blue: #1672f9;
-  --blue-dark: #0d60df;
+  --blue: #347fec;
+  --blue-dark: #2367cb;
   --text: #171b21;
   --sub: #6f7a87;
   --muted: #9ba4ae;
-  --line: #e6e9ed;
-  --soft: #f6f8fb;
+  --line: #e8e9ed;
+  --soft: #f8f5f0;
 
   min-height: 100vh;
-  background: #eef2f7;
+  background: #faf8f4;
   color: var(--text);
   font-family:
     Pretendard,
@@ -18,16 +18,15 @@
     sans-serif;
 }
 
-/* =========================================================
-   HEADER
-========================================================= */
+/* 상단 메뉴 */
 
 .header {
   position: sticky;
   top: 0;
   z-index: 100;
   width: 100%;
-  background: #ffffff;
+  background: #fffcf8;
+  box-shadow: 0 4px 20px #23395506;
 }
 
 .headerInner {
@@ -89,22 +88,16 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-
   border: 1px solid #cfe0fb;
   border-radius: 999px;
-
   background: #eef5ff;
   color: #1769dc;
-
   font-size: 12px;
   font-weight: 900;
   letter-spacing: -0.02em;
   text-decoration: none;
   white-space: nowrap;
-
-  box-shadow:
-    0 2px 7px rgba(22, 114, 249, 0.08);
-
+  box-shadow: 0 2px 7px rgba(22, 114, 249, 0.08);
   transition:
     background 0.15s ease,
     transform 0.15s ease;
@@ -125,9 +118,7 @@
   text-decoration: none;
 }
 
-/* =========================================================
-   PROGRESS
-========================================================= */
+/* 진행 상태 */
 
 .progressArea {
   width: 100%;
@@ -161,9 +152,7 @@
   transition: width 0.25s ease;
 }
 
-/* =========================================================
-   APP
-========================================================= */
+/* 화면 전환 */
 
 .screenTransition {
   width: 100%;
@@ -187,9 +176,7 @@
   }
 }
 
-/* =========================================================
-   HOME
-========================================================= */
+/* 첫 화면 */
 
 .homeScreen {
   min-height: calc(100svh - 58px);
@@ -286,8 +273,8 @@
   margin: 0 auto 7px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
-  background: #edf4ff;
+  border-radius: 16px;
+  background: #edf5ff;
   color: var(--blue);
   font-size: 14px;
   font-weight: 900;
@@ -307,15 +294,13 @@
   font-size: 9px;
 }
 
-/* =========================================================
-   BUTTONS
-========================================================= */
+/* 버튼 */
 
 .primaryButton,
 .secondaryButton {
   width: 100%;
   min-height: 54px;
-  border-radius: 10px;
+  border-radius: 16px;
   font-size: 14px;
   font-weight: 900;
   letter-spacing: -0.02em;
@@ -331,8 +316,7 @@
       #1169f1 100%
     );
   color: #ffffff;
-  box-shadow:
-    0 7px 20px rgba(23, 114, 249, 0.18);
+  box-shadow: 0 7px 20px rgba(23, 114, 249, 0.18);
 }
 
 .primaryButton span {
@@ -355,9 +339,7 @@
   transform: scale(0.99);
 }
 
-/* =========================================================
-   CONTENT SCREEN
-========================================================= */
+/* 견적 단계 화면 */
 
 .contentScreen {
   min-height: calc(100svh - 88px);
@@ -386,21 +368,18 @@
   line-height: 1.6;
 }
 
-/* =========================================================
-   UPLOAD
-========================================================= */
+/* 사진 업로드 */
 
 .uploadCard {
   margin-bottom: 17px;
   padding: 12px;
-  border: 1px solid #e3e7ec;
-  border-radius: 15px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
   background: #ffffff;
+  box-shadow: 0 5px 24px #23395506;
 }
 
-/* =========================================================
-   ANALYSIS
-========================================================= */
+/* 분석 화면 */
 
 .analysisVisual {
   height: 250px;
@@ -489,20 +468,20 @@
   text-align: center;
 }
 
-/* =========================================================
-   RESULT
-========================================================= */
+/* 견적 결과 */
 
 .priceCard {
   margin-bottom: 13px;
   padding: 17px 15px;
-  border-radius: 14px;
+  border-radius: 24px;
+  border-color: var(--line);
   background:
     linear-gradient(
       140deg,
       #f4f8ff 0%,
       #eaf2ff 100%
     );
+  box-shadow: 0 5px 24px #23395506;
 }
 
 .priceLabel {
@@ -560,9 +539,7 @@
   gap: 8px;
 }
 
-/* =========================================================
-   FILM
-========================================================= */
+/* 필름 선택 */
 
 .filmPickerArea {
   margin-bottom: 24px;
@@ -580,9 +557,7 @@
   overflow: hidden;
 }
 
-/* =========================================================
-   CONSULT
-========================================================= */
+/* 상담 신청 */
 
 .consultSummary {
   margin-bottom: 16px;
@@ -617,9 +592,7 @@
   border-radius: 14px;
 }
 
-/* =========================================================
-   COMPLETE
-========================================================= */
+/* 신청 완료 */
 
 .completeScreen {
   min-height: calc(100svh - 58px);
@@ -686,9 +659,7 @@
   text-align: right;
 }
 
-/* =========================================================
-   STATE
-========================================================= */
+/* 로딩·오류 */
 
 .statePage {
   min-height: 100vh;
@@ -738,9 +709,7 @@
   font-size: 12px;
 }
 
-/* =========================================================
-   DESKTOP
-========================================================= */
+/* 데스크톱 */
 
 @media (min-width: 600px) {
   .page {
@@ -749,8 +718,7 @@
 
   .header,
   .screenTransition {
-    box-shadow:
-      0 3px 25px rgba(18, 32, 54, 0.07);
+    box-shadow: 0 3px 25px rgba(18, 32, 54, 0.07);
   }
 
   .screenTransition {
@@ -758,9 +726,7 @@
   }
 }
 
-/* =========================================================
-   SMALL MOBILE
-========================================================= */
+/* 작은 모바일 화면 */
 
 @media (max-width: 380px) {
   .headerInner {
@@ -794,9 +760,7 @@
   }
 }
 
-/* =========================================================
-   REDUCED MOTION
-========================================================= */
+/* 동작 효과 줄이기 */
 
 @media (prefers-reduced-motion: reduce) {
   .screenTransition,
@@ -808,4 +772,4 @@
   .progressFill {
     transition: none;
   }
-  }
+}
