@@ -1,17 +1,26 @@
 "use client";
 
+import ToolIllustration from "../components/ui/ToolIllustration";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import ApprovedWorkAiRegister from "./ApprovedWorkAiRegister";
+import ActualMaterialEditor from "./ActualMaterialEditor";
+
+const MENUS = [
+  { id: "content", label: "시공내용", kind: "report" },
+  { id: "photos", label: "사진", kind: "camera" },
+  { id: "cost", label: "자재·경비", kind: "film" },
+  { id: "review", label: "검수", kind: "report" },
+];
 
 export default function SiteWorkReportReview({
   siteId,
   onReportStateChange,
 }) {
+  const [view, setView] = useState("content");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState(null);
-
   const [approvedAmount, setApprovedAmount] = useState("");
   const [reviewMemo, setReviewMemo] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -47,10 +56,10 @@ export default function SiteWorkReportReview({
     setData(null);
 
     const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 15000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      15000
+    );
 
     try {
       const {
@@ -66,7 +75,8 @@ export default function SiteWorkReportReview({
         );
       }
 
-      const accessToken = sessionData?.session?.access_token;
+      const accessToken =
+        sessionData?.session?.access_token;
 
       if (!accessToken) {
         throw new Error(
@@ -74,23 +84,22 @@ export default function SiteWorkReportReview({
         );
       }
 
-      const apiUrl =
+      const response = await fetch(
         `/api/admin/site-work-report-review?siteId=${encodeURIComponent(
           siteId
-        )}`;
-
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
-        signal: controller.signal,
-      });
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
 
       const responseText = await response.text();
-
       let result = null;
 
       if (responseText) {
@@ -109,26 +118,15 @@ export default function SiteWorkReportReview({
         }
       }
 
-      if (!response.ok) {
+      if (!response.ok || !result?.success) {
         throw new Error(
           result?.error ||
             `완료보고 조회 실패 (HTTP ${response.status})`
         );
       }
 
-      if (!result?.success) {
-        throw new Error(
-          result?.error ||
-            "완료보고 검수자료 조회에 실패했습니다."
-        );
-      }
-
       setData(result);
 
-      /*
-       * 부모에게 시공자 완료보고 존재 여부와
-       * 현재 검수상태를 전달합니다.
-       */
       if (typeof onReportStateChange === "function") {
         onReportStateChange({
           hasReport: Boolean(
@@ -146,7 +144,9 @@ export default function SiteWorkReportReview({
         result?.review?.approvedAmount !== undefined
       ) {
         setApprovedAmount(
-          formatNumberInput(result.review.approvedAmount)
+          formatNumberInput(
+            result.review.approvedAmount
+          )
         );
       }
 
@@ -161,16 +161,12 @@ export default function SiteWorkReportReview({
 
       setData(null);
 
-      if (error?.name === "AbortError") {
-        setErrorMessage(
-          "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요."
-        );
-      } else {
-        setErrorMessage(
-          error?.message ||
-            "완료보고 검수자료를 불러오지 못했습니다."
-        );
-      }
+      setErrorMessage(
+        error?.name === "AbortError"
+          ? "완료보고 조회가 15초 이상 걸려 중단했습니다. 서버 API 응답을 확인해주세요."
+          : error?.message ||
+              "완료보고 검수자료를 불러오지 못했습니다."
+      );
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
@@ -183,13 +179,20 @@ export default function SiteWorkReportReview({
     setActionMessage("");
     setActionError("");
 
-    const numericAmount = String(approvedAmount || "")
+    const numericAmount = String(
+      approvedAmount || ""
+    )
       .replace(/,/g, "")
       .replace(/원/g, "")
       .trim();
 
-    if (action === "approve" && numericAmount === "") {
-      setActionError("실제 시공금액을 입력해주세요.");
+    if (
+      action === "approve" &&
+      numericAmount === ""
+    ) {
+      setActionError(
+        "실제 시공금액을 입력해주세요."
+      );
       return;
     }
 
@@ -214,31 +217,33 @@ export default function SiteWorkReportReview({
       return;
     }
 
-    if (action === "approve") {
-      const confirmed = window.confirm(
+    if (
+      action === "approve" &&
+      !window.confirm(
         `실제 시공금액 ${formatMoney(
           numericAmount
         )}으로 검수 승인하시겠습니까?\n\n아직 AI 견적자료에는 등록되지 않습니다.`
-      );
-
-      if (!confirmed) return;
+      )
+    ) {
+      return;
     }
 
-    if (action === "reject") {
-      const confirmed = window.confirm(
+    if (
+      action === "reject" &&
+      !window.confirm(
         "이 완료보고를 보완 요청하시겠습니까?\n\n시공자는 보완 사유를 확인한 후 다시 제출할 수 있습니다."
-      );
-
-      if (!confirmed) return;
+      )
+    ) {
+      return;
     }
 
     setActionLoading(true);
 
     const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 15000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      15000
+    );
 
     try {
       const {
@@ -254,7 +259,8 @@ export default function SiteWorkReportReview({
         );
       }
 
-      const accessToken = sessionData?.session?.access_token;
+      const accessToken =
+        sessionData?.session?.access_token;
 
       if (!accessToken) {
         throw new Error(
@@ -286,7 +292,6 @@ export default function SiteWorkReportReview({
       );
 
       const responseText = await response.text();
-
       let result = null;
 
       if (responseText) {
@@ -305,17 +310,10 @@ export default function SiteWorkReportReview({
         }
       }
 
-      if (!response.ok) {
+      if (!response.ok || !result?.success) {
         throw new Error(
           result?.error ||
             `검수 처리 실패 (HTTP ${response.status})`
-        );
-      }
-
-      if (!result?.success) {
-        throw new Error(
-          result?.error ||
-            "검수 결과를 저장하지 못했습니다."
         );
       }
 
@@ -333,16 +331,12 @@ export default function SiteWorkReportReview({
         error
       );
 
-      if (error?.name === "AbortError") {
-        setActionError(
-          "검수 처리가 15초 이상 걸려 중단되었습니다. 다시 확인해주세요."
-        );
-      } else {
-        setActionError(
-          error?.message ||
-            "검수 처리 중 오류가 발생했습니다."
-        );
-      }
+      setActionError(
+        error?.name === "AbortError"
+          ? "검수 처리가 15초 이상 걸려 중단되었습니다. 다시 확인해주세요."
+          : error?.message ||
+              "검수 처리 중 오류가 발생했습니다."
+      );
     } finally {
       clearTimeout(timeoutId);
       setActionLoading(false);
@@ -350,18 +344,16 @@ export default function SiteWorkReportReview({
   }
 
   function handleAmountChange(event) {
-    const raw = event.target.value || "";
-    const digits = raw.replace(/[^\d]/g, "");
-
-    if (!digits) {
-      setApprovedAmount("");
-      return;
-    }
+    const digits = (
+      event.target.value || ""
+    ).replace(/[^\d]/g, "");
 
     setApprovedAmount(
-      new Intl.NumberFormat("ko-KR").format(
-        Number(digits)
-      )
+      digits
+        ? new Intl.NumberFormat("ko-KR").format(
+            Number(digits)
+          )
+        : ""
     );
 
     if (actionError) {
@@ -382,23 +374,16 @@ export default function SiteWorkReportReview({
       String(value).replace(/,/g, "")
     );
 
-    if (!Number.isFinite(number)) {
-      return "";
-    }
-
-    return new Intl.NumberFormat("ko-KR").format(
-      number
-    );
+    return Number.isFinite(number)
+      ? new Intl.NumberFormat("ko-KR").format(number)
+      : "";
   }
 
   function formatDateTime(value) {
     if (!value) return "-";
 
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
+    if (Number.isNaN(date.getTime())) return "-";
 
     return new Intl.DateTimeFormat("ko-KR", {
       timeZone: "Asia/Seoul",
@@ -413,45 +398,15 @@ export default function SiteWorkReportReview({
   }
 
   function formatMoney(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return "0원";
-    }
-
     const number = Number(
-      String(value).replace(/,/g, "")
+      String(value ?? "").replace(/,/g, "")
     );
 
-    if (!Number.isFinite(number)) {
-      return "0원";
-    }
-
-    return `${new Intl.NumberFormat(
-      "ko-KR"
-    ).format(number)}원`;
-  }
-
-  function formatQuantity(value) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return "-";
-    }
-
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-      return String(value);
-    }
-
-    return new Intl.NumberFormat("ko-KR", {
-      maximumFractionDigits: 2,
-    }).format(number);
+    return Number.isFinite(number)
+      ? `${new Intl.NumberFormat("ko-KR").format(
+          number
+        )}원`
+      : "0원";
   }
 
   function getExpenseLabel(type) {
@@ -511,8 +466,8 @@ export default function SiteWorkReportReview({
         <div
           style={{
             color: "#64748b",
-            fontSize: "13px",
-            fontWeight: "800",
+            fontSize: 13,
+            fontWeight: 800,
           }}
         >
           시공자 완료보고를 확인하고 있습니다...
@@ -532,8 +487,8 @@ export default function SiteWorkReportReview({
         <div
           style={{
             color: "#b91c1c",
-            fontSize: "13px",
-            fontWeight: "900",
+            fontSize: 13,
+            fontWeight: 900,
           }}
         >
           ❌ 완료보고 조회 오류
@@ -541,9 +496,9 @@ export default function SiteWorkReportReview({
 
         <div
           style={{
-            marginTop: "8px",
+            marginTop: 8,
             color: "#7f1d1d",
-            fontSize: "12px",
+            fontSize: 12,
             lineHeight: 1.6,
           }}
         >
@@ -553,7 +508,7 @@ export default function SiteWorkReportReview({
         <button
           type="button"
           onClick={loadReview}
-          style={blackButtonStyle}
+          style={reloadButtonStyle}
         >
           다시 불러오기
         </button>
@@ -576,15 +531,11 @@ export default function SiteWorkReportReview({
     ? data.expenses
     : [];
 
-  const beforePhotos = Array.isArray(
-    data.beforePhotos
-  )
+  const beforePhotos = Array.isArray(data.beforePhotos)
     ? data.beforePhotos
     : [];
 
-  const afterPhotos = Array.isArray(
-    data.afterPhotos
-  )
+  const afterPhotos = Array.isArray(data.afterPhotos)
     ? data.afterPhotos
     : [];
 
@@ -613,13 +564,60 @@ export default function SiteWorkReportReview({
         border: `1px solid ${review.border}`,
       }}
     >
+      <nav
+        aria-label="화면 메뉴"
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          padding: "8px 0",
+          marginBottom: 12,
+        }}
+      >
+        {MENUS.map((menu) => (
+          <button
+            key={menu.id}
+            type="button"
+            aria-pressed={view === menu.id}
+            disabled={actionLoading}
+            onClick={() => setView(menu.id)}
+            style={{
+              flex: "1 1 80px",
+              padding: "12px 8px",
+              borderRadius: 15,
+              border:
+                view === menu.id
+                  ? "1px solid #81b4f7"
+                  : "1px solid #e2e8f0",
+              background:
+                view === menu.id
+                  ? "#edf5ff"
+                  : "#fff",
+              color:
+                view === menu.id
+                  ? "#1d4ed8"
+                  : "#475569",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            <ToolIllustration
+              kind={menu.kind}
+              size={34}
+            />
+            <span>{menu.label}</span>
+          </button>
+        ))}
+      </nav>
+
       <div style={headerStyle}>
         <div>
           <div
             style={{
-              color: "#111827",
-              fontSize: "16px",
-              fontWeight: "900",
+              color: "#182c47",
+              fontSize: 16,
+              fontWeight: 900,
             }}
           >
             {review.icon} {review.title}
@@ -627,10 +625,10 @@ export default function SiteWorkReportReview({
 
           <div
             style={{
-              marginTop: "5px",
+              marginTop: 5,
               color: review.color,
-              fontSize: "12px",
-              fontWeight: "900",
+              fontSize: 12,
+              fontWeight: 900,
             }}
           >
             {review.label}
@@ -640,12 +638,12 @@ export default function SiteWorkReportReview({
         <div
           style={{
             padding: "6px 10px",
-            borderRadius: "999px",
+            borderRadius: 999,
             background: review.background,
             border: `1px solid ${review.border}`,
             color: review.color,
-            fontSize: "10px",
-            fontWeight: "900",
+            fontSize: 10,
+            fontWeight: 900,
           }}
         >
           {review.label}
@@ -659,509 +657,506 @@ export default function SiteWorkReportReview({
         >
           시공자가 완료보고를 제출했습니다.
           <br />
-          시공 내용, 사진, 실제 사용 자재와
-          경비를 확인해주세요.
+          시공 내용, 사진, 실제 사용 자재와 경비를
+          확인해주세요.
           <br />
           아직 AI 견적자료로 등록되지 않았습니다.
         </NoticeBox>
       )}
 
-      <ReviewBlock title="👷 제출 시공자">
-        <ReviewRow
-          label="이름"
-          value={
-            worker?.name ||
-            "시공자 정보 없음"
-          }
-        />
-
-        {worker?.phone && (
+      <div hidden={view !== "content"}>
+        <ReviewBlock title="👷 제출 시공자">
           <ReviewRow
-            label="전화"
-            value={worker.phone}
+            label="이름"
+            value={
+              worker?.name || "시공자 정보 없음"
+            }
           />
-        )}
 
-        <ReviewRow
-          label="제출일"
-          value={formatDateTime(
-            report.completed_at ||
-              report.updated_at ||
-              report.created_at
+          {worker?.phone && (
+            <ReviewRow
+              label="전화"
+              value={worker.phone}
+            />
           )}
-        />
-      </ReviewBlock>
 
-      <ReviewBlock title="🛠️ 실제 시공 내용">
-        {report.work_region && (
           <ReviewRow
-            label="시공지역"
-            value={report.work_region}
+            label="제출일"
+            value={formatDateTime(
+              report.completed_at ||
+                report.updated_at ||
+                report.created_at
+            )}
           />
-        )}
+        </ReviewBlock>
 
-        <div style={contentBoxStyle}>
-          {report.work_summary ||
-            "등록된 시공 내용이 없습니다."}
-        </div>
+        <ReviewBlock title="🛠️ 실제 시공 내용">
+          {report.work_region && (
+            <ReviewRow
+              label="시공지역"
+              value={report.work_region}
+            />
+          )}
 
-        {report.memo && (
           <div style={contentBoxStyle}>
-            <SmallLabel>시공자 메모</SmallLabel>
-            <div
-              style={{
-                marginTop: "5px",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {report.memo}
-            </div>
+            {report.work_summary ||
+              "등록된 시공 내용이 없습니다."}
           </div>
-        )}
-      </ReviewBlock>
 
-      <ReviewBlock
-        title={`📷 시공 전 사진 · ${beforePhotos.length}장`}
-      >
-        {beforePhotos.length === 0 ? (
-          <EmptyText>
-            등록된 시공 전 사진이 없습니다.
-          </EmptyText>
-        ) : (
-          <PhotoGrid photos={beforePhotos} />
-        )}
-      </ReviewBlock>
+          {report.memo && (
+            <div style={contentBoxStyle}>
+              <SmallLabel>
+                시공자 메모
+              </SmallLabel>
 
-      <ReviewBlock
-        title={`📸 시공 완료 사진 · ${afterPhotos.length}장`}
-      >
-        {afterPhotos.length === 0 ? (
-          <EmptyText>
-            등록된 완료 사진이 없습니다.
-          </EmptyText>
-        ) : (
-          <PhotoGrid photos={afterPhotos} />
-        )}
-      </ReviewBlock>
+              <div
+                style={{
+                  marginTop: 5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {report.memo}
+              </div>
+            </div>
+          )}
+        </ReviewBlock>
+      </div>
 
-      <ReviewBlock
-        title={`📦 실제 사용 자재 · ${materials.length}건`}
-      >
-        {materials.length === 0 ? (
-          <EmptyText>
-            등록된 실제 사용 자재가 없습니다.
-          </EmptyText>
-        ) : (
-          <div style={{ display: "grid", gap: "9px" }}>
-            {materials.map((material, index) => {
-              const quantityText = [
-                formatQuantity(material.quantity),
-                material.unit,
-              ]
-                .filter(Boolean)
-                .join(" ");
+      <div hidden={view !== "photos"}>
+        <ReviewBlock
+          title={`📷 시공 전 사진 · ${beforePhotos.length}장`}
+        >
+          {beforePhotos.length === 0 ? (
+            <EmptyText>
+              등록된 시공 전 사진이 없습니다.
+            </EmptyText>
+          ) : (
+            <PhotoGrid photos={beforePhotos} />
+          )}
+        </ReviewBlock>
 
-              return (
-                <div
-                  key={
-                    material.id ||
-                    `${material.product_code}-${index}`
-                  }
-                  style={itemCardStyle}
-                >
-                  <div style={headerStyle}>
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      {material.brand && (
-                        <SmallLabel>
-                          {material.brand}
-                        </SmallLabel>
-                      )}
+        <ReviewBlock
+          title={`📸 시공 완료 사진 · ${afterPhotos.length}장`}
+        >
+          {afterPhotos.length === 0 ? (
+            <EmptyText>
+              등록된 완료 사진이 없습니다.
+            </EmptyText>
+          ) : (
+            <PhotoGrid photos={afterPhotos} />
+          )}
+        </ReviewBlock>
+      </div>
 
+      <div hidden={view !== "cost"}>
+        <ReviewBlock
+          title={`📦 실제 사용 자재 · ${materials.length}건`}
+        >
+          <ActualMaterialEditor
+            key={siteId}
+            siteId={siteId}
+            materials={materials}
+            onSaved={loadReview}
+          />
+        </ReviewBlock>
+
+        <ReviewBlock
+          title={`💳 현장 경비 · ${expenses.length}건`}
+        >
+          {expenses.length === 0 ? (
+            <EmptyText>
+              등록된 현장 경비가 없습니다.
+            </EmptyText>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 9,
+                }}
+              >
+                {expenses.map((expense, index) => (
+                  <div
+                    key={
+                      expense.id ||
+                      `${expense.expense_type}-${index}`
+                    }
+                    style={itemCardStyle}
+                  >
+                    <div style={headerStyle}>
+                      <strong
+                        style={{ fontSize: 12 }}
+                      >
+                        {getExpenseLabel(
+                          expense.expense_type
+                        )}
+                      </strong>
+
+                      <strong>
+                        {formatMoney(expense.amount)}
+                      </strong>
+                    </div>
+
+                    {expense.description && (
                       <div
                         style={{
-                          marginTop: "3px",
-                          color: "#111827",
-                          fontSize: "13px",
-                          fontWeight: "900",
-                          wordBreak: "break-word",
+                          marginTop: 7,
+                          color: "#64748b",
+                          fontSize: 11,
+                          whiteSpace: "pre-wrap",
                         }}
                       >
-                        {material.product_code ||
-                          material.product_name ||
-                          "자재"}
+                        {expense.description}
                       </div>
+                    )}
 
-                      {material.product_name &&
-                        material.product_name !==
-                          material.product_code && (
-                          <div
-                            style={{
-                              marginTop: "3px",
-                              color: "#64748b",
-                              fontSize: "11px",
-                            }}
-                          >
-                            {material.product_name}
-                          </div>
-                        )}
-                    </div>
-
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {quantityText}
-                    </strong>
+                    {expense.expense_date && (
+                      <div
+                        style={{
+                          marginTop: 5,
+                          color: "#94a3b8",
+                          fontSize: 10,
+                        }}
+                      >
+                        {expense.expense_date}
+                      </div>
+                    )}
                   </div>
+                ))}
+              </div>
 
-                  {material.memo && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        color: "#64748b",
-                        fontSize: "11px",
-                      }}
-                    >
-                      메모 {material.memo}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </ReviewBlock>
-      <ReviewBlock
-        title={`💳 현장 경비 · ${expenses.length}건`}
-      >
-        {expenses.length === 0 ? (
-          <EmptyText>
-            등록된 현장 경비가 없습니다.
-          </EmptyText>
-        ) : (
-          <>
-            <div style={{ display: "grid", gap: "9px" }}>
-              {expenses.map((expense, index) => (
-                <div
-                  key={
-                    expense.id ||
-                    `${expense.expense_type}-${index}`
-                  }
-                  style={itemCardStyle}
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "#f8fafc",
+                  textAlign: "right",
+                }}
+              >
+                <span
+                  style={{
+                    color: "#64748b",
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}
                 >
-                  <div style={headerStyle}>
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                      }}
-                    >
-                      {getExpenseLabel(
-                        expense.expense_type
-                      )}
-                    </strong>
+                  경비 합계
+                </span>
 
-                    <strong>
-                      {formatMoney(expense.amount)}
-                    </strong>
-                  </div>
+                <strong
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 15,
+                  }}
+                >
+                  {formatMoney(totalExpense)}
+                </strong>
+              </div>
+            </>
+          )}
+        </ReviewBlock>
+      </div>
 
-                  {expense.description && (
-                    <div
-                      style={{
-                        marginTop: "7px",
-                        color: "#64748b",
-                        fontSize: "11px",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {expense.description}
-                    </div>
-                  )}
-
-                  {expense.expense_date && (
-                    <div
-                      style={{
-                        marginTop: "5px",
-                        color: "#94a3b8",
-                        fontSize: "10px",
-                      }}
-                    >
-                      {expense.expense_date}
-                    </div>
-                  )}
-                </div>
-              ))}
+      <div hidden={view !== "review"}>
+        {reviewStatus === "pending" && (
+          <div
+            style={{
+              marginTop: 18,
+              padding: 15,
+              borderRadius: 18,
+              background: "#f8fafc",
+              border: "1px solid #cbd5e1",
+            }}
+          >
+            <div
+              style={{
+                color: "#182c47",
+                fontSize: 14,
+                fontWeight: 900,
+              }}
+            >
+              🔎 관리자 검수
             </div>
 
             <div
               style={{
-                marginTop: "10px",
-                padding: "12px",
-                borderRadius: "10px",
-                background: "#f8fafc",
-                textAlign: "right",
+                marginTop: 6,
+                color: "#64748b",
+                fontSize: 11,
+                lineHeight: 1.6,
               }}
             >
-              <span
-                style={{
-                  color: "#64748b",
-                  fontSize: "11px",
-                  fontWeight: "800",
-                }}
-              >
-                경비 합계
-              </span>
-
-              <strong
-                style={{
-                  marginLeft: "8px",
-                  fontSize: "15px",
-                }}
-              >
-                {formatMoney(totalExpense)}
-              </strong>
+              시공 내용과 사진을 확인한 후
+              실제 시공금액을 입력하고 승인해주세요.
             </div>
-          </>
-        )}
-      </ReviewBlock>
 
-      {reviewStatus === "pending" && (
-        <div
-          style={{
-            marginTop: "18px",
-            padding: "15px",
-            borderRadius: "12px",
-            background: "#f8fafc",
-            border: "1px solid #cbd5e1",
-          }}
-        >
-          <div
-            style={{
-              color: "#111827",
-              fontSize: "14px",
-              fontWeight: "900",
-            }}
-          >
-            🔎 관리자 검수
-          </div>
+            <div style={{ marginTop: 16 }}>
+              <label
+                htmlFor={`review-amount-${siteId}`}
+                style={labelStyle}
+              >
+                실제 시공금액 *
+              </label>
 
-          <div
-            style={{
-              marginTop: "6px",
-              color: "#64748b",
-              fontSize: "11px",
-              lineHeight: 1.6,
-            }}
-          >
-            시공 내용과 사진을 확인한 후 실제
-            시공금액을 입력하고 승인해주세요.
-          </div>
+              <div
+                style={{ position: "relative" }}
+              >
+                <input
+                  id={`review-amount-${siteId}`}
+                  type="text"
+                  inputMode="numeric"
+                  value={approvedAmount}
+                  onChange={handleAmountChange}
+                  disabled={actionLoading}
+                  placeholder="예: 500,000"
+                  style={{
+                    ...inputStyle,
+                    padding: "12px 42px 12px 12px",
+                  }}
+                />
 
-          <div style={{ marginTop: "16px" }}>
-            <label style={labelStyle}>
-              실제 시공금액 *
-            </label>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#64748b",
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  원
+                </div>
+              </div>
 
-            <div style={{ position: "relative" }}>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={approvedAmount}
-                onChange={handleAmountChange}
+              <div style={hintStyle}>
+                고객 계약금액이 아니라 실제 시공 결과를
+                기준으로 확정한 금액을 입력합니다.
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <label
+                htmlFor={`review-memo-${siteId}`}
+                style={labelStyle}
+              >
+                검수 메모 / 보완 요청 사유
+              </label>
+
+              <textarea
+                id={`review-memo-${siteId}`}
+                value={reviewMemo}
+                onChange={(event) => {
+                  setReviewMemo(event.target.value);
+
+                  if (actionError) {
+                    setActionError("");
+                  }
+                }}
                 disabled={actionLoading}
-                placeholder="예: 500,000"
+                placeholder="승인 메모 또는 시공자에게 전달할 보완 내용을 입력하세요."
+                rows={4}
                 style={{
                   ...inputStyle,
-                  padding:
-                    "12px 42px 12px 12px",
+                  resize: "vertical",
+                  fontFamily: "inherit",
                 }}
               />
 
-              <div
-                style={{
-                  position: "absolute",
-                  right: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "#64748b",
-                  fontSize: "12px",
-                  fontWeight: "900",
-                }}
-              >
-                원
+              <div style={hintStyle}>
+                보완 요청을 할 때는 사유 입력이
+                필수입니다.
               </div>
             </div>
 
-            <div style={hintStyle}>
-              고객 계약금액이 아니라 실제 시공
-              결과를 기준으로 확정한 금액을
-              입력합니다.
-            </div>
-          </div>
+            {actionError && (
+              <MessageBox error>
+                ❌ {actionError}
+              </MessageBox>
+            )}
 
-          <div style={{ marginTop: "14px" }}>
-            <label style={labelStyle}>
-              검수 메모 / 보완 요청 사유
-            </label>
+            {actionMessage && (
+              <MessageBox>
+                ✅ {actionMessage}
+              </MessageBox>
+            )}
 
-            <textarea
-              value={reviewMemo}
-              onChange={(event) => {
-                setReviewMemo(event.target.value);
-
-                if (actionError) {
-                  setActionError("");
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 9,
+                marginTop: 15,
+              }}
+            >
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() =>
+                  submitReviewAction("reject")
                 }
-              }}
-              disabled={actionLoading}
-              placeholder="승인 메모 또는 시공자에게 전달할 보완 내용을 입력하세요."
-              rows={4}
-              style={{
-                ...inputStyle,
-                resize: "vertical",
-                fontFamily: "inherit",
-              }}
-            />
+                style={{
+                  width: "100%",
+                  minHeight: 44,
+                  border: "1px solid #fecaca",
+                  borderRadius: 14,
+                  background: actionLoading
+                    ? "#f1f5f9"
+                    : "#fef2f2",
+                  color: actionLoading
+                    ? "#94a3b8"
+                    : "#b91c1c",
+                  padding: "12px 8px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                {actionLoading
+                  ? "처리 중..."
+                  : "🔴 보완 요청"}
+              </button>
 
-            <div style={hintStyle}>
-              보완 요청을 할 때는 사유 입력이
-              필수입니다.
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() =>
+                  submitReviewAction("approve")
+                }
+                style={{
+                  width: "100%",
+                  minHeight: 44,
+                  border: "none",
+                  borderRadius: 14,
+                  background: actionLoading
+                    ? "#94a3b8"
+                    : "#16a34a",
+                  color: "#fff",
+                  padding: "12px 8px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                {actionLoading
+                  ? "처리 중..."
+                  : "🟢 검수 승인"}
+              </button>
             </div>
-          </div>
 
-          {actionError && (
-            <MessageBox error>
-              ❌ {actionError}
-            </MessageBox>
-          )}
-
-          {actionMessage && (
-            <MessageBox>
-              ✅ {actionMessage}
-            </MessageBox>
-          )}
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "9px",
-              marginTop: "15px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() =>
-                submitReviewAction("reject")
-              }
-              style={{
-                width: "100%",
-                border: "1px solid #fecaca",
-                borderRadius: "10px",
-                background: actionLoading
-                  ? "#f1f5f9"
-                  : "#fef2f2",
-                color: actionLoading
-                  ? "#94a3b8"
-                  : "#b91c1c",
-                padding: "12px 8px",
-                fontSize: "12px",
-                fontWeight: "900",
-              }}
+            <NoticeBox
+              background="#fffbeb"
+              color="#92400e"
             >
-              {actionLoading
-                ? "처리 중..."
-                : "🔴 보완 요청"}
-            </button>
-
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() =>
-                submitReviewAction("approve")
-              }
-              style={{
-                width: "100%",
-                border: "none",
-                borderRadius: "10px",
-                background: actionLoading
-                  ? "#94a3b8"
-                  : "#16a34a",
-                color: "#ffffff",
-                padding: "12px 8px",
-                fontSize: "12px",
-                fontWeight: "900",
-              }}
-            >
-              {actionLoading
-                ? "처리 중..."
-                : "🟢 검수 승인"}
-            </button>
+              ⚠️ 이번 단계의 검수 승인은 완료보고
+              상태와 실제 시공금액만 저장합니다.
+              <br />
+              아직 완료사진을 AI 유사견적용 시공 DB에
+              등록하지 않습니다.
+            </NoticeBox>
           </div>
+        )}
 
-          <NoticeBox
-            background="#fffbeb"
-            color="#92400e"
-          >
-            ⚠️ 이번 단계의 검수 승인은
-            완료보고 상태와 실제 시공금액만
-            저장합니다.
-            <br />
-            아직 완료사진을 AI 유사견적용 시공
-            DB에 등록하지 않습니다.
-          </NoticeBox>
-        </div>
-      )}
+        {reviewStatus === "approved" && (
+          <>
+            <NoticeBox
+              background="#f0fdf4"
+              color="#166534"
+            >
+              <strong>
+                🟢 관리자 검수 승인 완료
+              </strong>
 
-      {reviewStatus === "approved" && (
-        <>
-          <NoticeBox
-            background="#f0fdf4"
-            color="#166534"
-          >
-            <strong>
-              🟢 관리자 검수 승인 완료
-            </strong>
+              {data?.review?.approvedAmount !== null &&
+                data?.review?.approvedAmount !==
+                  undefined && (
+                  <div style={{ marginTop: 9 }}>
+                    실제 시공금액{" "}
+                    <strong>
+                      {formatMoney(
+                        data.review.approvedAmount
+                      )}
+                    </strong>
+                  </div>
+                )}
 
-            {data?.review?.approvedAmount !==
-              null &&
-              data?.review?.approvedAmount !==
-                undefined && (
-                <div style={{ marginTop: "9px" }}>
-                  실제 시공금액{" "}
-                  <strong>
-                    {formatMoney(
-                      data.review.approvedAmount
-                    )}
-                  </strong>
+              {data?.review?.memo && (
+                <div
+                  style={{
+                    marginTop: 9,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {data.review.memo}
                 </div>
               )}
 
-            {data?.review?.memo && (
+              {data?.review?.reviewedAt && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 10,
+                  }}
+                >
+                  검수일{" "}
+                  {formatDateTime(
+                    data.review.reviewedAt
+                  )}
+                </div>
+              )}
+
               <div
                 style={{
-                  marginTop: "9px",
-                  whiteSpace: "pre-wrap",
+                  marginTop: 11,
+                  paddingTop: 10,
+                  borderTop: "1px solid #bbf7d0",
+                  fontSize: 10,
+                  color: "#64748b",
                 }}
               >
-                {data.review.memo}
+                관리자 검수 승인이 완료되었습니다.
+                <br />
+                아래에서 AI 견적자료 등록을
+                진행할 수 있습니다.
               </div>
-            )}
+            </NoticeBox>
+
+            <ApprovedWorkAiRegister
+              siteId={siteId}
+              report={report}
+              materials={materials}
+              beforePhotos={beforePhotos}
+              afterPhotos={afterPhotos}
+              onRegistered={loadReview}
+            />
+          </>
+        )}
+
+        {reviewStatus === "rejected" && (
+          <NoticeBox
+            background="#fef2f2"
+            color="#b91c1c"
+          >
+            <strong>
+              🔴 관리자 보완 요청
+            </strong>
+
+            <div
+              style={{
+                marginTop: 9,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {data?.review?.memo ||
+                "보완 요청 사유가 등록되지 않았습니다."}
+            </div>
 
             {data?.review?.reviewedAt && (
               <div
                 style={{
-                  marginTop: "8px",
-                  fontSize: "10px",
+                  marginTop: 8,
+                  fontSize: 10,
                 }}
               >
                 검수일{" "}
@@ -1173,114 +1168,54 @@ export default function SiteWorkReportReview({
 
             <div
               style={{
-                marginTop: "11px",
-                paddingTop: "10px",
-                borderTop:
-                  "1px solid #bbf7d0",
-                fontSize: "10px",
-                color: "#64748b",
+                marginTop: 11,
+                paddingTop: 10,
+                borderTop: "1px solid #fecaca",
+                fontSize: 10,
               }}
             >
-              관리자 검수 승인이 완료되었습니다.
-              <br />
-              아래에서 AI 견적자료 등록을 진행할 수
-              있습니다.
+              시공자가 보완 내용을 확인한 뒤
+              완료보고를 다시 제출하면 검수 상태가
+              다시 검수 대기로 변경됩니다.
             </div>
           </NoticeBox>
-
-          <ApprovedWorkAiRegister
-            siteId={siteId}
-            report={report}
-            materials={materials}
-            beforePhotos={beforePhotos}
-            afterPhotos={afterPhotos}
-            onRegistered={loadReview}
-          />
-        </>
-      )}
-
-      {reviewStatus === "rejected" && (
-        <NoticeBox
-          background="#fef2f2"
-          color="#b91c1c"
-        >
-          <strong>
-            🔴 관리자 보완 요청
-          </strong>
-
-          <div
-            style={{
-              marginTop: "9px",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {data?.review?.memo ||
-              "보완 요청 사유가 등록되지 않았습니다."}
-          </div>
-
-          {data?.review?.reviewedAt && (
-            <div
-              style={{
-                marginTop: "8px",
-                fontSize: "10px",
-              }}
-            >
-              검수일{" "}
-              {formatDateTime(
-                data.review.reviewedAt
-              )}
-            </div>
-          )}
-
-          <div
-            style={{
-              marginTop: "11px",
-              paddingTop: "10px",
-              borderTop:
-                "1px solid #fecaca",
-              fontSize: "10px",
-            }}
-          >
-            시공자가 보완 내용을 확인한 뒤
-            완료보고를 다시 제출하면 검수 상태가
-            다시 검수 대기로 변경됩니다.
-          </div>
-        </NoticeBox>
-      )}
+        )}
+      </div>
     </section>
   );
 }
 
 const sectionStyle = {
-  marginTop: "14px",
-  background: "#ffffff",
+  marginTop: 14,
+  background: "#fff",
   border: "1px solid #e2e8f0",
-  borderRadius: "16px",
-  padding: "18px",
+  borderRadius: 22,
+  padding: 18,
+  boxShadow: "var(--film-shadow)",
 };
 
 const headerStyle = {
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: "10px",
+  gap: 10,
 };
 
 const itemCardStyle = {
-  padding: "12px",
+  padding: 12,
   border: "1px solid #e2e8f0",
-  borderRadius: "10px",
+  borderRadius: 14,
   background: "#f8fafc",
 };
 
 const contentBoxStyle = {
-  marginTop: "8px",
-  padding: "12px",
-  borderRadius: "10px",
+  marginTop: 8,
+  padding: 12,
+  borderRadius: 14,
   background: "#f8fafc",
   color: "#334155",
-  fontSize: "13px",
-  fontWeight: "800",
+  fontSize: 13,
+  fontWeight: 800,
   lineHeight: 1.7,
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
@@ -1289,58 +1224,58 @@ const contentBoxStyle = {
 const labelStyle = {
   display: "block",
   color: "#334155",
-  fontSize: "12px",
-  fontWeight: "900",
-  marginBottom: "7px",
+  fontSize: 12,
+  fontWeight: 900,
+  marginBottom: 7,
 };
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
+  minHeight: 44,
   border: "1px solid #cbd5e1",
-  borderRadius: "10px",
-  background: "#ffffff",
-  color: "#111827",
-  padding: "12px",
-  fontSize: "13px",
-  outline: "none",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#182c47",
+  padding: 12,
+  fontSize: 13,
 };
 
 const hintStyle = {
-  marginTop: "5px",
-  color: "#94a3b8",
-  fontSize: "10px",
+  marginTop: 5,
+  color: "#64748b",
+  fontSize: 10,
   lineHeight: 1.5,
 };
 
-const blackButtonStyle = {
+const reloadButtonStyle = {
   width: "100%",
-  marginTop: "12px",
+  minHeight: 44,
+  marginTop: 12,
   border: "none",
-  borderRadius: "10px",
-  background: "#111827",
-  color: "#ffffff",
-  padding: "11px",
-  fontSize: "12px",
-  fontWeight: "900",
+  borderRadius: 14,
+  background: "var(--film-blue, #347fec)",
+  color: "#fff",
+  padding: 11,
+  fontSize: 12,
+  fontWeight: 900,
 };
 
 function ReviewBlock({ title, children }) {
   return (
     <div
       style={{
-        marginTop: "16px",
-        paddingTop: "16px",
-        borderTop:
-          "1px solid #e2e8f0",
+        marginTop: 16,
+        paddingTop: 16,
+        borderTop: "1px solid #e2e8f0",
       }}
     >
       <div
         style={{
-          marginBottom: "10px",
-          color: "#111827",
-          fontSize: "13px",
-          fontWeight: "900",
+          marginBottom: 10,
+          color: "#182c47",
+          fontSize: 13,
+          fontWeight: 900,
         }}
       >
         {title}
@@ -1356,19 +1291,17 @@ function ReviewRow({ label, value }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns:
-          "80px minmax(0, 1fr)",
-        gap: "10px",
+        gridTemplateColumns: "80px minmax(0, 1fr)",
+        gap: 10,
         padding: "7px 0",
-        borderBottom:
-          "1px solid #f1f5f9",
+        borderBottom: "1px solid #f1f5f9",
       }}
     >
       <div
         style={{
           color: "#64748b",
-          fontSize: "11px",
-          fontWeight: "800",
+          fontSize: 11,
+          fontWeight: 800,
         }}
       >
         {label}
@@ -1376,9 +1309,9 @@ function ReviewRow({ label, value }) {
 
       <div
         style={{
-          color: "#111827",
-          fontSize: "12px",
-          fontWeight: "800",
+          color: "#182c47",
+          fontSize: 12,
+          fontWeight: 800,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
         }}
@@ -1394,8 +1327,8 @@ function SmallLabel({ children }) {
     <div
       style={{
         color: "#64748b",
-        fontSize: "10px",
-        fontWeight: "800",
+        fontSize: 10,
+        fontWeight: 800,
       }}
     >
       {children}
@@ -1407,13 +1340,12 @@ function EmptyText({ children }) {
   return (
     <div
       style={{
-        padding: "13px",
-        borderRadius: "10px",
+        padding: 13,
+        borderRadius: 14,
         background: "#f8fafc",
-        border:
-          "1px dashed #cbd5e1",
+        border: "1px dashed #cbd5e1",
         color: "#64748b",
-        fontSize: "11px",
+        fontSize: 11,
         lineHeight: 1.6,
         textAlign: "center",
       }}
@@ -1431,13 +1363,13 @@ function NoticeBox({
   return (
     <div
       style={{
-        marginTop: "14px",
-        padding: "13px",
-        borderRadius: "10px",
+        marginTop: 14,
+        padding: 13,
+        borderRadius: 14,
         background,
         color,
-        fontSize: "12px",
-        fontWeight: "800",
+        fontSize: 12,
+        fontWeight: 800,
         lineHeight: 1.7,
       }}
     >
@@ -1452,10 +1384,11 @@ function MessageBox({
 }) {
   return (
     <div
+      role="status"
       style={{
-        marginTop: "12px",
-        padding: "11px",
-        borderRadius: "9px",
+        marginTop: 12,
+        padding: 11,
+        borderRadius: 12,
         background: error
           ? "#fef2f2"
           : "#f0fdf4",
@@ -1465,8 +1398,8 @@ function MessageBox({
         color: error
           ? "#b91c1c"
           : "#166534",
-        fontSize: "11px",
-        fontWeight: "800",
+        fontSize: 11,
+        fontWeight: 800,
         lineHeight: 1.6,
       }}
     >
@@ -1482,7 +1415,7 @@ function PhotoGrid({ photos }) {
         display: "grid",
         gridTemplateColumns:
           "repeat(2, minmax(0, 1fr))",
-        gap: "9px",
+        gap: 9,
       }}
     >
       {photos.map((photo, index) => (
@@ -1513,14 +1446,13 @@ function PhotoCard({ photo, index }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "10px",
-          border:
-            "1px solid #e2e8f0",
-          borderRadius: "11px",
+          padding: 10,
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
           background: "#f8fafc",
           color: "#94a3b8",
-          fontSize: "11px",
-          fontWeight: "800",
+          fontSize: 11,
+          fontWeight: 800,
           textAlign: "center",
         }}
       >
@@ -1539,9 +1471,8 @@ function PhotoCard({ photo, index }) {
         display: "block",
         aspectRatio: "1 / 1",
         overflow: "hidden",
-        borderRadius: "11px",
-        border:
-          "1px solid #e2e8f0",
+        borderRadius: 14,
+        border: "1px solid #e2e8f0",
         background: "#f8fafc",
       }}
     >
@@ -1560,15 +1491,14 @@ function PhotoCard({ photo, index }) {
       <div
         style={{
           position: "absolute",
-          left: "6px",
-          bottom: "6px",
+          left: 6,
+          bottom: 6,
           padding: "3px 6px",
-          borderRadius: "999px",
-          background:
-            "rgba(15,23,42,0.72)",
-          color: "#ffffff",
-          fontSize: "10px",
-          fontWeight: "900",
+          borderRadius: 999,
+          background: "rgba(15,23,42,0.72)",
+          color: "#fff",
+          fontSize: 10,
+          fontWeight: 900,
         }}
       >
         사진 {index + 1}

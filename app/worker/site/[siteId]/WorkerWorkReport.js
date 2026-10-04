@@ -1,5 +1,6 @@
 "use client";
 
+import ToolIllustration from "../../../components/ui/ToolIllustration";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../../lib/supabase";
 
@@ -10,6 +11,15 @@ const EXPENSE_TYPES = [
   { value: "toll", label: "통행료" },
   { value: "material", label: "추가 자재비" },
   { value: "other", label: "기타" },
+];
+
+const MENUS = [
+  { id: "content", label: "내용", kind: "report" },
+  { id: "photos", label: "사진", kind: "camera" },
+  { id: "labor", label: "인건비", kind: "people" },
+  { id: "materials", label: "자재", kind: "film" },
+  { id: "expenses", label: "경비", kind: "money" },
+  { id: "submit", label: "제출", kind: "report" },
 ];
 
 function emptyMaterial() {
@@ -40,11 +50,9 @@ function formatNumber(value) {
 
   const onlyNumber = String(value).replace(/[^\d]/g, "");
 
-  if (!onlyNumber) {
-    return "";
-  }
-
-  return Number(onlyNumber).toLocaleString("ko-KR");
+  return onlyNumber
+    ? Number(onlyNumber).toLocaleString("ko-KR")
+    : "";
 }
 
 function parseNumber(value) {
@@ -52,7 +60,9 @@ function parseNumber(value) {
     return "";
   }
 
-  const number = Number(String(value).replace(/[^\d.-]/g, ""));
+  const number = Number(
+    String(value).replace(/[^\d.-]/g, "")
+  );
 
   return Number.isFinite(number) ? number : "";
 }
@@ -77,51 +87,157 @@ export default function WorkerWorkReport({
   site,
   onSubmitted,
 }) {
+  const [view, setView] = useState("content");
   const [workRegion, setWorkRegion] = useState("");
   const [workSummary, setWorkSummary] = useState("");
   const [memo, setMemo] = useState("");
-
   const [materials, setMaterials] = useState([]);
   const [expenses, setExpenses] = useState([]);
-
+  const [labor, setLabor] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const [workerError, setWorkerError] = useState("");
+  const [workersLoading, setWorkersLoading] = useState(true);
   const [beforeFiles, setBeforeFiles] = useState([]);
   const [afterFiles, setAfterFiles] = useState([]);
-
   const [beforePreviews, setBeforePreviews] = useState([]);
   const [afterPreviews, setAfterPreviews] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   const submitting = useRef(false);
   const uploadedFiles = useRef(new Set());
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+
+  const previewState = useRef({
+    before: [],
+    after: [],
+  });
+
+  previewState.current = {
+    before: beforePreviews,
+    after: afterPreviews,
+  };
+
+  useEffect(
+    () => () => {
+      revokePreviews(previewState.current.before);
+      revokePreviews(previewState.current.after);
+    },
+    []
+  );
 
   useEffect(() => {
     setWorkRegion(site?.region || "");
   }, [site?.id, site?.region]);
 
   useEffect(() => {
-    return () => {
-      revokePreviews(beforePreviews);
-      revokePreviews(afterPreviews);
-    };
-  }, [beforePreviews, afterPreviews]);
+    let active = true;
 
-  const expenseTotal = useMemo(() => {
-    return expenses.reduce((sum, item) => {
-      const amount = Number(parseNumber(item.amount) || 0);
-      return sum + amount;
-    }, 0);
-  }, [expenses]);
+    setWorkersLoading(true);
+    setWorkerError("");
+
+    getAccessToken()
+      .then(async (token) => {
+        const response = await fetch(
+          `/api/worker/site-work-report?siteId=${encodeURIComponent(
+            siteId
+          )}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.error ||
+              "시공자 정보를 불러오지 못했습니다."
+          );
+        }
+
+        if (active) {
+          setWorkers(result.laborWorkers || []);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setWorkerError(error.message);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setWorkersLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
+  const laborAmount = (item) =>
+    Math.round(
+      Number(parseNumber(item.days) || 0) *
+        Number(parseNumber(item.daily_wage) || 0) +
+        Number(parseNumber(item.allowance) || 0)
+    );
+
+  const laborTotal = labor.reduce(
+    (sum, item) => sum + laborAmount(item),
+    0
+  );
+
+  const materialTotal = materials.reduce(
+    (sum, item) =>
+      sum +
+      Number(parseNumber(item.quantity) || 0) *
+        Number(parseNumber(item.unit_price) || 0),
+    0
+  );
+
+  const expenseTotal = useMemo(
+    () =>
+      expenses.reduce(
+        (sum, item) =>
+          sum + Number(parseNumber(item.amount) || 0),
+        0
+      ),
+    [expenses]
+  );
+
+  function updateLabor(index, key, value) {
+    setLabor((current) =>
+      current.map((item, i) => {
+        if (i !== index) return item;
+
+        if (key === "worker_id") {
+          const person = workers.find(
+            (worker) => worker.id === value
+          );
+
+          return {
+            ...item,
+            worker_id: value,
+            daily_wage: person?.daily_wage ?? "",
+          };
+        }
+
+        return {
+          ...item,
+          [key]: value,
+        };
+      })
+    );
+  }
 
   function handleBeforeFiles(event) {
     const files = Array.from(event.target.files || []);
-
-    if (!files.length) {
-      return;
-    }
+    if (!files.length) return;
 
     revokePreviews(beforePreviews);
-
     setBeforeFiles(files);
     setBeforePreviews(createPreviewFiles(files));
     setMessage("");
@@ -129,93 +245,79 @@ export default function WorkerWorkReport({
 
   function handleAfterFiles(event) {
     const files = Array.from(event.target.files || []);
-
-    if (!files.length) {
-      return;
-    }
+    if (!files.length) return;
 
     revokePreviews(afterPreviews);
-
     setAfterFiles(files);
     setAfterPreviews(createPreviewFiles(files));
     setMessage("");
   }
 
   function removeBeforePhoto(index) {
-    const preview = beforePreviews[index];
-
-    if (preview?.url) {
-      URL.revokeObjectURL(preview.url);
+    if (beforePreviews[index]?.url) {
+      URL.revokeObjectURL(beforePreviews[index].url);
     }
 
-    setBeforeFiles((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setBeforeFiles((rows) =>
+      rows.filter((_, i) => i !== index)
     );
 
-    setBeforePreviews((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setBeforePreviews((rows) =>
+      rows.filter((_, i) => i !== index)
     );
   }
 
   function removeAfterPhoto(index) {
-    const preview = afterPreviews[index];
-
-    if (preview?.url) {
-      URL.revokeObjectURL(preview.url);
+    if (afterPreviews[index]?.url) {
+      URL.revokeObjectURL(afterPreviews[index].url);
     }
 
-    setAfterFiles((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setAfterFiles((rows) =>
+      rows.filter((_, i) => i !== index)
     );
 
-    setAfterPreviews((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setAfterPreviews((rows) =>
+      rows.filter((_, i) => i !== index)
     );
   }
 
   function addMaterial() {
-    setMaterials((current) => [...current, emptyMaterial()]);
+    setMaterials((rows) => [...rows, emptyMaterial()]);
   }
 
   function updateMaterial(index, key, value) {
-    setMaterials((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [key]: value,
-            }
-          : item,
-      ),
+    setMaterials((rows) =>
+      rows.map((item, i) =>
+        i === index
+          ? { ...item, [key]: value }
+          : item
+      )
     );
   }
 
   function removeMaterial(index) {
-    setMaterials((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setMaterials((rows) =>
+      rows.filter((_, i) => i !== index)
     );
   }
 
   function addExpense() {
-    setExpenses((current) => [...current, emptyExpense()]);
+    setExpenses((rows) => [...rows, emptyExpense()]);
   }
 
   function updateExpense(index, key, value) {
-    setExpenses((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [key]: value,
-            }
-          : item,
-      ),
+    setExpenses((rows) =>
+      rows.map((item, i) =>
+        i === index
+          ? { ...item, [key]: value }
+          : item
+      )
     );
   }
 
   function removeExpense(index) {
-    setExpenses((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    setExpenses((rows) =>
+      rows.filter((_, i) => i !== index)
     );
   }
 
@@ -225,17 +327,13 @@ export default function WorkerWorkReport({
       error,
     } = await supabase.auth.getSession();
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
-    const token = session?.access_token;
-
-    if (!token) {
+    if (!session?.access_token) {
       throw new Error("로그인이 필요합니다.");
     }
 
-    return token;
+    return session.access_token;
   }
 
   async function uploadPhotos({
@@ -244,48 +342,63 @@ export default function WorkerWorkReport({
     files,
   }) {
     if (!files.length) {
-      return {
-        success: true,
-        count: 0,
-      };
+      return { success: true, count: 0 };
     }
 
-    // Record each successful file so a later upload/save failure can be retried
-    // without uploading the earlier files again while this form remains open.
     for (const file of files) {
-      if (uploadedFiles.current.has(file)) continue;
+      if (uploadedFiles.current.has(file)) {
+        continue;
+      }
+
       const formData = new FormData();
       formData.append("siteId", siteId);
       formData.append("photoType", photoType);
       formData.append("photos", file);
-      const response = await fetch("/api/worker/site-photos", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: formData,
-      });
-      const result = await response.json().catch(() => null);
+
+      const response = await fetch(
+        "/api/worker/site-photos",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: formData,
+        }
+      );
+
+      const result = await response
+        .json()
+        .catch(() => null);
+
       if (!response.ok || !result?.success) {
-        throw new Error(result?.error || "사진 등록 중 오류가 발생했습니다.");
+        throw new Error(
+          result?.error ||
+            "사진 등록 중 오류가 발생했습니다."
+        );
       }
+
       uploadedFiles.current.add(file);
     }
-    return { success: true, count: files.length };
+
+    return {
+      success: true,
+      count: files.length,
+    };
   }
 
-  async function saveReport({
-    accessToken,
-  }) {
+  async function saveReport({ accessToken }) {
     const normalizedMaterials = materials
-      .filter((item) => {
-        return (
+      .filter(
+        (item) =>
           item.product_code.trim() ||
           item.product_name.trim()
-        );
-      })
+      )
       .map((item) => ({
         brand: item.brand.trim() || null,
-        product_code: item.product_code.trim() || null,
-        product_name: item.product_name.trim() || null,
+        product_code:
+          item.product_code.trim() || null,
+        product_name:
+          item.product_name.trim() || null,
         quantity:
           item.quantity === ""
             ? 0
@@ -299,40 +412,57 @@ export default function WorkerWorkReport({
       }));
 
     const normalizedExpenses = expenses
-      .filter((item) => {
-        return Number(parseNumber(item.amount) || 0) > 0;
-      })
+      .filter(
+        (item) =>
+          Number(parseNumber(item.amount) || 0) > 0
+      )
       .map((item) => ({
         expense_type: item.expense_type || "other",
         amount: Number(parseNumber(item.amount) || 0),
-        description: item.description.trim() || null,
+        description:
+          item.description.trim() || null,
         expense_date:
           item.expense_date ||
           new Date().toISOString().slice(0, 10),
       }));
 
-    const response = await fetch("/api/worker/site-work-report", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        siteId,
-        work_region: workRegion.trim() || null,
-        work_summary: workSummary.trim(),
-        memo: memo.trim() || null,
-        materials: normalizedMaterials,
-        expenses: normalizedExpenses,
-      }),
-    });
+    const response = await fetch(
+      "/api/worker/site-work-report",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          siteId,
+          work_region: workRegion.trim() || null,
+          work_summary: workSummary.trim(),
+          memo: memo.trim() || null,
+          labor: labor.map((item) => ({
+            worker_id: item.worker_id,
+            days: Number(parseNumber(item.days)),
+            daily_wage: Number(
+              parseNumber(item.daily_wage)
+            ),
+            allowance: Number(
+              parseNumber(item.allowance) || 0
+            ),
+          })),
+          materials: normalizedMaterials,
+          expenses: normalizedExpenses,
+        }),
+      }
+    );
 
-    const result = await response.json().catch(() => null);
+    const result = await response
+      .json()
+      .catch(() => null);
 
     if (!response.ok || !result?.success) {
       throw new Error(
         result?.error ||
-          "완료보고 저장 중 오류가 발생했습니다.",
+          "완료보고 저장 중 오류가 발생했습니다."
       );
     }
 
@@ -342,9 +472,7 @@ export default function WorkerWorkReport({
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (submitting.current) {
-      return;
-    }
+    if (submitting.current) return;
 
     setMessage("");
 
@@ -354,13 +482,79 @@ export default function WorkerWorkReport({
     }
 
     if (!workSummary.trim()) {
+      setView("content");
       setMessage("❌ 실제 시공 내용을 입력해주세요.");
       return;
     }
 
-    if (afterFiles.length === 0) {
-      setMessage("❌ 시공 완료 사진을 1장 이상 등록해주세요.");
+    if (!afterFiles.length) {
+      setView("photos");
+      setMessage(
+        "❌ 시공 완료 사진을 1장 이상 등록해주세요."
+      );
       return;
+    }
+
+    if (workerError || workersLoading) {
+      setView("labor");
+      setMessage(
+        "❌ " +
+          (workerError ||
+            "시공자 정보를 불러오는 중입니다.")
+      );
+      return;
+    }
+
+    const ids = new Set();
+
+    for (const item of labor) {
+      const days = Number(parseNumber(item.days));
+      const wage = parseNumber(item.daily_wage);
+      const allowance = Number(
+        parseNumber(item.allowance) || 0
+      );
+
+      if (
+        !workers.some(
+          (worker) => worker.id === item.worker_id
+        ) ||
+        ids.has(item.worker_id) ||
+        !Number.isFinite(days) ||
+        days <= 0 ||
+        days > 366 ||
+        wage === "" ||
+        !Number.isSafeInteger(wage) ||
+        wage < 0 ||
+        !Number.isSafeInteger(allowance) ||
+        allowance < 0
+      ) {
+        setView("labor");
+        setMessage(
+          "❌ 시공자, 근무일수, 일당, 팀장수당을 확인해주세요. 같은 시공자는 한 번만 입력하세요."
+        );
+        return;
+      }
+
+      ids.add(item.worker_id);
+    }
+
+    for (const item of materials) {
+      if (
+        !(
+          item.product_code.trim() ||
+          item.product_name.trim()
+        ) ||
+        parseNumber(item.quantity) === "" ||
+        Number(parseNumber(item.quantity)) <= 0 ||
+        parseNumber(item.unit_price) === "" ||
+        Number(parseNumber(item.unit_price)) < 0
+      ) {
+        setView("materials");
+        setMessage(
+          "❌ 자재의 제품코드 또는 제품명, 사용량, 단가를 입력해주세요. 무상 자재는 단가를 0으로 입력하세요."
+        );
+        return;
+      }
     }
 
     submitting.current = true;
@@ -369,13 +563,10 @@ export default function WorkerWorkReport({
     try {
       const accessToken = await getAccessToken();
 
-      /*
-       * 1. 시공 전 사진
-       *
-       * 선택한 경우에만 업로드합니다.
-       */
-      if (beforeFiles.length > 0) {
-        setMessage("📷 시공 전 사진을 등록하고 있습니다...");
+      if (beforeFiles.length) {
+        setMessage(
+          "📷 시공 전 사진을 등록하고 있습니다..."
+        );
 
         await uploadPhotos({
           accessToken,
@@ -384,34 +575,28 @@ export default function WorkerWorkReport({
         });
       }
 
-      // Save all evidence while the report is still editable. Only the final
-      // request transitions it to pending and freezes further photo changes.
-      setMessage("📷 시공 완료 사진을 등록하고 있습니다...");
+      setMessage(
+        "📷 시공 완료 사진을 등록하고 있습니다..."
+      );
+
       const afterResult = await uploadPhotos({
-        accessToken, photoType: "after", files: afterFiles,
+        accessToken,
+        photoType: "after",
+        files: afterFiles,
       });
 
-      setMessage("📝 완료보고와 자재·경비를 저장하고 있습니다...");
-      const reportResult = await saveReport({ accessToken });
+      setMessage(
+        "📝 완료보고와 자재·경비를 저장하고 있습니다..."
+      );
 
-      /*
-       * 중요
-       *
-       * 여기까지 완료되어도 AI 견적자료로 등록하지 않습니다.
-       *
-       * site_photos
-       * work_reports
-       * site_materials(actual)
-       * site_expenses
-       *
-       * 에만 저장됩니다.
-       *
-       * 관리자 검수 + 실제 견적금액 입력 + 승인 후
-       * 별도의 관리자 기능에서 AI 자료로 넘깁니다.
-       */
+      const reportResult = await saveReport({
+        accessToken,
+      });
 
       setMessage(
-        `✅ 완료보고가 제출되었습니다. 완료사진 ${afterResult?.count || afterFiles.length}장이 등록되었습니다. 관리자 검수를 기다려주세요.`,
+        `✅ 완료보고가 제출되었습니다. 완료사진 ${
+          afterResult?.count || afterFiles.length
+        }장이 등록되었습니다. 관리자 검수를 기다려주세요.`
       );
 
       if (typeof onSubmitted === "function") {
@@ -421,13 +606,16 @@ export default function WorkerWorkReport({
         });
       }
     } catch (error) {
-      console.error("Worker work report submit error:", error);
+      console.error(
+        "Worker work report submit error:",
+        error
+      );
 
       setMessage(
         `❌ ${
           error?.message ||
           "완료보고 제출 중 오류가 발생했습니다."
-        }`,
+        }`
       );
     } finally {
       submitting.current = false;
@@ -437,468 +625,519 @@ export default function WorkerWorkReport({
 
   return (
     <form
+      noValidate
       onSubmit={handleSubmit}
-      style={{
-        display: "grid",
-        gap: "16px",
-      }}
+      style={{ display: "grid", gap: 16 }}
     >
-      <section
+      <nav
+        aria-label="화면 메뉴"
         style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          padding: "8px 0",
+          marginBottom: 12,
         }}
       >
-        <div
-          style={{
-            fontSize: "16px",
-            fontWeight: "900",
-            color: "#111827",
-          }}
-        >
-          📷 시공 전 사진
-        </div>
-
-        <div
-          style={{
-            marginTop: "5px",
-            fontSize: "12px",
-            lineHeight: "1.5",
-            color: "#64748b",
-          }}
-        >
-          실제 작업을 시작하기 전 현장 상태를 등록합니다.
-        </div>
-
-        <label
-          style={{
-            display: "block",
-            marginTop: "12px",
-            padding: "12px",
-            border: "1px dashed #94a3b8",
-            borderRadius: "10px",
-            background: "#f8fafc",
-            textAlign: "center",
-            fontSize: "13px",
-            fontWeight: "800",
-            color: "#334155",
-            cursor: saving ? "not-allowed" : "pointer",
-          }}
-        >
-          📷 시공 전 사진 선택
-          <input
-            type="file"
-            accept="image/*"
-            multiple
+        {MENUS.map((menu) => (
+          <button
+            key={menu.id}
+            type="button"
+            aria-pressed={view === menu.id}
             disabled={saving}
-            onChange={handleBeforeFiles}
+            onClick={() => setView(menu.id)}
             style={{
-              display: "none",
+              flex: "1 1 80px",
+              padding: "12px 8px",
+              borderRadius: 15,
+              border:
+                view === menu.id
+                  ? "1px solid #2563eb"
+                  : "1px solid #e2e8f0",
+              background:
+                view === menu.id
+                  ? "#eff6ff"
+                  : "white",
+              color:
+                view === menu.id
+                  ? "#1d4ed8"
+                  : "#475569",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            <ToolIllustration
+              kind={menu.kind}
+              size={34}
+            />
+            <span>{menu.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div hidden={view !== "content"}>
+        <section style={sectionStyle}>
+          <strong>📝 실제 시공 내용</strong>
+
+          <FieldLabel text="시공 지역">
+            <input
+              value={workRegion}
+              disabled={saving}
+              onChange={(event) =>
+                setWorkRegion(event.target.value)
+              }
+              placeholder="예: 인천 서구"
+              style={inputStyle}
+            />
+          </FieldLabel>
+
+          <FieldLabel text="실제 시공 내용 *">
+            <textarea
+              rows={4}
+              value={workSummary}
+              disabled={saving}
+              onChange={(event) =>
+                setWorkSummary(event.target.value)
+              }
+              placeholder="예: 싱크대 상부장/하부장 필름 시공"
+              style={inputStyle}
+            />
+          </FieldLabel>
+        </section>
+
+        <section
+          style={{
+            ...sectionStyle,
+            marginTop: 16,
+          }}
+        >
+          <strong>📝 메모</strong>
+
+          <textarea
+            rows={4}
+            value={memo}
+            disabled={saving}
+            onChange={(event) =>
+              setMemo(event.target.value)
+            }
+            placeholder="관리자에게 전달할 내용"
+            style={{
+              ...inputStyle,
+              marginTop: 10,
             }}
           />
-        </label>
+        </section>
+      </div>
 
-        {beforePreviews.length > 0 && (
+      <div hidden={view !== "photos"}>
+        <section style={sectionStyle}>
+          <strong>📷 시공 전 사진</strong>
+
+          <p style={helpStyle}>
+            작업 시작 전 현장 상태를 등록합니다.
+          </p>
+
+          <PhotoInput
+            label="시공 전 사진 선택"
+            disabled={saving}
+            onChange={handleBeforeFiles}
+          />
+
           <PhotoPreviewGrid
             previews={beforePreviews}
             onRemove={removeBeforePhoto}
             disabled={saving}
           />
-        )}
-      </section>
+        </section>
 
-      <section
-        style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
-        }}
-      >
-        <div
+        <section
           style={{
-            fontSize: "16px",
-            fontWeight: "900",
-            color: "#111827",
+            ...sectionStyle,
+            marginTop: 16,
           }}
         >
-          📝 실제 시공 내용
-        </div>
+          <strong>📷 시공 완료 사진 *</strong>
 
-        <FieldLabel text="시공 지역">
-          <input
-            type="text"
-            value={workRegion}
+          <p style={helpStyle}>
+            완료사진을 1장 이상 등록해주세요.
+          </p>
+
+          <PhotoInput
+            label="완료 사진 선택"
             disabled={saving}
-            onChange={(event) => setWorkRegion(event.target.value)}
-            placeholder="예: 인천 서구"
-            style={inputStyle}
+            onChange={handleAfterFiles}
           />
-        </FieldLabel>
 
-        <FieldLabel text="실제 시공 내용 *">
-          <textarea
-            value={workSummary}
+          <PhotoPreviewGrid
+            previews={afterPreviews}
+            onRemove={removeAfterPhoto}
             disabled={saving}
-            onChange={(event) => setWorkSummary(event.target.value)}
-            placeholder="예: 싱크대 상부장/하부장 필름 시공"
-            rows={4}
-            style={{
-              ...inputStyle,
-              resize: "vertical",
-              lineHeight: "1.5",
-            }}
           />
-        </FieldLabel>
-      </section>
+        </section>
+      </div>
 
-      <section
-        style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "10px",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: "16px",
-                fontWeight: "900",
-                color: "#111827",
-              }}
-            >
-              📦 실제 사용 자재
-            </div>
+      <div hidden={view !== "labor"}>
+        <section style={sectionStyle}>
+          <div style={headingStyle}>
+            <strong>👷 시공자별 인건비</strong>
 
-            <div
-              style={{
-                marginTop: "4px",
-                fontSize: "12px",
-                color: "#64748b",
-              }}
+            <button
+              type="button"
+              disabled={
+                saving ||
+                workersLoading ||
+                Boolean(workerError)
+              }
+              style={smallAddButtonStyle}
+              onClick={() =>
+                setLabor((rows) => [
+                  ...rows,
+                  {
+                    worker_id: "",
+                    days: "1",
+                    daily_wage: "",
+                    allowance: "0",
+                  },
+                ])
+              }
             >
-              실제 현장에서 사용한 필름을 입력합니다.
-            </div>
+              + 인건비
+            </button>
           </div>
 
-          <button
-            type="button"
-            disabled={saving}
-            onClick={addMaterial}
-            style={smallAddButtonStyle}
-          >
-            + 자재
-          </button>
-        </div>
+          <p style={helpStyle}>
+            실제 근무일수 × 일당 + 팀장수당 합계로
+            계산합니다. 팀장수당은 이 현장 전체 금액을
+            입력하세요. 제출한 비용은 관리자 매출수익에
+            자동 반영됩니다.
+          </p>
 
-        {materials.length === 0 ? (
-          <EmptyBox text="사용 자재가 있으면 + 자재를 눌러 입력하세요." />
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gap: "10px",
-              marginTop: "12px",
-            }}
-          >
-            {materials.map((material, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: "12px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "11px",
-                  background: "#f8fafc",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <strong
-                    style={{
-                      fontSize: "13px",
-                      color: "#111827",
-                    }}
-                  >
-                    자재 {index + 1}
-                  </strong>
+          {workersLoading && (
+            <p>시공자 정보를 불러오는 중...</p>
+          )}
 
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => removeMaterial(index)}
-                    style={removeButtonStyle}
-                  >
-                    삭제
-                  </button>
-                </div>
+          {workerError && (
+            <p
+              role="alert"
+              style={{ color: "#b91c1c" }}
+            >
+              {workerError}
+            </p>
+          )}
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={material.brand}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateMaterial(
-                        index,
-                        "brand",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="제조사"
-                    style={inputStyle}
-                  />
+          {!labor.length && (
+            <EmptyBox text="+ 인건비를 눌러 실제 근무한 시공자를 입력하세요." />
+          )}
 
-                  <input
-                    type="text"
-                    value={material.product_code}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateMaterial(
-                        index,
-                        "product_code",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="제품코드 예: GS115"
-                    style={inputStyle}
-                  />
-                </div>
+          {labor.map((item, index) => (
+            <div key={index} style={rowStyle}>
+              <div style={headingStyle}>
+                <strong>인건비 {index + 1}</strong>
 
-                <input
-                  type="text"
-                  value={material.product_name}
+                <button
+                  type="button"
                   disabled={saving}
+                  style={removeButtonStyle}
+                  onClick={() =>
+                    setLabor((rows) =>
+                      rows.filter((_, i) => i !== index)
+                    )
+                  }
+                >
+                  삭제
+                </button>
+              </div>
+
+              <FieldLabel text="시공자">
+                <select
+                  value={item.worker_id}
+                  disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateLabor(
+                      index,
+                      "worker_id",
+                      event.target.value
+                    )
+                  }
+                >
+                  <option value="">시공자 선택</option>
+
+                  {workers.map((person) => (
+                    <option
+                      key={person.id}
+                      value={person.id}
+                    >
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </FieldLabel>
+
+              <FieldLabel text="실제 근무일수 (반일은 0.5)">
+                <input
+                  type="number"
+                  min="0.01"
+                  max="366"
+                  step="0.01"
+                  value={item.days}
+                  disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateLabor(
+                      index,
+                      "days",
+                      event.target.value
+                    )
+                  }
+                />
+              </FieldLabel>
+
+              <FieldLabel text="일당 (원)">
+                <input
+                  inputMode="numeric"
+                  value={formatNumber(item.daily_wage)}
+                  disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateLabor(
+                      index,
+                      "daily_wage",
+                      parseNumber(event.target.value)
+                    )
+                  }
+                />
+              </FieldLabel>
+
+              <FieldLabel text="팀장수당 합계 (원, 없으면 0)">
+                <input
+                  inputMode="numeric"
+                  value={formatNumber(item.allowance)}
+                  disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateLabor(
+                      index,
+                      "allowance",
+                      parseNumber(event.target.value)
+                    )
+                  }
+                />
+              </FieldLabel>
+
+              <p style={totalStyle}>
+                인건비{" "}
+                {laborAmount(item).toLocaleString("ko-KR")}
+                원
+              </p>
+            </div>
+          ))}
+
+          <p style={totalStyle}>
+            인건비 합계{" "}
+            {laborTotal.toLocaleString("ko-KR")}원
+          </p>
+        </section>
+      </div>
+
+      <div hidden={view !== "materials"}>
+        <section style={sectionStyle}>
+          <div style={headingStyle}>
+            <strong>📦 실제 사용 자재</strong>
+
+            <button
+              type="button"
+              disabled={saving}
+              style={smallAddButtonStyle}
+              onClick={addMaterial}
+            >
+              + 자재
+            </button>
+          </div>
+
+          <p style={helpStyle}>
+            사용량과 해당 단위의 단가를 입력하면
+            자재비가 계산됩니다. 무상 자재는 단가 0을
+            입력하세요.
+          </p>
+
+          {!materials.length && (
+            <EmptyBox text="사용 자재가 있으면 + 자재를 눌러 입력하세요." />
+          )}
+
+          {materials.map((item, index) => (
+            <div key={index} style={rowStyle}>
+              <div style={headingStyle}>
+                <strong>자재 {index + 1}</strong>
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  style={removeButtonStyle}
+                  onClick={() => removeMaterial(index)}
+                >
+                  삭제
+                </button>
+              </div>
+
+              {[
+                ["brand", "제조사"],
+                ["product_code", "제품코드 예: GS115"],
+                ["product_name", "제품명"],
+              ].map(([key, label]) => (
+                <FieldLabel key={key} text={label}>
+                  <input
+                    value={item[key]}
+                    disabled={saving}
+                    style={inputStyle}
+                    onChange={(event) =>
+                      updateMaterial(
+                        index,
+                        key,
+                        event.target.value
+                      )
+                    }
+                  />
+                </FieldLabel>
+              ))}
+
+              <FieldLabel text="실제 사용량">
+                <input
+                  type="number"
+                  min="0.001"
+                  step="any"
+                  value={item.quantity}
+                  disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateMaterial(
                       index,
-                      "product_name",
-                      event.target.value,
+                      "quantity",
+                      event.target.value
                     )
                   }
-                  placeholder="제품명"
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
                 />
+              </FieldLabel>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 90px",
-                    gap: "8px",
-                    marginTop: "8px",
-                  }}
-                >
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={material.quantity}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateMaterial(
-                        index,
-                        "quantity",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="사용량"
-                    style={inputStyle}
-                  />
-
-                  <select
-                    value={material.unit}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateMaterial(
-                        index,
-                        "unit",
-                        event.target.value,
-                      )
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="m">m</option>
-                    <option value="㎡">㎡</option>
-                    <option value="롤">롤</option>
-                    <option value="장">장</option>
-                    <option value="개">개</option>
-                  </select>
-                </div>
-
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={formatNumber(material.unit_price)}
+              <FieldLabel text="사용 단위">
+                <select
+                  value={item.unit}
                   disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateMaterial(
+                      index,
+                      "unit",
+                      event.target.value
+                    )
+                  }
+                >
+                  {["m", "㎡", "롤", "장", "개"].map(
+                    (unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    )
+                  )}
+                </select>
+              </FieldLabel>
+
+              <FieldLabel text="사용 단위당 단가 (원) *">
+                <input
+                  inputMode="numeric"
+                  value={formatNumber(item.unit_price)}
+                  disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateMaterial(
                       index,
                       "unit_price",
-                      parseNumber(event.target.value),
+                      parseNumber(event.target.value)
                     )
                   }
-                  placeholder="자재 단가 (선택)"
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
                 />
+              </FieldLabel>
 
+              <FieldLabel text="자재 메모">
                 <input
-                  type="text"
-                  value={material.memo}
+                  value={item.memo}
                   disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateMaterial(
                       index,
                       "memo",
-                      event.target.value,
+                      event.target.value
                     )
                   }
-                  placeholder="자재 메모"
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
                 />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              </FieldLabel>
 
-      <section
-        style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "10px",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: "16px",
-                fontWeight: "900",
-                color: "#111827",
-              }}
-            >
-              💳 현장 경비
+              <p style={totalStyle}>
+                자재비{" "}
+                {(
+                  Number(parseNumber(item.quantity) || 0) *
+                  Number(parseNumber(item.unit_price) || 0)
+                ).toLocaleString("ko-KR")}
+                원
+              </p>
             </div>
+          ))}
 
-            <div
-              style={{
-                marginTop: "4px",
-                fontSize: "12px",
-                color: "#64748b",
-              }}
+          <p style={totalStyle}>
+            자재비 합계{" "}
+            {materialTotal.toLocaleString("ko-KR")}원
+          </p>
+        </section>
+      </div>
+
+      <div hidden={view !== "expenses"}>
+        <section style={sectionStyle}>
+          <div style={headingStyle}>
+            <strong>🧾 현장 경비</strong>
+
+            <button
+              type="button"
+              disabled={saving}
+              style={smallAddButtonStyle}
+              onClick={addExpense}
             >
-              주차비, 식대 등 실제 발생 경비입니다.
-            </div>
+              + 경비
+            </button>
           </div>
 
-          <button
-            type="button"
-            disabled={saving}
-            onClick={addExpense}
-            style={smallAddButtonStyle}
-          >
-            + 경비
-          </button>
-        </div>
+          {!expenses.length && (
+            <EmptyBox text="경비가 있으면 + 경비를 눌러 입력하세요." />
+          )}
 
-        {expenses.length === 0 ? (
-          <EmptyBox text="현장 경비가 있으면 + 경비를 눌러 입력하세요." />
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gap: "10px",
-              marginTop: "12px",
-            }}
-          >
-            {expenses.map((expense, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: "12px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "11px",
-                  background: "#f8fafc",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <strong
-                    style={{
-                      fontSize: "13px",
-                      color: "#111827",
-                    }}
-                  >
-                    경비 {index + 1}
-                  </strong>
+          {expenses.map((item, index) => (
+            <div key={index} style={rowStyle}>
+              <div style={headingStyle}>
+                <strong>경비 {index + 1}</strong>
 
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => removeExpense(index)}
-                    style={removeButtonStyle}
-                  >
-                    삭제
-                  </button>
-                </div>
-
-                <select
-                  value={expense.expense_type}
+                <button
+                  type="button"
                   disabled={saving}
+                  style={removeButtonStyle}
+                  onClick={() => removeExpense(index)}
+                >
+                  삭제
+                </button>
+              </div>
+
+              <FieldLabel text="경비 구분">
+                <select
+                  value={item.expense_type}
+                  disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateExpense(
                       index,
                       "expense_type",
-                      event.target.value,
+                      event.target.value
                     )
                   }
-                  style={inputStyle}
                 >
                   {EXPENSE_TYPES.map((type) => (
                     <option
@@ -909,213 +1148,127 @@ export default function WorkerWorkReport({
                     </option>
                   ))}
                 </select>
+              </FieldLabel>
 
+              <FieldLabel text="금액 (원)">
                 <input
-                  type="text"
                   inputMode="numeric"
-                  value={formatNumber(expense.amount)}
+                  value={formatNumber(item.amount)}
                   disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateExpense(
                       index,
                       "amount",
-                      parseNumber(event.target.value),
+                      parseNumber(event.target.value)
                     )
                   }
-                  placeholder="금액"
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
                 />
+              </FieldLabel>
 
-                <input
-                  type="text"
-                  value={expense.description}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateExpense(
-                      index,
-                      "description",
-                      event.target.value,
-                    )
-                  }
-                  placeholder="내용 예: 아파트 주차비"
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
-                />
-
+              <FieldLabel text="사용 날짜">
                 <input
                   type="date"
-                  value={expense.expense_date}
+                  value={item.expense_date}
                   disabled={saving}
+                  style={inputStyle}
                   onChange={(event) =>
                     updateExpense(
                       index,
                       "expense_date",
-                      event.target.value,
+                      event.target.value
                     )
                   }
-                  style={{
-                    ...inputStyle,
-                    marginTop: "8px",
-                  }}
                 />
-              </div>
-            ))}
+              </FieldLabel>
 
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "10px",
-                background: "#f1f5f9",
-                textAlign: "right",
-                fontSize: "13px",
-                fontWeight: "900",
-                color: "#111827",
-              }}
-            >
-              경비 합계 {expenseTotal.toLocaleString("ko-KR")}원
+              <FieldLabel text="내용">
+                <input
+                  value={item.description}
+                  disabled={saving}
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateExpense(
+                      index,
+                      "description",
+                      event.target.value
+                    )
+                  }
+                />
+              </FieldLabel>
             </div>
-          </div>
-        )}
-      </section>
+          ))}
 
-      <section
-        style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
-        }}
-      >
+          <p style={totalStyle}>
+            경비 합계{" "}
+            {expenseTotal.toLocaleString("ko-KR")}원
+          </p>
+        </section>
+      </div>
+
+      <div hidden={view !== "submit"}>
         <div
           style={{
-            fontSize: "16px",
-            fontWeight: "900",
-            color: "#111827",
+            ...sectionStyle,
+            background: "#eff6ff",
+            lineHeight: 1.8,
           }}
         >
-          📷 시공 완료 사진 *
+          <strong>보고서 비용 합계</strong>
+          <br />
+
+          인건비 {laborTotal.toLocaleString("ko-KR")}원
+          {" · "}자재비{" "}
+          {materialTotal.toLocaleString("ko-KR")}원
+          {" · "}경비{" "}
+          {expenseTotal.toLocaleString("ko-KR")}원
+
+          <br />
+
+          <strong>
+            총{" "}
+            {(
+              laborTotal +
+              materialTotal +
+              expenseTotal
+            ).toLocaleString("ko-KR")}
+            원
+          </strong>
+
+          <p style={helpStyle}>
+            같은 자재 구매비를 추가 자재비에 다시
+            입력하면 중복됩니다.
+          </p>
         </div>
 
         <div
           style={{
-            marginTop: "5px",
-            fontSize: "12px",
-            lineHeight: "1.5",
-            color: "#64748b",
+            padding: 12,
+            marginTop: 16,
+            borderRadius: 14,
+            background: "#fffbeb",
+            color: "#92400e",
+            fontSize: 12,
+            lineHeight: 1.6,
           }}
         >
-          완료보고 제출을 위해 1장 이상 등록해주세요.
+          관리자 검수 및 실제 견적금액 입력 전에는
+          AI 견적자료로 등록되지 않습니다.
         </div>
-
-        <label
-          style={{
-            display: "block",
-            marginTop: "12px",
-            padding: "12px",
-            border: "1px dashed #94a3b8",
-            borderRadius: "10px",
-            background: "#f8fafc",
-            textAlign: "center",
-            fontSize: "13px",
-            fontWeight: "800",
-            color: "#334155",
-            cursor: saving ? "not-allowed" : "pointer",
-          }}
-        >
-          📷 완료 사진 선택
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            disabled={saving}
-            onChange={handleAfterFiles}
-            style={{
-              display: "none",
-            }}
-          />
-        </label>
-
-        {afterPreviews.length > 0 && (
-          <PhotoPreviewGrid
-            previews={afterPreviews}
-            onRemove={removeAfterPhoto}
-            disabled={saving}
-          />
-        )}
-      </section>
-
-      <section
-        style={{
-          padding: "14px",
-          border: "1px solid #e2e8f0",
-          borderRadius: "14px",
-          background: "#ffffff",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "16px",
-            fontWeight: "900",
-            color: "#111827",
-          }}
-        >
-          📝 메모
-        </div>
-
-        <textarea
-          value={memo}
-          disabled={saving}
-          onChange={(event) => setMemo(event.target.value)}
-          placeholder="관리자에게 전달할 내용이 있으면 입력하세요."
-          rows={4}
-          style={{
-            ...inputStyle,
-            marginTop: "10px",
-            resize: "vertical",
-            lineHeight: "1.5",
-          }}
-        />
-      </section>
-
-      <div
-        style={{
-          padding: "12px",
-          border: "1px solid #fde68a",
-          borderRadius: "11px",
-          background: "#fffbeb",
-          color: "#92400e",
-          fontSize: "12px",
-          lineHeight: "1.6",
-        }}
-      >
-        완료보고 제출 후 관리자가 시공 내용과 사진을 확인합니다.
-        관리자 검수 및 실제 견적금액 입력 전에는 AI 견적자료로
-        등록되지 않습니다.
       </div>
 
       {message && (
         <div
+          role="status"
           style={{
-            padding: "12px",
-            borderRadius: "10px",
+            padding: 12,
+            borderRadius: 14,
             background: message.startsWith("❌")
               ? "#fef2f2"
-              : message.startsWith("✅")
-                ? "#f0fdf4"
-                : "#eff6ff",
+              : "#eff6ff",
             color: message.startsWith("❌")
               ? "#b91c1c"
-              : message.startsWith("✅")
-                ? "#166534"
-                : "#1d4ed8",
-            fontSize: "13px",
-            fontWeight: "800",
-            lineHeight: "1.5",
+              : "#1d4ed8",
             wordBreak: "break-word",
           }}
         >
@@ -1123,50 +1276,86 @@ export default function WorkerWorkReport({
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={saving}
-        style={{
-          width: "100%",
-          padding: "14px",
-          border: "none",
-          borderRadius: "11px",
-          background: saving ? "#94a3b8" : "#16a34a",
-          color: "#ffffff",
-          fontSize: "15px",
-          fontWeight: "900",
-          cursor: saving ? "not-allowed" : "pointer",
-        }}
-      >
-        {saving ? "제출 중..." : "✅ 완료보고 제출"}
-      </button>
+      <div hidden={view !== "submit"}>
+        <button
+          type="submit"
+          disabled={
+            saving ||
+            workersLoading ||
+            Boolean(workerError)
+          }
+          style={{
+            width: "100%",
+            minHeight: 48,
+            padding: 14,
+            border: 0,
+            borderRadius: 14,
+            background: saving
+              ? "#94a3b8"
+              : "#16a34a",
+            color: "white",
+            fontWeight: 900,
+          }}
+        >
+          {saving
+            ? "제출 중..."
+            : "✅ 완료보고 제출"}
+        </button>
+      </div>
     </form>
   );
 }
 
-function FieldLabel({
-  text,
-  children,
-}) {
+function FieldLabel({ text, children }) {
   return (
     <label
       style={{
         display: "block",
-        marginTop: "12px",
+        marginTop: 12,
       }}
     >
       <div
         style={{
-          marginBottom: "6px",
-          fontSize: "12px",
-          fontWeight: "800",
+          fontSize: 12,
+          fontWeight: 800,
           color: "#475569",
+          marginBottom: 6,
         }}
       >
         {text}
       </div>
 
       {children}
+    </label>
+  );
+}
+
+function PhotoInput({
+  label,
+  disabled,
+  onChange,
+}) {
+  return (
+    <label
+      style={{
+        display: "block",
+        padding: 12,
+        marginTop: 12,
+        border: "1px dashed #94a3b8",
+        borderRadius: 14,
+        textAlign: "center",
+      }}
+    >
+      📷 {label}
+
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        disabled={disabled}
+        onChange={onChange}
+        style={{ display: "none" }}
+      />
     </label>
   );
 }
@@ -1180,9 +1369,10 @@ function PhotoPreviewGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-        gap: "7px",
-        marginTop: "10px",
+        gridTemplateColumns:
+          "repeat(3,minmax(0,1fr))",
+        gap: 7,
+        marginTop: 10,
       }}
     >
       {previews.map((item, index) => (
@@ -1192,9 +1382,7 @@ function PhotoPreviewGrid({
             position: "relative",
             aspectRatio: "1 / 1",
             overflow: "hidden",
-            borderRadius: "9px",
-            border: "1px solid #e2e8f0",
-            background: "#f8fafc",
+            borderRadius: 12,
           }}
         >
           <img
@@ -1204,27 +1392,24 @@ function PhotoPreviewGrid({
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              display: "block",
             }}
           />
 
           <button
             type="button"
             disabled={disabled}
+            aria-label={`사진 ${index + 1} 삭제`}
             onClick={() => onRemove(index)}
             style={{
               position: "absolute",
-              top: "5px",
-              right: "5px",
-              width: "25px",
-              height: "25px",
-              border: "none",
-              borderRadius: "999px",
-              background: "rgba(15,23,42,0.78)",
-              color: "#ffffff",
-              fontSize: "15px",
-              fontWeight: "900",
-              cursor: disabled ? "not-allowed" : "pointer",
+              top: 5,
+              right: 5,
+              border: 0,
+              borderRadius: 20,
+              background: "#0f172acc",
+              color: "white",
+              width: 25,
+              height: 25,
             }}
           >
             ×
@@ -1235,58 +1420,82 @@ function PhotoPreviewGrid({
   );
 }
 
-function EmptyBox({
-  text,
-}) {
+function EmptyBox({ text }) {
   return (
-    <div
+    <p
       style={{
-        marginTop: "12px",
-        padding: "14px 10px",
-        border: "1px dashed #cbd5e1",
-        borderRadius: "10px",
+        ...helpStyle,
+        padding: 12,
         background: "#f8fafc",
-        color: "#64748b",
-        fontSize: "12px",
-        textAlign: "center",
+        borderRadius: 12,
       }}
     >
       {text}
-    </div>
+    </p>
   );
 }
+
+const sectionStyle = {
+  padding: 16,
+  border: "1px solid #e2e8f0",
+  borderRadius: 22,
+  background: "#fff",
+  boxShadow: "var(--film-shadow)",
+};
+
+const rowStyle = {
+  padding: 12,
+  marginTop: 10,
+  borderRadius: 14,
+  background: "#f8fafc",
+};
+
+const headingStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+};
+
+const helpStyle = {
+  fontSize: 12,
+  color: "#64748b",
+  lineHeight: 1.6,
+};
+
+const totalStyle = {
+  textAlign: "right",
+  fontWeight: 900,
+  color: "#1d4ed8",
+};
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "11px 10px",
+  minHeight: 44,
+  padding: 11,
   border: "1px solid #cbd5e1",
-  borderRadius: "9px",
-  background: "#ffffff",
-  color: "#111827",
-  fontSize: "13px",
-  outline: "none",
+  borderRadius: 12,
+  background: "white",
+  fontSize: 13,
 };
 
 const smallAddButtonStyle = {
-  flex: "0 0 auto",
+  minHeight: 44,
   padding: "8px 10px",
   border: "1px solid #cbd5e1",
-  borderRadius: "8px",
-  background: "#ffffff",
-  color: "#334155",
-  fontSize: "12px",
-  fontWeight: "900",
-  cursor: "pointer",
+  borderRadius: 12,
+  background: "white",
+  fontSize: 12,
+  fontWeight: 900,
 };
 
 const removeButtonStyle = {
+  minHeight: 36,
   padding: "5px 8px",
   border: "1px solid #fecaca",
-  borderRadius: "7px",
-  background: "#ffffff",
+  borderRadius: 10,
+  background: "white",
   color: "#dc2626",
-  fontSize: "11px",
-  fontWeight: "800",
-  cursor: "pointer",
+  fontSize: 11,
 };

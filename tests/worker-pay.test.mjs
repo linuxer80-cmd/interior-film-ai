@@ -13,11 +13,12 @@ const company = { id: 'a', company_name: '내 업체' };
 const site = (id = 's', extra = {}) => ({ id, company_id: 'a', site_name: id, status: 'completed', schedule_start: '2026-09-01', schedule_end: '2026-09-30', ...extra });
 const row = (date, role = 'member', extra = {}) => ({ id: date, site_id: 's', worker_id: 'w', company_id: 'a', work_date: date, role, ...extra });
 const rate = (date = '1900-01-01', extra = {}) => ({ id: date, company_id: 'a', worker_id: 'w', effective_from: date, daily_wage: 250000, leader_allowance: 30000, ...extra });
-const calc = (extra = {}) => clean(companyMonthPay({ company, workerIds: ['w'], sites: [site()], daily: [], legacy: [], rates: [rate()], month: '2026-09', today: '2026-09-30', ...extra }));
+const allowance = (date = '1900-01-01', extra = {}) => ({ company_id: 'a', effective_from: date, amount: 30000, ...extra });
+const calc = (extra = {}) => clean(companyMonthPay({ company, workerIds: ['w'], sites: [site()], daily: [], legacy: [], rates: [rate()], allowanceRates: [allowance()], month: '2026-09', today: '2026-09-30', ...extra }));
 
 test('leader allowance adds to daily wage; multiple same-day sites count once; historical dates retain their rate', () => {
   const result = calc({ sites: [site(), site('t')], daily: [row('2026-09-01'), row('2026-09-01', 'leader', { site_id: 't' }), row('2026-09-02'), row('2026-09-16', 'leader')],
-    rates: [rate(), rate('2026-09-15', { daily_wage: 260000, leader_allowance: 40000 })] });
+    rates: [rate(), rate('2026-09-15', { daily_wage: 260000 })], allowanceRates: [allowance(), allowance('2026-09-15', { amount: 40000 })] });
   assert.equal(result.leaderDays, 2); assert.equal(result.memberDays, 1);
   assert.equal(result.baseAmount, 760000); assert.equal(result.allowanceAmount, 70000); assert.equal(result.totalAmount, 830000);
   assert.equal(result.entries.at(-1).sites.length, 2);
@@ -43,7 +44,7 @@ test('legacy periods use Korean inclusive dates and leap days, label inferred da
 
 test('zero is valid but missing, conflicting or not-yet-effective rates and unknown roles need review', () => {
   assert.equal(calc({ daily: [row('2026-09-01', 'leader')], rates: [rate('1900-01-01', { daily_wage: 0, leader_allowance: 0 })] }).pendingDays, 0);
-  for (const rates of [[], [rate('2026-09-02')], [rate('1900-01-01', { daily_wage: null })], [rate('1900-01-01', { leader_allowance: null })]]) {
+  for (const rates of [[], [rate('2026-09-02')], [rate('1900-01-01', { daily_wage: null })]]) {
     const result = calc({ daily: [row('2026-09-01', 'leader')], rates });
     assert.equal(result.pendingDays, 1); assert.equal(result.totalAmount, 0); assert.equal(result.entries[0].totalAmount, null);
   }
@@ -65,7 +66,7 @@ function api({ tables = {}, errors = {}, invalid = false } = {}) {
   const db = {
     workers: [{ id: 'w', company_id: 'a', user_id: 'u', is_active: true }], profiles: [],
     companies: [{ ...company, is_active: true }], sites: [site()], site_workers: [],
-    site_daily_assignments: [row('2026-09-01', 'leader')], worker_pay_rates: [rate()], ...tables,
+    site_daily_assignments: [row('2026-09-01', 'leader')], worker_pay_rates: [rate()], company_leader_allowance_rates: [allowance()], ...tables,
   };
   const reads = [];
   const client = {
@@ -121,7 +122,7 @@ test('monthly API rejects missing/expired logins, inactive memberships and inval
 test('monthly API paginates assignments and reports read failures instead of zero pay', async () => {
   const assignments = Array.from({ length: 501 }, (_, i) => row('2026-09-01', i === 500 ? 'leader' : 'member', { id: String(i) }));
   assert.equal((await api({ tables: { site_daily_assignments: assignments } }).get()).body.totals.totalAmount, 280000);
-  for (const table of ['workers', 'profiles', 'companies', 'site_workers', 'site_daily_assignments', 'sites', 'worker_pay_rates']) {
+  for (const table of ['workers', 'profiles', 'companies', 'site_workers', 'site_daily_assignments', 'sites', 'worker_pay_rates', 'company_leader_allowance_rates']) {
     assert.equal((await api({ errors: { [table]: true } }).get()).status, 500);
   }
 });
@@ -134,14 +135,32 @@ function workerCrud() {
   return { writes, hook: ctx.hook };
 }
 
-test('admin CRUD saves allowance and date together; phone-only edits preserve rates; invalid pay never writes', async () => {
+test('personal wage CRUD never writes per-worker allowances; phone-only edits preserve rates', async () => {
   const h = workerCrud();
   const form = { name: '시공자', phone: '010-test', daily_wage: '250000', leader_allowance: 30000, pay_rate_effective_from: '2026-09-01', update_pay_rate: true };
   assert.equal((await h.hook.createWorker(form)).success, true);
-  assert.equal(h.writes[0].value.leader_allowance, 30000); assert.equal(h.writes[0].value.pay_rate_effective_from, '2026-09-01');
+  assert.equal('leader_allowance' in h.writes[0].value, false); assert.equal(h.writes[0].value.pay_rate_effective_from, '2026-09-01');
   await h.hook.updateWorker('w', { ...form, update_pay_rate: false });
   assert.equal('daily_wage' in h.writes[1].value, false); assert.equal('leader_allowance' in h.writes[1].value, false);
-  await h.hook.updateWorker('w', { ...form, leader_allowance: -1 });
+  await h.hook.updateWorker('w', { ...form, daily_wage: '100000001' });
   await h.hook.createWorker({ ...form, pay_rate_effective_from: '2026-02-30' });
   assert.equal(h.writes.length, 2);
+});
+
+
+test('one company setting applies equally to every leader, including a newly registered worker, while personal wages stay different', () => {
+  const first = calc({ daily: [row('2026-09-01', 'leader')], rates: [rate('1900-01-01', { leader_allowance: 999999 })] });
+  const second = calc({ workerIds: ['new'], daily: [row('2026-09-01', 'leader', { worker_id: 'new' })], rates: [rate('2026-09-01', { worker_id: 'new', daily_wage: 200000, leader_allowance: 1 })] });
+  assert.equal(first.allowanceAmount, 30000); assert.equal(second.allowanceAmount, 30000);
+  assert.equal(first.totalAmount, 280000); assert.equal(second.totalAmount, 230000);
+  const ordinary = calc({ daily: [row('2026-09-01')], allowanceRates: [allowance('1900-01-01', { amount: 50000 })] });
+  assert.equal(ordinary.allowanceAmount, 0); assert.equal(ordinary.totalAmount, 250000);
+});
+
+test('company allowance changes retain earlier days and ignore another company or legacy individual allowance', () => {
+  const result = calc({ daily: [row('2026-09-01', 'leader'), row('2026-09-15', 'leader')],
+    allowanceRates: [allowance(), allowance('2026-09-15', { amount: 50000 }), allowance('2026-09-01', { company_id: 'b', amount: 999999 })] });
+  assert.equal(result.allowanceAmount, 80000);
+  assert.equal(calc({ daily: [row('2026-09-01', 'leader')], allowanceRates: [] }).allowanceAmount, 0);
+  assert.equal(calc({ daily: [row('2026-09-01', 'leader')], allowanceRates: [allowance('1900-01-01', { amount: null })] }).pendingDays, 1);
 });

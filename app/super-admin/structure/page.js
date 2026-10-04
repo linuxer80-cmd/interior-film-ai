@@ -1,185 +1,96 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import ToolIllustration from "../../components/ui/ToolIllustration";
+
+const EMPTY_ANALYSIS = {
+  total: 0,
+  completed: 0,
+  remaining: 0,
+  failed: 0,
+  processed: 0,
+  attempted: 0,
+  running: false,
+  finished: false,
+  errors: [],
+};
 
 export default function StructureAnalysisPage() {
-  const [loading, setLoading] =
-    useState(true);
-
-  const [authorized, setAuthorized] =
-    useState(false);
-
-  const [companies, setCompanies] =
-    useState([]);
-
-  const [
-    selectedCompanyId,
-    setSelectedCompanyId,
-  ] = useState("");
-
-  const [
-    selectedCompanyName,
-    setSelectedCompanyName,
-  ] = useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  const [statusLoading, setStatusLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [message, setMessage] = useState("");
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [analysis, setAnalysis] = useState(EMPTY_ANALYSIS);
 
   const stopRef = useRef(false);
+  const runningRef = useRef(false);
 
-  const [analysis, setAnalysis] =
-    useState({
-      total: 0,
-      completed: 0,
-      remaining: 0,
-      failed: 0,
-      processed: 0,
-      attempted: 0,
-      running: false,
-      finished: false,
-      errors: [],
-    });
+  const selectedCompanyName =
+    companies.find((item) => item.id === selectedCompanyId)
+      ?.company_name || "선택 업체";
 
-  /* =========================================================
-     슈퍼관리자 확인
-  ========================================================= */
-
-  const checkSuperAdmin =
-    useCallback(async () => {
-      const {
-        data: authData,
-        error: authError,
-      } =
-        await supabase.auth.getUser();
-
-      if (authError) {
-        throw new Error(
-          `로그인 확인 실패: ${
-            authError.message ||
-            "알 수 없는 오류"
-          }`,
-        );
-      }
-
-      if (!authData?.user?.id) {
-        throw new Error(
-          "로그인이 필요합니다.",
-        );
-      }
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.rpc(
-          "get_super_admin_status",
-        );
-
-      if (error) {
-        throw new Error(
-          `슈퍼관리자 확인 실패: ${
-            error.message ||
-            "알 수 없는 오류"
-          }`,
-        );
-      }
-
-      const status =
-        Array.isArray(data)
-          ? data[0]
-          : data;
-
-      if (
-        !status?.is_super_admin
-      ) {
-        throw new Error(
-          "슈퍼관리자 권한이 없습니다.",
-        );
-      }
-
-      setAuthorized(true);
-
-      return true;
-    }, []);
-
-  /* =========================================================
-     업체 목록
-  ========================================================= */
-
-  const loadCompanies =
-    useCallback(async () => {
-      const {
-        data,
-        error,
-      } =
-        await supabase.rpc(
-          "super_admin_get_companies",
-        );
-
-      if (error) {
-        throw new Error(
-          `업체 목록 조회 실패: ${
-            error.message ||
-            "알 수 없는 오류"
-          }`,
-        );
-      }
-
-      const rows =
-        Array.isArray(data)
-          ? data
-          : [];
-
-      setCompanies(rows);
-
-      return rows;
-    }, []);
-
-  /* =========================================================
-     로그인 토큰
-  ========================================================= */
-
-  async function getAccessToken() {
+  const checkSuperAdmin = useCallback(async () => {
     const {
-      data,
-      error,
-    } =
-      await supabase.auth.getSession();
+      data: authData,
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+      throw new Error(`로그인 확인 실패: ${authError.message}`);
+    }
+
+    if (!authData?.user?.id) {
+      throw new Error("로그인이 필요합니다.");
+    }
+
+    const { data, error } = await supabase.rpc(
+      "get_super_admin_status"
+    );
 
     if (error) {
-      throw new Error(
-        `로그인 정보 확인 실패: ${
-          error.message ||
-          "알 수 없는 오류"
-        }`,
-      );
+      throw new Error(`슈퍼관리자 확인 실패: ${error.message}`);
     }
 
-    const accessToken =
-      data?.session?.access_token;
+    const status = Array.isArray(data) ? data[0] : data;
 
-    if (!accessToken) {
-      throw new Error(
-        "로그인이 필요합니다.",
-      );
+    if (!status?.is_super_admin) {
+      throw new Error("슈퍼관리자 권한이 없습니다.");
     }
 
-    return accessToken;
+    setAuthorized(true);
+  }, []);
+
+  const loadCompanies = useCallback(async () => {
+    const { data, error } = await supabase.rpc(
+      "super_admin_get_companies"
+    );
+
+    if (error) {
+      throw new Error(`업체 목록 조회 실패: ${error.message}`);
+    }
+
+    setCompanies(Array.isArray(data) ? data : []);
+  }, []);
+
+  async function getAccessToken() {
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      throw new Error(`로그인 정보 확인 실패: ${error.message}`);
+    }
+
+    const token = data?.session?.access_token;
+
+    if (!token) {
+      throw new Error("로그인이 필요합니다.");
+    }
+
+    return token;
   }
-
-  /* =========================================================
-     초기화
-  ========================================================= */
 
   useEffect(() => {
     let alive = true;
@@ -190,34 +101,19 @@ export default function StructureAnalysisPage() {
 
       try {
         await checkSuperAdmin();
-
-        if (!alive) {
-          return;
-        }
+        if (!alive) return;
 
         await loadCompanies();
       } catch (error) {
-        console.error(
-          "구조분석 관리 초기화:",
-          error,
-        );
+        console.error("구조분석 관리 초기화:", error);
 
-        if (!alive) {
-          return;
-        }
-
-        setAuthorized(false);
+        if (!alive) return;
 
         setMessage(
-          `❌ ${
-            error?.message ||
-            "페이지를 불러오지 못했습니다."
-          }`,
+          `❌ ${error?.message || "페이지를 불러오지 못했습니다."}`
         );
       } finally {
-        if (alive) {
-          setLoading(false);
-        }
+        if (alive) setLoading(false);
       }
     }
 
@@ -227,471 +123,223 @@ export default function StructureAnalysisPage() {
       alive = false;
       stopRef.current = true;
     };
-  }, [
-    checkSuperAdmin,
-    loadCompanies,
-  ]);
+  }, [checkSuperAdmin, loadCompanies]);
 
-  /* =========================================================
-     업체 선택
-  ========================================================= */
+  async function handleCompanyChange(event) {
+    if (runningRef.current || statusLoading) return;
 
-  async function handleCompanyChange(
-    event,
-  ) {
-    const companyId =
-      event.target.value;
+    const companyId = event.target.value;
 
     stopRef.current = true;
-
-    setSelectedCompanyId(
-      companyId,
-    );
-
+    setSelectedCompanyId(companyId);
     setMessage("");
+    setAnalysis({ ...EMPTY_ANALYSIS, errors: [] });
 
-    setAnalysis({
-      total: 0,
-      completed: 0,
-      remaining: 0,
-      failed: 0,
-      processed: 0,
-      attempted: 0,
-      running: false,
-      finished: false,
-      errors: [],
-    });
-
-    if (!companyId) {
-      setSelectedCompanyName("");
-      return;
+    if (companyId) {
+      await loadStatus(companyId);
     }
-
-    const company =
-      companies.find(
-        (item) =>
-          item.id === companyId,
-      );
-
-    setSelectedCompanyName(
-      company?.company_name ||
-        "선택 업체",
-    );
-
-    await loadStatus(
-      companyId,
-    );
   }
 
-  /* =========================================================
-     분석 현황 조회
-  ========================================================= */
-
-  async function loadStatus(
-    companyId = selectedCompanyId,
-  ) {
+  async function loadStatus(companyId = selectedCompanyId) {
     if (!companyId) {
-      setMessage(
-        "⚠️ 분석할 업체를 선택해주세요.",
-      );
-
+      setMessage("⚠️ 분석할 업체를 선택해주세요.");
       return;
     }
+
+    if (runningRef.current) return;
 
     setStatusLoading(true);
     setMessage("");
 
     try {
-      const accessToken =
-        await getAccessToken();
+      const token = await getAccessToken();
 
-      const response =
-        await fetch(
-          `/api/analyze-work-structure?company_id=${encodeURIComponent(
-            companyId,
-          )}`,
-          {
-            method: "GET",
+      const response = await fetch(
+        `/api/analyze-work-structure?company_id=${encodeURIComponent(
+          companyId
+        )}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        }
+      );
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
-
-            cache: "no-store",
-          },
-        );
-
-      const data =
-        await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
-          data?.error ||
-            "구조분석 현황 조회 실패",
+          data.error || "구조분석 현황 조회에 실패했습니다."
         );
       }
 
-      setAnalysis(
-        (current) => ({
-          ...current,
+      const remaining = Number(data.remaining || 0);
 
-          total:
-            Number(
-              data?.total || 0,
-            ),
-
-          completed:
-            Number(
-              data?.completed || 0,
-            ),
-
-          remaining:
-            Number(
-              data?.remaining || 0,
-            ),
-
-          finished:
-            Boolean(
-              data?.finished,
-            ),
-
-          running: false,
-        }),
-      );
-
-      if (
-        Number(
-          data?.remaining || 0,
-        ) === 0
-      ) {
-        setMessage(
-          "✅ 이 업체의 구조분석이 모두 완료되어 있습니다.",
-        );
-      } else {
-        setMessage(
-          `분석이 필요한 사진이 ${Number(
-            data?.remaining || 0,
-          ).toLocaleString(
-            "ko-KR",
-          )}장 있습니다.`,
-        );
-      }
-    } catch (error) {
-      console.error(
-        "구조분석 현황:",
-        error,
-      );
+      setAnalysis((current) => ({
+        ...current,
+        total: Number(data.total || 0),
+        completed: Number(data.completed || 0),
+        remaining,
+        finished: Boolean(data.finished),
+        running: false,
+      }));
 
       setMessage(
-        `❌ ${
-          error?.message ||
-          "현황 조회 중 오류가 발생했습니다."
-        }`,
+        remaining === 0
+          ? "✅ 이 업체의 구조분석이 모두 완료되어 있습니다."
+          : `분석이 필요한 사진이 ${remaining.toLocaleString(
+              "ko-KR"
+            )}장 있습니다.`
+      );
+    } catch (error) {
+      console.error("구조분석 현황:", error);
+      setMessage(
+        `❌ ${error?.message || "현황 조회 중 오류가 발생했습니다."}`
       );
     } finally {
       setStatusLoading(false);
     }
   }
 
-  /* =========================================================
-     구조분석 실행
-  ========================================================= */
-
   async function runStructureAnalysis() {
+    if (runningRef.current || statusLoading) return;
+
     if (!selectedCompanyId) {
-      setMessage(
-        "⚠️ 분석할 업체를 먼저 선택해주세요.",
-      );
-
+      setMessage("⚠️ 분석할 업체를 먼저 선택해주세요.");
       return;
     }
 
-    if (analysis.running) {
+    if (analysis.remaining <= 0) {
+      setMessage("✅ 분석할 사진이 없습니다.");
       return;
     }
 
-    if (
-      Number(
-        analysis.remaining || 0,
-      ) <= 0
-    ) {
-      setMessage(
-        "✅ 분석할 사진이 없습니다.",
-      );
-
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `${selectedCompanyName}의 기존 시공사진을 AI로 구조분석합니다.\n\n` +
-        `현재 분석 필요: ${Number(
-          analysis.remaining || 0,
-        ).toLocaleString(
-          "ko-KR",
+    const confirmed = window.confirm(
+      `${selectedCompanyName}의 기존 시공사진을 AI로 구조분석합니다.\n\n` +
+        `분석 필요: ${Number(analysis.remaining).toLocaleString(
+          "ko-KR"
         )}장\n\n` +
-        "분석 중에는 OpenAI API 비용과 데이터 전송량이 발생합니다.\n계속할까요?",
-      );
+        "분석 중에는 OpenAI API 비용과 데이터 전송량이 발생합니다.\n계속할까요?"
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
+    const companyId = selectedCompanyId;
+    runningRef.current = true;
     stopRef.current = false;
 
-    setMessage(
-      "AI 구조분석을 시작합니다...",
-    );
-
-    setAnalysis(
-      (current) => ({
-        ...current,
-
-        running: true,
-        failed: 0,
-        processed: 0,
-        attempted: 0,
-        errors: [],
-      }),
-    );
+    setMessage("AI 구조분석을 시작합니다...");
+    setAnalysis((current) => ({
+      ...current,
+      running: true,
+      failed: 0,
+      processed: 0,
+      attempted: 0,
+      errors: [],
+    }));
 
     let noProgressCount = 0;
 
     try {
-      while (
-        !stopRef.current
-      ) {
-        const accessToken =
-          await getAccessToken();
+      while (!stopRef.current) {
+        const token = await getAccessToken();
 
-        const response =
-          await fetch(
-            "/api/analyze-work-structure",
-            {
-              method: "POST",
+        if (stopRef.current) break;
 
-              headers: {
-                Authorization:
-                  `Bearer ${accessToken}`,
+        const response = await fetch("/api/analyze-work-structure", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            company_id: companyId,
+            limit: 3,
+          }),
+        });
 
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify({
-                  company_id:
-                    selectedCompanyId,
-
-                  limit: 3,
-                }),
-            },
-          );
-
-        const data =
-          await response.json();
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(
-            data?.error ||
-              "구조분석 요청 실패",
-          );
+          throw new Error(data.error || "구조분석 요청 실패");
         }
 
-        const processed =
-          Number(
-            data?.processed || 0,
-          );
+        const processed = Number(data.processed || 0);
+        const failed = Number(data.failed || 0);
+        const attempted = Number(data.attempted || 0);
 
-        const failed =
-          Number(
-            data?.failed || 0,
-          );
+        const newErrors = Array.isArray(data.results)
+          ? data.results
+              .filter((item) => item?.success === false)
+              .map((item) => ({
+                id: item.id || "",
+                error: item.error || "구조분석 실패",
+              }))
+          : [];
 
-        const attempted =
-          Number(
-            data?.attempted || 0,
-          );
-
-        const newErrors =
-          Array.isArray(
-            data?.results,
-          )
-            ? data.results
-                .filter(
-                  (item) =>
-                    item?.success ===
-                    false,
-                )
-                .map(
-                  (item) => ({
-                    id:
-                      item?.id ||
-                      "",
-
-                    error:
-                      item?.error ||
-                      "구조분석 실패",
-                  }),
-                )
-            : [];
-
-        setAnalysis(
-          (current) => ({
-            ...current,
-
-            total:
-              Number(
-                data?.total || 0,
-              ),
-
-            completed:
-              Number(
-                data?.completed || 0,
-              ),
-
-            remaining:
-              Number(
-                data?.remaining || 0,
-              ),
-
-            processed:
-              Number(
-                current.processed ||
-                  0,
-              ) +
-              processed,
-
-            failed:
-              Number(
-                current.failed ||
-                  0,
-              ) +
-              failed,
-
-            attempted:
-              Number(
-                current.attempted ||
-                  0,
-              ) +
-              attempted,
-
-            finished:
-              Boolean(
-                data?.finished,
-              ),
-
-            errors: [
-              ...current.errors,
-              ...newErrors,
-            ].slice(-20),
-
-            running: true,
-          }),
-        );
+        setAnalysis((current) => ({
+          ...current,
+          total: Number(data.total || 0),
+          completed: Number(data.completed || 0),
+          remaining: Number(data.remaining || 0),
+          processed: current.processed + processed,
+          failed: current.failed + failed,
+          attempted: current.attempted + attempted,
+          finished: Boolean(data.finished),
+          errors: [...current.errors, ...newErrors].slice(-20),
+          running: true,
+        }));
 
         if (
-          data?.finished ===
-            true ||
-          Number(
-            data?.remaining || 0,
-          ) === 0
+          data.finished === true ||
+          Number(data.remaining || 0) === 0
         ) {
-          setMessage(
-            "✅ 구조분석이 모두 완료되었습니다.",
-          );
-
+          setMessage("✅ 구조분석이 모두 완료되었습니다.");
           break;
         }
 
-        if (processed <= 0) {
-          noProgressCount += 1;
-        } else {
-          noProgressCount = 0;
-        }
+        if (stopRef.current) break;
 
-        /*
-         * 실패 사진만 계속 반복되는 것을 방지
-         */
-        if (
-          noProgressCount >= 2
-        ) {
+        noProgressCount = processed <= 0 ? noProgressCount + 1 : 0;
+
+        if (noProgressCount >= 2) {
           setMessage(
-            "⚠️ 더 이상 처리되지 않는 사진이 있어 자동으로 중지했습니다. 아래 실패 내용을 확인해주세요.",
+            "⚠️ 더 이상 처리되지 않는 사진이 있어 자동으로 중지했습니다. 최근 실패 내용을 확인해주세요."
           );
-
           break;
         }
 
         setMessage(
           `분석 중... 완료 ${Number(
-            data?.completed || 0,
-          ).toLocaleString(
-            "ko-KR",
-          )}장 / 남음 ${Number(
-            data?.remaining || 0,
-          ).toLocaleString(
-            "ko-KR",
-          )}장`,
+            data.completed || 0
+          ).toLocaleString("ko-KR")}장 / 남음 ${Number(
+            data.remaining || 0
+          ).toLocaleString("ko-KR")}장`
         );
 
-        /*
-         * 연속 API 호출 간 짧은 간격
-         */
-        await new Promise(
-          (resolve) =>
-            setTimeout(
-              resolve,
-              700,
-            ),
-        );
+        await new Promise((resolve) => setTimeout(resolve, 700));
       }
 
-      if (
-        stopRef.current
-      ) {
-        setMessage(
-          "⚠️ 사용자가 구조분석을 중지했습니다.",
-        );
+      if (stopRef.current) {
+        setMessage("⚠️ 구조분석을 중지했습니다.");
       }
     } catch (error) {
-      console.error(
-        "구조분석 실행:",
-        error,
-      );
-
+      console.error("구조분석 실행:", error);
       setMessage(
-        `❌ ${
-          error?.message ||
-          "구조분석 중 오류가 발생했습니다."
-        }`,
+        `❌ ${error?.message || "구조분석 중 오류가 발생했습니다."}`
       );
     } finally {
-      setAnalysis(
-        (current) => ({
-          ...current,
-          running: false,
-        }),
-      );
+      runningRef.current = false;
+      setAnalysis((current) => ({ ...current, running: false }));
     }
   }
 
-  /* =========================================================
-     중지
-  ========================================================= */
-
   function stopStructureAnalysis() {
     stopRef.current = true;
-
     setMessage(
-      "⚠️ 현재 처리 중인 요청이 끝난 뒤 구조분석을 중지합니다.",
+      "⚠️ 현재 처리 중인 요청이 끝난 뒤 구조분석을 중지합니다."
     );
   }
-
-  /* =========================================================
-     진행률
-  ========================================================= */
 
   const progress =
     analysis.total > 0
@@ -699,932 +347,525 @@ export default function StructureAnalysisPage() {
           100,
           Math.max(
             0,
-            Math.round(
-              (
-                analysis.completed /
-                analysis.total
-              ) * 100,
-            ),
-          ),
+            Math.round((analysis.completed / analysis.total) * 100)
+          )
         )
       : 0;
 
-  /* =========================================================
-     로딩
-  ========================================================= */
-
-  if (loading) {
+  if (loading || !authorized) {
     return (
       <main style={styles.page}>
-        <div
-          style={
-            styles.centerBox
-          }
-        >
-          <div
-            style={
-              styles.loadingIcon
-            }
-          >
-            🛠️
-          </div>
+        <section style={styles.centerCard}>
+          <div style={{ fontSize: 40 }}>{loading ? "🛠️" : "🔒"}</div>
 
-          <div
-            style={
-              styles.loadingTitle
-            }
-          >
-            구조분석 관리 준비 중...
-          </div>
-        </div>
-      </main>
-    );
-  }
+          <h1 style={styles.centerTitle}>
+            {loading
+              ? "구조분석 관리 준비 중..."
+              : "접근할 수 없습니다"}
+          </h1>
 
-  /* =========================================================
-     권한 없음
-  ========================================================= */
+          {!loading && (
+            <>
+              <p style={styles.help}>슈퍼관리자 전용 페이지입니다.</p>
 
-  if (!authorized) {
-    return (
-      <main style={styles.page}>
-        <div
-          style={
-            styles.centerBox
-          }
-        >
-          <div
-            style={
-              styles.loadingIcon
-            }
-          >
-            🔒
-          </div>
+              {message && (
+                <div role="alert" style={styles.error}>
+                  {message}
+                </div>
+              )}
 
-          <h2>
-            접근할 수 없습니다
-          </h2>
-
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: "13px",
-            }}
-          >
-            슈퍼관리자 전용
-            페이지입니다.
-          </div>
-
-          {message && (
-            <div
-              style={
-                styles.errorBox
-              }
-            >
-              {message}
-            </div>
+              <Link
+                href="/super-admin"
+                style={{
+                  ...styles.button,
+                  display: "block",
+                  marginTop: 20,
+                  textDecoration: "none",
+                }}
+              >
+                돌아가기
+              </Link>
+            </>
           )}
-
-          <button
-            type="button"
-            style={
-              styles.backButton
-            }
-            onClick={() => {
-              window.location.href =
-                "/admin";
-            }}
-          >
-            관리자 페이지
-          </button>
-        </div>
+        </section>
       </main>
     );
   }
-
-  /* =========================================================
-     화면
-  ========================================================= */
 
   return (
     <main style={styles.page}>
-      <div
-        style={
-          styles.container
-        }
-      >
-        {/* 헤더 */}
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <Link
+            href="/super-admin"
+            aria-label="슈퍼관리자로 돌아가기"
+            style={styles.back}
+          >
+            ←
+          </Link>
 
-        <div
-          style={
-            styles.header
-          }
-        >
-          <div>
-            <div
-              style={
-                styles.badge
-              }
-            >
-              SUPER ADMIN
-            </div>
-
-            <h1
-              style={
-                styles.title
-              }
-            >
-              🛠️ 구조분석 관리
-            </h1>
-
-            <div
-              style={
-                styles.subtitle
-              }
-            >
-              업체별 기존 시공사진의
-              AI 구조분석을 관리합니다.
-            </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <small style={styles.eyebrow}>필름장이 · 슈퍼관리자</small>
+            <h1 style={styles.title}>구조분석 관리</h1>
+            <p style={styles.help}>기존 시공사진의 AI 분석 현황</p>
           </div>
 
-          <button
-            type="button"
-            style={
-              styles.backButton
-            }
-            onClick={() => {
-              window.location.href =
-                "/super-admin";
-            }}
-          >
-            ← 돌아가기
-          </button>
+          <ToolIllustration kind="camera" size={52} />
+        </header>
+
+        <div style={styles.notice}>
+          <strong>유지보수 전용 기능</strong>
+          <div style={{ marginTop: 5 }}>
+            실행 시 AI API 비용과 데이터 전송량이 발생합니다.
+            필요한 업체에만 실행해주세요.
+          </div>
         </div>
 
-        {/* 안내 */}
-
-        <section
-          style={
-            styles.warningBox
-          }
-        >
-          <strong>
-            ⚠️ 유지보수 전용 기능
-          </strong>
-
-          <div
-            style={{
-              marginTop: "5px",
-              fontSize: "12px",
-              lineHeight: 1.6,
-            }}
-          >
-            구조분석을 실행하면
-            시공사진을 AI로 분석하므로
-            OpenAI API 사용량과 데이터
-            전송량이 발생합니다.
-            필요한 업체에만 실행하세요.
-          </div>
-        </section>
-
-        {/* 업체 선택 */}
-
-        <section
-          style={
-            styles.section
-          }
-        >
-          <h2
-            style={
-              styles.sectionTitle
-            }
-          >
-            분석 업체 선택
-          </h2>
+        <section style={styles.card}>
+          <h2 style={styles.sectionTitle}>분석 업체 선택</h2>
 
           <select
-            value={
-              selectedCompanyId
-            }
-            onChange={
-              handleCompanyChange
-            }
-            disabled={
-              analysis.running
-            }
-            style={
-              styles.select
-            }
+            aria-label="분석할 업체 선택"
+            value={selectedCompanyId}
+            onChange={handleCompanyChange}
+            disabled={analysis.running || statusLoading}
+            style={styles.select}
           >
-            <option value="">
-              업체를 선택해주세요
-            </option>
+            <option value="">업체를 선택해주세요</option>
 
-            {companies.map(
-              (company) => (
-                <option
-                  key={
-                    company.id
-                  }
-                  value={
-                    company.id
-                  }
-                >
-                  {company.company_name ||
-                    "회사명 없음"}
-                  {company.slug
-                    ? ` / ${company.slug}`
-                    : ""}
-                </option>
-              ),
-            )}
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.company_name || "회사명 없음"}
+                {company.slug ? ` / ${company.slug}` : ""}
+              </option>
+            ))}
           </select>
 
           {selectedCompanyId && (
             <button
               type="button"
-              disabled={
-                statusLoading ||
-                analysis.running
-              }
-              onClick={() =>
-                loadStatus()
-              }
-              style={
-                styles.refreshButton
-              }
+              disabled={statusLoading || analysis.running}
+              onClick={() => loadStatus()}
+              style={{
+                ...styles.button,
+                width: "100%",
+                marginTop: 10,
+                ...(statusLoading || analysis.running
+                  ? styles.disabled
+                  : {}),
+              }}
             >
-              {statusLoading
-                ? "조회 중..."
-                : "현황 새로고침"}
+              {statusLoading ? "조회 중..." : "현황 새로고침"}
             </button>
           )}
         </section>
 
-        {/* 분석 현황 */}
+        {message && (
+          <div
+            role="status"
+            style={{
+              ...styles.message,
+              ...(message.startsWith("❌")
+                ? styles.error
+                : message.startsWith("⚠️")
+                  ? styles.warning
+                  : message.startsWith("✅")
+                    ? styles.success
+                    : {}),
+            }}
+          >
+            {message}
+          </div>
+        )}
 
         {selectedCompanyId && (
-          <section
-            style={
-              styles.section
-            }
-          >
-            <div
-              style={
-                styles.sectionHeader
-              }
-            >
-              <div>
-                <h2
-                  style={
-                    styles.sectionTitle
-                  }
-                >
+          <section style={styles.card}>
+            <div style={styles.sectionHeader}>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={styles.sectionTitle}>
                   {selectedCompanyName}
                 </h2>
-
-                <div
-                  style={
-                    styles.sectionDescription
-                  }
-                >
-                  구조분석 진행 현황
-                </div>
+                <p style={styles.help}>구조분석 진행 현황</p>
               </div>
 
-              {analysis.running && (
+              {(analysis.running || analysis.finished) && (
                 <span
-                  style={
-                    styles.runningBadge
-                  }
+                  style={{
+                    ...styles.badge,
+                    background: analysis.running
+                      ? "#eaf3ff"
+                      : "#ecfdf5",
+                    color: analysis.running ? "#3268bd" : "#047857",
+                  }}
                 >
-                  분석 중
+                  {analysis.running ? "분석 중" : "완료"}
                 </span>
               )}
+            </div>
 
-              {!analysis.running &&
-                analysis.finished && (
-                  <span
-                    style={
-                      styles.doneBadge
-                    }
+            <div style={styles.statsGrid}>
+              {[
+                ["전체", analysis.total],
+                ["완료", analysis.completed],
+                ["남음", analysis.remaining],
+                ["이번 실패", analysis.failed],
+              ].map(([label, value]) => (
+                <div key={label} style={styles.statCard}>
+                  <div style={styles.help}>{label}</div>
+                  <strong
+                    style={{
+                      ...styles.statValue,
+                      color: label === "이번 실패"
+                        ? "#b91c1c"
+                        : "#3268bd",
+                    }}
                   >
-                    완료
-                  </span>
-                )}
+                    {Number(value || 0).toLocaleString("ko-KR")}
+                  </strong>
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.progressHeader}>
+              <span>진행률</span>
+              <strong>{progress}%</strong>
             </div>
 
             <div
-              style={
-                styles.statsGrid
-              }
-            >
-              <StatCard
-                label="전체"
-                value={
-                  analysis.total
-                }
-              />
-
-              <StatCard
-                label="완료"
-                value={
-                  analysis.completed
-                }
-              />
-
-              <StatCard
-                label="남음"
-                value={
-                  analysis.remaining
-                }
-              />
-
-              <StatCard
-                label="이번 실패"
-                value={
-                  analysis.failed
-                }
-              />
-            </div>
-
-            {/* 진행률 */}
-
-            <div
-              style={
-                styles.progressHeader
-              }
-            >
-              <span>
-                진행률
-              </span>
-
-              <strong>
-                {progress}%
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.progressTrack
-              }
+              role="progressbar"
+              aria-label="구조분석 진행률"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress}
+              style={styles.progressTrack}
             >
               <div
-                style={{
-                  ...styles.progressBar,
-                  width:
-                    `${progress}%`,
-                }}
+                style={{ ...styles.progressBar, width: `${progress}%` }}
               />
             </div>
 
-            {/* 이번 실행 */}
-
-            {(analysis.processed >
-              0 ||
-              analysis.attempted >
-                0) && (
-              <div
-                style={
-                  styles.executionBox
-                }
-              >
-                <div>
-                  이번 실행 처리{" "}
-                  <strong>
-                    {Number(
-                      analysis.processed,
-                    ).toLocaleString(
-                      "ko-KR",
-                    )}
-                  </strong>
-                  장
-                </div>
-
-                <div>
-                  시도{" "}
-                  <strong>
-                    {Number(
-                      analysis.attempted,
-                    ).toLocaleString(
-                      "ko-KR",
-                    )}
-                  </strong>
-                  장
-                </div>
-
-                <div>
-                  실패{" "}
-                  <strong>
-                    {Number(
-                      analysis.failed,
-                    ).toLocaleString(
-                      "ko-KR",
-                    )}
-                  </strong>
-                  장
-                </div>
+            {(analysis.processed > 0 || analysis.attempted > 0) && (
+              <div style={styles.execution}>
+                <span>
+                  이번 처리 {analysis.processed.toLocaleString("ko-KR")}장
+                </span>
+                <span>
+                  시도 {analysis.attempted.toLocaleString("ko-KR")}장
+                </span>
+                <span>
+                  실패 {analysis.failed.toLocaleString("ko-KR")}장
+                </span>
               </div>
             )}
 
-            {/* 메시지 */}
-
-            {message && (
-              <div
-                style={{
-                  ...styles.message,
-
-                  ...(message.startsWith(
-                    "❌",
-                  )
-                    ? styles.errorMessage
-                    : message.startsWith(
-                          "⚠️",
-                        )
-                      ? styles.warningMessage
-                      : message.startsWith(
-                            "✅",
-                          )
-                        ? styles.successMessage
-                        : {}),
-                }}
-              >
-                {message}
-              </div>
-            )}
-
-            {/* 실행 버튼 */}
-
-            {!analysis.running ? (
+            {analysis.running ? (
               <button
                 type="button"
-                onClick={
-                  runStructureAnalysis
-                }
-                disabled={
-                  statusLoading ||
-                  analysis.remaining <=
-                    0
-                }
+                onClick={stopStructureAnalysis}
                 style={{
-                  ...styles.startButton,
-
-                  opacity:
-                    statusLoading ||
-                    analysis.remaining <=
-                      0
-                      ? 0.5
-                      : 1,
+                  ...styles.button,
+                  width: "100%",
+                  marginTop: 20,
+                  color: "#a16207",
+                  borderColor: "#f2d58b",
                 }}
               >
-                {analysis.remaining >
-                0
-                  ? `구조분석 시작 (${Number(
-                      analysis.remaining,
-                    ).toLocaleString(
-                      "ko-KR",
-                    )}장)`
-                  : "분석할 사진 없음"}
+                분석 중지
               </button>
             ) : (
               <button
                 type="button"
-                onClick={
-                  stopStructureAnalysis
-                }
-                style={
-                  styles.stopButton
-                }
+                onClick={runStructureAnalysis}
+                disabled={statusLoading || analysis.remaining <= 0}
+                style={{
+                  ...styles.primary,
+                  ...(statusLoading || analysis.remaining <= 0
+                    ? styles.disabled
+                    : {}),
+                }}
               >
-                분석 중지
+                {analysis.remaining > 0
+                  ? `구조분석 시작 · ${analysis.remaining.toLocaleString(
+                      "ko-KR"
+                    )}장`
+                  : "분석할 사진 없음"}
               </button>
             )}
+
+            <p style={styles.help}>
+              분석 중에는 이 페이지를 열어두세요. 중지하면 진행 중인
+              요청을 마친 뒤 다음 요청을 멈춥니다.
+            </p>
           </section>
         )}
 
-        {/* 실패 목록 */}
+        {analysis.errors.length > 0 && (
+          <details style={styles.card}>
+            <summary style={styles.summary}>
+              최근 실패 내역 · {analysis.errors.length}건
+            </summary>
 
-        {analysis.errors.length >
-          0 && (
-          <section
-            style={
-              styles.section
-            }
-          >
-            <h2
-              style={
-                styles.sectionTitle
-              }
-            >
-              최근 실패
-            </h2>
+            <div style={styles.errorList}>
+              {analysis.errors.map((item, index) => (
+                <div
+                  key={`${item.id}-${index}`}
+                  style={styles.errorItem}
+                >
+                  <strong style={styles.errorId}>
+                    {item.id || "사진 ID 없음"}
+                  </strong>
 
-            <div
-              style={{
-                marginTop: "12px",
-                display: "grid",
-                gap: "8px",
-              }}
-            >
-              {analysis.errors.map(
-                (
-                  item,
-                  index,
-                ) => (
-                  <div
-                    key={`${item.id}-${index}`}
-                    style={
-                      styles.errorItem
-                    }
-                  >
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        fontSize: "11px",
-                        wordBreak:
-                          "break-all",
-                      }}
-                    >
-                      {item.id ||
-                        "사진 ID 없음"}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: "4px",
-                        fontSize: "12px",
-                        color:
-                          "#991b1b",
-                        wordBreak:
-                          "break-word",
-                      }}
-                    >
-                      {item.error}
-                    </div>
-                  </div>
-                ),
-              )}
+                  <div style={{ marginTop: 6 }}>{item.error}</div>
+                </div>
+              ))}
             </div>
-          </section>
+          </details>
         )}
       </div>
     </main>
   );
 }
 
-/* =========================================================
-   통계 카드
-========================================================= */
-
-function StatCard({
-  label,
-  value,
-}) {
-  return (
-    <div
-      style={
-        styles.statCard
-      }
-    >
-      <div
-        style={
-          styles.statLabel
-        }
-      >
-        {label}
-      </div>
-
-      <div
-        style={
-          styles.statValue
-        }
-      >
-        {Number(
-          value || 0,
-        ).toLocaleString(
-          "ko-KR",
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
-   스타일
-========================================================= */
-
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "#f3f4f6",
-    color: "#111827",
-    padding:
-      "18px 14px 50px",
+    boxSizing: "border-box",
+    background: "var(--film-bg, #f8f7f3)",
+    color: "#243247",
+    padding: "24px 16px 60px",
   },
-
   container: {
     width: "100%",
-    maxWidth: "900px",
+    maxWidth: 760,
     margin: "0 auto",
   },
-
   header: {
     display: "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "flex-start",
-    gap: "12px",
-    marginBottom: "14px",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 24,
   },
-
-  badge: {
-    display: "inline-block",
-    padding: "5px 8px",
-    borderRadius: "999px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: "1px",
-    marginBottom: "7px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "25px",
-    fontWeight: 900,
-    letterSpacing: "-0.5px",
-  },
-
-  subtitle: {
-    marginTop: "5px",
-    color: "#6b7280",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  backButton: {
-    border:
-      "1px solid #d1d5db",
-    borderRadius: "10px",
-    background: "#ffffff",
-    padding: "10px 12px",
-    fontWeight: 800,
-    fontSize: "12px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-
-  centerBox: {
-    width: "100%",
-    maxWidth: "420px",
-    margin: "100px auto 0",
-    background: "#ffffff",
-    border:
-      "1px solid #e5e7eb",
-    borderRadius: "18px",
-    padding: "28px 20px",
-    textAlign: "center",
-  },
-
-  loadingIcon: {
-    fontSize: "40px",
-    marginBottom: "10px",
-  },
-
-  loadingTitle: {
-    fontSize: "18px",
-    fontWeight: 900,
-  },
-
-  errorBox: {
-    marginTop: "15px",
-    padding: "10px",
-    borderRadius: "9px",
-    background: "#fef2f2",
-    color: "#991b1b",
-    fontSize: "12px",
-    lineHeight: 1.5,
-  },
-
-  warningBox: {
-    background: "#fffbeb",
-    border:
-      "1px solid #fde68a",
-    color: "#92400e",
-    borderRadius: "14px",
-    padding: "13px",
-    marginBottom: "14px",
-  },
-
-  section: {
-    background: "#ffffff",
-    border:
-      "1px solid #e5e7eb",
-    borderRadius: "16px",
-    padding: "15px",
-    marginBottom: "14px",
-  },
-
-  sectionHeader: {
+  back: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
     display: "flex",
-    alignItems:
-      "flex-start",
-    justifyContent:
-      "space-between",
-    gap: "10px",
-    marginBottom: "13px",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
+    background: "#ffffff",
+    color: "#50617a",
+    fontSize: 24,
+    textDecoration: "none",
   },
-
+  eyebrow: {
+    color: "#7b8798",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  title: {
+    margin: "6px 0",
+    fontSize: 26,
+    letterSpacing: "-0.7px",
+  },
+  help: {
+    margin: "6px 0 0",
+    color: "#7b8798",
+    fontSize: 12,
+    lineHeight: 1.7,
+  },
+  notice: {
+    padding: 16,
+    marginBottom: 16,
+    border: "1px solid #f2e1b5",
+    borderRadius: 18,
+    background: "#fff9e9",
+    color: "#946624",
+    fontSize: 12,
+    lineHeight: 1.8,
+  },
+  card: {
+    padding: 18,
+    marginBottom: 16,
+    border: "1px solid #e4eaf2",
+    borderRadius: 22,
+    background: "#ffffff",
+    boxShadow: "0 6px 20px rgba(48,77,116,0.04)",
+  },
   sectionTitle: {
     margin: 0,
-    fontSize: "18px",
-    fontWeight: 900,
+    fontSize: 18,
+    overflowWrap: "anywhere",
   },
-
-  sectionDescription: {
-    marginTop: "4px",
-    color: "#6b7280",
-    fontSize: "12px",
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 16,
   },
-
   select: {
     width: "100%",
-    minHeight: "46px",
+    minHeight: 48,
+    marginTop: 14,
     boxSizing: "border-box",
-    border:
-      "1px solid #d1d5db",
-    borderRadius: "10px",
-    background: "#ffffff",
-    padding: "0 11px",
-    fontSize: "14px",
-    outline: "none",
-    marginTop: "12px",
+    padding: "10px 12px",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
+    background: "#fbfcfe",
+    color: "#243247",
+    fontSize: 16,
   },
-
-  refreshButton: {
-    width: "100%",
-    minHeight: "42px",
-    marginTop: "9px",
-    border:
-      "1px solid #d1d5db",
-    borderRadius: "10px",
+  button: {
+    minHeight: 44,
+    boxSizing: "border-box",
+    padding: "10px 14px",
+    border: "1px solid #dfe6ef",
+    borderRadius: 14,
     background: "#ffffff",
+    color: "#50617a",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    textAlign: "center",
+  },
+  primary: {
+    width: "100%",
+    minHeight: 50,
+    marginTop: 20,
+    padding: 14,
+    border: "none",
+    borderRadius: 15,
+    background: "var(--film-blue, #3478ed)",
+    color: "#ffffff",
+    fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
   },
-
+  disabled: {
+    opacity: 0.5,
+    cursor: "not-allowed",
+  },
+  message: {
+    padding: 14,
+    marginBottom: 16,
+    borderRadius: 14,
+    background: "#edf3fb",
+    color: "#50617a",
+    fontSize: 12,
+    lineHeight: 1.8,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  error: {
+    padding: 14,
+    borderRadius: 14,
+    background: "#fff1f2",
+    color: "#b91c1c",
+    fontSize: 12,
+    lineHeight: 1.8,
+  },
+  warning: {
+    background: "#fff9e9",
+    color: "#946624",
+  },
+  success: {
+    background: "#ecfdf5",
+    color: "#047857",
+  },
+  badge: {
+    flexShrink: 0,
+    padding: "6px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+  },
   statsGrid: {
     display: "grid",
-    gridTemplateColumns:
-      "repeat(4, minmax(0, 1fr))",
-    gap: "6px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
   },
-
   statCard: {
     minWidth: 0,
-    padding: "11px 4px",
-    borderRadius: "10px",
-    background: "#f8fafc",
-    border:
-      "1px solid #e5e7eb",
-    textAlign: "center",
+    padding: 15,
+    border: "1px solid #e4eaf2",
+    borderRadius: 16,
+    background: "#fbfcfe",
   },
-
-  statLabel: {
-    fontSize: "10px",
-    color: "#6b7280",
-    whiteSpace: "nowrap",
-  },
-
   statValue: {
-    marginTop: "4px",
-    fontSize: "18px",
-    fontWeight: 900,
+    display: "block",
+    marginTop: 8,
+    fontSize: 25,
+    overflowWrap: "anywhere",
   },
-
-  runningBadge: {
-    padding: "5px 9px",
-    borderRadius: "999px",
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    fontSize: "11px",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  },
-
-  doneBadge: {
-    padding: "5px 9px",
-    borderRadius: "999px",
-    background: "#ecfdf5",
-    color: "#047857",
-    fontSize: "11px",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  },
-
   progressHeader: {
     display: "flex",
-    justifyContent:
-      "space-between",
-    alignItems: "center",
-    marginTop: "15px",
-    marginBottom: "6px",
-    fontSize: "12px",
-    color: "#6b7280",
+    justifyContent: "space-between",
+    gap: 10,
+    margin: "20px 0 8px",
+    color: "#50617a",
+    fontSize: 12,
   },
-
   progressTrack: {
-    width: "100%",
-    height: "10px",
-    borderRadius: "999px",
+    height: 12,
+    borderRadius: 999,
     overflow: "hidden",
-    background: "#e5e7eb",
+    background: "#eaf0f7",
   },
-
   progressBar: {
     height: "100%",
-    borderRadius: "999px",
-    background: "#111827",
-    transition:
-      "width 0.25s ease",
+    borderRadius: 999,
+    background: "var(--film-blue, #3478ed)",
+    transition: "width 0.25s ease",
   },
-
-  executionBox: {
+  execution: {
     display: "flex",
     flexWrap: "wrap",
-    gap: "12px",
-    marginTop: "12px",
-    padding: "10px",
-    borderRadius: "10px",
-    background: "#f8fafc",
-    fontSize: "12px",
-    color: "#475569",
+    gap: 12,
+    padding: 14,
+    marginTop: 14,
+    borderRadius: 14,
+    background: "#f3f7fc",
+    color: "#50617a",
+    fontSize: 12,
+    lineHeight: 1.7,
   },
-
-  message: {
-    marginTop: "12px",
-    padding: "10px 12px",
-    borderRadius: "10px",
-    border:
-      "1px solid #e5e7eb",
-    background: "#f8fafc",
-    fontSize: "12px",
-    lineHeight: 1.55,
-    whiteSpace: "pre-wrap",
-  },
-
-  successMessage: {
-    background: "#ecfdf5",
-    borderColor: "#a7f3d0",
-    color: "#047857",
-  },
-
-  warningMessage: {
-    background: "#fffbeb",
-    borderColor: "#fde68a",
-    color: "#92400e",
-  },
-
-  errorMessage: {
-    background: "#fef2f2",
-    borderColor: "#fecaca",
-    color: "#991b1b",
-  },
-
-  startButton: {
-    width: "100%",
-    minHeight: "46px",
-    marginTop: "14px",
-    border: 0,
-    borderRadius: "11px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "14px",
-    fontWeight: 900,
+  summary: {
     cursor: "pointer",
+    color: "#50617a",
+    fontSize: 14,
+    fontWeight: 800,
   },
-
-  stopButton: {
-    width: "100%",
-    minHeight: "46px",
-    marginTop: "14px",
-    border:
-      "1px solid #f59e0b",
-    borderRadius: "11px",
-    background: "#ffffff",
-    color: "#b45309",
-    fontSize: "14px",
-    fontWeight: 900,
-    cursor: "pointer",
+  errorList: {
+    display: "grid",
+    gap: 10,
+    marginTop: 16,
   },
-
   errorItem: {
-    padding: "10px",
-    borderRadius: "9px",
-    border:
-      "1px solid #fecaca",
-    background: "#fef2f2",
+    padding: 14,
+    borderRadius: 14,
+    background: "#fff1f2",
+    color: "#b91c1c",
+    fontSize: 12,
+    lineHeight: 1.8,
+    overflowWrap: "anywhere",
+  },
+  errorId: {
+    fontSize: 11,
+  },
+  centerCard: {
+    maxWidth: 420,
+    boxSizing: "border-box",
+    margin: "70px auto 0",
+    padding: "28px 22px",
+    border: "1px solid #e4eaf2",
+    borderRadius: 24,
+    background: "#ffffff",
+    textAlign: "center",
+  },
+  centerTitle: {
+    margin: "16px 0 8px",
+    fontSize: 20,
   },
 };

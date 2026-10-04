@@ -113,7 +113,6 @@ export default function WorkerCard({
 
           <div style={{ marginTop: 9, display: "grid", gap: 4, fontSize: 12, color: "#475569" }}>
             <span>기본 일당 <strong>{worker?.daily_wage == null ? "미설정" : `${Number(worker.daily_wage).toLocaleString("ko-KR")}원`}</strong></span>
-            <span style={{ color: "#1d4ed8" }}>팀장수당 <strong>+{Number(worker?.leader_allowance ?? 0).toLocaleString("ko-KR")}원 / 일</strong></span>
           </div>
 
           {/* 계정 상태 */}

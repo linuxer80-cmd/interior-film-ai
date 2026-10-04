@@ -51,17 +51,16 @@ export async function POST(request) {
     const name = String(body.name || "").trim();
     const phone = String(body.phone || "").trim();
     const wage = payAmount(body.daily_wage);
-    const allowance = payAmount(body.leader_allowance ?? 0);
     const effectiveFrom = payDate(body.pay_rate_effective_from || koreanDay());
-    if (wage === null || allowance === null || !effectiveFrom || effectiveFrom > koreanDay()) {
-      return NextResponse.json({ error: "일당, 팀장수당과 적용 시작일을 확인해주세요." }, { status: 400 });
+    if (wage === null || !effectiveFrom || effectiveFrom > koreanDay()) {
+      return NextResponse.json({ error: "기본 일당과 적용 시작일을 확인해주세요." }, { status: 400 });
     }
     if (!name || !phone || !Number.isSafeInteger(wage) || wage < 0) {
       return NextResponse.json({ error: "이름, 전화번호, 기본 일당을 확인해주세요." }, { status: 400 });
     }
     const { data, error } = await db.from("workers").insert({
       company_id: company.company_id, user_id: auth.user.id,
-      name, phone, daily_wage: wage, leader_allowance: allowance, pay_rate_effective_from: effectiveFrom, is_active: true,
+      name, phone, daily_wage: wage, pay_rate_effective_from: effectiveFrom, is_active: true,
       position: null, specialties: [], memo: null,
     }).select("id,name").single();
     if (error) throw error;

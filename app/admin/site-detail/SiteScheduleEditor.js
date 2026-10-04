@@ -1,84 +1,90 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import WorkDatePicker from "../WorkDatePicker";
 
-/* =========================================================
-   날짜만 있는 상담 일정 표시
-========================================================= */
+function validDay(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
 
-const localDay = (value) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)) : "";
+  const date = new Date(`${value}T00:00:00Z`);
 
-function formatScheduleDateOnly(value) {
-  if (!value) {
-    return "미정";
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+  );
+}
+
+function normalizeDays(values) {
+  return [...new Set((values || []).filter(validDay))].sort();
+}
+
+function localDay(value) {
+  if (!value) return "";
+  if (validDay(value)) return value;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function getWorkDates(site) {
+  if (Array.isArray(site?.work_dates)) {
+    return normalizeDays(site.work_dates);
   }
 
-  const date = new Date(
-    `${value}T00:00:00`,
+  const start = localDay(
+    site?.schedule_start || site?.schedule_date
   );
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return "미정";
+  const end = localDay(site?.schedule_end) || start;
+
+  if (!validDay(start)) return [];
+  if (!validDay(end) || end < start) return [start];
+
+  const result = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+
+  while (result.length < 366) {
+    const day = cursor.toISOString().slice(0, 10);
+    if (day > end) break;
+
+    result.push(day);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
-  const dateText =
-    new Intl.DateTimeFormat(
-      "ko-KR",
-      {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        weekday: "short",
-      },
-    ).format(date);
-
-  return dateText;
+  return result;
 }
 
-/* =========================================================
-   현재 일정 표시값
-========================================================= */
-
-function getScheduleText(site) {
-  if (!site) {
-    return "미정";
-  }
-
-  /*
-   * 시작 날짜가 확정된 현장
-   */
-  if (site.schedule_start) {
-    if (site.schedule_end) {
-      return `${localDay(site.schedule_start)} ~ ${localDay(site.schedule_end)}`;
-    }
-
-    return (
-      localDay(site.schedule_start) || "미정"
-    );
-  }
-
-  /*
-   * 날짜만 정해진 상담중 현장
-   */
-  if (site.schedule_date) {
-    return formatScheduleDateOnly(
-      site.schedule_date,
-    );
-  }
-
-  /*
-   * 날짜 / 시간 모두 미정
-   */
-  return "미정";
+function formatDay(value) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date(`${value}T00:00:00Z`));
 }
 
-/* =========================================================
-   현장 일정 표시 / 수정
-========================================================= */
+const buttonStyle = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 9,
+  padding: "12px",
+  background: "#fff",
+  color: "#475569",
+  fontSize: 14,
+  fontWeight: 800,
+  cursor: "pointer",
+};
 
 export default function SiteScheduleEditor({
   site,
@@ -86,866 +92,324 @@ export default function SiteScheduleEditor({
   updateSiteSchedule,
   reloadSites,
 }) {
-  const [
-    scheduleEditOpen,
-    setScheduleEditOpen,
-  ] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [workDates, setWorkDates] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const [
-    scheduleStart,
-    setScheduleStart,
-  ] = useState("");
+  const savingRef = useRef(false);
+  const currentSiteId = useRef(site?.id);
+  currentSiteId.current = site?.id;
 
-  const [
-    scheduleEnd,
-    setScheduleEnd,
-  ] = useState("");
-
-  const [
-    scheduleSaving,
-    setScheduleSaving,
-  ] = useState(false);
-
-  const [
-    scheduleMessage,
-    setScheduleMessage,
-  ] = useState("");
-
-  /* =======================================================
-     현장 변경 시 상태 초기화
-  ======================================================= */
+  const savedDates = getWorkDates(site);
+  const savedDatesKey = savedDates.join(",");
 
   useEffect(() => {
-    setScheduleEditOpen(false);
-    setScheduleSaving(false);
-    setScheduleMessage("");
-
-    setScheduleStart(
-      localDay(site?.schedule_start),
-    );
-
-    setScheduleEnd(
-      localDay(site?.schedule_end),
-    );
+    setEditing(false);
+    setMessage("");
   }, [site?.id]);
 
-  /* =======================================================
-     일정 값 변경 시 입력값 동기화
-  ======================================================= */
-
   useEffect(() => {
-    if (scheduleEditOpen) {
-      return;
+    if (!editing) {
+      setWorkDates(
+        savedDatesKey ? savedDatesKey.split(",") : []
+      );
     }
+  }, [site?.id, savedDatesKey, editing]);
 
-    setScheduleStart(
-      localDay(site?.schedule_start),
-    );
-
-    setScheduleEnd(
-      localDay(site?.schedule_end),
-    );
-  }, [
-    site?.schedule_start,
-    site?.schedule_end,
-    scheduleEditOpen,
-  ]);
-
-  /* =======================================================
-     일정 수정 시작
-  ======================================================= */
-
-  function openScheduleEditor() {
-    setScheduleMessage("");
-
-    setScheduleStart(
-      localDay(site?.schedule_start),
-    );
-
-    setScheduleEnd(
-      localDay(site?.schedule_end),
-    );
-
-    setScheduleEditOpen(true);
+  function openEditor() {
+    setWorkDates(getWorkDates(site));
+    setMessage("");
+    setEditing(true);
   }
 
-  /* =======================================================
-     일정 수정 취소
-  ======================================================= */
+  function cancelEditor() {
+    if (savingRef.current) return;
 
-  function cancelScheduleEditor() {
-    if (scheduleSaving) {
-      return;
-    }
-
-    setScheduleMessage("");
-
-    setScheduleStart(
-      localDay(site?.schedule_start),
-    );
-
-    setScheduleEnd(
-      localDay(site?.schedule_end),
-    );
-
-    setScheduleEditOpen(false);
+    setWorkDates(getWorkDates(site));
+    setMessage("");
+    setEditing(false);
   }
-
-  /* =======================================================
-     일정 저장
-  ======================================================= */
 
   async function saveSchedule() {
-    if (scheduleSaving) {
-      return;
-    }
-
-    if (
-      typeof updateSiteSchedule !==
-      "function"
-    ) {
-      setScheduleMessage(
-        "❌ 일정 변경 기능을 사용할 수 없습니다.",
-      );
-
-      return;
-    }
+    if (savingRef.current) return;
 
     if (!site?.id) {
-      setScheduleMessage(
-        "❌ 현장 정보를 확인할 수 없습니다.",
-      );
-
+      setMessage("❌ 현장 정보를 확인할 수 없습니다.");
       return;
     }
-
-    if (!scheduleStart || !scheduleEnd) {
-      setScheduleMessage(
-        "❌ 시작 날짜와 종료 날짜를 입력해주세요.",
-      );
-
-      return;
-    }
-
-    const startDate =
-      new Date(`${scheduleStart}T00:00:00+09:00`);
 
     if (
-      Number.isNaN(
-        startDate.getTime(),
-      )
+      typeof updateSiteSchedule !== "function" ||
+      updateSiteSchedule.supportsWorkDates !== true
     ) {
-      setScheduleMessage(
-        "❌ 시작 날짜가 올바르지 않습니다.",
+      setMessage(
+        "❌ 여러 날짜 저장 기능이 아직 연결되지 않았습니다. useSites.js 수정과 SQL 적용을 먼저 완료해주세요."
       );
-
       return;
     }
 
-    let endDate = null;
+    const dates = normalizeDays(workDates);
 
-    if (scheduleEnd) {
-      endDate =
-        new Date(`${scheduleEnd}T23:59:00+09:00`);
-
-      if (
-        Number.isNaN(
-          endDate.getTime(),
-        )
-      ) {
-        setScheduleMessage(
-          "❌ 종료 날짜가 올바르지 않습니다.",
-        );
-
-        return;
-      }
-
-      if (
-        endDate.getTime() <
-        startDate.getTime()
-      ) {
-        setScheduleMessage(
-          "❌ 종료 날짜는 시작 날짜보다 빠를 수 없습니다.",
-        );
-
-        return;
-      }
+    if (!dates.length) {
+      setMessage("❌ 실제 시공하는 날짜를 하나 이상 선택해주세요.");
+      return;
     }
 
-    setScheduleSaving(true);
-    setScheduleMessage("");
+    if (dates.length > 366) {
+      setMessage("❌ 한 현장은 최대 366개의 시공 날짜를 선택할 수 있습니다.");
+      return;
+    }
+
+    const siteId = site.id;
+    savingRef.current = true;
+    setSaving(true);
+    setMessage("");
 
     try {
-      /*
-       * datetime-local 값은
-       * 브라우저의 로컬시간입니다.
-       *
-       * Supabase timestamptz 저장을 위해
-       * ISO 문자열로 변환합니다.
-       */
+      const result = await updateSiteSchedule({
+        siteId,
+        workDates: dates,
+        scheduleStart: new Date(
+          `${dates[0]}T00:00:00+09:00`
+        ).toISOString(),
+        scheduleEnd: new Date(
+          `${dates[dates.length - 1]}T23:59:00+09:00`
+        ).toISOString(),
+      });
 
-      const result =
-        await updateSiteSchedule({
-          siteId: site.id,
-
-          scheduleStart:
-            startDate.toISOString(),
-
-          scheduleEnd:
-            endDate
-              ? endDate.toISOString()
-              : null,
-        });
+      if (currentSiteId.current !== siteId) return;
 
       if (!result?.success) {
-        setScheduleMessage(
-          `❌ ${
-            result?.error ||
-            "일정을 변경하지 못했습니다."
-          }`,
+        setMessage(
+          `❌ ${result?.error || "시공 일정을 저장하지 못했습니다."}`
         );
-
         return;
       }
 
-      /*
-       * 상담중 현장에서 일정을 확정하면
-       * useSites.js가 scheduled로 자동 변경합니다.
-       */
+      setEditing(false);
+      setMessage(`✅ 선택한 ${dates.length}일의 시공 일정을 저장했습니다.`);
 
-      setScheduleMessage(
-        site.status ===
-          "consulting"
-          ? "✅ 일정이 확정되어 시공 예정으로 변경되었습니다."
-          : "✅ 시공 일정이 변경되었습니다.",
-      );
-
-      setScheduleEditOpen(false);
-
-      /*
-       * 현장 목록을 다시 읽어
-       * 상세정보와 목록의 일정을 동기화합니다.
-       */
-
-      if (
-        typeof reloadSites ===
-        "function"
-      ) {
-        await reloadSites();
+      if (typeof reloadSites === "function") {
+        try {
+          await reloadSites();
+        } catch {
+          if (currentSiteId.current === siteId) {
+            setMessage(
+              "✅ 일정은 저장되었습니다. 목록을 새로고침해주세요."
+            );
+          }
+        }
       }
     } catch (error) {
-      console.error(
-        "현장 일정 변경 오류:",
-        error,
-      );
-
-      setScheduleMessage(
-        `❌ 일정 변경 오류: ${
-          error?.message ||
-          "알 수 없는 오류"
-        }`,
-      );
+      if (currentSiteId.current === siteId) {
+        setMessage(
+          `❌ ${error?.message || "일정 저장 중 오류가 발생했습니다."}`
+        );
+      }
     } finally {
-      setScheduleSaving(false);
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
-  /* =======================================================
-     일정 표시
-  ======================================================= */
+  if (!site) return null;
 
-  const scheduleText =
-    getScheduleText(site);
-
-  if (!site) {
-    return null;
-  }
-
-  /* =======================================================
-     화면
-  ======================================================= */
+  const canEdit =
+    !reportOpen &&
+    site.status !== "completed" &&
+    site.status !== "cancelled" &&
+    site.status !== "canceled";
 
   return (
     <>
-      {/* =========================
-          현재 일정
-      ========================= */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "90px 1fr",
+          gap: 10,
+          padding: "10px 0",
+          borderBottom: "1px solid #f1f5f9",
+          fontSize: 13,
+        }}
+      >
+        <div style={{ color: "#64748b", fontWeight: 700 }}>
+          시공일
+        </div>
 
-      <DetailRow
-        label="일정"
-        value={scheduleText}
-      />
-
-      {/* =========================
-          일정 상태 안내
-      ========================= */}
-
-      {site.status ===
-        "consulting" &&
-        !reportOpen && (
-          <div
-            style={{
-              marginTop: "8px",
-
-              padding: "10px",
-
-              borderRadius: "9px",
-
-              background: "#fff7ed",
-
-              color: "#9a3412",
-
-              fontSize: "11px",
-
-              fontWeight: "700",
-
-              lineHeight: "1.5",
-            }}
-          >
-            {site.schedule_date
-              ? "시공 날짜는 등록되어 있지만 시간이 아직 미정입니다."
-              : "시공 일정이 아직 미정인 상담중 현장입니다."}
-          </div>
-        )}
-
-      {/* =========================
-          일정 변경
-
-          완료보고 작성 중이거나
-          이미 완료된 현장은 숨깁니다.
-      ========================= */}
-
-      {!reportOpen &&
-        site.status !==
-          "completed" && (
-          <div
-            style={{
-              padding:
-                "10px 0 12px",
-
-              borderBottom:
-                "1px solid #f1f5f9",
-            }}
-          >
-            {!scheduleEditOpen ? (
-              /* =====================
-                 일정 변경 버튼
-              ===================== */
-
-              <button
-                type="button"
-                onClick={
-                  openScheduleEditor
-                }
-                disabled={
-                  scheduleSaving
-                }
-                style={{
-                  width: "100%",
-
-                  border:
-                    "1px solid #bfdbfe",
-
-                  borderRadius:
-                    "9px",
-
-                  padding: "10px",
-
-                  background:
-                    "#eff6ff",
-
-                  color: "#1d4ed8",
-
-                  fontSize:
-                    "12px",
-
-                  fontWeight:
-                    "900",
-
-                  cursor:
-                    scheduleSaving
-                      ? "not-allowed"
-                      : "pointer",
-
-                  opacity:
-                    scheduleSaving
-                      ? 0.6
-                      : 1,
-                }}
-              >
-                📅{" "}
-                {site.schedule_start
-                  ? "일정 변경"
-                  : "일정 확정"}
-              </button>
-            ) : (
-              /* =====================
-                 일정 수정 화면
-              ===================== */
+        <div style={{ color: "#111827", fontWeight: 600 }}>
+          {savedDates.length ? (
+            <>
+              <div style={{ marginBottom: 7, color: "#2563eb" }}>
+                총 {savedDates.length}일
+              </div>
 
               <div
                 style={{
-                  padding: "12px",
-
-                  border:
-                    "1px solid #bfdbfe",
-
-                  borderRadius:
-                    "11px",
-
-                  background:
-                    "#f8fbff",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
                 }}
               >
-                <div
-                  style={{
-                    fontSize:
-                      "13px",
-
-                    fontWeight:
-                      "900",
-
-                    color:
-                      "#1e3a8a",
-                  }}
-                >
-                  📅{" "}
-                  {site.schedule_start
-                    ? "시공 일정 변경"
-                    : "시공 일정 확정"}
-                </div>
-
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-
-                    fontSize:
-                      "11px",
-
-                    lineHeight:
-                      "1.5",
-
-                    color:
-                      "#64748b",
-                  }}
-                >
-                  {site.status ===
-                  "consulting"
-                    ? "시작 날짜를 저장하면 상담중에서 시공 예정으로 자동 변경됩니다."
-                    : "저장하면 변경된 시공 일정이 적용됩니다."}
-                </div>
-
-                {/* =====================
-                    시작 날짜
-                ===================== */}
-
-                <label
-                  style={{
-                    display:
-                      "block",
-
-                    marginTop:
-                      "12px",
-                  }}
-                >
-                  <div
+                {savedDates.map((date) => (
+                  <span
+                    key={date}
                     style={{
-                      marginBottom:
-                        "5px",
-
-                      fontSize:
-                        "12px",
-
-                      fontWeight:
-                        "800",
-
-                      color:
-                        "#334155",
+                      padding: "6px 8px",
+                      borderRadius: 7,
+                      background: "#eff6ff",
+                      lineHeight: 1.5,
                     }}
                   >
-                    시작 날짜
-                  </div>
-
-                  <input
-                    type="date"
-                    value={
-                      scheduleStart
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setScheduleStart(
-                        event.target
-                          .value,
-                      )
-                    }
-                    disabled={
-                      scheduleSaving
-                    }
-                    style={{
-                      width:
-                        "100%",
-
-                      boxSizing:
-                        "border-box",
-
-                      padding:
-                        "10px",
-
-                      border:
-                        "1px solid #cbd5e1",
-
-                      borderRadius:
-                        "9px",
-
-                      background:
-                        "#ffffff",
-
-                      color:
-                        "#111827",
-
-                      fontSize:
-                        "14px",
-                    }}
-                  />
-                </label>
-
-                {/* =====================
-                    날짜만 등록된 상담 안내
-                ===================== */}
-
-                {site.schedule_date &&
-                  !site.schedule_start && (
-                    <div
-                      style={{
-                        marginTop:
-                          "7px",
-
-                        padding:
-                          "8px 9px",
-
-                        borderRadius:
-                          "8px",
-
-                        background:
-                          "#fefce8",
-
-                        color:
-                          "#854d0e",
-
-                        fontSize:
-                          "11px",
-
-                        lineHeight:
-                          "1.5",
-                      }}
-                    >
-                      현재 상담에서 확인된
-                      날짜:{" "}
-                      <strong>
-                        {formatScheduleDateOnly(
-                          site.schedule_date,
-                        )}
-                      </strong>
-                      <br />
-                      종료 날짜를 선택해 일정을
-                      확정해주세요.
-                    </div>
-                  )}
-
-                {/* =====================
-                    종료 날짜
-                ===================== */}
-
-                <label
-                  style={{
-                    display:
-                      "block",
-
-                    marginTop:
-                      "10px",
-                  }}
-                >
-                  <div
-                    style={{
-                      marginBottom:
-                        "5px",
-
-                      fontSize:
-                        "12px",
-
-                      fontWeight:
-                        "800",
-
-                      color:
-                        "#334155",
-                    }}
-                  >
-                    종료 날짜
-                  </div>
-
-                  <input
-                    type="date"
-                    value={
-                      scheduleEnd
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setScheduleEnd(
-                        event.target
-                          .value,
-                      )
-                    }
-                    disabled={
-                      scheduleSaving
-                    }
-                    style={{
-                      width:
-                        "100%",
-
-                      boxSizing:
-                        "border-box",
-
-                      padding:
-                        "10px",
-
-                      border:
-                        "1px solid #cbd5e1",
-
-                      borderRadius:
-                        "9px",
-
-                      background:
-                        "#ffffff",
-
-                      color:
-                        "#111827",
-
-                      fontSize:
-                        "14px",
-                    }}
-                  />
-                </label>
-
-                {/* =====================
-                    취소 / 저장
-                ===================== */}
-
-                <div
-                  style={{
-                    display:
-                      "grid",
-
-                    gridTemplateColumns:
-                      "1fr 1fr",
-
-                    gap: "7px",
-
-                    marginTop:
-                      "12px",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={
-                      cancelScheduleEditor
-                    }
-                    disabled={
-                      scheduleSaving
-                    }
-                    style={{
-                      border:
-                        "1px solid #cbd5e1",
-
-                      borderRadius:
-                        "9px",
-
-                      padding:
-                        "10px",
-
-                      background:
-                        "#ffffff",
-
-                      color:
-                        "#475569",
-
-                      fontSize:
-                        "12px",
-
-                      fontWeight:
-                        "800",
-
-                      cursor:
-                        scheduleSaving
-                          ? "not-allowed"
-                          : "pointer",
-
-                      opacity:
-                        scheduleSaving
-                          ? 0.6
-                          : 1,
-                    }}
-                  >
-                    취소
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      saveSchedule
-                    }
-                    disabled={
-                      scheduleSaving
-                    }
-                    style={{
-                      border:
-                        "none",
-
-                      borderRadius:
-                        "9px",
-
-                      padding:
-                        "10px",
-
-                      background:
-                        "#2563eb",
-
-                      color:
-                        "#ffffff",
-
-                      fontSize:
-                        "12px",
-
-                      fontWeight:
-                        "900",
-
-                      cursor:
-                        scheduleSaving
-                          ? "not-allowed"
-                          : "pointer",
-
-                      opacity:
-                        scheduleSaving
-                          ? 0.6
-                          : 1,
-                    }}
-                  >
-                    {scheduleSaving
-                      ? "저장 중..."
-                      : site.status ===
-                          "consulting"
-                        ? "일정 확정"
-                        : "일정 저장"}
-                  </button>
-                </div>
+                    {formatDay(date)}
+                  </span>
+                ))}
               </div>
-            )}
+            </>
+          ) : (
+            "미정"
+          )}
+        </div>
+      </div>
 
-            {/* =====================
-                일정 저장 메시지
-            ===================== */}
+      {site.status === "consulting" && !reportOpen && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 9,
+            background: "#fff7ed",
+            color: "#9a3412",
+            fontSize: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          시공일을 선택하고 저장하면 시공 예정으로 변경됩니다.
+        </div>
+      )}
 
-            {scheduleMessage && (
+      {canEdit && (
+        <div
+          style={{
+            padding: "12px 0",
+            borderBottom: "1px solid #f1f5f9",
+          }}
+        >
+          {!editing ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={openEditor}
+              style={{
+                ...buttonStyle,
+                width: "100%",
+                borderColor: "#bfdbfe",
+                background: "#eff6ff",
+                color: "#1d4ed8",
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              📅 {savedDates.length ? "시공일 변경" : "시공일 선택"}
+            </button>
+          ) : (
+            <div
+              style={{
+                padding: 12,
+                border: "1px solid #bfdbfe",
+                borderRadius: 11,
+                background: "#f8fbff",
+              }}
+            >
               <div
                 style={{
-                  marginTop:
-                    "8px",
-
-                  padding:
-                    "9px 10px",
-
-                  borderRadius:
-                    "8px",
-
-                  background:
-                    scheduleMessage.startsWith(
-                      "✅",
-                    )
-                      ? "#f0fdf4"
-                      : "#fef2f2",
-
-                  color:
-                    scheduleMessage.startsWith(
-                      "✅",
-                    )
-                      ? "#166534"
-                      : "#b91c1c",
-
-                  fontSize:
-                    "11px",
-
-                  fontWeight:
-                    "800",
-
-                  whiteSpace:
-                    "pre-wrap",
-
-                  wordBreak:
-                    "break-word",
+                  marginBottom: 14,
+                  color: "#1e3a8a",
+                  fontSize: 15,
+                  fontWeight: 900,
                 }}
               >
-                {scheduleMessage}
+                📅 시공하는 날짜 선택
               </div>
-            )}
-          </div>
-        )}
+
+              <WorkDatePicker
+                value={workDates}
+                onChange={setWorkDates}
+                disabled={saving}
+              />
+
+              <p
+                style={{
+                  margin: "12px 0 0",
+                  color: "#64748b",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}
+              >
+                예: 10일과 13일만 선택하면 11일과 12일은
+                시공 일정에 포함되지 않습니다.
+                저장 후 날짜별 팀장과 팀원을 확인해주세요.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={cancelEditor}
+                  style={buttonStyle}
+                >
+                  취소
+                </button>
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={saveSchedule}
+                  style={{
+                    ...buttonStyle,
+                    borderColor: "#2563eb",
+                    background: "#2563eb",
+                    color: "#fff",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? "저장 중..." : "시공일 저장"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {message && (
+        <div
+          role="status"
+          style={{
+            marginTop: 8,
+            padding: "10px",
+            borderRadius: 8,
+            background: message.startsWith("✅")
+              ? "#f0fdf4"
+              : "#fef2f2",
+            color: message.startsWith("✅")
+              ? "#166534"
+              : "#b91c1c",
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {message}
+        </div>
+      )}
     </>
   );
 }
-
-/* =========================================================
-   상세정보 한 줄
-========================================================= */
-
-function DetailRow({
-  label,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-
-        gridTemplateColumns:
-          "90px 1fr",
-
-        gap: "10px",
-
-        padding: "10px 0",
-
-        borderBottom:
-          "1px solid #f1f5f9",
-
-        fontSize: "13px",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-
-          fontWeight: "700",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          color: "#111827",
-
-          fontWeight: "600",
-
-          whiteSpace:
-            "pre-wrap",
-
-          wordBreak:
-            "break-word",
-        }}
-      >
-        {value || "미정"}
-      </div>
-    </div>
-  );
-    }
