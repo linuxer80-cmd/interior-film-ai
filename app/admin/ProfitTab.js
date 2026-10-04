@@ -1,16 +1,20 @@
 "use client";
 
+import ToolIllustration from "../components/ui/ToolIllustration";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-const won = value =>
+const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
 
 const today = () => {
   const date = new Date();
+
   return `${date.getFullYear()}-${String(
     date.getMonth() + 1
-  ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  ).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
 };
 
 const monthStart = () => `${today().slice(0, 7)}-01`;
@@ -18,7 +22,7 @@ const monthStart = () => `${today().slice(0, 7)}-01`;
 const kinds = {
   labor: "시공자 인건비",
   material: "추가 자재비",
-  expense: "기타 경비"
+  expense: "기타 경비",
 };
 
 const costLabels = kinds;
@@ -26,8 +30,14 @@ const costLabels = kinds;
 const colors = {
   labor: "#2563eb",
   material: "#7c3aed",
-  expense: "#ea580c"
+  expense: "#ea580c",
 };
+
+const MENUS = [
+  { id: "summary", label: "요약", kind: "report" },
+  { id: "cost", label: "비용분석", kind: "money" },
+  { id: "sites", label: "현장별 수익", kind: "home" },
+];
 
 const group = (rows, key) =>
   Object.entries(
@@ -35,21 +45,38 @@ const group = (rows, key) =>
       const label = row[key] || "미분류";
 
       if (!map[label]) {
-        map[label] = { amount: 0, rows: [] };
+        map[label] = {
+          amount: 0,
+          rows: [],
+        };
       }
 
       map[label].amount += Number(row.amount || 0);
       map[label].rows.push(row);
+
       return map;
     }, {})
   )
-    .map(([label, value]) => ({ label, ...value }))
+    .map(([label, value]) => ({
+      label,
+      ...value,
+    }))
     .sort((a, b) => b.amount - a.amount);
 
-function Breakdown({ data, type, title, itemKey }) {
+function Breakdown({
+  data,
+  type,
+  title,
+  itemKey,
+}) {
   const [open, setOpen] = useState("");
   const [productOpen, setProductOpen] = useState("");
-  const list = group(data.breakdown?.[type], itemKey);
+
+  const list = group(
+    data.breakdown?.[type],
+    itemKey
+  );
+
   const total = Number(data.totals[type] || 0);
 
   return (
@@ -57,48 +84,75 @@ function Breakdown({ data, type, title, itemKey }) {
       style={{
         background: "#fff",
         border: "1px solid #e2e8f0",
-        borderRadius: 14,
-        padding: 16
+        borderRadius: 22,
+        padding: 16,
+        boxShadow: "var(--film-shadow)",
       }}
     >
-      <h3 style={{ margin: "0 0 4px" }}>{title}</h3>
+      <h3 style={{ margin: "0 0 4px" }}>
+        {title}
+      </h3>
 
-      <strong style={{ color: colors[type], fontSize: 20 }}>
+      <strong
+        style={{
+          color: colors[type],
+          fontSize: 20,
+        }}
+      >
         {won(total)}
       </strong>
 
       {!list.length && (
-        <p style={{ color: "#64748b", fontSize: 13 }}>
-          登録された費用はありません。
+        <p
+          style={{
+            color: "#64748b",
+            fontSize: 13,
+          }}
+        >
+          등록된 비용이 없습니다.
         </p>
       )}
 
-      <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-        {list.map(entry => (
+      <div
+        style={{
+          display: "grid",
+          gap: 9,
+          marginTop: 12,
+        }}
+      >
+        {list.map((entry) => (
           <div key={entry.label}>
             <button
               type="button"
               aria-expanded={open === entry.label}
               onClick={() => {
-                setOpen(open === entry.label ? "" : entry.label);
+                setOpen(
+                  open === entry.label
+                    ? ""
+                    : entry.label
+                );
                 setProductOpen("");
               }}
               style={{
                 display: "flex",
                 width: "100%",
+                minHeight: 44,
                 justifyContent: "space-between",
+                alignItems: "center",
                 gap: 8,
                 border: 0,
                 background: "transparent",
                 textAlign: "left",
                 padding: "4px 0",
                 cursor: "pointer",
-                fontSize: 14
+                fontSize: 14,
               }}
             >
               <span>
-                {entry.label} <small>({entry.rows.length}건)</small>
+                {entry.label}{" "}
+                <small>({entry.rows.length}건)</small>
               </span>
+
               <strong>
                 {won(entry.amount)}{" "}
                 {open === entry.label ? "⌃" : "⌄"}
@@ -110,13 +164,17 @@ function Breakdown({ data, type, title, itemKey }) {
               aria-label={`${entry.label} ${won(
                 entry.amount
               )}, 전체 ${title}의 ${
-                total ? Math.round(entry.amount / total * 100) : 0
+                total
+                  ? Math.round(
+                      (entry.amount / total) * 100
+                    )
+                  : 0
               }%`}
               style={{
                 height: 10,
                 borderRadius: 10,
                 background: "#f1f5f9",
-                overflow: "hidden"
+                overflow: "hidden",
               }}
             >
               <div
@@ -124,11 +182,14 @@ function Breakdown({ data, type, title, itemKey }) {
                   height: "100%",
                   width: `${
                     total
-                      ? Math.min(100, entry.amount / total * 100)
+                      ? Math.min(
+                          100,
+                          (entry.amount / total) * 100
+                        )
                       : 0
                   }%`,
                   background: colors[type],
-                  borderRadius: 10
+                  borderRadius: 10,
                 }}
               />
             </div>
@@ -138,79 +199,100 @@ function Breakdown({ data, type, title, itemKey }) {
                 style={{
                   padding: "8px 4px 8px 12px",
                   borderLeft: `3px solid ${colors[type]}`,
-                  fontSize: 13
+                  fontSize: 13,
                 }}
               >
                 {type === "material"
-                  ? group(entry.rows, "product").map(product => (
-                      <div
-                        key={product.label}
-                        style={{
-                          padding: "5px 0",
-                          borderBottom: "1px solid #f1f5f9"
-                        }}
-                      >
-                        <button
-                          type="button"
-                          aria-expanded={productOpen === product.label}
-                          onClick={() =>
-                            setProductOpen(
-                              productOpen === product.label
-                                ? ""
-                                : product.label
-                            )
-                          }
+                  ? group(entry.rows, "product").map(
+                      (product) => (
+                        <div
+                          key={product.label}
                           style={{
-                            width: "100%",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 8,
-                            border: 0,
-                            padding: 0,
-                            background: "transparent",
-                            textAlign: "left",
-                            cursor: "pointer"
+                            padding: "5px 0",
+                            borderBottom:
+                              "1px solid #f1f5f9",
                           }}
                         >
-                          <span>
-                            {product.label} ({product.rows.length}건)
-                          </span>
-                          <strong>
-                            {won(product.amount)}{" "}
-                            {productOpen === product.label ? "⌃" : "⌄"}
-                          </strong>
-                        </button>
+                          <button
+                            type="button"
+                            aria-expanded={
+                              productOpen ===
+                              product.label
+                            }
+                            onClick={() =>
+                              setProductOpen(
+                                productOpen ===
+                                  product.label
+                                  ? ""
+                                  : product.label
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              minHeight: 44,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent:
+                                "space-between",
+                              gap: 8,
+                              border: 0,
+                              padding: 0,
+                              background: "transparent",
+                              textAlign: "left",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span>
+                              {product.label} (
+                              {product.rows.length}건)
+                            </span>
 
-                        {productOpen === product.label &&
-                          product.rows.map((row, index) => (
-                            <div
-                              key={index}
-                              style={{
-                                padding: "5px 0 0 10px",
-                                color: "#475569"
-                              }}
-                            >
-                              {row.siteName} ·{" "}
-                              {row.quantity == null
-                                ? "수기 입력"
-                                : `${row.quantity.toLocaleString(
-                                    "ko-KR"
-                                  )}${row.unit}`}{" "}
-                              · {won(row.amount)}
-                            </div>
-                          ))}
-                      </div>
-                    ))
+                            <strong>
+                              {won(product.amount)}{" "}
+                              {productOpen ===
+                              product.label
+                                ? "⌃"
+                                : "⌄"}
+                            </strong>
+                          </button>
+
+                          {productOpen ===
+                            product.label &&
+                            product.rows.map(
+                              (row, index) => (
+                                <div
+                                  key={index}
+                                  style={{
+                                    padding:
+                                      "5px 0 0 10px",
+                                    color: "#475569",
+                                  }}
+                                >
+                                  {row.siteName} ·{" "}
+                                  {row.quantity == null
+                                    ? "수기 입력"
+                                    : `${row.quantity.toLocaleString(
+                                        "ko-KR"
+                                      )}${row.unit}`}{" "}
+                                  · {won(row.amount)}
+                                </div>
+                              )
+                            )}
+                        </div>
+                      )
+                    )
                   : entry.rows.map((row, index) => (
                       <div
                         key={index}
                         style={{
                           padding: "5px 0",
-                          borderBottom: "1px solid #f1f5f9",
-                          color: "#475569"
+                          borderBottom:
+                            "1px solid #f1f5f9",
+                          color: "#475569",
                         }}
                       >
-                        {row.siteName} · {row.description} ·{" "}
+                        {row.siteName} ·{" "}
+                        {row.description} ·{" "}
                         {won(row.amount)}
                       </div>
                     ))}
@@ -224,12 +306,19 @@ function Breakdown({ data, type, title, itemKey }) {
 }
 
 function profitView(source, excludedWorkerIds) {
-  if (!source || !excludedWorkerIds.length) return source;
+  if (!source || !excludedWorkerIds.length) {
+    return source;
+  }
 
   const ownerIds = new Set(excludedWorkerIds);
-  const sites = source.sites.map(site => {
+
+  if (!ownerIds.size) {
+    return source;
+  }
+
+  const sites = source.sites.map((site) => {
     const excluded = (source.breakdown.labor || [])
-      .filter(row => row.siteId === site.id)
+      .filter((row) => row.siteId === site.id)
       .reduce(
         (sum, row) =>
           sum +
@@ -243,7 +332,7 @@ function profitView(source, excludedWorkerIds) {
       ...site,
       excludedOwnerLabor: excluded,
       labor: site.labor - excluded,
-      profit: site.profit + excluded
+      profit: site.profit + excluded,
     };
   });
 
@@ -259,14 +348,14 @@ function profitView(source, excludedWorkerIds) {
     totals: {
       ...source.totals,
       labor: source.totals.labor - excluded,
-      profit: source.totals.profit + excluded
+      profit: source.totals.profit + excluded,
     },
     breakdown: {
       ...source.breakdown,
       labor: source.breakdown.labor.filter(
-        row => !ownerIds.has(row.workerId)
-      )
-    }
+        (row) => !ownerIds.has(row.workerId)
+      ),
+    },
   };
 }
 
@@ -275,8 +364,15 @@ export default function ProfitTab() {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
   const [rawData, setData] = useState(null);
-  const [excludedWorkerIds, setExcludedWorkerIds] = useState([]);
-  const data = profitView(rawData, excludedWorkerIds);
+
+  const [excludedWorkerIds, setExcludedWorkerIds] =
+    useState([]);
+
+  const data = profitView(
+    rawData,
+    excludedWorkerIds
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
@@ -286,29 +382,44 @@ export default function ProfitTab() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function request(method, payload, query = "") {
+  async function request(
+    method,
+    payload,
+    query = ""
+  ) {
     const {
-      data: { session }
+      data: { session },
     } = await supabase.auth.getSession();
 
     if (!session) {
-      throw new Error("관리자로 다시 로그인해주세요.");
+      throw new Error(
+        "관리자로 다시 로그인해주세요."
+      );
     }
 
-    const response = await fetch(`/api/admin/profit${query}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        ...(payload ? { "Content-Type": "application/json" } : {})
-      },
-      ...(payload ? { body: JSON.stringify(payload) } : {}),
-      cache: "no-store"
-    });
+    const response = await fetch(
+      `/api/admin/profit${query}`,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          ...(payload
+            ? { "Content-Type": "application/json" }
+            : {}),
+        },
+        ...(payload
+          ? { body: JSON.stringify(payload) }
+          : {}),
+        cache: "no-store",
+      }
+    );
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || "요청에 실패했습니다.");
+      throw new Error(
+        result.error || "요청에 실패했습니다."
+      );
     }
 
     return result;
@@ -328,7 +439,9 @@ export default function ProfitTab() {
         await request(
           "GET",
           null,
-          `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+          `?from=${encodeURIComponent(
+            from
+          )}&to=${encodeURIComponent(to)}`
         )
       );
     } catch (cause) {
@@ -343,23 +456,36 @@ export default function ProfitTab() {
     load();
   }, []);
 
-  const current = data?.sites.find(site => site.id === selected);
-  const assigned = (current?.site_workers || [])
-    .map(row => row.workers)
+  const current = data?.sites.find(
+    (site) => site.id === selected
+  );
+
+  const assigned = (
+    current?.site_workers || []
+  )
+    .map((row) => row.workers)
     .filter(Boolean);
 
   function chooseWorker(id) {
     setWorker(id);
-    const person = assigned.find(item => item.id === id);
+
+    const person = assigned.find(
+      (item) => item.id === id
+    );
 
     if (person) {
       setDescription(`${person.name} 인건비`);
-      setAmount(person.daily_wage ? String(person.daily_wage) : "");
+      setAmount(
+        person.daily_wage
+          ? String(person.daily_wage)
+          : ""
+      );
     }
   }
 
   async function save(event) {
     event.preventDefault();
+
     if (!current) return;
 
     setSaving(true);
@@ -369,12 +495,16 @@ export default function ProfitTab() {
       await request("POST", {
         siteId: current.id,
         type: kind,
-        amount: Number(String(amount).replaceAll(",", "")),
-        description
+        amount: Number(
+          String(amount).replaceAll(",", "")
+        ),
+        description,
       });
+
       setAmount("");
       setDescription("");
       setWorker("");
+
       await load();
     } catch (cause) {
       setError(cause.message);
@@ -384,7 +514,13 @@ export default function ProfitTab() {
   }
 
   async function remove(id) {
-    if (!window.confirm("이 비용 내역을 삭제하시겠습니까?")) return;
+    if (
+      !window.confirm(
+        "이 비용 내역을 삭제하시겠습니까?"
+      )
+    ) {
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -400,36 +536,54 @@ export default function ProfitTab() {
   }
 
   const card = {
-    background: "white",
+    background: "#fff",
     border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: 14
+    borderRadius: 22,
+    padding: 16,
+    boxShadow: "var(--film-shadow)",
   };
 
   const field = {
     width: "100%",
+    minHeight: 44,
     padding: 10,
     border: "1px solid #cbd5e1",
-    borderRadius: 8,
+    borderRadius: 12,
     boxSizing: "border-box",
-    fontSize: 14
+    fontSize: 14,
   };
 
+  const laborWorkers = [
+    ...new Map(
+      (rawData?.breakdown?.labor || [])
+        .filter((row) => row.workerId)
+        .map((row) => [row.workerId, row])
+    ).values(),
+  ];
+
   return (
-    <section style={{ display: "grid", gap: 14 }}>
+    <section
+      style={{
+        display: "grid",
+        gap: 14,
+      }}
+    >
       <div style={card}>
-        <h2 style={{ margin: "0 0 8px" }}>📊 현장 수익</h2>
+        <h2 style={{ margin: "0 0 8px" }}>
+          📊 현장 수익
+        </h2>
 
         <p
           style={{
             color: "#475569",
             fontSize: 13,
-            lineHeight: 1.5
+            lineHeight: 1.5,
           }}
         >
-          시공 시작일 기준 계약금액 − 인건비 − 실제 사용 자재비
-          − 경비입니다. 계약금액 기준 예상 수익이며
-          입금·세금·본사 공통비는 반영하지 않습니다.
+          시공 시작일 기준 계약금액 − 인건비 − 실제
+          사용 자재비 − 경비입니다. 계약금액 기준 예상
+          수익이며 입금·세금·본사 공통비는 반영하지
+          않습니다.
         </p>
 
         <div
@@ -437,7 +591,7 @@ export default function ProfitTab() {
             display: "flex",
             flexWrap: "wrap",
             gap: 8,
-            alignItems: "end"
+            alignItems: "end",
           }}
         >
           <label>
@@ -446,7 +600,9 @@ export default function ProfitTab() {
               aria-label="수익 조회 시작일"
               type="date"
               value={from}
-              onChange={event => setFrom(event.target.value)}
+              onChange={(event) =>
+                setFrom(event.target.value)
+              }
               style={field}
             />
           </label>
@@ -457,7 +613,9 @@ export default function ProfitTab() {
               aria-label="수익 조회 종료일"
               type="date"
               value={to}
-              onChange={event => setTo(event.target.value)}
+              onChange={(event) =>
+                setTo(event.target.value)
+              }
               style={field}
             />
           </label>
@@ -469,8 +627,9 @@ export default function ProfitTab() {
             style={{
               ...field,
               width: "auto",
-              background: "#111827",
-              color: "white"
+              background:
+                "var(--film-blue, #347fec)",
+              color: "#fff",
             }}
           >
             {loading ? "조회 중..." : "조회"}
@@ -481,11 +640,16 @@ export default function ProfitTab() {
           style={{
             marginTop: 14,
             padding: 12,
-            borderRadius: 12,
-            background: "#f8fafc"
+            borderRadius: 14,
+            background: "#f8fafc",
           }}
         >
-          <summary style={{ fontWeight: 800, cursor: "pointer" }}>
+          <summary
+            style={{
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
             수익 계산에서 제외할 시공자{" "}
             {excludedWorkerIds.length > 0
               ? `· ${excludedWorkerIds.length}명 선택`
@@ -496,58 +660,67 @@ export default function ProfitTab() {
             style={{
               fontSize: 12,
               color: "#64748b",
-              lineHeight: 1.6
+              lineHeight: 1.6,
             }}
           >
-            관리자 본인의 인건비를 빼려면 해당 시공자를 체크해주세요.
-            일당·팀장수당을 수익 계산에서만 제외하며,
-            급여·보고서 기록은 유지됩니다. 조회 화면에서만 적용됩니다.
+            관리자 본인의 인건비를 빼려면 해당
+            시공자를 체크해주세요. 일당·팀장수당을
+            수익 계산에서만 제외하며, 급여·보고서
+            기록은 유지됩니다. 조회 화면에서만
+            적용됩니다.
           </p>
 
-          {[
-            ...new Map(
-              (rawData?.breakdown?.labor || [])
-                .filter(row => row.workerId)
-                .map(row => [row.workerId, row])
-            ).values()
-          ].map(row => (
+          {laborWorkers.map((row) => (
             <label
               key={row.workerId}
               style={{
                 display: "flex",
                 gap: 8,
                 alignItems: "center",
-                padding: "8px 0"
+                minHeight: 44,
+                padding: "8px 0",
               }}
             >
               <input
                 type="checkbox"
-                checked={excludedWorkerIds.includes(row.workerId)}
+                checked={excludedWorkerIds.includes(
+                  row.workerId
+                )}
                 disabled={loading || saving}
-                onChange={event =>
-                  setExcludedWorkerIds(ids =>
+                onChange={(event) =>
+                  setExcludedWorkerIds((ids) =>
                     event.target.checked
                       ? [...ids, row.workerId]
-                      : ids.filter(id => id !== row.workerId)
+                      : ids.filter(
+                          (id) => id !== row.workerId
+                        )
                   )
                 }
               />
+
               {row.name} ·{" "}
               {won(
                 (rawData.breakdown.labor || [])
-                  .filter(item => item.workerId === row.workerId)
+                  .filter(
+                    (item) =>
+                      item.workerId === row.workerId
+                  )
                   .reduce(
-                    (sum, item) => sum + Number(item.amount || 0),
+                    (sum, item) =>
+                      sum + Number(item.amount || 0),
                     0
                   )
               )}
             </label>
           ))}
 
-          {!(rawData?.breakdown?.labor || []).some(
-            row => row.workerId
-          ) && (
-            <p style={{ fontSize: 12, color: "#64748b" }}>
+          {!laborWorkers.length && (
+            <p
+              style={{
+                fontSize: 12,
+                color: "#64748b",
+              }}
+            >
               조회된 시공자별 인건비가 없습니다.
             </p>
           )}
@@ -557,20 +730,30 @@ export default function ProfitTab() {
               style={{
                 display: "block",
                 marginTop: 8,
-                color: "#1d4ed8"
+                color: "#1d4ed8",
               }}
             >
-              제외한 인건비 {won(data?.excludedOwnerLabor || 0)}
+              제외한 인건비{" "}
+              {won(data?.excludedOwnerLabor || 0)}
             </strong>
           )}
 
-          <p style={{ fontSize: 12, color: "#64748b" }}>
-            시공자를 특정하지 않은 현장 인건비는 제외하지 않습니다.
+          <p
+            style={{
+              fontSize: 12,
+              color: "#64748b",
+            }}
+          >
+            시공자를 특정하지 않은 현장 인건비는
+            제외하지 않습니다.
           </p>
         </details>
 
         {error && (
-          <p role="alert" style={{ color: "#b91c1c" }}>
+          <p
+            role="alert"
+            style={{ color: "#b91c1c" }}
+          >
             ❌ {error}
           </p>
         )}
@@ -585,36 +768,42 @@ export default function ProfitTab() {
               gap: 6,
               flexWrap: "wrap",
               padding: "8px 0",
-              marginBottom: 12
+              marginBottom: 12,
             }}
           >
-            {[
-              ["summary", "📊 요약"],
-              ["cost", "💰 비용분석"],
-              ["sites", "🏠 현장별 수익"]
-            ].map(([key, label]) => (
+            {MENUS.map((menu) => (
               <button
-                key={key}
+                key={menu.id}
                 type="button"
-                aria-pressed={view === key}
+                aria-pressed={view === menu.id}
                 disabled={saving}
-                onClick={() => setView(key)}
+                onClick={() => setView(menu.id)}
                 style={{
                   flex: "1 1 80px",
                   padding: "12px 8px",
-                  borderRadius: 12,
+                  borderRadius: 15,
                   border:
-                    view === key
-                      ? "1px solid #2563eb"
+                    view === menu.id
+                      ? "1px solid #81b4f7"
                       : "1px solid #e2e8f0",
-                  background: view === key ? "#eff6ff" : "white",
-                  color: view === key ? "#1d4ed8" : "#475569",
+                  background:
+                    view === menu.id
+                      ? "#edf5ff"
+                      : "#fff",
+                  color:
+                    view === menu.id
+                      ? "#1d4ed8"
+                      : "#475569",
                   fontWeight: 800,
                   fontSize: 13,
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
-                {label}
+                <ToolIllustration
+                  kind={menu.kind}
+                  size={34}
+                />
+                <span>{menu.label}</span>
               </button>
             ))}
           </nav>
@@ -624,8 +813,9 @@ export default function ProfitTab() {
               style={{
                 ...card,
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12
+                gridTemplateColumns:
+                  "repeat(2, minmax(0, 1fr))",
+                gap: 12,
               }}
             >
               {[
@@ -633,18 +823,26 @@ export default function ProfitTab() {
                 ["인건비", data.totals.labor],
                 ["자재비", data.totals.material],
                 ["기타 경비", data.totals.expense],
-                ["예상 수익", data.totals.profit]
+                ["예상 수익", data.totals.profit],
               ].map(([label, value]) => (
                 <div key={label}>
-                  <div style={{ color: "#64748b", fontSize: 12 }}>
+                  <div
+                    style={{
+                      color: "#64748b",
+                      fontSize: 12,
+                    }}
+                  >
                     {label}
                   </div>
+
                   <strong
                     style={{
                       color:
                         label === "예상 수익"
-                          ? "#166534"
-                          : "#111827"
+                          ? Number(value) < 0
+                            ? "#b91c1c"
+                            : "#166534"
+                          : "#182c47",
                     }}
                   >
                     {won(value)}
@@ -652,11 +850,16 @@ export default function ProfitTab() {
                 </div>
               ))}
             </div>
-          </div>
 
-          <div hidden={view !== "summary"}>
-            <div style={card}>
-              <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
+            <div
+              style={{
+                ...card,
+                marginTop: 14,
+              }}
+            >
+              <h3 style={{ margin: "0 0 10px" }}>
+                비용 구성
+              </h3>
 
               {data.totals.labor +
                 data.totals.material +
@@ -670,21 +873,24 @@ export default function ProfitTab() {
                       display: "flex",
                       height: 22,
                       borderRadius: 9,
-                      overflow: "hidden"
+                      overflow: "hidden",
                     }}
                   >
-                    {["labor", "material", "expense"].map(type => (
+                    {[
+                      "labor",
+                      "material",
+                      "expense",
+                    ].map((type) => (
                       <div
                         key={type}
                         style={{
                           width: `${
-                            100 *
-                            data.totals[type] /
+                            (100 * data.totals[type]) /
                             (data.totals.labor +
                               data.totals.material +
                               data.totals.expense)
                           }%`,
-                          background: colors[type]
+                          background: colors[type],
                         }}
                       />
                     ))}
@@ -696,13 +902,13 @@ export default function ProfitTab() {
                       flexWrap: "wrap",
                       gap: 12,
                       marginTop: 8,
-                      fontSize: 12
+                      fontSize: 12,
                     }}
                   >
                     {[
                       ["labor", "인건비"],
                       ["material", "자재비"],
-                      ["expense", "경비"]
+                      ["expense", "경비"],
                     ].map(([key, label]) => (
                       <span key={key}>
                         <i
@@ -712,16 +918,19 @@ export default function ProfitTab() {
                             height: 9,
                             borderRadius: 2,
                             background: colors[key],
-                            marginRight: 4
+                            marginRight: 4,
                           }}
                         />
-                        {label} {won(data.totals[key])}
+                        {label}{" "}
+                        {won(data.totals[key])}
                       </span>
                     ))}
                   </div>
                 </>
               ) : (
-                <span>등록된 비용이 없습니다.</span>
+                <span>
+                  등록된 비용이 없습니다.
+                </span>
               )}
             </div>
           </div>
@@ -733,43 +942,48 @@ export default function ProfitTab() {
               title="시공자별 인건비"
               itemKey="name"
             />
-          </div>
 
-          <div hidden={view !== "cost"}>
-            <Breakdown
-              data={data}
-              type="material"
-              title="브랜드별 자재비"
-              itemKey="brand"
-            />
-          </div>
+            <div style={{ marginTop: 14 }}>
+              <Breakdown
+                data={data}
+                type="material"
+                title="브랜드별 자재비"
+                itemKey="brand"
+              />
+            </div>
 
-          <div hidden={view !== "cost"}>
-            <Breakdown
-              data={data}
-              type="expense"
-              title="품목별 경비"
-              itemKey="category"
-            />
+            <div style={{ marginTop: 14 }}>
+              <Breakdown
+                data={data}
+                type="expense"
+                title="품목별 경비"
+                itemKey="category"
+              />
+            </div>
           </div>
 
           <div hidden={view !== "sites"}>
             {data.sites.length === 0 && (
               <div style={card}>
-                이 기간에 시공 시작일이 등록된 현장이 없습니다.
+                이 기간에 시공 시작일이 등록된
+                현장이 없습니다.
               </div>
             )}
-          </div>
 
-          <div hidden={view !== "sites"}>
-            {data.sites.map(site => (
-              <div key={site.id} style={card}>
+            {data.sites.map((site) => (
+              <div
+                key={site.id}
+                style={{
+                  ...card,
+                  marginBottom: 14,
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     gap: 8,
-                    flexWrap: "wrap"
+                    flexWrap: "wrap",
                   }}
                 >
                   <strong>
@@ -777,8 +991,11 @@ export default function ProfitTab() {
                       site.customer_name ||
                       "이름 없는 현장"}
                   </strong>
+
                   <span>
-                    {String(site.schedule_start).slice(0, 10)}
+                    {String(
+                      site.schedule_start
+                    ).slice(0, 10)}
                   </span>
                 </div>
 
@@ -786,33 +1003,48 @@ export default function ProfitTab() {
                   style={{
                     fontSize: 13,
                     lineHeight: 1.7,
-                    marginTop: 8
+                    marginTop: 8,
                   }}
                 >
-                  계약 {won(site.revenue)} · 인건비 {won(site.labor)}
-                  {" · "}자재 {won(site.material)} · 경비{" "}
-                  {won(site.expense)}
+                  계약 {won(site.revenue)} · 인건비{" "}
+                  {won(site.labor)}
+                  {" · "}자재 {won(site.material)}
+                  {" · "}경비 {won(site.expense)}
                 </div>
 
                 <strong
                   style={{
                     color:
-                      site.profit < 0 ? "#b91c1c" : "#166534"
+                      site.profit < 0
+                        ? "#b91c1c"
+                        : "#166534",
                   }}
                 >
                   예상 수익 {won(site.profit)}
                 </strong>
 
                 {site.excludedOwnerLabor > 0 && (
-                  <p style={{ fontSize: 12, color: "#1d4ed8" }}>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#1d4ed8",
+                    }}
+                  >
                     선택한 시공자 인건비{" "}
-                    {won(site.excludedOwnerLabor)} 제외 적용
+                    {won(site.excludedOwnerLabor)}
+                    {" "}제외 적용
                   </p>
                 )}
 
                 {site.missingContract && (
-                  <p style={{ color: "#b45309", fontSize: 12 }}>
-                    ⚠️ 계약금액 미입력: 매출 0원으로 집계됩니다.
+                  <p
+                    style={{
+                      color: "#b45309",
+                      fontSize: 12,
+                    }}
+                  >
+                    ⚠️ 계약금액 미입력: 매출 0원으로
+                    집계됩니다.
                   </p>
                 )}
 
@@ -820,13 +1052,17 @@ export default function ProfitTab() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSelected(selected === site.id ? "" : site.id);
+                      setSelected(
+                        selected === site.id
+                          ? ""
+                          : site.id
+                      );
                       setWorker("");
                     }}
                     style={{
                       marginTop: 10,
                       ...field,
-                      width: "auto"
+                      width: "auto",
                     }}
                   >
                     {selected === site.id
@@ -838,28 +1074,40 @@ export default function ProfitTab() {
                 {selected === site.id && (
                   <div
                     style={{
-                      borderTop: "1px solid #e2e8f0",
+                      borderTop:
+                        "1px solid #e2e8f0",
                       marginTop: 12,
-                      paddingTop: 12
+                      paddingTop: 12,
                     }}
                   >
-                    <p style={{ fontSize: 12, color: "#64748b" }}>
-                      날짜별 팀장·팀원 배정으로 일당과 팀장수당을
-                      자동 계산합니다. 시공자를 선택해 인건비를
-                      직접 저장하면 해당 시공자의 자동 계산 대신
-                      입력한 총액을 사용합니다. 시공자를 특정하지
-                      않은 인건비는 현장 전체 합계로 적용됩니다.
-                      완료보고의 실제 자재와 경비도 자동 합산됩니다.
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                      }}
+                    >
+                      날짜별 팀장·팀원 배정으로 일당과
+                      팀장수당을 자동 계산합니다.
+                      시공자를 선택해 인건비를 직접
+                      저장하면 해당 시공자의 자동 계산
+                      대신 입력한 총액을 사용합니다.
+                      시공자를 특정하지 않은 인건비는
+                      현장 전체 합계로 적용됩니다.
+                      완료보고의 실제 자재와 경비도
+                      자동 합산됩니다.
                     </p>
 
                     <form
                       onSubmit={save}
-                      style={{ display: "grid", gap: 8 }}
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                      }}
                     >
                       <select
                         aria-label="비용 구분"
                         value={kind}
-                        onChange={event => {
+                        onChange={(event) => {
                           setKind(event.target.value);
                           setWorker("");
                           setAmount("");
@@ -867,19 +1115,26 @@ export default function ProfitTab() {
                         }}
                         style={field}
                       >
-                        {Object.entries(kinds).map(([key, label]) => (
-                          <option key={key} value={key}>
-                            {label}
-                          </option>
-                        ))}
+                        {Object.entries(kinds).map(
+                          ([key, label]) => (
+                            <option
+                              key={key}
+                              value={key}
+                            >
+                              {label}
+                            </option>
+                          )
+                        )}
                       </select>
 
                       {kind === "labor" && (
                         <select
                           aria-label="담당 시공자"
                           value={worker}
-                          onChange={event =>
-                            chooseWorker(event.target.value)
+                          onChange={(event) =>
+                            chooseWorker(
+                              event.target.value
+                            )
                           }
                           style={field}
                         >
@@ -887,8 +1142,11 @@ export default function ProfitTab() {
                             시공자 선택 (또는 직접 입력)
                           </option>
 
-                          {assigned.map(person => (
-                            <option key={person.id} value={person.id}>
+                          {assigned.map((person) => (
+                            <option
+                              key={person.id}
+                              value={person.id}
+                            >
                               {person.name} · 일당{" "}
                               {won(person.daily_wage)}
                             </option>
@@ -901,8 +1159,10 @@ export default function ProfitTab() {
                         placeholder="내용 (예: 정근호 2일 인건비)"
                         value={description}
                         maxLength={120}
-                        onChange={event =>
-                          setDescription(event.target.value)
+                        onChange={(event) =>
+                          setDescription(
+                            event.target.value
+                          )
                         }
                         style={field}
                         required
@@ -913,9 +1173,12 @@ export default function ProfitTab() {
                         inputMode="numeric"
                         placeholder="금액 (원)"
                         value={amount}
-                        onChange={event =>
+                        onChange={(event) =>
                           setAmount(
-                            event.target.value.replace(/[^\d]/g, "")
+                            event.target.value.replace(
+                              /[^\d]/g,
+                              ""
+                            )
                           )
                         }
                         style={field}
@@ -927,37 +1190,48 @@ export default function ProfitTab() {
                         disabled={saving}
                         style={{
                           ...field,
-                          background: "#111827",
-                          color: "white"
+                          background:
+                            "var(--film-blue, #347fec)",
+                          color: "#fff",
                         }}
                       >
-                        {saving ? "저장 중..." : "비용 저장"}
+                        {saving
+                          ? "저장 중..."
+                          : "비용 저장"}
                       </button>
                     </form>
 
-                    {site.entries.map(entry => (
+                    {site.entries.map((entry) => (
                       <div
                         key={entry.id}
                         style={{
                           display: "flex",
-                          justifyContent: "space-between",
+                          justifyContent:
+                            "space-between",
                           gap: 8,
                           alignItems: "center",
-                          borderBottom: "1px solid #f1f5f9",
+                          borderBottom:
+                            "1px solid #f1f5f9",
                           padding: "8px 0",
-                          fontSize: 13
+                          fontSize: 13,
                         }}
                       >
                         <span>
-                          {costLabels[entry.category] || "비용"}
-                          {" · "}{entry.description}
-                          {" · "}{won(entry.amount)}
+                          {costLabels[
+                            entry.category
+                          ] || "비용"}
+                          {" · "}
+                          {entry.description}
+                          {" · "}
+                          {won(entry.amount)}
                         </span>
 
                         <button
                           type="button"
                           disabled={saving}
-                          onClick={() => remove(entry.id)}
+                          onClick={() =>
+                            remove(entry.id)
+                          }
                         >
                           삭제
                         </button>
@@ -972,4 +1246,4 @@ export default function ProfitTab() {
       )}
     </section>
   );
-              }
+}
