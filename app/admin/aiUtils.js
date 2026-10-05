@@ -1,12 +1,26 @@
+import { supabase } from "../../lib/supabase";
+
 export async function createEmbedding(text) {
   if (!String(text || "").trim()) {
     return null;
+  }
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    throw new Error(
+      "관리자 로그인이 필요합니다. 다시 로그인해주세요."
+    );
   }
 
   const response = await fetch("/api/embedding", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({
       text,
