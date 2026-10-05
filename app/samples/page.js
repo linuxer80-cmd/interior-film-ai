@@ -15,7 +15,10 @@ export default function SamplesPage() {
   const [result, setResult] = useState(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState({
+    done: 0,
+    total: 0,
+  });
   const [home, setHome] = useState("/");
 
   const request = useRef(null);
@@ -24,8 +27,13 @@ export default function SamplesPage() {
   const opened = Boolean(preview);
 
   useEffect(() => {
-    const slug = new URLSearchParams(window.location.search).get("company");
-    if (slug) setHome(`/?company=${encodeURIComponent(slug)}`);
+    const slug = new URLSearchParams(
+      window.location.search
+    ).get("company");
+
+    if (slug) {
+      setHome(`/?company=${encodeURIComponent(slug)}`);
+    }
 
     return () => {
       request.current?.abort();
@@ -46,7 +54,10 @@ export default function SamplesPage() {
     setNotice("");
     setProgress({ done: 0, total: 0 });
 
-    if (dialog.current) dialog.current.scrollTop = 0;
+    if (dialog.current) {
+      dialog.current.scrollTop = 0;
+    }
+
     close.current?.focus();
   }
 
@@ -67,8 +78,10 @@ export default function SamplesPage() {
     function keydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+
         request.current?.abort();
         request.current = null;
+
         setBusy(false);
         setPreview(null);
       }
@@ -83,7 +96,9 @@ export default function SamplesPage() {
 
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
-      const outside = !dialog.current.contains(document.activeElement);
+      const outside = !dialog.current.contains(
+        document.activeElement
+      );
 
       if (
         event.shiftKey &&
@@ -106,7 +121,10 @@ export default function SamplesPage() {
       document.body.style.overflow = overflow;
       document.removeEventListener("keydown", keydown);
 
-      if (focus instanceof HTMLElement && focus.isConnected) {
+      if (
+        focus instanceof HTMLElement &&
+        focus.isConnected
+      ) {
         focus.focus();
       }
     };
@@ -124,11 +142,14 @@ export default function SamplesPage() {
     setProgress({ done: 0, total: 0 });
 
     const current = () =>
-      request.current === controller && !controller.signal.aborted;
+      request.current === controller &&
+      !controller.signal.aborted;
 
     try {
       const source =
-        products.find((product) => product.id === preview.id) || preview;
+        products.find(
+          (product) => product.id === preview.id
+        ) || preview;
 
       const found = await findImageSimilarFilms(
         source,
@@ -137,7 +158,9 @@ export default function SamplesPage() {
         {
           signal: controller.signal,
           onProgress: (value) => {
-            if (current()) setProgress(value);
+            if (current()) {
+              setProgress(value);
+            }
           },
         }
       );
@@ -149,13 +172,18 @@ export default function SamplesPage() {
       if (!found.matches.length) {
         setNotice(
           found.total
-            ? "이번 비교 후보에서 기준을 충족하는 샘플을 찾지 못했습니다."
-            : "비교할 다른 브랜드의 샘플이 없습니다."
+            ? "분석된 제품 중 색상·무늬 기준을 충족하는 샘플을 찾지 못했습니다."
+            : "비교할 다른 브랜드의 분석된 샘플이 없습니다."
         );
       }
     } catch (error) {
-      if (current() && error.name !== "AbortError") {
-        setNotice(error.message || "검색에 실패했습니다.");
+      if (
+        current() &&
+        error.name !== "AbortError"
+      ) {
+        setNotice(
+          error.message || "검색에 실패했습니다."
+        );
       }
     } finally {
       if (request.current === controller) {
@@ -182,7 +210,9 @@ export default function SamplesPage() {
           alignItems: "center",
         }}
       >
-        <h1 style={{ fontSize: 23 }}>필름 샘플 보기</h1>
+        <h1 style={{ fontSize: 23 }}>
+          필름 샘플 보기
+        </h1>
         <Link href={home}>홈으로</Link>
       </header>
 
@@ -192,7 +222,10 @@ export default function SamplesPage() {
         onProductsLoaded={setProducts}
         onSelect={(product) => {
           setSelected(product);
-          if (product) show(product);
+
+          if (product) {
+            show(product);
+          }
         }}
         onGenerate={show}
       />
@@ -204,15 +237,20 @@ export default function SamplesPage() {
           lineHeight: 1.8,
         }}
       >
-        제조사 → 패턴 대분류 → 패턴 → 수종·톤·컬러 순서로 선택하세요.
-        샘플을 선택하면 크게 볼 수 있습니다.
+        제조사 → 패턴 대분류 → 패턴 → 수종·톤·컬러
+        순서로 선택하세요. 샘플을 선택하면 크게 볼 수
+        있습니다.
       </p>
 
       {preview && (
         <div
           className="overlay"
           onClick={(event) => {
-            if (event.target === event.currentTarget) dismiss();
+            if (
+              event.target === event.currentTarget
+            ) {
+              dismiss();
+            }
           }}
         >
           <section
@@ -225,15 +263,24 @@ export default function SamplesPage() {
             <header className="dialog-head">
               <div>
                 <small>{preview.brand}</small>
-                <h2 id="preview-title">{preview.product_code}</h2>
+                <h2 id="preview-title">
+                  {preview.product_code}
+                </h2>
               </div>
-              <button ref={close} onClick={dismiss}>
+
+              <button
+                ref={close}
+                onClick={dismiss}
+              >
                 닫기
               </button>
             </header>
 
             <div className="body">
-              <FilmSampleImage product={preview} large />
+              <FilmSampleImage
+                product={preview}
+                large
+              />
 
               <h3>{preview.product_name}</h3>
 
@@ -250,25 +297,33 @@ export default function SamplesPage() {
 
               <hr />
 
-              <h3>다른 브랜드의 비슷한 필름</h3>
+              <h3>
+                다른 브랜드의 비슷한 필름
+              </h3>
 
               <p className="muted">
-                분류·수종·색상 정보로 후보를 최대 60개 선정한 뒤 이미지를
-                비교합니다. 전체 제품을 비교한 결과는 아닙니다.
+                같은 대분류의 다른 브랜드 샘플 중
+                분석이 완료된 전체 제품의 색상과 무늬를
+                비교합니다. 브랜드별 최대 1개씩
+                보여드립니다.
               </p>
 
               <button
                 disabled={busy || !products.length}
                 onClick={search}
               >
-                {busy ? "비교 중…" : "비슷한 필름 찾기"}
+                {busy
+                  ? "비교 중…"
+                  : "비슷한 필름 찾기"}
               </button>
 
               {busy && (
                 <button
                   onClick={() => {
                     cancel();
-                    setNotice("검색을 취소했습니다.");
+                    setNotice(
+                      "검색을 취소했습니다."
+                    );
                   }}
                 >
                   검색 취소
@@ -279,41 +334,55 @@ export default function SamplesPage() {
                 <p role="status">
                   {progress.total
                     ? `${progress.done} / ${progress.total}개 비교 중`
-                    : "선택한 샘플 확인 중…"}
+                    : "저장된 샘플 특징 불러오는 중…"}
                 </p>
               )}
 
               {notice && (
-                <p role="status" className="muted">
+                <p
+                  role="status"
+                  className="muted"
+                >
                   {notice}
                 </p>
               )}
 
               {result && (
                 <p className="muted">
-                  같은 대분류의 다른 브랜드 {result.eligibleTotal}개 중{" "}
-                  {result.total}개 후보 비교 · 분석 실패 {result.failed}개
+                  같은 대분류의 다른 브랜드{" "}
+                  {result.eligibleTotal}개 중{" "}
+                  {result.total}개 분석 정보 비교 ·
+                  분석 준비 중 {result.missing}개
                 </p>
               )}
 
               <div className="matches">
-                {result?.matches.map(({ product }) => (
-                  <button
-                    key={
-                      product.id ||
-                      `${product.brand}:${product.product_code}`
-                    }
-                    onClick={() => show(product)}
-                  >
-                    <FilmSampleImage product={product} />
-                    <small>{product.brand}</small>
-                    <strong>{product.product_code}</strong>
-                  </button>
-                ))}
+                {result?.matches.map(
+                  ({ product }) => (
+                    <button
+                      key={
+                        product.id ||
+                        `${product.brand}:${product.product_code}`
+                      }
+                      onClick={() => show(product)}
+                    >
+                      <FilmSampleImage
+                        product={product}
+                      />
+                      <small>
+                        {product.brand}
+                      </small>
+                      <strong>
+                        {product.product_code}
+                      </strong>
+                    </button>
+                  )
+                )}
               </div>
 
               <p className="muted">
-                실제 색상과 질감은 실물 샘플로 확인해 주세요.
+                실제 색상과 질감은 실물 샘플로
+                확인해 주세요.
               </p>
             </div>
           </section>
@@ -401,7 +470,8 @@ export default function SamplesPage() {
 
         .matches {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
 
