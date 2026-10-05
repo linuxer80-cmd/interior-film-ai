@@ -1,9 +1,11 @@
 "use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import FilmSampleImage from "./components/FilmSampleImage";
 
 const PAGE_SIZE = 12;
+
 const PRODUCT_LINES = [
   { prefix: "OGW", label: "옵티컬 그레인 우드", category: "wood", filter: "wood" },
   { prefix: "SPW", label: "스페셜우드", category: "wood", filter: "wood" },
@@ -64,15 +66,7 @@ function getProductLine(productCode) {
 
 function getLineFilter(categoryKey) {
   if (categoryKey === "wood") return "wood";
-
-  if (
-    categoryKey === "stone" ||
-    categoryKey === "fabric" ||
-    categoryKey === "leather"
-  ) {
-    return "tone";
-  }
-
+  if (["stone", "fabric", "leather"].includes(categoryKey)) return "tone";
   return "color";
 }
 
@@ -99,7 +93,6 @@ function getToneLabel(value) {
     딥톤: "딥",
     기타톤: "포인트",
   };
-
   return labels[value] || value;
 }
 
@@ -107,7 +100,6 @@ function getProductKey(product) {
   if (product?.id !== null && product?.id !== undefined) {
     return String(product.id);
   }
-
   return `${String(product?.brand || "").trim()}::${String(
     product?.product_code || ""
   ).trim()}`;
@@ -130,20 +122,11 @@ function stablePopularitySort(items, getScore) {
 
 function formatPrice(value) {
   const price = Number(value);
-
-  if (!Number.isFinite(price) || price <= 0) {
-    return "";
-  }
-
+  if (!Number.isFinite(price) || price <= 0) return "";
   return `${price.toLocaleString("ko-KR")}원`;
 }
 
-function ChipRow({
-  items = [],
-  value,
-  onChange,
-  showAll = false,
-}) {
+function ChipRow({ items = [], value, onChange, showAll = false }) {
   if (!items.length) return null;
 
   return (
@@ -168,7 +151,6 @@ function ChipRow({
     >
       {items.map((item) => {
         const active = value === item.value;
-
         return (
           <button
             key={item.value}
@@ -181,9 +163,7 @@ function ChipRow({
               minHeight: "42px",
               padding: showAll ? "9px 8px" : "8px 13px",
               borderRadius: "999px",
-              border: active
-                ? "2px solid #111827"
-                : "1px solid #d1d5db",
+              border: active ? "2px solid #111827" : "1px solid #d1d5db",
               background: active ? "#111827" : "#ffffff",
               color: active ? "#ffffff" : "#374151",
               fontSize: "13px",
@@ -216,7 +196,6 @@ function FilterSection({ title, children }) {
       >
         {title}
       </div>
-
       {children}
     </div>
   );
@@ -229,6 +208,8 @@ function FilmSample({ product, size = "100%" }) {
 export default function FilmColorPicker({
   onSelect,
   onGenerate,
+  sampleMode = false,
+  onProductsLoaded,
   value = null,
 }) {
   const [products, setProducts] = useState([]);
@@ -241,13 +222,11 @@ export default function FilmColorPicker({
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(sampleMode);
   const [selectionStats, setSelectionStats] = useState({});
 
   useEffect(() => {
-    if (value !== undefined) {
-      setSelected(value || null);
-    }
+    if (value !== undefined) setSelected(value || null);
   }, [value]);
 
   useEffect(() => {
@@ -258,7 +237,6 @@ export default function FilmColorPicker({
       setMessage("");
 
       const FETCH_SIZE = 1000;
-
       const selectColumns = [
         "id",
         "brand",
@@ -303,11 +281,7 @@ export default function FilmColorPicker({
 
         const rows = result.data || [];
         data = [...data, ...rows];
-
-        if (rows.length < FETCH_SIZE) {
-          break;
-        }
-
+        if (rows.length < FETCH_SIZE) break;
         from += FETCH_SIZE;
       }
 
@@ -323,11 +297,18 @@ export default function FilmColorPicker({
         const rows = data || [];
         setProducts(rows);
 
-        const brandList = unique(rows.map((item) => item.brand));
+        onProductsLoaded?.(
+          rows.map((product) => ({
+            ...product,
+            category_key:
+              getProductLineInfo(product)?.category ||
+              product.category_key ||
+              "",
+          }))
+        );
 
-        if (brandList.length === 1) {
-          setBrand(brandList[0]);
-        }
+        const brandList = unique(rows.map((item) => item.brand));
+        if (brandList.length === 1) setBrand(brandList[0]);
       }
 
       setLoading(false);
@@ -353,7 +334,6 @@ export default function FilmColorPicker({
         if (!response.ok) return;
 
         const body = await response.json();
-
         const rows = Array.isArray(body)
           ? body
           : Array.isArray(body?.stats)
@@ -365,13 +345,9 @@ export default function FilmColorPicker({
         if (!mounted) return;
 
         const nextStats = {};
-
         rows.forEach((row) => {
           const key = String(row?.product_key || "").trim();
-
-          if (key) {
-            nextStats[key] = Number(row?.selection_count || 0);
-          }
+          if (key) nextStats[key] = Number(row?.selection_count || 0);
         });
 
         setSelectionStats(nextStats);
@@ -389,7 +365,6 @@ export default function FilmColorPicker({
 
   useEffect(() => {
     if (!pickerOpen) return;
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -401,16 +376,13 @@ export default function FilmColorPicker({
   const brands = useMemo(() => {
     const brandList = unique(products.map((item) => item.brand));
 
-    return stablePopularitySort(
-      brandList,
-      (brandName) =>
-        products
-          .filter((product) => product.brand === brandName)
-          .reduce(
-            (sum, product) =>
-              sum + getSelectionCount(product, selectionStats),
-            0
-          )
+    return stablePopularitySort(brandList, (brandName) =>
+      products
+        .filter((product) => product.brand === brandName)
+        .reduce(
+          (sum, product) => sum + getSelectionCount(product, selectionStats),
+          0
+        )
     );
   }, [products, selectionStats]);
 
@@ -422,10 +394,9 @@ export default function FilmColorPicker({
     );
 
     return CATEGORIES.filter((categoryItem) =>
-      brandProducts.some((product) => {
-        const line = getProductLineInfo(product);
-        return line?.category === categoryItem.key;
-      })
+      brandProducts.some(
+        (product) => getProductLineInfo(product)?.category === categoryItem.key
+      )
     );
   }, [brand, products]);
 
@@ -435,15 +406,11 @@ export default function FilmColorPicker({
     const brandProducts = products.filter(
       (product) => product.brand === brand
     );
-
     const lineMap = new Map();
 
     brandProducts.forEach((product) => {
       const line = getProductLineInfo(product);
-
-      if (!line || line.category !== category) {
-        return;
-      }
+      if (!line || line.category !== category) return;
 
       if (!lineMap.has(line.label)) {
         lineMap.set(line.label, {
@@ -455,45 +422,35 @@ export default function FilmColorPicker({
       }
 
       const lineItem = lineMap.get(line.label);
-
       if (!lineItem.prefixes.includes(line.prefix)) {
         lineItem.prefixes.push(line.prefix);
       }
     });
 
-    return stablePopularitySort(
-      [...lineMap.values()],
-      (lineItem) =>
-        brandProducts
-          .filter((product) => {
-            const found = getProductLineInfo(product);
-            return lineItem.prefixes.includes(found?.prefix);
-          })
-          .reduce(
-            (sum, product) =>
-              sum + getSelectionCount(product, selectionStats),
-            0
-          )
+    return stablePopularitySort([...lineMap.values()], (lineItem) =>
+      brandProducts
+        .filter((product) =>
+          lineItem.prefixes.includes(getProductLineInfo(product)?.prefix)
+        )
+        .reduce(
+          (sum, product) => sum + getSelectionCount(product, selectionStats),
+          0
+        )
     );
   }, [brand, category, products, selectionStats]);
 
   const selectedLine = useMemo(
-    () =>
-      availableLines.find((line) => line.key === lineKey) || null,
+    () => availableLines.find((line) => line.key === lineKey) || null,
     [availableLines, lineKey]
   );
 
   const lineProducts = useMemo(() => {
-    if (!brand || !category || !selectedLine) {
-      return [];
-    }
+    if (!brand || !category || !selectedLine) return [];
 
     return products.filter((product) => {
       if (product.brand !== brand) return false;
-
       const line = getProductLineInfo(product);
       if (!line) return false;
-
       return selectedLine.prefixes.includes(line.prefix);
     });
   }, [brand, category, selectedLine, products]);
@@ -508,20 +465,15 @@ export default function FilmColorPicker({
         ? "tone_family"
         : "color_family";
 
-    const detailList = unique(
-      lineProducts.map((item) => item[field])
-    );
+    const detailList = unique(lineProducts.map((item) => item[field]));
 
-    return stablePopularitySort(
-      detailList,
-      (detailName) =>
-        lineProducts
-          .filter((product) => product[field] === detailName)
-          .reduce(
-            (sum, product) =>
-              sum + getSelectionCount(product, selectionStats),
-            0
-          )
+    return stablePopularitySort(detailList, (detailName) =>
+      lineProducts
+        .filter((product) => product[field] === detailName)
+        .reduce(
+          (sum, product) => sum + getSelectionCount(product, selectionStats),
+          0
+        )
     );
   }, [selectedLine, lineProducts, selectionStats]);
 
@@ -534,23 +486,17 @@ export default function FilmColorPicker({
         if (
           selectedLine.filter === "wood" &&
           item.wood_species !== detail
-        ) {
-          return false;
-        }
+        ) return false;
 
         if (
           selectedLine.filter === "tone" &&
           item.tone_family !== detail
-        ) {
-          return false;
-        }
+        ) return false;
 
         if (
           selectedLine.filter === "color" &&
           item.color_family !== detail
-        ) {
-          return false;
-        }
+        ) return false;
       }
 
       if (keyword) {
@@ -576,9 +522,8 @@ export default function FilmColorPicker({
       return true;
     });
 
-    return stablePopularitySort(
-      filteredProducts,
-      (product) => getSelectionCount(product, selectionStats)
+    return stablePopularitySort(filteredProducts, (product) =>
+      getSelectionCount(product, selectionStats)
     );
   }, [
     products,
@@ -601,10 +546,7 @@ export default function FilmColorPicker({
     setSelected(null);
     setSearch("");
     setLimit(PAGE_SIZE);
-
-    if (onSelect) {
-      onSelect(null);
-    }
+    onSelect?.(null);
   }
 
   function chooseBrand(nextBrand) {
@@ -636,7 +578,6 @@ export default function FilmColorPicker({
 
   function chooseProduct(product) {
     setSelected(product);
-
     const productKey = getProductKey(product);
 
     setSelectionStats((current) => ({
@@ -646,18 +587,13 @@ export default function FilmColorPicker({
 
     fetch("/api/film-selection", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productKey }),
     }).catch((error) => {
       console.warn("필름 선택 통계 저장 오류:", error);
     });
 
-    if (onSelect) {
-      onSelect(product);
-    }
-
+    onSelect?.(product);
     setPickerOpen(false);
   }
 
@@ -665,19 +601,13 @@ export default function FilmColorPicker({
     const line = getProductLineInfo(product);
 
     if (line?.filter === "wood") {
-      return [
-        product.wood_species,
-        product.color_family,
-      ]
+      return [product.wood_species, product.color_family]
         .filter(Boolean)
         .join(" · ");
     }
 
     if (line?.filter === "tone") {
-      return [
-        getToneLabel(product.tone_family),
-        product.color_family,
-      ]
+      return [getToneLabel(product.tone_family), product.color_family]
         .filter(Boolean)
         .join(" · ");
     }
@@ -698,8 +628,7 @@ export default function FilmColorPicker({
   }
 
   const showResults =
-    Boolean(search.trim()) ||
-    Boolean(selectedLine && detail);
+    Boolean(search.trim()) || Boolean(selectedLine && detail);
 
   return (
     <>
@@ -728,7 +657,7 @@ export default function FilmColorPicker({
                 fontWeight: "700",
               }}
             >
-              가상 시공 필름
+              {sampleMode ? "필름 샘플" : "가상 시공 필름"}
             </div>
 
             {!selected ? (
@@ -743,7 +672,6 @@ export default function FilmColorPicker({
                 >
                   원하는 필름을 선택하세요
                 </div>
-
                 <div
                   style={{
                     marginTop: "3px",
@@ -751,7 +679,9 @@ export default function FilmColorPicker({
                     color: "#6b7280",
                   }}
                 >
-                  필름에 따라 예상 견적도 변경됩니다.
+                  {sampleMode
+                    ? "제조사부터 차례로 선택해 샘플을 확인하세요."
+                    : "필름에 따라 예상 견적도 변경됩니다."}
                 </div>
               </>
             ) : (
@@ -766,7 +696,6 @@ export default function FilmColorPicker({
                 <div style={{ flex: "0 0 52px" }}>
                   <FilmSample product={selected} size="52px" />
                 </div>
-
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -777,7 +706,6 @@ export default function FilmColorPicker({
                   >
                     {selected.product_code}
                   </div>
-
                   <div
                     style={{
                       marginTop: "2px",
@@ -793,8 +721,7 @@ export default function FilmColorPicker({
                       ? ` · ${getProductInfo(selected)}`
                       : ""}
                   </div>
-
-                  {selectedPrice > 0 && (
+                  {!sampleMode && selectedPrice > 0 && (
                     <div
                       style={{
                         marginTop: "2px",
@@ -817,16 +744,10 @@ export default function FilmColorPicker({
               flex: "0 0 auto",
               minWidth: "76px",
               padding: "11px 14px",
-              border: selected
-                ? "1px solid #d1d5db"
-                : "none",
+              border: selected ? "1px solid #d1d5db" : "none",
               borderRadius: "10px",
-              background: selected
-                ? "#ffffff"
-                : "#111827",
-              color: selected
-                ? "#111827"
-                : "#ffffff",
+              background: selected ? "#ffffff" : "#111827",
+              color: selected ? "#111827" : "#ffffff",
               fontWeight: "800",
               fontSize: "13px",
               cursor: "pointer",
@@ -853,7 +774,7 @@ export default function FilmColorPicker({
               cursor: "pointer",
             }}
           >
-            이 필름으로 가상 시공하기
+            {sampleMode ? "샘플 크게 보기" : "이 필름으로 가상 시공하기"}
           </button>
         )}
       </section>
@@ -931,7 +852,6 @@ export default function FilmColorPicker({
                   >
                     필름 선택
                   </div>
-
                   <div
                     style={{
                       marginTop: "2px",
@@ -942,7 +862,6 @@ export default function FilmColorPicker({
                     선택하면 자동으로 닫힙니다.
                   </div>
                 </div>
-
                 <button
                   type="button"
                   onClick={() => setPickerOpen(false)}
@@ -976,7 +895,6 @@ export default function FilmColorPicker({
                 >
                   ⌕
                 </span>
-
                 <input
                   type="search"
                   value={search}
@@ -997,7 +915,6 @@ export default function FilmColorPicker({
                     background: "#ffffff",
                   }}
                 />
-
                 {search && (
                   <button
                     type="button"
@@ -1062,253 +979,225 @@ export default function FilmColorPicker({
                 </div>
               )}
 
-              {!loading &&
-                !message &&
-                !search.trim() && (
-                  <>
-                    <FilterSection title="1. 제조사">
-                      <ChipRow
-                        showAll
-                        items={brands.map((item) => ({
-                          value: item,
-                          label: item,
-                        }))}
-                        value={brand}
-                        onChange={chooseBrand}
-                      />
-                    </FilterSection>
+              {!loading && !message && !search.trim() && (
+                <>
+                  <FilterSection title="1. 제조사">
+                    <ChipRow
+                      showAll
+                      items={brands.map((item) => ({
+                        value: item,
+                        label: item,
+                      }))}
+                      value={brand}
+                      onChange={chooseBrand}
+                    />
+                  </FilterSection>
 
-                    <FilterSection title="2. 패턴 대분류">
-                      <ChipRow
-                        items={availableCategories.map((item) => ({
-                          value: item.key,
-                          label: item.label,
-                        }))}
-                        value={category}
-                        onChange={chooseCategory}
-                      />
-                    </FilterSection>
+                  <FilterSection title="2. 패턴 대분류">
+                    <ChipRow
+                      items={availableCategories.map((item) => ({
+                        value: item.key,
+                        label: item.label,
+                      }))}
+                      value={category}
+                      onChange={chooseCategory}
+                    />
+                  </FilterSection>
 
-                    <FilterSection title="3. 패턴">
-                      <ChipRow
-                        items={availableLines.map((item) => ({
-                          value: item.key,
-                          label: item.label,
-                        }))}
-                        value={lineKey}
-                        onChange={chooseLine}
-                      />
-                    </FilterSection>
+                  <FilterSection title="3. 패턴">
+                    <ChipRow
+                      items={availableLines.map((item) => ({
+                        value: item.key,
+                        label: item.label,
+                      }))}
+                      value={lineKey}
+                      onChange={chooseLine}
+                    />
+                  </FilterSection>
 
-                    <FilterSection title={`4. ${getDetailTitle()}`}>
-                      <ChipRow
-                        items={details.map((item) => ({
-                          value: item,
-                          label:
-                            selectedLine?.filter === "tone"
-                              ? getToneLabel(item)
-                              : item,
-                        }))}
-                        value={detail}
-                        onChange={chooseDetail}
-                      />
-                    </FilterSection>
-                  </>
-                )}
+                  <FilterSection title={`4. ${getDetailTitle()}`}>
+                    <ChipRow
+                      items={details.map((item) => ({
+                        value: item,
+                        label:
+                          selectedLine?.filter === "tone"
+                            ? getToneLabel(item)
+                            : item,
+                      }))}
+                      value={detail}
+                      onChange={chooseDetail}
+                    />
+                  </FilterSection>
+                </>
+              )}
 
-              {!loading &&
-                !message &&
-                !selectedLine &&
-                !search.trim() && (
+              {!loading && !message && !selectedLine && !search.trim() && (
+                <div
+                  style={{
+                    marginTop: "16px",
+                    padding: "18px 12px",
+                    borderRadius: "12px",
+                    background: "#f9fafb",
+                    color: "#6b7280",
+                    textAlign: "center",
+                    fontSize: "13px",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  제품번호를 바로 검색하거나
+                  <br />
+                  제조사와 패턴을 선택하세요.
+                </div>
+              )}
+
+              {!loading && !message && showResults && (
+                <>
                   <div
                     style={{
-                      marginTop: "16px",
-                      padding: "18px 12px",
-                      borderRadius: "12px",
-                      background: "#f9fafb",
-                      color: "#6b7280",
-                      textAlign: "center",
-                      fontSize: "13px",
-                      lineHeight: 1.6,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: "5px",
+                      marginBottom: "8px",
                     }}
                   >
-                    제품번호를 바로 검색하거나
-                    <br />
-                    제조사와 패턴을 선택하세요.
+                    <strong style={{ fontSize: "13px", color: "#111827" }}>
+                      {search.trim() ? "검색 결과" : "제품"}
+                    </strong>
+                    <span style={{ color: "#6b7280", fontSize: "11px" }}>
+                      {matches.length}개
+                    </span>
                   </div>
-                )}
 
-              {!loading &&
-                !message &&
-                showResults && (
-                  <>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginTop: "5px",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      <strong
-                        style={{
-                          fontSize: "13px",
-                          color: "#111827",
-                        }}
-                      >
-                        {search.trim() ? "검색 결과" : "제품"}
-                      </strong>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: "7px",
+                    }}
+                  >
+                    {visibleProducts.map((product) => {
+                      const active = selected?.id === product.id;
 
-                      <span
-                        style={{
-                          color: "#6b7280",
-                          fontSize: "11px",
-                        }}
-                      >
-                        {matches.length}개
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(3, minmax(0, 1fr))",
-                        gap: "7px",
-                      }}
-                    >
-                      {visibleProducts.map((product) => {
-                        const active =
-                          selected?.id === product.id;
-
-                        return (
-                          <button
-                            key={
-                              product.id ||
-                              `${product.brand}-${product.product_code}`
-                            }
-                            type="button"
-                            onClick={() => chooseProduct(product)}
+                      return (
+                        <button
+                          key={
+                            product.id ||
+                            `${product.brand}-${product.product_code}`
+                          }
+                          type="button"
+                          onClick={() => chooseProduct(product)}
+                          style={{
+                            minWidth: 0,
+                            padding: "5px",
+                            borderRadius: "10px",
+                            border: active
+                              ? "2px solid #111827"
+                              : "1px solid #e5e7eb",
+                            background: "#ffffff",
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <FilmSample product={product} />
+                          <strong
                             style={{
-                              minWidth: 0,
-                              padding: "5px",
-                              borderRadius: "10px",
-                              border: active
-                                ? "2px solid #111827"
-                                : "1px solid #e5e7eb",
-                              background: "#ffffff",
-                              textAlign: "left",
-                              cursor: "pointer",
+                              display: "block",
+                              marginTop: "5px",
+                              fontSize: "12px",
+                              color: "#111827",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
                             }}
                           >
-                            <FilmSample product={product} />
+                            {product.product_code}
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: "1px",
+                              color: "#6b7280",
+                              fontSize: "9px",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {getProductInfo(product) ||
+                              product.product_name ||
+                              "필름"}
+                          </span>
 
-                            <strong
-                              style={{
-                                display: "block",
-                                marginTop: "5px",
-                                fontSize: "12px",
-                                color: "#111827",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {product.product_code}
-                            </strong>
-
+                          {Number(
+                            product.material_price_per_meter ||
+                              product.fire_price_per_meter ||
+                              product.non_fire_price_per_meter
+                          ) > 0 && (
                             <span
                               style={{
                                 display: "block",
-                                marginTop: "1px",
-                                color: "#6b7280",
+                                marginTop: "2px",
+                                color: "#7c3aed",
                                 fontSize: "9px",
+                                fontWeight: "800",
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                               }}
                             >
-                              {getProductInfo(product) ||
-                                product.product_name ||
-                                "필름"}
+                              {formatPrice(
+                                product.material_price_per_meter ||
+                                  product.fire_price_per_meter ||
+                                  product.non_fire_price_per_meter
+                              )}
+                              /m
                             </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                            {Number(
-                              product.material_price_per_meter ||
-                                product.fire_price_per_meter ||
-                                product.non_fire_price_per_meter
-                            ) > 0 && (
-                              <span
-                                style={{
-                                  display: "block",
-                                  marginTop: "2px",
-                                  color: "#7c3aed",
-                                  fontSize: "9px",
-                                  fontWeight: "800",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                }}
-                              >
-                                {formatPrice(
-                                  product.material_price_per_meter ||
-                                    product.fire_price_per_meter ||
-                                    product.non_fire_price_per_meter
-                                )}
-                                /m
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                  {!matches.length && (
+                    <div
+                      style={{
+                        padding: "24px 0",
+                        color: "#6b7280",
+                        textAlign: "center",
+                        fontSize: "13px",
+                      }}
+                    >
+                      조건에 맞는 제품이 없습니다.
                     </div>
+                  )}
 
-                    {!matches.length && (
-                      <div
-                        style={{
-                          padding: "24px 0",
-                          color: "#6b7280",
-                          textAlign: "center",
-                          fontSize: "13px",
-                        }}
-                      >
-                        조건에 맞는 제품이 없습니다.
-                      </div>
-                    )}
-
-                    {limit < matches.length && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setLimit(
-                            (current) =>
-                              current + PAGE_SIZE
-                          )
-                        }
-                        style={{
-                          width: "100%",
-                          marginTop: "10px",
-                          padding: "12px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "10px",
-                          background: "#ffffff",
-                          color: "#111827",
-                          fontSize: "13px",
-                          fontWeight: "800",
-                          cursor: "pointer",
-                        }}
-                      >
-                        제품 더보기 (
-                        {Math.max(matches.length - limit, 0)}개)
-                      </button>
-                    )}
-                  </>
-                )}
+                  {limit < matches.length && (
+                    <button
+                      type="button"
+                      onClick={() => setLimit((current) => current + PAGE_SIZE)}
+                      style={{
+                        width: "100%",
+                        marginTop: "10px",
+                        padding: "12px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "10px",
+                        background: "#ffffff",
+                        color: "#111827",
+                        fontSize: "13px",
+                        fontWeight: "800",
+                        cursor: "pointer",
+                      }}
+                    >
+                      제품 더보기 ({Math.max(matches.length - limit, 0)}개)
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
     </>
   );
-}
+    }
