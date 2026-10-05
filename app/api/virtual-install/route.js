@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -18,8 +19,14 @@ const TARGET_LABELS = {
   cabinet: "기타 장류",
 };
 
-const ALLOWED_TARGET_TYPES = new Set(Object.keys(TARGET_LABELS));
-const MULTI_TONE_TARGET_TYPES = new Set(["kitchen", "door"]);
+const ALLOWED_TARGET_TYPES = new Set(
+  Object.keys(TARGET_LABELS)
+);
+
+const MULTI_TONE_TARGET_TYPES = new Set([
+  "kitchen",
+  "door",
+]);
 
 const ALLOWED_AREAS = {
   artwall: new Set(["artwall_surface"]),
@@ -32,7 +39,11 @@ const ALLOWED_AREAS = {
     "pantry_cabinet",
     "island_cabinet",
   ]),
-  door: new Set(["door_all", "door_leaf", "door_frame"]),
+  door: new Set([
+    "door_all",
+    "door_leaf",
+    "door_frame",
+  ]),
   built_in: new Set(["built_in"]),
   shoe_cabinet: new Set(["shoe_cabinet"]),
   fridge_cabinet: new Set(["fridge_cabinet"]),
@@ -72,11 +83,14 @@ function getAdminSupabase() {
 
 async function resolveCompanyBySlug(slug) {
   const supabase = getAdminSupabase();
+
   if (!supabase || !slug) return null;
 
   const { data, error } = await supabase
     .from("companies")
-    .select("id, company_name, slug, subscription_plan, is_active")
+    .select(
+      "id, company_name, slug, subscription_plan, is_active"
+    )
     .eq("slug", slug)
     .maybeSingle();
 
@@ -85,131 +99,64 @@ async function resolveCompanyBySlug(slug) {
     return null;
   }
 
-  return data && data.is_active !== false ? data : null;
+  return data && data.is_active !== false
+    ? data
+    : null;
 }
 
-async function checkVirtualRemodelLimit(company) {
-  const supabase = getAdminSupabase();
+async function reserveUsage(company) {
+  const db = getAdminSupabase();
 
-  if (!company?.id || !supabase) {
-    return { ok: false, error: "업체 또는 서버 설정을 확인할 수 없습니다." };
+  if (!db) {
+    throw new Error("서버 설정을 확인해주세요.");
   }
 
-  try {
-    const { data: plan, error: planError } = await supabase
-      .from("subscription_plans")
-      .select("plan_code, plan_name, virtual_remodel_limit, is_active")
-      .eq("plan_code", company.subscription_plan || "basic")
-      .maybeSingle();
-
-    if (planError || !plan || plan.is_active === false) {
-      return { ok: false, error: "사용 가능한 요금제 정보를 확인할 수 없습니다." };
+  const { data, error } = await db.rpc(
+    "reserve_virtual_remodel",
+    {
+      p_company_id: company.id,
+      p_request_id: randomUUID(),
     }
+  );
 
-    const limit = Number(plan.virtual_remodel_limit || 0);
+  if (error) throw error;
 
-    if (limit <= 0) {
-      return {
-        ok: true,
-        planCode: plan.plan_code,
-        planName: plan.plan_name,
-        used: 0,
-        limit: 0,
-        remaining: null,
-        unlimited: true,
-      };
+  if (!data || typeof data.ok !== "boolean") {
+    throw new Error("사용량 예약 결과가 없습니다.");
+  }
+
+  return data;
+}
+
+async function finishUsage(
+  companyId,
+  reservationId,
+  success,
+  metadata = {}
+) {
+  const db = getAdminSupabase();
+
+  if (!db) {
+    throw new Error("서버 설정을 확인해주세요.");
+  }
+
+  const { data, error } = await db.rpc(
+    "finish_virtual_remodel",
+    {
+      p_company_id: companyId,
+      p_request_id: reservationId,
+      p_success: success,
+      p_metadata: metadata,
     }
+  );
 
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-    }).formatToParts(new Date());
+  if (error) throw error;
 
-    const year = Number(parts.find((part) => part.type === "year")?.value);
-    const month = Number(parts.find((part) => part.type === "month")?.value);
-
-    const start = new Date(Date.UTC(year, month - 1, 1, -9));
-    const end = new Date(Date.UTC(year, month, 1, -9));
-
-    const { data: rows, error } = await supabase
-      .from("usage_events")
-      .select("quantity")
-      .eq("company_id", company.id)
-      .eq("event_type", "virtual_remodel")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString());
-
-    if (error) {
-      console.error("가상시공 사용량 조회 오류:", error);
-      return { ok: false, error: "현재 사용량을 확인할 수 없습니다." };
-    }
-
-    const used = (rows || []).reduce(
-      (sum, row) => sum + Number(row.quantity || 0),
-      0,
+  if (data !== true) {
+    throw new Error(
+      "사용량 확정을 확인하지 못했습니다."
     );
-
-    const remaining = Math.max(0, limit - used);
-
-    return {
-      ok: used < limit,
-      limitReached: used >= limit,
-      planCode: plan.plan_code,
-      planName: plan.plan_name,
-      used,
-      limit,
-      remaining,
-      unlimited: false,
-      error:
-        used >= limit
-          ? `${plan.plan_name} 요금제의 이번 달 가상시공 사용 한도(${limit}회)를 모두 사용했습니다.`
-          : undefined,
-    };
-  } catch (error) {
-    console.error("가상시공 한도 확인 오류:", error);
-    return { ok: false, error: "가상시공 사용 한도를 확인할 수 없습니다." };
   }
-}
-
-async function recordVirtualInstallUsage({
-  company,
-  model,
-  size,
-  quality,
-  targetType,
-  useSplitTone,
-  productCode,
-  sampleReferenceCount,
-  openAIUsage,
-}) {
-  const supabase = getAdminSupabase();
-  if (!company?.id || !supabase) return false;
-
-  const { error } = await supabase.from("usage_events").insert({
-    company_id: company.id,
-    event_type: "virtual_remodel",
-    quantity: 1,
-    cost_krw: 0,
-    provider: "openai",
-    model: model || null,
-    reference_id: productCode || null,
-    metadata: {
-      company_slug: company.slug,
-      company_name: company.company_name,
-      subscription_plan: company.subscription_plan,
-      target_type: targetType,
-      split_tone: Boolean(useSplitTone),
-      product_code: productCode || null,
-      image_size: size || null,
-      image_quality: quality || null,
-      sample_reference_count: sampleReferenceCount,
-      openai_usage: openAIUsage || null,
-    },
-  });
-
-  if (error) console.error("가상시공 사용량 기록 오류:", error);
-  return !error;
 }
 
 function cleanText(value, maxLength = 300) {
@@ -221,15 +168,24 @@ function cleanText(value, maxLength = 300) {
 
 function cleanHex(value) {
   const hex = cleanText(value, 20);
-  return /^#[0-9a-fA-F]{3,8}$/.test(hex) ? hex : "";
+
+  return /^#[0-9a-fA-F]{3,8}$/.test(hex)
+    ? hex
+    : "";
 }
 
 function getAllowedSampleHosts() {
-  const hosts = new Set(["gxtvvzysuhexhpljpswj.supabase.co"]);
+  const hosts = new Set([
+    "gxtvvzysuhexhpljpswj.supabase.co",
+  ]);
 
   try {
     if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      hosts.add(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname);
+      hosts.add(
+        new URL(
+          process.env.NEXT_PUBLIC_SUPABASE_URL
+        ).hostname
+      );
     }
   } catch (error) {
     console.error("Supabase URL 오류:", error);
@@ -238,7 +194,11 @@ function getAllowedSampleHosts() {
   return hosts;
 }
 
-async function fetchSampleImage(urlValue, productCode, index) {
+async function fetchSampleImage(
+  urlValue,
+  productCode,
+  index
+) {
   if (!urlValue) return null;
 
   try {
@@ -259,28 +219,41 @@ async function fetchSampleImage(urlValue, productCode, index) {
 
     if (!response.ok) return null;
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    if (!contentType.startsWith("image/")) return null;
+    const contentType =
+      response.headers.get("content-type") ||
+      "image/jpeg";
+
+    if (!contentType.startsWith("image/")) {
+      return null;
+    }
 
     const buffer = await response.arrayBuffer();
 
-    if (!buffer.byteLength || buffer.byteLength > MAX_SAMPLE_SIZE) {
+    if (
+      !buffer.byteLength ||
+      buffer.byteLength > MAX_SAMPLE_SIZE
+    ) {
       return null;
     }
 
     const extension = contentType.includes("png")
       ? "png"
       : contentType.includes("webp")
-        ? "webp"
-        : "jpg";
+      ? "webp"
+      : "jpg";
 
     return new File(
       [buffer],
       `film-${index}-${productCode || "sample"}.${extension}`,
-      { type: contentType },
+      { type: contentType }
     );
   } catch (error) {
-    console.error("필름 샘플 조회 오류:", productCode, error);
+    console.error(
+      "필름 샘플 조회 오류:",
+      productCode,
+      error
+    );
+
     return null;
   }
 }
@@ -290,33 +263,71 @@ function getPrimaryFilm(form) {
     areaKey: "all",
     areaLabel: "전체 시공 부위",
     brand: cleanText(form.get("brand"), 100),
-    productCode: cleanText(form.get("productCode"), 100),
-    productName: cleanText(form.get("productName"), 200),
+    productCode: cleanText(
+      form.get("productCode"),
+      100
+    ),
+    productName: cleanText(
+      form.get("productName"),
+      200
+    ),
     texture: cleanText(form.get("texture"), 100),
-    colorFamily: cleanText(form.get("colorFamily"), 100),
-    colorDescription: cleanText(form.get("colorDescription"), 300),
+    colorFamily: cleanText(
+      form.get("colorFamily"),
+      100
+    ),
+    colorDescription: cleanText(
+      form.get("colorDescription"),
+      300
+    ),
     colorHex: cleanHex(form.get("colorHex")),
-    sampleImageUrl: cleanText(form.get("sampleImageUrl"), 2000),
+    sampleImageUrl: cleanText(
+      form.get("sampleImageUrl"),
+      2000
+    ),
   };
 }
 
 function getAreaFilms(form) {
   try {
-    const parsed = JSON.parse(String(form.get("areaFilms") || "[]"));
+    const parsed = JSON.parse(
+      String(form.get("areaFilms") || "[]")
+    );
+
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.slice(0, MAX_AREA_FILMS).map((item) => ({
-      areaKey: cleanText(item?.areaKey, 100),
-      areaLabel: cleanText(item?.areaLabel, 100),
-      brand: cleanText(item?.brand, 100),
-      productCode: cleanText(item?.productCode, 100),
-      productName: cleanText(item?.productName, 200),
-      texture: cleanText(item?.texture, 100),
-      colorFamily: cleanText(item?.colorFamily, 100),
-      colorDescription: cleanText(item?.colorDescription, 300),
-      colorHex: cleanHex(item?.colorHex),
-      sampleImageUrl: cleanText(item?.sampleImageUrl, 2000),
-    })).filter((item) => item.areaKey && item.productCode);
+    return parsed
+      .slice(0, MAX_AREA_FILMS)
+      .map((item) => ({
+        areaKey: cleanText(item?.areaKey, 100),
+        areaLabel: cleanText(item?.areaLabel, 100),
+        brand: cleanText(item?.brand, 100),
+        productCode: cleanText(
+          item?.productCode,
+          100
+        ),
+        productName: cleanText(
+          item?.productName,
+          200
+        ),
+        texture: cleanText(item?.texture, 100),
+        colorFamily: cleanText(
+          item?.colorFamily,
+          100
+        ),
+        colorDescription: cleanText(
+          item?.colorDescription,
+          300
+        ),
+        colorHex: cleanHex(item?.colorHex),
+        sampleImageUrl: cleanText(
+          item?.sampleImageUrl,
+          2000
+        ),
+      }))
+      .filter(
+        (item) => item.areaKey && item.productCode
+      );
   } catch {
     return [];
   }
@@ -334,7 +345,11 @@ function getDefaultArea(targetType) {
   };
 
   const key = keys[targetType];
-  return { key, label: AREA_LABELS[key] };
+
+  return {
+    key,
+    label: AREA_LABELS[key],
+  };
 }
 
 function getTargetPrompt(targetType) {
@@ -429,23 +444,44 @@ function getAreaInstruction(key, label) {
       "Apply this film only to the existing furniture-cabinet fronts and film-finished panels. Preserve divisions, handles and seams. Do not turn furniture into a room door.",
   };
 
-  return instructions[key] ||
-    `Apply film only to the existing visible area "${label}". If absent, do nothing.`;
+  return (
+    instructions[key] ||
+    `Apply film only to the existing visible area "${label}". If absent, do nothing.`
+  );
 }
 
 function getFilmKey(film) {
-  return [film.brand, film.productCode, film.sampleImageUrl].join("|");
+  return [
+    film.brand,
+    film.productCode,
+    film.sampleImageUrl,
+  ].join("|");
 }
 
 function getFilmDetails(film) {
   return [
-    `Selected film: ${[film.brand, film.productCode].filter(Boolean).join(" ")}.`,
-    film.productName ? `Product name: ${film.productName}.` : "",
-    film.texture ? `Texture: ${film.texture}.` : "",
-    film.colorFamily ? `Color family: ${film.colorFamily}.` : "",
-    film.colorDescription ? `Color description: ${film.colorDescription}.` : "",
-    film.colorHex ? `Approximate color: ${film.colorHex}.` : "",
-  ].filter(Boolean).join(" ");
+    `Selected film: ${[
+      film.brand,
+      film.productCode,
+    ].filter(Boolean).join(" ")}.`,
+    film.productName
+      ? `Product name: ${film.productName}.`
+      : "",
+    film.texture
+      ? `Texture: ${film.texture}.`
+      : "",
+    film.colorFamily
+      ? `Color family: ${film.colorFamily}.`
+      : "",
+    film.colorDescription
+      ? `Color description: ${film.colorDescription}.`
+      : "",
+    film.colorHex
+      ? `Approximate color: ${film.colorHex}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function getPreservationPrompt() {
@@ -470,68 +506,112 @@ function getPreservationPrompt() {
 }
 
 function getOpenAIError(result) {
-  const message = result?.error?.message || result?.message || "";
+  const message =
+    result?.error?.message ||
+    result?.message ||
+    "";
 
-  if (!message) return "OpenAI 이미지 생성 요청에 실패했습니다.";
+  if (!message) {
+    return "OpenAI 이미지 생성 요청에 실패했습니다.";
+  }
+
   if (message.toLowerCase().includes("billing")) {
     return "OpenAI API 잔액 또는 결제 설정을 확인해주세요.";
   }
+
   if (message.toLowerCase().includes("rate limit")) {
     return "요청이 많습니다. 잠시 후 다시 시도해주세요.";
   }
+
   return message;
 }
 
 export async function POST(request) {
+  let reservation = null;
+  let generated = false;
+
   try {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY가 설정되지 않았습니다." },
-        { status: 500 },
+        {
+          error:
+            "OPENAI_API_KEY가 설정되지 않았습니다.",
+        },
+        { status: 500 }
       );
     }
 
     const form = await request.formData();
-    const companySlug = cleanText(form.get("company_slug"), 100);
+
+    const companySlug = cleanText(
+      form.get("company_slug"),
+      100
+    );
 
     if (!companySlug) {
       return NextResponse.json(
-        { error: "업체 페이지에서 다시 시도해주세요." },
-        { status: 400 },
+        {
+          error:
+            "업체 페이지에서 다시 시도해주세요.",
+        },
+        { status: 400 }
       );
     }
 
-    const company = await resolveCompanyBySlug(companySlug);
+    const company = await resolveCompanyBySlug(
+      companySlug
+    );
 
     if (!company) {
       return NextResponse.json(
-        { error: "사용 가능한 업체 정보를 찾을 수 없습니다." },
-        { status: 404 },
+        {
+          error:
+            "사용 가능한 업체 정보를 찾을 수 없습니다.",
+        },
+        { status: 404 }
       );
     }
 
     const image = form.get("image");
 
-    if (!(image instanceof File) || !image.type?.startsWith("image/")) {
+    if (
+      !(image instanceof File) ||
+      !image.type?.startsWith("image/")
+    ) {
       return NextResponse.json(
-        { error: "가상시공할 원본 이미지가 없습니다." },
-        { status: 400 },
+        {
+          error:
+            "가상시공할 원본 이미지가 없습니다.",
+        },
+        { status: 400 }
       );
     }
 
-    if (!image.size || image.size > MAX_IMAGE_SIZE) {
+    if (
+      !image.size ||
+      image.size > MAX_IMAGE_SIZE
+    ) {
       return NextResponse.json(
-        { error: "사진은 10MB 이하만 사용할 수 있습니다." },
-        { status: 400 },
+        {
+          error:
+            "사진은 10MB 이하만 사용할 수 있습니다.",
+        },
+        { status: 400 }
       );
     }
 
-    const targetType = cleanText(form.get("targetType"), 30);
+    const targetType = cleanText(
+      form.get("targetType"),
+      30
+    );
 
     if (!ALLOWED_TARGET_TYPES.has(targetType)) {
       return NextResponse.json(
-        { error: "사용할 수 없는 가상시공 종류입니다." },
-        { status: 400 },
+        {
+          error:
+            "사용할 수 없는 가상시공 종류입니다.",
+        },
+        { status: 400 }
       );
     }
 
@@ -540,31 +620,48 @@ export async function POST(request) {
 
     if (!primaryFilm.productCode) {
       return NextResponse.json(
-        { error: "선택한 필름 정보가 없습니다." },
-        { status: 400 },
+        {
+          error:
+            "선택한 필름 정보가 없습니다.",
+        },
+        { status: 400 }
       );
     }
 
     const useSplitTone =
       MULTI_TONE_TARGET_TYPES.has(targetType) &&
-      String(form.get("useSplitTone") || "") === "true";
+      String(form.get("useSplitTone") || "") ===
+        "true";
 
     let areaFilms = getAreaFilms(form);
 
-    if (areaFilms.some((film) => !ALLOWED_AREAS[targetType].has(film.areaKey))) {
+    if (
+      areaFilms.some(
+        (film) =>
+          !ALLOWED_AREAS[targetType].has(
+            film.areaKey
+          )
+      )
+    ) {
       return NextResponse.json(
-        { error: "선택한 시공 종류와 세부 부위가 일치하지 않습니다. 다시 선택해주세요." },
-        { status: 400 },
+        {
+          error:
+            "선택한 시공 종류와 세부 부위가 일치하지 않습니다. 다시 선택해주세요.",
+        },
+        { status: 400 }
       );
     }
 
     if (!areaFilms.length) {
       const area = getDefaultArea(targetType);
-      areaFilms = [{
-        ...primaryFilm,
-        areaKey: area.key,
-        areaLabel: area.label,
-      }];
+
+      areaFilms = [
+        {
+          ...primaryFilm,
+          areaKey: area.key,
+          areaLabel: area.label,
+        },
+      ];
     }
 
     areaFilms = areaFilms.map((film) => ({
@@ -573,7 +670,127 @@ export async function POST(request) {
       areaLabel: AREA_LABELS[film.areaKey],
     }));
 
-    const virtualLimit = await checkVirtualRemodelLimit(company);
+    const uniqueFilms = [
+      ...new Map(
+        areaFilms.map((film) => [
+          getFilmKey(film),
+          film,
+        ])
+      ).values(),
+    ];
+
+    const referenceFilms = [];
+    let imageNumber = 2;
+
+    for (
+      let index = 0;
+      index < uniqueFilms.length;
+      index += 1
+    ) {
+      const film = uniqueFilms[index];
+
+      const sampleImage = await fetchSampleImage(
+        film.sampleImageUrl,
+        film.productCode,
+        index + 1
+      );
+
+      referenceFilms.push({
+        ...film,
+        sampleImage,
+        imageNumber: sampleImage
+          ? imageNumber++
+          : null,
+      });
+    }
+
+    const promptParts = [
+      getPreservationPrompt(),
+      getTargetPrompt(targetType),
+      `Selected installation category: ${targetLabel}.`,
+    ];
+
+    referenceFilms.forEach((film) => {
+      if (film.sampleImage) {
+        promptParts.push(
+          `IMAGE ${film.imageNumber} is a material sample for ${film.brand} ${film.productCode}, not a room photograph.`,
+          getFilmDetails(film),
+          `Match IMAGE ${film.imageNumber} for material color and texture. It takes priority over text and HEX descriptions.`
+        );
+      }
+    });
+
+    areaFilms.forEach((film) => {
+      const reference = referenceFilms.find(
+        (item) =>
+          getFilmKey(item) === getFilmKey(film)
+      );
+
+      promptParts.push(
+        `Target area: ${film.areaLabel}.`,
+        getAreaInstruction(
+          film.areaKey,
+          film.areaLabel
+        ),
+        getFilmDetails(film)
+      );
+
+      if (reference?.sampleImage) {
+        promptParts.push(
+          `For ${film.areaLabel}, match material reference IMAGE ${reference.imageNumber}.`
+        );
+      }
+    });
+
+    promptParts.push(
+      useSplitTone
+        ? "MULTI-TONE: Keep each film strictly within its own assigned existing area. Never swap or blend finishes between areas."
+        : "UNIFIED COLOR: Apply the same film consistently only to the selected existing target surfaces. Leave unrelated objects unchanged.",
+      "FINAL STRUCTURE CHECK: IMAGE 1 must remain structurally identical. Never create a new door, frame, handle or opening. Change only the selected existing surface finish."
+    );
+
+    const model =
+      process.env.OPENAI_IMAGE_MODEL ||
+      "gpt-image-1.5";
+
+    const size =
+      process.env.OPENAI_IMAGE_SIZE ||
+      "1024x1024";
+
+    const quality =
+      process.env.OPENAI_IMAGE_QUALITY ||
+      "low";
+
+    const openAIForm = new FormData();
+
+    openAIForm.append("model", model);
+    openAIForm.append(
+      "image[]",
+      image,
+      image.name || "original.jpg"
+    );
+
+    referenceFilms.forEach((film) => {
+      if (film.sampleImage) {
+        openAIForm.append(
+          "image[]",
+          film.sampleImage,
+          film.sampleImage.name
+        );
+      }
+    });
+
+    openAIForm.append(
+      "prompt",
+      promptParts.filter(Boolean).join(" ")
+    );
+    openAIForm.append("size", size);
+    openAIForm.append("quality", quality);
+    openAIForm.append("output_format", "webp");
+    openAIForm.append("output_compression", "70");
+
+    // 유료 이미지 API 호출 전에 DB에서 1회를 예약합니다.
+    const virtualLimit = await reserveUsage(company);
 
     if (!virtualLimit.ok) {
       return NextResponse.json(
@@ -589,139 +806,95 @@ export async function POST(request) {
           limit: virtualLimit.limit,
           remaining: virtualLimit.remaining,
         },
-        { status: virtualLimit.limitReached ? 429 : 503 },
+        {
+          status: virtualLimit.limitReached
+            ? 429
+            : 503,
+        }
       );
     }
 
-    const uniqueFilms = [...new Map(
-      areaFilms.map((film) => [getFilmKey(film), film]),
-    ).values()];
+    reservation = {
+      companyId: company.id,
+      id: virtualLimit.reservationId,
+    };
 
-    const referenceFilms = [];
-    let imageNumber = 2;
-
-    for (let index = 0; index < uniqueFilms.length; index += 1) {
-      const film = uniqueFilms[index];
-      const sampleImage = await fetchSampleImage(
-        film.sampleImageUrl,
-        film.productCode,
-        index + 1,
-      );
-
-      referenceFilms.push({
-        ...film,
-        sampleImage,
-        imageNumber: sampleImage ? imageNumber++ : null,
-      });
-    }
-
-    const promptParts = [
-      getPreservationPrompt(),
-      getTargetPrompt(targetType),
-      `Selected installation category: ${targetLabel}.`,
-    ];
-
-    referenceFilms.forEach((film) => {
-      if (film.sampleImage) {
-        promptParts.push(
-          `IMAGE ${film.imageNumber} is a material sample for ${film.brand} ${film.productCode}, not a room photograph.`,
-          getFilmDetails(film),
-          `Match IMAGE ${film.imageNumber} for material color and texture. It takes priority over text and HEX descriptions.`,
-        );
+    const response = await fetch(
+      "https://api.openai.com/v1/images/edits",
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: openAIForm,
+        signal: AbortSignal.timeout(55000),
       }
-    });
-
-    areaFilms.forEach((film) => {
-      const reference = referenceFilms.find(
-        (item) => getFilmKey(item) === getFilmKey(film),
-      );
-
-      promptParts.push(
-        `Target area: ${film.areaLabel}.`,
-        getAreaInstruction(film.areaKey, film.areaLabel),
-        getFilmDetails(film),
-      );
-
-      if (reference?.sampleImage) {
-        promptParts.push(
-          `For ${film.areaLabel}, match material reference IMAGE ${reference.imageNumber}.`,
-        );
-      }
-    });
-
-    promptParts.push(
-      useSplitTone
-        ? "MULTI-TONE: Keep each film strictly within its own assigned existing area. Never swap or blend finishes between areas."
-        : "UNIFIED COLOR: Apply the same film consistently only to the selected existing target surfaces. Leave unrelated objects unchanged.",
-      "FINAL STRUCTURE CHECK: IMAGE 1 must remain structurally identical. Never create a new door, frame, handle or opening. Change only the selected existing surface finish.",
     );
 
-    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
-    const size = process.env.OPENAI_IMAGE_SIZE || "1024x1024";
-    const quality = process.env.OPENAI_IMAGE_QUALITY || "low";
-
-    const openAIForm = new FormData();
-    openAIForm.append("model", model);
-    openAIForm.append("image[]", image, image.name || "original.jpg");
-
-    referenceFilms.forEach((film) => {
-      if (film.sampleImage) {
-        openAIForm.append("image[]", film.sampleImage, film.sampleImage.name);
-      }
-    });
-
-    openAIForm.append("prompt", promptParts.filter(Boolean).join(" "));
-    openAIForm.append("size", size);
-    openAIForm.append("quality", quality);
-    openAIForm.append("output_format", "webp");
-    openAIForm.append("output_compression", "70");
-
-    const response = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: openAIForm,
-      signal: AbortSignal.timeout(55000),
-    });
-
-    const result = await response.json().catch(() => ({}));
+    const result = await response
+      .json()
+      .catch(() => ({}));
 
     if (!response.ok) {
       console.error("가상시공 API 오류:", result);
+
       return NextResponse.json(
-        { error: getOpenAIError(result) },
-        { status: response.status >= 400 && response.status < 600 ? response.status : 502 },
+        {
+          error: getOpenAIError(result),
+        },
+        {
+          status:
+            response.status >= 400 &&
+            response.status < 600
+              ? response.status
+              : 502,
+        }
       );
     }
 
     const item = result?.data?.[0];
+
     const imageUrl = item?.b64_json
       ? `data:image/webp;base64,${item.b64_json}`
       : item?.url;
 
     if (!imageUrl) {
       return NextResponse.json(
-        { error: "생성된 이미지 데이터가 없습니다." },
-        { status: 502 },
+        {
+          error:
+            "생성된 이미지 데이터가 없습니다.",
+        },
+        { status: 502 }
       );
     }
 
-    const sampleReferenceCount = referenceFilms.filter(
-      (film) => Boolean(film.sampleImage),
-    ).length;
+    const sampleReferenceCount =
+      referenceFilms.filter(
+        (film) => Boolean(film.sampleImage)
+      ).length;
 
-    const usageRecorded = await recordVirtualInstallUsage({
-      company,
-      model,
-      size,
-      quality,
-      targetType,
-      useSplitTone,
-      productCode: primaryFilm.productCode,
-      sampleReferenceCount,
-      openAIUsage: result?.usage || null,
-    });
+    // 확정 응답이 유실되어도 성공 기록을 실패로 덮어쓰지 않습니다.
+    generated = true;
+
+    await finishUsage(
+      company.id,
+      reservation.id,
+      true,
+      {
+        model,
+        image_size: size,
+        image_quality: quality,
+        target_type: targetType,
+        split_tone: Boolean(useSplitTone),
+        product_code: primaryFilm.productCode,
+        sample_reference_count:
+          sampleReferenceCount,
+        openai_usage: result?.usage || null,
+      }
+    );
+
+    const usageRecorded = true;
 
     return NextResponse.json({
       success: true,
@@ -746,24 +919,55 @@ export async function POST(request) {
         limit: virtualLimit.limit,
         remaining: virtualLimit.unlimited
           ? null
-          : Math.max(0, virtualLimit.remaining - 1),
-        unlimited: Boolean(virtualLimit.unlimited),
+          : Math.max(
+              0,
+              virtualLimit.remaining - 1
+            ),
+        unlimited: Boolean(
+          virtualLimit.unlimited
+        ),
       },
     });
   } catch (error) {
     console.error("가상시공 처리 오류:", error);
 
-    if (["TimeoutError", "AbortError"].includes(error?.name)) {
+    if (
+      ["TimeoutError", "AbortError"].includes(
+        error?.name
+      )
+    ) {
       return NextResponse.json(
-        { error: "이미지 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요." },
-        { status: 504 },
+        {
+          error:
+            "이미지 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.",
+        },
+        { status: 504 }
       );
     }
 
     return NextResponse.json(
-      { error: error?.message || "가상시공 이미지 생성 중 오류가 발생했습니다." },
-      { status: 500 },
+      {
+        error:
+          error?.message ||
+          "가상시공 이미지 생성 중 오류가 발생했습니다.",
+      },
+      { status: 500 }
     );
+  } finally {
+    // 이미지 생성 실패 시 예약한 사용량을 반환합니다.
+    if (reservation && !generated) {
+      try {
+        await finishUsage(
+          reservation.companyId,
+          reservation.id,
+          false
+        );
+      } catch (error) {
+        console.error(
+          "가상시공 예약 반환 오류:",
+          error?.code || error?.name
+        );
+      }
+    }
   }
 }
-// 파일 끝
