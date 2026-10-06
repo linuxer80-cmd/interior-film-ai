@@ -1,18 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
-
-import {
-  formatWon,
-  formatQuantity,
-} from "./siteDetailUtils";
+import { formatWon, formatQuantity } from "./siteDetailUtils";
 
 const endpoint = "/api/admin/site-planned-materials";
 
@@ -77,21 +67,14 @@ async function api(method, siteId, body, signal) {
       },
       ...(method === "GET"
         ? {}
-        : {
-            body: JSON.stringify({
-              ...body,
-              siteId,
-            }),
-          }),
+        : { body: JSON.stringify({ ...body, siteId }) }),
     }
   );
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(
-      result.error || "자재 요청을 처리하지 못했습니다."
-    );
+    throw new Error(result.error || "자재 요청을 처리하지 못했습니다.");
   }
 
   return result;
@@ -109,7 +92,6 @@ export default function SiteMaterials({ site }) {
   const lock = useRef(false);
   const formRef = useRef(null);
   const loadController = useRef(null);
-
   const siteId = site?.id;
 
   const load = useCallback(async () => {
@@ -117,7 +99,6 @@ export default function SiteMaterials({ site }) {
 
     const controller = new AbortController();
     loadController.current = controller;
-
     setLoading(true);
 
     try {
@@ -135,9 +116,7 @@ export default function SiteMaterials({ site }) {
     } catch (error) {
       if (!controller.signal.aborted) {
         setCanWrite(false);
-        setMessage(
-          error.message || "자재를 불러오지 못했습니다."
-        );
+        setMessage(error.message || "자재를 불러오지 못했습니다.");
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -186,10 +165,7 @@ export default function SiteMaterials({ site }) {
 
     if (lock.current || !canWrite) return;
 
-    if (
-      !form.product_code.trim() &&
-      !form.product_name.trim()
-    ) {
+    if (!form.product_code.trim() && !form.product_name.trim()) {
       setMessage("제품코드 또는 제품명을 입력해주세요.");
       return;
     }
@@ -199,14 +175,16 @@ export default function SiteMaterials({ site }) {
     setMessage("");
 
     try {
-      await api(
-        editing ? "PATCH" : "POST",
-        siteId,
-        form
-      );
+      await api(editing ? "PATCH" : "POST", siteId, form);
 
       setForm(null);
       setMessage("예정 자재를 저장했습니다.");
+
+      window.dispatchEvent(
+        new CustomEvent("site-materials-changed", {
+          detail: { siteId },
+        })
+      );
 
       await load();
     } catch (error) {
@@ -238,9 +216,7 @@ export default function SiteMaterials({ site }) {
     setMessage("");
 
     try {
-      await api("DELETE", siteId, {
-        id: material.id,
-      });
+      await api("DELETE", siteId, { id: material.id });
 
       if (form?.id === material.id) {
         setForm(null);
@@ -248,11 +224,15 @@ export default function SiteMaterials({ site }) {
 
       setMessage("예정 자재를 삭제했습니다.");
 
+      window.dispatchEvent(
+        new CustomEvent("site-materials-changed", {
+          detail: { siteId },
+        })
+      );
+
       await load();
     } catch (error) {
-      setMessage(
-        error.message || "삭제하지 못했습니다."
-      );
+      setMessage(error.message || "삭제하지 못했습니다.");
     } finally {
       lock.current = false;
       setBusy(false);
@@ -270,7 +250,6 @@ export default function SiteMaterials({ site }) {
         }}
       >
         {label}
-
         <input
           style={input}
           value={form[key]}
@@ -304,12 +283,7 @@ export default function SiteMaterials({ site }) {
           marginBottom: 14,
         }}
       >
-        <h3
-          style={{
-            margin: 0,
-            flex: 1,
-          }}
-        >
+        <h3 style={{ margin: 0, flex: 1 }}>
           📦 예정 시공 자재{" "}
           <small style={{ color: "#64748b" }}>
             {materials.length}건
@@ -357,13 +331,9 @@ export default function SiteMaterials({ site }) {
         </p>
       )}
 
-      {!loading &&
-        !canWrite &&
-        site?.status === "cancelled" && (
-          <p>
-            취소된 현장은 자재 조회만 가능합니다.
-          </p>
-        )}
+      {!loading && !canWrite && site?.status === "cancelled" && (
+        <p>취소된 현장은 자재 조회만 가능합니다.</p>
+      )}
 
       {form && (
         <form
@@ -376,9 +346,7 @@ export default function SiteMaterials({ site }) {
           }}
         >
           <h4 style={{ margin: "0 0 14px" }}>
-            {editing
-              ? "예정 자재 수정"
-              : "예정 자재 추가"}
+            {editing ? "예정 자재 수정" : "예정 자재 추가"}
           </h4>
 
           <fieldset
@@ -435,18 +403,14 @@ export default function SiteMaterials({ site }) {
               })}
             </div>
 
-            {field(
-              "unit_price",
-              "단가 (선택 · 원)",
-              {
-                type: "number",
-                inputMode: "decimal",
-                min: "0",
-                max: "100000000",
-                step: "any",
-                placeholder: "미정이면 비워두세요",
-              }
-            )}
+            {field("unit_price", "단가 (선택 · 원)", {
+              type: "number",
+              inputMode: "decimal",
+              min: "0",
+              max: "100000000",
+              step: "any",
+              placeholder: "미정이면 비워두세요",
+            })}
 
             <label
               style={{
@@ -456,12 +420,8 @@ export default function SiteMaterials({ site }) {
               }}
             >
               자재 메모
-
               <textarea
-                style={{
-                  ...input,
-                  resize: "vertical",
-                }}
+                style={{ ...input, resize: "vertical" }}
                 rows={3}
                 maxLength={1000}
                 placeholder="시공 부위 또는 자재 전달사항"
@@ -475,12 +435,7 @@ export default function SiteMaterials({ site }) {
               />
             </label>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-              }}
-            >
+            <div style={{ display: "flex", gap: 10 }}>
               <button
                 style={{
                   ...button,
@@ -505,9 +460,7 @@ export default function SiteMaterials({ site }) {
       )}
 
       {loading ? (
-        <p role="status">
-          자재를 불러오는 중입니다…
-        </p>
+        <p role="status">자재를 불러오는 중입니다…</p>
       ) : materials.length === 0 ? (
         <div
           style={{
@@ -519,35 +472,18 @@ export default function SiteMaterials({ site }) {
           등록된 예정 시공 자재가 없습니다.
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-          }}
-        >
+        <div style={{ display: "grid", gap: 12 }}>
           {materials.map((material) => (
             <article
               key={material.id}
-              style={{
-                ...box,
-                overflowWrap: "anywhere",
-              }}
+              style={{ ...box, overflowWrap: "anywhere" }}
             >
               <strong style={{ fontSize: 18 }}>
-                {material.product_code ||
-                  material.product_name}
+                {material.product_code || material.product_name}
               </strong>
 
-              <p
-                style={{
-                  margin: "8px 0",
-                  color: "#64748b",
-                }}
-              >
-                {[
-                  material.brand,
-                  material.product_name,
-                ]
+              <p style={{ margin: "8px 0", color: "#64748b" }}>
+                {[material.brand, material.product_name]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
@@ -564,31 +500,20 @@ export default function SiteMaterials({ site }) {
 
               {material.unit_price != null && (
                 <p>
-                  단가{" "}
-                  {formatWon(material.unit_price)}
+                  단가 {formatWon(material.unit_price)}
                   {" · "}
-                  합계{" "}
-                  {formatWon(material.total_price)}
+                  합계 {formatWon(material.total_price)}
                 </p>
               )}
 
               {material.memo && (
-                <p
-                  style={{
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
+                <p style={{ whiteSpace: "pre-wrap" }}>
                   {material.memo}
                 </p>
               )}
 
               {canWrite && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                  }}
-                >
+                <div style={{ display: "flex", gap: 10 }}>
                   <button
                     type="button"
                     style={button}
@@ -600,10 +525,7 @@ export default function SiteMaterials({ site }) {
 
                   <button
                     type="button"
-                    style={{
-                      ...button,
-                      color: "#b91c1c",
-                    }}
+                    style={{ ...button, color: "#b91c1c" }}
                     disabled={busy || loading}
                     onClick={() => remove(material)}
                   >
@@ -617,4 +539,4 @@ export default function SiteMaterials({ site }) {
       )}
     </section>
   );
-            }
+                     }
