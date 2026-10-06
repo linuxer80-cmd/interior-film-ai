@@ -19,6 +19,7 @@ import {
 } from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import WorkerWorkReport from "./WorkerWorkReport";
+import SiteExpenses from "../../../components/SiteExpenses";
 import SiteDirections from "../../SiteDirections";
 import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
 
@@ -37,6 +38,11 @@ const menus = [
     id: "photos",
     label: "요청사진",
     kind: "camera",
+  },
+  {
+    id: "expenses",
+    label: "경비",
+    kind: "money",
   },
   {
     id: "report",
@@ -458,7 +464,7 @@ export default function WorkerSiteDetailPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(4, minmax(0, 1fr))",
+                "repeat(5, minmax(0, 1fr))",
               gap: 5,
               marginTop: 12,
             }}
@@ -779,6 +785,19 @@ export default function WorkerSiteDetailPage() {
           </section>
         )}
 
+        {visited.expenses && (
+          <section
+            id="site-panel-expenses"
+            aria-label="현장 경비"
+            hidden={tab !== "expenses"}
+          >
+            <SiteExpenses
+              key={siteId}
+              siteId={siteId}
+            />
+          </section>
+        )}
+
         {visited.report && (
           <section
             id="site-panel-report"
@@ -853,6 +872,7 @@ function ReportPanel({
         <h2 style={{ fontSize: 16 }}>
           취소된 현장
         </h2>
+
         <p style={muted}>
           취소된 현장에는 완료보고를
           등록할 수 없습니다.
@@ -867,6 +887,7 @@ function ReportPanel({
         <h2 style={{ fontSize: 16 }}>
           완료보고
         </h2>
+
         <p style={muted}>
           이 현장의 책임 팀장이
           완료보고를 작성합니다.
@@ -1063,4 +1084,4 @@ function ReportPanel({
       />
     </>
   );
-                        }
+}
