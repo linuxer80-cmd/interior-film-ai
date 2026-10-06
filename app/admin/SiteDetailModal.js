@@ -8,6 +8,7 @@ import SiteCompletedReport from "./SiteCompletedReport";
 import SiteWorkReportReview from "./SiteWorkReportReview";
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
+import SiteOperations from "../components/SiteOperations";
 import SiteMaterials from "./site-detail/SiteMaterials";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
@@ -100,10 +101,7 @@ export default function SiteDetailModal({
     reportMessage,
     submitWorkReport,
     clearReportMessage,
-  } = useSiteWorkReport({
-    companyId,
-    reloadSites,
-  });
+  } = useSiteWorkReport({ companyId, reloadSites });
 
   useEffect(() => {
     setReportOpen(false);
@@ -111,10 +109,7 @@ export default function SiteDetailModal({
     setReviewStatus(null);
     clearReportMessage?.();
 
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
+    const params = new URLSearchParams(window.location.search);
     const nextMenu =
       params.get("site") === String(site?.id)
         ? SECTION_MENU[params.get("section")] || "info"
@@ -129,9 +124,7 @@ export default function SiteDetailModal({
   }, [site?.id, clearReportMessage]);
 
   useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
+    const params = new URLSearchParams(window.location.search);
 
     if (params.get("site") !== String(site?.id)) return;
 
@@ -143,9 +136,11 @@ export default function SiteDetailModal({
     const frame = requestAnimationFrame(() => {
       const target =
         taskSections.current[section] ||
-        (section === "report-write" && hasWorkerReport
-          ? taskSections.current.report
-          : null);
+        (
+          section === "report-write" && hasWorkerReport
+            ? taskSections.current.report
+            : null
+        );
 
       target?.scrollIntoView({ block: "start" });
       target?.focus({ preventScroll: true });
@@ -168,10 +163,7 @@ export default function SiteDetailModal({
   }, [hasSite]);
 
   function chooseMenu(id) {
-    setVisited((previous) => ({
-      ...previous,
-      [id]: true,
-    }));
+    setVisited((previous) => ({ ...previous, [id]: true }));
     setMenu(id);
 
     if (scrollBody.current) {
@@ -180,9 +172,7 @@ export default function SiteDetailModal({
   }
 
   function closeModal() {
-    if (!reportSaving) {
-      onClose?.();
-    }
+    if (!reportSaving) onClose?.();
   }
 
   async function handleAssignmentSaved() {
@@ -198,19 +188,16 @@ export default function SiteDetailModal({
 
   function closeWorkReport() {
     if (reportSaving) return;
-
     setReportOpen(false);
     clearReportMessage?.();
   }
 
   async function handleWorkReportSave(payload) {
     const success = await submitWorkReport(payload);
-
     if (!success) return false;
 
     setReportOpen(false);
     onClose?.();
-
     return true;
   }
 
@@ -278,12 +265,7 @@ export default function SiteDetailModal({
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <small
-                style={{
-                  color: "#7b8798",
-                  fontSize: 12,
-                }}
-              >
+              <small style={{ color: "#7b8798", fontSize: 12 }}>
                 필름장이 · 현장 상세
               </small>
 
@@ -296,9 +278,7 @@ export default function SiteDetailModal({
                   overflowWrap: "anywhere",
                 }}
               >
-                {site.site_name ||
-                  site.customer_name ||
-                  "현장명 미정"}
+                {site.site_name || site.customer_name || "현장명 미정"}
               </h2>
 
               <span
@@ -336,8 +316,7 @@ export default function SiteDetailModal({
             aria-label="현장 상세 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 5,
               marginTop: 16,
             }}
@@ -358,13 +337,8 @@ export default function SiteDetailModal({
                       ? "1px solid #3478ed"
                       : "1px solid #e4eaf2",
                   background:
-                    menu === item.id
-                      ? "#eaf3ff"
-                      : "#ffffff",
-                  color:
-                    menu === item.id
-                      ? "#3268bd"
-                      : "#50617a",
+                    menu === item.id ? "#eaf3ff" : "#ffffff",
+                  color: menu === item.id ? "#3268bd" : "#50617a",
                   fontSize: 11,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -377,10 +351,7 @@ export default function SiteDetailModal({
                     marginBottom: 5,
                   }}
                 >
-                  <ToolIllustration
-                    kind={item.kind}
-                    size={34}
-                  />
+                  <ToolIllustration kind={item.kind} size={34} />
                 </span>
 
                 {item.label}
@@ -422,8 +393,7 @@ export default function SiteDetailModal({
             overflowY: "auto",
             overscrollBehavior: "contain",
             minHeight: 0,
-            padding:
-              "4px 14px calc(18px + env(safe-area-inset-bottom))",
+            padding: "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
           <section
@@ -431,6 +401,8 @@ export default function SiteDetailModal({
             aria-label="현장정보"
             hidden={menu !== "info"}
           >
+            <SiteOperations siteId={site.id} />
+
             <SiteBasicInfo
               key={site.id}
               site={site}
@@ -529,10 +501,8 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteMaterials
-                key={site.id}
-                site={site}
-              />
+              <SiteOperations siteId={site.id} mode="materials" />
+              <SiteMaterials key={site.id} site={site} />
             </section>
           )}
 
@@ -595,8 +565,7 @@ export default function SiteDetailModal({
               hasWorkerReport === false && (
                 <section
                   ref={(element) => {
-                    taskSections.current["report-write"] =
-                      element;
+                    taskSections.current["report-write"] = element;
                   }}
                   tabIndex={-1}
                   aria-label="완료보고 작성"
@@ -690,4 +659,4 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-                      }
+                  }
