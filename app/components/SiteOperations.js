@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 const card = {
@@ -46,18 +41,14 @@ export default function SiteOperations({
   mode = "notices",
   onTrackingChange,
   onPendingChange,
+  onCurrentData,
   disabled = false,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState({});
-
-  useEffect(() => {
-    onPendingChange?.(
-      busy || Object.keys(values).length > 0
-    );
-  }, [busy, values, onPendingChange]);
+  const [review, setReview] = useState(null);
 
   const lock = useRef(false);
   const serial = useRef(0);
@@ -66,10 +57,13 @@ export default function SiteOperations({
   const callback = useRef(onTrackingChange);
   callback.current = onTrackingChange;
 
+  useEffect(() => {
+    onPendingChange?.(busy || Object.keys(values).length > 0);
+  }, [busy, values, onPendingChange]);
+
   const call = useCallback(
     async (body) => {
-      const { data: auth, error } =
-        await supabase.auth.getSession();
+      const { data: auth, error } = await supabase.auth.getSession();
 
       if (error || !auth.session) {
         throw new Error("다시 로그인해주세요.");
@@ -95,9 +89,7 @@ export default function SiteOperations({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          result.error || "요청을 처리하지 못했습니다."
-        );
+        throw new Error(result.error || "요청을 처리하지 못했습니다.");
       }
 
       return result;
@@ -117,7 +109,6 @@ export default function SiteOperations({
 
       setData(result);
       setError("");
-
       callback.current?.(
         result.materials.some((material) => material.issued > 0)
       );
@@ -130,6 +121,7 @@ export default function SiteOperations({
 
   useEffect(() => {
     setData(null);
+    setReview(null);
     setValues({});
     requests.current = {};
     returnVersions.current = {};
@@ -143,14 +135,24 @@ export default function SiteOperations({
     }, 30000);
 
     const focus = () => refresh();
+
+    const materialsChanged = (event) => {
+      if (event.detail?.siteId === siteId) refresh();
+    };
+
     window.addEventListener("focus", focus);
+    window.addEventListener("site-materials-changed", materialsChanged);
 
     return () => {
       serial.current++;
       clearInterval(timer);
       window.removeEventListener("focus", focus);
+      window.removeEventListener(
+        "site-materials-changed",
+        materialsChanged
+      );
     };
-  }, [refresh]);
+  }, [refresh, siteId]);
 
   async function act(body, clearKey) {
     if (lock.current || disabled) return;
@@ -163,8 +165,15 @@ export default function SiteOperations({
     try {
       const result = await call(body);
 
-      setData(result);
+      if (body.action === "latest") {
+        await onCurrentData?.(result.snapshot);
+        setReview({ eventId: body.eventId, ...result });
+        return;
+      }
 
+      if (body.action === "confirm") setReview(null);
+
+      setData(result);
       callback.current?.(
         result.materials.some((material) => material.issued > 0)
       );
@@ -180,6 +189,7 @@ export default function SiteOperations({
         delete returnVersions.current[clearKey];
       }
     } catch (error) {
+      if (body.action === "confirm") setReview(null);
       setError(error.message);
     } finally {
       lock.current = false;
@@ -232,8 +242,7 @@ export default function SiteOperations({
 
           {data.locked && (
             <p>
-              보고서 제출·승인 또는 현장 취소로
-              수량이 잠겨 있습니다.
+              보고서 제출·승인 또는 현장 취소로 수량이 잠겨 있습니다.
             </p>
           )}
 
@@ -251,12 +260,12 @@ export default function SiteOperations({
                 style={{ ...card, background: "#f8fafc" }}
               >
                 <strong>
-                  {material.brand}{" "}
-                  {material.code || material.name}
+                  {material.brand} {material.code || material.name}
                 </strong>
 
                 <p>
-                  반출 {material.issued}{material.unit}
+                  반출 {material.issued}
+                  {material.unit}
                   {" · "}
                   반입{" "}
                   {material.returned == null
@@ -289,7 +298,6 @@ export default function SiteOperations({
                   <div style={{ marginTop: 12 }}>
                     <label>
                       추가 반출량 ({material.unit})
-
                       <input
                         aria-label={`${
                           material.code || material.name
@@ -340,7 +348,6 @@ export default function SiteOperations({
                     <div style={{ marginTop: 12 }}>
                       <label>
                         최종 반입량 ({material.unit})
-
                         <input
                           aria-label={`${
                             material.code || material.name
@@ -360,7 +367,8 @@ export default function SiteOperations({
                           onChange={(event) => {
                             returnVersions.current[returnKey] ||= {
                               issued: material.issued,
-                              returnUpdatedAt: material.returnUpdatedAt,
+                              returnUpdatedAt:
+                                material.returnUpdatedAt,
                             };
 
                             setValues({
@@ -384,13 +392,13 @@ export default function SiteOperations({
                                 values[returnKey] ??
                                 material.returned ??
                                 "",
-                              ...(
-                                returnVersions.current[returnKey] || {
-                                  issued: material.issued,
-                                  returnUpdatedAt:
-                                    material.returnUpdatedAt,
-                                }
-                              ),
+                              ...(returnVersions.current[
+                                returnKey
+                              ] || {
+                                issued: material.issued,
+                                returnUpdatedAt:
+                                  material.returnUpdatedAt,
+                              }),
                             },
                             returnKey
                           )
@@ -402,16 +410,43 @@ export default function SiteOperations({
                   )}
 
                 <details style={{ marginTop: 12 }}>
+                  <summary>반입량 수정 이력</summary>
+                  <small>
+                    최근 이력 100건 중 이 자재의 기록입니다.
+                  </small>
+
+                  {(data.returnHistory || [])
+                    .filter((row) => row.materialId === material.id)
+                    .map((row) => (
+                      <p key={row.id}>
+                        {date(row.at)} · {row.name}
+                        <br />
+                        {row.before == null
+                          ? "미입력"
+                          : `${row.before}${material.unit}`}
+                        {" → "}
+                        {row.after == null
+                          ? "재확인 필요"
+                          : `${row.after}${material.unit}`}
+                        <br />
+                        <small>{row.reason}</small>
+                      </p>
+                    ))}
+                </details>
+
+                <details style={{ marginTop: 12 }}>
                   <summary>반출 이력</summary>
 
                   {data.issues
-                    .filter((issue) => issue.materialId === material.id)
+                    .filter(
+                      (issue) => issue.materialId === material.id
+                    )
                     .map((issue) => (
                       <p key={issue.id}>
                         {date(issue.at)}
                         {" · "}
-                        {issue.quantity}{material.unit}
-                        {" "}
+                        {issue.quantity}
+                        {material.unit}{" "}
                         {issue.voided ? "(취소됨)" : ""}
 
                         {data.owner &&
@@ -498,19 +533,107 @@ export default function SiteOperations({
                 ) ? (
                 <b>확인 완료</b>
               ) : (
-                <button
-                  type="button"
-                  style={btn}
-                  disabled={busy || disabled}
-                  onClick={() =>
-                    act({
-                      action: "confirm",
-                      eventId: event.id,
-                    })
-                  }
-                >
-                  확인했습니다
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    style={btn}
+                    disabled={busy || disabled}
+                    onClick={() =>
+                      act({
+                        action: "latest",
+                        eventId: event.id,
+                      })
+                    }
+                  >
+                    최신 내용 보기
+                  </button>
+
+                  {review?.eventId === event.id && (
+                    <div
+                      style={{ ...card, background: "#fff" }}
+                    >
+                      <strong>현재 저장된 현장정보</strong>
+
+                      <p>{review.snapshot.site.site_name}</p>
+
+                      <p>
+                        일정:{" "}
+                        {(
+                          review.snapshot.site.work_dates || []
+                        ).join(", ") ||
+                          review.snapshot.site.schedule_date ||
+                          (review.snapshot.site.schedule_start
+                            ? date(
+                                review.snapshot.site
+                                  .schedule_start
+                              )
+                            : "미정")}
+                        {review.snapshot.site.schedule_end
+                          ? ` ~ ${date(
+                              review.snapshot.site.schedule_end
+                            )}`
+                          : ""}
+                      </p>
+
+                      <p style={{ whiteSpace: "pre-wrap" }}>
+                        작업 내용:{" "}
+                        {review.snapshot.site.work_description ||
+                          review.snapshot.site.work_type ||
+                          "없음"}
+                      </p>
+
+                      <p style={{ whiteSpace: "pre-wrap" }}>
+                        현장 메모:{" "}
+                        {review.snapshot.site.memo || "없음"}
+                      </p>
+
+                      {review.snapshot.assignments.map(
+                        (row, index) => (
+                          <p key={index}>
+                            {row.date} · {row.name} ·{" "}
+                            {row.role === "leader"
+                              ? "팀장"
+                              : "팀원"}
+                          </p>
+                        )
+                      )}
+
+                      <strong>현재 예정 자재</strong>
+
+                      {!review.snapshot.materials.length && (
+                        <p>등록된 자재 없음</p>
+                      )}
+
+                      {review.snapshot.materials.map((row) => (
+                        <p
+                          key={row.id}
+                          style={{ whiteSpace: "pre-wrap" }}
+                        >
+                          {row.brand} {row.code || row.name} ·{" "}
+                          {row.quantity}
+                          {row.unit}
+                          <br />
+                          {row.memo || ""}
+                        </p>
+                      ))}
+
+                      <button
+                        type="button"
+                        style={btn}
+                        disabled={busy || disabled}
+                        onClick={() =>
+                          act({
+                            action: "confirm",
+                            eventId: event.id,
+                            reviewVersion: review.version,
+                          })
+                        }
+                      >
+                        최신 내용을 확인했습니다
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -518,4 +641,4 @@ export default function SiteOperations({
       )}
     </section>
   );
-                  }
+                              }
