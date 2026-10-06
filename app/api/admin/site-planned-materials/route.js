@@ -24,9 +24,7 @@ async function handle(request) {
 
     if (!token) {
       return json(
-        {
-          error: "관리자 로그인이 필요합니다.",
-        },
+        { error: "관리자 로그인이 필요합니다." },
         401
       );
     }
@@ -36,9 +34,7 @@ async function handle(request) {
       !process.env.SUPABASE_SERVICE_ROLE_KEY
     ) {
       return json(
-        {
-          error: "서버 설정을 확인해주세요.",
-        },
+        { error: "서버 설정을 확인해주세요." },
         503
       );
     }
@@ -61,9 +57,7 @@ async function handle(request) {
 
     if (authError || !user) {
       return json(
-        {
-          error: "로그인이 만료되었습니다.",
-        },
+        { error: "로그인이 만료되었습니다." },
         401
       );
     }
@@ -85,9 +79,7 @@ async function handle(request) {
       profile.is_active === false
     ) {
       return json(
-        {
-          error: "관리자 권한이 필요합니다.",
-        },
+        { error: "관리자 권한이 필요합니다." },
         403
       );
     }
@@ -105,9 +97,7 @@ async function handle(request) {
 
     if (!company || company.is_active === false) {
       return json(
-        {
-          error: "업체를 확인할 수 없습니다.",
-        },
+        { error: "업체를 확인할 수 없습니다." },
         403
       );
     }
@@ -118,16 +108,13 @@ async function handle(request) {
       body =
         request.method === "GET"
           ? {
-              siteId: new URL(
-                request.url
-              ).searchParams.get("siteId"),
+              siteId: new URL(request.url)
+                .searchParams.get("siteId"),
             }
           : await request.json();
     } catch {
       return json(
-        {
-          error: "입력 형식을 확인해주세요.",
-        },
+        { error: "입력 형식을 확인해주세요." },
         400
       );
     }
@@ -137,9 +124,7 @@ async function handle(request) {
       (request.method !== "GET" && !uuid(body?.id))
     ) {
       return json(
-        {
-          error: "현장과 자재를 확인해주세요.",
-        },
+        { error: "현장과 자재를 확인해주세요." },
         400
       );
     }
@@ -158,9 +143,7 @@ async function handle(request) {
 
     if (!site) {
       return json(
-        {
-          error: "현장을 찾을 수 없습니다.",
-        },
+        { error: "현장을 찾을 수 없습니다." },
         404
       );
     }
@@ -270,14 +253,13 @@ async function handle(request) {
         updated_at: new Date().toISOString(),
       };
 
-      // 제품이 바뀌면 이전 제품의 이미지 연결을 제거합니다.
       let previous = null;
 
       if (request.method === "PATCH") {
         const result = await db
           .from("site_materials")
           .select(
-            "brand,product_code,film_product_id"
+            "brand,product_code,product_name,unit,film_product_id"
           )
           .eq("id", body.id)
           .eq("site_id", site.id)
@@ -289,24 +271,42 @@ async function handle(request) {
 
         if (!result.data) {
           return json(
-            {
-              error: "자재를 찾을 수 없습니다.",
-            },
+            { error: "자재를 찾을 수 없습니다." },
             404
           );
         }
 
         previous = result.data;
+
+        // 단가·수량만 수정할 때 기존 제품정보를 유지합니다.
+        // 특히 NULL인 제품명을 빈 문자열로 바꾸지 않습니다.
+        // 반출된 자재의 제품 변경으로 잘못 판단되는 것을
+        // 방지합니다.
+        for (const key of [
+          "brand",
+          "product_code",
+          "product_name",
+          "unit",
+        ]) {
+          if (
+            String(previous[key] ?? "").trim() ===
+            values[key]
+          ) {
+            values[key] = previous[key];
+          }
+        }
       }
 
       values.film_product_id = null;
 
       if (
         previous &&
-        (previous.brand || "") === values.brand &&
+        (previous.brand || "") ===
+          (values.brand || "") &&
         (previous.product_code || "") ===
-          values.product_code
+          (values.product_code || "")
       ) {
+        // 같은 제품이면 기존 이미지 연결도 유지합니다.
         values.film_product_id =
           previous.film_product_id;
       } else if (
@@ -387,6 +387,18 @@ async function handle(request) {
       "관리자 예정 자재 저장 실패:",
       error
     );
+
+    // 반출 제품 변경이나 제출된 보고서의 단가 변경처럼
+    // DB에서 제한한 경우 실제 이유를 화면에 표시합니다.
+    if (
+      error?.code === "P0001" ||
+      error?.code === "23514"
+    ) {
+      return json(
+        { error: error.message },
+        409
+      );
+    }
 
     return json(
       {
