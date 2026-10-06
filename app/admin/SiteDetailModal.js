@@ -12,6 +12,7 @@ import SiteMaterials from "./site-detail/SiteMaterials";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
+import SiteExpenses from "../components/SiteExpenses";
 
 const STATUS_INFO = {
   consulting: {
@@ -46,10 +47,12 @@ const MENUS = [
   { id: "schedule", label: "일정배정", kind: "people" },
   { id: "materials", label: "자재", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
+  { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
 ];
 
 const SECTION_MENU = {
+  expenses: "expenses",
   schedule: "schedule",
   assignment: "schedule",
   report: "report",
@@ -108,7 +111,9 @@ export default function SiteDetailModal({
     setReviewStatus(null);
     clearReportMessage?.();
 
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(
+      window.location.search
+    );
 
     const nextMenu =
       params.get("site") === String(site?.id)
@@ -124,7 +129,9 @@ export default function SiteDetailModal({
   }, [site?.id, clearReportMessage]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(
+      window.location.search
+    );
 
     if (params.get("site") !== String(site?.id)) return;
 
@@ -161,7 +168,10 @@ export default function SiteDetailModal({
   }, [hasSite]);
 
   function chooseMenu(id) {
-    setVisited((previous) => ({ ...previous, [id]: true }));
+    setVisited((previous) => ({
+      ...previous,
+      [id]: true,
+    }));
     setMenu(id);
 
     if (scrollBody.current) {
@@ -206,7 +216,8 @@ export default function SiteDetailModal({
 
   if (!site) return null;
 
-  const status = STATUS_INFO[site.status] || STATUS_INFO.consulting;
+  const status =
+    STATUS_INFO[site.status] || STATUS_INFO.consulting;
 
   const reviewLabel =
     reviewStatus === "pending"
@@ -267,7 +278,12 @@ export default function SiteDetailModal({
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <small style={{ color: "#7b8798", fontSize: 12 }}>
+              <small
+                style={{
+                  color: "#7b8798",
+                  fontSize: 12,
+                }}
+              >
                 필름장이 · 현장 상세
               </small>
 
@@ -280,7 +296,9 @@ export default function SiteDetailModal({
                   overflowWrap: "anywhere",
                 }}
               >
-                {site.site_name || site.customer_name || "현장명 미정"}
+                {site.site_name ||
+                  site.customer_name ||
+                  "현장명 미정"}
               </h2>
 
               <span
@@ -318,7 +336,8 @@ export default function SiteDetailModal({
             aria-label="현장 상세 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns:
+                "repeat(3, minmax(0, 1fr))",
               gap: 5,
               marginTop: 16,
             }}
@@ -339,9 +358,13 @@ export default function SiteDetailModal({
                       ? "1px solid #3478ed"
                       : "1px solid #e4eaf2",
                   background:
-                    menu === item.id ? "#eaf3ff" : "#ffffff",
+                    menu === item.id
+                      ? "#eaf3ff"
+                      : "#ffffff",
                   color:
-                    menu === item.id ? "#3268bd" : "#50617a",
+                    menu === item.id
+                      ? "#3268bd"
+                      : "#50617a",
                   fontSize: 11,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -354,7 +377,10 @@ export default function SiteDetailModal({
                     marginBottom: 5,
                   }}
                 >
-                  <ToolIllustration kind={item.kind} size={34} />
+                  <ToolIllustration
+                    kind={item.kind}
+                    size={34}
+                  />
                 </span>
 
                 {item.label}
@@ -503,7 +529,10 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteMaterials key={site.id} site={site} />
+              <SiteMaterials
+                key={site.id}
+                site={site}
+              />
             </section>
           )}
 
@@ -518,6 +547,20 @@ export default function SiteDetailModal({
                 site={site}
                 addSiteRequestPhotos={addSiteRequestPhotos}
                 deleteSiteRequestPhoto={deleteSiteRequestPhoto}
+              />
+            </section>
+          )}
+
+          {visited.expenses && (
+            <section
+              id="admin-site-panel-expenses"
+              aria-label="현장 경비"
+              hidden={menu !== "expenses"}
+            >
+              <SiteExpenses
+                key={site.id}
+                siteId={site.id}
+                onSaved={reloadSites}
               />
             </section>
           )}
@@ -552,7 +595,8 @@ export default function SiteDetailModal({
               hasWorkerReport === false && (
                 <section
                   ref={(element) => {
-                    taskSections.current["report-write"] = element;
+                    taskSections.current["report-write"] =
+                      element;
                   }}
                   tabIndex={-1}
                   aria-label="완료보고 작성"
@@ -646,4 +690,4 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-}
+                      }
