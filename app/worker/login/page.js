@@ -12,7 +12,6 @@ import ToolIllustration from "../../components/ui/ToolIllustration";
 
 export default function WorkerLoginPage() {
   const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,6 @@ export default function WorkerLoginPage() {
 
   async function handleLogin(event) {
     event.preventDefault();
-
     if (loading) return;
 
     setMessage("");
@@ -47,10 +45,11 @@ export default function WorkerLoginPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
       if (error) throw error;
 
@@ -62,7 +61,6 @@ export default function WorkerLoginPage() {
 
       if (!worker?.worker_id) {
         await supabase.auth.signOut();
-
         throw new Error(
           "등록된 시공자 계정과 연결되어 있지 않습니다. 회사 관리자에게 계정 연결을 요청해주세요."
         );
@@ -70,17 +68,21 @@ export default function WorkerLoginPage() {
 
       if (worker.worker_is_active === false) {
         await supabase.auth.signOut();
-
         throw new Error(
           "현재 사용이 중지된 시공자 계정입니다. 회사 관리자에게 문의해주세요."
         );
       }
 
       setMessageType("success");
-      setMessage(`${worker.worker_name || "시공자"}님, 로그인되었습니다.`);
+      setMessage(
+        `${worker.worker_name || "시공자"}님, 로그인되었습니다.`
+      );
 
       setTimeout(() => {
-        const next = new URLSearchParams(window.location.search).get("next");
+        const next = new URLSearchParams(
+          window.location.search
+        ).get("next");
+
         router.replace(workerDestination(next));
         router.refresh();
       }, 500);
@@ -206,12 +208,11 @@ export default function WorkerLoginPage() {
           </h2>
 
           <FieldLabel htmlFor="worker-email">이메일</FieldLabel>
-
           <input
             id="worker-email"
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={event => setEmail(event.target.value)}
             placeholder="example@email.com"
             autoComplete="email"
             autoCapitalize="none"
@@ -219,13 +220,14 @@ export default function WorkerLoginPage() {
             style={inputStyle}
           />
 
-          <FieldLabel htmlFor="worker-password">비밀번호</FieldLabel>
-
+          <FieldLabel htmlFor="worker-password">
+            비밀번호
+          </FieldLabel>
           <input
             id="worker-password"
             type="password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={event => setPassword(event.target.value)}
             placeholder="비밀번호를 입력해주세요"
             autoComplete="current-password"
             style={inputStyle}
@@ -274,6 +276,19 @@ export default function WorkerLoginPage() {
           >
             {loading ? "로그인 중..." : "내 현장으로 가기 →"}
           </button>
+
+          <Link
+            href="/worker/forgot-password"
+            style={{
+              display: "block",
+              padding: "16px 0",
+              textAlign: "center",
+              color: "#3268bd",
+              fontWeight: 700,
+            }}
+          >
+            비밀번호를 잊으셨나요? · 재설정
+          </Link>
 
           <p
             style={{
