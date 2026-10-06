@@ -1,12 +1,7 @@
 "use client";
 
 import ToolIllustration from "../../../components/ui/ToolIllustration";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useParams,
   useRouter,
@@ -25,31 +20,11 @@ import SiteDirections from "../../SiteDirections";
 import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
 
 const menus = [
-  {
-    id: "info",
-    label: "현장정보",
-    kind: "home",
-  },
-  {
-    id: "film",
-    label: "필름·재단",
-    kind: "film",
-  },
-  {
-    id: "photos",
-    label: "요청사진",
-    kind: "camera",
-  },
-  {
-    id: "expenses",
-    label: "경비",
-    kind: "money",
-  },
-  {
-    id: "report",
-    label: "완료보고",
-    kind: "report",
-  },
+  { id: "info", label: "현장정보", kind: "home" },
+  { id: "film", label: "필름·재단", kind: "film" },
+  { id: "photos", label: "요청사진", kind: "camera" },
+  { id: "expenses", label: "경비", kind: "money" },
+  { id: "report", label: "완료보고", kind: "report" },
 ];
 
 const card = {
@@ -110,9 +85,7 @@ function dateText(value, withTime = false) {
       : value
   );
 
-  if (Number.isNaN(date.getTime())) {
-    return "미정";
-  }
+  if (Number.isNaN(date.getTime())) return "미정";
 
   return new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul",
@@ -136,8 +109,7 @@ export default function WorkerSiteDetailPage() {
   const searchParams = useSearchParams();
 
   const requestedSection = menus.some(
-    (menu) =>
-      menu.id === searchParams.get("section")
+    (menu) => menu.id === searchParams.get("section")
   )
     ? searchParams.get("section")
     : "info";
@@ -146,22 +118,15 @@ export default function WorkerSiteDetailPage() {
   const [site, setSite] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState("");
-  const [materialsMessage, setMaterialsMessage] =
-    useState("");
-
+  const [materialsMessage, setMaterialsMessage] = useState("");
   const [tab, setTab] = useState(requestedSection);
-
   const [visited, setVisited] = useState(() => ({
     info: true,
     [requestedSection]: true,
   }));
-
-  const [reportLoading, setReportLoading] =
-    useState(true);
-  const [reportStatus, setReportStatus] =
-    useState(null);
-  const [reportError, setReportError] =
-    useState("");
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportStatus, setReportStatus] = useState(null);
+  const [reportError, setReportError] = useState("");
 
   const detailRequest = useRef(0);
   const reportRequest = useRef(0);
@@ -173,17 +138,13 @@ export default function WorkerSiteDetailPage() {
     setReportError("");
 
     try {
-      const { data, error } =
-        await supabase.auth.getSession();
-
+      const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
 
       const token = data?.session?.access_token;
 
       if (!token) {
-        throw new Error(
-          "시공자로 다시 로그인해주세요."
-        );
+        throw new Error("시공자로 다시 로그인해주세요.");
       }
 
       const response = await fetch(
@@ -191,9 +152,7 @@ export default function WorkerSiteDetailPage() {
           siteId
         )}`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         }
       );
@@ -202,16 +161,13 @@ export default function WorkerSiteDetailPage() {
 
       if (!response.ok || !result?.success) {
         throw new Error(
-          result?.error ||
-            "완료보고 상태를 확인하지 못했습니다."
+          result?.error || "완료보고 상태를 확인하지 못했습니다."
         );
       }
 
       if (requestId === reportRequest.current) {
         setReportStatus({
-          hasReport: Boolean(
-            result.hasReport && result.report
-          ),
+          hasReport: Boolean(result.hasReport && result.report),
           report: result.report || null,
           canSubmit: Boolean(result.canSubmit),
         });
@@ -220,8 +176,7 @@ export default function WorkerSiteDetailPage() {
       if (requestId === reportRequest.current) {
         setReportStatus(null);
         setReportError(
-          error.message ||
-            "완료보고 상태를 확인하지 못했습니다."
+          error.message || "완료보고 상태를 확인하지 못했습니다."
         );
       }
     } finally {
@@ -239,31 +194,22 @@ export default function WorkerSiteDetailPage() {
     setMaterialsMessage("");
 
     try {
-      const result = await loadMyWorkerSites({
-        siteId,
-      });
+      const result = await loadMyWorkerSites({ siteId });
 
-      if (requestId !== detailRequest.current) {
-        return;
-      }
+      if (requestId !== detailRequest.current) return;
 
       setSite(result.site);
       setMaterials(result.materials || []);
-      setMaterialsMessage(
-        result.materialsError || ""
-      );
+      setMaterialsMessage(result.materialsError || "");
 
       void loadReportStatus();
     } catch (error) {
-      if (requestId !== detailRequest.current) {
-        return;
-      }
+      if (requestId !== detailRequest.current) return;
 
       setSite(null);
       setMaterials([]);
       setMessage(
-        error.message ||
-          "현장 정보를 불러오지 못했습니다."
+        error.message || "현장 정보를 불러오지 못했습니다."
       );
 
       if (error.status === 401) {
@@ -282,31 +228,21 @@ export default function WorkerSiteDetailPage() {
       info: true,
       [requestedSection]: true,
     });
-
     setSite(null);
     setMaterials([]);
     setReportStatus(null);
     setReportError("");
 
-    if (siteId) {
-      void loadSiteDetail();
-    }
+    if (siteId) void loadSiteDetail();
 
     return () => {
       detailRequest.current += 1;
       reportRequest.current += 1;
     };
-  }, [
-    siteId,
-    loadSiteDetail,
-    requestedSection,
-  ]);
+  }, [siteId, loadSiteDetail, requestedSection]);
 
   function chooseTab(id) {
-    setVisited((previous) => ({
-      ...previous,
-      [id]: true,
-    }));
+    setVisited((previous) => ({ ...previous, [id]: true }));
     setTab(id);
   }
 
@@ -327,10 +263,7 @@ export default function WorkerSiteDetailPage() {
           padding: 20,
         }}
       >
-        <a
-          href="/worker"
-          style={{ color: "#2563eb" }}
-        >
+        <a href="/worker" style={{ color: "#2563eb" }}>
           ← 내 현장으로
         </a>
 
@@ -338,8 +271,7 @@ export default function WorkerSiteDetailPage() {
           <h2>현장 정보를 볼 수 없습니다.</h2>
 
           <p role="alert" style={muted}>
-            {message ||
-              "현재 배정된 현장이 아닙니다."}
+            {message || "현재 배정된 현장이 아닙니다."}
           </p>
 
           <button
@@ -354,10 +286,7 @@ export default function WorkerSiteDetailPage() {
     );
   }
 
-  const status =
-    statusMap[site.status] ||
-    statusMap.scheduled;
-
+  const status = statusMap[site.status] || statusMap.scheduled;
   const report = reportStatus?.hasReport
     ? reportStatus.report
     : null;
@@ -407,30 +336,16 @@ export default function WorkerSiteDetailPage() {
             <button
               type="button"
               aria-label="내 현장으로 돌아가기"
-              onClick={() =>
-                router.push("/worker")
-              }
-              style={{
-                ...action,
-                fontSize: 22,
-              }}
+              onClick={() => router.push("/worker")}
+              style={{ ...action, fontSize: 22 }}
             >
               ←
             </button>
 
-            <div
-              style={{
-                flex: 1,
-                minWidth: 0,
-              }}
-            >
-              <small
-                style={{ color: "#64748b" }}
-              >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <small style={{ color: "#64748b" }}>
                 현장 상세 ·{" "}
-                {site.my_role === "leader"
-                  ? "책임 팀장"
-                  : "팀원"}
+                {site.my_role === "leader" ? "책임 팀장" : "팀원"}
               </small>
 
               <h1
@@ -440,9 +355,7 @@ export default function WorkerSiteDetailPage() {
                   overflowWrap: "anywhere",
                 }}
               >
-                {site.site_name ||
-                  site.customer_name ||
-                  "현장"}
+                {site.site_name || site.customer_name || "현장"}
               </h1>
             </div>
 
@@ -465,8 +378,7 @@ export default function WorkerSiteDetailPage() {
             aria-label="현장 상세 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
               gap: 5,
               marginTop: 12,
             }}
@@ -477,9 +389,7 @@ export default function WorkerSiteDetailPage() {
                 type="button"
                 aria-pressed={tab === menu.id}
                 aria-controls={`site-panel-${menu.id}`}
-                onClick={() =>
-                  chooseTab(menu.id)
-                }
+                onClick={() => chooseTab(menu.id)}
                 style={{
                   border:
                     tab === menu.id
@@ -488,14 +398,8 @@ export default function WorkerSiteDetailPage() {
                   borderRadius: 15,
                   minHeight: 76,
                   padding: "9px 2px",
-                  background:
-                    tab === menu.id
-                      ? "#edf5ff"
-                      : "#fff",
-                  color:
-                    tab === menu.id
-                      ? "#1d4ed8"
-                      : "#475569",
+                  background: tab === menu.id ? "#edf5ff" : "#fff",
+                  color: tab === menu.id ? "#1d4ed8" : "#475569",
                   fontSize: 12,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -507,26 +411,22 @@ export default function WorkerSiteDetailPage() {
                     marginBottom: 4,
                   }}
                 >
-                  <ToolIllustration
-                    kind={menu.kind}
-                    size={36}
-                  />
+                  <ToolIllustration kind={menu.kind} size={36} />
                 </span>
 
                 {menu.label}
 
-                {menu.id === "report" &&
-                  reportLabel && (
-                    <small
-                      style={{
-                        display: "block",
-                        fontSize: 10,
-                        marginTop: 3,
-                      }}
-                    >
-                      {reportLabel}
-                    </small>
-                  )}
+                {menu.id === "report" && reportLabel && (
+                  <small
+                    style={{
+                      display: "block",
+                      fontSize: 10,
+                      marginTop: 3,
+                    }}
+                  >
+                    {reportLabel}
+                  </small>
+                )}
               </button>
             ))}
           </nav>
@@ -545,7 +445,24 @@ export default function WorkerSiteDetailPage() {
           aria-label="현장정보"
           hidden={tab !== "info"}
         >
-          <SiteOperations siteId={siteId} />
+          <SiteOperations
+            siteId={siteId}
+            onCurrentData={async () => {
+              const requestId = ++detailRequest.current;
+              const result = await loadMyWorkerSites({ siteId });
+
+              if (requestId !== detailRequest.current) {
+                throw new Error(
+                  "현장이 변경되었습니다. 다시 확인해주세요."
+                );
+              }
+
+              setSite(result.site);
+              setMaterials(result.materials || []);
+              setMaterialsMessage(result.materialsError || "");
+            }}
+          />
+
           {site.memo?.trim() && (
             <div
               style={{
@@ -554,12 +471,7 @@ export default function WorkerSiteDetailPage() {
                 borderColor: "#fcd34d",
               }}
             >
-              <h2
-                style={{
-                  margin: "0 0 10px",
-                  fontSize: 16,
-                }}
-              >
+              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>
                 📌 현장 메모 · 전달사항
               </h2>
 
@@ -578,43 +490,27 @@ export default function WorkerSiteDetailPage() {
           )}
 
           <div style={card}>
-            <h2
-              style={{
-                margin: "0 0 12px",
-                fontSize: 16,
-              }}
-            >
+            <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
               📅 내 작업 일정
             </h2>
 
             {site.assigned_dates?.length ? (
-              <div
-                style={{
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {site.assigned_dates.map(
-                  (day) => (
-                    <div
-                      key={day.work_date}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        background: "#edf5ff",
-                        fontSize: 13,
-                      }}
-                    >
-                      <strong>
-                        {dateText(day.work_date)}
-                      </strong>{" "}
-                      ·{" "}
-                      {day.role === "leader"
-                        ? "팀장"
-                        : "팀원"}
-                    </div>
-                  )
-                )}
+              <div style={{ display: "grid", gap: 8 }}>
+                {site.assigned_dates.map((day) => (
+                  <div
+                    key={day.work_date}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "#edf5ff",
+                      fontSize: 13,
+                    }}
+                  >
+                    <strong>{dateText(day.work_date)}</strong>
+                    {" · "}
+                    {day.role === "leader" ? "팀장" : "팀원"}
+                  </div>
+                ))}
               </div>
             ) : (
               <p style={muted}>
@@ -622,56 +518,30 @@ export default function WorkerSiteDetailPage() {
                 {site.schedule_end &&
                 dateText(site.schedule_end) !==
                   dateText(site.schedule_start)
-                  ? ` ~ ${dateText(
-                      site.schedule_end
-                    )}`
+                  ? ` ~ ${dateText(site.schedule_end)}`
                   : ""}
               </p>
             )}
 
             {site.schedule_notice && (
-              <p
-                style={{
-                  ...muted,
-                  color: "#b45309",
-                }}
-              >
+              <p style={{ ...muted, color: "#b45309" }}>
                 {site.schedule_notice}
               </p>
             )}
           </div>
 
           <div style={card}>
-            <h2
-              style={{
-                margin: "0 0 12px",
-                fontSize: 16,
-              }}
-            >
+            <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
               🏠 현장정보
             </h2>
 
-            <InfoRow
-              label="고객"
-              value={site.customer_name}
-            />
-
-            <InfoRow
-              label="지역"
-              value={site.region}
-            />
-
+            <InfoRow label="고객" value={site.customer_name} />
+            <InfoRow label="지역" value={site.region} />
             <InfoRow
               label="주소"
-              value={
-                <SiteDirections site={site} />
-              }
+              value={<SiteDirections site={site} />}
             />
-
-            <InfoRow
-              label="시공"
-              value={site.work_type}
-            />
+            <InfoRow label="시공" value={site.work_type} />
 
             {site.work_description && (
               <div
@@ -682,9 +552,7 @@ export default function WorkerSiteDetailPage() {
                   background: "var(--film-bg)",
                 }}
               >
-                <strong
-                  style={{ fontSize: 13 }}
-                >
+                <strong style={{ fontSize: 13 }}>
                   작업 내용
                 </strong>
 
@@ -712,8 +580,7 @@ export default function WorkerSiteDetailPage() {
                   marginTop: 14,
                 }}
               >
-                📞 고객 전화 ·{" "}
-                {site.customer_phone}
+                📞 고객 전화 · {site.customer_phone}
               </a>
             )}
           </div>
@@ -727,12 +594,7 @@ export default function WorkerSiteDetailPage() {
           >
             {materialsMessage ? (
               <div role="alert" style={card}>
-                <p
-                  style={{
-                    ...muted,
-                    color: "#b91c1c",
-                  }}
-                >
+                <p style={{ ...muted, color: "#b91c1c" }}>
                   {materialsMessage}
                 </p>
 
@@ -751,9 +613,7 @@ export default function WorkerSiteDetailPage() {
                   materials={materials}
                 />
 
-                {materials.some(
-                  (material) => material.memo
-                ) && (
+                {materials.some((material) => material.memo) && (
                   <details style={card}>
                     <summary
                       style={{
@@ -766,18 +626,13 @@ export default function WorkerSiteDetailPage() {
                     </summary>
 
                     {materials
-                      .filter(
-                        (material) =>
-                          material.memo
-                      )
+                      .filter((material) => material.memo)
                       .map((material) => (
                         <div
                           key={material.material_id}
                           style={{ marginTop: 12 }}
                         >
-                          <strong
-                            style={{ fontSize: 13 }}
-                          >
+                          <strong style={{ fontSize: 13 }}>
                             {[
                               material.brand,
                               material.product_code ||
@@ -812,10 +667,7 @@ export default function WorkerSiteDetailPage() {
             aria-label="요청사진"
             hidden={tab !== "photos"}
           >
-            <WorkerRequestPhotos
-              key={siteId}
-              siteId={siteId}
-            />
+            <WorkerRequestPhotos key={siteId} siteId={siteId} />
           </section>
         )}
 
@@ -825,10 +677,7 @@ export default function WorkerSiteDetailPage() {
             aria-label="현장 경비"
             hidden={tab !== "expenses"}
           >
-            <SiteExpenses
-              key={siteId}
-              siteId={siteId}
-            />
+            <SiteExpenses key={siteId} siteId={siteId} />
           </section>
         )}
 
@@ -905,13 +754,9 @@ function ReportPanel({
   if (site.status === "cancelled") {
     return (
       <div style={card}>
-        <h2 style={{ fontSize: 16 }}>
-          취소된 현장
-        </h2>
-
+        <h2 style={{ fontSize: 16 }}>취소된 현장</h2>
         <p style={muted}>
-          취소된 현장에는 완료보고를
-          등록할 수 없습니다.
+          취소된 현장에는 완료보고를 등록할 수 없습니다.
         </p>
       </div>
     );
@@ -920,13 +765,9 @@ function ReportPanel({
   if (!loading && !error && !canSubmit) {
     return (
       <div style={card}>
-        <h2 style={{ fontSize: 16 }}>
-          완료보고
-        </h2>
-
+        <h2 style={{ fontSize: 16 }}>완료보고</h2>
         <p style={muted}>
-          이 현장의 책임 팀장이
-          완료보고를 작성합니다.
+          이 현장의 책임 팀장이 완료보고를 작성합니다.
         </p>
       </div>
     );
@@ -947,10 +788,7 @@ function ReportPanel({
       <div style={card}>
         <p
           role="alert"
-          style={{
-            ...muted,
-            color: "#b91c1c",
-          }}
+          style={{ ...muted, color: "#b91c1c" }}
         >
           {error}
         </p>
@@ -968,20 +806,14 @@ function ReportPanel({
 
   const review = report?.review_status;
 
-  if (
-    review === "pending" ||
-    review === "approved"
-  ) {
+  if (review === "pending" || review === "approved") {
     return (
       <div style={card}>
         <h2
           style={{
             margin: "0 0 10px",
             fontSize: 17,
-            color:
-              review === "approved"
-                ? "#15803d"
-                : "#b45309",
+            color: review === "approved" ? "#15803d" : "#b45309",
           }}
         >
           {review === "approved"
@@ -1045,15 +877,8 @@ function ReportPanel({
           </div>
         )}
 
-        <p
-          style={{
-            ...muted,
-            fontSize: 11,
-          }}
-        >
-          {review === "approved"
-            ? "검수일시"
-            : "제출일시"}{" "}
+        <p style={{ ...muted, fontSize: 11 }}>
+          {review === "approved" ? "검수일시" : "제출일시"}{" "}
           {dateText(
             review === "approved"
               ? report.reviewed_at
@@ -1068,12 +893,7 @@ function ReportPanel({
   return (
     <>
       {site.status === "completed" && (
-        <div
-          style={{
-            ...card,
-            background: "#f0fdf4",
-          }}
-        >
+        <div style={{ ...card, background: "#f0fdf4" }}>
           <p
             style={{
               ...muted,
@@ -1088,12 +908,7 @@ function ReportPanel({
       )}
 
       {review === "rejected" && (
-        <div
-          style={{
-            ...card,
-            background: "#fef2f2",
-          }}
-        >
+        <div style={{ ...card, background: "#fef2f2" }}>
           <strong style={{ color: "#b91c1c" }}>
             🔴 관리자 보완 요청
           </strong>
@@ -1120,4 +935,4 @@ function ReportPanel({
       />
     </>
   );
-}
+              }
