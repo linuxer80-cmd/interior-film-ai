@@ -12,6 +12,7 @@ import ToolIllustration from "../../components/ui/ToolIllustration";
 
 export default function WorkerLoginPage() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,12 +20,16 @@ export default function WorkerLoginPage() {
   const [messageType, setMessageType] = useState("error");
 
   async function getMyWorker() {
-    const result = await loadMyWorkerSites({ profileOnly: true });
+    const result = await loadMyWorkerSites({
+      profileOnly: true,
+    });
+
     return result.worker;
   }
 
   async function handleLogin(event) {
     event.preventDefault();
+
     if (loading) return;
 
     setMessage("");
@@ -54,13 +59,16 @@ export default function WorkerLoginPage() {
       if (error) throw error;
 
       if (!data?.user) {
-        throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
+        throw new Error(
+          "로그인 사용자 정보를 확인하지 못했습니다."
+        );
       }
 
       const worker = await getMyWorker();
 
       if (!worker?.worker_id) {
         await supabase.auth.signOut();
+
         throw new Error(
           "등록된 시공자 계정과 연결되어 있지 않습니다. 회사 관리자에게 계정 연결을 요청해주세요."
         );
@@ -68,6 +76,7 @@ export default function WorkerLoginPage() {
 
       if (worker.worker_is_active === false) {
         await supabase.auth.signOut();
+
         throw new Error(
           "현재 사용이 중지된 시공자 계정입니다. 회사 관리자에게 문의해주세요."
         );
@@ -95,7 +104,8 @@ export default function WorkerLoginPage() {
       const lowerMessage = errorMessage.toLowerCase();
 
       if (lowerMessage.includes("invalid login credentials")) {
-        errorMessage = "이메일 또는 비밀번호가 올바르지 않습니다.";
+        errorMessage =
+          "이메일 또는 비밀번호가 올바르지 않습니다.";
       }
 
       if (lowerMessage.includes("email not confirmed")) {
@@ -207,12 +217,15 @@ export default function WorkerLoginPage() {
             시공자 로그인
           </h2>
 
-          <FieldLabel htmlFor="worker-email">이메일</FieldLabel>
+          <FieldLabel htmlFor="worker-email">
+            이메일
+          </FieldLabel>
+
           <input
             id="worker-email"
             type="email"
             value={email}
-            onChange={event => setEmail(event.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="example@email.com"
             autoComplete="email"
             autoCapitalize="none"
@@ -223,11 +236,12 @@ export default function WorkerLoginPage() {
           <FieldLabel htmlFor="worker-password">
             비밀번호
           </FieldLabel>
+
           <input
             id="worker-password"
             type="password"
             value={password}
-            onChange={event => setPassword(event.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             placeholder="비밀번호를 입력해주세요"
             autoComplete="current-password"
             style={inputStyle}
@@ -241,9 +255,13 @@ export default function WorkerLoginPage() {
                 padding: "13px 14px",
                 borderRadius: "14px",
                 background:
-                  messageType === "success" ? "#ecfdf5" : "#fff1f2",
+                  messageType === "success"
+                    ? "#ecfdf5"
+                    : "#fff1f2",
                 color:
-                  messageType === "success" ? "#047857" : "#b91c1c",
+                  messageType === "success"
+                    ? "#047857"
+                    : "#b91c1c",
                 fontSize: "13px",
                 lineHeight: 1.7,
               }}
@@ -287,7 +305,7 @@ export default function WorkerLoginPage() {
               fontWeight: 700,
             }}
           >
-            비밀번호를 잊으셨나요? · 재설정
+            아이디 찾기 · 비밀번호 재설정
           </Link>
 
           <p
