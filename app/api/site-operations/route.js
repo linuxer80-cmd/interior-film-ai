@@ -10,7 +10,9 @@ const json = (body, status = 200) =>
 
 const uuid = (value) =>
   typeof value === "string" &&
-  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
+  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(
+    value
+  );
 
 async function handle(request) {
   try {
@@ -55,7 +57,9 @@ async function handle(request) {
 
     if (
       !uuid(body?.siteId) ||
-      !["get", "confirm", "issue", "void", "return"].includes(body.action)
+      !["get", "latest", "confirm", "issue", "void", "return"].includes(
+        body.action
+      )
     ) {
       return json({ error: "현장과 요청을 확인해주세요." }, 400);
     }
@@ -81,11 +85,9 @@ async function handle(request) {
 
     if (
       ["issue", "return"].includes(body.action) &&
-      (
-        !["string", "number"].includes(typeof body.quantity) ||
+      (!["string", "number"].includes(typeof body.quantity) ||
         !String(body.quantity).trim() ||
-        !Number.isFinite(Number(body.quantity))
-      )
+        !Number.isFinite(Number(body.quantity)))
     ) {
       return json(
         {
@@ -126,8 +128,7 @@ async function handle(request) {
 
     return json(
       {
-        error:
-          "처리하지 못했습니다. 잠시 후 새로고침해주세요.",
+        error: "처리하지 못했습니다. 잠시 후 새로고침해주세요.",
       },
       500
     );
