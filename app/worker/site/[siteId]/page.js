@@ -18,6 +18,7 @@ import {
   workerLoginUrl,
 } from "../../../utils/workerSites";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
+import SiteOperations from "../../../components/SiteOperations";
 import WorkerWorkReport from "./WorkerWorkReport";
 import SiteExpenses from "../../../components/SiteExpenses";
 import SiteDirections from "../../SiteDirections";
@@ -212,6 +213,7 @@ export default function WorkerSiteDetailPage() {
             result.hasReport && result.report
           ),
           report: result.report || null,
+          canSubmit: Boolean(result.canSubmit),
         });
       }
     } catch (error) {
@@ -543,6 +545,7 @@ export default function WorkerSiteDetailPage() {
           aria-label="현장정보"
           hidden={tab !== "info"}
         >
+          <SiteOperations siteId={siteId} />
           {site.memo?.trim() && (
             <div
               style={{
@@ -839,6 +842,7 @@ export default function WorkerSiteDetailPage() {
               site={site}
               siteId={siteId}
               report={report}
+              canSubmit={reportStatus?.canSubmit}
               loading={reportLoading}
               error={reportError}
               onRetry={loadReportStatus}
@@ -889,6 +893,7 @@ function InfoRow({ label, value }) {
 }
 
 function ReportPanel({
+  canSubmit,
   site,
   siteId,
   report,
@@ -912,7 +917,7 @@ function ReportPanel({
     );
   }
 
-  if (site.my_role !== "leader") {
+  if (!loading && !error && !canSubmit) {
     return (
       <div style={card}>
         <h2 style={{ fontSize: 16 }}>
