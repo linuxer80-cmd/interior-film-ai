@@ -65,89 +65,15 @@ async function verifyWorkerSiteAccess({
 
   const user = userData.user;
 
-  const { data: worker, error: workerError } = await supabase
-    .from("workers")
-    .select("id,company_id,name,phone,user_id,is_active")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: assigned, error: assignmentError } = await supabase.rpc("site_operation_workers", { p_site: siteId });
+  if (assignmentError) return { success: false, status: 500, error: "현장 배정정보를 확인하지 못했습니다." };
+  const person = (assigned || []).find((item) => item.user_id === user.id);
+  if (!person) return { success: false, status: 403, error: "본인에게 배정된 현장만 이용할 수 있습니다." };
+  const { data: site, error: siteError } = await supabase.from("sites").select("id,company_id,site_name,customer_name,status").eq("id", siteId).maybeSingle();
+  if (siteError || !site) return { success: false, status: 404, error: "현장을 찾을 수 없습니다." };
+  const canSubmit = person.role === "leader" || !(assigned || []).some((item) => item.role === "leader");
+  return { success: true, user, worker: { id: person.worker_id, company_id: site.company_id }, site, assignment: { role: person.role }, canSubmit };
 
-  if (workerError) {
-    return {
-      success: false,
-      status: 500,
-      error:
-        workerError.message ||
-        "시공자 정보를 확인하지 못했습니다.",
-    };
-  }
-
-  if (!worker?.id) {
-    return {
-      success: false,
-      status: 403,
-      error: "등록된 활성 시공자 계정이 아닙니다.",
-    };
-  }
-
-  const { data: site, error: siteError } = await supabase
-    .from("sites")
-    .select("id,company_id,site_name,customer_name,status")
-    .eq("id", siteId)
-    .eq("company_id", worker.company_id)
-    .maybeSingle();
-
-  if (siteError) {
-    return {
-      success: false,
-      status: 500,
-      error:
-        siteError.message || "현장 정보를 확인하지 못했습니다.",
-    };
-  }
-
-  if (!site?.id) {
-    return {
-      success: false,
-      status: 404,
-      error: "현장을 찾을 수 없습니다.",
-    };
-  }
-
-  const { data: assignment, error: assignmentError } =
-    await supabase
-      .from("site_workers")
-      .select("id,company_id,site_id,worker_id,role")
-      .eq("company_id", worker.company_id)
-      .eq("site_id", siteId)
-      .eq("worker_id", worker.id)
-      .maybeSingle();
-
-  if (assignmentError) {
-    return {
-      success: false,
-      status: 500,
-      error:
-        assignmentError.message ||
-        "현장 배정정보를 확인하지 못했습니다.",
-    };
-  }
-
-  if (!assignment?.id) {
-    return {
-      success: false,
-      status: 403,
-      error: "본인에게 배정된 현장만 이용할 수 있습니다.",
-    };
-  }
-
-  return {
-    success: true,
-    user,
-    worker,
-    site,
-    assignment,
-  };
 }
 
 const REPORT_LABOR = "완료보고/인건비:";
@@ -349,12 +275,12 @@ export async function GET(request) {
       throw leaderError;
     }
 
-    const canManageCosts =
-      assignment.role === "leader" || Boolean(leaders?.length);
+    const canManageCosts = access.canSubmit;
 
     return NextResponse.json(
       {
         success: true,
+        canSubmit: access.canSubmit,
         laborWorkers: canManageCosts
           ? await laborWorkers(supabase, worker.company_id, siteId)
           : [],
@@ -466,7 +392,7 @@ export async function POST(request) {
       throw leaderError;
     }
 
-    if (assignment.role !== "leader" && !dailyLeader?.length) {
+    if (!access.canSubmit) {
       return NextResponse.json(
         {
           success: false,
