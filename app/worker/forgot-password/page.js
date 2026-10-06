@@ -370,4 +370,4 @@ export default function WorkerForgotPasswordPage() {
       </section>
     </main>
   );
-           }
+}
