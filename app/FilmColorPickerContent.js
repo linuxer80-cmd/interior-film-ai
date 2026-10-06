@@ -22,7 +22,6 @@ const pageButtonStyle = {
 function getSampleName(product) {
   let name = String(product?.product_name || "").trim();
 
-  // 제품명 뒤에 붙은 별도 품번을 제거합니다.
   name = name
     .replace(/\s*\/\s*[A-Z]{1,8}[- ]?\d[A-Z0-9-]*\s*$/i, "")
     .trim();
@@ -112,9 +111,10 @@ function getProductLine(productCode) {
 
   if (!code) return null;
 
-  return PRODUCT_LINES.find(
-    (line) => code.startsWith(line.prefix)
-  ) || null;
+  return (
+    PRODUCT_LINES.find((line) => code.startsWith(line.prefix)) ||
+    null
+  );
 }
 
 function getLineFilter(categoryKey) {
@@ -924,10 +924,7 @@ export default function FilmColorPicker({
                 }}
               >
                 <div style={{ flex: "0 0 52px" }}>
-                  <FilmSample
-                    product={selected}
-                    size="52px"
-                  />
+                  <FilmSample product={selected} size="52px" />
                 </div>
 
                 <div style={{ minWidth: 0 }}>
@@ -1448,31 +1445,32 @@ export default function FilmColorPicker({
                               "필름"}
                           </span>
 
-                          {Number(
-                            product.material_price_per_meter ||
-                              product.fire_price_per_meter ||
-                              product.non_fire_price_per_meter
-                          ) > 0 && (
-                            <span
-                              style={{
-                                display: "block",
-                                marginTop: "2px",
-                                color: "#7c3aed",
-                                fontSize: "9px",
-                                fontWeight: "800",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {formatPrice(
-                                product.material_price_per_meter ||
-                                  product.fire_price_per_meter ||
-                                  product.non_fire_price_per_meter
-                              )}
-                              /m
-                            </span>
-                          )}
+                          {!sampleMode &&
+                            Number(
+                              product.material_price_per_meter ||
+                                product.fire_price_per_meter ||
+                                product.non_fire_price_per_meter
+                            ) > 0 && (
+                              <span
+                                style={{
+                                  display: "block",
+                                  marginTop: "2px",
+                                  color: "#7c3aed",
+                                  fontSize: "9px",
+                                  fontWeight: "800",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {formatPrice(
+                                  product.material_price_per_meter ||
+                                    product.fire_price_per_meter ||
+                                    product.non_fire_price_per_meter
+                                )}
+                                /m
+                              </span>
+                            )}
                         </button>
                       );
                     })}
@@ -1524,4 +1522,4 @@ export default function FilmColorPicker({
       )}
     </>
   );
-        }
+    }
