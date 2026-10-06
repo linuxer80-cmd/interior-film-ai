@@ -1,5 +1,6 @@
 "use client";
 
+import SiteOperations from "../../../components/SiteOperations";
 import ToolIllustration from "../../../components/ui/ToolIllustration";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../../lib/supabase";
@@ -92,6 +93,8 @@ export default function WorkerWorkReport({
   const [workSummary, setWorkSummary] = useState("");
   const [memo, setMemo] = useState("");
   const [materials, setMaterials] = useState([]);
+  const [trackedMaterials, setTrackedMaterials] = useState(false);
+  const [materialChangesPending, setMaterialChangesPending] = useState(false);
   const [expenses, setExpenses] = useState([]);
   const [labor, setLabor] = useState([]);
   const [workers, setWorkers] = useState([]);
@@ -449,7 +452,7 @@ export default function WorkerWorkReport({
               parseNumber(item.allowance) || 0
             ),
           })),
-          materials: normalizedMaterials,
+          materials: trackedMaterials ? [] : normalizedMaterials,
           expenses: normalizedExpenses,
         }),
       }
@@ -471,6 +474,11 @@ export default function WorkerWorkReport({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (materialChangesPending) {
+      setView("materials");
+      setMessage("반입량 변경사항을 먼저 저장해주세요.");
+      return;
+    }
 
     if (submitting.current) return;
 
@@ -538,7 +546,7 @@ export default function WorkerWorkReport({
       ids.add(item.worker_id);
     }
 
-    for (const item of materials) {
+    for (const item of (trackedMaterials ? [] : materials)) {
       if (
         !(
           item.product_code.trim() ||
@@ -942,7 +950,9 @@ export default function WorkerWorkReport({
       </div>
 
       <div hidden={view !== "materials"}>
-        <section style={sectionStyle}>
+        <SiteOperations siteId={siteId} mode="materials" disabled={saving} onTrackingChange={setTrackedMaterials} onPendingChange={setMaterialChangesPending} />
+        {trackedMaterials && <p>반입량을 모두 저장한 뒤 완료보고를 제출해주세요. 반출 − 반입으로 실제 사용량과 자재비가 자동 계산됩니다.</p>}
+        <section style={sectionStyle} hidden={trackedMaterials}>
           <div style={headingStyle}>
             <strong>📦 실제 사용 자재</strong>
 
@@ -1087,7 +1097,7 @@ export default function WorkerWorkReport({
 
           <p style={totalStyle}>
             자재비 합계{" "}
-            {materialTotal.toLocaleString("ko-KR")}원
+            {trackedMaterials ? "반출·반입량으로 자동 계산" : `${materialTotal.toLocaleString("ko-KR")}원`}
           </p>
         </section>
       </div>
@@ -1219,17 +1229,17 @@ export default function WorkerWorkReport({
 
           인건비 {laborTotal.toLocaleString("ko-KR")}원
           {" · "}자재비{" "}
-          {materialTotal.toLocaleString("ko-KR")}원
+          {trackedMaterials ? "반출·반입량으로 자동 계산" : `${materialTotal.toLocaleString("ko-KR")}원`}
           {" · "}경비{" "}
           {expenseTotal.toLocaleString("ko-KR")}원
 
           <br />
 
           <strong>
-            총{" "}
+            {trackedMaterials ? "자재비 제외 합계 " : "총 "}
             {(
               laborTotal +
-              materialTotal +
+              (trackedMaterials ? 0 : materialTotal) +
               expenseTotal
             ).toLocaleString("ko-KR")}
             원
