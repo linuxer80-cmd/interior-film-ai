@@ -15,6 +15,7 @@ import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
 import SiteExpenses from "../components/SiteExpenses";
+import CompletionEstimate from "./CompletionEstimate";
 
 const STATUS_INFO = {
   consulting: { label: "상담중", background: "#fff7ed", color: "#c2410c" },
@@ -23,6 +24,7 @@ const STATUS_INFO = {
   completed: { label: "시공 완료", background: "#f0fdf4", color: "#15803d" },
   cancelled: { label: "취소", background: "#f8fafc", color: "#64748b" },
 };
+
 const MENUS = [
   { id: "info", label: "현장정보", kind: "home" },
   { id: "schedule", label: "일정배정", kind: "people" },
@@ -31,14 +33,24 @@ const MENUS = [
   { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
 ];
+
 const SECTION_MENU = {
-  expenses: "expenses", schedule: "schedule", assignment: "schedule",
-  report: "report", "report-write": "report",
+  expenses: "expenses",
+  schedule: "schedule",
+  assignment: "schedule",
+  report: "report",
+  "report-write": "report",
 };
+
 const actionStyle = {
-  minHeight: 44, border: "1px solid #dfe6ef", borderRadius: 14,
-  background: "#ffffff", color: "#50617a", padding: "10px 14px",
-  fontWeight: 800, cursor: "pointer",
+  minHeight: 44,
+  border: "1px solid #dfe6ef",
+  borderRadius: 14,
+  background: "#ffffff",
+  color: "#50617a",
+  padding: "10px 14px",
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
 export default function SiteDetailModal({
@@ -48,12 +60,14 @@ export default function SiteDetailModal({
   assignSiteWorkers, reloadSites,
 }) {
   const [menu, setMenu] = useState("info");
+  const [estimateDirty, setEstimateDirty] = useState(false);
   const [visited, setVisited] = useState({ info: true });
   const [reportOpen, setReportOpen] = useState(false);
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
   const [reviewStatus, setReviewStatus] = useState(null);
   const taskSections = useRef({});
   const scrollBody = useRef(null);
+
   const {
     reportSaving, reportMessage, submitWorkReport, clearReportMessage,
   } = useSiteWorkReport({ companyId, reloadSites });
@@ -63,9 +77,12 @@ export default function SiteDetailModal({
     setHasWorkerReport(null);
     setReviewStatus(null);
     clearReportMessage?.();
+
     const params = new URLSearchParams(window.location.search);
     const nextMenu = params.get("site") === String(site?.id)
-      ? SECTION_MENU[params.get("section")] || "info" : "info";
+      ? SECTION_MENU[params.get("section")] || "info"
+      : "info";
+
     setMenu(nextMenu);
     setVisited({ info: true, [nextMenu]: true });
     if (scrollBody.current) scrollBody.current.scrollTop = 0;
@@ -74,6 +91,7 @@ export default function SiteDetailModal({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("site") !== String(site?.id)) return;
+
     const section = params.get("section");
     const targetMenu = SECTION_MENU[section];
     if (!targetMenu || targetMenu !== menu) return;
@@ -85,10 +103,12 @@ export default function SiteDetailModal({
       target?.scrollIntoView({ block: "start" });
       target?.focus({ preventScroll: true });
     });
+
     return () => cancelAnimationFrame(frame);
   }, [site?.id, menu, hasWorkerReport]);
 
   const hasSite = Boolean(site);
+
   useEffect(() => {
     if (!hasSite) return;
     const previous = document.body.style.overflow;
@@ -101,21 +121,32 @@ export default function SiteDetailModal({
     setMenu(id);
     if (scrollBody.current) scrollBody.current.scrollTop = 0;
   }
+
   function closeModal() {
+    if (
+      estimateDirty &&
+      !window.confirm(
+        "견적서에 저장하지 않은 변경이 있거나 처리 중입니다. 닫을까요?",
+      )
+    ) return;
     if (!reportSaving) onClose?.();
   }
+
   async function handleAssignmentSaved() {
     if (typeof reloadSites === "function") await reloadSites();
   }
+
   function openWorkReport() {
     clearReportMessage?.();
     setReportOpen(true);
   }
+
   function closeWorkReport() {
     if (reportSaving) return;
     setReportOpen(false);
     clearReportMessage?.();
   }
+
   async function handleWorkReportSave(payload) {
     const success = await submitWorkReport(payload);
     if (!success) return false;
@@ -125,6 +156,7 @@ export default function SiteDetailModal({
   }
 
   if (!site) return null;
+
   const status = STATUS_INFO[site.status] || STATUS_INFO.consulting;
   const reviewLabel = reviewStatus === "pending" ? "검수 대기"
     : reviewStatus === "approved" ? "승인 완료"
@@ -140,7 +172,8 @@ export default function SiteDetailModal({
         onClick={event => event.stopPropagation()} style={{
           width: "100%", maxWidth: 760, maxHeight: "calc(100dvh - 24px)",
           display: "flex", flexDirection: "column", minHeight: 0,
-          borderRadius: 24, overflow: "hidden", background: "var(--film-bg, #f8f7f3)",
+          borderRadius: 24, overflow: "hidden",
+          background: "var(--film-bg, #f8f7f3)",
           boxShadow: "0 20px 60px rgba(25, 39, 60, 0.2)",
         }}>
         <header style={{
@@ -148,30 +181,31 @@ export default function SiteDetailModal({
           background: "#fffefa", borderBottom: "1px solid #e4eaf2",
         }}>
           <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10,
+            display: "flex", justifyContent: "space-between",
+            alignItems: "flex-start", gap: 10,
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <small style={{ color: "#7b8798", fontSize: 12 }}>필름장이 · 현장 상세</small>
+              <small style={{ color: "#7b8798", fontSize: 12 }}>
+                필름장이 · 현장 상세
+              </small>
               <h2 id="admin-site-detail-title" style={{
-                margin: "5px 0 10px", fontSize: 21, color: "#243247", overflowWrap: "anywhere",
+                margin: "5px 0 10px", fontSize: 21, color: "#243247",
+                overflowWrap: "anywhere",
               }}>
                 {site.site_name || site.customer_name || "현장명 미정"}
               </h2>
               <span style={{
                 display: "inline-block", padding: "6px 10px", borderRadius: 20,
-                background: status.background, color: status.color, fontSize: 12, fontWeight: 800,
-              }}>
-                {status.label}
-              </span>
+                background: status.background, color: status.color,
+                fontSize: 12, fontWeight: 800,
+              }}>{status.label}</span>
             </div>
             <button type="button" aria-label="현장 상세 닫기"
               onClick={closeModal} disabled={reportSaving}
               style={{
                 ...actionStyle, padding: "4px 12px", fontSize: 24,
                 opacity: reportSaving ? 0.5 : 1,
-              }}>
-              ×
-            </button>
+              }}>×</button>
           </div>
 
           <nav aria-label="현장 상세 메뉴" style={{
@@ -188,7 +222,9 @@ export default function SiteDetailModal({
                   color: menu === item.id ? "#3268bd" : "#50617a",
                   fontSize: 11, fontWeight: 800, cursor: "pointer",
                 }}>
-                <span style={{ display: "flex", justifyContent: "center", marginBottom: 5 }}>
+                <span style={{
+                  display: "flex", justifyContent: "center", marginBottom: 5,
+                }}>
                   <ToolIllustration kind={item.kind} size={34} />
                 </span>
                 {item.label}
@@ -213,12 +249,14 @@ export default function SiteDetailModal({
           overflowY: "auto", overscrollBehavior: "contain", minHeight: 0,
           padding: "4px 14px calc(18px + env(safe-area-inset-bottom))",
         }}>
-          <section id="admin-site-panel-info" aria-label="현장정보" hidden={menu !== "info"}>
+          <section id="admin-site-panel-info" aria-label="현장정보"
+            hidden={menu !== "info"}>
             <SiteOperations siteId={site.id} />
-            <SiteBasicInfo key={site.id} site={site} updateSiteBasicInfo={updateSiteBasicInfo} />
-            <SiteStatusControl key={site.id} site={site} hasReport={hasWorkerReport}
-              reviewStatus={reviewStatus} reportOpen={reportOpen}
-              updateSiteStatus={updateSiteStatus} />
+            <SiteBasicInfo key={site.id} site={site}
+              updateSiteBasicInfo={updateSiteBasicInfo} />
+            <SiteStatusControl key={site.id} site={site}
+              hasReport={hasWorkerReport} reviewStatus={reviewStatus}
+              reportOpen={reportOpen} updateSiteStatus={updateSiteStatus} />
           </section>
 
           {visited.schedule && (
@@ -226,19 +264,24 @@ export default function SiteDetailModal({
               hidden={menu !== "schedule"}>
               <div ref={element => { taskSections.current.schedule = element; }}
                 tabIndex={-1} aria-label="시공 일정" style={{ scrollMarginTop: 12 }}>
-                <SiteScheduleEditor key={site.id} site={site} reportOpen={reportOpen}
-                  updateSiteSchedule={updateSiteSchedule} reloadSites={reloadSites} />
+                <SiteScheduleEditor key={site.id} site={site}
+                  reportOpen={reportOpen} updateSiteSchedule={updateSiteSchedule}
+                  reloadSites={reloadSites} />
               </div>
               {!reportOpen ? (
-                <section style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #e4eaf2" }}>
+                <section style={{
+                  marginTop: 16, paddingTop: 14, borderTop: "1px solid #e4eaf2",
+                }}>
                   <h3 style={{ margin: "0 0 10px", fontSize: 16, color: "#243247" }}>
                     담당 시공자 배정
                   </h3>
                   <div ref={element => { taskSections.current.assignment = element; }}
-                    tabIndex={-1} aria-label="시공자 배정" style={{ scrollMarginTop: 12 }}>
-                    <SiteWorkerAssignment key={site.id} site={site} workers={workers}
-                      workersLoading={workersLoading} loadWorkers={loadWorkers}
-                      loadSiteWorkers={loadSiteWorkers} assignSiteWorkers={assignSiteWorkers}
+                    tabIndex={-1} aria-label="시공자 배정"
+                    style={{ scrollMarginTop: 12 }}>
+                    <SiteWorkerAssignment key={site.id} site={site}
+                      workers={workers} workersLoading={workersLoading}
+                      loadWorkers={loadWorkers} loadSiteWorkers={loadSiteWorkers}
+                      assignSiteWorkers={assignSiteWorkers}
                       onSaved={handleAssignmentSaved} />
                   </div>
                 </section>
@@ -258,20 +301,30 @@ export default function SiteDetailModal({
               <SiteMaterials key={site.id} site={site} />
             </section>
           )}
+
           {visited.photos && (
-            <section id="admin-site-panel-photos" aria-label="고객 요청사진" hidden={menu !== "photos"}>
+            <section id="admin-site-panel-photos" aria-label="고객 요청사진"
+              hidden={menu !== "photos"}>
               <SiteRequestPhotos key={site.id} site={site}
                 addSiteRequestPhotos={addSiteRequestPhotos}
                 deleteSiteRequestPhoto={deleteSiteRequestPhoto} />
             </section>
           )}
+
           {visited.expenses && (
-            <section id="admin-site-panel-expenses" aria-label="현장 경비" hidden={menu !== "expenses"}>
+            <section id="admin-site-panel-expenses" aria-label="현장 경비"
+              hidden={menu !== "expenses"}>
               <SiteExpenses key={site.id} siteId={site.id} onSaved={reloadSites} />
             </section>
           )}
 
-          <section id="admin-site-panel-report" aria-label="완료보고와 검수" hidden={menu !== "report"}>
+          <section id="admin-site-panel-report" aria-label="완료보고와 검수"
+            hidden={menu !== "report"}>
+            {site.status === "completed" && visited.report && (
+              <CompletionEstimate key={site.id} siteId={site.id}
+                onDirtyChange={setEstimateDirty} />
+            )}
+
             <div ref={element => { taskSections.current.report = element; }}
               tabIndex={-1} aria-label="완료보고 검수" style={{ scrollMarginTop: 12 }}>
               <SiteWorkReportReview key={site.id} siteId={site.id}
@@ -285,14 +338,17 @@ export default function SiteDetailModal({
 
             {site.status !== "cancelled" &&
               (hasWorkerReport === false || reviewStatus === "rejected") && (
-                <section ref={element => { taskSections.current["report-write"] = element; }}
+                <section
+                  ref={element => { taskSections.current["report-write"] = element; }}
                   tabIndex={-1} aria-label="완료보고 작성" style={{
                     scrollMarginTop: 12, marginTop: 16, paddingTop: 14,
                     borderTop: "1px solid #e4eaf2",
                   }}>
                   {!reportOpen ? (
                     <>
-                      <h3 style={{ margin: 0, fontSize: 16, color: "#243247" }}>시공 완료 보고</h3>
+                      <h3 style={{ margin: 0, fontSize: 16, color: "#243247" }}>
+                        시공 완료 보고
+                      </h3>
                       <p style={{ fontSize: 13, lineHeight: 1.7, color: "#7b8798" }}>
                         {site.status === "completed"
                           ? "시공은 완료되었지만 보고서가 아직 없습니다. 실제 시공 내용과 완료사진을 등록해주세요."
@@ -301,22 +357,23 @@ export default function SiteDetailModal({
                       <button type="button" onClick={openWorkReport} style={{
                         ...actionStyle, width: "100%", border: "none",
                         background: "#16a34a", color: "#ffffff",
-                      }}>
-                        완료보고 작성 · 보완
-                      </button>
+                      }}>완료보고 작성 · 보완</button>
                     </>
                   ) : (
                     <SiteWorkReport key={site.id} site={site} saving={reportSaving}
-                      message={reportMessage} onSave={handleWorkReportSave} onCancel={closeWorkReport} />
+                      message={reportMessage} onSave={handleWorkReportSave}
+                      onCancel={closeWorkReport} />
                   )}
                 </section>
               )}
 
             {site.status === "completed" && hasWorkerReport === true && (
-              <details style={{ marginTop: 16, borderTop: "1px solid #e4eaf2", paddingTop: 14 }}>
-                <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#50617a" }}>
-                  저장된 시공 완료 자료 보기
-                </summary>
+              <details style={{
+                marginTop: 16, borderTop: "1px solid #e4eaf2", paddingTop: 14,
+              }}>
+                <summary style={{
+                  cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#50617a",
+                }}>저장된 시공 완료 자료 보기</summary>
                 <SiteCompletedReport key={site.id} companyId={companyId} site={site} />
               </details>
             )}
@@ -325,4 +382,4 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-                }
+}
