@@ -62,7 +62,9 @@ async function request(method, body, mode, month) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session) throw Error("로그인 후 이용해주세요.");
+  if (!session) {
+    throw Error("로그인 후 이용해주세요.");
+  }
 
   const response = await fetch(
     `/api/attendance?mode=${mode}&month=${month}`,
@@ -74,7 +76,7 @@ async function request(method, body, mode, month) {
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
       cache: "no-store",
-    },
+    }
   );
 
   const result = await response.json().catch(() => ({
@@ -92,7 +94,7 @@ function locate() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       return reject(
-        Error("이 브라우저는 위치 확인을 지원하지 않습니다."),
+        Error("이 브라우저는 위치 확인을 지원하지 않습니다.")
       );
     }
 
@@ -108,14 +110,14 @@ function locate() {
           Error(
             error.code === 1
               ? "위치 권한이 거부되었습니다."
-              : "GPS 위치를 확인하지 못했습니다. 야외에서 다시 시도해주세요.",
-          ),
+              : "GPS 위치를 확인하지 못했습니다. 야외에서 다시 시도해주세요."
+          )
         ),
       {
         enableHighAccuracy: true,
         maximumAge: 0,
         timeout: 15000,
-      },
+      }
     );
   });
 }
@@ -157,15 +159,11 @@ export default function AttendancePage({ mode = "worker" }) {
   const [siteId, setSiteId] = useState("");
   const [consent, setConsent] = useState(false);
   const [reason, setReason] = useState("");
-
   const [settings, setSettings] = useState({
     cutoff: "17:00",
     hourlyRate: "",
     radius: 200,
   });
-
-  const [point, setPoint] = useState(null);
-  const [candidates, setCandidates] = useState([]);
   const [review, setReview] = useState(null);
 
   const lock = useRef(false);
@@ -173,11 +171,13 @@ export default function AttendancePage({ mode = "worker" }) {
 
   async function load() {
     const currentVersion = ++version.current;
+
     setLoading(true);
     setError("");
 
     try {
       const result = await request("GET", null, mode, month);
+
       if (currentVersion !== version.current) return;
 
       setData(result);
@@ -189,9 +189,9 @@ export default function AttendancePage({ mode = "worker" }) {
           radius: result.settings.radius_m,
         });
       }
-    } catch (loadError) {
+    } catch (error) {
       if (currentVersion === version.current) {
-        setError(loadError.message);
+        setError(error.message);
         setData(null);
       }
     } finally {
@@ -219,8 +219,8 @@ export default function AttendancePage({ mode = "worker" }) {
 
     try {
       await action();
-    } catch (actionError) {
-      setError(actionError.message);
+    } catch (error) {
+      setError(error.message);
     } finally {
       lock.current = false;
       setBusy(false);
@@ -229,14 +229,16 @@ export default function AttendancePage({ mode = "worker" }) {
 
   async function post(body) {
     const result = await request("POST", body, mode, month);
+
     setMessage(result.message || "저장했습니다.");
+
     await load();
   }
 
   const sites = data?.sites || [];
   const selected = sites.find((site) => site.id === siteId);
   const active = (data?.records || []).find(
-    (record) => !record.clock_out,
+    (record) => !record.clock_out
   );
 
   const siteName = (id) =>
@@ -269,8 +271,6 @@ export default function AttendancePage({ mode = "worker" }) {
 
   function selectSite(id) {
     setSiteId(id);
-    setPoint(null);
-    setCandidates([]);
   }
 
   return (
@@ -325,9 +325,7 @@ export default function AttendancePage({ mode = "worker" }) {
         </button>
       </div>
 
-      {loading && (
-        <p role="status">출퇴근 내역 확인 중…</p>
-      )}
+      {loading && <p role="status">출퇴근 내역 확인 중…</p>}
 
       {data && admin && (
         <>
@@ -337,20 +335,20 @@ export default function AttendancePage({ mode = "worker" }) {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
+
                 run(() =>
                   post({
                     action: "settings",
                     cutoff: settings.cutoff,
                     hourlyRate: Number(settings.hourlyRate),
                     radius: Number(settings.radius),
-                  }),
+                  })
                 );
               }}
             >
               <p>
                 설정은 다음 출근부터 적용됩니다. 등록한 시간당
-                단가에 추가 배율을 곱하지 않고 분 단위로
-                계산합니다.
+                단가에 추가 배율을 곱하지 않고 분 단위로 계산합니다.
               </p>
 
               <label>
@@ -416,138 +414,20 @@ export default function AttendancePage({ mode = "worker" }) {
             </form>
           </details>
 
-          <details style={card}>
-            <summary>현장 주소·위치 등록</summary>
+          <div style={card}>
+            <strong>현장 주소 자동 비교</strong>
 
-            <select
-              style={field}
-              value={siteId}
-              disabled={busy}
-              onChange={(event) => selectSite(event.target.value)}
-            >
-              <option value="">현장 선택</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.site_name || site.address}
-                </option>
-              ))}
-            </select>
+            <p>
+              출근할 때 현장정보에 저장된 주소로 기준 위치를
+              확인합니다. 같은 주소는 저장한 좌표를 재사용하며
+              주소가 바뀌면 다시 확인합니다. 주소를 찾지 못하면
+              시간과 GPS를 기록하고 관리자 확인 대상으로 표시합니다.
+            </p>
 
-            {selected && (
-              <>
-                <p>{selected.address || "주소가 없습니다."}</p>
-
-                <p>
-                  {data.locations.some(
-                    (location) =>
-                      location.site_id === siteId &&
-                      location.address === selected.address,
-                  )
-                    ? "기준 위치 등록됨"
-                    : "기준 위치 등록 필요"}
-                </p>
-
-                <button
-                  style={button}
-                  disabled={busy}
-                  onClick={() =>
-                    run(async () => {
-                      const result = await request(
-                        "POST",
-                        { action: "geocode", siteId },
-                        mode,
-                        month,
-                      );
-
-                      setCandidates(result.candidates);
-
-                      if (!result.candidates.length) {
-                        throw Error(
-                          "주소 검색 결과가 없습니다. 현장 주소를 확인해주세요.",
-                        );
-                      }
-                    })
-                  }
-                >
-                  주소로 위치 찾기
-                </button>
-
-                <button
-                  style={button}
-                  disabled={busy}
-                  onClick={() =>
-                    run(async () => {
-                      const gps = await locate();
-
-                      if (gps.accuracy > 100) {
-                        throw Error(
-                          "GPS 오차가 큽니다. 야외에서 다시 확인해주세요.",
-                        );
-                      }
-
-                      setPoint({
-                        ...gps,
-                        address: selected.address,
-                      });
-                    })
-                  }
-                >
-                  현장에서 현재 위치 사용
-                </button>
-
-                {candidates.map((candidate, index) => (
-                  <button
-                    key={index}
-                    style={button}
-                    disabled={busy}
-                    onClick={() => setPoint(candidate)}
-                  >
-                    {candidate.address}
-                  </button>
-                ))}
-
-                {point && (
-                  <div>
-                    <p>
-                      선택 위치: {point.address}
-                      <br />
-                      {point.latitude}, {point.longitude}
-                    </p>
-
-                    <a
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href={`https://www.google.com/maps?q=${point.latitude},${point.longitude}`}
-                    >
-                      지도에서 위치 확인
-                    </a>
-
-                    <p>
-                      주소와 지도 위치가 맞는지 확인 후 저장하세요.
-                    </p>
-
-                    <button
-                      style={button}
-                      disabled={busy}
-                      onClick={() =>
-                        run(() =>
-                          post({
-                            action: "location",
-                            siteId,
-                            address: selected.address,
-                            latitude: point.latitude,
-                            longitude: point.longitude,
-                          }),
-                        )
-                      }
-                    >
-                      이 위치를 현장 기준으로 저장
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </details>
+            <p>
+              퇴근할 때는 출근 당시 현장 주소를 기준으로 비교합니다.
+            </p>
+          </div>
 
           <div style={card}>
             승인된 추가 인건비{" "}
@@ -559,15 +439,15 @@ export default function AttendancePage({ mode = "worker" }) {
                     (record.review_status === "approved"
                       ? record.overtime_amount
                       : 0),
-                  0,
-                ),
+                  0
+                )
               )}
             </strong>
 
             <p>
               승인한 연장근무 비용은 매출·수익의 현장 인건비와
-              인건비 지급 관리에 포함됩니다. 수익 조회는 기존
-              현장 시공 시작일 기준입니다.
+              인건비 지급 관리에 포함됩니다. 수익 조회는 기존 현장
+              시공 시작일 기준입니다.
             </p>
           </div>
         </>
@@ -592,6 +472,7 @@ export default function AttendancePage({ mode = "worker" }) {
               onChange={(event) => selectSite(event.target.value)}
             >
               <option value="">출근할 현장 선택</option>
+
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.site_name || site.address}
@@ -603,9 +484,9 @@ export default function AttendancePage({ mode = "worker" }) {
           {selected && !active && <p>{selected.address}</p>}
 
           <p>
-            버튼을 누를 때만 위치와 서버 시간을 기록합니다.
-            기록은 본인과 소속 관리자가 확인하며 근무·연장비용
-            확인에 사용합니다. 계속 위치를 추적하지 않습니다.
+            버튼을 누를 때만 위치와 서버 시간을 기록합니다. 기록은
+            본인과 소속 관리자가 확인하며 근무·연장비용 확인에
+            사용합니다. 계속 위치를 추적하지 않습니다.
           </p>
 
           <label>
@@ -627,15 +508,9 @@ export default function AttendancePage({ mode = "worker" }) {
               color: "white",
             }}
             disabled={busy || loading || !consent}
-            onClick={() =>
-              run(() => punch(active ? "out" : "in"))
-            }
+            onClick={() => run(() => punch(active ? "out" : "in"))}
           >
-            {busy
-              ? "기록 중…"
-              : active
-                ? "퇴근 기록"
-                : "출근 기록"}
+            {busy ? "기록 중…" : active ? "퇴근 기록" : "출근 기록"}
           </button>
 
           <details>
@@ -659,9 +534,7 @@ export default function AttendancePage({ mode = "worker" }) {
 
             <button
               style={button}
-              disabled={
-                busy || !consent || reason.trim().length < 3
-              }
+              disabled={busy || !consent || reason.trim().length < 3}
               onClick={() =>
                 run(() => punch(active ? "out" : "in", true))
               }
@@ -686,10 +559,7 @@ export default function AttendancePage({ mode = "worker" }) {
       )}
 
       {message && (
-        <p
-          role="status"
-          style={{ ...card, color: "#166534" }}
-        >
+        <p role="status" style={{ ...card, color: "#166534" }}>
           {message}
         </p>
       )}
@@ -703,8 +573,7 @@ export default function AttendancePage({ mode = "worker" }) {
           {data.records.map((record) => (
             <article key={record.id} style={card}>
               <strong>
-                {record.work_day} ·{" "}
-                {workerName(record.worker_id)} ·{" "}
+                {record.work_day} · {workerName(record.worker_id)} ·{" "}
                 {siteName(record.site_id)}
               </strong>
 
@@ -722,6 +591,7 @@ export default function AttendancePage({ mode = "worker" }) {
 
               <p>
                 퇴근 {time(record.clock_out)}
+
                 {record.clock_out && (
                   <>
                     <br />
@@ -740,13 +610,13 @@ export default function AttendancePage({ mode = "worker" }) {
                   {Math.floor(
                     (new Date(record.clock_out) -
                       new Date(record.clock_in)) /
-                      3600000,
+                      3600000
                   )}
                   시간{" "}
                   {Math.floor(
                     (new Date(record.clock_out) -
                       new Date(record.clock_in)) /
-                      60000,
+                      60000
                   ) % 60}
                   분 (휴게 포함)
                 </p>
@@ -782,8 +652,8 @@ export default function AttendancePage({ mode = "worker" }) {
                       Math.round(
                         (record.overtime_minutes *
                           record.hourly_rate) /
-                          60,
-                      ),
+                          60
+                      )
                     )} (확인 전)`
                   : won(record.overtime_amount)}
               </p>
@@ -825,6 +695,7 @@ export default function AttendancePage({ mode = "worker" }) {
                         ...review,
                         status: "approved",
                       });
+
                       setReview(null);
                     });
                   }}
@@ -887,6 +758,7 @@ export default function AttendancePage({ mode = "worker" }) {
                           ...review,
                           status: "rejected",
                         });
+
                         setReview(null);
                       })
                     }
@@ -901,4 +773,4 @@ export default function AttendancePage({ mode = "worker" }) {
       )}
     </main>
   );
-}
+                }
