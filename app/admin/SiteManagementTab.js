@@ -1,43 +1,32 @@
 "use client";
 
-import {
-  useMemo,
-  useState,
-} from "react";
+import { useMemo, useState } from "react";
 
 import SiteRegisterModal from "./SiteRegisterModal";
 import SiteDetailModal from "./SiteDetailModal";
-import WorkerManagement from "./WorkerManagement";
 
-/* =========================================================
-   현장 상태
-========================================================= */
-
+/* 현장 상태 */
 const STATUS_INFO = {
   consulting: {
     label: "상담중",
     background: "#fff7ed",
     color: "#c2410c",
   },
-
   scheduled: {
     label: "시공 예정",
     background: "#eff6ff",
     color: "#1d4ed8",
   },
-
   in_progress: {
     label: "시공 중",
     background: "#fef3c7",
     color: "#b45309",
   },
-
   completed: {
     label: "시공 완료",
     background: "#f0fdf4",
     color: "#15803d",
   },
-
   cancelled: {
     label: "취소",
     background: "#f8fafc",
@@ -46,55 +35,60 @@ const STATUS_INFO = {
 };
 
 /* 시공 일정은 날짜만 표시합니다. */
-function formatScheduleDates(scheduleStart, scheduleEnd, scheduleDate) {
+function formatScheduleDates(
+  scheduleStart,
+  scheduleEnd,
+  scheduleDate,
+) {
   const format = (value) => {
     if (!value) return "";
-    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value);
-    return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("ko-KR", {
-      timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short",
-    }).format(date);
+
+    const date = new Date(
+      /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? `${value}T00:00:00+09:00`
+        : value,
+    );
+
+    return Number.isNaN(date.getTime())
+      ? ""
+      : new Intl.DateTimeFormat("ko-KR", {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          weekday: "short",
+        }).format(date);
   };
+
   const start = format(scheduleStart || scheduleDate);
   const end = format(scheduleEnd);
-  return start ? (end && end !== start ? `${start} ~ ${end}` : start) : "미정";
+
+  return start
+    ? end && end !== start
+      ? `${start} ~ ${end}`
+      : start
+    : "미정";
 }
 
-/* =========================================================
-   팀장 찾기
-========================================================= */
-
+/* 팀장 찾기 */
 function getLeader(site) {
-  const assignments =
-    site?.site_workers ||
-    [];
+  const assignments = site?.site_workers || [];
 
   return assignments.find(
-    (item) =>
-      item.role ===
-      "leader",
+    (item) => item.role === "leader",
   );
 }
 
-/* =========================================================
-   일반 시공자 찾기
-========================================================= */
-
+/* 일반 시공자 찾기 */
 function getMembers(site) {
-  const assignments =
-    site?.site_workers ||
-    [];
+  const assignments = site?.site_workers || [];
 
   return assignments.filter(
-    (item) =>
-      item.role ===
-      "member",
+    (item) => item.role === "member",
   );
 }
 
-/* =========================================================
-   메인 현장관리
-========================================================= */
-
+/* 메인 현장관리 */
 export default function SiteManagementTab({
   companyId,
 
@@ -116,106 +110,50 @@ export default function SiteManagementTab({
 
   workers = [],
   workersLoading = false,
-  workersMessage = "",
-
   loadWorkers,
-  createWorker,
-  updateWorker,
-  setWorkerActive,
-  createWorkerInvite,
 
   assignSiteWorkers,
   loadSiteWorkers,
 
   reloadSites,
 }) {
-  const [
-    registerOpen,
-    setRegisterOpen,
-  ] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [filter, setFilter] = useState("active");
 
-  const [
-    workerManagerOpen,
-    setWorkerManagerOpen,
-  ] = useState(false);
-
-  const [
-    filter,
-    setFilter,
-  ] = useState("active");
-
-  const filteredSites =
-    useMemo(() => {
-      if (
-        filter === "all"
-      ) {
-        return sites;
-      }
-
-      if (
-        filter === "active"
-      ) {
-        return sites.filter(
-          (site) =>
-            site.status ===
-              "consulting" ||
-            site.status ===
-              "scheduled" ||
-            site.status ===
-              "in_progress",
-        );
-      }
-
-      return sites.filter(
-        (site) =>
-          site.status ===
-          filter,
-      );
-    }, [
-      sites,
-      filter,
-    ]);
-
-  const consultingCount =
-    sites.filter(
-      (site) =>
-        site.status ===
-        "consulting",
-    ).length;
-
-  const scheduledCount =
-    sites.filter(
-      (site) =>
-        site.status ===
-        "scheduled",
-    ).length;
-
-  const progressCount =
-    sites.filter(
-      (site) =>
-        site.status ===
-        "in_progress",
-    ).length;
-
-  const completedCount =
-    sites.filter(
-      (site) =>
-        site.status ===
-        "completed",
-    ).length;
-
-  async function openWorkerManager() {
-    if (
-      typeof loadWorkers ===
-      "function"
-    ) {
-      await loadWorkers();
+  const filteredSites = useMemo(() => {
+    if (filter === "all") {
+      return sites;
     }
 
-    setWorkerManagerOpen(
-      true,
+    if (filter === "active") {
+      return sites.filter(
+        (site) =>
+          site.status === "consulting" ||
+          site.status === "scheduled" ||
+          site.status === "in_progress",
+      );
+    }
+
+    return sites.filter(
+      (site) => site.status === filter,
     );
-  }
+  }, [sites, filter]);
+
+  const consultingCount = sites.filter(
+    (site) => site.status === "consulting",
+  ).length;
+
+  const scheduledCount = sites.filter(
+    (site) => site.status === "scheduled",
+  ).length;
+
+  const progressCount = sites.filter(
+    (site) => site.status === "in_progress",
+  ).length;
+
+  const completedCount = sites.filter(
+    (site) => site.status === "completed",
+  ).length;
 
   return (
     <>
@@ -223,24 +161,18 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "flex",
-            alignItems:
-              "flex-start",
-            justifyContent:
-              "space-between",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
             gap: "10px",
-            marginBottom:
-              "14px",
+            marginBottom: "14px",
           }}
         >
           <div>
             <div
               style={{
-                fontSize:
-                  "20px",
-                fontWeight:
-                  "800",
-                color:
-                  "#111827",
+                fontSize: "20px",
+                fontWeight: "800",
+                color: "#111827",
               }}
             >
               현장관리
@@ -248,87 +180,39 @@ export default function SiteManagementTab({
 
             <div
               style={{
-                marginTop:
-                  "3px",
-                fontSize:
-                  "12px",
-                color:
-                  "#64748b",
+                marginTop: "3px",
+                fontSize: "12px",
+                color: "#64748b",
               }}
             >
-              상담중 현장부터 시공
-              완료까지 관리합니다.
+              상담중 현장부터 시공 완료까지 관리합니다.
             </div>
           </div>
 
           <div
             style={{
               display: "flex",
-              flexDirection:
-                "column",
+              flexDirection: "column",
               gap: "6px",
-              flex:
-                "0 0 auto",
+              flex: "0 0 auto",
             }}
           >
             <button
               type="button"
-              onClick={() =>
-                setRegisterOpen(
-                  true,
-                )
-              }
+              onClick={() => setRegisterOpen(true)}
               style={{
-                border:
-                  "none",
-                borderRadius:
-                  "10px",
-                padding:
-                  "10px 12px",
-                background:
-                  "#111827",
-                color:
-                  "#ffffff",
-                fontSize:
-                  "13px",
-                fontWeight:
-                  "800",
-                cursor:
-                  "pointer",
-                whiteSpace:
-                  "nowrap",
+                border: "none",
+                borderRadius: "10px",
+                padding: "10px 12px",
+                background: "#111827",
+                color: "#ffffff",
+                fontSize: "13px",
+                fontWeight: "800",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
               + 현장 추가
-            </button>
-
-            <button
-              type="button"
-              onClick={
-                openWorkerManager
-              }
-              style={{
-                border:
-                  "1px solid #cbd5e1",
-                borderRadius:
-                  "10px",
-                padding:
-                  "9px 12px",
-                background:
-                  "#ffffff",
-                color:
-                  "#334155",
-                fontSize:
-                  "12px",
-                fontWeight:
-                  "800",
-                cursor:
-                  "pointer",
-                whiteSpace:
-                  "nowrap",
-              }}
-            >
-              👷 시공자 관리
             </button>
           </div>
         </div>
@@ -336,39 +220,29 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "repeat(4, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
             gap: "6px",
-            marginBottom:
-              "14px",
+            marginBottom: "14px",
           }}
         >
           <SummaryCard
             label="상담중"
-            value={
-              consultingCount
-            }
+            value={consultingCount}
           />
 
           <SummaryCard
             label="시공 예정"
-            value={
-              scheduledCount
-            }
+            value={scheduledCount}
           />
 
           <SummaryCard
             label="시공 중"
-            value={
-              progressCount
-            }
+            value={progressCount}
           />
 
           <SummaryCard
             label="완료"
-            value={
-              completedCount
-            }
+            value={completedCount}
           />
         </div>
 
@@ -376,94 +250,49 @@ export default function SiteManagementTab({
           style={{
             display: "flex",
             gap: "6px",
-            overflowX:
-              "auto",
-            paddingBottom:
-              "5px",
-            marginBottom:
-              "12px",
+            overflowX: "auto",
+            paddingBottom: "5px",
+            marginBottom: "12px",
           }}
         >
           <FilterButton
-            active={
-              filter ===
-              "active"
-            }
-            onClick={() =>
-              setFilter(
-                "active",
-              )
-            }
+            active={filter === "active"}
+            onClick={() => setFilter("active")}
           >
             진행 현장
           </FilterButton>
 
           <FilterButton
-            active={
-              filter ===
-              "consulting"
-            }
-            onClick={() =>
-              setFilter(
-                "consulting",
-              )
-            }
+            active={filter === "consulting"}
+            onClick={() => setFilter("consulting")}
           >
             상담중
           </FilterButton>
 
           <FilterButton
-            active={
-              filter ===
-              "scheduled"
-            }
-            onClick={() =>
-              setFilter(
-                "scheduled",
-              )
-            }
+            active={filter === "scheduled"}
+            onClick={() => setFilter("scheduled")}
           >
             예정
           </FilterButton>
 
           <FilterButton
-            active={
-              filter ===
-              "in_progress"
-            }
-            onClick={() =>
-              setFilter(
-                "in_progress",
-              )
-            }
+            active={filter === "in_progress"}
+            onClick={() => setFilter("in_progress")}
           >
             시공 중
           </FilterButton>
 
           <FilterButton
-            active={
-              filter ===
-              "completed"
-            }
-            onClick={() =>
-              setFilter(
-                "completed",
-              )
-            }
+            active={filter === "completed"}
+            onClick={() => setFilter("completed")}
           >
             완료
           </FilterButton>
 
           <FilterButton
-            active={
-              filter ===
-              "all"
-            }
-            onClick={() =>
-              setFilter(
-                "all",
-              )
-            }
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
           >
             전체
           </FilterButton>
@@ -472,115 +301,78 @@ export default function SiteManagementTab({
         {sitesMessage && (
           <div
             style={{
-              marginBottom:
-                "12px",
-              padding:
-                "10px 12px",
-              borderRadius:
-                "9px",
-              background:
-                sitesMessage.startsWith(
-                  "✅",
-                )
-                  ? "#f0fdf4"
-                  : "#fef2f2",
-              color:
-                sitesMessage.startsWith(
-                  "✅",
-                )
-                  ? "#166534"
-                  : "#b91c1c",
-              fontSize:
-                "13px",
-              fontWeight:
-                "700",
-              whiteSpace:
-                "pre-wrap",
-              wordBreak:
-                "break-word",
+              marginBottom: "12px",
+              padding: "10px 12px",
+              borderRadius: "9px",
+              background: sitesMessage.startsWith("✅")
+                ? "#f0fdf4"
+                : "#fef2f2",
+              color: sitesMessage.startsWith("✅")
+                ? "#166534"
+                : "#b91c1c",
+              fontSize: "13px",
+              fontWeight: "700",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
             }}
           >
             {sitesMessage}
           </div>
         )}
 
-        {sitesLoading &&
-          sites.length ===
-            0 && (
+        {sitesLoading && sites.length === 0 && (
+          <div
+            style={{
+              padding: "30px 12px",
+              textAlign: "center",
+              color: "#64748b",
+              fontSize: "14px",
+            }}
+          >
+            현장 정보를 불러오는 중입니다...
+          </div>
+        )}
+
+        {!sitesLoading && filteredSites.length === 0 && (
+          <div
+            style={{
+              padding: "38px 16px",
+              border: "1px dashed #cbd5e1",
+              borderRadius: "14px",
+              background: "#ffffff",
+              textAlign: "center",
+            }}
+          >
             <div
               style={{
-                padding:
-                  "30px 12px",
-                textAlign:
-                  "center",
-                color:
-                  "#64748b",
-                fontSize:
-                  "14px",
+                fontSize: "30px",
+                marginBottom: "8px",
               }}
             >
-              현장 정보를 불러오는
-              중입니다...
+              🏠
             </div>
-          )}
 
-        {!sitesLoading &&
-          filteredSites.length ===
-            0 && (
             <div
               style={{
-                padding:
-                  "38px 16px",
-                border:
-                  "1px dashed #cbd5e1",
-                borderRadius:
-                  "14px",
-                background:
-                  "#ffffff",
-                textAlign:
-                  "center",
+                fontWeight: "800",
+                color: "#334155",
               }}
             >
-              <div
-                style={{
-                  fontSize:
-                    "30px",
-                  marginBottom:
-                    "8px",
-                }}
-              >
-                🏠
-              </div>
-
-              <div
-                style={{
-                  fontWeight:
-                    "800",
-                  color:
-                    "#334155",
-                }}
-              >
-                등록된 현장이
-                없습니다.
-              </div>
-
-              <div
-                style={{
-                  marginTop:
-                    "5px",
-                  fontSize:
-                    "12px",
-                  color:
-                    "#64748b",
-                }}
-              >
-                + 현장 추가에서
-                상담중 현장이나
-                시공 일정을
-                등록해주세요.
-              </div>
+              등록된 현장이 없습니다.
             </div>
-          )}
+
+            <div
+              style={{
+                marginTop: "5px",
+                fontSize: "12px",
+                color: "#64748b",
+              }}
+            >
+              + 현장 추가에서 상담중 현장이나 시공 일정을
+              등록해주세요.
+            </div>
+          </div>
+        )}
 
         <div
           style={{
@@ -588,172 +380,63 @@ export default function SiteManagementTab({
             gap: "10px",
           }}
         >
-          {filteredSites.map(
-            (site) => (
-              <SiteCard
-                key={
-                  site.id
-                }
-                site={
-                  site
-                }
-                onOpen={() =>
-                  openSite(
-                    site,
-                  )
-                }
-              />
-            ),
-          )}
+          {filteredSites.map((site) => (
+            <SiteCard
+              key={site.id}
+              site={site}
+              onOpen={() => openSite(site)}
+            />
+          ))}
         </div>
       </section>
 
       <SiteRegisterModal
-        open={
-          registerOpen
-        }
-        onClose={() =>
-          setRegisterOpen(
-            false,
-          )
-        }
-        createSite={
-          createSite
-        }
-        loading={
-          sitesLoading
-        }
+        open={registerOpen}
+        onClose={() => setRegisterOpen(false)}
+        createSite={createSite}
+        loading={sitesLoading}
       />
-
-      {workerManagerOpen && (
-        <WorkerManagerModal
-          onClose={() =>
-            setWorkerManagerOpen(
-              false,
-            )
-          }
-        >
-          <WorkerManagement
-            loadWorkers={loadWorkers}
-            workers={
-              workers
-            }
-            workersLoading={
-              workersLoading
-            }
-            workersMessage={
-              workersMessage
-            }
-            createWorker={
-              createWorker
-            }
-            updateWorker={
-              updateWorker
-            }
-            setWorkerActive={
-              setWorkerActive
-            }
-            createWorkerInvite={
-              createWorkerInvite
-            }
-          />
-        </WorkerManagerModal>
-      )}
 
       {selectedSite && (
         <SiteDetailModal
-          companyId={
-            companyId
-          }
-
-          site={
-            selectedSite
-          }
-
-          onClose={
-            closeSite
-          }
-
-          updateSiteBasicInfo={
-            updateSiteBasicInfo
-          }
-
-          updateSiteSchedule={
-            updateSiteSchedule
-          }
-
-          updateSiteStatus={
-            updateSiteStatus
-          }
-
-          addSiteRequestPhotos={
-            addSiteRequestPhotos
-          }
-
-          deleteSiteRequestPhoto={
-            deleteSiteRequestPhoto
-          }
-
-          workers={
-            workers
-          }
-
-          workersLoading={
-            workersLoading
-          }
-
-          loadWorkers={
-            loadWorkers
-          }
-
-          loadSiteWorkers={
-            loadSiteWorkers
-          }
-
-          assignSiteWorkers={
-            assignSiteWorkers
-          }
-
-          reloadSites={
-            reloadSites
-          }
+          companyId={companyId}
+          site={selectedSite}
+          onClose={closeSite}
+          updateSiteBasicInfo={updateSiteBasicInfo}
+          updateSiteSchedule={updateSiteSchedule}
+          updateSiteStatus={updateSiteStatus}
+          addSiteRequestPhotos={addSiteRequestPhotos}
+          deleteSiteRequestPhoto={deleteSiteRequestPhoto}
+          workers={workers}
+          workersLoading={workersLoading}
+          loadWorkers={loadWorkers}
+          loadSiteWorkers={loadSiteWorkers}
+          assignSiteWorkers={assignSiteWorkers}
+          reloadSites={reloadSites}
         />
       )}
     </>
   );
-            }
-/* =========================================================
-   요약 카드
-========================================================= */
+}
 
-function SummaryCard({
-  label,
-  value,
-}) {
+/* 요약 카드 */
+function SummaryCard({ label, value }) {
   return (
     <div
       style={{
         minWidth: 0,
-        padding:
-          "12px 4px",
-        border:
-          "1px solid #e2e8f0",
-        borderRadius:
-          "12px",
-        background:
-          "#ffffff",
-        textAlign:
-          "center",
+        padding: "12px 4px",
+        border: "1px solid #e2e8f0",
+        borderRadius: "12px",
+        background: "#ffffff",
+        textAlign: "center",
       }}
     >
       <div
         style={{
-          fontSize:
-            "11px",
-          color:
-            "#64748b",
-          whiteSpace:
-            "nowrap",
+          fontSize: "11px",
+          color: "#64748b",
+          whiteSpace: "nowrap",
         }}
       >
         {label}
@@ -761,14 +444,10 @@ function SummaryCard({
 
       <div
         style={{
-          marginTop:
-            "4px",
-          fontSize:
-            "22px",
-          fontWeight:
-            "900",
-          color:
-            "#111827",
+          marginTop: "4px",
+          fontSize: "22px",
+          fontWeight: "900",
+          color: "#111827",
         }}
       >
         {value}
@@ -777,46 +456,24 @@ function SummaryCard({
   );
 }
 
-/* =========================================================
-   필터 버튼
-========================================================= */
-
-function FilterButton({
-  active,
-  onClick,
-  children,
-}) {
+/* 필터 버튼 */
+function FilterButton({ active, onClick, children }) {
   return (
     <button
       type="button"
-      onClick={
-        onClick
-      }
+      onClick={onClick}
       style={{
-        flex:
-          "0 0 auto",
-        border:
-          active
-            ? "1px solid #111827"
-            : "1px solid #cbd5e1",
-        borderRadius:
-          "999px",
-        padding:
-          "8px 12px",
-        background:
-          active
-            ? "#111827"
-            : "#ffffff",
-        color:
-          active
-            ? "#ffffff"
-            : "#475569",
-        fontSize:
-          "12px",
-        fontWeight:
-          "700",
-        cursor:
-          "pointer",
+        flex: "0 0 auto",
+        border: active
+          ? "1px solid #111827"
+          : "1px solid #cbd5e1",
+        borderRadius: "999px",
+        padding: "8px 12px",
+        background: active ? "#111827" : "#ffffff",
+        color: active ? "#ffffff" : "#475569",
+        fontSize: "12px",
+        fontWeight: "700",
+        cursor: "pointer",
       }}
     >
       {children}
@@ -824,94 +481,50 @@ function FilterButton({
   );
 }
 
-/* =========================================================
-   현장 카드
-========================================================= */
-
-function SiteCard({
-  site,
-  onOpen,
-}) {
+/* 현장 카드 */
+function SiteCard({ site, onOpen }) {
   const status =
-    STATUS_INFO[
-      site.status
-    ] ||
-    STATUS_INFO.consulting;
+    STATUS_INFO[site.status] || STATUS_INFO.consulting;
 
-  const leader =
-    getLeader(site);
-
-  const members =
-    getMembers(site);
+  const leader = getLeader(site);
+  const members = getMembers(site);
 
   const siteTitle =
-    site.site_name ||
-    site.customer_name ||
-    "현장명 미정";
+    site.site_name || site.customer_name || "현장명 미정";
 
-  const customerName =
-    site.customer_name ||
-    "미정";
-
-  const address =
-    site.address ||
-    "미정";
-
-  const workType =
-    site.work_type ||
-    "미정";
+  const customerName = site.customer_name || "미정";
+  const address = site.address || "미정";
+  const workType = site.work_type || "미정";
 
   return (
     <button
       type="button"
-      onClick={
-        onOpen
-      }
+      onClick={onOpen}
       style={{
-        width:
-          "100%",
-        padding:
-          "14px",
-        border:
-          "1px solid #e2e8f0",
-        borderRadius:
-          "14px",
-        background:
-          "#ffffff",
-        textAlign:
-          "left",
-        cursor:
-          "pointer",
+        width: "100%",
+        padding: "14px",
+        border: "1px solid #e2e8f0",
+        borderRadius: "14px",
+        background: "#ffffff",
+        textAlign: "left",
+        cursor: "pointer",
       }}
     >
       <div
         style={{
-          display:
-            "flex",
-          alignItems:
-            "flex-start",
-          justifyContent:
-            "space-between",
-          gap:
-            "8px",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "8px",
         }}
       >
-        <div
-          style={{
-            minWidth:
-              0,
-          }}
-        >
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
-              fontSize:
-                "15px",
-              fontWeight:
-                "800",
-              color:
-                "#111827",
-              wordBreak:
-                "break-word",
+              fontSize: "15px",
+              fontWeight: "800",
+              color: "#111827",
+              wordBreak: "break-word",
             }}
           >
             {siteTitle}
@@ -919,35 +532,24 @@ function SiteCard({
 
           <div
             style={{
-              marginTop:
-                "3px",
-              fontSize:
-                "12px",
-              color:
-                "#64748b",
+              marginTop: "3px",
+              fontSize: "12px",
+              color: "#64748b",
             }}
           >
-            고객{" "}
-            {customerName}
+            고객 {customerName}
           </div>
         </div>
 
         <span
           style={{
-            flex:
-              "0 0 auto",
-            padding:
-              "5px 8px",
-            borderRadius:
-              "999px",
-            background:
-              status.background,
-            color:
-              status.color,
-            fontSize:
-              "11px",
-            fontWeight:
-              "800",
+            flex: "0 0 auto",
+            padding: "5px 8px",
+            borderRadius: "999px",
+            background: status.background,
+            color: status.color,
+            fontSize: "11px",
+            fontWeight: "800",
           }}
         >
           {status.label}
@@ -956,16 +558,11 @@ function SiteCard({
 
       <div
         style={{
-          marginTop:
-            "12px",
-          display:
-            "grid",
-          gap:
-            "7px",
-          fontSize:
-            "13px",
-          color:
-            "#334155",
+          marginTop: "12px",
+          display: "grid",
+          gap: "7px",
+          fontSize: "13px",
+          color: "#334155",
         }}
       >
         <div>
@@ -978,159 +575,31 @@ function SiteCard({
         </div>
 
         <div>
-          📍{" "}
-          {address}
-
+          📍 {address}
           {site.address_detail
             ? ` ${site.address_detail}`
             : ""}
         </div>
 
-        <div>
-          🛠️{" "}
-          {workType}
-        </div>
+        <div>🛠️ {workType}</div>
 
         <div>
           ★ 팀장{" "}
           <strong>
-            {leader?.workers
-              ?.name ||
-              "미배정"}
+            {leader?.workers?.name || "미배정"}
           </strong>
         </div>
 
-        {members.length >
-          0 && (
+        {members.length > 0 && (
           <div>
             👷 담당{" "}
-
             {members
-              .map(
-                (item) =>
-                  item.workers
-                    ?.name,
-              )
-              .filter(
-                Boolean,
-              )
-              .join(
-                ", ",
-              ) ||
-              "미배정"}
+              .map((item) => item.workers?.name)
+              .filter(Boolean)
+              .join(", ") || "미배정"}
           </div>
         )}
       </div>
     </button>
-  );
-}
-
-/* =========================================================
-   시공자 관리 모달
-========================================================= */
-
-function WorkerManagerModal({
-  onClose,
-  children,
-}) {
-  return (
-    <div
-      onClick={
-        onClose
-      }
-      style={{
-        position:
-          "fixed",
-        inset:
-          0,
-        zIndex:
-          1100,
-        display:
-          "flex",
-        alignItems:
-          "flex-start",
-        justifyContent:
-          "center",
-        padding:
-          "20px 10px",
-        background:
-          "rgba(15,23,42,0.55)",
-        overflowY:
-          "auto",
-      }}
-    >
-      <div
-        onClick={(
-          event,
-        ) =>
-          event.stopPropagation()
-        }
-        style={{
-          width:
-            "100%",
-          maxWidth:
-            "650px",
-          padding:
-            "16px",
-          borderRadius:
-            "16px",
-          background:
-            "#ffffff",
-          boxShadow:
-            "0 20px 50px rgba(0,0,0,0.20)",
-        }}
-      >
-        <div
-          style={{
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "space-between",
-            gap:
-              "10px",
-            marginBottom:
-              "12px",
-          }}
-        >
-          <div
-            style={{
-              fontSize:
-                "18px",
-              fontWeight:
-                "900",
-              color:
-                "#111827",
-            }}
-          >
-            시공자 관리
-          </div>
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            style={{
-              border:
-                "none",
-              background:
-                "transparent",
-              fontSize:
-                "28px",
-              color:
-                "#64748b",
-              cursor:
-                "pointer",
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {children}
-      </div>
-    </div>
   );
 }
