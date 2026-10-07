@@ -1,5 +1,6 @@
 "use client";
 
+import LaborPayments from "./LaborPayments";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -936,6 +937,8 @@ export default function ProfitTab() {
           </div>
 
           <div hidden={view !== "cost"}>
+            {view === "cost" && <LaborPayments />}
+
             <Breakdown
               data={data}
               type="labor"
@@ -1246,4 +1249,4 @@ export default function ProfitTab() {
       )}
     </section>
   );
-}
+        }
