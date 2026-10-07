@@ -38,6 +38,7 @@ const MENUS = [
   { id: "summary", label: "요약", kind: "report" },
   { id: "cost", label: "비용분석", kind: "money" },
   { id: "sites", label: "현장별 수익", kind: "home" },
+  { id: "payments", label: "인건비 지급", kind: "money" },
 ];
 
 const group = (rows, key) =>
@@ -765,9 +766,10 @@ export default function ProfitTab() {
           <nav
             aria-label="화면 메뉴"
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(2, minmax(0, 1fr))",
               gap: 6,
-              flexWrap: "wrap",
               padding: "8px 0",
               marginBottom: 12,
             }}
@@ -780,7 +782,7 @@ export default function ProfitTab() {
                 disabled={saving}
                 onClick={() => setView(menu.id)}
                 style={{
-                  flex: "1 1 80px",
+                  minWidth: 0,
                   padding: "12px 8px",
                   borderRadius: 15,
                   border:
@@ -936,9 +938,9 @@ export default function ProfitTab() {
             </div>
           </div>
 
-          <div hidden={view !== "cost"}>
-            {view === "cost" && <LaborPayments />}
+          {view === "payments" && <LaborPayments />}
 
+          <div hidden={view !== "cost"}>
             <Breakdown
               data={data}
               type="labor"
@@ -1249,4 +1251,4 @@ export default function ProfitTab() {
       )}
     </section>
   );
-        }
+            }
