@@ -1,6 +1,7 @@
 "use client";
 
 import LaborPayments from "./LaborPayments";
+import LaborCostSettings from "./LaborCostSettings";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -12,9 +13,9 @@ const today = () => {
   const date = new Date();
 
   return `${date.getFullYear()}-${String(
-    date.getMonth() + 1
+    date.getMonth() + 1,
   ).padStart(2, "0")}-${String(
-    date.getDate()
+    date.getDate(),
   ).padStart(2, "0")}`;
 };
 
@@ -47,22 +48,15 @@ const group = (rows, key) =>
       const label = row[key] || "미분류";
 
       if (!map[label]) {
-        map[label] = {
-          amount: 0,
-          rows: [],
-        };
+        map[label] = { amount: 0, rows: [] };
       }
 
       map[label].amount += Number(row.amount || 0);
       map[label].rows.push(row);
-
       return map;
-    }, {})
+    }, {}),
   )
-    .map(([label, value]) => ({
-      label,
-      ...value,
-    }))
+    .map(([label, value]) => ({ label, ...value }))
     .sort((a, b) => b.amount - a.amount);
 
 function Breakdown({ data, type, title, itemKey }) {
@@ -84,12 +78,7 @@ function Breakdown({ data, type, title, itemKey }) {
     >
       <h3 style={{ margin: "0 0 4px" }}>{title}</h3>
 
-      <strong
-        style={{
-          color: colors[type],
-          fontSize: 20,
-        }}
-      >
+      <strong style={{ color: colors[type], fontSize: 20 }}>
         {won(total)}
       </strong>
 
@@ -112,9 +101,7 @@ function Breakdown({ data, type, title, itemKey }) {
               type="button"
               aria-expanded={open === entry.label}
               onClick={() => {
-                setOpen(
-                  open === entry.label ? "" : entry.label
-                );
+                setOpen(open === entry.label ? "" : entry.label);
                 setProductOpen("");
               }}
               style={{
@@ -146,7 +133,7 @@ function Breakdown({ data, type, title, itemKey }) {
             <div
               role="img"
               aria-label={`${entry.label} ${won(
-                entry.amount
+                entry.amount,
               )}, 전체 ${title}의 ${
                 total
                   ? Math.round((entry.amount / total) * 100)
@@ -164,10 +151,7 @@ function Breakdown({ data, type, title, itemKey }) {
                   height: "100%",
                   width: `${
                     total
-                      ? Math.min(
-                          100,
-                          (entry.amount / total) * 100
-                        )
+                      ? Math.min(100, (entry.amount / total) * 100)
                       : 0
                   }%`,
                   background: colors[type],
@@ -185,76 +169,72 @@ function Breakdown({ data, type, title, itemKey }) {
                 }}
               >
                 {type === "material"
-                  ? group(entry.rows, "product").map(
-                      (product) => (
-                        <div
-                          key={product.label}
+                  ? group(entry.rows, "product").map((product) => (
+                      <div
+                        key={product.label}
+                        style={{
+                          padding: "5px 0",
+                          borderBottom: "1px solid #f1f5f9",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          aria-expanded={
+                            productOpen === product.label
+                          }
+                          onClick={() =>
+                            setProductOpen(
+                              productOpen === product.label
+                                ? ""
+                                : product.label,
+                            )
+                          }
                           style={{
-                            padding: "5px 0",
-                            borderBottom:
-                              "1px solid #f1f5f9",
+                            width: "100%",
+                            minHeight: 44,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                            textAlign: "left",
+                            cursor: "pointer",
                           }}
                         >
-                          <button
-                            type="button"
-                            aria-expanded={
-                              productOpen === product.label
-                            }
-                            onClick={() =>
-                              setProductOpen(
-                                productOpen === product.label
-                                  ? ""
-                                  : product.label
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              minHeight: 44,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              border: 0,
-                              padding: 0,
-                              background: "transparent",
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <span>
-                              {product.label} (
-                              {product.rows.length}건)
-                            </span>
+                          <span>
+                            {product.label} ({product.rows.length}건)
+                          </span>
 
-                            <strong>
-                              {won(product.amount)}{" "}
-                              {productOpen === product.label
-                                ? "⌃"
-                                : "⌄"}
-                            </strong>
-                          </button>
+                          <strong>
+                            {won(product.amount)}{" "}
+                            {productOpen === product.label
+                              ? "⌃"
+                              : "⌄"}
+                          </strong>
+                        </button>
 
-                          {productOpen === product.label &&
-                            product.rows.map((row, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  padding: "5px 0 0 10px",
-                                  color: "#475569",
-                                }}
-                              >
-                                {row.siteName} ·{" "}
-                                {row.quantity == null
-                                  ? "수기 입력"
-                                  : `${row.quantity.toLocaleString(
-                                      "ko-KR"
-                                    )}${row.unit}`}{" "}
-                                · {won(row.amount)}
-                              </div>
-                            ))}
-                        </div>
-                      )
-                    )
+                        {productOpen === product.label &&
+                          product.rows.map((row, index) => (
+                            <div
+                              key={index}
+                              style={{
+                                padding: "5px 0 0 10px",
+                                color: "#475569",
+                              }}
+                            >
+                              {row.siteName} ·{" "}
+                              {row.quantity == null
+                                ? "수기 입력"
+                                : `${row.quantity.toLocaleString(
+                                    "ko-KR",
+                                  )}${row.unit}`}{" "}
+                              · {won(row.amount)}
+                            </div>
+                          ))}
+                      </div>
+                    ))
                   : entry.rows.map((row, index) => (
                       <div
                         key={index}
@@ -278,15 +258,10 @@ function Breakdown({ data, type, title, itemKey }) {
 }
 
 function profitView(source, excludedWorkerIds) {
-  if (!source || !excludedWorkerIds.length) {
-    return source;
-  }
+  if (!source || !excludedWorkerIds.length) return source;
 
   const ownerIds = new Set(excludedWorkerIds);
-
-  if (!ownerIds.size) {
-    return source;
-  }
+  if (!ownerIds.size) return source;
 
   const sites = source.sites.map((site) => {
     const excluded = (source.breakdown.labor || [])
@@ -297,7 +272,7 @@ function profitView(source, excludedWorkerIds) {
           (ownerIds.has(row.workerId)
             ? Number(row.amount) || 0
             : 0),
-        0
+        0,
       );
 
     return {
@@ -310,7 +285,7 @@ function profitView(source, excludedWorkerIds) {
 
   const excluded = sites.reduce(
     (sum, site) => sum + site.excludedOwnerLabor,
-    0
+    0,
   );
 
   return {
@@ -325,7 +300,7 @@ function profitView(source, excludedWorkerIds) {
     breakdown: {
       ...source.breakdown,
       labor: source.breakdown.labor.filter(
-        (row) => !ownerIds.has(row.workerId)
+        (row) => !ownerIds.has(row.workerId),
       ),
     },
   };
@@ -337,14 +312,10 @@ export default function ProfitTab() {
   const [to, setTo] = useState(today);
   const [rawData, setData] = useState(null);
 
-  const [excludedWorkerIds, setExcludedWorkerIds] =
-    useState([]);
-
+  const [excludedWorkerIds, setExcludedWorkerIds] = useState([]);
   const [exclusionStorageKey, setExclusionStorageKey] =
     useState("");
-
-  const [exclusionMessage, setExclusionMessage] =
-    useState("");
+  const [exclusionMessage, setExclusionMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -378,32 +349,30 @@ export default function ProfitTab() {
 
         if (stored) {
           setExclusionMessage(
-            "저장된 제외 설정을 불러왔습니다."
+            "저장된 제외 설정을 불러왔습니다.",
           );
         }
       } catch {
         setExclusionStorageKey(key);
         setExclusionMessage(
-          "제외 설정을 불러오지 못했습니다. 다시 선택해주세요."
+          "제외 설정을 불러오지 못했습니다. 다시 선택해주세요.",
         );
       }
     }
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (
-          event === "TOKEN_REFRESHED" ||
-          event === "USER_UPDATED"
-        ) {
-          return;
-        }
-
-        authChanged = true;
-        restore(session);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event === "TOKEN_REFRESHED" ||
+        event === "USER_UPDATED"
+      ) {
+        return;
       }
-    );
+
+      authChanged = true;
+      restore(session);
+    });
 
     supabase.auth
       .getSession()
@@ -412,7 +381,7 @@ export default function ProfitTab() {
 
         if (error) {
           setExclusionMessage(
-            "계정 확인에 실패했습니다. 새로고침해주세요."
+            "계정 확인에 실패했습니다. 새로고침해주세요.",
           );
           return;
         }
@@ -422,7 +391,7 @@ export default function ProfitTab() {
       .catch(() => {
         if (active && !authChanged) {
           setExclusionMessage(
-            "계정 확인에 실패했습니다. 새로고침해주세요."
+            "계정 확인에 실패했습니다. 새로고침해주세요.",
           );
         }
       });
@@ -443,14 +412,14 @@ export default function ProfitTab() {
     try {
       window.localStorage.setItem(
         exclusionStorageKey,
-        JSON.stringify(next)
+        JSON.stringify(next),
       );
 
       setExcludedWorkerIds(next);
       setExclusionMessage("제외 설정을 저장했습니다.");
     } catch {
       setExclusionMessage(
-        "저장하지 못해 선택을 변경하지 않았습니다. 브라우저 저장 공간을 확인해주세요."
+        "저장하지 못해 선택을 변경하지 않았습니다. 브라우저 저장 공간을 확인해주세요.",
       );
     }
   }
@@ -475,29 +444,22 @@ export default function ProfitTab() {
       throw new Error("관리자로 다시 로그인해주세요.");
     }
 
-    const response = await fetch(
-      `/api/admin/profit${query}`,
-      {
-        method,
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          ...(payload
-            ? { "Content-Type": "application/json" }
-            : {}),
-        },
+    const response = await fetch(`/api/admin/profit${query}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
         ...(payload
-          ? { body: JSON.stringify(payload) }
+          ? { "Content-Type": "application/json" }
           : {}),
-        cache: "no-store",
-      }
-    );
+      },
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+      cache: "no-store",
+    });
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(
-        result.error || "요청에 실패했습니다."
-      );
+      throw new Error(result.error || "요청에 실패했습니다.");
     }
 
     return result;
@@ -517,10 +479,8 @@ export default function ProfitTab() {
         await request(
           "GET",
           null,
-          `?from=${encodeURIComponent(
-            from
-          )}&to=${encodeURIComponent(to)}`
-        )
+          `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        ),
       );
     } catch (cause) {
       setError(cause.message);
@@ -535,7 +495,7 @@ export default function ProfitTab() {
   }, []);
 
   const current = data?.sites.find(
-    (site) => site.id === selected
+    (site) => site.id === selected,
   );
 
   const assigned = (current?.site_workers || [])
@@ -550,14 +510,13 @@ export default function ProfitTab() {
     if (person) {
       setDescription(`${person.name} 인건비`);
       setAmount(
-        person.daily_wage ? String(person.daily_wage) : ""
+        person.daily_wage ? String(person.daily_wage) : "",
       );
     }
   }
 
   async function save(event) {
     event.preventDefault();
-
     if (!current) return;
 
     setSaving(true);
@@ -567,9 +526,7 @@ export default function ProfitTab() {
       await request("POST", {
         siteId: current.id,
         type: kind,
-        amount: Number(
-          String(amount).replaceAll(",", "")
-        ),
+        amount: Number(String(amount).replaceAll(",", "")),
         description,
       });
 
@@ -586,11 +543,7 @@ export default function ProfitTab() {
   }
 
   async function remove(id) {
-    if (
-      !window.confirm(
-        "이 비용 내역을 삭제하시겠습니까?"
-      )
-    ) {
+    if (!window.confirm("이 비용 내역을 삭제하시겠습니까?")) {
       return;
     }
 
@@ -629,16 +582,14 @@ export default function ProfitTab() {
     ...new Map(
       (rawData?.breakdown?.labor || [])
         .filter((row) => row.workerId)
-        .map((row) => [row.workerId, row])
+        .map((row) => [row.workerId, row]),
     ).values(),
   ];
 
   return (
     <section style={{ display: "grid", gap: 14 }}>
       <div style={card}>
-        <h2 style={{ margin: "0 0 8px" }}>
-          📊 현장 수익
-        </h2>
+        <h2 style={{ margin: "0 0 8px" }}>📊 현장 수익</h2>
 
         <p
           style={{
@@ -647,10 +598,9 @@ export default function ProfitTab() {
             lineHeight: 1.5,
           }}
         >
-          시공 시작일 기준 계약금액 − 인건비 − 실제
-          사용 자재비 − 경비입니다. 계약금액 기준 예상
-          수익이며 입금·세금·본사 공통비는 반영하지
-          않습니다.
+          시공 시작일 기준 계약금액 − 인건비 − 실제 사용
+          자재비 − 경비입니다. 계약금액 기준 예상 수익이며
+          입금·세금·본사 공통비는 반영하지 않습니다.
         </p>
 
         <div
@@ -667,9 +617,7 @@ export default function ProfitTab() {
               aria-label="수익 조회 시작일"
               type="date"
               value={from}
-              onChange={(event) =>
-                setFrom(event.target.value)
-              }
+              onChange={(event) => setFrom(event.target.value)}
               style={field}
             />
           </label>
@@ -680,9 +628,7 @@ export default function ProfitTab() {
               aria-label="수익 조회 종료일"
               type="date"
               value={to}
-              onChange={(event) =>
-                setTo(event.target.value)
-              }
+              onChange={(event) => setTo(event.target.value)}
               style={field}
             />
           </label>
@@ -711,10 +657,7 @@ export default function ProfitTab() {
           }}
         >
           <summary
-            style={{
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
+            style={{ fontWeight: 800, cursor: "pointer" }}
           >
             수익 계산에서 제외할 시공자{" "}
             {excludedWorkerIds.length > 0
@@ -729,20 +672,17 @@ export default function ProfitTab() {
               lineHeight: 1.6,
             }}
           >
-            관리자 본인의 인건비를 빼려면 해당
-            시공자를 체크해주세요. 일당·팀장수당을
-            수익 계산에서만 제외하며, 급여·보고서
-            기록은 유지됩니다. 선택은 이 브라우저에
-            관리자 계정별로 자동 저장됩니다.
+            관리자 본인의 인건비를 빼려면 해당 시공자를
+            체크해주세요. 일당·팀장수당을 수익 계산에서만
+            제외하며, 급여·보고서 기록은 유지됩니다.
+            선택은 이 브라우저에 관리자 계정별로 자동
+            저장됩니다.
           </p>
 
           {exclusionMessage && (
             <p
               role="status"
-              style={{
-                fontSize: 12,
-                color: "#475569",
-              }}
+              style={{ fontSize: 12, color: "#475569" }}
             >
               {exclusionMessage}
             </p>
@@ -761,18 +701,14 @@ export default function ProfitTab() {
             >
               <input
                 type="checkbox"
-                checked={excludedWorkerIds.includes(
-                  row.workerId
-                )}
+                checked={excludedWorkerIds.includes(row.workerId)}
                 disabled={
-                  loading ||
-                  saving ||
-                  !exclusionStorageKey
+                  loading || saving || !exclusionStorageKey
                 }
                 onChange={(event) =>
                   changeExcludedWorker(
                     row.workerId,
-                    event.target.checked
+                    event.target.checked,
                   )
                 }
               />
@@ -781,24 +717,19 @@ export default function ProfitTab() {
               {won(
                 (rawData.breakdown.labor || [])
                   .filter(
-                    (item) => item.workerId === row.workerId
+                    (item) => item.workerId === row.workerId,
                   )
                   .reduce(
                     (sum, item) =>
                       sum + Number(item.amount || 0),
-                    0
-                  )
+                    0,
+                  ),
               )}
             </label>
           ))}
 
           {!laborWorkers.length && (
-            <p
-              style={{
-                fontSize: 12,
-                color: "#64748b",
-              }}
-            >
+            <p style={{ fontSize: 12, color: "#64748b" }}>
               조회된 시공자별 인건비가 없습니다.
             </p>
           )}
@@ -816,16 +747,13 @@ export default function ProfitTab() {
             </strong>
           )}
 
-          <p
-            style={{
-              fontSize: 12,
-              color: "#64748b",
-            }}
-          >
-            시공자를 특정하지 않은 현장 인건비는
-            제외하지 않습니다.
+          <p style={{ fontSize: 12, color: "#64748b" }}>
+            시공자를 특정하지 않은 현장 인건비는 제외하지
+            않습니다.
           </p>
         </details>
+
+        <LaborCostSettings onClose={load} />
 
         {error && (
           <p role="alert" style={{ color: "#b91c1c" }}>
@@ -840,8 +768,7 @@ export default function ProfitTab() {
             aria-label="화면 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "repeat(2, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
               gap: 6,
               padding: "8px 0",
               marginBottom: 12,
@@ -871,10 +798,7 @@ export default function ProfitTab() {
                   cursor: "pointer",
                 }}
               >
-                <ToolIllustration
-                  kind={menu.kind}
-                  size={34}
-                />
+                <ToolIllustration kind={menu.kind} size={34} />
                 <span>{menu.label}</span>
               </button>
             ))}
@@ -885,8 +809,7 @@ export default function ProfitTab() {
               style={{
                 ...card,
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(2, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: 12,
               }}
             >
@@ -899,10 +822,7 @@ export default function ProfitTab() {
               ].map(([label, value]) => (
                 <div key={label}>
                   <div
-                    style={{
-                      color: "#64748b",
-                      fontSize: 12,
-                    }}
+                    style={{ color: "#64748b", fontSize: 12 }}
                   >
                     {label}
                   </div>
@@ -924,9 +844,7 @@ export default function ProfitTab() {
             </div>
 
             <div style={{ ...card, marginTop: 14 }}>
-              <h3 style={{ margin: "0 0 10px" }}>
-                비용 구성
-              </h3>
+              <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
 
               {data.totals.labor +
                 data.totals.material +
@@ -957,7 +875,7 @@ export default function ProfitTab() {
                             background: colors[type],
                           }}
                         />
-                      )
+                      ),
                     )}
                   </div>
 
@@ -1029,8 +947,7 @@ export default function ProfitTab() {
           <div hidden={view !== "sites"}>
             {data.sites.length === 0 && (
               <div style={card}>
-                이 기간에 시공 시작일이 등록된
-                현장이 없습니다.
+                이 기간에 시공 시작일이 등록된 현장이 없습니다.
               </div>
             )}
 
@@ -1081,26 +998,15 @@ export default function ProfitTab() {
                 </strong>
 
                 {site.excludedOwnerLabor > 0 && (
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#1d4ed8",
-                    }}
-                  >
+                  <p style={{ fontSize: 12, color: "#1d4ed8" }}>
                     선택한 시공자 인건비{" "}
                     {won(site.excludedOwnerLabor)} 제외 적용
                   </p>
                 )}
 
                 {site.missingContract && (
-                  <p
-                    style={{
-                      color: "#b45309",
-                      fontSize: 12,
-                    }}
-                  >
-                    ⚠️ 계약금액 미입력: 매출 0원으로
-                    집계됩니다.
+                  <p style={{ color: "#b45309", fontSize: 12 }}>
+                    ⚠️ 계약금액 미입력: 매출 0원으로 집계됩니다.
                   </p>
                 )}
 
@@ -1109,7 +1015,7 @@ export default function ProfitTab() {
                     type="button"
                     onClick={() => {
                       setSelected(
-                        selected === site.id ? "" : site.id
+                        selected === site.id ? "" : site.id,
                       );
                       setWorker("");
                     }}
@@ -1134,20 +1040,16 @@ export default function ProfitTab() {
                     }}
                   >
                     <p
-                      style={{
-                        fontSize: 12,
-                        color: "#64748b",
-                      }}
+                      style={{ fontSize: 12, color: "#64748b" }}
                     >
                       날짜별 팀장·팀원 배정으로 일당과
-                      팀장수당을 자동 계산합니다.
-                      시공자를 선택해 인건비를 직접
-                      저장하면 해당 시공자의 자동 계산
-                      대신 입력한 총액을 사용합니다.
-                      시공자를 특정하지 않은 인건비는
-                      현장 전체 합계로 적용됩니다.
-                      완료보고의 실제 자재와 경비도
-                      자동 합산됩니다.
+                      팀장수당을 자동 계산합니다. 시공자를
+                      선택해 인건비를 직접 저장하면 해당
+                      시공자의 자동 계산 대신 입력한 총액을
+                      사용합니다. 시공자를 특정하지 않은
+                      인건비는 현장 전체 합계로 적용됩니다.
+                      완료보고의 실제 자재와 경비도 자동
+                      합산됩니다.
                     </p>
 
                     <form
@@ -1170,7 +1072,7 @@ export default function ProfitTab() {
                             <option key={key} value={key}>
                               {label}
                             </option>
-                          )
+                          ),
                         )}
                       </select>
 
@@ -1220,8 +1122,8 @@ export default function ProfitTab() {
                           setAmount(
                             event.target.value.replace(
                               /[^\d]/g,
-                              ""
-                            )
+                              "",
+                            ),
                           )
                         }
                         style={field}
@@ -1281,4 +1183,4 @@ export default function ProfitTab() {
       )}
     </section>
   );
-                }
+        }
