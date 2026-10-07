@@ -48,7 +48,10 @@ async function auth(request) {
     throw Error("다시 로그인해주세요.");
   }
 
-  const { data: profile, error: profileError } = await db
+  const {
+    data: profile,
+    error: profileError,
+  } = await db
     .from("profiles")
     .select("company_id,role,is_active")
     .eq("id", data.user.id)
@@ -61,7 +64,8 @@ async function auth(request) {
   }
 
   const owner =
-    profile?.role === "owner" && profile.is_active === true;
+    profile?.role === "owner" &&
+    profile.is_active === true;
 
   let worker = null;
 
@@ -83,7 +87,9 @@ async function auth(request) {
     : worker?.company_id;
 
   if (!companyId) {
-    throw Error("등록된 관리자 또는 시공자 계정이 필요합니다.");
+    throw Error(
+      "등록된 관리자 또는 시공자 계정이 필요합니다."
+    );
   }
 
   const company = await db
@@ -128,15 +134,22 @@ export async function GET(request) {
     }
 
     if (mode === "admin" && !a.owner) {
-      return json({ error: "관리자 권한이 필요합니다." }, 403);
+      return json(
+        { error: "관리자 권한이 필요합니다." },
+        403
+      );
     }
 
     if (mode !== "admin" && !worker) {
-      return json({ error: "시공자 계정 연결이 필요합니다." }, 403);
+      return json(
+        { error: "시공자 계정 연결이 필요합니다." },
+        403
+      );
     }
 
     const month =
-      params.get("month") || new Date().toISOString().slice(0, 7);
+      params.get("month") ||
+      new Date().toISOString().slice(0, 7);
 
     if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) {
       return json({ error: "월을 확인해주세요." }, 400);
@@ -179,23 +192,11 @@ export async function GET(request) {
     const records = await all(query);
 
     if (mode !== "admin") {
-      const [daily, assigned, open] = await Promise.all([
-        all(
-          a.db
-            .from("site_daily_assignments")
-            .select("site_id")
-            .eq("company_id", a.companyId)
-            .eq("worker_id", worker.id)
-            .order("id")
-        ),
-        all(
-          a.db
-            .from("site_workers")
-            .select("site_id")
-            .eq("company_id", a.companyId)
-            .eq("worker_id", worker.id)
-            .order("id")
-        ),
+      const [eligible, open] = await Promise.all([
+        a.db.rpc("attendance_today_sites", {
+          p_user: a.userId,
+          p_company: a.companyId,
+        }),
         a.db
           .from("attendance_records")
           .select("*")
@@ -205,49 +206,65 @@ export async function GET(request) {
           .maybeSingle(),
       ]);
 
+      if (eligible.error) throw eligible.error;
       if (open.error) throw open.error;
 
       if (
         open.data &&
-        !records.some((record) => record.id === open.data.id)
+        !records.some(
+          (record) => record.id === open.data.id
+        )
       ) {
         records.unshift(open.data);
       }
 
       const allowed = new Set(
-        [...daily, ...assigned].map((item) => item.site_id)
+        (eligible.data || []).map((row) => row.id)
       );
 
-      sites = sites.filter((site) => allowed.has(site.id));
+      const history = new Set(
+        records.map((record) => record.site_id)
+      );
+
+      sites = sites
+        .filter(
+          (site) =>
+            allowed.has(site.id) || history.has(site.id)
+        )
+        .map((site) => ({
+          ...site,
+          canClockIn: allowed.has(site.id),
+        }));
     }
 
-    const [settings, locations, workers] = await Promise.all([
-      a.db
-        .from("attendance_settings")
-        .select("*")
-        .eq("company_id", a.companyId)
-        .maybeSingle(),
+    const [settings, locations, workers] =
+      await Promise.all([
+        a.db
+          .from("attendance_settings")
+          .select("*")
+          .eq("company_id", a.companyId)
+          .maybeSingle(),
 
-      mode === "admin"
-        ? all(
-            a.db
-              .from("attendance_locations")
-              .select("*")
-              .eq("company_id", a.companyId)
-              .order("site_id")
-          )
-        : [],
+        mode === "admin"
+          ? all(
+              a.db
+                .from("attendance_locations")
+                .select("*")
+                .eq("company_id", a.companyId)
+                .order("site_id")
+            )
+          : [],
 
-      mode === "admin"
-        ? all(
-            a.db
-              .from("workers")
-              .select("id,name")
-              .eq("company_id", a.companyId)
-              .order("id")
-          )
-        : [worker],
-    ]);
+        mode === "admin"
+          ? all(
+              a.db
+                .from("workers")
+                .select("id,name")
+                .eq("company_id", a.companyId)
+                .order("id")
+            )
+          : [worker],
+      ]);
 
     if (settings.error) throw settings.error;
 
@@ -259,7 +276,10 @@ export async function GET(request) {
       workers,
     });
   } catch (error) {
-    console.error("attendance GET", error.code || error.message);
+    console.error(
+      "attendance GET",
+      error.code || error.message
+    );
 
     return json(
       { error: error.message || "출퇴근 내역 조회 실패" },
@@ -325,7 +345,9 @@ async function prepareLocation(a, siteId) {
   if (legacy.error) throw legacy.error;
 
   if (!daily.data.length && !legacy.data.length) {
-    throw Error("본인에게 배정된 현장만 출근할 수 있습니다.");
+    throw Error(
+      "본인에게 배정된 현장만 출근할 수 있습니다."
+    );
   }
 
   const cached = await a.db
@@ -351,7 +373,8 @@ async function prepareLocation(a, siteId) {
     )}`,
     {
       headers: {
-        Authorization: `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,
+        Authorization:
+          `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,
       },
       signal: AbortSignal.timeout(8000),
     }
@@ -409,13 +432,27 @@ export async function POST(request) {
     const a = await auth(request);
     const body = await request.json();
 
-    if (!["in", "out", "settings", "review"].includes(body.action)) {
-      return json({ error: "요청을 확인해주세요." }, 400);
+    if (
+      ![
+        "in",
+        "out",
+        "settings",
+        "review",
+        "correct",
+      ].includes(body.action)
+    ) {
+      return json(
+        { error: "요청을 확인해주세요." },
+        400
+      );
     }
 
     let warning = "";
 
-    if (body.action === "in" && body.consent === true) {
+    if (
+      body.action === "in" &&
+      body.consent === true
+    ) {
       try {
         warning = await prepareLocation(a, body.siteId);
       } catch {
@@ -424,22 +461,31 @@ export async function POST(request) {
       }
     }
 
-    const result = await a.db.rpc("attendance_action", {
-      p_user: a.userId,
-      p_action: body.action,
-      p_body: body,
-    });
+    const result = await a.db.rpc(
+      body.action === "correct"
+        ? "attendance_correct"
+        : "attendance_action",
+      {
+        p_user: a.userId,
+        p_action: body.action,
+        p_body: body,
+      }
+    );
 
     if (result.error) throw result.error;
 
     return json({
       ...result.data,
       message:
-        [result.data?.message, warning].filter(Boolean).join(" ") ||
-        "저장했습니다.",
+        [result.data?.message, warning]
+          .filter(Boolean)
+          .join(" ") || "저장했습니다.",
     });
   } catch (error) {
-    console.error("attendance POST", error.code || error.message);
+    console.error(
+      "attendance POST",
+      error.code || error.message
+    );
 
     return json(
       { error: error.message || "출퇴근 처리 실패" },
