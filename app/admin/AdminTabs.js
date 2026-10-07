@@ -4,6 +4,12 @@ import { useId, useState } from "react";
 
 const menus = [
   {
+    href: "/admin/attendance",
+    label: "출퇴근 관리",
+    description: "현장 위치와 연장근무 확인",
+    icon: "report",
+  },
+  {
     id: "sites",
     label: "현장 관리",
     description: "현장 일정과 시공자 배정",
@@ -59,35 +65,24 @@ function Picture({ kind = "report", size = 80 }) {
       <defs>
         <linearGradient
           id={`${id}blue`}
-          x1="25"
-          y1="15"
-          x2="95"
-          y2="110"
+          x1="25" y1="15" x2="95" y2="110"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#9bd2ff" />
           <stop offset=".5" stopColor="#509beb" />
           <stop offset="1" stopColor="#286aca" />
         </linearGradient>
-
         <linearGradient
           id={`${id}cream`}
-          x1="20"
-          y1="20"
-          x2="95"
-          y2="110"
+          x1="20" y1="20" x2="95" y2="110"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#fff9eb" />
           <stop offset="1" stopColor="#dbc19a" />
         </linearGradient>
-
         <linearGradient
           id={`${id}gold`}
-          x1="30"
-          y1="30"
-          x2="90"
-          y2="100"
+          x1="30" y1="30" x2="90" y2="100"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#ffeaa0" />
@@ -95,144 +90,39 @@ function Picture({ kind = "report", size = 80 }) {
         </linearGradient>
       </defs>
 
-      <ellipse
-        cx="60"
-        cy="106"
-        rx="42"
-        ry="7"
-        fill="#233c61"
-        opacity=".09"
-      />
+      <ellipse cx="60" cy="106" rx="42" ry="7" fill="#233c61" opacity=".09" />
 
       {kind === "house" && (
         <>
-          <rect
-            x="26"
-            y="48"
-            width="69"
-            height="55"
-            rx="7"
-            fill={cream}
-          />
-          <path
-            d="M16 53 59 14l46 39-9 11-37-32-34 32Z"
-            fill={blue}
-          />
-          <path
-            d="m25 49 34-29 36 29"
-            stroke="#bddfff"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-          <rect
-            x="47"
-            y="70"
-            width="22"
-            height="33"
-            rx="4"
-            fill="#bc8b5d"
-          />
+          <rect x="26" y="48" width="69" height="55" rx="7" fill={cream} />
+          <path d="M16 53 59 14l46 39-9 11-37-32-34 32Z" fill={blue} />
+          <path d="m25 49 34-29 36 29" stroke="#bddfff" strokeWidth="3" strokeLinecap="round" />
+          <rect x="47" y="70" width="22" height="33" rx="4" fill="#bc8b5d" />
           <circle cx="63" cy="88" r="2" fill="#f6dfb0" />
-          <rect
-            x="31"
-            y="60"
-            width="13"
-            height="15"
-            rx="3"
-            fill="#b7dff5"
-          />
-          <rect
-            x="74"
-            y="60"
-            width="13"
-            height="15"
-            rx="3"
-            fill="#b7dff5"
-          />
-          <ellipse
-            cx="95"
-            cy="88"
-            rx="10"
-            ry="19"
-            fill="#82b96a"
-          />
-          <ellipse
-            cx="106"
-            cy="94"
-            rx="8"
-            ry="13"
-            fill="#a8cf87"
-          />
+          <rect x="31" y="60" width="13" height="15" rx="3" fill="#b7dff5" />
+          <rect x="74" y="60" width="13" height="15" rx="3" fill="#b7dff5" />
+          <ellipse cx="95" cy="88" rx="10" ry="19" fill="#82b96a" />
+          <ellipse cx="106" cy="94" rx="8" ry="13" fill="#a8cf87" />
         </>
       )}
 
       {kind === "report" && (
         <>
           <g transform="rotate(8 60 60)">
-            <rect
-              x="26"
-              y="20"
-              width="68"
-              height="85"
-              rx="10"
-              fill={blue}
-            />
-            <rect
-              x="32"
-              y="27"
-              width="56"
-              height="72"
-              rx="6"
-              fill={cream}
-            />
-            <rect
-              x="43"
-              y="13"
-              width="33"
-              height="18"
-              rx="7"
-              fill="#a88869"
-            />
-            <rect
-              x="51"
-              y="10"
-              width="17"
-              height="12"
-              rx="6"
-              fill="#bd9f7f"
-            />
+            <rect x="26" y="20" width="68" height="85" rx="10" fill={blue} />
+            <rect x="32" y="27" width="56" height="72" rx="6" fill={cream} />
+            <rect x="43" y="13" width="33" height="18" rx="7" fill="#a88869" />
+            <rect x="51" y="10" width="17" height="12" rx="6" fill="#bd9f7f" />
             <circle cx="59" cy="16" r="3" fill="#f9eed9" />
-
             {[48, 66, 84].map((y) => (
               <g key={y}>
-                <rect
-                  x="40"
-                  y={y - 7}
-                  width="12"
-                  height="12"
-                  rx="3"
-                  fill="#78ba87"
-                />
-                <path
-                  d={`m43 ${y - 1} 3 3 4-6`}
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d={`M59 ${y - 1}h20`}
-                  stroke="#c9b391"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                />
+                <rect x="40" y={y - 7} width="12" height="12" rx="3" fill="#78ba87" />
+                <path d={`m43 ${y - 1} 3 3 4-6`} stroke="white" strokeWidth="2" strokeLinecap="round" />
+                <path d={`M59 ${y - 1}h20`} stroke="#c9b391" strokeWidth="4" strokeLinecap="round" />
               </g>
             ))}
           </g>
-
-          <path
-            d="m87 93 19-55 7 3-19 55-8 7Z"
-            fill={gold}
-          />
+          <path d="m87 93 19-55 7 3-19 55-8 7Z" fill={gold} />
           <path d="m86 103 2-10 6 3Z" fill="#68626a" />
         </>
       )}
@@ -245,154 +135,54 @@ function Picture({ kind = "report", size = 80 }) {
             { x: 74, y: 62 },
           ].map(({ x, y }) => (
             <g key={x}>
-              <rect
-                x={x}
-                y={y - 28}
-                width="29"
-                height="35"
-                rx="7"
-                fill={gold}
-              />
-              <ellipse
-                cx={x + 14.5}
-                cy={y - 28}
-                rx="14.5"
-                ry="6"
-                fill="#ffe299"
-              />
-
+              <rect x={x} y={y - 28} width="29" height="35" rx="7" fill={gold} />
+              <ellipse cx={x + 14.5} cy={y - 28} rx="14.5" ry="6" fill="#ffe299" />
               {[y - 18, y - 8, y + 2].map((value) => (
                 <path
                   key={value}
                   d={`M${x + 3} ${value}q12 6 23 0`}
-                  stroke="#d99418"
-                  strokeWidth="2"
-                  opacity=".55"
+                  stroke="#d99418" strokeWidth="2" opacity=".55"
                 />
               ))}
             </g>
           ))}
-
-          <path
-            d="m24 37 24-15 18 8 22-19"
-            stroke="#76b9ef"
-            strokeWidth="7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path d="m24 37 24-15 18 8 22-19" stroke="#76b9ef" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
         </>
       )}
 
       {kind === "people" && (
         <>
           <circle cx="83" cy="47" r="15" fill="#f1c69f" />
-          <path
-            d="M62 102V78a21 21 0 0 1 42 0v24"
-            fill="#a5d0f3"
-          />
+          <path d="M62 102V78a21 21 0 0 1 42 0v24" fill="#a5d0f3" />
           <circle cx="46" cy="41" r="20" fill="#f3cdaa" />
-          <path
-            d="M24 103V79a25 25 0 0 1 50 0v24"
-            fill={blue}
-          />
-          <path
-            d="M23 36a23 23 0 0 1 46 0Z"
-            fill={gold}
-          />
-          <rect
-            x="18"
-            y="33"
-            width="57"
-            height="8"
-            rx="4"
-            fill="#f1b735"
-          />
-          <rect
-            x="42"
-            y="14"
-            width="9"
-            height="22"
-            rx="4"
-            fill="#ffe39a"
-          />
+          <path d="M24 103V79a25 25 0 0 1 50 0v24" fill={blue} />
+          <path d="M23 36a23 23 0 0 1 46 0Z" fill={gold} />
+          <rect x="18" y="33" width="57" height="8" rx="4" fill="#f1b735" />
+          <rect x="42" y="14" width="9" height="22" rx="4" fill="#ffe39a" />
         </>
       )}
 
       {kind === "box" && (
         <>
-          <path
-            d="m22 42 40-20 38 19-40 22Z"
-            fill="#e9c5a0"
-          />
+          <path d="m22 42 40-20 38 19-40 22Z" fill="#e9c5a0" />
           <path d="M22 42v49l38 20V63Z" fill="#bf936b" />
           <path d="M60 63v48l40-21V41Z" fill="#d7ac83" />
-          <path
-            d="m40 33 39 20v17l-12 6V59L29 40Z"
-            fill="#f6dfbe"
-          />
-          <path
-            d="M30 60v21"
-            stroke="#d4b18d"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
+          <path d="m40 33 39 20v17l-12 6V59L29 40Z" fill="#f6dfbe" />
+          <path d="M30 60v21" stroke="#d4b18d" strokeWidth="3" strokeLinecap="round" />
         </>
       )}
 
       {kind === "film" && (
         <>
           <path d="M21 42h66v45H21Z" fill={cream} />
-          <ellipse
-            cx="21"
-            cy="64"
-            rx="14"
-            ry="23"
-            fill="#e7bf90"
-          />
-          <ellipse
-            cx="21"
-            cy="64"
-            rx="8"
-            ry="16"
-            fill="#bc8954"
-          />
-          <ellipse
-            cx="21"
-            cy="64"
-            rx="4"
-            ry="9"
-            fill="#f2d5b0"
-          />
-          <path
-            d="M36 48h43M37 54h42"
-            stroke="#fff6e3"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-
+          <ellipse cx="21" cy="64" rx="14" ry="23" fill="#e7bf90" />
+          <ellipse cx="21" cy="64" rx="8" ry="16" fill="#bc8954" />
+          <ellipse cx="21" cy="64" rx="4" ry="9" fill="#f2d5b0" />
+          <path d="M36 48h43M37 54h42" stroke="#fff6e3" strokeWidth="3" strokeLinecap="round" />
           <g transform="rotate(-20 85 80)">
-            <ellipse
-              cx="77"
-              cy="93"
-              rx="10"
-              ry="12"
-              stroke="#5098df"
-              strokeWidth="6"
-            />
-            <ellipse
-              cx="103"
-              cy="93"
-              rx="10"
-              ry="12"
-              stroke="#5098df"
-              strokeWidth="6"
-            />
-            <path
-              d="m82 85 18-44M97 85 80 42"
-              stroke="#a9b6c3"
-              strokeWidth="7"
-              strokeLinecap="round"
-            />
+            <ellipse cx="77" cy="93" rx="10" ry="12" stroke="#5098df" strokeWidth="6" />
+            <ellipse cx="103" cy="93" rx="10" ry="12" stroke="#5098df" strokeWidth="6" />
+            <path d="m82 85 18-44M97 85 80 42" stroke="#a9b6c3" strokeWidth="7" strokeLinecap="round" />
             <circle cx="90" cy="73" r="4" fill="#dbe5ed" />
           </g>
         </>
@@ -427,20 +217,17 @@ export default function AdminTabs({
               <span className="film-admin-kicker">
                 오늘도 좋은 공간을 만듭니다
               </span>
-
               <h2>
                 안녕하세요!
                 <br />
                 필름장이 관리자입니다.
               </h2>
-
               <p>
                 현장부터 완료보고까지
                 <br />
                 오늘의 업무를 편하게 확인하세요.
               </p>
             </div>
-
             <Picture kind="report" size={132} />
           </div>
 
@@ -456,7 +243,6 @@ export default function AdminTabs({
               const content = (
                 <>
                   <Picture kind={menu.icon} size={68} />
-
                   <span>
                     <strong>{menu.label}</strong>
                     <small>
@@ -465,7 +251,6 @@ export default function AdminTabs({
                         : menu.description}
                     </small>
                   </span>
-
                   <b aria-hidden="true">›</b>
                 </>
               );
@@ -495,13 +280,9 @@ export default function AdminTabs({
 
       {!isHome && (
         <div className="film-admin-section-bar">
-          <button
-            type="button"
-            onClick={() => go("today")}
-          >
+          <button type="button" onClick={() => go("today")}>
             ‹ 관리자 홈
           </button>
-
           <span>
             {
               {
@@ -524,43 +305,22 @@ export default function AdminTabs({
         >
           <div className="film-admin-more-title">
             <strong>관리 메뉴</strong>
-
-            <button
-              type="button"
-              onClick={() => setMoreOpen(false)}
-            >
+            <button type="button" onClick={() => setMoreOpen(false)}>
               닫기
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => go("jobs")}
-          >
+          <button type="button" onClick={() => go("jobs")}>
             시공 DB
           </button>
-
-          <button
-            type="button"
-            onClick={() => go("register")}
-          >
+          <button type="button" onClick={() => go("register")}>
             시공 등록
           </button>
-
-          <button
-            type="button"
-            onClick={() => go("usage")}
-          >
+          <button type="button" onClick={() => go("usage")}>
             로그 분석
           </button>
-
-          <a href="/admin/material-order">
-            자재 주문
-          </a>
-
-          <a href="/admin/billing">
-            요금제 · 결제
-          </a>
+          <a href="/admin/material-order">자재 주문</a>
+          <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
 
@@ -577,9 +337,7 @@ export default function AdminTabs({
           <button
             key={item.id}
             type="button"
-            aria-current={
-              activeTab === item.id ? "page" : undefined
-            }
+            aria-current={activeTab === item.id ? "page" : undefined}
             onClick={() => go(item.id)}
           >
             <span aria-hidden="true">{item.icon}</span>
@@ -601,33 +359,25 @@ export default function AdminTabs({
         body:has(.film-admin-dashboard) {
           background: #fcf9f2;
         }
-
         main:has(> .film-admin-dashboard) {
           background: #fcf9f2;
           padding-bottom: 128px;
         }
-
         .film-admin-dashboard {
           color: #163153;
           margin-bottom: 26px;
         }
-
         .film-admin-dashboard button,
         .film-admin-dashboard a {
           -webkit-tap-highlight-color: transparent;
           font-family: inherit;
         }
-
-        .film-admin-dashboard button {
-          cursor: pointer;
-        }
-
+        .film-admin-dashboard button { cursor: pointer; }
         .film-admin-dashboard button:focus-visible,
         .film-admin-dashboard a:focus-visible {
           outline: 3px solid #74b5ee;
           outline-offset: 3px;
         }
-
         .film-admin-hero {
           display: flex;
           align-items: center;
@@ -635,37 +385,31 @@ export default function AdminTabs({
           gap: 8px;
           padding: 18px 2px 25px;
         }
-
         .film-admin-kicker {
           font-size: 12px;
           color: #77879a;
         }
-
         .film-admin-hero h2 {
           font-size: clamp(21px, 4.7vw, 30px);
           line-height: 1.45;
           letter-spacing: -0.8px;
           margin: 10px 0;
         }
-
         .film-admin-hero p {
           color: #748194;
           font-size: 13px;
           line-height: 1.7;
           margin: 0;
         }
-
         .film-admin-menu-heading {
           font-size: 19px;
           margin: 28px 0 15px;
         }
-
         .film-admin-menu-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
         }
-
         .film-admin-menu-grid > button,
         .film-admin-menu-grid > a {
           display: flex;
@@ -683,24 +427,18 @@ export default function AdminTabs({
           min-height: 133px;
           box-shadow: 0 7px 20px #baaa9010;
         }
-
         .film-admin-menu-grid strong,
-        .film-admin-menu-grid small {
-          display: block;
-        }
-
+        .film-admin-menu-grid small { display: block; }
         .film-admin-menu-grid strong {
           font-size: 15px;
           letter-spacing: -0.6px;
         }
-
         .film-admin-menu-grid small {
           font-size: 11px;
           color: #7a8594;
           line-height: 1.5;
           margin-top: 5px;
         }
-
         .film-admin-menu-grid b {
           position: absolute;
           right: 12px;
@@ -708,11 +446,7 @@ export default function AdminTabs({
           font-size: 21px;
           color: #83a3c0;
         }
-
-        .film-admin-section-anchor {
-          scroll-margin-top: 30px;
-        }
-
+        .film-admin-section-anchor { scroll-margin-top: 30px; }
         .film-admin-section-bar {
           display: flex;
           align-items: center;
@@ -720,7 +454,6 @@ export default function AdminTabs({
           gap: 10px;
           margin: 16px 0 22px;
         }
-
         .film-admin-section-bar button {
           background: white;
           border: 1px solid #e9e5dd;
@@ -729,12 +462,10 @@ export default function AdminTabs({
           color: #387bc4;
           font-weight: 700;
         }
-
         .film-admin-section-bar span {
           font-weight: 700;
           font-size: 15px;
         }
-
         .film-admin-bottom {
           position: fixed;
           bottom: 0;
@@ -745,12 +476,10 @@ export default function AdminTabs({
           display: flex;
           background: #fffffff5;
           border-top: 1px solid #eee8df;
-          padding: 8px 8px
-            calc(9px + env(safe-area-inset-bottom));
+          padding: 8px 8px calc(9px + env(safe-area-inset-bottom));
           box-shadow: 0 -5px 25px #766d5910;
           backdrop-filter: blur(12px);
         }
-
         .film-admin-bottom button {
           flex: 1;
           border: 0;
@@ -759,25 +488,21 @@ export default function AdminTabs({
           min-height: 49px;
           border-radius: 12px;
         }
-
         .film-admin-bottom button[aria-current="page"] {
           color: #398fe4;
           background: #f0f7ff;
         }
-
         .film-admin-bottom span {
           display: block;
           font-size: 25px;
           line-height: 29px;
           font-weight: 700;
         }
-
         .film-admin-bottom small {
           display: block;
           font-size: 11px;
           margin-top: 3px;
         }
-
         .film-admin-more {
           position: fixed;
           bottom: calc(80px + env(safe-area-inset-bottom));
@@ -792,14 +517,12 @@ export default function AdminTabs({
           display: grid;
           gap: 8px;
         }
-
         .film-admin-more-title {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 8px;
         }
-
         .film-admin-more button,
         .film-admin-more a {
           border: 0;
@@ -811,7 +534,6 @@ export default function AdminTabs({
           text-align: left;
           font-size: 14px;
         }
-
         @media (min-width: 600px) {
           .film-admin-menu-grid > button,
           .film-admin-menu-grid > a {
@@ -819,16 +541,10 @@ export default function AdminTabs({
             min-height: 105px;
             padding: 16px;
           }
-
-          .film-admin-menu-grid strong {
-            font-size: 17px;
-          }
-
-          .film-admin-menu-grid small {
-            font-size: 13px;
-          }
+          .film-admin-menu-grid strong { font-size: 17px; }
+          .film-admin-menu-grid small { font-size: 13px; }
         }
       `}</style>
     </section>
   );
-                    }
+            }
