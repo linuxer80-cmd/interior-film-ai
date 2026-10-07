@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useRouter } from "next/navigation";
 
 const menus = [
   {
@@ -202,12 +201,7 @@ function Picture({ kind = "report", size = 80 }) {
               rx="6"
               fill="#bd9f7f"
             />
-            <circle
-              cx="59"
-              cy="16"
-              r="3"
-              fill="#f9eed9"
-            />
+            <circle cx="59" cy="16" r="3" fill="#f9eed9" />
 
             {[48, 66, 84].map((y) => (
               <g key={y}>
@@ -239,10 +233,7 @@ function Picture({ kind = "report", size = 80 }) {
             d="m87 93 19-55 7 3-19 55-8 7Z"
             fill={gold}
           />
-          <path
-            d="m86 103 2-10 6 3Z"
-            fill="#68626a"
-          />
+          <path d="m86 103 2-10 6 3Z" fill="#68626a" />
         </>
       )}
 
@@ -294,22 +285,12 @@ function Picture({ kind = "report", size = 80 }) {
 
       {kind === "people" && (
         <>
-          <circle
-            cx="83"
-            cy="47"
-            r="15"
-            fill="#f1c69f"
-          />
+          <circle cx="83" cy="47" r="15" fill="#f1c69f" />
           <path
             d="M62 102V78a21 21 0 0 1 42 0v24"
             fill="#a5d0f3"
           />
-          <circle
-            cx="46"
-            cy="41"
-            r="20"
-            fill="#f3cdaa"
-          />
+          <circle cx="46" cy="41" r="20" fill="#f3cdaa" />
           <path
             d="M24 103V79a25 25 0 0 1 50 0v24"
             fill={blue}
@@ -343,14 +324,8 @@ function Picture({ kind = "report", size = 80 }) {
             d="m22 42 40-20 38 19-40 22Z"
             fill="#e9c5a0"
           />
-          <path
-            d="M22 42v49l38 20V63Z"
-            fill="#bf936b"
-          />
-          <path
-            d="M60 63v48l40-21V41Z"
-            fill="#d7ac83"
-          />
+          <path d="M22 42v49l38 20V63Z" fill="#bf936b" />
+          <path d="M60 63v48l40-21V41Z" fill="#d7ac83" />
           <path
             d="m40 33 39 20v17l-12 6V59L29 40Z"
             fill="#f6dfbe"
@@ -366,10 +341,7 @@ function Picture({ kind = "report", size = 80 }) {
 
       {kind === "film" && (
         <>
-          <path
-            d="M21 42h66v45H21Z"
-            fill={cream}
-          />
+          <path d="M21 42h66v45H21Z" fill={cream} />
           <ellipse
             cx="21"
             cy="64"
@@ -421,12 +393,7 @@ function Picture({ kind = "report", size = 80 }) {
               strokeWidth="7"
               strokeLinecap="round"
             />
-            <circle
-              cx="90"
-              cy="73"
-              r="4"
-              fill="#dbe5ed"
-            />
+            <circle cx="90" cy="73" r="4" fill="#dbe5ed" />
           </g>
         </>
       )}
@@ -441,7 +408,6 @@ export default function AdminTabs({
   secondaryOnly = false,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const router = useRouter();
 
   if (secondaryOnly) return null;
 
@@ -478,46 +444,6 @@ export default function AdminTabs({
             <Picture kind="report" size={132} />
           </div>
 
-          <div className="film-admin-shortcuts">
-            <button
-              type="button"
-              onClick={() => go("sites")}
-            >
-              <span>현장 일정</span>
-              <strong>현장 확인 →</strong>
-              <small>시공일과 팀원 배정</small>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => go("leads")}
-            >
-              <span>새로운 상담</span>
-              <strong>{unreadCount}건</strong>
-              <small>확인하지 않은 상담</small>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => go("profit")}
-            >
-              <span>매출 · 수익</span>
-              <strong>수익 확인 →</strong>
-              <small>실제 비용과 수익 분석</small>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                router.push("/admin/today")
-              }
-            >
-              <span>오늘 할 일</span>
-              <strong>업무 확인 →</strong>
-              <small>배정 확인과 보고서 검수</small>
-            </button>
-          </div>
-
           <h3 className="film-admin-menu-heading">
             무엇을 도와드릴까요?
           </h3>
@@ -529,14 +455,15 @@ export default function AdminTabs({
             {menus.map((menu) => {
               const content = (
                 <>
-                  <Picture
-                    kind={menu.icon}
-                    size={68}
-                  />
+                  <Picture kind={menu.icon} size={68} />
 
                   <span>
                     <strong>{menu.label}</strong>
-                    <small>{menu.description}</small>
+                    <small>
+                      {menu.id === "leads" && unreadCount > 0
+                        ? `새 상담 ${unreadCount}건 · 확인해주세요`
+                        : menu.description}
+                    </small>
                   </span>
 
                   <b aria-hidden="true">›</b>
@@ -544,10 +471,7 @@ export default function AdminTabs({
               );
 
               return menu.href ? (
-                <a
-                  key={menu.href}
-                  href={menu.href}
-                >
+                <a key={menu.href} href={menu.href}>
                   {content}
                 </a>
               ) : (
@@ -648,25 +572,17 @@ export default function AdminTabs({
           { id: "today", label: "홈", icon: "⌂" },
           { id: "sites", label: "현장", icon: "▣" },
           { id: "leads", label: "상담", icon: "♧" },
-          {
-            id: "profit",
-            label: "매출·수익",
-            icon: "▥",
-          },
+          { id: "profit", label: "매출·수익", icon: "▥" },
         ].map((item) => (
           <button
             key={item.id}
             type="button"
             aria-current={
-              activeTab === item.id
-                ? "page"
-                : undefined
+              activeTab === item.id ? "page" : undefined
             }
             onClick={() => go(item.id)}
           >
-            <span aria-hidden="true">
-              {item.icon}
-            </span>
+            <span aria-hidden="true">{item.icon}</span>
             <small>{item.label}</small>
           </button>
         ))}
@@ -737,55 +653,6 @@ export default function AdminTabs({
           font-size: 13px;
           line-height: 1.7;
           margin: 0;
-        }
-
-        .film-admin-shortcuts {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        .film-admin-shortcuts button {
-          text-align: left;
-          border: 0;
-          border-radius: 21px;
-          padding: 19px 16px;
-          color: #173251;
-          background: #e5f3fe;
-        }
-
-        .film-admin-shortcuts button:nth-child(2) {
-          background: #fff0e6;
-        }
-
-        .film-admin-shortcuts button:nth-child(3) {
-          background: #e9f6ec;
-        }
-
-        .film-admin-shortcuts button:nth-child(4) {
-          background: #fff5d9;
-        }
-
-        .film-admin-shortcuts span,
-        .film-admin-shortcuts strong,
-        .film-admin-shortcuts small {
-          display: block;
-        }
-
-        .film-admin-shortcuts span {
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        .film-admin-shortcuts strong {
-          font-size: 20px;
-          margin: 10px 0 8px;
-          letter-spacing: -0.5px;
-        }
-
-        .film-admin-shortcuts small {
-          font-size: 11px;
-          color: #758397;
         }
 
         .film-admin-menu-heading {
@@ -964,4 +831,4 @@ export default function AdminTabs({
       `}</style>
     </section>
   );
-              }
+                    }
