@@ -2,9 +2,15 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const TYPES = { labor: "인건비", material: "자재비", expense: "경비" };
+const TYPES = {
+  labor: "인건비",
+  material: "자재비",
+  expense: "경비",
+};
+
 const PREFIX = "수익관리/";
 const REPORT_LABOR = "완료보고/인건비:";
+
 const EXPENSE_LABELS = {
   parking: "주차비",
   meal: "식대",
@@ -104,9 +110,11 @@ async function allRows(query) {
 
   for (let offset = 0; offset < 10000; offset += 500) {
     const { data, error } = await query.range(offset, offset + 499);
+
     if (error) throw error;
 
     rows.push(...(data || []));
+
     if (!data || data.length < 500) return rows;
   }
 
@@ -161,7 +169,9 @@ function assignmentDays(site) {
 
 function rateValue(value) {
   if (value == null || value === "") return null;
+
   const number = Number(value);
+
   return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
@@ -207,9 +217,11 @@ function assignedLabor(
 
   for (const row of unique.values()) {
     const person = people.get(row.worker_id);
+
     const history = rates.filter(
       (rate) => rate.worker_id === row.worker_id,
     );
+
     const rate = history.find(
       (item) => item.effective_from <= row.date,
     );
@@ -323,6 +335,7 @@ function resolveLabor(site, automated, expenses, people) {
   if (manual.some((row) => !row.workerId)) return manual;
 
   const manualIds = new Set(manual.map((row) => row.workerId));
+
   const reportRows = reports.filter(
     (row) => !manualIds.has(row.workerId),
   );
@@ -348,6 +361,43 @@ function resolveLabor(site, automated, expenses, people) {
         }));
 
   return [...manual, ...reportRows, ...automatic];
+}
+
+/*
+ * 계약금액이 있으면 기존 계약금액을 사용합니다.
+ * 계약금액이 없거나 0원이면 최신 보고서의 승인금액을 사용합니다.
+ * 승인된 0원은 유효한 확정금액으로 처리합니다.
+ * 검수 대기/보완 요청 보고서의 금액은 반영하지 않습니다.
+ */
+function resolveRevenue(site, report) {
+  const contract = rateValue(site.contract_amount);
+
+  const approved =
+    report?.review_status === "approved"
+      ? rateValue(report.approved_amount)
+      : null;
+
+  if (contract !== null && contract > 0) {
+    return {
+      revenue: contract,
+      missingContract: false,
+      revenueSource: "contract",
+    };
+  }
+
+  if (approved !== null) {
+    return {
+      revenue: approved,
+      missingContract: false,
+      revenueSource: "approved_report",
+    };
+  }
+
+  return {
+    revenue: contract ?? 0,
+    missingContract: contract === null,
+    revenueSource: contract === null ? "missing" : "contract",
+  };
 }
 
 export async function GET(request) {
@@ -417,6 +467,7 @@ export async function GET(request) {
     const materials = [];
     const expenses = [];
     const daily = [];
+    const reports = [];
 
     for (let index = 0; index < sites.length; index += 100) {
       const ids = sites
@@ -453,11 +504,36 @@ export async function GET(request) {
             .in("site_id", ids)
             .order("id"),
         ),
+        allRows(
+          db
+            .from("work_reports")
+            .select(
+              "id,site_id,review_status,approved_amount,updated_at",
+            )
+            .eq("company_id", companyId)
+            .in("site_id", ids)
+            .order("updated_at", { ascending: false })
+            .order("id"),
+        ),
       ]);
 
       materials.push(...results[0]);
       expenses.push(...results[1]);
       daily.push(...results[2]);
+      reports.push(...results[3]);
+    }
+
+    /*
+     * 검수 API와 동일하게 updated_at 기준 최신 보고서를 선택합니다.
+     * 승인 상태로 먼저 필터링하지 않아 과거 승인금액이 잘못
+     * 반영되는 것을 방지합니다.
+     */
+    const latestReports = new Map();
+
+    for (const report of reports) {
+      if (!latestReports.has(report.site_id)) {
+        latestReports.set(report.site_id, report);
+      }
     }
 
     const workerIds = [
@@ -524,7 +600,11 @@ export async function GET(request) {
 
     if (current.error) throw current.error;
 
-    const breakdown = { labor: [], material: [], expense: [] };
+    const breakdown = {
+      labor: [],
+      material: [],
+      expense: [],
+    };
 
     const result = sites.map((site) => {
       const siteName =
@@ -664,7 +744,11 @@ export async function GET(request) {
         }
 
         if (item.description?.startsWith(PREFIX)) {
-          entries.push({ ...item, description: detail, category });
+          entries.push({
+            ...item,
+            description: detail,
+            category,
+          });
         }
       }
 
@@ -688,7 +772,12 @@ export async function GET(request) {
         ).values(),
       ];
 
-      const revenue = money(site.contract_amount);
+      const revenueInfo = resolveRevenue(
+        site,
+        latestReports.get(site.id),
+      );
+
+      const { revenue } = revenueInfo;
 
       return {
         ...site,
@@ -703,9 +792,8 @@ export async function GET(request) {
           (sum, row) => sum + row.pending,
           0,
         ),
-        missingContract:
-          site.contract_amount == null ||
-          site.contract_amount === "",
+        missingContract: revenueInfo.missingContract,
+        revenueSource: revenueInfo.revenueSource,
       };
     });
 
@@ -720,6 +808,7 @@ export async function GET(request) {
         ]) {
           sum[key] += item[key];
         }
+
         return sum;
       },
       {
@@ -731,9 +820,14 @@ export async function GET(request) {
       },
     );
 
-    return json({ sites: result, totals, breakdown });
+    return json({
+      sites: result,
+      totals,
+      breakdown,
+    });
   } catch (error) {
     console.error("profit GET", error);
+
     return json(
       { error: "수익 자료를 불러오지 못했습니다." },
       500,
@@ -805,10 +899,15 @@ export async function POST(request) {
     });
 
     if (error) throw error;
+
     return json({ success: true });
   } catch (error) {
     console.error("profit POST", error);
-    return json({ error: "비용을 저장하지 못했습니다." }, 500);
+
+    return json(
+      { error: "비용을 저장하지 못했습니다." },
+      500,
+    );
   }
 }
 
@@ -823,7 +922,10 @@ export async function DELETE(request) {
     const { id } = await request.json().catch(() => ({}));
 
     if (!id) {
-      return json({ error: "삭제할 내역을 선택해주세요." }, 400);
+      return json(
+        { error: "삭제할 내역을 선택해주세요." },
+        400,
+      );
     }
 
     const { error } = await auth.db
@@ -834,9 +936,11 @@ export async function DELETE(request) {
       .like("description", `${PREFIX}%`);
 
     if (error) throw error;
+
     return json({ success: true });
   } catch (error) {
     console.error("profit DELETE", error);
+
     return json(
       { error: "비용 내역을 삭제하지 못했습니다." },
       500,
