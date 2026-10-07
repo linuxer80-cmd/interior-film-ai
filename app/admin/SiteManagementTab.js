@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
+import {
+  koreanDay,
+  monthDays,
+  shiftMonth,
+} from "../utils/workerCalendar";
 import SiteRegisterModal from "./SiteRegisterModal";
 import SiteDetailModal from "./SiteDetailModal";
 
-/* 현장 상태 */
 const STATUS_INFO = {
   consulting: {
     label: "상담중",
@@ -34,126 +37,43 @@ const STATUS_INFO = {
   },
 };
 
-/* 시공 일정은 날짜만 표시합니다. */
-function formatScheduleDates(
-  scheduleStart,
-  scheduleEnd,
-  scheduleDate,
-) {
-  const format = (value) => {
-    if (!value) return "";
+const FILTERS = [
+  ["all", "전체"],
+  ["active", "진행 현장"],
+  ["consulting", "상담중"],
+  ["scheduled", "예정"],
+  ["in_progress", "시공 중"],
+  ["completed", "완료"],
+];
 
-    const date = new Date(
-      /^\d{4}-\d{2}-\d{2}$/.test(value)
-        ? `${value}T00:00:00+09:00`
-        : value,
-    );
+export default function SiteManagementTab(props) {
+  const {
+    sites = [],
+    sitesLoading = false,
+    sitesMessage = "",
+    openSite,
+    selectedSite,
+    closeSite,
+    createSite,
+    ...detailProps
+  } = props;
 
-    return Number.isNaN(date.getTime())
-      ? ""
-      : new Intl.DateTimeFormat("ko-KR", {
-          timeZone: "Asia/Seoul",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          weekday: "short",
-        }).format(date);
-  };
-
-  const start = format(scheduleStart || scheduleDate);
-  const end = format(scheduleEnd);
-
-  return start
-    ? end && end !== start
-      ? `${start} ~ ${end}`
-      : start
-    : "미정";
-}
-
-/* 팀장 찾기 */
-function getLeader(site) {
-  const assignments = site?.site_workers || [];
-
-  return assignments.find(
-    (item) => item.role === "leader",
-  );
-}
-
-/* 일반 시공자 찾기 */
-function getMembers(site) {
-  const assignments = site?.site_workers || [];
-
-  return assignments.filter(
-    (item) => item.role === "member",
-  );
-}
-
-/* 메인 현장관리 */
-export default function SiteManagementTab({
-  companyId,
-
-  sites = [],
-  sitesLoading = false,
-  sitesMessage = "",
-
-  createSite,
-  updateSiteBasicInfo,
-  updateSiteSchedule,
-  updateSiteStatus,
-
-  addSiteRequestPhotos,
-  deleteSiteRequestPhoto,
-
-  selectedSite,
-  openSite,
-  closeSite,
-
-  workers = [],
-  workersLoading = false,
-  loadWorkers,
-
-  assignSiteWorkers,
-  loadSiteWorkers,
-
-  reloadSites,
-}) {
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [filter, setFilter] = useState("active");
+  const [filter, setFilter] = useState("all");
 
-  const filteredSites = useMemo(() => {
-    if (filter === "all") {
-      return sites;
-    }
-
-    if (filter === "active") {
-      return sites.filter(
+  const filteredSites = useMemo(
+    () =>
+      sites.filter(
         (site) =>
-          site.status === "consulting" ||
-          site.status === "scheduled" ||
-          site.status === "in_progress",
-      );
-    }
-
-    return sites.filter(
-      (site) => site.status === filter,
-    );
-  }, [sites, filter]);
-
-  const consultingCount = sites.filter(
-    (site) => site.status === "consulting",
-  ).length;
-
-  const scheduledCount = sites.filter(
-    (site) => site.status === "scheduled",
-  ).length;
-
-  const progressCount = sites.filter(
-    (site) => site.status === "in_progress",
-  ).length;
-
-  const completedCount = sites.filter(
-    (site) => site.status === "completed",
-  ).length;
+          filter === "all" ||
+          (filter === "active"
+            ? ["consulting", "scheduled", "in_progress"].includes(
+                site.status,
+              )
+            : site.status === filter),
+      ),
+    [sites, filter],
+  );
 
   return (
     <>
@@ -161,233 +81,139 @@ export default function SiteManagementTab({
         <div
           style={{
             display: "flex",
-            alignItems: "flex-start",
             justifyContent: "space-between",
-            gap: "10px",
-            marginBottom: "14px",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 14,
           }}
         >
           <div>
-            <div
+            <h2
               style={{
-                fontSize: "20px",
-                fontWeight: "800",
+                margin: 0,
+                fontSize: 20,
                 color: "#111827",
               }}
             >
               현장관리
-            </div>
+            </h2>
 
-            <div
+            <p
               style={{
-                marginTop: "3px",
-                fontSize: "12px",
+                margin: "4px 0 0",
+                fontSize: 12,
                 color: "#64748b",
               }}
             >
-              상담중 현장부터 시공 완료까지 관리합니다.
-            </div>
+              날짜별 시공 일정과 현장을 확인하세요.
+            </p>
           </div>
 
-          <div
+          <button
+            type="button"
+            onClick={() => setRegisterOpen(true)}
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-              flex: "0 0 auto",
+              border: 0,
+              borderRadius: 10,
+              padding: "12px",
+              background: "#111827",
+              color: "#fff",
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setRegisterOpen(true)}
-              style={{
-                border: "none",
-                borderRadius: "10px",
-                padding: "10px 12px",
-                background: "#111827",
-                color: "#ffffff",
-                fontSize: "13px",
-                fontWeight: "800",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              + 현장 추가
-            </button>
-          </div>
+            + 현장 추가
+          </button>
         </div>
 
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: "6px",
-            marginBottom: "14px",
+            gap: 6,
+            marginBottom: 14,
           }}
         >
-          <SummaryCard
-            label="상담중"
-            value={consultingCount}
-          />
+          {[
+            "consulting",
+            "scheduled",
+            "in_progress",
+            "completed",
+          ].map((key) => (
+            <div
+              key={key}
+              style={{
+                padding: "10px 2px",
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                background: "#fff",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#64748b" }}>
+                {STATUS_INFO[key].label}
+              </div>
 
-          <SummaryCard
-            label="시공 예정"
-            value={scheduledCount}
-          />
-
-          <SummaryCard
-            label="시공 중"
-            value={progressCount}
-          />
-
-          <SummaryCard
-            label="완료"
-            value={completedCount}
-          />
+              <strong style={{ fontSize: 22, color: "#111827" }}>
+                {sites.filter((site) => site.status === key).length}
+              </strong>
+            </div>
+          ))}
         </div>
 
         <div
           style={{
             display: "flex",
-            gap: "6px",
-            overflowX: "auto",
-            paddingBottom: "5px",
-            marginBottom: "12px",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 12,
           }}
         >
-          <FilterButton
-            active={filter === "active"}
-            onClick={() => setFilter("active")}
-          >
-            진행 현장
-          </FilterButton>
-
-          <FilterButton
-            active={filter === "consulting"}
-            onClick={() => setFilter("consulting")}
-          >
-            상담중
-          </FilterButton>
-
-          <FilterButton
-            active={filter === "scheduled"}
-            onClick={() => setFilter("scheduled")}
-          >
-            예정
-          </FilterButton>
-
-          <FilterButton
-            active={filter === "in_progress"}
-            onClick={() => setFilter("in_progress")}
-          >
-            시공 중
-          </FilterButton>
-
-          <FilterButton
-            active={filter === "completed"}
-            onClick={() => setFilter("completed")}
-          >
-            완료
-          </FilterButton>
-
-          <FilterButton
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-          >
-            전체
-          </FilterButton>
+          {FILTERS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={filter === key}
+              onClick={() => setFilter(key)}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 24,
+                padding: "8px 12px",
+                background: filter === key ? "#111827" : "#fff",
+                color: filter === key ? "#fff" : "#475569",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {sitesMessage && (
-          <div
+          <p
+            role="status"
             style={{
-              marginBottom: "12px",
-              padding: "10px 12px",
-              borderRadius: "9px",
+              padding: 12,
+              borderRadius: 10,
               background: sitesMessage.startsWith("✅")
                 ? "#f0fdf4"
                 : "#fef2f2",
-              color: sitesMessage.startsWith("✅")
-                ? "#166534"
-                : "#b91c1c",
-              fontSize: "13px",
-              fontWeight: "700",
+              color: "#334155",
               whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
             }}
           >
             {sitesMessage}
-          </div>
+          </p>
         )}
 
-        {sitesLoading && sites.length === 0 && (
-          <div
-            style={{
-              padding: "30px 12px",
-              textAlign: "center",
-              color: "#64748b",
-              fontSize: "14px",
-            }}
-          >
-            현장 정보를 불러오는 중입니다...
-          </div>
-        )}
-
-        {!sitesLoading && filteredSites.length === 0 && (
-          <div
-            style={{
-              padding: "38px 16px",
-              border: "1px dashed #cbd5e1",
-              borderRadius: "14px",
-              background: "#ffffff",
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "30px",
-                marginBottom: "8px",
-              }}
-            >
-              🏠
-            </div>
-
-            <div
-              style={{
-                fontWeight: "800",
-                color: "#334155",
-              }}
-            >
-              등록된 현장이 없습니다.
-            </div>
-
-            <div
-              style={{
-                marginTop: "5px",
-                fontSize: "12px",
-                color: "#64748b",
-              }}
-            >
-              + 현장 추가에서 상담중 현장이나 시공 일정을
-              등록해주세요.
-            </div>
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gap: "10px",
-          }}
-        >
-          {filteredSites.map((site) => (
-            <SiteCard
-              key={site.id}
-              site={site}
-              onOpen={() => openSite(site)}
-            />
-          ))}
-        </div>
+        <SiteCalendar
+          sites={filteredSites}
+          openSite={openSite}
+          loading={sitesLoading}
+        />
       </section>
 
       <SiteRegisterModal
@@ -399,102 +225,39 @@ export default function SiteManagementTab({
 
       {selectedSite && (
         <SiteDetailModal
-          companyId={companyId}
+          {...detailProps}
           site={selectedSite}
           onClose={closeSite}
-          updateSiteBasicInfo={updateSiteBasicInfo}
-          updateSiteSchedule={updateSiteSchedule}
-          updateSiteStatus={updateSiteStatus}
-          addSiteRequestPhotos={addSiteRequestPhotos}
-          deleteSiteRequestPhoto={deleteSiteRequestPhoto}
-          workers={workers}
-          workersLoading={workersLoading}
-          loadWorkers={loadWorkers}
-          loadSiteWorkers={loadSiteWorkers}
-          assignSiteWorkers={assignSiteWorkers}
-          reloadSites={reloadSites}
         />
       )}
     </>
   );
 }
 
-/* 요약 카드 */
-function SummaryCard({ label, value }) {
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        padding: "12px 4px",
-        border: "1px solid #e2e8f0",
-        borderRadius: "12px",
-        background: "#ffffff",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "11px",
-          color: "#64748b",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          marginTop: "4px",
-          fontSize: "22px",
-          fontWeight: "900",
-          color: "#111827",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* 필터 버튼 */
-function FilterButton({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: "0 0 auto",
-        border: active
-          ? "1px solid #111827"
-          : "1px solid #cbd5e1",
-        borderRadius: "999px",
-        padding: "8px 12px",
-        background: active ? "#111827" : "#ffffff",
-        color: active ? "#ffffff" : "#475569",
-        fontSize: "12px",
-        fontWeight: "700",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* 현장 카드 */
 function SiteCard({ site, onOpen }) {
   const status =
     STATUS_INFO[site.status] || STATUS_INFO.consulting;
 
-  const leader = getLeader(site);
-  const members = getMembers(site);
+  const assignments = site.site_workers || [];
+  const leader = assignments.find(
+    (item) => item.role === "leader",
+  );
 
-  const siteTitle =
-    site.site_name || site.customer_name || "현장명 미정";
+  const members = assignments
+    .filter((item) => item.role === "member")
+    .map((item) => item.workers?.name)
+    .filter(Boolean);
 
-  const customerName = site.customer_name || "미정";
-  const address = site.address || "미정";
-  const workType = site.work_type || "미정";
+  const schedule = siteDates(site);
+  const dates = schedule.dates ? [...schedule.dates].sort() : [];
+
+  const label = schedule.undated
+    ? "일정 미정"
+    : dates.length
+      ? dates.join(" · ")
+      : schedule.start === schedule.end
+        ? schedule.start
+        : `${schedule.start} ~ ${schedule.end}`;
 
   return (
     <button
@@ -502,10 +265,10 @@ function SiteCard({ site, onOpen }) {
       onClick={onOpen}
       style={{
         width: "100%",
-        padding: "14px",
+        padding: 14,
         border: "1px solid #e2e8f0",
-        borderRadius: "14px",
-        background: "#ffffff",
+        borderRadius: 14,
+        background: "#fff",
         textAlign: "left",
         cursor: "pointer",
       }}
@@ -513,43 +276,42 @@ function SiteCard({ site, onOpen }) {
       <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: "8px",
+          alignItems: "flex-start",
+          gap: 8,
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div
+          <strong
             style={{
-              fontSize: "15px",
-              fontWeight: "800",
+              fontSize: 15,
               color: "#111827",
-              wordBreak: "break-word",
+              overflowWrap: "anywhere",
             }}
           >
-            {siteTitle}
-          </div>
+            {site.site_name || site.customer_name || "현장명 미정"}
+          </strong>
 
           <div
             style={{
-              marginTop: "3px",
-              fontSize: "12px",
+              marginTop: 3,
+              fontSize: 12,
               color: "#64748b",
             }}
           >
-            고객 {customerName}
+            고객 {site.customer_name || "미정"}
           </div>
         </div>
 
         <span
           style={{
-            flex: "0 0 auto",
+            flexShrink: 0,
             padding: "5px 8px",
-            borderRadius: "999px",
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 800,
             background: status.background,
             color: status.color,
-            fontSize: "11px",
-            fontWeight: "800",
           }}
         >
           {status.label}
@@ -558,48 +320,358 @@ function SiteCard({ site, onOpen }) {
 
       <div
         style={{
-          marginTop: "12px",
           display: "grid",
-          gap: "7px",
-          fontSize: "13px",
+          gap: 7,
+          marginTop: 12,
+          fontSize: 13,
           color: "#334155",
+          overflowWrap: "anywhere",
         }}
       >
+        <div>📅 {label}</div>
+
         <div>
-          📅{" "}
-          {formatScheduleDates(
-            site.schedule_start,
-            site.schedule_end,
-            site.schedule_date,
-          )}
+          📍 {site.address || "미정"} {site.address_detail || ""}
         </div>
 
-        <div>
-          📍 {address}
-          {site.address_detail
-            ? ` ${site.address_detail}`
-            : ""}
-        </div>
-
-        <div>🛠️ {workType}</div>
+        <div>🛠️ {site.work_type || "미정"}</div>
 
         <div>
-          ★ 팀장{" "}
-          <strong>
-            {leader?.workers?.name || "미배정"}
-          </strong>
+          ★ 팀장 <strong>{leader?.workers?.name || "미배정"}</strong>
         </div>
 
         {members.length > 0 && (
-          <div>
-            👷 담당{" "}
-            {members
-              .map((item) => item.workers?.name)
-              .filter(Boolean)
-              .join(", ") || "미배정"}
-          </div>
+          <div>👷 담당 {members.join(", ")}</div>
         )}
       </div>
     </button>
   );
 }
+
+/* 관리자 일정은 개인 배정이 아닌 현장 전체 시공일 기준입니다. */
+function siteDates(site) {
+  if (Array.isArray(site.work_dates)) {
+    const dates = [
+      ...new Set(site.work_dates.map(koreanDay).filter(Boolean)),
+    ];
+
+    return {
+      dates,
+      start: null,
+      end: null,
+      undated: dates.length === 0,
+    };
+  }
+
+  const start = koreanDay(
+    site.schedule_start || site.schedule_date,
+  );
+  const end = koreanDay(site.schedule_end) || start;
+
+  return {
+    dates: null,
+    start,
+    end,
+    undated: !start || end < start,
+  };
+}
+
+function SiteCalendar({ sites, openSite, loading }) {
+  const today = koreanDay();
+  const [month, setMonth] = useState(() => today.slice(0, 7));
+  const [selectedDay, setSelectedDay] = useState(() => today);
+  const [view, setView] = useState("calendar");
+
+  const calendar = useMemo(() => {
+    const { days, cells } = monthDays(month);
+    const byDay = new Map(days.map((day) => [day, []]));
+    const undated = [];
+    const monthIds = new Set();
+
+    for (const site of sites) {
+      const schedule = siteDates(site);
+
+      if (schedule.undated) {
+        undated.push(site);
+        continue;
+      }
+
+      for (const day of days) {
+        const matches = schedule.dates
+          ? schedule.dates.includes(day)
+          : day >= schedule.start && day <= schedule.end;
+
+        if (matches) {
+          byDay.get(day).push(site);
+          monthIds.add(site.id);
+        }
+      }
+    }
+
+    return {
+      cells,
+      byDay,
+      undated,
+      count: monthIds.size,
+    };
+  }, [sites, month]);
+
+  const shown =
+    view === "list"
+      ? sites
+      : view === "undated"
+        ? calendar.undated
+        : calendar.byDay.get(selectedDay) || [];
+
+  const button = {
+    border: "1px solid #cbd5e1",
+    borderRadius: 10,
+    background: "#fff",
+    color: "#334155",
+    padding: "10px 12px",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+
+  function moveMonth(amount) {
+    const next = shiftMonth(month, amount);
+    setMonth(next);
+    setSelectedDay(
+      next === today.slice(0, 7) ? today : `${next}-01`,
+    );
+  }
+
+  return (
+    <div aria-busy={loading}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          marginBottom: 12,
+        }}
+      >
+        {[
+          ["calendar", "캘린더"],
+          ["list", "목록"],
+          ["undated", `일정 미정 ${calendar.undated.length}`],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            style={{
+              ...button,
+              background: view === key ? "#111827" : "#fff",
+              color: view === key ? "#fff" : "#334155",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "calendar" && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 16,
+            padding: "12px 6px",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 4,
+              marginBottom: 12,
+            }}
+          >
+            <button
+              type="button"
+              aria-label="이전 달"
+              onClick={() => moveMonth(-1)}
+              style={button}
+            >
+              ‹
+            </button>
+
+            <strong style={{ fontSize: 18 }}>
+              {Number(month.slice(0, 4))}년{" "}
+              {Number(month.slice(5))}월
+            </strong>
+
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setMonth(today.slice(0, 7));
+                  setSelectedDay(today);
+                }}
+                style={button}
+              >
+                오늘
+              </button>
+
+              <button
+                type="button"
+                aria-label="다음 달"
+                onClick={() => moveMonth(1)}
+                style={button}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+
+          <p
+            style={{
+              fontSize: 12,
+              color: "#64748b",
+              margin: "0 4px 12px",
+            }}
+          >
+            선택한 상태 기준 {calendar.count}개 현장 · 날짜를
+            눌러 상세 목록을 확인하세요.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: 3,
+            }}
+          >
+            {["일", "월", "화", "수", "목", "금", "토"].map(
+              (name, index) => (
+                <div
+                  key={name}
+                  style={{
+                    textAlign: "center",
+                    fontSize: 12,
+                    padding: "6px 0",
+                    color:
+                      index === 0
+                        ? "#dc2626"
+                        : index === 6
+                          ? "#2563eb"
+                          : "#64748b",
+                  }}
+                >
+                  {name}
+                </div>
+              ),
+            )}
+
+            {calendar.cells.map((day, index) => {
+              if (!day) {
+                return <div key={`blank-${index}`} />;
+              }
+
+              const entries = calendar.byDay.get(day);
+              const selected = selectedDay === day;
+
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={`${day}${
+                    day === today ? " 오늘" : ""
+                  }, 현장 ${entries.length}개`}
+                  onClick={() => setSelectedDay(day)}
+                  style={{
+                    minWidth: 0,
+                    minHeight: 88,
+                    padding: "5px 2px",
+                    border: selected
+                      ? "2px solid #2563eb"
+                      : "1px solid #e2e8f0",
+                    borderRadius: 8,
+                    background: selected ? "#eff6ff" : "#fff",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    overflow: "hidden",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color:
+                        day === today
+                          ? "#fff"
+                          : index % 7 === 0
+                            ? "#dc2626"
+                            : index % 7 === 6
+                              ? "#2563eb"
+                              : "#334155",
+                      background:
+                        day === today ? "#2563eb" : "transparent",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {Number(day.slice(8))}
+                  </span>
+
+                  {entries.slice(0, 2).map((site) => {
+                    const status =
+                      STATUS_INFO[site.status] ||
+                      STATUS_INFO.consulting;
+
+                    return (
+                      <span
+                        key={site.id}
+                        title={site.site_name || site.customer_name}
+                        style={{
+                          display: "block",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          fontSize: 10,
+                          marginTop: 4,
+                          borderRadius: 3,
+                          padding: "2px 1px",
+                          background: status.background,
+                          color: status.color,
+                        }}
+                      >
+                        {site.site_name ||
+                          site.customer_name ||
+                          "현장"}
+                      </span>
+                    );
+                  })}
+
+                  {entries.length > 2 && (
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 10,
+                        color: "#475569",
+                        marginTop: 3,
+                      }}
+                    >
+                      +{entries.length - 2}개
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            {Object
