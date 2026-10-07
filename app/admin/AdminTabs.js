@@ -4,6 +4,12 @@ import { useId, useState } from "react";
 
 const menus = [
   {
+    href: "/admin/workers",
+    label: "시공자 관리",
+    description: "시공자 등록·초대와 일당 관리",
+    icon: "people",
+  },
+  {
     href: "/admin/attendance",
     label: "출퇴근 관리",
     description: "현장 위치와 연장근무 확인",
@@ -65,24 +71,35 @@ function Picture({ kind = "report", size = 80 }) {
       <defs>
         <linearGradient
           id={`${id}blue`}
-          x1="25" y1="15" x2="95" y2="110"
+          x1="25"
+          y1="15"
+          x2="95"
+          y2="110"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#9bd2ff" />
           <stop offset=".5" stopColor="#509beb" />
           <stop offset="1" stopColor="#286aca" />
         </linearGradient>
+
         <linearGradient
           id={`${id}cream`}
-          x1="20" y1="20" x2="95" y2="110"
+          x1="20"
+          y1="20"
+          x2="95"
+          y2="110"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#fff9eb" />
           <stop offset="1" stopColor="#dbc19a" />
         </linearGradient>
+
         <linearGradient
           id={`${id}gold`}
-          x1="30" y1="30" x2="90" y2="100"
+          x1="30"
+          y1="30"
+          x2="90"
+          y2="100"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#ffeaa0" />
@@ -90,13 +107,25 @@ function Picture({ kind = "report", size = 80 }) {
         </linearGradient>
       </defs>
 
-      <ellipse cx="60" cy="106" rx="42" ry="7" fill="#233c61" opacity=".09" />
+      <ellipse
+        cx="60"
+        cy="106"
+        rx="42"
+        ry="7"
+        fill="#233c61"
+        opacity=".09"
+      />
 
       {kind === "house" && (
         <>
           <rect x="26" y="48" width="69" height="55" rx="7" fill={cream} />
           <path d="M16 53 59 14l46 39-9 11-37-32-34 32Z" fill={blue} />
-          <path d="m25 49 34-29 36 29" stroke="#bddfff" strokeWidth="3" strokeLinecap="round" />
+          <path
+            d="m25 49 34-29 36 29"
+            stroke="#bddfff"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
           <rect x="47" y="70" width="22" height="33" rx="4" fill="#bc8b5d" />
           <circle cx="63" cy="88" r="2" fill="#f6dfb0" />
           <rect x="31" y="60" width="13" height="15" rx="3" fill="#b7dff5" />
@@ -114,14 +143,33 @@ function Picture({ kind = "report", size = 80 }) {
             <rect x="43" y="13" width="33" height="18" rx="7" fill="#a88869" />
             <rect x="51" y="10" width="17" height="12" rx="6" fill="#bd9f7f" />
             <circle cx="59" cy="16" r="3" fill="#f9eed9" />
+
             {[48, 66, 84].map((y) => (
               <g key={y}>
-                <rect x="40" y={y - 7} width="12" height="12" rx="3" fill="#78ba87" />
-                <path d={`m43 ${y - 1} 3 3 4-6`} stroke="white" strokeWidth="2" strokeLinecap="round" />
-                <path d={`M59 ${y - 1}h20`} stroke="#c9b391" strokeWidth="4" strokeLinecap="round" />
+                <rect
+                  x="40"
+                  y={y - 7}
+                  width="12"
+                  height="12"
+                  rx="3"
+                  fill="#78ba87"
+                />
+                <path
+                  d={`m43 ${y - 1} 3 3 4-6`}
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d={`M59 ${y - 1}h20`}
+                  stroke="#c9b391"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                />
               </g>
             ))}
           </g>
+
           <path d="m87 93 19-55 7 3-19 55-8 7Z" fill={gold} />
           <path d="m86 103 2-10 6 3Z" fill="#68626a" />
         </>
@@ -135,18 +183,40 @@ function Picture({ kind = "report", size = 80 }) {
             { x: 74, y: 62 },
           ].map(({ x, y }) => (
             <g key={x}>
-              <rect x={x} y={y - 28} width="29" height="35" rx="7" fill={gold} />
-              <ellipse cx={x + 14.5} cy={y - 28} rx="14.5" ry="6" fill="#ffe299" />
+              <rect
+                x={x}
+                y={y - 28}
+                width="29"
+                height="35"
+                rx="7"
+                fill={gold}
+              />
+              <ellipse
+                cx={x + 14.5}
+                cy={y - 28}
+                rx="14.5"
+                ry="6"
+                fill="#ffe299"
+              />
               {[y - 18, y - 8, y + 2].map((value) => (
                 <path
                   key={value}
                   d={`M${x + 3} ${value}q12 6 23 0`}
-                  stroke="#d99418" strokeWidth="2" opacity=".55"
+                  stroke="#d99418"
+                  strokeWidth="2"
+                  opacity=".55"
                 />
               ))}
             </g>
           ))}
-          <path d="m24 37 24-15 18 8 22-19" stroke="#76b9ef" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+
+          <path
+            d="m24 37 24-15 18 8 22-19"
+            stroke="#76b9ef"
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </>
       )}
 
@@ -168,7 +238,12 @@ function Picture({ kind = "report", size = 80 }) {
           <path d="M22 42v49l38 20V63Z" fill="#bf936b" />
           <path d="M60 63v48l40-21V41Z" fill="#d7ac83" />
           <path d="m40 33 39 20v17l-12 6V59L29 40Z" fill="#f6dfbe" />
-          <path d="M30 60v21" stroke="#d4b18d" strokeWidth="3" strokeLinecap="round" />
+          <path
+            d="M30 60v21"
+            stroke="#d4b18d"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
         </>
       )}
 
@@ -178,11 +253,36 @@ function Picture({ kind = "report", size = 80 }) {
           <ellipse cx="21" cy="64" rx="14" ry="23" fill="#e7bf90" />
           <ellipse cx="21" cy="64" rx="8" ry="16" fill="#bc8954" />
           <ellipse cx="21" cy="64" rx="4" ry="9" fill="#f2d5b0" />
-          <path d="M36 48h43M37 54h42" stroke="#fff6e3" strokeWidth="3" strokeLinecap="round" />
+          <path
+            d="M36 48h43M37 54h42"
+            stroke="#fff6e3"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
           <g transform="rotate(-20 85 80)">
-            <ellipse cx="77" cy="93" rx="10" ry="12" stroke="#5098df" strokeWidth="6" />
-            <ellipse cx="103" cy="93" rx="10" ry="12" stroke="#5098df" strokeWidth="6" />
-            <path d="m82 85 18-44M97 85 80 42" stroke="#a9b6c3" strokeWidth="7" strokeLinecap="round" />
+            <ellipse
+              cx="77"
+              cy="93"
+              rx="10"
+              ry="12"
+              stroke="#5098df"
+              strokeWidth="6"
+            />
+            <ellipse
+              cx="103"
+              cy="93"
+              rx="10"
+              ry="12"
+              stroke="#5098df"
+              strokeWidth="6"
+            />
+            <path
+              d="m82 85 18-44M97 85 80 42"
+              stroke="#a9b6c3"
+              strokeWidth="7"
+              strokeLinecap="round"
+            />
             <circle cx="90" cy="73" r="4" fill="#dbe5ed" />
           </g>
         </>
@@ -217,17 +317,20 @@ export default function AdminTabs({
               <span className="film-admin-kicker">
                 오늘도 좋은 공간을 만듭니다
               </span>
+
               <h2>
                 안녕하세요!
                 <br />
                 필름장이 관리자입니다.
               </h2>
+
               <p>
                 현장부터 완료보고까지
                 <br />
                 오늘의 업무를 편하게 확인하세요.
               </p>
             </div>
+
             <Picture kind="report" size={132} />
           </div>
 
@@ -243,6 +346,7 @@ export default function AdminTabs({
               const content = (
                 <>
                   <Picture kind={menu.icon} size={68} />
+
                   <span>
                     <strong>{menu.label}</strong>
                     <small>
@@ -251,6 +355,7 @@ export default function AdminTabs({
                         : menu.description}
                     </small>
                   </span>
+
                   <b aria-hidden="true">›</b>
                 </>
               );
@@ -283,6 +388,7 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("today")}>
             ‹ 관리자 홈
           </button>
+
           <span>
             {
               {
@@ -305,7 +411,10 @@ export default function AdminTabs({
         >
           <div className="film-admin-more-title">
             <strong>관리 메뉴</strong>
-            <button type="button" onClick={() => setMoreOpen(false)}>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+            >
               닫기
             </button>
           </div>
@@ -313,12 +422,15 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("jobs")}>
             시공 DB
           </button>
+
           <button type="button" onClick={() => go("register")}>
             시공 등록
           </button>
+
           <button type="button" onClick={() => go("usage")}>
             로그 분석
           </button>
+
           <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
         </nav>
@@ -337,7 +449,9 @@ export default function AdminTabs({
           <button
             key={item.id}
             type="button"
-            aria-current={activeTab === item.id ? "page" : undefined}
+            aria-current={
+              activeTab === item.id ? "page" : undefined
+            }
             onClick={() => go(item.id)}
           >
             <span aria-hidden="true">{item.icon}</span>
@@ -372,7 +486,9 @@ export default function AdminTabs({
           -webkit-tap-highlight-color: transparent;
           font-family: inherit;
         }
-        .film-admin-dashboard button { cursor: pointer; }
+        .film-admin-dashboard button {
+          cursor: pointer;
+        }
         .film-admin-dashboard button:focus-visible,
         .film-admin-dashboard a:focus-visible {
           outline: 3px solid #74b5ee;
@@ -428,7 +544,9 @@ export default function AdminTabs({
           box-shadow: 0 7px 20px #baaa9010;
         }
         .film-admin-menu-grid strong,
-        .film-admin-menu-grid small { display: block; }
+        .film-admin-menu-grid small {
+          display: block;
+        }
         .film-admin-menu-grid strong {
           font-size: 15px;
           letter-spacing: -0.6px;
@@ -446,7 +564,9 @@ export default function AdminTabs({
           font-size: 21px;
           color: #83a3c0;
         }
-        .film-admin-section-anchor { scroll-margin-top: 30px; }
+        .film-admin-section-anchor {
+          scroll-margin-top: 30px;
+        }
         .film-admin-section-bar {
           display: flex;
           align-items: center;
@@ -541,10 +661,14 @@ export default function AdminTabs({
             min-height: 105px;
             padding: 16px;
           }
-          .film-admin-menu-grid strong { font-size: 17px; }
-          .film-admin-menu-grid small { font-size: 13px; }
+          .film-admin-menu-grid strong {
+            font-size: 17px;
+          }
+          .film-admin-menu-grid small {
+            font-size: 13px;
+          }
         }
       `}</style>
     </section>
   );
-            }
+                  }
