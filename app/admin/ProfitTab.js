@@ -65,20 +65,11 @@ const group = (rows, key) =>
     }))
     .sort((a, b) => b.amount - a.amount);
 
-function Breakdown({
-  data,
-  type,
-  title,
-  itemKey,
-}) {
+function Breakdown({ data, type, title, itemKey }) {
   const [open, setOpen] = useState("");
   const [productOpen, setProductOpen] = useState("");
 
-  const list = group(
-    data.breakdown?.[type],
-    itemKey
-  );
-
+  const list = group(data.breakdown?.[type], itemKey);
   const total = Number(data.totals[type] || 0);
 
   return (
@@ -91,9 +82,7 @@ function Breakdown({
         boxShadow: "var(--film-shadow)",
       }}
     >
-      <h3 style={{ margin: "0 0 4px" }}>
-        {title}
-      </h3>
+      <h3 style={{ margin: "0 0 4px" }}>{title}</h3>
 
       <strong
         style={{
@@ -105,12 +94,7 @@ function Breakdown({
       </strong>
 
       {!list.length && (
-        <p
-          style={{
-            color: "#64748b",
-            fontSize: 13,
-          }}
-        >
+        <p style={{ color: "#64748b", fontSize: 13 }}>
           등록된 비용이 없습니다.
         </p>
       )}
@@ -129,9 +113,7 @@ function Breakdown({
               aria-expanded={open === entry.label}
               onClick={() => {
                 setOpen(
-                  open === entry.label
-                    ? ""
-                    : entry.label
+                  open === entry.label ? "" : entry.label
                 );
                 setProductOpen("");
               }}
@@ -167,9 +149,7 @@ function Breakdown({
                 entry.amount
               )}, 전체 ${title}의 ${
                 total
-                  ? Math.round(
-                      (entry.amount / total) * 100
-                    )
+                  ? Math.round((entry.amount / total) * 100)
                   : 0
               }%`}
               style={{
@@ -218,13 +198,11 @@ function Breakdown({
                           <button
                             type="button"
                             aria-expanded={
-                              productOpen ===
-                              product.label
+                              productOpen === product.label
                             }
                             onClick={() =>
                               setProductOpen(
-                                productOpen ===
-                                  product.label
+                                productOpen === product.label
                                   ? ""
                                   : product.label
                               )
@@ -234,8 +212,7 @@ function Breakdown({
                               minHeight: 44,
                               display: "flex",
                               alignItems: "center",
-                              justifyContent:
-                                "space-between",
+                              justifyContent: "space-between",
                               gap: 8,
                               border: 0,
                               padding: 0,
@@ -251,35 +228,30 @@ function Breakdown({
 
                             <strong>
                               {won(product.amount)}{" "}
-                              {productOpen ===
-                              product.label
+                              {productOpen === product.label
                                 ? "⌃"
                                 : "⌄"}
                             </strong>
                           </button>
 
-                          {productOpen ===
-                            product.label &&
-                            product.rows.map(
-                              (row, index) => (
-                                <div
-                                  key={index}
-                                  style={{
-                                    padding:
-                                      "5px 0 0 10px",
-                                    color: "#475569",
-                                  }}
-                                >
-                                  {row.siteName} ·{" "}
-                                  {row.quantity == null
-                                    ? "수기 입력"
-                                    : `${row.quantity.toLocaleString(
-                                        "ko-KR"
-                                      )}${row.unit}`}{" "}
-                                  · {won(row.amount)}
-                                </div>
-                              )
-                            )}
+                          {productOpen === product.label &&
+                            product.rows.map((row, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  padding: "5px 0 0 10px",
+                                  color: "#475569",
+                                }}
+                              >
+                                {row.siteName} ·{" "}
+                                {row.quantity == null
+                                  ? "수기 입력"
+                                  : `${row.quantity.toLocaleString(
+                                      "ko-KR"
+                                    )}${row.unit}`}{" "}
+                                · {won(row.amount)}
+                              </div>
+                            ))}
                         </div>
                       )
                     )
@@ -288,13 +260,11 @@ function Breakdown({
                         key={index}
                         style={{
                           padding: "5px 0",
-                          borderBottom:
-                            "1px solid #f1f5f9",
+                          borderBottom: "1px solid #f1f5f9",
                           color: "#475569",
                         }}
                       >
-                        {row.siteName} ·{" "}
-                        {row.description} ·{" "}
+                        {row.siteName} · {row.description} ·{" "}
                         {won(row.amount)}
                       </div>
                     ))}
@@ -370,10 +340,122 @@ export default function ProfitTab() {
   const [excludedWorkerIds, setExcludedWorkerIds] =
     useState([]);
 
-  const data = profitView(
-    rawData,
-    excludedWorkerIds
-  );
+  const [exclusionStorageKey, setExclusionStorageKey] =
+    useState("");
+
+  const [exclusionMessage, setExclusionMessage] =
+    useState("");
+
+  useEffect(() => {
+    let active = true;
+    let authChanged = false;
+
+    function restore(session) {
+      if (!active) return;
+
+      setExcludedWorkerIds([]);
+      setExclusionStorageKey("");
+      setExclusionMessage("");
+
+      if (!session?.user?.id) return;
+
+      const key =
+        `filmjang:profit-exclusions:v1:${session.user.id}`;
+
+      try {
+        const stored = window.localStorage.getItem(key);
+        const parsed = stored ? JSON.parse(stored) : [];
+
+        if (
+          !Array.isArray(parsed) ||
+          parsed.some((id) => typeof id !== "string")
+        ) {
+          throw new Error("invalid preferences");
+        }
+
+        setExcludedWorkerIds([...new Set(parsed)]);
+        setExclusionStorageKey(key);
+
+        if (stored) {
+          setExclusionMessage(
+            "저장된 제외 설정을 불러왔습니다."
+          );
+        }
+      } catch {
+        setExclusionStorageKey(key);
+        setExclusionMessage(
+          "제외 설정을 불러오지 못했습니다. 다시 선택해주세요."
+        );
+      }
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (
+          event === "TOKEN_REFRESHED" ||
+          event === "USER_UPDATED"
+        ) {
+          return;
+        }
+
+        authChanged = true;
+        restore(session);
+      }
+    );
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active || authChanged) return;
+
+        if (error) {
+          setExclusionMessage(
+            "계정 확인에 실패했습니다. 새로고침해주세요."
+          );
+          return;
+        }
+
+        restore(data.session);
+      })
+      .catch(() => {
+        if (active && !authChanged) {
+          setExclusionMessage(
+            "계정 확인에 실패했습니다. 새로고침해주세요."
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  function changeExcludedWorker(workerId, checked) {
+    if (!exclusionStorageKey) return;
+
+    const next = checked
+      ? [...new Set([...excludedWorkerIds, workerId])]
+      : excludedWorkerIds.filter((id) => id !== workerId);
+
+    try {
+      window.localStorage.setItem(
+        exclusionStorageKey,
+        JSON.stringify(next)
+      );
+
+      setExcludedWorkerIds(next);
+      setExclusionMessage("제외 설정을 저장했습니다.");
+    } catch {
+      setExclusionMessage(
+        "저장하지 못해 선택을 변경하지 않았습니다. 브라우저 저장 공간을 확인해주세요."
+      );
+    }
+  }
+
+  const data = profitView(rawData, excludedWorkerIds);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -384,19 +466,13 @@ export default function ProfitTab() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function request(
-    method,
-    payload,
-    query = ""
-  ) {
+  async function request(method, payload, query = "") {
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (!session) {
-      throw new Error(
-        "관리자로 다시 로그인해주세요."
-      );
+      throw new Error("관리자로 다시 로그인해주세요.");
     }
 
     const response = await fetch(
@@ -462,25 +538,19 @@ export default function ProfitTab() {
     (site) => site.id === selected
   );
 
-  const assigned = (
-    current?.site_workers || []
-  )
+  const assigned = (current?.site_workers || [])
     .map((row) => row.workers)
     .filter(Boolean);
 
   function chooseWorker(id) {
     setWorker(id);
 
-    const person = assigned.find(
-      (item) => item.id === id
-    );
+    const person = assigned.find((item) => item.id === id);
 
     if (person) {
       setDescription(`${person.name} 인건비`);
       setAmount(
-        person.daily_wage
-          ? String(person.daily_wage)
-          : ""
+        person.daily_wage ? String(person.daily_wage) : ""
       );
     }
   }
@@ -564,12 +634,7 @@ export default function ProfitTab() {
   ];
 
   return (
-    <section
-      style={{
-        display: "grid",
-        gap: 14,
-      }}
-    >
+    <section style={{ display: "grid", gap: 14 }}>
       <div style={card}>
         <h2 style={{ margin: "0 0 8px" }}>
           📊 현장 수익
@@ -629,8 +694,7 @@ export default function ProfitTab() {
             style={{
               ...field,
               width: "auto",
-              background:
-                "var(--film-blue, #347fec)",
+              background: "var(--film-blue, #347fec)",
               color: "#fff",
             }}
           >
@@ -668,9 +732,21 @@ export default function ProfitTab() {
             관리자 본인의 인건비를 빼려면 해당
             시공자를 체크해주세요. 일당·팀장수당을
             수익 계산에서만 제외하며, 급여·보고서
-            기록은 유지됩니다. 조회 화면에서만
-            적용됩니다.
+            기록은 유지됩니다. 선택은 이 브라우저에
+            관리자 계정별로 자동 저장됩니다.
           </p>
+
+          {exclusionMessage && (
+            <p
+              role="status"
+              style={{
+                fontSize: 12,
+                color: "#475569",
+              }}
+            >
+              {exclusionMessage}
+            </p>
+          )}
 
           {laborWorkers.map((row) => (
             <label
@@ -688,14 +764,15 @@ export default function ProfitTab() {
                 checked={excludedWorkerIds.includes(
                   row.workerId
                 )}
-                disabled={loading || saving}
+                disabled={
+                  loading ||
+                  saving ||
+                  !exclusionStorageKey
+                }
                 onChange={(event) =>
-                  setExcludedWorkerIds((ids) =>
+                  changeExcludedWorker(
+                    row.workerId,
                     event.target.checked
-                      ? [...ids, row.workerId]
-                      : ids.filter(
-                          (id) => id !== row.workerId
-                        )
                   )
                 }
               />
@@ -704,8 +781,7 @@ export default function ProfitTab() {
               {won(
                 (rawData.breakdown.labor || [])
                   .filter(
-                    (item) =>
-                      item.workerId === row.workerId
+                    (item) => item.workerId === row.workerId
                   )
                   .reduce(
                     (sum, item) =>
@@ -752,10 +828,7 @@ export default function ProfitTab() {
         </details>
 
         {error && (
-          <p
-            role="alert"
-            style={{ color: "#b91c1c" }}
-          >
+          <p role="alert" style={{ color: "#b91c1c" }}>
             ❌ {error}
           </p>
         )}
@@ -790,13 +863,9 @@ export default function ProfitTab() {
                       ? "1px solid #81b4f7"
                       : "1px solid #e2e8f0",
                   background:
-                    view === menu.id
-                      ? "#edf5ff"
-                      : "#fff",
+                    view === menu.id ? "#edf5ff" : "#fff",
                   color:
-                    view === menu.id
-                      ? "#1d4ed8"
-                      : "#475569",
+                    view === menu.id ? "#1d4ed8" : "#475569",
                   fontWeight: 800,
                   fontSize: 13,
                   cursor: "pointer",
@@ -854,12 +923,7 @@ export default function ProfitTab() {
               ))}
             </div>
 
-            <div
-              style={{
-                ...card,
-                marginTop: 14,
-              }}
-            >
+            <div style={{ ...card, marginTop: 14 }}>
               <h3 style={{ margin: "0 0 10px" }}>
                 비용 구성
               </h3>
@@ -879,24 +943,22 @@ export default function ProfitTab() {
                       overflow: "hidden",
                     }}
                   >
-                    {[
-                      "labor",
-                      "material",
-                      "expense",
-                    ].map((type) => (
-                      <div
-                        key={type}
-                        style={{
-                          width: `${
-                            (100 * data.totals[type]) /
-                            (data.totals.labor +
-                              data.totals.material +
-                              data.totals.expense)
-                          }%`,
-                          background: colors[type],
-                        }}
-                      />
-                    ))}
+                    {["labor", "material", "expense"].map(
+                      (type) => (
+                        <div
+                          key={type}
+                          style={{
+                            width: `${
+                              (100 * data.totals[type]) /
+                              (data.totals.labor +
+                                data.totals.material +
+                                data.totals.expense)
+                            }%`,
+                            background: colors[type],
+                          }}
+                        />
+                      )
+                    )}
                   </div>
 
                   <div
@@ -924,16 +986,13 @@ export default function ProfitTab() {
                             marginRight: 4,
                           }}
                         />
-                        {label}{" "}
-                        {won(data.totals[key])}
+                        {label} {won(data.totals[key])}
                       </span>
                     ))}
                   </div>
                 </>
               ) : (
-                <span>
-                  등록된 비용이 없습니다.
-                </span>
+                <span>등록된 비용이 없습니다.</span>
               )}
             </div>
           </div>
@@ -978,10 +1037,7 @@ export default function ProfitTab() {
             {data.sites.map((site) => (
               <div
                 key={site.id}
-                style={{
-                  ...card,
-                  marginBottom: 14,
-                }}
+                style={{ ...card, marginBottom: 14 }}
               >
                 <div
                   style={{
@@ -998,9 +1054,7 @@ export default function ProfitTab() {
                   </strong>
 
                   <span>
-                    {String(
-                      site.schedule_start
-                    ).slice(0, 10)}
+                    {String(site.schedule_start).slice(0, 10)}
                   </span>
                 </div>
 
@@ -1020,9 +1074,7 @@ export default function ProfitTab() {
                 <strong
                   style={{
                     color:
-                      site.profit < 0
-                        ? "#b91c1c"
-                        : "#166534",
+                      site.profit < 0 ? "#b91c1c" : "#166534",
                   }}
                 >
                   예상 수익 {won(site.profit)}
@@ -1036,8 +1088,7 @@ export default function ProfitTab() {
                     }}
                   >
                     선택한 시공자 인건비{" "}
-                    {won(site.excludedOwnerLabor)}
-                    {" "}제외 적용
+                    {won(site.excludedOwnerLabor)} 제외 적용
                   </p>
                 )}
 
@@ -1058,9 +1109,7 @@ export default function ProfitTab() {
                     type="button"
                     onClick={() => {
                       setSelected(
-                        selected === site.id
-                          ? ""
-                          : site.id
+                        selected === site.id ? "" : site.id
                       );
                       setWorker("");
                     }}
@@ -1079,8 +1128,7 @@ export default function ProfitTab() {
                 {selected === site.id && (
                   <div
                     style={{
-                      borderTop:
-                        "1px solid #e2e8f0",
+                      borderTop: "1px solid #e2e8f0",
                       marginTop: 12,
                       paddingTop: 12,
                     }}
@@ -1104,10 +1152,7 @@ export default function ProfitTab() {
 
                     <form
                       onSubmit={save}
-                      style={{
-                        display: "grid",
-                        gap: 8,
-                      }}
+                      style={{ display: "grid", gap: 8 }}
                     >
                       <select
                         aria-label="비용 구분"
@@ -1122,10 +1167,7 @@ export default function ProfitTab() {
                       >
                         {Object.entries(kinds).map(
                           ([key, label]) => (
-                            <option
-                              key={key}
-                              value={key}
-                            >
+                            <option key={key} value={key}>
                               {label}
                             </option>
                           )
@@ -1137,9 +1179,7 @@ export default function ProfitTab() {
                           aria-label="담당 시공자"
                           value={worker}
                           onChange={(event) =>
-                            chooseWorker(
-                              event.target.value
-                            )
+                            chooseWorker(event.target.value)
                           }
                           style={field}
                         >
@@ -1165,9 +1205,7 @@ export default function ProfitTab() {
                         value={description}
                         maxLength={120}
                         onChange={(event) =>
-                          setDescription(
-                            event.target.value
-                          )
+                          setDescription(event.target.value)
                         }
                         style={field}
                         required
@@ -1200,9 +1238,7 @@ export default function ProfitTab() {
                           color: "#fff",
                         }}
                       >
-                        {saving
-                          ? "저장 중..."
-                          : "비용 저장"}
+                        {saving ? "저장 중..." : "비용 저장"}
                       </button>
                     </form>
 
@@ -1211,20 +1247,16 @@ export default function ProfitTab() {
                         key={entry.id}
                         style={{
                           display: "flex",
-                          justifyContent:
-                            "space-between",
+                          justifyContent: "space-between",
                           gap: 8,
                           alignItems: "center",
-                          borderBottom:
-                            "1px solid #f1f5f9",
+                          borderBottom: "1px solid #f1f5f9",
                           padding: "8px 0",
                           fontSize: 13,
                         }}
                       >
                         <span>
-                          {costLabels[
-                            entry.category
-                          ] || "비용"}
+                          {costLabels[entry.category] || "비용"}
                           {" · "}
                           {entry.description}
                           {" · "}
@@ -1234,9 +1266,7 @@ export default function ProfitTab() {
                         <button
                           type="button"
                           disabled={saving}
-                          onClick={() =>
-                            remove(entry.id)
-                          }
+                          onClick={() => remove(entry.id)}
                         >
                           삭제
                         </button>
@@ -1251,4 +1281,4 @@ export default function ProfitTab() {
       )}
     </section>
   );
-            }
+                }
