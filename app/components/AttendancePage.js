@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import AttendanceCorrection from "./AttendanceCorrection";
 import { supabase } from "../../lib/supabase";
 
 const koreaDay = () =>
@@ -147,10 +148,14 @@ function Gps({ gps, distance, verified }) {
   );
 }
 
-export default function AttendancePage({ mode = "worker" }) {
+export default function AttendancePage({
+  mode = "worker",
+}) {
   const admin = mode === "admin";
 
-  const [month, setMonth] = useState(() => koreaDay().slice(0, 7));
+  const [month, setMonth] = useState(
+    () => koreaDay().slice(0, 7)
+  );
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -176,7 +181,12 @@ export default function AttendancePage({ mode = "worker" }) {
     setError("");
 
     try {
-      const result = await request("GET", null, mode, month);
+      const result = await request(
+        "GET",
+        null,
+        mode,
+        month
+      );
 
       if (currentVersion !== version.current) return;
 
@@ -228,25 +238,35 @@ export default function AttendancePage({ mode = "worker" }) {
   }
 
   async function post(body) {
-    const result = await request("POST", body, mode, month);
+    const result = await request(
+      "POST",
+      body,
+      mode,
+      month
+    );
 
     setMessage(result.message || "저장했습니다.");
-
     await load();
   }
 
   const sites = data?.sites || [];
-  const selected = sites.find((site) => site.id === siteId);
+  const eligibleSites = sites.filter(
+    (site) => site.canClockIn
+  );
+  const selected = sites.find(
+    (site) => site.id === siteId
+  );
   const active = (data?.records || []).find(
     (record) => !record.clock_out
   );
 
   const siteName = (id) =>
-    sites.find((site) => site.id === id)?.site_name || "현장";
+    sites.find((site) => site.id === id)?.site_name ||
+    "현장";
 
   const workerName = (id) =>
-    data?.workers.find((worker) => worker.id === id)?.name ||
-    "시공자";
+    data?.workers.find((worker) => worker.id === id)
+      ?.name || "시공자";
 
   async function punch(action, withoutGps = false) {
     if (!consent) {
@@ -325,7 +345,9 @@ export default function AttendancePage({ mode = "worker" }) {
         </button>
       </div>
 
-      {loading && <p role="status">출퇴근 내역 확인 중…</p>}
+      {loading && (
+        <p role="status">출퇴근 내역 확인 중…</p>
+      )}
 
       {data && admin && (
         <>
@@ -469,11 +491,15 @@ export default function AttendancePage({ mode = "worker" }) {
               style={field}
               disabled={busy}
               value={siteId}
-              onChange={(event) => selectSite(event.target.value)}
+              onChange={(event) =>
+                selectSite(event.target.value)
+              }
             >
-              <option value="">출근할 현장 선택</option>
+              <option value="">
+                오늘 배정된 현장 선택
+              </option>
 
-              {sites.map((site) => (
+              {eligibleSites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.site_name || site.address}
                 </option>
@@ -481,12 +507,21 @@ export default function AttendancePage({ mode = "worker" }) {
             </select>
           )}
 
-          {selected && !active && <p>{selected.address}</p>}
+          {selected && !active && (
+            <p>{selected.address}</p>
+          )}
+
+          {!active && !eligibleSites.length && (
+            <p>
+              오늘 출근 가능한 배정 현장이 없습니다.
+              관리자에게 일정을 확인해주세요.
+            </p>
+          )}
 
           <p>
-            버튼을 누를 때만 위치와 서버 시간을 기록합니다. 기록은
-            본인과 소속 관리자가 확인하며 근무·연장비용 확인에
-            사용합니다. 계속 위치를 추적하지 않습니다.
+            버튼을 누를 때만 위치와 서버 시간을 기록합니다.
+            기록은 본인과 소속 관리자가 확인하며 근무·연장비용
+            확인에 사용합니다. 계속 위치를 추적하지 않습니다.
           </p>
 
           <label>
@@ -494,7 +529,9 @@ export default function AttendancePage({ mode = "worker" }) {
               type="checkbox"
               checked={consent}
               disabled={busy}
-              onChange={(event) => setConsent(event.target.checked)}
+              onChange={(event) =>
+                setConsent(event.target.checked)
+              }
             />{" "}
             위치 기록 안내를 확인했습니다.
           </label>
@@ -508,9 +545,15 @@ export default function AttendancePage({ mode = "worker" }) {
               color: "white",
             }}
             disabled={busy || loading || !consent}
-            onClick={() => run(() => punch(active ? "out" : "in"))}
+            onClick={() =>
+              run(() => punch(active ? "out" : "in"))
+            }
           >
-            {busy ? "기록 중…" : active ? "퇴근 기록" : "출근 기록"}
+            {busy
+              ? "기록 중…"
+              : active
+                ? "퇴근 기록"
+                : "출근 기록"}
           </button>
 
           <details>
@@ -519,8 +562,8 @@ export default function AttendancePage({ mode = "worker" }) {
             </summary>
 
             <p>
-              사유를 남기면 위치 미확인 기록으로 저장되어 관리자가
-              확인합니다.
+              사유를 남기면 위치 미확인 기록으로 저장되어
+              관리자가 확인합니다.
             </p>
 
             <input
@@ -528,15 +571,23 @@ export default function AttendancePage({ mode = "worker" }) {
               placeholder="위치를 기록하지 못한 사유"
               maxLength={300}
               value={reason}
-              onChange={(event) => setReason(event.target.value)}
+              onChange={(event) =>
+                setReason(event.target.value)
+              }
               disabled={busy}
             />
 
             <button
               style={button}
-              disabled={busy || !consent || reason.trim().length < 3}
+              disabled={
+                busy ||
+                !consent ||
+                reason.trim().length < 3
+              }
               onClick={() =>
-                run(() => punch(active ? "out" : "in", true))
+                run(() =>
+                  punch(active ? "out" : "in", true)
+                )
               }
             >
               사유와 시간만 기록
@@ -559,25 +610,55 @@ export default function AttendancePage({ mode = "worker" }) {
       )}
 
       {message && (
-        <p role="status" style={{ ...card, color: "#166534" }}>
+        <p
+          role="status"
+          style={{ ...card, color: "#166534" }}
+        >
           {message}
         </p>
       )}
 
       {data && (
         <>
-          <h2 style={{ fontSize: 20 }}>출퇴근 기록</h2>
+          <h2 style={{ fontSize: 20 }}>
+            출퇴근 기록
+          </h2>
 
-          {!data.records.length && <p>기록이 없습니다.</p>}
+          {!data.records.length && (
+            <p>기록이 없습니다.</p>
+          )}
 
           {data.records.map((record) => (
             <article key={record.id} style={card}>
               <strong>
-                {record.work_day} · {workerName(record.worker_id)} ·{" "}
+                {record.work_day} ·{" "}
+                {workerName(record.worker_id)} ·{" "}
                 {siteName(record.site_id)}
               </strong>
 
               <p>{record.site_address}</p>
+
+              {record.corrected_at && (
+                <p>
+                  관리자 퇴근 정정:{" "}
+                  {time(record.corrected_at)} ·{" "}
+                  {record.correction_note}
+                </p>
+              )}
+
+              {admin && (
+                <AttendanceCorrection
+                  key={`${record.id}:${record.corrected_at || ""}`}
+                  record={record}
+                  busy={busy}
+                  onSave={(body) =>
+                    run(async () => {
+                      await post(body);
+                      setReview(null);
+                    })
+                  }
+                />
+              )}
 
               <p>
                 출근 {time(record.clock_in)}
@@ -591,7 +672,6 @@ export default function AttendancePage({ mode = "worker" }) {
 
               <p>
                 퇴근 {time(record.clock_out)}
-
                 {record.clock_out && (
                   <>
                     <br />
@@ -623,9 +703,9 @@ export default function AttendancePage({ mode = "worker" }) {
               )}
 
               <p>
-                기준 퇴근 {record.cutoff.slice(0, 5)} · 연장{" "}
-                {record.overtime_minutes}분 · 시간당{" "}
-                {won(record.hourly_rate)}
+                기준 퇴근 {record.cutoff.slice(0, 5)}
+                {" · "}연장 {record.overtime_minutes}분
+                {" · "}시간당 {won(record.hourly_rate)}
               </p>
 
               {record.clock_out &&
@@ -633,8 +713,8 @@ export default function AttendancePage({ mode = "worker" }) {
                   new Date(record.clock_in) >
                   24 * 3600000 && (
                   <p style={{ color: "#b91c1c" }}>
-                    24시간을 초과한 기록입니다. 퇴근 누락 여부를
-                    확인해주세요.
+                    24시간을 초과한 기록입니다.
+                    퇴근 누락 여부를 확인해주세요.
                   </p>
                 )}
 
@@ -645,8 +725,8 @@ export default function AttendancePage({ mode = "worker" }) {
                     approved: "승인",
                     rejected: "반려",
                   }[record.review_status]
-                }{" "}
-                · 추가 비용{" "}
+                }
+                {" · "}추가 비용{" "}
                 {record.review_status === "pending"
                   ? `${won(
                       Math.round(
@@ -660,7 +740,8 @@ export default function AttendancePage({ mode = "worker" }) {
 
               {record.review_note && (
                 <p>
-                  확인 내용: {record.review_note} · 연장 휴게{" "}
+                  확인 내용: {record.review_note}
+                  {" · "}연장 휴게{" "}
                   {record.break_minutes}분
                 </p>
               )}
@@ -695,7 +776,6 @@ export default function AttendancePage({ mode = "worker" }) {
                         ...review,
                         status: "approved",
                       });
-
                       setReview(null);
                     });
                   }}
@@ -714,7 +794,9 @@ export default function AttendancePage({ mode = "worker" }) {
                       onChange={(event) =>
                         setReview({
                           ...review,
-                          breakMinutes: Number(event.target.value),
+                          breakMinutes: Number(
+                            event.target.value
+                          ),
                         })
                       }
                     />
@@ -739,18 +821,23 @@ export default function AttendancePage({ mode = "worker" }) {
 
                   <p>
                     승인하면 추가 인건비가 반영됩니다. 기존
-                    인건비에 같은 연장비용을 이미 넣었다면 중복
-                    승인하지 마세요.
+                    인건비에 같은 연장비용을 이미 넣었다면
+                    중복 승인하지 마세요.
                   </p>
 
-                  <button style={button} disabled={busy}>
+                  <button
+                    style={button}
+                    disabled={busy}
+                  >
                     승인·추가 인건비 반영
                   </button>
 
                   <button
                     style={button}
                     type="button"
-                    disabled={busy || !review.note.trim()}
+                    disabled={
+                      busy || !review.note.trim()
+                    }
                     onClick={() =>
                       run(async () => {
                         await post({
@@ -758,7 +845,6 @@ export default function AttendancePage({ mode = "worker" }) {
                           ...review,
                           status: "rejected",
                         });
-
                         setReview(null);
                       })
                     }
