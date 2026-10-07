@@ -4,9 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 const suggestions = [
-  "시공 사진은 어떻게 등록해요?",
-  "시공자에게 현장을 어떻게 배정해요?",
-  "고객 견적은 어디에서 봐요?",
+  "출근·퇴근 기록과 퇴근 누락 정정은 어떻게 해요?",
+  "자재 반출·반입량과 실제 사용량은 어떻게 기록해요?",
+  "완료보고 저장 전에 무엇을 확인해야 해요?",
+  "인건비 지급과 미지급 금액은 어디서 확인해요?",
+  "팀장수당·오버타임 단가와 수익 제외는 어디서 설정해요?",
+  "현장 변경사항을 시공자가 확인했는지 어떻게 봐요?",
 ];
 
 export default function HelpChat() {
@@ -52,39 +55,52 @@ export default function HelpChat() {
       } = await supabase.auth.getSession();
 
       if (!session) {
-        throw new Error("관리자로 다시 로그인해주세요.");
+        throw new Error(
+          "관리자로 다시 로그인해주세요."
+        );
       }
 
-      const response = await fetch("/api/admin/help-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          question: value,
-          history,
-        }),
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        "/api/admin/help-chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization:
+              `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            question: value,
+            history,
+          }),
+          signal: controller.signal,
+        }
+      );
 
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error || "답변을 가져오지 못했습니다.",
+          result.error ||
+            "답변을 가져오지 못했습니다."
         );
       }
 
       setMessages((current) => [
         ...current,
-        { role: "assistant", content: result.answer },
+        {
+          role: "assistant",
+          content: result.answer,
+        },
       ]);
     } catch (error) {
       if (error.name !== "AbortError") {
         setMessages((current) => [
           ...current,
-          { role: "assistant", content: error.message },
+          {
+            role: "assistant",
+            content: error.message,
+          },
         ]);
       }
     } finally {
@@ -98,7 +114,8 @@ export default function HelpChat() {
       style={{
         position: "fixed",
         right: 16,
-        bottom: "calc(112px + env(safe-area-inset-bottom, 0px))",
+        bottom:
+          "calc(112px + env(safe-area-inset-bottom, 0px))",
         zIndex: 1000,
         fontFamily: "inherit",
       }}
@@ -107,7 +124,8 @@ export default function HelpChat() {
         <section
           aria-label="앱 기능 안내 챗봇"
           style={{
-            width: "min(390px, calc(100vw - 32px))",
+            width:
+              "min(390px, calc(100vw - 32px))",
             height:
               "min(560px, calc(100dvh - 210px - env(safe-area-inset-bottom, 0px)))",
             background: "#fff",
@@ -171,8 +189,11 @@ export default function HelpChat() {
                     fontSize: 14,
                   }}
                 >
-                  이 앱의 기능이나 사용 방법을 자연스럽게 물어보세요.
-                  계정의 비밀번호나 고객 개인정보는 입력하지 마세요.
+                  현장 배정부터 출퇴근, 자재, 완료보고,
+                  인건비 지급까지 사용 순서를 물어보세요.
+                  실제 현장·지급 내역을 조회하거나 변경하는
+                  기능은 아닙니다. 계정의 비밀번호나 고객
+                  개인정보는 입력하지 마세요.
                 </p>
 
                 {suggestions.map((item) => (
@@ -254,9 +275,11 @@ export default function HelpChat() {
             <input
               aria-label="앱 기능 질문"
               value={question}
-              onChange={(event) => setQuestion(event.target.value)}
+              onChange={(event) =>
+                setQuestion(event.target.value)
+              }
               maxLength={500}
-              placeholder="예: 현장 배정은 어떻게 해요?"
+              placeholder="예: 남은 자재 반입량은 어디에 넣나요?"
               style={{
                 minWidth: 0,
                 flex: 1,
@@ -269,14 +292,19 @@ export default function HelpChat() {
 
             <button
               type="submit"
-              disabled={loading || !question.trim()}
+              disabled={
+                loading || !question.trim()
+              }
               style={{
                 border: 0,
                 borderRadius: 8,
                 padding: "0 14px",
                 color: "white",
                 background: "#111827",
-                opacity: loading || !question.trim() ? 0.5 : 1,
+                opacity:
+                  loading || !question.trim()
+                    ? 0.5
+                    : 1,
                 cursor: "pointer",
               }}
             >
@@ -288,7 +316,9 @@ export default function HelpChat() {
 
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() =>
+          setOpen((value) => !value)
+        }
         aria-expanded={open}
         aria-label={
           open
@@ -307,9 +337,10 @@ export default function HelpChat() {
           cursor: "pointer",
         }}
       >
-        {open ? "✕ 안내 닫기" : "💬 앱 사용 안내"}
+        {open
+          ? "✕ 안내 닫기"
+          : "💬 앱 사용 안내"}
       </button>
     </div>
   );
 }
-// 파일 끝
