@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import ActualMaterialEditor from "../ActualMaterialEditor";
 import { formatWon, formatQuantity } from "./siteDetailUtils";
 
 const endpoint = "/api/admin/site-planned-materials";
@@ -68,19 +69,228 @@ async function api(method, siteId, body, signal) {
       ...(method === "GET"
         ? {}
         : { body: JSON.stringify({ ...body, siteId }) }),
-    }
+    },
   );
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.error || "자재 요청을 처리하지 못했습니다.");
+    throw new Error(
+      result.error || "자재 요청을 처리하지 못했습니다.",
+    );
   }
 
   return result;
 }
 
+/*
+ * 완료 현장은 매출에 반영되는 실제 사용 자재를 편집합니다.
+ * 그 외 현장은 기존 예정 자재 관리 기능을 사용합니다.
+ */
 export default function SiteMaterials({ site }) {
+  if (!site?.id) return null;
+
+  if (site.status === "completed") {
+    return (
+      <CompletedSiteMaterials
+        key={`actual-${site.id}`}
+        siteId={site.id}
+      />
+    );
+  }
+
+  return (
+    <PlannedSiteMaterials
+      key={`planned-${site.id}`}
+      site={site}
+    />
+  );
+}
+
+/* 완료 현장: 실제 사용 자재 */
+function CompletedSiteMaterials({ siteId }) {
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [hasReport, setHasReport] = useState(false);
+
+  const controllerRef = useRef(null);
+
+  const load = useCallback(async () => {
+    controllerRef.current?.abort();
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (
+        sessionError ||
+        !data?.session?.access_token
+      ) {
+        throw new Error("관리자로 다시 로그인해주세요.");
+      }
+
+      const response = await fetch(
+        `/api/admin/site-work-report-review?siteId=${encodeURIComponent(
+          siteId,
+        )}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+            Accept: "application/json",
+          },
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "실제 사용 자재를 불러오지 못했습니다.",
+        );
+      }
+
+      if (controller.signal.aborted) return;
+
+      setHasReport(Boolean(result.hasReport && result.report));
+      setMaterials(
+        Array.isArray(result.materials) ? result.materials : [],
+      );
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setError(
+          cause.message || "실제 사용 자재를 불러오지 못했습니다.",
+        );
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [siteId]);
+
+  useEffect(() => {
+    load();
+
+    return () => {
+      controllerRef.current?.abort();
+    };
+  }, [load]);
+
+  async function handleSaved() {
+    window.dispatchEvent(
+      new CustomEvent("site-materials-changed", {
+        detail: {
+          siteId,
+          materialType: "actual",
+        },
+      }),
+    );
+
+    await load();
+  }
+
+  return (
+    <section
+      aria-label="실제 사용 자재"
+      style={{
+        marginTop: 18,
+        paddingTop: 14,
+        borderTop: "1px solid #e2e8f0",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 10,
+          marginBottom: 14,
+        }}
+      >
+        <h3 style={{ margin: 0, flex: 1 }}>
+          📦 실제 사용 자재
+        </h3>
+
+        <button
+          type="button"
+          style={button}
+          disabled={loading}
+          onClick={load}
+        >
+          새로고침
+        </button>
+      </div>
+
+      <p
+        style={{
+          ...box,
+          background: "#eff6ff",
+          color: "#1e40af",
+          fontSize: 13,
+          lineHeight: 1.7,
+        }}
+      >
+        시공 완료된 현장입니다.
+        <br />
+        여기서 사용량과 단가를 수정하면 실제 자재비가 변경됩니다.
+        저장 후 매출·수익을 다시 조회해주세요.
+      </p>
+
+      {error && (
+        <p
+          role="alert"
+          style={{
+            ...box,
+            color: "#b91c1c",
+            background: "#fef2f2",
+          }}
+        >
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <p role="status">실제 사용 자재를 불러오는 중입니다…</p>
+      ) : error ? (
+        <button type="button" style={button} onClick={load}>
+          다시 불러오기
+        </button>
+      ) : !hasReport ? (
+        <div
+          style={{
+            ...box,
+            color: "#64748b",
+            lineHeight: 1.7,
+          }}
+        >
+          아직 완료보고가 없습니다.
+          <br />
+          완료보고 메뉴에서 실제 사용 자재를 포함한 보고서를
+          먼저 등록해주세요.
+        </div>
+      ) : (
+        <ActualMaterialEditor
+          siteId={siteId}
+          materials={materials}
+          onSaved={handleSaved}
+        />
+      )}
+    </section>
+  );
+}
+
+/* 진행 현장: 기존 예정 자재 */
+function PlannedSiteMaterials({ site }) {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [canWrite, setCanWrite] = useState(false);
@@ -106,17 +316,21 @@ export default function SiteMaterials({ site }) {
         "GET",
         siteId,
         null,
-        controller.signal
+        controller.signal,
       );
 
       if (controller.signal.aborted) return;
 
-      setMaterials(result.materials);
+      setMaterials(
+        Array.isArray(result.materials) ? result.materials : [],
+      );
       setCanWrite(result.canWrite);
     } catch (error) {
       if (!controller.signal.aborted) {
         setCanWrite(false);
-        setMessage(error.message || "자재를 불러오지 못했습니다.");
+        setMessage(
+          error.message || "자재를 불러오지 못했습니다.",
+        );
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -156,7 +370,7 @@ export default function SiteMaterials({ site }) {
             product_code: material.product_code || "",
             product_name: material.product_name || "",
           }
-        : emptyForm()
+        : emptyForm(),
     );
   }
 
@@ -183,14 +397,14 @@ export default function SiteMaterials({ site }) {
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
           detail: { siteId },
-        })
+        }),
       );
 
       await load();
     } catch (error) {
       setMessage(
         error.message ||
-          "저장하지 못했습니다. 입력 내용은 유지됩니다."
+          "저장하지 못했습니다. 입력 내용은 유지됩니다.",
       );
     } finally {
       lock.current = false;
@@ -205,7 +419,7 @@ export default function SiteMaterials({ site }) {
       !window.confirm(
         `${
           material.product_code || material.product_name
-        } 예정 자재를 삭제할까요?`
+        } 예정 자재를 삭제할까요?`,
       )
     ) {
       return;
@@ -227,7 +441,7 @@ export default function SiteMaterials({ site }) {
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
           detail: { siteId },
-        })
+        }),
       );
 
       await load();
@@ -482,7 +696,12 @@ export default function SiteMaterials({ site }) {
                 {material.product_code || material.product_name}
               </strong>
 
-              <p style={{ margin: "8px 0", color: "#64748b" }}>
+              <p
+                style={{
+                  margin: "8px 0",
+                  color: "#64748b",
+                }}
+              >
                 {[material.brand, material.product_name]
                   .filter(Boolean)
                   .join(" · ")}
@@ -493,7 +712,7 @@ export default function SiteMaterials({ site }) {
                 <b>
                   {formatQuantity(
                     material.quantity,
-                    material.unit
+                    material.unit,
                   )}
                 </b>
               </p>
@@ -525,7 +744,10 @@ export default function SiteMaterials({ site }) {
 
                   <button
                     type="button"
-                    style={{ ...button, color: "#b91c1c" }}
+                    style={{
+                      ...button,
+                      color: "#b91c1c",
+                    }}
                     disabled={busy || loading}
                     onClick={() => remove(material)}
                   >
@@ -539,4 +761,4 @@ export default function SiteMaterials({ site }) {
       )}
     </section>
   );
-                     }
+              }
