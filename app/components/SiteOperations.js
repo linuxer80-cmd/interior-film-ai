@@ -4,102 +4,184 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 const card = {
-  padding: 16, border: "1px solid #dbe3ee", borderRadius: 14,
-  margin: "12px 0", background: "#fff", overflowWrap: "anywhere",
+  padding: 16,
+  border: "1px solid #dbe3ee",
+  borderRadius: 14,
+  margin: "12px 0",
+  background: "#fff",
+  overflowWrap: "anywhere",
 };
+
 const btn = {
-  padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1",
-  background: "#eff6ff", color: "#1e40af", fontWeight: 700, cursor: "pointer",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#eff6ff",
+  color: "#1e40af",
+  fontWeight: 700,
+  cursor: "pointer",
 };
+
 const input = {
-  padding: 10, border: "1px solid #cbd5e1", borderRadius: 10,
-  width: "100%", boxSizing: "border-box", fontSize: 16,
+  padding: 10,
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  width: "100%",
+  boxSizing: "border-box",
+  fontSize: 16,
 };
-const date = value => new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+
+const date = (value) =>
+  new Date(value).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+  });
 
 export default function SiteOperations({
-  siteId, mode = "notices", onTrackingChange, onPendingChange,
-  onCurrentData, onDataChange, initialDraft, onDraftChange, disabled = false,
+  siteId,
+  mode = "notices",
+  onTrackingChange,
+  onPendingChange,
+  onCurrentData,
+  onDataChange,
+  initialDraft,
+  onDraftChange,
+  disabled = false,
+  reportEditable = false,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState({});
   const [review, setReview] = useState(null);
+
   const lock = useRef(false);
   const serial = useRef(0);
   const requests = useRef({});
   const returnVersions = useRef({});
   const draftSeed = useRef(initialDraft);
   const dataCallback = useRef(onDataChange);
+  const callback = useRef(onTrackingChange);
+
   dataCallback.current = onDataChange;
+  callback.current = onTrackingChange;
 
   useEffect(() => {
-    onDraftChange?.({ values, versions: returnVersions.current });
+    onDraftChange?.({
+      values,
+      versions: returnVersions.current,
+    });
   }, [values, onDraftChange]);
-
-  const callback = useRef(onTrackingChange);
-  callback.current = onTrackingChange;
 
   useEffect(() => {
     onPendingChange?.(busy || Object.keys(values).length > 0);
   }, [busy, values, onPendingChange]);
 
-  const call = useCallback(async body => {
-    const { data: auth, error } = await supabase.auth.getSession();
-    if (error || !auth.session) throw new Error("다시 로그인해주세요.");
+  const call = useCallback(
+    async (body) => {
+      const { data: auth, error } = await supabase.auth.getSession();
 
-    const response = await fetch(
-      body ? "/api/site-operations" : `/api/site-operations?siteId=${encodeURIComponent(siteId)}`,
-      {
-        method: body ? "POST" : "GET",
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${auth.session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        ...(body ? { body: JSON.stringify({ ...body, siteId }) } : {}),
+      if (error || !auth.session) {
+        throw new Error("다시 로그인해주세요.");
       }
-    );
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "요청을 처리하지 못했습니다.");
-    return result;
-  }, [siteId]);
+      const response = await fetch(
+        body
+          ? "/api/site-operations"
+          : `/api/site-operations?siteId=${encodeURIComponent(siteId)}`,
+        {
+          method: body ? "POST" : "GET",
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${auth.session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          ...(body
+            ? { body: JSON.stringify({ ...body, siteId }) }
+            : {}),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "요청을 처리하지 못했습니다.");
+      }
+
+      return result;
+    },
+    [siteId]
+  );
 
   const refresh = useCallback(async () => {
     if (lock.current) return;
+
     const version = ++serial.current;
+
     try {
       const result = await call();
+
       if (version !== serial.current) return;
+
       setData(result);
+
+      setValues((previous) => {
+        const ids = new Set(
+          result.materials.map((material) => `flow:${material.id}`)
+        );
+
+        const next = Object.fromEntries(
+          Object.entries(previous).filter(([key]) => ids.has(key))
+        );
+
+        return Object.keys(next).length === Object.keys(previous).length
+          ? previous
+          : next;
+      });
+
       dataCallback.current?.(result);
       setError("");
-      callback.current?.(result.materials.some(material => material.issued > 0));
+      callback.current?.(result.materials.length > 0);
     } catch (error) {
-      if (version === serial.current) setError(error.message);
+      if (version === serial.current) {
+        setError(error.message);
+      }
     }
   }, [call]);
 
   useEffect(() => {
     setData(null);
     setReview(null);
-    setValues(draftSeed.current?.values || {});
+
+    setValues(
+      Object.fromEntries(
+        Object.entries(draftSeed.current?.values || {}).filter(
+          ([key]) => key.startsWith("flow:")
+        )
+      )
+    );
+
     requests.current = {};
     returnVersions.current = draftSeed.current?.versions || {};
+
     refresh();
 
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
     }, 30000);
+
     const focus = () => refresh();
-    const materialsChanged = event => {
-      if (event.detail?.siteId === siteId) refresh();
+
+    const materialsChanged = (event) => {
+      if (event.detail?.siteId === siteId) {
+        refresh();
+      }
     };
 
     window.addEventListener("focus", focus);
     window.addEventListener("site-materials-changed", materialsChanged);
+
     return () => {
       serial.current++;
       clearInterval(timer);
@@ -110,34 +192,45 @@ export default function SiteOperations({
 
   async function act(body, clearKey) {
     if (lock.current || disabled) return;
+
     lock.current = true;
     serial.current++;
+
     setBusy(true);
     setError("");
 
     try {
       const result = await call(body);
+
       if (body.action === "latest") {
         await onCurrentData?.(result.snapshot);
         setReview({ eventId: body.eventId, ...result });
         return;
       }
-      if (body.action === "confirm") setReview(null);
+
+      if (body.action === "confirm") {
+        setReview(null);
+      }
+
       setData(result);
       dataCallback.current?.(result);
-      callback.current?.(result.materials.some(material => material.issued > 0));
+      callback.current?.(result.materials.length > 0);
 
       if (clearKey) {
-        setValues(previous => {
+        setValues((previous) => {
           const next = { ...previous };
           delete next[clearKey];
           return next;
         });
+
         delete requests.current[clearKey];
         delete returnVersions.current[clearKey];
       }
     } catch (error) {
-      if (body.action === "confirm") setReview(null);
+      if (body.action === "confirm") {
+        setReview(null);
+      }
+
       setError(error.message);
     } finally {
       lock.current = false;
@@ -149,140 +242,275 @@ export default function SiteOperations({
 
   return (
     <section style={card}>
-      <div style={{
-        display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center",
-      }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
         <h3 style={{ margin: 0, fontSize: 17 }}>
-          {materialsMode ? "📦 반출 · 반입 · 소모량" : "🔔 변경사항 확인"}
+          {materialsMode
+            ? "📦 반출 · 반입 · 소모량"
+            : "🔔 변경사항 확인"}
         </h3>
-        <button type="button" style={btn} disabled={busy || disabled} onClick={refresh}>
+
+        <button
+          type="button"
+          style={btn}
+          disabled={busy || disabled}
+          onClick={refresh}
+        >
           새로고침
         </button>
       </div>
 
-      {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
+      {error && (
+        <p role="alert" style={{ color: "#b91c1c" }}>
+          {error}
+        </p>
+      )}
 
-      {!data ? <p>불러오는 중…</p> : materialsMode ? (
+      {!data ? (
+        <p>불러오는 중…</p>
+      ) : materialsMode ? (
         <>
           <p style={{ color: "#64748b", fontSize: 13 }}>
-            소모량 = 총 반출량 − 남은 자재 반입량. 재단 손실도 포함됩니다.
+            소모량 = 총 반출량 − 남은 자재 반입량.
+            재단 손실도 포함됩니다.
           </p>
-          {data.locked && <p>보고서 제출·승인 또는 현장 취소로 수량이 잠겨 있습니다.</p>}
-          {!data.materials.length && <p>관리자가 예정 자재를 먼저 등록해주세요.</p>}
 
-          {data.materials.map(material => {
-            const issueKey = `issue:${material.id}`;
-            const returnKey = `return:${material.id}`;
+          {data.locked && (
+            <p>
+              보고서 제출·승인 또는 현장 취소로 수량이 잠겨 있습니다.
+            </p>
+          )}
+
+          {!data.materials.length && (
+            <p>관리자가 사용할 필름을 먼저 등록해주세요.</p>
+          )}
+
+          {data.materials.map((material) => {
+            const flowKey = `flow:${material.id}`;
+            const draft = values[flowKey] || {};
+
+            const outgoing =
+              draft.outgoing ??
+              (
+                material.returned != null ||
+                Number(material.issued) > 0
+                  ? material.issued
+                  : ""
+              );
+
+            const returned =
+              draft.returned ?? material.returned ?? "";
+
+            const valid =
+              String(outgoing).trim() !== "" &&
+              String(returned).trim() !== "" &&
+              Number.isFinite(Number(outgoing)) &&
+              Number.isFinite(Number(returned)) &&
+              Number(outgoing) >= 0 &&
+              Number(outgoing) <= 1000000 &&
+              Number(returned) >= 0 &&
+              Number(returned) <= Number(outgoing);
+
+            const change = (field, value) => {
+              returnVersions.current[flowKey] ||= {
+                expectedIssued: material.issued,
+                returnUpdatedAt: material.returnUpdatedAt,
+              };
+
+              delete requests.current[flowKey];
+
+              setValues((previous) => ({
+                ...previous,
+                [flowKey]: {
+                  outgoing,
+                  returned,
+                  [field]: value,
+                },
+              }));
+            };
+
             return (
-              <div key={material.id} data-material-id={material.id}
-                style={{ ...card, background: "#f8fafc" }}>
-                <strong>{material.brand} {material.code || material.name}</strong>
+              <div
+                key={material.id}
+                data-material-id={material.id}
+                style={{ ...card, background: "#f8fafc" }}
+              >
+                <strong>
+                  {material.brand} {material.code || material.name}
+                </strong>
+
                 <p>
                   반출 {material.issued}{material.unit} · 반입{" "}
-                  {material.returned == null ? "미입력" : `${material.returned}${material.unit}`}
+                  {material.returned == null
+                    ? "미입력"
+                    : `${material.returned}${material.unit}`}
                   <br />
-                  <b>소모량 {material.used == null ? "미정" : `${material.used}${material.unit}`}</b>
+                  <b>
+                    소모량{" "}
+                    {material.used == null
+                      ? "미정"
+                      : `${material.used}${material.unit}`}
+                  </b>
                 </p>
 
                 {material.returnUpdatedAt && (
-                  <small>반입 저장: {date(material.returnUpdatedAt)}</small>
-                )}
-                {data.owner && material.issued > 0 && material.unitPrice == null && (
-                  <p style={{ color: "#b91c1c" }}>예정 자재 수정에서 원가 단가를 입력해주세요.</p>
+                  <small>
+                    수량 저장: {date(material.returnUpdatedAt)}
+                  </small>
                 )}
 
-                {!data.locked && data.owner && (
+                {data.owner &&
+                  Number(material.used) > 0 &&
+                  material.unitPrice == null && (
+                    <p style={{ color: "#b91c1c" }}>
+                      사용 필름의 원가 단가 관리에서 단가를 입력해주세요.
+                    </p>
+                  )}
+
+                {reportEditable && !data.locked && data.canReturn && (
                   <div style={{ marginTop: 12 }}>
+                    <p>
+                      현장에 가져간 총량과 남아서 가져온 총량을 입력하세요.
+                      사용하지 않은 필름은 둘 다 0으로 저장하세요.
+                    </p>
+
                     <label>
-                      추가 반출량 ({material.unit})
+                      총 반출량 ({material.unit})
                       <input
-                        aria-label={`${material.code || material.name} 추가 반출량`}
-                        style={input} type="number" min="0.001" step="any"
-                        disabled={busy || disabled} value={values[issueKey] ?? ""}
-                        onChange={event => {
-                          setValues({ ...values, [issueKey]: event.target.value });
-                          delete requests.current[issueKey];
-                        }}
+                        style={input}
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="any"
+                        aria-label={`${material.code || material.name} 총 반출량`}
+                        disabled={busy || disabled}
+                        value={outgoing}
+                        onChange={(event) =>
+                          change("outgoing", event.target.value)
+                        }
                       />
                     </label>
-                    <button type="button" style={btn} disabled={busy || disabled}
+
+                    <label>
+                      총 반입량 ({material.unit})
+                      <input
+                        style={input}
+                        type="number"
+                        min="0"
+                        max={outgoing || 0}
+                        step="any"
+                        aria-label={`${material.code || material.name} 총 반입량`}
+                        disabled={busy || disabled}
+                        value={returned}
+                        onChange={(event) =>
+                          change("returned", event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <p>
+                      소모량:{" "}
+                      {valid
+                        ? `${Number(outgoing) - Number(returned)}${material.unit}`
+                        : "수량을 확인해주세요"}
+                    </p>
+
+                    <button
+                      type="button"
+                      style={btn}
+                      disabled={busy || disabled || !valid}
                       onClick={() => {
-                        requests.current[issueKey] ||= crypto.randomUUID();
-                        act({
-                          action: "issue", materialId: material.id,
-                          quantity: values[issueKey], requestId: requests.current[issueKey],
-                        }, issueKey);
-                      }}>
-                      반출 등록
+                        requests.current[flowKey] ||= crypto.randomUUID();
+
+                        act(
+                          {
+                            action: "settle",
+                            materialId: material.id,
+                            outgoing,
+                            returned,
+                            requestId: requests.current[flowKey],
+                            ...(
+                              returnVersions.current[flowKey] || {
+                                expectedIssued: material.issued,
+                                returnUpdatedAt: material.returnUpdatedAt,
+                              }
+                            ),
+                          },
+                          flowKey
+                        );
+                      }}
+                    >
+                      반출·반입량 저장
                     </button>
+
+                    {values[flowKey] && (
+                      <button
+                        type="button"
+                        style={btn}
+                        disabled={busy || disabled}
+                        onClick={() => {
+                          delete returnVersions.current[flowKey];
+                          delete requests.current[flowKey];
+
+                          setValues((previous) => {
+                            const next = { ...previous };
+                            delete next[flowKey];
+                            return next;
+                          });
+
+                          refresh();
+                        }}
+                      >
+                        저장값으로 되돌리기
+                      </button>
+                    )}
                   </div>
                 )}
 
-                {!data.locked && data.canReturn && material.issued > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <label>
-                      최종 반입량 ({material.unit})
-                      <input
-                        aria-label={`${material.code || material.name} 최종 반입량`}
-                        style={input} type="number" min="0" max={material.issued} step="any"
-                        disabled={busy || disabled} placeholder="남은 자재가 없으면 0"
-                        value={values[returnKey] ?? material.returned ?? ""}
-                        onChange={event => {
-                          returnVersions.current[returnKey] ||= {
-                            issued: material.issued, returnUpdatedAt: material.returnUpdatedAt,
-                          };
-                          setValues({ ...values, [returnKey]: event.target.value });
-                        }}
-                      />
-                    </label>
-                    <button type="button" style={btn} disabled={busy || disabled}
-                      onClick={() => act({
-                        action: "return", materialId: material.id,
-                        quantity: values[returnKey] ?? material.returned ?? "",
-                        ...(returnVersions.current[returnKey] || {
-                          issued: material.issued, returnUpdatedAt: material.returnUpdatedAt,
-                        }),
-                      }, returnKey)}>
-                      반입량 저장
-                    </button>
-                  </div>
+                {!reportEditable && (
+                  <p>반출·반입량은 시공 보고서에서 입력합니다.</p>
                 )}
 
                 <details style={{ marginTop: 12 }}>
                   <summary>반입량 수정 이력</summary>
                   <small>최근 이력 100건 중 이 자재의 기록입니다.</small>
-                  {(data.returnHistory || []).filter(row => row.materialId === material.id)
-                    .map(row => (
+
+                  {(data.returnHistory || [])
+                    .filter((row) => row.materialId === material.id)
+                    .map((row) => (
                       <p key={row.id}>
-                        {date(row.at)} · {row.name}<br />
-                        {row.before == null ? "미입력" : `${row.before}${material.unit}`}
+                        {date(row.at)} · {row.name}
+                        <br />
+                        {row.before == null
+                          ? "미입력"
+                          : `${row.before}${material.unit}`}
                         {" → "}
-                        {row.after == null ? "재확인 필요" : `${row.after}${material.unit}`}
-                        <br /><small>{row.reason}</small>
+                        {row.after == null
+                          ? "재확인 필요"
+                          : `${row.after}${material.unit}`}
+                        <br />
+                        <small>{row.reason}</small>
                       </p>
                     ))}
                 </details>
 
                 <details style={{ marginTop: 12 }}>
                   <summary>반출 이력</summary>
-                  {data.issues.filter(issue => issue.materialId === material.id).map(issue => (
-                    <p key={issue.id}>
-                      {date(issue.at)} · {issue.quantity}{material.unit}{" "}
-                      {issue.voided ? "(취소됨)" : ""}
-                      {data.owner && !data.locked && !issue.voided && (
-                        <button type="button" style={btn} disabled={busy || disabled}
-                          onClick={() => {
-                            if (window.confirm("이 반출 기록을 취소할까요? 반입량은 다시 입력해야 합니다.")) {
-                              act({
-                                action: "void", materialId: material.id, issueId: issue.id,
-                              });
-                            }
-                          }}>
-                          반출 취소
-                        </button>
-                      )}
-                    </p>
-                  ))}
+
+                  {data.issues
+                    .filter((issue) => issue.materialId === material.id)
+                    .map((issue) => (
+                      <p key={issue.id}>
+                        {date(issue.at)} · {issue.quantity}{material.unit}{" "}
+                        {issue.voided ? "(취소됨)" : ""}
+                      </p>
+                    ))}
                 </details>
               </div>
             );
@@ -291,37 +519,63 @@ export default function SiteOperations({
       ) : (
         <>
           <p style={{ color: "#64748b", fontSize: 13 }}>
-            최근 변경사항 최대 100건입니다. 내용을 확인한 뒤 확인 버튼을 눌러주세요.
+            최근 변경사항 최대 100건입니다.
+            내용을 확인한 뒤 확인 버튼을 눌러주세요.
           </p>
+
           {!data.events.length && <p>확인할 변경사항이 없습니다.</p>}
-          {data.events.map(event => (
-            <div key={event.id} style={{
-              ...card,
-              background: event.receipts.some(receipt => !receipt.confirmedAt)
-                ? "#fffbeb" : "#f8fafc",
-            }}>
+
+          {data.events.map((event) => (
+            <div
+              key={event.id}
+              style={{
+                ...card,
+                background: event.receipts.some(
+                  (receipt) => !receipt.confirmedAt
+                )
+                  ? "#fffbeb"
+                  : "#f8fafc",
+              }}
+            >
               <small>{date(event.at)}</small>
               <p>{event.message}</p>
 
               {data.owner ? (
                 <>
                   <b>
-                    확인 {event.receipts.filter(receipt => receipt.confirmedAt).length}
-                    {" / "}{event.receipts.length}명
+                    확인{" "}
+                    {
+                      event.receipts.filter(
+                        (receipt) => receipt.confirmedAt
+                      ).length
+                    }
+                    {" / "}
+                    {event.receipts.length}명
                   </b>
+
                   {event.receipts.map((receipt, index) => (
                     <p key={index}>
                       {receipt.name}:{" "}
-                      {receipt.confirmedAt ? `확인 · ${date(receipt.confirmedAt)}` : "미확인"}
+                      {receipt.confirmedAt
+                        ? `확인 · ${date(receipt.confirmedAt)}`
+                        : "미확인"}
                     </p>
                   ))}
                 </>
-              ) : event.receipts.every(receipt => receipt.confirmedAt) ? (
+              ) : event.receipts.every(
+                  (receipt) => receipt.confirmedAt
+                ) ? (
                 <b>확인 완료</b>
               ) : (
                 <div>
-                  <button type="button" style={btn} disabled={busy || disabled}
-                    onClick={() => act({ action: "latest", eventId: event.id })}>
+                  <button
+                    type="button"
+                    style={btn}
+                    disabled={busy || disabled}
+                    onClick={() =>
+                      act({ action: "latest", eventId: event.id })
+                    }
+                  >
                     최신 내용 보기
                   </button>
 
@@ -329,38 +583,68 @@ export default function SiteOperations({
                     <div style={{ ...card, background: "#fff" }}>
                       <strong>현재 저장된 현장정보</strong>
                       <p>{review.snapshot.site.site_name}</p>
+
                       <p>
-                        일정: {(review.snapshot.site.work_dates || []).join(", ") ||
+                        일정:{" "}
+                        {(review.snapshot.site.work_dates || []).join(", ") ||
                           review.snapshot.site.schedule_date ||
-                          (review.snapshot.site.schedule_start
-                            ? date(review.snapshot.site.schedule_start) : "미정")}
+                          (
+                            review.snapshot.site.schedule_start
+                              ? date(review.snapshot.site.schedule_start)
+                              : "미정"
+                          )}
                         {review.snapshot.site.schedule_end
-                          ? ` ~ ${date(review.snapshot.site.schedule_end)}` : ""}
+                          ? ` ~ ${date(review.snapshot.site.schedule_end)}`
+                          : ""}
                       </p>
+
                       <p style={{ whiteSpace: "pre-wrap" }}>
-                        작업 내용: {review.snapshot.site.work_description ||
-                          review.snapshot.site.work_type || "없음"}
+                        작업 내용:{" "}
+                        {review.snapshot.site.work_description ||
+                          review.snapshot.site.work_type ||
+                          "없음"}
                       </p>
+
                       <p style={{ whiteSpace: "pre-wrap" }}>
                         현장 메모: {review.snapshot.site.memo || "없음"}
                       </p>
+
                       {review.snapshot.assignments.map((row, index) => (
                         <p key={index}>
-                          {row.date} · {row.name} · {row.role === "leader" ? "팀장" : "팀원"}
+                          {row.date} · {row.name} ·{" "}
+                          {row.role === "leader" ? "팀장" : "팀원"}
                         </p>
                       ))}
-                      <strong>현재 예정 자재</strong>
-                      {!review.snapshot.materials.length && <p>등록된 자재 없음</p>}
-                      {review.snapshot.materials.map(row => (
-                        <p key={row.id} style={{ whiteSpace: "pre-wrap" }}>
-                          {row.brand} {row.code || row.name} · {row.quantity}{row.unit}
-                          <br />{row.memo || ""}
+
+                      <strong>현재 사용 필름</strong>
+
+                      {!review.snapshot.materials.length && (
+                        <p>등록된 자재 없음</p>
+                      )}
+
+                      {review.snapshot.materials.map((row) => (
+                        <p
+                          key={row.id}
+                          style={{ whiteSpace: "pre-wrap" }}
+                        >
+                          {row.brand} {row.code || row.name} · {row.unit}
+                          <br />
+                          {row.memo || ""}
                         </p>
                       ))}
-                      <button type="button" style={btn} disabled={busy || disabled}
-                        onClick={() => act({
-                          action: "confirm", eventId: event.id, reviewVersion: review.version,
-                        })}>
+
+                      <button
+                        type="button"
+                        style={btn}
+                        disabled={busy || disabled}
+                        onClick={() =>
+                          act({
+                            action: "confirm",
+                            eventId: event.id,
+                            reviewVersion: review.version,
+                          })
+                        }
+                      >
                         최신 내용을 확인했습니다
                       </button>
                     </div>
@@ -373,4 +657,4 @@ export default function SiteOperations({
       )}
     </section>
   );
-}
+                }
