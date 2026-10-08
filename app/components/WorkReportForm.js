@@ -48,14 +48,8 @@ const types = {
   other: "기타",
 };
 
-const num = (v) =>
-  v !== "" && v != null && Number.isFinite(Number(v));
-
-const won = (v) =>
-  v == null
-    ? "확인 필요"
-    : `${Math.round(v).toLocaleString("ko-KR")}원`;
-
+const num = (v) => v !== "" && v != null && Number.isFinite(Number(v));
+const won = (v) => (v == null ? "확인 필요" : `${Math.round(v).toLocaleString("ko-KR")}원`);
 const today = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -90,6 +84,7 @@ export default function WorkReportForm({
   const [candidate, setCandidate] = useState(null);
   const [error, setError] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [progress, setProgress] = useState("");
@@ -105,12 +100,13 @@ export default function WorkReportForm({
   const lock = useRef(false);
   const userId = useRef(null);
   const mounted = useRef(true);
+  const draftLock = useRef(false);
 
   current.current = form;
 
   const persist = useCallback((value) => {
     if (stopped.current || !draftKey.current || !value) {
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
 
     const key = draftKey.current;
@@ -121,36 +117,49 @@ export default function WorkReportForm({
         draftStore(key, "put", {
           form: value,
           at: Date.now(),
-        })
+        }),
       );
 
     return queue.current
       .then(() => {
         if (mounted.current) {
-          setDraftMessage(
-            "이 기기에 임시저장됨 · " +
-              new Date().toLocaleTimeString("ko-KR")
-          );
+          setDraftMessage("이 기기에 임시저장됨 · " + new Date().toLocaleTimeString("ko-KR"));
         }
+        return true;
       })
       .catch(() => {
         if (mounted.current) {
           setDraftMessage(
-            "임시저장 실패: 기기 저장공간 또는 브라우저 설정을 확인해주세요. 화면을 닫으면 내용이 사라질 수 있습니다."
+            "임시저장 실패: 기기 저장공간 또는 브라우저 설정을 확인해주세요. 화면을 닫으면 내용이 사라질 수 있습니다.",
           );
         }
+        return false;
       });
   }, []);
 
-  const refresh = useCallback(async () => {
-    const data = await reportRequest(
-      `/api/report-support?siteId=${encodeURIComponent(siteId)}`
-    );
+  async function saveDraft(close = false) {
+    if (draftLock.current || !ready || busy || saving || preparing || submitted) return;
+    draftLock.current = true;
+    setDraftSaving(true);
+    try {
+      const saved = await persist(current.current);
+      if (saved && mounted.current && !stopped.current && close) onCancel?.();
+      if (!saved && mounted.current) {
+        setError(
+          "임시저장에 실패했습니다. 화면을 닫지 말고 저장공간을 확인한 뒤 다시 시도해주세요.",
+        );
+      }
+    } finally {
+      draftLock.current = false;
+      if (mounted.current) setDraftSaving(false);
+    }
+  }
 
+  const refresh = useCallback(async () => {
+    const data = await reportRequest(`/api/report-support?siteId=${encodeURIComponent(siteId)}`);
     if (mounted.current) {
       setContext(data);
     }
-
     return data;
   }, [siteId]);
 
@@ -167,7 +176,6 @@ export default function WorkReportForm({
         }
 
         userId.current = auth.data.session.user.id;
-
         const data = await refresh();
 
         if (!active) return;
@@ -180,7 +188,7 @@ export default function WorkReportForm({
 
         if (!owner) {
           const access = await reportRequest(
-            `/api/worker/site-work-report?siteId=${encodeURIComponent(siteId)}`
+            `/api/worker/site-work-report?siteId=${encodeURIComponent(siteId)}`,
           );
 
           if (!access.canSubmit) {
@@ -193,7 +201,6 @@ export default function WorkReportForm({
         if (!active) return;
 
         setWorkers(people);
-
         const base = empty(site);
 
         if (data.report?.review_status === "rejected") {
@@ -218,9 +225,7 @@ export default function WorkReportForm({
             setReady(true);
           }
         } catch {
-          setDraftMessage(
-            "이 브라우저에서 임시저장을 사용할 수 없습니다."
-          );
+          setDraftMessage("이 브라우저에서 임시저장을 사용할 수 없습니다.");
           setReady(true);
         }
       } catch (error) {
@@ -240,19 +245,15 @@ export default function WorkReportForm({
 
     window.addEventListener("site-materials-changed", changed);
 
-    const { data: authListener } =
-      supabase.auth.onAuthStateChange((_event, session) => {
-        if (
-          userId.current &&
-          session?.user.id !== userId.current
-        ) {
-          stopped.current = true;
-          setReady(false);
-          setCandidate(null);
-          setForm(null);
-          setError("계정이 변경되었습니다. 화면을 닫고 다시 열어주세요.");
-        }
-      });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (userId.current && session?.user.id !== userId.current) {
+        stopped.current = true;
+        setReady(false);
+        setCandidate(null);
+        setForm(null);
+        setError("계정이 변경되었습니다. 화면을 닫고 다시 열어주세요.");
+      }
+    });
 
     return () => {
       active = false;
@@ -264,9 +265,7 @@ export default function WorkReportForm({
 
   useEffect(() => {
     if (!ready || !form) return;
-
     const timer = setTimeout(() => persist(form), 600);
-
     return () => clearTimeout(timer);
   }, [form, ready, persist]);
 
@@ -274,46 +273,42 @@ export default function WorkReportForm({
     if (!ready) return;
 
     const flush = () => persist(current.current);
+    const hidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
 
     window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", hidden);
 
     return () => {
       window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", hidden);
       flush();
     };
   }, [ready, persist]);
 
-  const setReturns = useCallback(
-    (value) =>
-      setForm((f) => (f ? { ...f, returns: value } : f)),
-    []
-  );
+  const setReturns = useCallback((value) => setForm((f) => (f ? { ...f, returns: value } : f)), []);
 
   const setOperations = useCallback(
-    (data) =>
-      setContext((c) => (c ? { ...c, operations: data } : c)),
-    []
+    (data) => setContext((c) => (c ? { ...c, operations: data } : c)),
+    [],
   );
 
-  const patch = (key, value) =>
-    setForm((f) => ({ ...f, [key]: value }));
+  const patch = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   const rowPatch = (group, index, key, value) =>
     setForm((f) => ({
       ...f,
-      [group]: f[group].map((r, i) =>
-        i === index ? { ...r, [key]: value } : r
-      ),
+      [group]: f[group].map((r, i) => (i === index ? { ...r, [key]: value } : r)),
     }));
 
   const remove = (group, index) =>
     patch(
       group,
-      form[group].filter((_, i) => i !== index)
+      form[group].filter((_, i) => i !== index),
     );
 
-  const add = (group, row) =>
-    patch(group, [...form[group], row]);
+  const add = (group, row) => patch(group, [...form[group], row]);
 
   const tracked = Boolean(context?.operations.materials.length);
 
@@ -327,10 +322,7 @@ export default function WorkReportForm({
       });
     }
 
-    if (
-      !(data?.afterCount > 0) &&
-      !form?.photos.some((p) => p.type === "after")
-    ) {
+    if (!(data?.afterCount > 0) && !form?.photos.some((p) => p.type === "after")) {
       list.push({
         label: "완료사진 없음",
         target: "photos",
@@ -346,8 +338,7 @@ export default function WorkReportForm({
 
     if (data?.operations.locked) {
       list.push({
-        label:
-          "이미 제출·승인되었거나 취소된 현장입니다. 현장 화면을 다시 열어주세요.",
+        label: "이미 제출·승인되었거나 취소된 현장입니다. 현장 화면을 다시 열어주세요.",
         target: "content",
       });
     }
@@ -364,18 +355,11 @@ export default function WorkReportForm({
           });
         }
 
-        if (
-          Number(m.used) > 0 &&
-          data.missingPrices.includes(m.id)
-        ) {
+        if (Number(m.used) > 0 && data.missingPrices.includes(m.id)) {
           list.push({
             label:
               `${m.code || m.name}: 원가 단가 미입력` +
-              (
-                owner
-                  ? " · 자재 메뉴에서 입력"
-                  : " · 관리자에게 입력 요청"
-              ),
+              (owner ? " · 자재 메뉴에서 입력" : " · 관리자에게 입력 요청"),
             target: "materials",
             id: m.id,
           });
@@ -435,7 +419,6 @@ export default function WorkReportForm({
             target: "labor",
           });
         }
-
         seen.add(r.worker_id);
       });
     }
@@ -444,13 +427,9 @@ export default function WorkReportForm({
   }
 
   function jump(item) {
-    const section = root.current?.querySelector(
-      `[data-section="${item.target}"]`
-    );
-
+    const section = root.current?.querySelector(`[data-section="${item.target}"]`);
     const target = item.id
-      ? section?.querySelector(`[data-material-id="${item.id}"]`) ||
-        section
+      ? section?.querySelector(`[data-material-id="${item.id}"]`) || section
       : section;
 
     target?.scrollIntoView({
@@ -459,15 +438,12 @@ export default function WorkReportForm({
     });
 
     target
-      ?.querySelector(
-        "input:not(:disabled),textarea:not(:disabled),button:not(:disabled)"
-      )
+      ?.querySelector("input:not(:disabled),textarea:not(:disabled),button:not(:disabled)")
       ?.focus({ preventScroll: true });
   }
 
   async function selectPhotos(event, type) {
     const files = Array.from(event.target.files || []);
-
     event.target.value = "";
     setPreparing(true);
     setError("");
@@ -480,9 +456,7 @@ export default function WorkReportForm({
       const entries = [];
 
       for (const file of files) {
-        setProgress(
-          `${entries.length + 1}/${files.length}장 용량 줄이는 중`
-        );
+        setProgress(`${entries.length + 1}/${files.length}장 용량 줄이는 중`);
 
         const reduced = await compressReportPhoto(file);
 
@@ -514,13 +488,7 @@ export default function WorkReportForm({
   async function submit(event) {
     event.preventDefault();
 
-    if (
-      lock.current ||
-      saving ||
-      preparing ||
-      !ready ||
-      stopped.current
-    ) {
+    if (lock.current || draftLock.current || saving || preparing || !ready || stopped.current) {
       return;
     }
 
@@ -535,9 +503,7 @@ export default function WorkReportForm({
       const missing = issues(latest);
 
       if (missing.length) {
-        throw Error(
-          `저장하지 못했습니다. 아래 ${missing.length}개 항목을 확인해주세요.`
-        );
+        throw Error(`저장하지 못했습니다. 아래 ${missing.length}개 항목을 확인해주세요.`);
       }
 
       await persist(current.current);
@@ -550,11 +516,8 @@ export default function WorkReportForm({
         onUploaded: async (id) => {
           const next = {
             ...current.current,
-            photos: current.current.photos.map((p) =>
-              p.id === id ? { ...p, uploaded: true } : p
-            ),
+            photos: current.current.photos.map((p) => (p.id === id ? { ...p, uploaded: true } : p)),
           };
-
           current.current = next;
           setForm(next);
           await persist(next);
@@ -562,15 +525,13 @@ export default function WorkReportForm({
       });
 
       const f = current.current;
-
       const payload = {
         siteId,
         requestId: f.requestId,
         work_region: f.work_region,
         work_summary: f.work_summary,
         memo: f.memo,
-        materials:
-          latest.operations.materials.length > 0 ? [] : f.materials,
+        materials: latest.operations.materials.length > 0 ? [] : f.materials,
         expenses: f.expenses,
         labor: f.labor,
       };
@@ -579,15 +540,10 @@ export default function WorkReportForm({
 
       const success = owner
         ? await onSave(payload)
-        : await reportRequest(
-            "/api/worker/site-work-report",
-            payload
-          );
+        : await reportRequest("/api/worker/site-work-report", payload);
 
       if (!success) {
-        throw Error(
-          "완료보고를 저장하지 못했습니다. 오류 내용을 확인해주세요."
-        );
+        throw Error("완료보고를 저장하지 못했습니다. 오류 내용을 확인해주세요.");
       }
 
       stopped.current = true;
@@ -610,27 +566,20 @@ export default function WorkReportForm({
       }
     } catch (e) {
       setProgress("");
-      setError(
-        e.message || "저장 중 오류가 발생했습니다. 다시 시도해주세요."
-      );
+      setError(e.message || "저장 중 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
       lock.current = false;
       setBusy(false);
     }
   }
 
-  const disabled = saving || busy || preparing || submitted;
+  const disabled = saving || busy || preparing || submitted || draftSaving;
 
   if (!form || !context) {
     return (
       <div style={box}>
         <p role="alert">{error || "완료보고 점검 중…"}</p>
-
-        <button
-          type="button"
-          style={button}
-          onClick={() => window.location.reload()}
-        >
+        <button type="button" style={button} onClick={() => window.location.reload()}>
           새로고침
         </button>
       </div>
@@ -641,12 +590,10 @@ export default function WorkReportForm({
     return (
       <div style={box}>
         <b>이 현장에 임시저장된 보고서가 있습니다.</b>
-
         <p>
           {new Date(candidate.at).toLocaleString("ko-KR")}
           {" · "}사진 {candidate.form.photos?.length || 0}장
         </p>
-
         <button
           type="button"
           style={button}
@@ -658,7 +605,6 @@ export default function WorkReportForm({
         >
           이어서 작성
         </button>{" "}
-
         <button
           type="button"
           style={button}
@@ -666,7 +612,6 @@ export default function WorkReportForm({
             if (!confirm("임시저장 내용을 지우고 새로 작성할까요?")) {
               return;
             }
-
             try {
               await draftStore(draftKey.current, "delete");
               setCandidate(null);
@@ -678,7 +623,6 @@ export default function WorkReportForm({
         >
           임시저장 삭제
         </button>
-
         <p>{error}</p>
       </div>
     );
@@ -693,16 +637,8 @@ export default function WorkReportForm({
   const materialCost = tracked
     ? context.operations.materials
         .filter((m) => Number(m.issued) > 0)
-        .reduce(
-          (s, m) =>
-            s + Number(m.used || 0) * Number(m.unitPrice || 0),
-          0
-        )
-    : form.materials.reduce(
-        (s, m) =>
-          s + Number(m.quantity || 0) * Number(m.unit_price || 0),
-        0
-      );
+        .reduce((s, m) => s + Number(m.used || 0) * Number(m.unitPrice || 0), 0)
+    : form.materials.reduce((s, m) => s + Number(m.quantity || 0) * Number(m.unit_price || 0), 0);
 
   const preview = context.preview;
 
@@ -718,9 +654,7 @@ export default function WorkReportForm({
     preview &&
     preview.revenue != null &&
     !preview.laborPending &&
-    !missing.some(
-      (i) => i.target === "materials" || i.target === "expenses"
-    );
+    !missing.some((i) => i.target === "materials" || i.target === "expenses");
 
   const field = (key, label, props = {}) => (
     <label style={{ display: "block", margin: "10px 0" }}>
@@ -740,9 +674,7 @@ export default function WorkReportForm({
       <input
         style={input}
         value={form[group][index][key] ?? ""}
-        onChange={(e) =>
-          rowPatch(group, index, key, e.target.value)
-        }
+        onChange={(e) => rowPatch(group, index, key, e.target.value)}
         {...props}
       />
     </label>
@@ -753,22 +685,23 @@ export default function WorkReportForm({
       <section style={{ ...box, background: "#eff6ff" }}>
         <h3>완료 전 확인 · {missing.length}건</h3>
 
-        <p>{draftMessage || "임시저장 준비 중"}</p>
-
+        <p role="status">{draftMessage || "임시저장 준비 중"}</p>
+        <button type="button" style={button} disabled={disabled} onClick={() => saveDraft()}>
+          {draftSaving ? "임시저장 중…" : "지금 임시저장"}
+        </button>
+        <p style={{ fontSize: 12 }}>
+          입력 내용은 자동으로 임시저장됩니다. 임시저장은 완료보고 제출이 아니며 다른 기기로
+          동기화되지 않습니다.
+        </p>
         <small>
-          사진과 작성 내용은 현재 기기·브라우저에 저장됩니다.
-          브라우저 데이터 삭제 시 사라집니다.
+          사진과 작성 내용은 현재 기기·브라우저에 저장됩니다. 브라우저 데이터 삭제 시 사라집니다.
         </small>
 
         {missing.map((item, i) => (
           <div key={i}>
             <button
               type="button"
-              style={{
-                ...button,
-                marginTop: 8,
-                textAlign: "left",
-              }}
+              style={{ ...button, marginTop: 8, textAlign: "left" }}
               onClick={() => jump(item)}
             >
               {item.label} →
@@ -782,21 +715,15 @@ export default function WorkReportForm({
           type="button"
           disabled={disabled}
           style={button}
-          onClick={() =>
-            refresh().catch((e) => setError(e.message))
-          }
+          onClick={() => refresh().catch((e) => setError(e.message))}
         >
           점검 새로고침
         </button>
       </section>
 
-      <fieldset
-        disabled={disabled}
-        style={{ border: 0, padding: 0, minWidth: 0 }}
-      >
+      <fieldset disabled={disabled} style={{ border: 0, padding: 0, minWidth: 0 }}>
         <section style={box} data-section="content">
           <h3>시공 내용 · {site?.site_name}</h3>
-
           {field("work_region", "시공 지역")}
 
           <label>
@@ -805,9 +732,7 @@ export default function WorkReportForm({
               style={input}
               rows={4}
               value={form.work_summary}
-              onChange={(e) =>
-                patch("work_summary", e.target.value)
-              }
+              onChange={(e) => patch("work_summary", e.target.value)}
             />
           </label>
 
@@ -824,10 +749,8 @@ export default function WorkReportForm({
 
         <section style={box} data-section="photos">
           <h3>시공 사진</h3>
-
           <p>
-            등록된 완료사진 {context.afterCount}장 · 새 사진은
-            긴 변 최대 2048px로 용량을 줄입니다.
+            등록된 완료사진 {context.afterCount}장 · 새 사진은 긴 변 최대 2048px로 용량을 줄입니다.
           </p>
 
           {!owner && (
@@ -860,19 +783,12 @@ export default function WorkReportForm({
             }}
           >
             {form.photos.map((p, i) => (
-              <Photo
-                key={p.id}
-                entry={p}
-                onRemove={() => remove("photos", i)}
-              />
+              <Photo key={p.id} entry={p} onRemove={() => remove("photos", i)} />
             ))}
           </div>
         </section>
 
-        <section
-          data-section="materials"
-          style={{ scrollMarginTop: 16 }}
-        >
+        <section data-section="materials" style={{ scrollMarginTop: 16 }}>
           <SiteOperations
             siteId={siteId}
             mode="materials"
@@ -885,23 +801,18 @@ export default function WorkReportForm({
           />
 
           {owner && (
-            <p>
-              원가 단가는 상단의 자재 메뉴에서 수정하고
-              돌아온 뒤 ‘점검 새로고침’을 눌러주세요.
-            </p>
+            <p>원가 단가는 상단의 자재 메뉴에서 수정하고 돌아온 뒤 ‘점검 새로고침’을 눌러주세요.</p>
           )}
 
           {!tracked && (
             <div style={box}>
               <p>
-                관리자가 현장에 사용할 필름을 등록하면 이곳에서
-                반출·반입량을 입력할 수 있습니다.
+                관리자가 현장에 사용할 필름을 등록하면 이곳에서 반출·반입량을 입력할 수 있습니다.
               </p>
-
               {form.materials.length > 0 && (
                 <p>
-                  기존 보고서의 자재 내역은 보존됩니다.
-                  변경하려면 관리자에게 사용 필름 등록을 요청해주세요.
+                  기존 보고서의 자재 내역은 보존됩니다. 변경하려면 관리자에게 사용 필름 등록을
+                  요청해주세요.
                 </p>
               )}
             </div>
@@ -911,23 +822,16 @@ export default function WorkReportForm({
         {!owner && (
           <section style={box} data-section="labor">
             <h3>인건비</h3>
-
-            <p>
-              직접 입력하지 않으면 기존 배정·일당 기준
-              자동 계산을 사용합니다.
-            </p>
+            <p>직접 입력하지 않으면 기존 배정·일당 기준 자동 계산을 사용합니다.</p>
 
             {form.labor.map((r, i) => (
               <div key={i} style={box}>
                 <select
                   style={input}
                   value={r.worker_id}
-                  onChange={(e) =>
-                    rowPatch("labor", i, "worker_id", e.target.value)
-                  }
+                  onChange={(e) => rowPatch("labor", i, "worker_id", e.target.value)}
                 >
                   <option value="">시공자 선택</option>
-
                   {workers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
@@ -940,22 +844,16 @@ export default function WorkReportForm({
                   min: 0,
                   step: "any",
                 })}
-
                 {rowField("labor", i, "daily_wage", "일당", {
                   type: "number",
                   min: 0,
                 })}
-
                 {rowField("labor", i, "allowance", "팀장수당 합계", {
                   type: "number",
                   min: 0,
                 })}
 
-                <button
-                  type="button"
-                  style={button}
-                  onClick={() => remove("labor", i)}
-                >
+                <button type="button" style={button} onClick={() => remove("labor", i)}>
                   삭제
                 </button>
               </div>
@@ -980,25 +878,14 @@ export default function WorkReportForm({
 
         <section style={box} data-section="expenses">
           <h3>완료보고 경비</h3>
-
-          <p>
-            경비 메뉴에 이미 등록한 금액은 다시 입력하지 마세요.
-            기존 현장 경비는 유지됩니다.
-          </p>
+          <p>경비 메뉴에 이미 등록한 금액은 다시 입력하지 마세요. 기존 현장 경비는 유지됩니다.</p>
 
           {form.expenses.map((e, i) => (
             <div key={i} style={box}>
               <select
                 style={input}
                 value={e.expense_type}
-                onChange={(ev) =>
-                  rowPatch(
-                    "expenses",
-                    i,
-                    "expense_type",
-                    ev.target.value
-                  )
-                }
+                onChange={(ev) => rowPatch("expenses", i, "expense_type", ev.target.value)}
               >
                 {Object.entries(types).map(([key, label]) => (
                   <option key={key} value={key}>
@@ -1011,18 +898,12 @@ export default function WorkReportForm({
                 type: "number",
                 min: 0,
               })}
-
               {rowField("expenses", i, "expense_date", "날짜", {
                 type: "date",
               })}
-
               {rowField("expenses", i, "description", "내용")}
 
-              <button
-                type="button"
-                style={button}
-                onClick={() => remove("expenses", i)}
-              >
+              <button type="button" style={button} onClick={() => remove("expenses", i)}>
                 삭제
               </button>
             </div>
@@ -1047,29 +928,15 @@ export default function WorkReportForm({
         {owner && preview && (
           <section style={{ ...box, background: "#f0fdf4" }}>
             <h3>관리자 정산 미리보기</h3>
-
             <p>계약금액: {won(preview.revenue)}</p>
-
-            <p>
-              인건비:{" "}
-              {preview.laborPending
-                ? "일당·수당 확인 필요"
-                : won(preview.labor)}
-            </p>
-
+            <p>인건비: {preview.laborPending ? "일당·수당 확인 필요" : won(preview.labor)}</p>
             <p>
               자재비:{" "}
               {missing.some((i) => i.target === "materials")
                 ? "사용량·단가 확인 필요"
-                : won(
-                    materialCost +
-                      preview.extraMaterial +
-                      newMaterial
-                  )}
+                : won(materialCost + preview.extraMaterial + newMaterial)}
             </p>
-
             <p>경비: {won(preview.expense + newExpense)}</p>
-
             <strong>
               예상수익:{" "}
               {previewReady
@@ -1080,15 +947,14 @@ export default function WorkReportForm({
                       preview.extraMaterial -
                       newMaterial -
                       preview.expense -
-                      newExpense
+                      newExpense,
                   )
                 : "미입력 항목 확인 후 계산"}
             </strong>
-
             <p>
               <small>
-                배정·일당과 현재 입력 기준 예상 금액입니다.
-                저장 시 서버에서 자재 사용량을 다시 확인합니다.
+                배정·일당과 현재 입력 기준 예상 금액입니다. 저장 시 서버에서 자재 사용량을 다시
+                확인합니다.
               </small>
             </p>
           </section>
@@ -1098,16 +964,10 @@ export default function WorkReportForm({
       {(error || message || (attempted && missing.length > 0)) && (
         <section
           aria-live="polite"
-          style={{
-            ...box,
-            background: "#fff7ed",
-            color: "#9a3412",
-          }}
+          style={{ ...box, background: "#fff7ed", color: "#9a3412" }}
         >
           <p role="alert" style={{ marginTop: 0 }}>
-            {error ||
-              message ||
-              "저장 전에 아래 항목을 확인해주세요."}
+            {error || message || "저장 전에 아래 항목을 확인해주세요."}
           </p>
 
           {error && message && message !== error && <p>{message}</p>}
@@ -1131,13 +991,9 @@ export default function WorkReportForm({
               </button>
             ))}
 
-          {attempted &&
-            missing.some((item) => item.target === "photos") && (
-              <p>
-                위의 ‘시공 완료 사진’에서 사진을 선택한 뒤
-                다시 저장해주세요.
-              </p>
-            )}
+          {attempted && missing.some((item) => item.target === "photos") && (
+            <p>위의 ‘시공 완료 사진’에서 사진을 선택한 뒤 다시 저장해주세요.</p>
+          )}
         </section>
       )}
 
@@ -1149,15 +1005,7 @@ export default function WorkReportForm({
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         {onCancel && (
-          <button
-            type="button"
-            style={button}
-            disabled={disabled}
-            onClick={async () => {
-              await persist(current.current);
-              onCancel();
-            }}
-          >
+          <button type="button" style={button} disabled={disabled} onClick={() => saveDraft(true)}>
             임시저장 후 닫기
           </button>
         )}
@@ -1191,7 +1039,6 @@ function Photo({ entry, onRemove }) {
   useEffect(() => {
     const next = URL.createObjectURL(entry.file);
     setUrl(next);
-
     return () => URL.revokeObjectURL(next);
   }, [entry.file]);
 
@@ -1207,12 +1054,7 @@ function Photo({ entry, onRemove }) {
           borderRadius: 10,
         }}
       />
-
-      <small>
-        {entry.uploaded
-          ? "등록 완료"
-          : `${Math.round(entry.file.size / 1024)}KB`}
-      </small>
+      <small>{entry.uploaded ? "등록 완료" : `${Math.round(entry.file.size / 1024)}KB`}</small>
 
       {!entry.uploaded && (
         <button type="button" onClick={onRemove}>
@@ -1221,4 +1063,4 @@ function Photo({ entry, onRemove }) {
       )}
     </div>
   );
-      }
+}
