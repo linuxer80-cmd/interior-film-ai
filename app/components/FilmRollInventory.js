@@ -1,41 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
-import FilmThumbnail from "../worker/cutting/FilmThumbnail";
 
-const labels = {
-  available: "보관 중",
-  on_site: "현장 반출",
-  supplier_returned: "자재상 반납",
-  used_up: "전량 사용",
-};
-const actions = {
-  receive: "입고",
-  issue: "현장 반출",
-  return: "현장 반입",
-  supplier_return: "자재상 반납",
-};
 const same = (a, b) =>
   String(a || "").trim().toUpperCase() ===
   String(b || "").trim().toUpperCase();
 
-const valid = (value, max = 1000000) =>
+const metres = value => Number(Number(value || 0).toFixed(3));
+
+const valid = (value, max) =>
   String(value).trim() !== "" &&
   Number.isFinite(Number(value)) &&
   Number(value) >= 0 &&
-  Number(value) <= max;
-
-const initial = {
-  label: "",
-  brand: "",
-  code: "",
-  length: "50",
-  supplier: "",
-  location: "창고",
-  memo: "",
-};
+  Number(value) <= Number(max);
 
 export default function FilmRollInventory({
   siteId,
@@ -44,49 +22,53 @@ export default function FilmRollInventory({
   onChanged,
 }) {
   const [data, setData] = useState(null);
-  const [form, setForm] = useState(initial);
-  const [returns, setReturns] = useState({});
-  const [choices, setChoices] = useState({});
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("available");
-  const [returnLocation, setReturnLocation] = useState("창고");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [materialId, setMaterialId] = useState("");
+  const [tab, setTab] = useState("issue");
+  const [checked, setChecked] = useState([]);
+  const [remaining, setRemaining] = useState({});
+  const [location, setLocation] = useState("창고");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
 
-  const lock = useRef(false);
   const mounted = useRef(false);
-  const serial = useRef(0);
-  const request = useRef(null);
+  const lock = useRef(false);
+  const epoch = useRef(0);
+  const batch = useRef(null);
   const callbacks = useRef({ onTracked, onChanged });
   callbacks.current = { onTracked, onChanged };
 
   const accept = useCallback(result => {
     setData(result);
     callbacks.current.onTracked?.([
-      ...new Set(result.trips.map(t => t.material_id)),
+      ...new Set((result.trips || []).map(t => t.material_id)),
     ]);
   }, []);
 
   const refresh = useCallback(async () => {
-    if (lock.current) return;
-    const version = ++serial.current;
+    if (!siteId || lock.current) return;
+
+    const version = ++epoch.current;
     setLoading(true);
 
     try {
       const result = await reportRequest(
-        `/api/film-stock${siteId ? `?siteId=${encodeURIComponent(siteId)}` : ""}`
+        `/api/film-stock?siteId=${encodeURIComponent(siteId)}`
       );
-      if (!mounted.current || serial.current !== version) return;
+
+      if (!mounted.current || version !== epoch.current) return;
+
       accept(result);
+      setChecked([]);
       setError("");
     } catch (cause) {
-      if (mounted.current && serial.current === version) {
+      if (mounted.current && version === epoch.current) {
         setError(cause.message);
       }
     } finally {
-      if (mounted.current && serial.current === version) {
+      if (mounted.current && version === epoch.current) {
         setLoading(false);
       }
     }
@@ -96,474 +78,555 @@ export default function FilmRollInventory({
     mounted.current = true;
     refresh();
 
-    const { data: auth } = supabase.auth.onAuthStateChange(event => {
-      if (["SIGNED_OUT", "SIGNED_IN", "USER_UPDATED"].includes(event)) {
-        serial.current++;
-        setData(null);
-        setReturns({});
-        setChoices({});
-        setForm(initial);
-        request.current = null;
-        callbacks.current.onTracked?.([]);
-        if (!lock.current) refresh();
+    const resume = () => {
+      if (
+        document.visibilityState === "visible" &&
+        !batch.current
+      ) {
+        refresh();
       }
-    });
+    };
+
+    const warn = event => {
+      if (batch.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("beforeunload", warn);
 
     return () => {
       mounted.current = false;
-      serial.current++;
-      auth.subscription.unsubscribe();
+      epoch.current++;
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("beforeunload", warn);
     };
   }, [refresh]);
 
-  async function act(action, fields) {
+  async function run(jobs) {
     if (lock.current || disabled) return;
 
-    const body = {
-      action,
-      ...(siteId ? { siteId } : {}),
-      ...fields,
-    };
-    const signature = JSON.stringify(body);
-
-    if (request.current?.signature !== signature) {
-      request.current = {
-        signature,
-        id: crypto.randomUUID(),
-      };
+    if (!batch.current) {
+      batch.current = { jobs, index: 0 };
     }
 
+    const work = batch.current;
+    if (!work?.jobs?.length) return;
+
     lock.current = true;
-    const version = ++serial.current;
+    epoch.current++;
+
+    setPending(true);
     setBusy(true);
     setLoading(false);
     setError("");
     setMessage("");
 
     try {
-      const result = await reportRequest("/api/film-stock", {
-        ...body,
-        requestId: request.current.id,
-      });
+      while (work.index < work.jobs.length) {
+        const job = work.jobs[work.index];
+        const result = await reportRequest("/api/film-stock", job);
 
-      if (!mounted.current || serial.current !== version) return;
+        work.index++;
 
-      accept(result);
-      request.current = null;
-      setMessage(`${actions[action]} 저장 완료`);
+        if (!mounted.current) return;
 
-      if (action === "receive") {
-        setForm(f => ({ ...f, label: "", memo: "" }));
+        accept(result);
+        setChecked(ids => ids.filter(id => id !== job.rollId));
+
+        if (job.action === "return") {
+          setRemaining(values => {
+            const next = { ...values };
+            delete next[job.rollId];
+            return next;
+          });
+        }
+
+        callbacks.current.onChanged?.();
       }
 
-      if (action === "return") {
-        setReturns(previous => {
-          const next = { ...previous };
-          delete next[fields.rollId];
-          return next;
-        });
-      }
-
-      callbacks.current.onChanged?.();
+      batch.current = null;
+      setPending(false);
+      setMessage(
+        `${work.jobs.length}롤 저장 완료. 창고 재고와 현장 사용량에 반영했습니다.`
+      );
     } catch (cause) {
-      if (mounted.current) setError(cause.message);
+      if (mounted.current) {
+        setError(
+          `${work.index}/${work.jobs.length}롤 처리 완료. ${cause.message}`
+        );
+      }
     } finally {
       lock.current = false;
       if (mounted.current) setBusy(false);
     }
   }
 
-  const blocked = disabled || busy || loading;
-  const patch = (key, value) => setForm(f => ({ ...f, [key]: value }));
-  const query = search.trim().toUpperCase();
+  const materials = data?.materials || [];
+  const selectedId =
+    materialId || (materials.length === 1 ? materials[0].id : "");
+  const material = materials.find(m => m.id === selectedId);
 
-  const rolls = (data?.rolls || []).filter(r =>
-    (
-      !query ||
-      `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${r.location}`
-        .toUpperCase().includes(query)
-    ) &&
-    (siteId || filter === "all" || r.status === filter)
+  const stock = (data?.rolls || []).filter(
+    r =>
+      r.status === "available" &&
+      material &&
+      same(r.brand, material.brand) &&
+      same(r.product_code, material.code)
   );
 
-  const groups = new Map();
+  const picked = stock.filter(r => checked.includes(r.id));
 
-  for (const r of data?.rolls || []) {
-    if (r.status !== "available") continue;
-    const key = `${r.brand} / ${r.product_code}`;
-    const old = groups.get(key) || { count: 0, length: 0 };
-    groups.set(key, {
-      count: old.count + 1,
-      length: old.length + Number(r.remaining),
-    });
+  const trips = (data?.trips || []).filter(
+    t => t.site_id === siteId && t.returned == null
+  );
+
+  const blocked =
+    disabled || busy || loading || pending || !data?.canEdit;
+
+  const sum = rows =>
+    metres(
+      rows.reduce((total, r) => total + Number(r.remaining), 0)
+    );
+
+  if (!siteId) {
+    return <a href="/admin/inventory">필름 재고 관리 열기</a>;
   }
 
   return (
-    <section className="roll-stock" aria-busy={busy || loading}>
-      <div className="heading">
-        <h2>{siteId ? "롤 재고 · 반출/반입" : "필름 롤 재고"}</h2>
-        <button type="button" disabled={blocked} onClick={refresh}>
+    <section className="stock" aria-busy={busy || loading}>
+      <header>
+        <h3>창고 재고에서 반출 · 반입</h3>
+        <button
+          disabled={busy || pending || loading}
+          onClick={refresh}
+        >
           새로고침
         </button>
-      </div>
+      </header>
 
-      <p>
-        {siteId
-          ? "반출할 롤을 통째로 선택하고, 작업 후 남은 길이를 입력하세요. 모든 롤을 반입하면 보고서 사용량에 자동 반영됩니다."
-          : "한 롤씩 등록하세요. 기존 보유 롤은 메모에 ‘시작 재고’를 적고 현재 잔량으로 등록하면 됩니다."}
-      </p>
+      <nav>
+        <button
+          disabled={busy || pending}
+          aria-pressed={tab === "issue"}
+          onClick={() => setTab("issue")}
+        >
+          창고 → 현장
+        </button>
+        <button
+          disabled={busy || pending}
+          aria-pressed={tab === "return"}
+          onClick={() => setTab("return")}
+        >
+          현장 → 창고 ({trips.length})
+        </button>
+      </nav>
 
-      {error && <p role="alert" className="error">{error}</p>}
-      {message && <p role="status" className="success">{message}</p>}
-      {loading && <p>재고 확인 중…</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {message && (
+        <p className="success" role="status">{message}</p>
+      )}
+      {loading && <p role="status">재고 확인 중…</p>}
+
+      {pending && (
+        <div className="notice">
+          <p>
+            처리 중에는 이 화면을 유지해주세요.
+            재시도는 같은 요청 번호를 사용해 중복 반출을 방지합니다.
+          </p>
+          <button
+            disabled={busy || disabled}
+            onClick={() => run()}
+          >
+            {busy ? "저장 중…" : "남은 요청 다시 확인"}
+          </button>
+
+          {!busy && (
+            <button
+              onClick={() => {
+                if (
+                  confirm(
+                    "이미 저장된 이동은 유지됩니다. 재고를 다시 조회한 뒤 남은 롤을 확인할까요?"
+                  )
+                ) {
+                  batch.current = null;
+                  setPending(false);
+                  setMessage("");
+                  refresh();
+                  callbacks.current.onChanged?.();
+                }
+              }}
+            >
+              재고 다시 조회
+            </button>
+          )}
+        </div>
+      )}
 
       {data && (
         <>
-          {!siteId && data.owner && (
-            <>
-              <details>
-                <summary>＋ 자재상 입고 / 시작 재고 등록</summary>
-                <div className="grid">
-                  {[
-                    ["label", "롤 이름·번호 (중복 불가)"],
-                    ["brand", "브랜드 (현장 등록명과 동일)"],
-                    ["code", "제품 번호"],
-                    ["length", "현재 롤 길이 (m)"],
-                    ["supplier", "자재상"],
-                    ["location", "보관 위치"],
-                    ["memo", "메모"],
-                  ].map(([key, label]) => (
-                    <label key={key}>
-                      {label}
-                      <input
-                        disabled={blocked}
-                        type={key === "length" ? "number" : "text"}
-                        min={key === "length" ? "0.001" : undefined}
-                        step={key === "length" ? "any" : undefined}
-                        maxLength={150}
-                        value={form[key]}
-                        onChange={e => patch(key, e.target.value)}
-                      />
-                    </label>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  disabled={
-                    blocked ||
-                    !valid(form.length) ||
-                    Number(form.length) <= 0 ||
-                    ![form.label, form.brand, form.code, form.supplier]
-                      .every(v => v.trim())
-                  }
-                  onClick={() => act("receive", form)}
-                >
-                  롤 1개 입고 저장
-                </button>
-              </details>
-
-              <div className="summary">
-                <b>보관 중인 재고</b>
-                {[...groups].map(([key, value]) => (
-                  <p key={key}>
-                    {key} · {Number(value.length.toFixed(3))}m · {value.count}롤
-                  </p>
-                ))}
-                {!groups.size && <p>보관 중인 롤이 없습니다.</p>}
-              </div>
-
-              <p>
-                현장 반출 중: {data.rolls.filter(r => r.status === "on_site").length}롤
-                {" · "}반출 당시{" "}
-                {data.rolls.filter(r => r.status === "on_site")
-                  .reduce((sum, r) => sum + Number(r.remaining), 0)}m
-                {" "}(실사용량은 반입 시 확정)
-              </p>
-            </>
-          )}
-
-          {siteId && data.canEdit && (
-            <label>
-              반입 후 보관 위치
-              <input
-                value={returnLocation}
-                disabled={blocked}
-                onChange={e => setReturnLocation(e.target.value)}
-                placeholder="창고 또는 차량"
-              />
-            </label>
-          )}
-
-          {siteId && !data.canEdit && (
-            <p>현재 보고서 상태 또는 담당 권한으로 재고를 수정할 수 없습니다.</p>
-          )}
-
-          <label>
-            제품·롤·자재상 검색
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="PS156 또는 롤 번호"
-            />
-          </label>
-
-          {!siteId && (
-            <select
-              aria-label="재고 상태"
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-            >
-              <option value="all">전체 이력</option>
-              {Object.entries(labels).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          )}
-
-          {!rolls.length && (
+          {!data.canEdit && (
             <p>
-              해당하는 롤이 없습니다.
-              {siteId &&
-                " 관리자가 재고를 등록하고 현장에 같은 브랜드·제품 번호의 사용 필름을 등록해주세요."}
+              보고서 상태 또는 담당 권한으로 현재 수정할 수 없습니다.
             </p>
           )}
 
-          {rolls.map(r => {
-            const materials = (data.materials || []).filter(m =>
-              same(m.brand, r.brand) && same(m.code, r.product_code)
-            );
-            const selected =
-              choices[r.id] ||
-              (materials.length === 1 ? materials[0].id : "");
-            const trip = data.trips.find(t =>
-              t.roll_id === r.id &&
-              t.returned == null &&
-              t.site_id === siteId
-            );
-            const remainder = returns[r.id] ?? "";
+          {tab === "issue" ? (
+            <>
+              <label>
+                사용할 필름
+                <select
+                  disabled={blocked}
+                  value={selectedId}
+                  onChange={e => {
+                    setMaterialId(e.target.value);
+                    setChecked([]);
+                  }}
+                >
+                  <option value="">필름을 선택하세요</option>
+                  {materials.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.brand} / {m.code || m.name}
+                      {m.memo ? ` · ${m.memo}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            return (
-              <article key={r.id}>
-                <div className="heading">
-                  <div className="identity">
-                    <FilmThumbnail material={r} size={54} />
-                    <div>
-                      <strong>{r.label}</strong>
-                      <p>{r.brand} / {r.product_code}</p>
-                    </div>
-                  </div>
-                  <b>{r.remaining}m</b>
-                </div>
-
+              {!materials.length && (
                 <p>
-                  {labels[r.status]} ·{" "}
-                  {r.status === "on_site"
-                    ? r.site_name || "현장"
-                    : r.status === "supplier_returned"
-                      ? r.supplier
-                      : r.location}
-                  {" · "}입고처 {r.supplier}
+                  관리자가 현장에 사용할 필름을 먼저 등록해주세요.
                 </p>
+              )}
 
-                {!siteId && r.status === "available" && (
-                  <button
-                    type="button"
-                    disabled={blocked}
-                    onClick={() => {
-                      if (confirm(
-                        `${r.label} 남은 ${r.remaining}m 롤 전체를 ${r.supplier}에 반납할까요?`
-                      )) {
-                        act("supplier_return", {
-                          rollId: r.id,
-                          revision: r.revision,
-                        });
-                      }
-                    }}
-                  >
-                    자재상에 남은 롤 전체 반납
-                  </button>
-                )}
+              {material && (
+                <>
+                  <p>
+                    <b>
+                      보관 재고 {stock.length}롤 · {sum(stock)}m
+                    </b>
+                  </p>
+                  <p>
+                    가져갈 롤을 체크하세요.
+                    선택한 롤 전체가 현장으로 이동합니다.
+                  </p>
 
-                {siteId && data.canEdit && r.status === "available" && (
-                  <>
-                    <select
-                      aria-label={`${r.label} 연결할 현장 자재`}
-                      disabled={blocked}
-                      value={selected}
-                      onChange={e =>
-                        setChoices(p => ({ ...p, [r.id]: e.target.value }))
-                      }
-                    >
-                      <option value="">연결할 현장 자재 선택</option>
-                      {materials.map(m => (
-                        <option key={m.id} value={m.id}>
-                          {m.code || m.name} · {m.unit} · {m.id.slice(0, 6)}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="rolls">
+                    {stock.map(r => (
+                      <label className="roll" key={r.id}>
+                        <input
+                          type="checkbox"
+                          disabled={blocked}
+                          checked={checked.includes(r.id)}
+                          onChange={e =>
+                            setChecked(ids =>
+                              e.target.checked
+                                ? [...ids, r.id]
+                                : ids.filter(id => id !== r.id)
+                            )
+                          }
+                        />
+                        <span>
+                          <b>{r.remaining}m</b>
+                          <small>{r.label}</small>
+                          <small>
+                            {r.supplier} · {r.location}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
 
+                  {!stock.length && (
+                    <p>
+                      반출 가능한 롤이 없습니다.
+                      대리점 입고와 현장 필름의 브랜드·제품 번호를
+                      확인해주세요.
+                    </p>
+                  )}
+
+                  <div className="total">
+                    <strong>
+                      선택 {picked.length}롤 · {sum(picked)}m
+                    </strong>
                     <button
-                      type="button"
-                      disabled={blocked || !selected}
+                      disabled={blocked || !picked.length}
                       onClick={() => {
-                        if (confirm(
-                          `${r.label} ${r.remaining}m 롤 전체를 이 현장에 반출할까요?`
-                        )) {
-                          act("issue", {
-                            rollId: r.id,
-                            revision: r.revision,
-                            materialId: selected,
-                          });
+                        if (
+                          confirm(
+                            `${material.brand} ${material.code} ${picked.length}롤, 총 ${sum(picked)}m를 반출할까요?`
+                          )
+                        ) {
+                          run(
+                            picked.map(r => ({
+                              action: "issue",
+                              siteId,
+                              rollId: r.id,
+                              revision: r.revision,
+                              materialId: selectedId,
+                              requestId: crypto.randomUUID(),
+                            }))
+                          );
                         }
                       }}
                     >
-                      이 롤 전체 반출 ({r.remaining}m)
+                      선택한 롤 반출
                     </button>
-                  </>
-                )}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <label>
+                반입 후 보관 위치
+                <input
+                  disabled={blocked}
+                  value={location}
+                  maxLength={100}
+                  onChange={e => setLocation(e.target.value)}
+                />
+              </label>
 
-                {trip && data.canEdit && (
-                  <>
-                    <label>
-                      작업 후 남은 롤 길이 (m)
+              <p>
+                반출했던 롤마다 남은 길이를 입력하세요.
+                0m는 전량 사용 처리합니다.
+              </p>
+
+              {!trips.length && (
+                <p>이 현장에 반출 중인 롤이 없습니다.</p>
+              )}
+
+              {trips.map(t => {
+                const value = remaining[t.roll_id] ?? "";
+
+                return (
+                  <article key={t.id}>
+                    <strong>
+                      {t.brand} / {t.product_code} · 반출 {t.issued}m
+                    </strong>
+                    <small>{t.label}</small>
+
+                    <div className="return-row">
                       <input
+                        aria-label={`${t.label} 남은 길이`}
                         type="number"
+                        inputMode="decimal"
                         min="0"
-                        max={trip.issued}
+                        max={t.issued}
                         step="any"
+                        placeholder="남은 길이"
                         disabled={blocked}
-                        value={remainder}
+                        value={value}
                         onChange={e =>
-                          setReturns(p => ({ ...p, [r.id]: e.target.value }))
+                          setRemaining(p => ({
+                            ...p,
+                            [t.roll_id]: e.target.value,
+                          }))
                         }
                       />
-                    </label>
-
-                    <p>
-                      이번 반출 {trip.issued}m · 사용량{" "}
-                      {valid(remainder, Number(trip.issued))
-                        ? Number(
-                            (Number(trip.issued) - Number(remainder)).toFixed(3)
-                          )
-                        : "미정"}m
-                    </p>
-
-                    <button
-                      type="button"
-                      disabled={
-                        blocked || !valid(remainder, Number(trip.issued))
-                      }
-                      onClick={() => {
-                        if (confirm(
-                          `잔량 ${remainder}m로 반입할까요? 0m이면 전량 사용 처리합니다.`
-                        )) {
-                          act("return", {
-                            rollId: r.id,
-                            revision: r.revision,
-                            remaining: remainder,
-                            location: returnLocation,
-                          });
+                      <span>m</span>
+                      <button
+                        disabled={
+                          blocked || !valid(value, t.issued)
                         }
-                      }}
-                    >
-                      남은 롤 반입 저장
-                    </button>
-                  </>
-                )}
-              </article>
-            );
-          })}
+                        onClick={() => {
+                          if (
+                            confirm(`남은 ${value}m를 반입할까요?`)
+                          ) {
+                            run([
+                              {
+                                action: "return",
+                                siteId,
+                                rollId: t.roll_id,
+                                revision: t.revision,
+                                remaining: value,
+                                location,
+                                requestId: crypto.randomUUID(),
+                              },
+                            ]);
+                          }
+                        }}
+                      >
+                        반입 저장
+                      </button>
+                    </div>
 
-          {siteId && (
-            <details>
-              <summary>이 현장 롤 이동 이력 ({data.trips.length}건)</summary>
-              {data.trips.map(t => (
-                <p key={t.id}>
-                  {t.label} · {t.product_code} · 반출 {t.issued}m → 반입{" "}
-                  {t.returned == null ? "대기" : `${t.returned}m`}
-                  {t.returned != null &&
-                    `· 사용 ${Number(
-                      (Number(t.issued) - Number(t.returned)).toFixed(3)
+                    <small>
+                      실제 사용량{" "}
+                      {valid(value, t.issued)
+                        ? `${metres(
+                            Number(t.issued) - Number(value)
+                          )}m`
+                        : "미입력"}
+                    </small>
+                  </article>
+                );
+              })}
+            </>
+          )}
+
+          <details>
+            <summary>
+              이 현장 이동 이력 ({data.trips.length}건)
+            </summary>
+            {data.trips.map(t => (
+              <p key={t.id}>
+                {t.product_code} · {t.label}
+                <br />
+                반출 {t.issued}m → 반입{" "}
+                {t.returned == null
+                  ? "대기"
+                  : `${t.returned}m · 사용 ${metres(
+                      Number(t.issued) - Number(t.returned)
                     )}m`}
-                </p>
-              ))}
-            </details>
-          )}
+              </p>
+            ))}
+          </details>
 
-          {!siteId && (
-            <details>
-              <summary>최근 입출고 이력 (최대 100건)</summary>
-              {data.events.map(e => (
-                <p key={e.id}>
-                  {new Date(e.created_at).toLocaleString("ko-KR", {
-                    timeZone: "Asia/Seoul",
-                  })}
-                  {" · "}{e.label} · {actions[e.action]} · {e.after_qty}m
-                  {e.memo && `· ${e.memo}`}
-                </p>
-              ))}
-            </details>
-          )}
+          <small>
+            반출 즉시 보관 재고에서 제외됩니다.
+            모든 롤을 반입하면 보고서 사용량이 자동 계산됩니다.
+          </small>
         </>
       )}
 
       <style jsx>{`
-        .roll-stock {
-          padding: 16px;
+        .stock {
+          padding: 14px;
+          margin: 12px 0;
           border: 1px solid #dfd4c4;
           border-radius: 16px;
-          margin: 12px 0;
           background: #fffdfa;
           color: #243648;
           overflow-wrap: anywhere;
         }
-        .heading, .identity {
+        header,
+        nav,
+        .total,
+        .return-row {
           display: flex;
           align-items: center;
+          gap: 8px;
           justify-content: space-between;
-          gap: 10px;
         }
-        .identity { justify-content: flex-start; }
-        h2 { font-size: 19px; margin: 0; }
-        p { font-size: 13px; line-height: 1.7; }
-        label { display: block; font-size: 13px; margin: 10px 0; }
-        input, select {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 12px;
-          border: 1px solid #cbd5e1;
-          border-radius: 9px;
-          font-size: 16px;
-          margin: 5px 0;
-          background: white;
+        h3 {
+          font-size: 17px;
+          margin: 0;
+        }
+        nav {
+          margin: 12px 0;
+        }
+        nav button {
+          flex: 1;
         }
         button {
-          padding: 11px 13px;
+          padding: 11px;
           border: 1px solid #cbd5e1;
           border-radius: 9px;
           background: #edf5ff;
-          color: #23445e;
+          color: #243648;
           font-weight: 700;
-          margin: 5px 0;
           cursor: pointer;
         }
-        button:disabled { opacity: .5; cursor: default; }
-        article, .summary {
-          padding: 14px;
-          border: 1px solid #e2e8f0;
-          border-radius: 12px;
-          margin: 12px 0;
-          background: white;
+        button[aria-pressed="true"] {
+          background: #243648;
+          color: white;
         }
-        summary { padding: 12px 0; cursor: pointer; font-weight: 700; }
-        .error { color: #b91c1c; }
-        .success { color: #166534; }
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
-          gap: 10px;
+        button:disabled {
+          opacity: 0.5;
+          cursor: default;
+        }
+        p {
+          font-size: 13px;
+          line-height: 1.6;
+        }
+        label {
+          display: block;
+          font-size: 13px;
+        }
+        select,
+        input:not([type="checkbox"]) {
+          box-sizing: border-box;
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #cbd5e1;
+          border-radius: 9px;
+          background: white;
+          font-size: 16px;
+          margin: 6px 0;
+        }
+        .rolls {
+          max-height: 300px;
+          overflow: auto;
+        }
+        .roll {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          padding: 12px 4px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .roll input {
+          width: 22px;
+          height: 22px;
+          flex-shrink: 0;
+        }
+        .roll span {
+          min-width: 0;
+        }
+        small {
+          display: block;
+          color: #64748b;
+          font-size: 11px;
+          line-height: 1.6;
+        }
+        .total {
+          position: sticky;
+          bottom: 8px;
+          padding: 12px 8px;
+          margin: 10px 0;
+          background: #f0ece4;
+          border-radius: 10px;
+          z-index: 2;
+          font-size: 13px;
+        }
+        .return-row input {
+          min-width: 0;
+          flex: 1;
+        }
+        .return-row button {
+          white-space: nowrap;
+        }
+        article {
+          padding: 12px 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        article strong {
+          font-size: 14px;
+        }
+        summary {
+          padding: 14px 0;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .error {
+          color: #b91c1c;
+        }
+        .success {
+          color: #166534;
+        }
+        .notice {
+          padding: 10px;
+          background: #fff3d6;
+          border-radius: 10px;
         }
       `}</style>
     </section>
   );
-    }
+}
