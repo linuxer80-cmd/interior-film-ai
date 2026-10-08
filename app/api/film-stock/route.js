@@ -1,0 +1,117 @@
+import { createClient } from "@supabase/supabase-js";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const json = (body, status = 200) =>
+  Response.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "private, no-store",
+      Vary: "Authorization",
+    },
+  });
+
+const uuid = value =>
+  typeof value === "string" &&
+  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
+
+async function handle(request) {
+  try {
+    const token = request.headers
+      .get("authorization")
+      ?.match(/^Bearer (.+)$/i)?.[1];
+
+    if (!token) return json({ error: "로그인이 필요합니다." }, 401);
+
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+
+    const { data, error } = await db.auth.getUser(token);
+
+    if (error || !data.user) {
+      return json({ error: "다시 로그인해주세요." }, 401);
+    }
+
+    let body;
+    try {
+      body = request.method === "GET"
+        ? {
+            action: "get",
+            siteId: new URL(request.url).searchParams.get("siteId"),
+          }
+        : await request.json();
+    } catch {
+      return json({ error: "입력 형식을 확인해주세요." }, 400);
+    }
+
+    if (
+      !body ||
+      JSON.stringify(body).length > 12000 ||
+      !["get", "receive", "issue", "return", "supplier_return"].includes(body.action) ||
+      (body.siteId && !uuid(body.siteId))
+    ) {
+      return json({ error: "현장과 요청 내용을 확인해주세요." }, 400);
+    }
+
+    if (
+      body.action !== "get" &&
+      (
+        !uuid(body.requestId) ||
+        (body.action !== "receive" && !uuid(body.rollId))
+      )
+    ) {
+      return json({ error: "롤과 저장 요청을 확인해주세요." }, 400);
+    }
+
+    if (
+      ["issue", "return"].includes(body.action) &&
+      (
+        !uuid(body.siteId) ||
+        (body.action === "issue" && !uuid(body.materialId))
+      )
+    ) {
+      return json({ error: "현장과 사용 필름을 확인해주세요." }, 400);
+    }
+
+    const result = await db.rpc("film_stock", {
+      p_user: data.user.id,
+      p_site: body.siteId || null,
+      p_action: body.action,
+      p_body: body,
+    });
+
+    if (result.error) {
+      const code = result.error.code || "";
+
+      if (code === "23505") {
+        return json({
+          error: "이미 등록된 롤 이름입니다. 다른 번호를 입력해주세요.",
+        }, 409);
+      }
+
+      if (["42501", "40001", "P0001"].includes(code) || /^22/.test(code)) {
+        return json(
+          { error: result.error.message },
+          code === "42501" ? 403 : code === "40001" ? 409 : 400
+        );
+      }
+
+      throw result.error;
+    }
+
+    return json(result.data);
+  } catch (error) {
+    console.error("film-stock", error.code || error.message);
+
+    return json({
+      error: "재고를 처리하지 못했습니다. SQL 적용 여부와 연결을 확인해주세요.",
+    }, 500);
+  }
+}
+
+export const GET = handle;
+export const POST = handle;
