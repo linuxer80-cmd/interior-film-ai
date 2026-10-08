@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import ui from "./AdminUi.module.css";
+import TomorrowTasks from "../components/TomorrowTasks";
 
 const groups = [
   { id: "assignment", label: "일정·배정 확인", action: "배정 확인", tone: "orange" },
@@ -110,5 +111,6 @@ export default function AdminTodayTasks({ companyId }) {
       {data.todaySites.length > siteLimit && <button type="button" className={ui.todayMore} onClick={() => setSiteLimit((n) => n + 5)}>오늘 현장 더 보기</button>}
       <p className={ui.todayUpdated}>최근 확인 {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(data.updatedAt))} · 업무를 처리한 뒤 돌아오면 다시 확인합니다.</p>
     </>}
+    <TomorrowTasks owner />
   </section>;
-}
+          }
