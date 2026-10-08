@@ -10,15 +10,12 @@ const json = (body, status = 200) =>
 
 const uuid = (value) =>
   typeof value === "string" &&
-  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(
-    value
-  );
+  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
 
 async function handle(request) {
   try {
-    const token = (
-      request.headers.get("authorization") || ""
-    ).match(/^Bearer (.+)$/i)?.[1];
+    const token = (request.headers.get("authorization") || "")
+      .match(/^Bearer (.+)$/i)?.[1];
 
     if (!token) {
       return json({ error: "로그인이 필요합니다." }, 401);
@@ -57,7 +54,7 @@ async function handle(request) {
 
     if (
       !uuid(body?.siteId) ||
-      !["get", "latest", "confirm", "issue", "void", "return"].includes(
+      !["get", "latest", "confirm", "issue", "void", "return", "settle"].includes(
         body.action
       )
     ) {
@@ -69,13 +66,16 @@ async function handle(request) {
     }
 
     if (
-      ["issue", "void", "return"].includes(body.action) &&
+      ["issue", "void", "return", "settle"].includes(body.action) &&
       !uuid(body.materialId)
     ) {
       return json({ error: "자재를 확인해주세요." }, 400);
     }
 
-    if (body.action === "issue" && !uuid(body.requestId)) {
+    if (
+      ["issue", "settle"].includes(body.action) &&
+      !uuid(body.requestId)
+    ) {
       return json({ error: "등록 요청을 확인해주세요." }, 400);
     }
 
@@ -85,17 +85,45 @@ async function handle(request) {
 
     if (
       ["issue", "return"].includes(body.action) &&
-      (!["string", "number"].includes(typeof body.quantity) ||
+      (
+        !["string", "number"].includes(typeof body.quantity) ||
         !String(body.quantity).trim() ||
-        !Number.isFinite(Number(body.quantity)))
+        !Number.isFinite(Number(body.quantity))
+      )
     ) {
       return json(
         {
-          error:
-            "수량을 입력해주세요. 남은 자재가 없으면 0을 입력하세요.",
+          error: "수량을 입력해주세요. 남은 자재가 없으면 0을 입력하세요.",
         },
         400
       );
+    }
+
+    if (body.action === "settle") {
+      const numeric = (value) =>
+        ["string", "number"].includes(typeof value) &&
+        String(value).trim() !== "" &&
+        Number.isFinite(Number(value));
+
+      if (
+        ![
+          body.outgoing,
+          body.returned,
+          body.expectedIssued,
+        ].every(numeric) ||
+        Number(body.outgoing) < 0 ||
+        Number(body.outgoing) > 1000000 ||
+        Number(body.returned) < 0 ||
+        Number(body.returned) > Number(body.outgoing)
+      ) {
+        return json(
+          {
+            error:
+              "반출·반입량을 모두 입력해주세요. 반입량은 반출량 이하여야 합니다.",
+          },
+          400
+        );
+      }
     }
 
     const result = await db.rpc("site_operations", {
@@ -111,11 +139,12 @@ async function handle(request) {
       if (
         code === "42501" ||
         code === "P0001" ||
+        code === "40001" ||
         /^22/.test(code)
       ) {
         return json(
           { error: result.error.message },
-          code === "42501" ? 403 : 400
+          code === "42501" ? 403 : code === "40001" ? 409 : 400
         );
       }
 
