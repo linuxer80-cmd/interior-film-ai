@@ -1,116 +1,597 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
-import ui from "./AdminUi.module.css";
-import TomorrowTasks from "../components/TomorrowTasks";
 
 const groups = [
-  { id: "assignment", label: "일정·배정 확인", action: "배정 확인", tone: "orange" },
-  { id: "review", label: "검수 대기", action: "완료보고 검수", tone: "blue" },
-  { id: "missing", label: "완료보고 미작성", action: "완료보고 작성", tone: "red" },
-  { id: "revision", label: "보완 요청", action: "보완 내용 확인", tone: "purple" },
+  ["assignment", "일정·배정", "배정 확인"],
+  ["review", "검수 대기", "보고서 검수"],
+  ["missing", "보고서 미작성", "보고서 작성"],
+  ["revision", "보완 요청", "보완 확인"],
 ];
-const siteLink = (id, section = "") => `/admin?${new URLSearchParams({ tab: "sites", site: id, ...(section ? { section } : {}) })}`;
-const dateLabel = (date) => date ? `${Number(date.slice(5, 7))}/${Number(date.slice(8))}` : "일정 미정";
+
+const defaults = {
+  tab: "tasks",
+  kind: "all",
+  period: "all",
+  query: "",
+  page: 1,
+};
+
+const link = (id, section = "") =>
+  `/admin?${new URLSearchParams({
+    tab: "sites",
+    site: id,
+    ...(section ? { section } : {}),
+  })}`;
+
+const dateLabel = (date) =>
+  date
+    ? `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`
+    : "일정 미정";
 
 export default function AdminTodayTasks({ companyId }) {
+  return companyId ? (
+    <TaskPanel key={companyId} companyId={companyId} />
+  ) : null;
+}
+
+function TaskPanel({ companyId }) {
+  const [view, setView] = useState(defaults);
+  const [ready, setReady] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [limit, setLimit] = useState(8);
-  const [siteLimit, setSiteLimit] = useState(5);
-  const activeRequest = useRef(null);
-  const loadedDay = useRef("");
+  const [attempt, setAttempt] = useState(0);
 
-  const refresh = useCallback(async () => {
-    if (!companyId) return;
-    activeRequest.current?.abort();
+  const storageKey = `admin-task-view:v2:${companyId}`;
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem(storageKey) || "null"
+      );
+
+      if (saved) {
+        setView({
+          tab: ["tasks", "today", "tomorrow"].includes(saved.tab)
+            ? saved.tab
+            : "tasks",
+          kind: ["all", ...groups.map((g) => g[0])].includes(saved.kind)
+            ? saved.kind
+            : "all",
+          period: ["all", "due"].includes(saved.period)
+            ? saved.period
+            : "all",
+          query:
+            typeof saved.query === "string"
+              ? saved.query.slice(0, 100)
+              : "",
+          page:
+            Number.isInteger(saved.page) && saved.page > 0
+              ? saved.page
+              : 1,
+        });
+      }
+    } catch {}
+
+    setReady(true);
+  }, [storageKey]);
+
+  function change(patch) {
+    const next = { ...view, page: 1, ...patch };
+    setView(next);
+
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let active = true;
     const controller = new AbortController();
-    activeRequest.current = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
+
     setLoading(true);
     setError("");
     setData(null);
-    try {
-      const { data: session, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.session?.access_token) throw new Error("로그인이 만료되었습니다. 다시 로그인해주세요.");
-      const response = await fetch("/api/admin/today-tasks", { headers: { Authorization: `Bearer ${session.session.access_token}` }, cache: "no-store", signal: controller.signal });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "오늘 할 일을 불러오지 못했습니다.");
-      if (activeRequest.current !== controller || controller.signal.aborted) return;
-      loadedDay.current = result.today;
-      setData(result);
-    } catch (err) {
-      if (activeRequest.current === controller) setError(err.name === "AbortError" ? "연결이 지연되고 있습니다. 새로고침을 눌러 다시 확인해주세요." : err.message);
-    } finally {
+
+    (async () => {
+      try {
+        const {
+          data: session,
+          error: authError,
+        } = await supabase.auth.getSession();
+
+        if (authError || !session?.session?.access_token) {
+          throw Error("다시 로그인해주세요.");
+        }
+
+        if (!active) return;
+
+        const response = await fetch(
+          view.tab === "tomorrow"
+            ? "/api/tomorrow-tasks?role=owner"
+            : "/api/admin/today-tasks",
+          {
+            headers: {
+              Authorization: `Bearer ${session.session.access_token}`,
+            },
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw Error(result.error || "업무를 불러오지 못했습니다.");
+        }
+
+        if (active) setData(result);
+      } catch (cause) {
+        if (active) {
+          setError(
+            cause.name === "AbortError"
+              ? "연결이 지연됩니다. 새로고침해주세요."
+              : cause.message
+          );
+        }
+      } finally {
+        clearTimeout(timeout);
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
       clearTimeout(timeout);
-      if (activeRequest.current === controller) { activeRequest.current = null; setLoading(false); }
-    }
-  }, [companyId]);
+      controller.abort();
+    };
+  }, [ready, view.tab, attempt]);
 
   useEffect(() => {
-    setFilter("all"); setLimit(8); setSiteLimit(5);
-    refresh();
-    const resume = () => { if (document.visibilityState === "visible" && !activeRequest.current) refresh(); };
-    const midnight = setInterval(() => { if (document.visibilityState === "visible" && loadedDay.current && loadedDay.current !== koreanDay()) resume(); }, 60000);
-    document.addEventListener("visibilitychange", resume);
-    window.addEventListener("focus", resume);
-    return () => {
-      document.removeEventListener("visibilitychange", resume);
-      window.removeEventListener("focus", resume);
-      clearInterval(midnight);
-      const previous = activeRequest.current;
-      activeRequest.current = null;
-      previous?.abort();
+    let day = koreanDay();
+
+    const resume = () => {
+      if (document.visibilityState === "visible") {
+        setAttempt((n) => n + 1);
+      }
     };
-  }, [refresh]);
 
-  const visible = (data?.tasks || []).filter((task) => filter === "all" || task.kind === filter);
-  function selectFilter(value) { setFilter(value); setLimit(8); }
+    const timer = setInterval(() => {
+      const current = koreanDay();
 
-  return <section aria-label="관리자 오늘 할 일" aria-busy={loading}>
-    <div className={ui.sectionHeading}>
-      <div><h2>오늘 할 일</h2><p className={ui.todayDate}>{data?.today ? `${data.today.replaceAll("-", ". ")} · 한국 시간 기준` : "오늘 처리할 업무를 모아봅니다."}</p></div>
-      <button type="button" className={ui.secondary} onClick={refresh} disabled={loading}>{loading ? "확인 중…" : "↻ 새로고침"}</button>
-    </div>
-    <p className={ui.help}>오늘까지 확인할 배정과 검수 대기를 먼저 보여드립니다. 시공 완료 후 빠진 보고서도 여기서 확인할 수 있습니다.</p>
-    {loading ? <div className={ui.todayEmpty} role="status">현장 일정과 완료보고를 확인하고 있습니다…</div>
-      : error ? <div className={ui.todayError} role="alert">{error}</div> : data && <>
-      <div className={ui.todayCounts} aria-label="업무별 할 일">
-        {groups.map((group) => <button key={group.id} type="button" data-tone={group.tone} aria-pressed={filter === group.id}
-          onClick={() => selectFilter(filter === group.id ? "all" : group.id)}>
-          <span>{group.label}</span><strong>{data.counts[group.id]}<small>건</small></strong>
-        </button>)}
-      </div>
-      <div className={ui.todayListHeading}>
-        <h3>{filter === "all" ? "확인할 업무" : groups.find((g) => g.id === filter).label} <span>{visible.length}건</span></h3>
-        {filter !== "all" && <button type="button" className={ui.todayTextButton} onClick={() => selectFilter("all")}>전체 보기</button>}
-      </div>
-      {!visible.length ? <div className={ui.todayEmpty}>{filter === "all" ? "현재 확인할 배정·보고서·검수 업무가 없습니다." : "이 항목에 확인할 업무가 없습니다."}</div>
-        : <ul className={ui.todayList}>{visible.slice(0, limit).map((task) => {
-          const group = groups.find((g) => g.id === task.kind);
-          return <li key={task.id}><a href={siteLink(task.siteId, task.section)} className={ui.todayTask}>
-            <div className={ui.todayTaskTop}><span className={ui.todayBadge} data-tone={group.tone}>{group.label}</span>
-              <span className={ui.todayMeta}>{task.overdue ? "일정 지남 · " : ""}{dateLabel(task.date)}</span></div>
-            <strong className={ui.todaySiteName}>{task.name}</strong>
-            <p>{task.reason}</p>
-            <div className={ui.todayTaskBottom}><span>{[task.region, task.workType].filter(Boolean).join(" · ")}</span><strong>{task.section === "schedule" ? "일정 확인" : group.action} ↗</strong></div>
-          </a></li>;
-        })}</ul>}
-      {visible.length > limit && <button type="button" className={ui.todayMore} onClick={() => setLimit((n) => n + 8)}>업무 더 보기 · {visible.length - limit}건 남음</button>}
-      <div className={ui.todayListHeading}><h3>오늘 시공 현장 <span>{data.todaySites.length}곳</span></h3><a className={ui.todayTextButton} href="/admin?tab=sites">현장 관리 ↗</a></div>
-      {!data.todaySites.length ? <div className={ui.todayEmpty}>오늘 예정된 시공 현장이 없습니다.</div> : <ul className={ui.todayList}>
-        {data.todaySites.slice(0, siteLimit).map((site) => <li key={site.siteId}><a href={siteLink(site.siteId)} className={ui.todaySite}>
-          <div><strong>{site.name}</strong><span>{[site.region, site.workType].filter(Boolean).join(" · ") || "현장 상세 확인"}</span></div>
-          <span className={ui.todayTeam} data-missing={!site.hasLeader}>{site.workerCount ? `${site.workerCount}명 · ${site.hasLeader ? "팀장 배정" : "팀장 확인"}` : "배정 필요"} ↗</span>
-        </a></li>)}
-      </ul>}
-      {data.todaySites.length > siteLimit && <button type="button" className={ui.todayMore} onClick={() => setSiteLimit((n) => n + 5)}>오늘 현장 더 보기</button>}
-      <p className={ui.todayUpdated}>최근 확인 {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(data.updatedAt))} · 업무를 처리한 뒤 돌아오면 다시 확인합니다.</p>
-    </>}
-    <TomorrowTasks owner />
-  </section>;
-          }
+      if (day !== current) {
+        day = current;
+        resume();
+      }
+    }, 60000);
+
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, []);
+
+  const today = data?.today || koreanDay();
+  const query = view.query.trim().toLocaleLowerCase();
+
+  let rows =
+    view.tab === "tasks"
+      ? [...(data?.tasks || [])]
+      : view.tab === "today"
+        ? [...(data?.todaySites || [])]
+        : [...(data?.sites || [])];
+
+  if (view.tab === "tasks") {
+    rows = rows.filter(
+      (r) =>
+        (view.kind === "all" || r.kind === view.kind) &&
+        (view.period === "all" || !r.date || r.date <= today)
+    );
+
+    rows.sort(
+      (a, b) =>
+        Number(Boolean(b.overdue)) - Number(Boolean(a.overdue)) ||
+        String(a.date || "9999").localeCompare(
+          String(b.date || "9999")
+        )
+    );
+  }
+
+  rows = rows.filter((r) =>
+    [r.name, r.region, r.workType, r.address, r.work]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(query)
+  );
+
+  const pages = Math.max(1, Math.ceil(rows.length / 5));
+  const page = Math.min(view.page, pages);
+  const shown = rows.slice((page - 1) * 5, page * 5);
+
+  return (
+    <section
+      className="tasks"
+      aria-label="보고서와 오늘 할 일"
+      aria-busy={loading}
+    >
+      <header>
+        <div>
+          <h2>보고서 · 오늘 할 일</h2>
+          <small>
+            {view.tab === "tomorrow" ? data?.date : today} · 한국 시간
+          </small>
+        </div>
+
+        <button
+          disabled={loading}
+          onClick={() => setAttempt((n) => n + 1)}
+        >
+          새로고침
+        </button>
+      </header>
+
+      <nav aria-label="업무 화면">
+        {[
+          ["tasks", "확인할 업무"],
+          ["today", "오늘 현장"],
+          ["tomorrow", "내일 준비"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            aria-pressed={view.tab === id}
+            onClick={() => change({ tab: id })}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {view.tab === "tasks" && (
+        <>
+          <div className="kinds" aria-label="업무 종류">
+            <button
+              aria-pressed={view.kind === "all"}
+              onClick={() => change({ kind: "all" })}
+            >
+              전체 {data?.tasks?.length ?? ""}
+            </button>
+
+            {groups.map(([id, label]) => (
+              <button
+                key={id}
+                aria-pressed={view.kind === id}
+                onClick={() => change({ kind: id })}
+              >
+                {label} <b>{data?.counts?.[id] ?? ""}</b>
+              </button>
+            ))}
+          </div>
+
+          <div className="period" aria-label="업무 기간">
+            <button
+              aria-pressed={view.period === "all"}
+              onClick={() => change({ period: "all" })}
+            >
+              전체 예정
+            </button>
+            <button
+              aria-pressed={view.period === "due"}
+              onClick={() => change({ period: "due" })}
+            >
+              오늘까지 · 미정
+            </button>
+          </div>
+        </>
+      )}
+
+      <input
+        aria-label="현장 검색"
+        placeholder="현장명·지역 검색"
+        maxLength={100}
+        value={view.query}
+        onChange={(e) => change({ query: e.target.value })}
+      />
+
+      {loading ? (
+        <p role="status">업무를 확인하고 있습니다…</p>
+      ) : error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : (
+        <>
+          <div className="count">
+            {rows.length}건 · {page}/{pages}페이지
+          </div>
+
+          {!shown.length && (
+            <p>해당 조건의 업무나 현장이 없습니다.</p>
+          )}
+
+          <ul>
+            {shown.map((row) => {
+              const group = groups.find((g) => g[0] === row.kind);
+              const id = row.siteId || row.id;
+
+              return (
+                <li key={row.id || row.siteId}>
+                  <a
+                    className="row"
+                    href={link(id, row.section)}
+                  >
+                    <div className="name">
+                      <strong>{row.name}</strong>
+                      <small>
+                        {view.tab === "tasks"
+                          ? `${group?.[1] || "확인 필요"} · ${
+                              row.overdue ? "기한 지남 · " : ""
+                            }${dateLabel(row.date)}`
+                          : view.tab === "today"
+                            ? `${row.workerCount || 0}명 · ${
+                                row.hasLeader
+                                  ? "팀장 배정"
+                                  : "배정 확인"
+                              }`
+                            : `${row.team?.length || 0}명 · 필름 ${
+                                row.materials?.length || 0
+                              }종`}
+                        {row.region ? ` · ${row.region}` : ""}
+                      </small>
+                    </div>
+
+                    <span className="action">
+                      {view.tab !== "tasks"
+                        ? "현장 보기"
+                        : row.section === "schedule"
+                          ? "일정 확인"
+                          : group?.[2] || "확인"}{" "}
+                      ›
+                    </span>
+                  </a>
+
+                  <details>
+                    <summary>상세 내용</summary>
+
+                    {view.tab === "tasks" ? (
+                      <p>{row.reason}</p>
+                    ) : null}
+
+                    <p>
+                      {[
+                        row.address,
+                        row.region,
+                        row.workType,
+                        row.work,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") ||
+                        "현장에서 상세 내용을 확인해주세요."}
+                    </p>
+
+                    {view.tab === "tomorrow" && (
+                      <>
+                        <p>
+                          시공자:{" "}
+                          {row.team
+                            ?.map(
+                              (w) =>
+                                `${w.name}${
+                                  w.role === "leader" ? "(팀장)" : ""
+                                }`
+                            )
+                            .join(" · ") || "배정 필요"}
+                        </p>
+
+                        {!row.team?.some(
+                          (w) => w.role === "leader"
+                        ) && <p>책임 팀장을 확인해주세요.</p>}
+
+                        {row.materials?.length ? (
+                          row.materials.map((m) => (
+                            <p key={m.id}>
+                              {[m.brand, m.code, m.name, m.memo]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          ))
+                        ) : (
+                          <p>
+                            사용 필름이 아직 등록되지 않았습니다.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="pager">
+            <button
+              disabled={page <= 1}
+              onClick={() => change({ page: page - 1 })}
+            >
+              이전
+            </button>
+
+            <span>
+              {page} / {pages}
+            </span>
+
+            <button
+              disabled={page >= pages}
+              onClick={() => change({ page: page + 1 })}
+            >
+              다음
+            </button>
+          </div>
+        </>
+      )}
+
+      <style jsx>{`
+        .tasks {
+          color: #243648;
+          padding: 8px 0 24px;
+          overflow-wrap: anywhere;
+        }
+        header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        h2 {
+          font-size: 20px;
+          margin: 0 0 4px;
+        }
+        small {
+          display: block;
+          font-size: 12px;
+          color: #6b7280;
+          line-height: 1.5;
+        }
+        button {
+          border: 1px solid #ddd5c9;
+          background: #fffdfa;
+          color: #243648;
+          border-radius: 10px;
+          padding: 10px 12px;
+          min-height: 44px;
+          font-size: 13px;
+          cursor: pointer;
+        }
+        button[aria-pressed="true"] {
+          background: #243648;
+          color: white;
+          border-color: #243648;
+        }
+        button:disabled {
+          opacity: 0.45;
+          cursor: default;
+        }
+        nav {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+          margin: 16px 0 10px;
+        }
+        nav button {
+          padding: 10px 4px;
+          font-weight: 700;
+        }
+        .kinds {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .kinds button {
+          font-size: 12px;
+          padding: 8px;
+        }
+        .period {
+          display: flex;
+          gap: 6px;
+          margin: 10px 0;
+        }
+        .period button {
+          font-size: 12px;
+          padding: 7px 10px;
+        }
+        input {
+          box-sizing: border-box;
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #d6d3cc;
+          border-radius: 10px;
+          background: white;
+          font-size: 16px;
+          margin: 10px 0;
+        }
+        .count {
+          font-size: 12px;
+          color: #6b7280;
+          margin: 4px 0 8px;
+        }
+        ul {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          border: 1px solid #e1dacf;
+          border-radius: 14px;
+          background: #fffdfa;
+          overflow: hidden;
+        }
+        li + li {
+          border-top: 1px solid #e8e2d9;
+        }
+        .row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 13px 12px 8px;
+          text-decoration: none;
+          color: inherit;
+        }
+        .name {
+          min-width: 0;
+        }
+        .name strong {
+          font-size: 15px;
+        }
+        .name small {
+          margin-top: 5px;
+        }
+        .action {
+          font-size: 12px;
+          color: #315c91;
+          flex-shrink: 0;
+          font-weight: 700;
+        }
+        details {
+          padding: 0 12px 10px;
+        }
+        summary {
+          font-size: 11px;
+          color: #78716c;
+          cursor: pointer;
+          padding: 5px 0;
+        }
+        details p {
+          font-size: 13px;
+          line-height: 1.6;
+          margin: 8px 0;
+        }
+        .pager {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 20px;
+          margin: 14px 0;
+        }
+        .pager span {
+          font-size: 13px;
+        }
+        .error {
+          color: #b91c1c;
+        }
+        p {
+          font-size: 14px;
+          line-height: 1.6;
+        }
+      `}</style>
+    </section>
+  );
+}
