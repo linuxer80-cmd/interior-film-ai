@@ -1,0 +1,988 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "../../lib/supabase";
+import { reportRequest } from "../utils/reportClient";
+import FilmThumbnail from "../worker/cutting/FilmThumbnail";
+
+const money = n =>
+  Number(n || 0).toLocaleString("ko-KR", {
+    maximumFractionDigits: 2,
+  });
+
+const number = n => Number(Number(n || 0).toFixed(3));
+
+const valid = (n, max) =>
+  String(n).trim() !== "" &&
+  Number.isFinite(Number(n)) &&
+  Number(n) >= 0 &&
+  Number(n) <= max;
+
+const statuses = {
+  available: "보관 중",
+  on_site: "현장 반출",
+  supplier_returned: "대리점 반납",
+  used_up: "전량 사용",
+};
+
+const actions = {
+  receive: "입고",
+  issue: "현장 반출",
+  return: "현장 반입",
+  supplier_return: "대리점 반납",
+};
+
+const emptyDealer = {
+  name: "",
+  phone: "",
+  brands: "",
+};
+
+export default function FilmDealerInventory() {
+  const [data, setData] = useState(null);
+  const [tab, setTab] = useState("stock");
+  const [dealerId, setDealerId] = useState("");
+  const [dealer, setDealer] = useState(emptyDealer);
+  const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searched, setSearched] = useState(false);
+  const [price, setPrice] = useState("");
+  const [length, setLength] = useState("50");
+  const [count, setCount] = useState("1");
+  const [location, setLocation] = useState("창고");
+  const [memo, setMemo] = useState("");
+  const [filter, setFilter] = useState("available");
+  const [stockQuery, setStockQuery] = useState("");
+  const [returnId, setReturnId] = useState("");
+  const [credit, setCredit] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const gate = useRef(false);
+  const epoch = useRef(0);
+  const searchEpoch = useRef(0);
+  const mounted = useRef(false);
+  const pending = useRef(null);
+
+  async function refresh() {
+    const version = ++epoch.current;
+
+    try {
+      const result = await reportRequest("/api/film-dealers");
+
+      if (mounted.current && epoch.current === version) {
+        setData(result);
+        setError("");
+      }
+    } catch (e) {
+      if (mounted.current && epoch.current === version) {
+        setError(e.message);
+      }
+    }
+  }
+
+  useEffect(() => {
+    mounted.current = true;
+    refresh();
+
+    const { data: auth } = supabase.auth.onAuthStateChange(event => {
+      if (
+        ["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)
+      ) {
+        epoch.current++;
+        searchEpoch.current++;
+        pending.current = null;
+
+        setData(null);
+        setDealerId("");
+        setDealer(emptyDealer);
+        setSelected(null);
+        setResults([]);
+        setPrice("");
+        setQuery("");
+        setMemo("");
+        setReturnId("");
+        setCredit("");
+        setMessage("");
+
+        setTimeout(() => {
+          if (mounted.current) refresh();
+        }, 0);
+      }
+    });
+
+    return () => {
+      mounted.current = false;
+      epoch.current++;
+      searchEpoch.current++;
+      auth.subscription.unsubscribe();
+    };
+  }, []);
+
+  const prices = (data?.prices || []).filter(
+    p => p.dealer_id === dealerId
+  );
+
+  const savedPrice = prices.find(
+    p => p.product_id === selected?.id
+  );
+
+  const purchases = new Map(
+    (data?.purchases || []).map(p => [p.roll_id, p])
+  );
+
+  const allRolls = data?.stock?.rolls || [];
+
+  const stored = allRolls.filter(
+    r => r.status === "available"
+  );
+
+  const inventoryValue = stored.reduce(
+    (sum, r) =>
+      sum +
+      Number(r.remaining) *
+        Number(purchases.get(r.id)?.unit_price || 0),
+    0
+  );
+
+  const unknown = stored.filter(
+    r => !purchases.has(r.id)
+  ).length;
+
+  const q = stockQuery.trim().toUpperCase();
+
+  const rolls = allRolls.filter(
+    r =>
+      (filter === "all" || r.status === filter) &&
+      `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${
+        r.location
+      } ${purchases.get(r.id)?.product_name || ""}`
+        .toUpperCase()
+        .includes(q)
+  );
+
+  const grouped = new Map();
+
+  stored.forEach(r => {
+    const key = `${r.brand} / ${r.product_code}`;
+    const old = grouped.get(key) || {
+      metres: 0,
+      rolls: 0,
+    };
+
+    grouped.set(key, {
+      metres: old.metres + Number(r.remaining),
+      rolls: old.rolls + 1,
+    });
+  });
+
+  function chooseDealer(value) {
+    searchEpoch.current++;
+    setDealerId(value);
+    setSelected(null);
+    setQuery("");
+    setResults([]);
+    setSearched(false);
+    setPrice("");
+  }
+
+  function chooseProduct(p) {
+    setSelected(p);
+    setPrice(
+      String(
+        prices.find(x => x.product_id === p.id)?.unit_price ?? ""
+      )
+    );
+  }
+
+  async function search() {
+    const version = ++searchEpoch.current;
+    const authVersion = epoch.current;
+
+    setError("");
+    setSearched(false);
+
+    try {
+      const result = await reportRequest("/api/film-dealers", {
+        action: "search",
+        query,
+      });
+
+      if (
+        mounted.current &&
+        searchEpoch.current === version &&
+        epoch.current === authVersion
+      ) {
+        setResults(result.products);
+        setSearched(true);
+      }
+    } catch (e) {
+      if (
+        mounted.current &&
+        searchEpoch.current === version &&
+        epoch.current === authVersion
+      ) {
+        setError(e.message);
+      }
+    }
+  }
+
+  async function save(action, fields) {
+    if (gate.current) return;
+
+    const body = { action, ...fields };
+    const signature = JSON.stringify(body);
+
+    if (pending.current?.signature !== signature) {
+      pending.current = {
+        signature,
+        id: crypto.randomUUID(),
+      };
+    }
+
+    gate.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    const version = ++epoch.current;
+
+    try {
+      const result = await reportRequest("/api/film-dealers", {
+        ...body,
+        requestId: pending.current.id,
+      });
+
+      if (!mounted.current || version !== epoch.current) return;
+
+      setData(result);
+      pending.current = null;
+      setMessage("저장되었습니다.");
+
+      if (action === "dealer") {
+        setDealer(emptyDealer);
+      }
+
+      if (action === "receive") {
+        setMemo("");
+        setTab("stock");
+      }
+
+      if (action === "supplier_return") {
+        setReturnId("");
+      }
+    } catch (e) {
+      if (mounted.current && version === epoch.current) {
+        setError(e.message);
+      }
+    } finally {
+      gate.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  const returnRoll = allRolls.find(r => r.id === returnId);
+  const returnPurchase = purchases.get(returnId);
+
+  return (
+    <section className="inventory">
+      <header>
+        <h1>필름 재고</h1>
+        <button disabled={busy} onClick={refresh}>
+          새로고침
+        </button>
+      </header>
+
+      <p>
+        우리 업체의 대리점·공급가·롤 재고를 관리합니다.
+        공급가는 관리자만 확인합니다.
+      </p>
+
+      <nav>
+        {[
+          ["stock", "재고 현황"],
+          ["receive", "입고 등록"],
+          ["dealers", "대리점 관리"],
+        ].map(([key, title]) => (
+          <button
+            key={key}
+            aria-pressed={tab === key}
+            disabled={busy}
+            onClick={() => {
+              setTab(key);
+              setReturnId("");
+            }}
+          >
+            {title}
+          </button>
+        ))}
+      </nav>
+
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+
+      {message && (
+        <p role="status" className="success">
+          {message}
+        </p>
+      )}
+
+      {!data && !error && <p>불러오는 중…</p>}
+
+      {data && (
+        <fieldset disabled={busy}>
+          {tab === "dealers" && (
+            <article>
+              <h2>
+                {dealer.dealerId ? "대리점 수정" : "대리점 등록"}
+              </h2>
+
+              {[
+                ["name", "대리점 이름"],
+                ["phone", "연락처"],
+                ["brands", "취급 브랜드 (예: 영림, 현대보닥)"],
+              ].map(([key, title]) => (
+                <label key={key}>
+                  {title}
+                  <input
+                    value={dealer[key]}
+                    maxLength={key === "brands" ? 200 : 100}
+                    onChange={e =>
+                      setDealer(d => ({
+                        ...d,
+                        [key]: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+
+              <button
+                disabled={!dealer.name.trim()}
+                onClick={() => save("dealer", dealer)}
+              >
+                대리점 저장
+              </button>
+
+              {dealer.dealerId && (
+                <button onClick={() => setDealer(emptyDealer)}>
+                  수정 취소
+                </button>
+              )}
+
+              {data.dealers.map(d => (
+                <p key={d.id}>
+                  <strong>{d.name}</strong> ·{" "}
+                  {d.phone || "연락처 미등록"} · {d.brands}
+                  <button
+                    onClick={() => {
+                      setDealer({
+                        dealerId: d.id,
+                        revision: d.revision,
+                        name: d.name,
+                        phone: d.phone,
+                        brands: d.brands,
+                      });
+                      chooseDealer(d.id);
+                    }}
+                  >
+                    수정
+                  </button>
+                </p>
+              ))}
+            </article>
+          )}
+
+          {(tab === "receive" || tab === "dealers") && (
+            <article>
+              <h2>
+                {tab === "receive"
+                  ? "필름 입고"
+                  : "대리점 제품별 공급가"}
+              </h2>
+
+              <label>
+                대리점
+                <select
+                  value={dealerId}
+                  onChange={e => chooseDealer(e.target.value)}
+                >
+                  <option value="">대리점 선택</option>
+                  {data.dealers.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {!data.dealers.length && (
+                <p>대리점 관리에서 대리점을 먼저 등록해주세요.</p>
+              )}
+
+              {dealerId && (
+                <>
+                  <label>
+                    제품번호 또는 제품명
+                    <input
+                      value={query}
+                      maxLength={80}
+                      placeholder="PS156 또는 제품명"
+                      onChange={e => {
+                        searchEpoch.current++;
+                        setQuery(e.target.value);
+                        setResults([]);
+                        setSearched(false);
+                      }}
+                    />
+                  </label>
+
+                  <button
+                    disabled={!query.trim()}
+                    onClick={search}
+                  >
+                    전체 필름에서 검색
+                  </button>
+
+                  <p>
+                    이 대리점 등록 제품 ({prices.length}개) ·
+                    공급가는 1m 기준, 실제 거래 기준으로 입력하세요.
+                  </p>
+
+                  <div className="products">
+                    {prices
+                      .filter(p =>
+                        `${p.product_code} ${p.product_name || ""}`
+                          .toUpperCase()
+                          .includes(query.trim().toUpperCase())
+                      )
+                      .map(p => (
+                        <button
+                          key={p.id}
+                          disabled={!p.is_active}
+                          onClick={() =>
+                            chooseProduct({
+                              ...p,
+                              id: p.product_id,
+                            })
+                          }
+                        >
+                          {p.brand} / {p.product_code} ·{" "}
+                          {p.product_name} ·{" "}
+                          {money(p.unit_price)}원/m{" "}
+                          {!p.is_active && "(판매 중지)"}
+                        </button>
+                      ))}
+                  </div>
+
+                  {searched && (
+                    <>
+                      <p>
+                        검색 결과 (최대 40개) ·
+                        브랜드와 사진을 확인해서 선택해주세요.
+                      </p>
+
+                      {!results.length && (
+                        <p>
+                          일치하는 제품이 없습니다.
+                          제품번호를 다시 확인해주세요.
+                        </p>
+                      )}
+
+                      <div className="products">
+                        {results.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => chooseProduct(p)}
+                          >
+                            <FilmThumbnail
+                              material={{
+                                ...p,
+                                film_product_id: p.id,
+                              }}
+                              size={48}
+                            />
+                            {p.brand} / {p.product_code} ·{" "}
+                            {p.product_name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {selected && (
+                    <div className="selected">
+                      <FilmThumbnail
+                        material={{
+                          ...selected,
+                          film_product_id: selected.id,
+                        }}
+                        size={72}
+                      />
+
+                      <strong>
+                        {selected.brand} / {selected.product_code} ·{" "}
+                        {selected.product_name}
+                      </strong>
+
+                      {tab === "dealers" ? (
+                        <>
+                          <label>
+                            1m당 공급가 (원)
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={price}
+                              onChange={e => setPrice(e.target.value)}
+                            />
+                          </label>
+
+                          <button
+                            disabled={!valid(price, 10000000)}
+                            onClick={() =>
+                              save("price", {
+                                dealerId,
+                                productId: selected.id,
+                                unitPrice: price,
+                                priceRevision: savedPrice?.revision || 0,
+                              })
+                            }
+                          >
+                            제품·공급가 저장
+                          </button>
+                        </>
+                      ) : savedPrice ? (
+                        <>
+                          <p>
+                            공급가 {money(savedPrice.unit_price)}원/m ·
+                            입고 후 단가는 이 롤에 고정됩니다.
+                          </p>
+
+                          <div className="grid">
+                            <label>
+                              한 롤 길이 (m)
+                              <input
+                                type="number"
+                                min="0.001"
+                                step="any"
+                                value={length}
+                                onChange={e =>
+                                  setLength(e.target.value)
+                                }
+                              />
+                            </label>
+
+                            <label>
+                              같은 길이 롤 수
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                step="1"
+                                value={count}
+                                onChange={e =>
+                                  setCount(e.target.value)
+                                }
+                              />
+                            </label>
+                          </div>
+
+                          <label>
+                            보관 위치
+                            <input
+                              value={location}
+                              maxLength={100}
+                              onChange={e =>
+                                setLocation(e.target.value)
+                              }
+                            />
+                          </label>
+
+                          <label>
+                            메모
+                            <input
+                              value={memo}
+                              maxLength={1000}
+                              placeholder="기존 보유분이면 시작 재고"
+                              onChange={e => setMemo(e.target.value)}
+                            />
+                          </label>
+
+                          <p>
+                            총 {number(Number(length) * Number(count))}m ·{" "}
+                            {money(
+                              Number(length) *
+                                Number(count) *
+                                Number(savedPrice.unit_price)
+                            )}
+                            원
+                          </p>
+
+                          <button
+                            disabled={
+                              !valid(length, 1000000) ||
+                              Number(length) <= 0 ||
+                              !valid(count, 50) ||
+                              Number(count) < 1 ||
+                              !Number.isInteger(Number(count))
+                            }
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `${length}m × ${count}롤을 입고할까요?`
+                                )
+                              ) {
+                                save("receive", {
+                                  dealerId,
+                                  productId: selected.id,
+                                  priceRevision: savedPrice.revision,
+                                  length,
+                                  count,
+                                  location,
+                                  memo,
+                                });
+                              }
+                            }}
+                          >
+                            입고 저장 · 롤 번호 자동 생성
+                          </button>
+                        </>
+                      ) : (
+                        <p>
+                          공급가를 먼저 등록해주세요.
+                          <button onClick={() => setTab("dealers")}>
+                            공급가 등록하기
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </article>
+          )}
+
+          {tab === "stock" && (
+            <>
+              <article>
+                <h2>
+                  보관 중 {stored.length}롤 ·{" "}
+                  {number(
+                    stored.reduce(
+                      (s, r) => s + Number(r.remaining),
+                      0
+                    )
+                  )}
+                  m
+                </h2>
+
+                <p>
+                  단가 등록분 재고금액{" "}
+                  <strong>{money(inventoryValue)}원</strong>
+                </p>
+
+                {!!unknown && (
+                  <p>
+                    기존 재고 {unknown}롤은 입고단가 미등록으로
+                    금액 합계에서 제외됩니다.
+                  </p>
+                )}
+
+                <p>
+                  현장 반출 중{" "}
+                  {
+                    allRolls.filter(r => r.status === "on_site")
+                      .length
+                  }
+                  롤 · 실제 잔량은 반입 시 확정
+                </p>
+
+                {[...grouped].map(([key, g]) => (
+                  <p key={key}>
+                    {key} · {number(g.metres)}m · {g.rolls}롤
+                  </p>
+                ))}
+              </article>
+
+              <label>
+                제품·롤·대리점·보관 위치 검색
+                <input
+                  value={stockQuery}
+                  onChange={e => setStockQuery(e.target.value)}
+                />
+              </label>
+
+              <select
+                aria-label="재고 상태"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+              >
+                <option value="all">전체</option>
+                {Object.entries(statuses).map(([key, title]) => (
+                  <option key={key} value={key}>
+                    {title}
+                  </option>
+                ))}
+              </select>
+
+              {!rolls.length && <p>해당 재고가 없습니다.</p>}
+
+              {rolls.map(r => {
+                const p = purchases.get(r.id);
+
+                return (
+                  <article key={r.id}>
+                    <header>
+                      <FilmThumbnail
+                        material={{
+                          ...r,
+                          film_product_id: p?.product_id,
+                        }}
+                        size={60}
+                      />
+                      <h2>
+                        {r.brand} / {r.product_code}
+                      </h2>
+                      <strong>{r.remaining}m</strong>
+                    </header>
+
+                    <p>
+                      {p?.product_name} · {statuses[r.status]}
+                    </p>
+
+                    <small>롤 번호: {r.label}</small>
+
+                    <p>
+                      입고처 {r.supplier} ·{" "}
+                      {r.status === "on_site"
+                        ? r.site_name || "현장"
+                        : r.location}
+                    </p>
+
+                    {p ? (
+                      <p>
+                        입고단가 {money(p.unit_price)}원/m
+                        {r.status === "available" &&
+                          `· 잔량금액 ${money(
+                            Number(r.remaining) * Number(p.unit_price)
+                          )}원`}
+                        {r.status === "supplier_returned" &&
+                          `· 반납 정산 ${
+                            p.return_credit == null
+                              ? "미입력"
+                              : `${money(p.return_credit)}원`
+                          }`}
+                      </p>
+                    ) : (
+                      <p>기존 재고 · 입고단가 미등록</p>
+                    )}
+
+                    {r.status === "available" && (
+                      <button
+                        onClick={() => {
+                          setReturnId(r.id);
+                          setCredit(
+                            p
+                              ? String(
+                                  Number(r.remaining) *
+                                    Number(p.unit_price)
+                                )
+                              : ""
+                          );
+                        }}
+                      >
+                        남은 롤 전체를 대리점에 반납
+                      </button>
+                    )}
+
+                    {returnId === r.id && returnRoll && (
+                      <div className="selected">
+                        <p>
+                          {r.supplier}에 {r.remaining}m 롤 전체 반납
+                        </p>
+
+                        {returnPurchase && (
+                          <label>
+                            반납 정산금액
+                            (원, 수정 가능·공란이면 미확정)
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={credit}
+                              onChange={e =>
+                                setCredit(e.target.value)
+                              }
+                            />
+                          </label>
+                        )}
+
+                        <button
+                          disabled={
+                            credit !== "" &&
+                            !valid(credit, 1000000000000)
+                          }
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "남은 롤 전체를 반납 처리할까요?"
+                              )
+                            ) {
+                              save("supplier_return", {
+                                rollId: r.id,
+                                revision: r.revision,
+                                credit,
+                              });
+                            }
+                          }}
+                        >
+                          반납 확정
+                        </button>
+
+                        <button onClick={() => setReturnId("")}>
+                          취소
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+
+              <details>
+                <summary>최근 입출고 이력 (최대 100건)</summary>
+
+                {data.stock.events.map(e => (
+                  <p key={e.id}>
+                    {new Date(e.created_at).toLocaleString(
+                      "ko-KR",
+                      { timeZone: "Asia/Seoul" }
+                    )}{" "}
+                    · {e.product_code} · {actions[e.action]} ·{" "}
+                    {e.after_qty}m · {e.memo || ""}
+                  </p>
+                ))}
+              </details>
+            </>
+          )}
+        </fieldset>
+      )}
+
+      <style jsx>{`
+        .inventory {
+          color: #243648;
+          margin-top: 20px;
+          overflow-wrap: anywhere;
+        }
+        header,
+        nav {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          justify-content: space-between;
+        }
+        nav {
+          justify-content: flex-start;
+          flex-wrap: wrap;
+        }
+        h1 {
+          font-size: 25px;
+        }
+        h2 {
+          font-size: 18px;
+        }
+        p {
+          font-size: 14px;
+          line-height: 1.7;
+        }
+        fieldset {
+          border: 0;
+          padding: 0;
+          min-width: 0;
+        }
+        article {
+          background: #fffdfa;
+          border: 1px solid #dfd4c4;
+          border-radius: 18px;
+          padding: 18px;
+          margin: 16px 0;
+        }
+        label {
+          display: block;
+          font-size: 14px;
+          margin: 12px 0;
+        }
+        input,
+        select {
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          font-size: 16px;
+          background: white;
+          margin-top: 6px;
+        }
+        button {
+          cursor: pointer;
+          padding: 11px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          background: #edf5ff;
+          color: #243648;
+          font-weight: 700;
+          margin: 4px;
+        }
+        button[aria-pressed="true"] {
+          background: #243648;
+          color: white;
+        }
+        button:disabled {
+          opacity: 0.5;
+          cursor: default;
+        }
+        .products {
+          max-height: 320px;
+          overflow: auto;
+        }
+        .products button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: calc(100% - 8px);
+          text-align: left;
+        }
+        .selected {
+          padding: 14px;
+          background: #f3f6f9;
+          border-radius: 12px;
+          margin-top: 14px;
+        }
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .error {
+          color: #b91c1c;
+        }
+        .success {
+          color: #166534;
+        }
+        small {
+          font-size: 11px;
+        }
+        summary {
+          cursor: pointer;
+          font-weight: 700;
+        }
+      `}</style>
+    </section>
+  );
+              }
