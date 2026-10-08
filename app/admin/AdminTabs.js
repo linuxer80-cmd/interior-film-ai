@@ -4,25 +4,81 @@ import { useState } from "react";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
-  { href: "/admin/workers", label: "시공자 관리", description: "시공자 등록·초대와 일당 관리", icon: "people" },
-  { href: "/admin/attendance", label: "출퇴근 관리", description: "현장 위치와 연장근무 확인", icon: "attendance" },
-  { id: "sites", label: "현장 관리", description: "현장 일정과 시공자 배정", icon: "home" },
-  { id: "leads", label: "고객 상담", description: "견적 요청과 상담 확인", icon: "chat" },
-  { href: "/admin/today", label: "보고서 · 오늘 할 일", description: "검수 대기와 오늘 업무", icon: "report" },
-  { id: "profit", label: "매출 · 수익", description: "인건비와 자재비 확인", icon: "money" },
-  { href: "/admin/material-order", label: "자재 주문", description: "현장에 필요한 필름 주문", icon: "box" },
-  { id: "register", label: "시공 등록", description: "시공 사진과 실적 기록", icon: "camera" },
+  {
+    href: "/admin/workers",
+    label: "시공자 관리",
+    description: "시공자 등록·초대와 일당 관리",
+    icon: "people",
+  },
+  {
+    href: "/admin/attendance",
+    label: "출퇴근 관리",
+    description: "현장 위치와 연장근무 확인",
+    icon: "attendance",
+  },
+  {
+    id: "sites",
+    label: "현장 관리",
+    description: "현장 일정과 시공자 배정",
+    icon: "home",
+  },
+  {
+    id: "leads",
+    label: "고객 상담",
+    description: "견적 요청과 상담 확인",
+    icon: "chat",
+  },
+  {
+    href: "/admin/today",
+    label: "보고서 · 오늘 할 일",
+    description: "검수 대기와 오늘 업무",
+    icon: "report",
+  },
+  {
+    id: "profit",
+    label: "매출 · 수익",
+    description: "인건비와 자재비 확인",
+    icon: "money",
+  },
+  {
+    href: "/admin/receivables",
+    label: "미수금 · 잔금",
+    description: "입금 내역과 남은 잔금 관리",
+    icon: "money",
+  },
+  {
+    href: "/admin/material-order",
+    label: "자재 주문",
+    description: "현장에 필요한 필름 주문",
+    icon: "box",
+  },
+  {
+    id: "register",
+    label: "시공 등록",
+    description: "시공 사진과 실적 기록",
+    icon: "camera",
+  },
 ];
 
 const sections = {
-  sites: ["현장 관리", "home"], leads: ["고객 상담", "chat"],
-  jobs: ["시공 DB", "camera"], register: ["시공 등록", "camera"],
-  profit: ["매출 · 수익", "money"], usage: ["로그 분석", "report"],
+  sites: ["현장 관리", "home"],
+  leads: ["고객 상담", "chat"],
+  jobs: ["시공 DB", "camera"],
+  register: ["시공 등록", "camera"],
+  profit: ["매출 · 수익", "money"],
+  usage: ["로그 분석", "report"],
 };
 
-export default function AdminTabs({ activeTab, changeTab, unreadCount = 0, secondaryOnly = false }) {
+export default function AdminTabs({
+  activeTab,
+  changeTab,
+  unreadCount = 0,
+  secondaryOnly = false,
+}) {
   const [moreOpen, setMoreOpen] = useState(false);
+
   if (secondaryOnly) return null;
+
   const isHome = activeTab === "today";
   const section = sections[activeTab];
 
@@ -33,60 +89,134 @@ export default function AdminTabs({ activeTab, changeTab, unreadCount = 0, secon
 
   return (
     <section className="film-admin-dashboard">
-      {isHome ? <>
-        <div className="film-admin-hero">
-          <div>
-            <span className="film-admin-kicker">오늘도 좋은 공간을 만듭니다</span>
-            <h2>안녕하세요!<br />필름장이 관리자입니다.</h2>
-            <p>현장부터 완료보고까지<br />오늘의 업무를 편하게 확인하세요.</p>
-          </div>
-          <ToolIllustration kind="home" size={176} />
-        </div>
-
-        <h3 className="film-admin-menu-heading">무엇을 도와드릴까요?</h3>
-
-        <nav className="film-admin-menu-grid" aria-label="관리자 업무 메뉴">
-          {menus.map(menu => {
-            const content = <>
-              <ToolIllustration kind={menu.icon} size="100%" className="photo-menu-art" />
-              <span>
-                <strong>{menu.label}</strong>
-                <small>
-                  {menu.id === "leads" && unreadCount > 0
-                    ? `새 상담 ${unreadCount}건 · 확인해주세요`
-                    : menu.description}
-                </small>
+      {isHome ? (
+        <>
+          <div className="film-admin-hero">
+            <div>
+              <span className="film-admin-kicker">
+                오늘도 좋은 공간을 만듭니다
               </span>
-            </>;
 
-            return menu.href
-              ? <a key={menu.href} href={menu.href}>{content}</a>
-              : <button key={menu.id} type="button" onClick={() => go(menu.id)}>{content}</button>;
-          })}
-        </nav>
+              <h2>
+                안녕하세요!
+                <br />
+                필름장이 관리자입니다.
+              </h2>
 
-        <div id="film-admin-today" className="film-admin-section-anchor" />
-      </> : <div className="film-admin-section-bar">
-        <button type="button" onClick={() => go("today")}>‹ 관리자 홈</button>
-        <span>
-          <ToolIllustration kind={section?.[1]} size={48} />
-          {section?.[0]}
-        </span>
-      </div>}
+              <p>
+                현장부터 완료보고까지
+                <br />
+                오늘의 업무를 편하게 확인하세요.
+              </p>
+            </div>
 
-      {moreOpen && <nav className="film-admin-more" aria-label="추가 관리 메뉴">
-        <div className="film-admin-more-title">
-          <strong>관리 메뉴</strong>
-          <button type="button" onClick={() => setMoreOpen(false)}>닫기</button>
+            <ToolIllustration kind="home" size={176} />
+          </div>
+
+          <h3 className="film-admin-menu-heading">
+            무엇을 도와드릴까요?
+          </h3>
+
+          <nav
+            className="film-admin-menu-grid"
+            aria-label="관리자 업무 메뉴"
+          >
+            {menus.map(menu => {
+              const content = (
+                <>
+                  <ToolIllustration
+                    kind={menu.icon}
+                    size="100%"
+                    className="photo-menu-art"
+                  />
+
+                  <span>
+                    <strong>{menu.label}</strong>
+
+                    <small>
+                      {menu.id === "leads" && unreadCount > 0
+                        ? `새 상담 ${unreadCount}건 · 확인해주세요`
+                        : menu.description}
+                    </small>
+                  </span>
+                </>
+              );
+
+              return menu.href ? (
+                <a key={menu.href} href={menu.href}>
+                  {content}
+                </a>
+              ) : (
+                <button
+                  key={menu.id}
+                  type="button"
+                  onClick={() => go(menu.id)}
+                >
+                  {content}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div
+            id="film-admin-today"
+            className="film-admin-section-anchor"
+          />
+        </>
+      ) : (
+        <div className="film-admin-section-bar">
+          <button type="button" onClick={() => go("today")}>
+            ‹ 관리자 홈
+          </button>
+
+          <span>
+            <ToolIllustration
+              kind={section?.[1]}
+              size={48}
+            />
+            {section?.[0]}
+          </span>
         </div>
-        <button type="button" onClick={() => go("jobs")}>시공 DB</button>
-        <button type="button" onClick={() => go("register")}>시공 등록</button>
-        <button type="button" onClick={() => go("usage")}>로그 분석</button>
-        <a href="/admin/material-order">자재 주문</a>
-        <a href="/admin/billing">요금제 · 결제</a>
-      </nav>}
+      )}
 
-      <nav className="film-admin-bottom" aria-label="관리자 하단 메뉴">
+      {moreOpen && (
+        <nav
+          className="film-admin-more"
+          aria-label="추가 관리 메뉴"
+        >
+          <div className="film-admin-more-title">
+            <strong>관리 메뉴</strong>
+
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+            >
+              닫기
+            </button>
+          </div>
+
+          <button type="button" onClick={() => go("jobs")}>
+            시공 DB
+          </button>
+
+          <button type="button" onClick={() => go("register")}>
+            시공 등록
+          </button>
+
+          <button type="button" onClick={() => go("usage")}>
+            로그 분석
+          </button>
+
+          <a href="/admin/material-order">자재 주문</a>
+          <a href="/admin/receivables">미수금 · 잔금</a>
+          <a href="/admin/billing">요금제 · 결제</a>
+        </nav>
+      )}
+
+      <nav
+        className="film-admin-bottom"
+        aria-label="관리자 하단 메뉴"
+      >
         {[
           { id: "today", label: "홈", icon: "⌂" },
           { id: "sites", label: "현장", icon: "▣" },
@@ -96,7 +226,9 @@ export default function AdminTabs({ activeTab, changeTab, unreadCount = 0, secon
           <button
             key={item.id}
             type="button"
-            aria-current={activeTab === item.id ? "page" : undefined}
+            aria-current={
+              activeTab === item.id ? "page" : undefined
+            }
             onClick={() => go(item.id)}
           >
             <span aria-hidden="true">{item.icon}</span>
