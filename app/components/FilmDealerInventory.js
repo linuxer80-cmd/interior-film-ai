@@ -5,10 +5,13 @@ import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
 import FilmThumbnail from "../worker/cutting/FilmThumbnail";
 
-const money = n => Number(n || 0).toLocaleString("ko-KR", {
-  maximumFractionDigits: 2,
-});
+const money = n =>
+  Number(n || 0).toLocaleString("ko-KR", {
+    maximumFractionDigits: 2,
+  });
+
 const number = n => Number(Number(n || 0).toFixed(3));
+
 const valid = (n, max) =>
   String(n).trim() !== "" &&
   Number.isFinite(Number(n)) &&
@@ -21,17 +24,20 @@ const statuses = {
   supplier_returned: "대리점 반납",
   used_up: "전량 사용",
 };
+
 const actions = {
   receive: "입고",
   issue: "현장 반출",
   return: "현장 반입",
   supplier_return: "대리점 반납",
 };
+
 const types = {
   non_fire: "비방염",
   fire: "방염",
   unspecified: "기존 단가 · 구분 미지정",
 };
+
 const emptyDealer = { name: "", phone: "", brands: "" };
 
 export default function FilmDealerInventory() {
@@ -45,8 +51,8 @@ export default function FilmDealerInventory() {
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
   const [price, setPrice] = useState("");
-  const [length, setLength] = useState("50");
-  const [count, setCount] = useState("1");
+  const [lengths, setLengths] = useState([""]);
+  const [receiptPending, setReceiptPending] = useState(false);
   const [location, setLocation] = useState("창고");
   const [memo, setMemo] = useState("");
   const [filter, setFilter] = useState("available");
@@ -62,6 +68,7 @@ export default function FilmDealerInventory() {
   const searchEpoch = useRef(0);
   const mounted = useRef(false);
   const pending = useRef(null);
+  const receipt = useRef(null);
 
   async function refresh() {
     const version = ++epoch.current;
@@ -87,6 +94,9 @@ export default function FilmDealerInventory() {
         epoch.current++;
         searchEpoch.current++;
         pending.current = null;
+        receipt.current = null;
+        setReceiptPending(false);
+        setLengths([""]);
         setData(null);
         setDealerId("");
         setDealer(emptyDealer);
@@ -99,6 +109,7 @@ export default function FilmDealerInventory() {
         setReturnId("");
         setCredit("");
         setMessage("");
+
         setTimeout(() => {
           if (mounted.current) refresh();
         }, 0);
@@ -122,6 +133,7 @@ export default function FilmDealerInventory() {
   );
   const allRolls = data?.stock?.rolls || [];
   const stored = allRolls.filter(r => r.status === "available");
+
   const inventoryValue = stored.reduce(
     (sum, r) =>
       sum +
@@ -129,15 +141,18 @@ export default function FilmDealerInventory() {
         Number(purchases.get(r.id)?.unit_price || 0),
     0
   );
+
   const unknown = stored.filter(r => !purchases.has(r.id)).length;
   const q = stockQuery.trim().toUpperCase();
 
-  const rolls = allRolls.filter(r =>
-    (filter === "all" || r.status === filter) &&
-    `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${
-      r.location
-    } ${purchases.get(r.id)?.product_name || ""}`
-      .toUpperCase().includes(q)
+  const rolls = allRolls.filter(
+    r =>
+      (filter === "all" || r.status === filter) &&
+      `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${
+        r.location
+      } ${purchases.get(r.id)?.product_name || ""}`
+        .toUpperCase()
+        .includes(q)
   );
 
   const grouped = new Map();
@@ -162,9 +177,9 @@ export default function FilmDealerInventory() {
 
   function chooseProduct(p) {
     setSelected(p);
-    setPrice(String(
-      prices.find(x => x.product_id === p.id)?.unit_price ?? ""
-    ));
+    setPrice(
+      String(prices.find(x => x.product_id === p.id)?.unit_price ?? "")
+    );
   }
 
   async function search() {
@@ -198,11 +213,13 @@ export default function FilmDealerInventory() {
 
   async function save(action, fields) {
     if (gate.current) return;
+
     const body = { action, ...fields };
     const signature = JSON.stringify(body);
     if (pending.current?.signature !== signature) {
       pending.current = { signature, id: crypto.randomUUID() };
     }
+
     gate.current = true;
     setBusy(true);
     setError("");
@@ -215,18 +232,104 @@ export default function FilmDealerInventory() {
         requestId: pending.current.id,
       });
       if (!mounted.current || version !== epoch.current) return;
+
       setData(result);
       pending.current = null;
       setMessage("저장되었습니다.");
       if (action === "dealer") setDealer(emptyDealer);
-      if (action === "receive") {
-        setMemo("");
-        setTab("stock");
-      }
       if (action === "supplier_return") setReturnId("");
     } catch (e) {
       if (mounted.current && version === epoch.current) {
         setError(e.message);
+      }
+    } finally {
+      gate.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  const totalLength = lengths.reduce(
+    (sum, value) => sum + (Number(value) || 0),
+    0
+  );
+
+  const lengthsValid =
+    lengths.length > 0 &&
+    lengths.length <= 50 &&
+    lengths.every(
+      value => valid(value, 1000000) && Number(value) > 0
+    );
+
+  async function receiveRolls() {
+    if (gate.current) return;
+
+    if (!receipt.current) {
+      if (!savedPrice || !selected || !lengthsValid) return;
+
+      if (
+        !confirm(
+          `${types[priceType]} ${lengths.length}롤, 총 ${number(
+            totalLength
+          )}m를 입고할까요?`
+        )
+      ) {
+        return;
+      }
+
+      receipt.current = {
+        index: 0,
+        jobs: lengths.map(length => ({
+          action: "receive",
+          requestId: crypto.randomUUID(),
+          dealerId,
+          productId: selected.id,
+          priceType,
+          priceRevision: savedPrice.revision,
+          length,
+          count: 1,
+          location,
+          memo,
+        })),
+      };
+    }
+
+    const batch = receipt.current;
+    gate.current = true;
+    setBusy(true);
+    setReceiptPending(true);
+    setError("");
+    const version = ++epoch.current;
+
+    try {
+      while (batch.index < batch.jobs.length) {
+        if (!mounted.current || version !== epoch.current) return;
+
+        const result = await reportRequest(
+          "/api/film-dealers",
+          batch.jobs[batch.index]
+        );
+
+        if (!mounted.current || version !== epoch.current) return;
+
+        batch.index++;
+        setData(result);
+        setMessage(
+          `${batch.jobs.length}롤 중 ${batch.index}롤 입고 확인`
+        );
+      }
+
+      receipt.current = null;
+      setReceiptPending(false);
+      setLengths([""]);
+      setMemo("");
+      setMessage(
+        `${batch.jobs.length}롤 입고가 완료되었습니다. 다음 롤을 입력할 수 있습니다.`
+      );
+    } catch (e) {
+      if (mounted.current && version === epoch.current) {
+        setError(
+          `${batch.index}롤까지 입고 확인했습니다. ${e.message} 아래 버튼으로 나머지 입고를 다시 확인해주세요.`
+        );
       }
     } finally {
       gate.current = false;
@@ -241,7 +344,12 @@ export default function FilmDealerInventory() {
     <section className="inventory">
       <header>
         <h1>필름 재고</h1>
-        <button disabled={busy} onClick={refresh}>새로고침</button>
+        <button
+          disabled={busy || receiptPending}
+          onClick={refresh}
+        >
+          새로고침
+        </button>
       </header>
 
       <p>
@@ -258,7 +366,7 @@ export default function FilmDealerInventory() {
           <button
             key={key}
             aria-pressed={tab === key}
-            disabled={busy}
+            disabled={busy || receiptPending}
             onClick={() => {
               setTab(key);
               setReturnId("");
@@ -274,7 +382,7 @@ export default function FilmDealerInventory() {
       {!data && !error && <p>불러오는 중…</p>}
 
       {data && (
-        <fieldset disabled={busy}>
+        <fieldset disabled={busy || receiptPending}>
           {tab === "dealers" && (
             <article>
               <h2>{dealer.dealerId ? "대리점 수정" : "대리점 등록"}</h2>
@@ -288,9 +396,9 @@ export default function FilmDealerInventory() {
                   <input
                     value={dealer[key]}
                     maxLength={key === "brands" ? 200 : 100}
-                    onChange={e => setDealer(d => ({
-                      ...d, [key]: e.target.value,
-                    }))}
+                    onChange={e =>
+                      setDealer(d => ({ ...d, [key]: e.target.value }))
+                    }
                   />
                 </label>
               ))}
@@ -307,18 +415,20 @@ export default function FilmDealerInventory() {
               )}
               {data.dealers.map(d => (
                 <p key={d.id}>
-                  <strong>{d.name}</strong> ·{" "}
+                  <strong>{d.name}</strong> ·
                   {d.phone || "연락처 미등록"} · {d.brands}
-                  <button onClick={() => {
-                    setDealer({
-                      dealerId: d.id,
-                      revision: d.revision,
-                      name: d.name,
-                      phone: d.phone,
-                      brands: d.brands,
-                    });
-                    chooseDealer(d.id);
-                  }}>
+                  <button
+                    onClick={() => {
+                      setDealer({
+                        dealerId: d.id,
+                        revision: d.revision,
+                        name: d.name,
+                        phone: d.phone,
+                        brands: d.brands,
+                      });
+                      chooseDealer(d.id);
+                    }}
+                  >
                     수정
                   </button>
                 </p>
@@ -331,7 +441,6 @@ export default function FilmDealerInventory() {
               <h2>
                 {tab === "receive" ? "필름 입고" : "대리점 제품별 공급가"}
               </h2>
-
               <label>
                 대리점
                 <select
@@ -381,7 +490,6 @@ export default function FilmDealerInventory() {
                       }}
                     />
                   </label>
-
                   <button disabled={!query.trim()} onClick={search}>
                     전체 필름에서 검색
                   </button>
@@ -392,23 +500,25 @@ export default function FilmDealerInventory() {
                   </p>
 
                   <div className="products">
-                    {prices.filter(p =>
-                      `${p.product_code} ${p.product_name || ""}`
-                        .toUpperCase()
-                        .includes(query.trim().toUpperCase())
-                    ).map(p => (
-                      <button
-                        key={p.id}
-                        disabled={!p.is_active}
-                        onClick={() => chooseProduct({
-                          ...p, id: p.product_id,
-                        })}
-                      >
-                        {p.brand} / {p.product_code} · {p.product_name}
-                        {" · "}{money(p.unit_price)}원/m
-                        {!p.is_active && " (판매 중지)"}
-                      </button>
-                    ))}
+                    {prices
+                      .filter(p =>
+                        `${p.product_code} ${p.product_name || ""}`
+                          .toUpperCase()
+                          .includes(query.trim().toUpperCase())
+                      )
+                      .map(p => (
+                        <button
+                          key={p.id}
+                          disabled={!p.is_active}
+                          onClick={() =>
+                            chooseProduct({ ...p, id: p.product_id })
+                          }
+                        >
+                          {p.brand} / {p.product_code} · {p.product_name}
+                          {" · "}{money(p.unit_price)}원/m
+                          {!p.is_active && " (판매 중지)"}
+                        </button>
+                      ))}
                   </div>
 
                   {searched && (
@@ -418,10 +528,7 @@ export default function FilmDealerInventory() {
                         브랜드와 사진을 확인해서 선택해주세요.
                       </p>
                       {!results.length && (
-                        <p>
-                          일치하는 제품이 없습니다.
-                          제품번호를 다시 확인해주세요.
-                        </p>
+                        <p>일치하는 제품이 없습니다. 제품번호를 다시 확인해주세요.</p>
                       )}
                       <div className="products">
                         {results.map(p => (
@@ -465,13 +572,15 @@ export default function FilmDealerInventory() {
                           </label>
                           <button
                             disabled={!valid(price, 10000000)}
-                            onClick={() => save("price", {
-                              dealerId,
-                              productId: selected.id,
-                              priceType,
-                              unitPrice: price,
-                              priceRevision: savedPrice?.revision || 0,
-                            })}
+                            onClick={() =>
+                              save("price", {
+                                dealerId,
+                                productId: selected.id,
+                                priceType,
+                                unitPrice: price,
+                                priceRevision: savedPrice?.revision || 0,
+                              })
+                            }
                           >
                             제품·공급가 저장
                           </button>
@@ -484,29 +593,47 @@ export default function FilmDealerInventory() {
                             입고 후 단가는 이 롤에 고정됩니다.
                           </p>
 
-                          <div className="grid">
-                            <label>
-                              한 롤 길이 (m)
-                              <input
-                                type="number"
-                                min="0.001"
-                                step="any"
-                                value={length}
-                                onChange={e => setLength(e.target.value)}
-                              />
-                            </label>
-                            <label>
-                              같은 길이 롤 수
-                              <input
-                                type="number"
-                                min="1"
-                                max="50"
-                                step="1"
-                                value={count}
-                                onChange={e => setCount(e.target.value)}
-                              />
-                            </label>
-                          </div>
+                          {lengths.map((value, index) => (
+                            <div className="grid" key={index}>
+                              <label>
+                                {index + 1}번 롤 입고 길이 (m)
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0.001"
+                                  step="any"
+                                  placeholder="길이 입력"
+                                  value={value}
+                                  onChange={e =>
+                                    setLengths(rows =>
+                                      rows.map((old, i) =>
+                                        i === index ? e.target.value : old
+                                      )
+                                    )
+                                  }
+                                />
+                              </label>
+                              <button
+                                disabled={lengths.length === 1}
+                                onClick={() =>
+                                  setLengths(rows =>
+                                    rows.filter((_, i) => i !== index)
+                                  )
+                                }
+                              >
+                                이 롤 삭제
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            disabled={lengths.length >= 50}
+                            onClick={() =>
+                              setLengths(rows => [...rows, ""])
+                            }
+                          >
+                            ＋ 롤 추가
+                          </button>
 
                           <label>
                             보관 위치
@@ -516,7 +643,6 @@ export default function FilmDealerInventory() {
                               onChange={e => setLocation(e.target.value)}
                             />
                           </label>
-
                           <label>
                             메모
                             <input
@@ -528,39 +654,16 @@ export default function FilmDealerInventory() {
                           </label>
 
                           <p>
-                            총 {number(Number(length) * Number(count))}m ·{" "}
+                            총 {lengths.length}롤 · {number(totalLength)}m ·{" "}
                             {money(
-                              Number(length) * Number(count) *
-                              Number(savedPrice.unit_price)
+                              totalLength * Number(savedPrice.unit_price)
                             )}원
                           </p>
-
                           <button
-                            disabled={
-                              !valid(length, 1000000) ||
-                              Number(length) <= 0 ||
-                              !valid(count, 50) ||
-                              Number(count) < 1 ||
-                              !Number.isInteger(Number(count))
-                            }
-                            onClick={() => {
-                              if (confirm(
-                                `${types[priceType]} ${length}m × ${count}롤을 입고할까요?`
-                              )) {
-                                save("receive", {
-                                  dealerId,
-                                  productId: selected.id,
-                                  priceType,
-                                  priceRevision: savedPrice.revision,
-                                  length,
-                                  count,
-                                  location,
-                                  memo,
-                                });
-                              }
-                            }}
+                            disabled={!lengthsValid}
+                            onClick={receiveRolls}
                           >
-                            입고 저장 · 롤 번호 자동 생성
+                            입고 저장 · 롤별로 등록
                           </button>
                         </>
                       ) : (
@@ -583,13 +686,12 @@ export default function FilmDealerInventory() {
               <article>
                 <h2>
                   보관 중 {stored.length}롤 ·{" "}
-                  {number(stored.reduce(
-                    (s, r) => s + Number(r.remaining), 0
-                  ))}m
+                  {number(
+                    stored.reduce((sum, r) => sum + Number(r.remaining), 0)
+                  )}m
                 </h2>
                 <p>
-                  단가 등록분 재고금액{" "}
-                  <strong>{money(inventoryValue)}원</strong>
+                  단가 등록분 재고금액 <strong>{money(inventoryValue)}원</strong>
                 </p>
                 {!!unknown && (
                   <p>
@@ -616,7 +718,6 @@ export default function FilmDealerInventory() {
                   onChange={e => setStockQuery(e.target.value)}
                 />
               </label>
-
               <select
                 aria-label="재고 상태"
                 value={filter}
@@ -642,6 +743,7 @@ export default function FilmDealerInventory() {
                       <h2>{r.brand} / {r.product_code}</h2>
                       <strong>{r.remaining}m</strong>
                     </header>
+
                     <p>{p?.product_name} · {statuses[r.status]}</p>
                     <small>롤 번호: {r.label}</small>
                     <p>
@@ -656,11 +758,11 @@ export default function FilmDealerInventory() {
                         {types[p.price_type] || "구분 미지정"} ·
                         입고단가 {money(p.unit_price)}원/m
                         {r.status === "available" &&
-                          `· 잔량금액 ${money(
+                          ` · 잔량금액 ${money(
                             Number(r.remaining) * Number(p.unit_price)
                           )}원`}
                         {r.status === "supplier_returned" &&
-                          `· 반납 정산 ${
+                          ` · 반납 정산 ${
                             p.return_credit == null
                               ? "미입력"
                               : `${money(p.return_credit)}원`
@@ -671,13 +773,18 @@ export default function FilmDealerInventory() {
                     )}
 
                     {r.status === "available" && (
-                      <button onClick={() => {
-                        setReturnId(r.id);
-                        setCredit(p
-                          ? String(Number(r.remaining) * Number(p.unit_price))
-                          : ""
-                        );
-                      }}>
+                      <button
+                        onClick={() => {
+                          setReturnId(r.id);
+                          setCredit(
+                            p
+                              ? String(
+                                  Number(r.remaining) * Number(p.unit_price)
+                                )
+                              : ""
+                          );
+                        }}
+                      >
                         남은 롤 전체를 대리점에 반납
                       </button>
                     )}
@@ -715,9 +822,7 @@ export default function FilmDealerInventory() {
                         >
                           반납 확정
                         </button>
-                        <button onClick={() => setReturnId("")}>
-                          취소
-                        </button>
+                        <button onClick={() => setReturnId("")}>취소</button>
                       </div>
                     )}
                   </article>
@@ -731,14 +836,26 @@ export default function FilmDealerInventory() {
                     {new Date(e.created_at).toLocaleString("ko-KR", {
                       timeZone: "Asia/Seoul",
                     })}
-                    {" · "}{e.product_code} · {actions[e.action]}
-                    {" · "}{e.after_qty}m · {e.memo || ""}
+                    {" · "}{e.product_code}
+                    {" · "}{actions[e.action]}
+                    {" · "}{e.after_qty}m
+                    {" · "}{e.memo || ""}
                   </p>
                 ))}
               </details>
             </>
           )}
         </fieldset>
+      )}
+
+      {receiptPending && (
+        <p role="status">
+          입고가 진행 중이거나 결과 확인이 필요합니다.
+          이 화면에서 이어서 처리해주세요.
+          <button disabled={busy} onClick={receiveRolls}>
+            {busy ? "입고 처리 중…" : "남은 입고 확인 · 다시 시도"}
+          </button>
+        </p>
       )}
 
       <style jsx>{`
@@ -794,7 +911,7 @@ export default function FilmDealerInventory() {
           font-weight: 700;
           margin: 4px;
         }
-        button[aria-pressed="true"] {
+        button[aria-pressed=true] {
           background: #243648;
           color: white;
         }
@@ -825,4 +942,4 @@ export default function FilmDealerInventory() {
       `}</style>
     </section>
   );
-                          }
+                      }
