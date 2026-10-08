@@ -646,3 +646,5 @@ export default function FilmDealerInventory() {
       small{font-size:11px}
       summary{cursor:pointer;font-weight:700}
     `}</style>
+  </section>;
+}
