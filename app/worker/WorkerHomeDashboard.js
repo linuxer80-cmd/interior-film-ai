@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import TomorrowTasks from "../components/TomorrowTasks";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import { koreanDay, siteStatus, workerMonth } from "../utils/workerCalendar";
 
@@ -115,6 +116,8 @@ export default function WorkerHomeDashboard({
           </div>
         )}
       </div>
+
+      <TomorrowTasks />
 
       <nav className="wp-grid" aria-label="시공자 주요 메뉴">
         {menus.map(menu => (
