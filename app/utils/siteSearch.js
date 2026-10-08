@@ -8,14 +8,21 @@ const initials = (value) =>
   [...normalize(value)]
     .map((letter) => {
       const code = letter.charCodeAt(0) - 0xac00;
+
       return code >= 0 && code <= 11171
-        ? "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"[Math.floor(code / 588)]
+        ? "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"[
+            Math.floor(code / 588)
+          ]
         : letter;
     })
     .join("");
 
 export function matchesSite(site, query) {
-  const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
+  const terms = normalize(query)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
   if (!terms.length) return true;
 
   const people = (site.site_workers || []).flatMap((row) => [
@@ -24,6 +31,8 @@ export function matchesSite(site, query) {
   ]);
 
   const values = [
+    site.trade_client_name,
+    site.trade_contact_name,
     site.site_name,
     site.customer_name,
     site.customer_phone,
