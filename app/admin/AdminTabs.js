@@ -17,6 +17,12 @@ const menus = [
     icon: "home",
   },
   {
+    href: "/admin/clients",
+    label: "업체 관리",
+    description: "거래처·담당자와 현장별 정산 관리",
+    icon: "report",
+  },
+  {
     href: "/admin/workers",
     label: "시공자 관리",
     description: "시공자 등록·초대와 일당 관리",
@@ -76,6 +82,7 @@ export default function AdminTabs({
   secondaryOnly = false,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+
   if (secondaryOnly) return null;
 
   const isHome = activeTab === "today";
@@ -95,16 +102,29 @@ export default function AdminTabs({
               <span className="film-admin-kicker">
                 오늘도 좋은 공간을 만듭니다
               </span>
-              <h2>안녕하세요!<br />필름장이 관리자입니다.</h2>
-              <p>현장부터 완료보고까지<br />오늘의 업무를 편하게 확인하세요.</p>
+              <h2>
+                안녕하세요!
+                <br />
+                필름장이 관리자입니다.
+              </h2>
+              <p>
+                현장부터 완료보고까지
+                <br />
+                오늘의 업무를 편하게 확인하세요.
+              </p>
             </div>
             <ToolIllustration kind="home" size={176} />
           </div>
 
-          <h3 className="film-admin-menu-heading">무엇을 도와드릴까요?</h3>
+          <h3 className="film-admin-menu-heading">
+            무엇을 도와드릴까요?
+          </h3>
 
-          <nav className="film-admin-menu-grid" aria-label="관리자 업무 메뉴">
-            {menus.map(menu => {
+          <nav
+            className="film-admin-menu-grid"
+            aria-label="관리자 업무 메뉴"
+          >
+            {menus.map((menu) => {
               const content = (
                 <>
                   <ToolIllustration
@@ -122,21 +142,33 @@ export default function AdminTabs({
                   </span>
                 </>
               );
+
               return menu.href ? (
-                <a key={menu.href} href={menu.href}>{content}</a>
+                <a key={menu.href} href={menu.href}>
+                  {content}
+                </a>
               ) : (
-                <button key={menu.id} type="button" onClick={() => go(menu.id)}>
+                <button
+                  key={menu.id}
+                  type="button"
+                  onClick={() => go(menu.id)}
+                >
                   {content}
                 </button>
               );
             })}
           </nav>
 
-          <div id="film-admin-today" className="film-admin-section-anchor" />
+          <div
+            id="film-admin-today"
+            className="film-admin-section-anchor"
+          />
         </>
       ) : (
         <div className="film-admin-section-bar">
-          <button type="button" onClick={() => go("today")}>‹ 관리자 홈</button>
+          <button type="button" onClick={() => go("today")}>
+            ‹ 관리자 홈
+          </button>
           <span>
             <ToolIllustration kind={section?.[1]} size={48} />
             {section?.[0]}
@@ -145,7 +177,10 @@ export default function AdminTabs({
       )}
 
       {activeTab === "profit" && (
-        <nav aria-label="매출·수익 세부 메뉴" style={{ margin: "0 0 20px" }}>
+        <nav
+          aria-label="매출·수익 세부 메뉴"
+          style={{ margin: "0 0 20px" }}
+        >
           <a
             href="/admin/receivables"
             style={{
@@ -177,46 +212,71 @@ export default function AdminTabs({
                 계약금·중도금·잔금 입금 내역과 남은 미수금 확인
               </small>
             </span>
-            <span aria-hidden="true" style={{ fontSize: 24 }}>›</span>
+            <span aria-hidden="true" style={{ fontSize: 24 }}>
+              ›
+            </span>
           </a>
         </nav>
       )}
 
       {moreOpen && (
-        <nav className="film-admin-more" aria-label="추가 관리 메뉴">
+        <nav
+          className="film-admin-more"
+          aria-label="추가 관리 메뉴"
+        >
           <div className="film-admin-more-title">
             <strong>관리 메뉴</strong>
-            <button type="button" onClick={() => setMoreOpen(false)}>닫기</button>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+            >
+              닫기
+            </button>
           </div>
-          <button type="button" onClick={() => go("jobs")}>시공 DB</button>
-          <button type="button" onClick={() => go("register")}>시공 등록</button>
-          <button type="button" onClick={() => go("usage")}>로그 분석</button>
+
+          <a href="/admin/clients">업체 관리</a>
+
+          <button type="button" onClick={() => go("jobs")}>
+            시공 DB
+          </button>
+          <button type="button" onClick={() => go("register")}>
+            시공 등록
+          </button>
+          <button type="button" onClick={() => go("usage")}>
+            로그 분석
+          </button>
           <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
 
-      <nav className="film-admin-bottom" aria-label="관리자 하단 메뉴">
+      <nav
+        className="film-admin-bottom"
+        aria-label="관리자 하단 메뉴"
+      >
         {[
           { id: "today", label: "홈", icon: "⌂" },
           { id: "sites", label: "현장", icon: "▣" },
           { id: "leads", label: "상담", icon: "♧" },
           { id: "profit", label: "매출·수익", icon: "▥" },
-        ].map(item => (
+        ].map((item) => (
           <button
             key={item.id}
             type="button"
-            aria-current={activeTab === item.id ? "page" : undefined}
+            aria-current={
+              activeTab === item.id ? "page" : undefined
+            }
             onClick={() => go(item.id)}
           >
             <span aria-hidden="true">{item.icon}</span>
             <small>{item.label}</small>
           </button>
         ))}
+
         <button
           type="button"
           aria-expanded={moreOpen}
-          onClick={() => setMoreOpen(value => !value)}
+          onClick={() => setMoreOpen((value) => !value)}
         >
           <span aria-hidden="true">···</span>
           <small>더보기</small>
