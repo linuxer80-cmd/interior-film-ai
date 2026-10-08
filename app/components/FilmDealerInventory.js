@@ -5,13 +5,10 @@ import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
 import FilmThumbnail from "../worker/cutting/FilmThumbnail";
 
-const money = n =>
-  Number(n || 0).toLocaleString("ko-KR", {
-    maximumFractionDigits: 2,
-  });
-
+const money = n => Number(n || 0).toLocaleString("ko-KR", {
+  maximumFractionDigits: 2,
+});
 const number = n => Number(Number(n || 0).toFixed(3));
-
 const valid = (n, max) =>
   String(n).trim() !== "" &&
   Number.isFinite(Number(n)) &&
@@ -24,23 +21,23 @@ const statuses = {
   supplier_returned: "대리점 반납",
   used_up: "전량 사용",
 };
-
 const actions = {
   receive: "입고",
   issue: "현장 반출",
   return: "현장 반입",
   supplier_return: "대리점 반납",
 };
-
-const emptyDealer = {
-  name: "",
-  phone: "",
-  brands: "",
+const types = {
+  non_fire: "비방염",
+  fire: "방염",
+  unspecified: "기존 단가 · 구분 미지정",
 };
+const emptyDealer = { name: "", phone: "", brands: "" };
 
 export default function FilmDealerInventory() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("stock");
+  const [priceType, setPriceType] = useState("non_fire");
   const [dealerId, setDealerId] = useState("");
   const [dealer, setDealer] = useState(emptyDealer);
   const [selected, setSelected] = useState(null);
@@ -68,10 +65,8 @@ export default function FilmDealerInventory() {
 
   async function refresh() {
     const version = ++epoch.current;
-
     try {
       const result = await reportRequest("/api/film-dealers");
-
       if (mounted.current && epoch.current === version) {
         setData(result);
         setError("");
@@ -88,25 +83,22 @@ export default function FilmDealerInventory() {
     refresh();
 
     const { data: auth } = supabase.auth.onAuthStateChange(event => {
-      if (
-        ["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)
-      ) {
+      if (["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) {
         epoch.current++;
         searchEpoch.current++;
         pending.current = null;
-
         setData(null);
         setDealerId("");
         setDealer(emptyDealer);
         setSelected(null);
         setResults([]);
+        setPriceType("non_fire");
         setPrice("");
         setQuery("");
         setMemo("");
         setReturnId("");
         setCredit("");
         setMessage("");
-
         setTimeout(() => {
           if (mounted.current) refresh();
         }, 0);
@@ -122,23 +114,14 @@ export default function FilmDealerInventory() {
   }, []);
 
   const prices = (data?.prices || []).filter(
-    p => p.dealer_id === dealerId
+    p => p.dealer_id === dealerId && p.price_type === priceType
   );
-
-  const savedPrice = prices.find(
-    p => p.product_id === selected?.id
-  );
-
+  const savedPrice = prices.find(p => p.product_id === selected?.id);
   const purchases = new Map(
     (data?.purchases || []).map(p => [p.roll_id, p])
   );
-
   const allRolls = data?.stock?.rolls || [];
-
-  const stored = allRolls.filter(
-    r => r.status === "available"
-  );
-
+  const stored = allRolls.filter(r => r.status === "available");
   const inventoryValue = stored.reduce(
     (sum, r) =>
       sum +
@@ -146,32 +129,21 @@ export default function FilmDealerInventory() {
         Number(purchases.get(r.id)?.unit_price || 0),
     0
   );
-
-  const unknown = stored.filter(
-    r => !purchases.has(r.id)
-  ).length;
-
+  const unknown = stored.filter(r => !purchases.has(r.id)).length;
   const q = stockQuery.trim().toUpperCase();
 
-  const rolls = allRolls.filter(
-    r =>
-      (filter === "all" || r.status === filter) &&
-      `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${
-        r.location
-      } ${purchases.get(r.id)?.product_name || ""}`
-        .toUpperCase()
-        .includes(q)
+  const rolls = allRolls.filter(r =>
+    (filter === "all" || r.status === filter) &&
+    `${r.brand} ${r.product_code} ${r.label} ${r.supplier} ${
+      r.location
+    } ${purchases.get(r.id)?.product_name || ""}`
+      .toUpperCase().includes(q)
   );
 
   const grouped = new Map();
-
   stored.forEach(r => {
     const key = `${r.brand} / ${r.product_code}`;
-    const old = grouped.get(key) || {
-      metres: 0,
-      rolls: 0,
-    };
-
+    const old = grouped.get(key) || { metres: 0, rolls: 0 };
     grouped.set(key, {
       metres: old.metres + Number(r.remaining),
       rolls: old.rolls + 1,
@@ -190,26 +162,21 @@ export default function FilmDealerInventory() {
 
   function chooseProduct(p) {
     setSelected(p);
-    setPrice(
-      String(
-        prices.find(x => x.product_id === p.id)?.unit_price ?? ""
-      )
-    );
+    setPrice(String(
+      prices.find(x => x.product_id === p.id)?.unit_price ?? ""
+    ));
   }
 
   async function search() {
     const version = ++searchEpoch.current;
     const authVersion = epoch.current;
-
     setError("");
     setSearched(false);
-
     try {
       const result = await reportRequest("/api/film-dealers", {
         action: "search",
         query,
       });
-
       if (
         mounted.current &&
         searchEpoch.current === version &&
@@ -231,22 +198,15 @@ export default function FilmDealerInventory() {
 
   async function save(action, fields) {
     if (gate.current) return;
-
     const body = { action, ...fields };
     const signature = JSON.stringify(body);
-
     if (pending.current?.signature !== signature) {
-      pending.current = {
-        signature,
-        id: crypto.randomUUID(),
-      };
+      pending.current = { signature, id: crypto.randomUUID() };
     }
-
     gate.current = true;
     setBusy(true);
     setError("");
     setMessage("");
-
     const version = ++epoch.current;
 
     try {
@@ -254,25 +214,16 @@ export default function FilmDealerInventory() {
         ...body,
         requestId: pending.current.id,
       });
-
       if (!mounted.current || version !== epoch.current) return;
-
       setData(result);
       pending.current = null;
       setMessage("저장되었습니다.");
-
-      if (action === "dealer") {
-        setDealer(emptyDealer);
-      }
-
+      if (action === "dealer") setDealer(emptyDealer);
       if (action === "receive") {
         setMemo("");
         setTab("stock");
       }
-
-      if (action === "supplier_return") {
-        setReturnId("");
-      }
+      if (action === "supplier_return") setReturnId("");
     } catch (e) {
       if (mounted.current && version === epoch.current) {
         setError(e.message);
@@ -290,9 +241,7 @@ export default function FilmDealerInventory() {
     <section className="inventory">
       <header>
         <h1>필름 재고</h1>
-        <button disabled={busy} onClick={refresh}>
-          새로고침
-        </button>
+        <button disabled={busy} onClick={refresh}>새로고침</button>
       </header>
 
       <p>
@@ -320,28 +269,15 @@ export default function FilmDealerInventory() {
         ))}
       </nav>
 
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-
-      {message && (
-        <p role="status" className="success">
-          {message}
-        </p>
-      )}
-
+      {error && <p role="alert" className="error">{error}</p>}
+      {message && <p role="status" className="success">{message}</p>}
       {!data && !error && <p>불러오는 중…</p>}
 
       {data && (
         <fieldset disabled={busy}>
           {tab === "dealers" && (
             <article>
-              <h2>
-                {dealer.dealerId ? "대리점 수정" : "대리점 등록"}
-              </h2>
-
+              <h2>{dealer.dealerId ? "대리점 수정" : "대리점 등록"}</h2>
               {[
                 ["name", "대리점 이름"],
                 ["phone", "연락처"],
@@ -352,45 +288,37 @@ export default function FilmDealerInventory() {
                   <input
                     value={dealer[key]}
                     maxLength={key === "brands" ? 200 : 100}
-                    onChange={e =>
-                      setDealer(d => ({
-                        ...d,
-                        [key]: e.target.value,
-                      }))
-                    }
+                    onChange={e => setDealer(d => ({
+                      ...d, [key]: e.target.value,
+                    }))}
                   />
                 </label>
               ))}
-
               <button
                 disabled={!dealer.name.trim()}
                 onClick={() => save("dealer", dealer)}
               >
                 대리점 저장
               </button>
-
               {dealer.dealerId && (
                 <button onClick={() => setDealer(emptyDealer)}>
                   수정 취소
                 </button>
               )}
-
               {data.dealers.map(d => (
                 <p key={d.id}>
                   <strong>{d.name}</strong> ·{" "}
                   {d.phone || "연락처 미등록"} · {d.brands}
-                  <button
-                    onClick={() => {
-                      setDealer({
-                        dealerId: d.id,
-                        revision: d.revision,
-                        name: d.name,
-                        phone: d.phone,
-                        brands: d.brands,
-                      });
-                      chooseDealer(d.id);
-                    }}
-                  >
+                  <button onClick={() => {
+                    setDealer({
+                      dealerId: d.id,
+                      revision: d.revision,
+                      name: d.name,
+                      phone: d.phone,
+                      brands: d.brands,
+                    });
+                    chooseDealer(d.id);
+                  }}>
                     수정
                   </button>
                 </p>
@@ -401,9 +329,7 @@ export default function FilmDealerInventory() {
           {(tab === "receive" || tab === "dealers") && (
             <article>
               <h2>
-                {tab === "receive"
-                  ? "필름 입고"
-                  : "대리점 제품별 공급가"}
+                {tab === "receive" ? "필름 입고" : "대리점 제품별 공급가"}
               </h2>
 
               <label>
@@ -414,9 +340,7 @@ export default function FilmDealerInventory() {
                 >
                   <option value="">대리점 선택</option>
                   {data.dealers.map(d => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
+                    <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
               </label>
@@ -427,6 +351,22 @@ export default function FilmDealerInventory() {
 
               {dealerId && (
                 <>
+                  <label>
+                    방염 구분
+                    <select
+                      value={priceType}
+                      onChange={e => {
+                        setPriceType(e.target.value);
+                        setSelected(null);
+                        setPrice("");
+                      }}
+                    >
+                      {Object.entries(types).map(([key, title]) => (
+                        <option key={key} value={key}>{title}</option>
+                      ))}
+                    </select>
+                  </label>
+
                   <label>
                     제품번호 또는 제품명
                     <input
@@ -442,10 +382,7 @@ export default function FilmDealerInventory() {
                     />
                   </label>
 
-                  <button
-                    disabled={!query.trim()}
-                    onClick={search}
-                  >
+                  <button disabled={!query.trim()} onClick={search}>
                     전체 필름에서 검색
                   </button>
 
@@ -455,29 +392,23 @@ export default function FilmDealerInventory() {
                   </p>
 
                   <div className="products">
-                    {prices
-                      .filter(p =>
-                        `${p.product_code} ${p.product_name || ""}`
-                          .toUpperCase()
-                          .includes(query.trim().toUpperCase())
-                      )
-                      .map(p => (
-                        <button
-                          key={p.id}
-                          disabled={!p.is_active}
-                          onClick={() =>
-                            chooseProduct({
-                              ...p,
-                              id: p.product_id,
-                            })
-                          }
-                        >
-                          {p.brand} / {p.product_code} ·{" "}
-                          {p.product_name} ·{" "}
-                          {money(p.unit_price)}원/m{" "}
-                          {!p.is_active && "(판매 중지)"}
-                        </button>
-                      ))}
+                    {prices.filter(p =>
+                      `${p.product_code} ${p.product_name || ""}`
+                        .toUpperCase()
+                        .includes(query.trim().toUpperCase())
+                    ).map(p => (
+                      <button
+                        key={p.id}
+                        disabled={!p.is_active}
+                        onClick={() => chooseProduct({
+                          ...p, id: p.product_id,
+                        })}
+                      >
+                        {p.brand} / {p.product_code} · {p.product_name}
+                        {" · "}{money(p.unit_price)}원/m
+                        {!p.is_active && " (판매 중지)"}
+                      </button>
+                    ))}
                   </div>
 
                   {searched && (
@@ -486,29 +417,20 @@ export default function FilmDealerInventory() {
                         검색 결과 (최대 40개) ·
                         브랜드와 사진을 확인해서 선택해주세요.
                       </p>
-
                       {!results.length && (
                         <p>
                           일치하는 제품이 없습니다.
                           제품번호를 다시 확인해주세요.
                         </p>
                       )}
-
                       <div className="products">
                         {results.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => chooseProduct(p)}
-                          >
+                          <button key={p.id} onClick={() => chooseProduct(p)}>
                             <FilmThumbnail
-                              material={{
-                                ...p,
-                                film_product_id: p.id,
-                              }}
+                              material={{ ...p, film_product_id: p.id }}
                               size={48}
                             />
-                            {p.brand} / {p.product_code} ·{" "}
-                            {p.product_name}
+                            {p.brand} / {p.product_code} · {p.product_name}
                           </button>
                         ))}
                       </div>
@@ -524,10 +446,9 @@ export default function FilmDealerInventory() {
                         }}
                         size={72}
                       />
-
                       <strong>
-                        {selected.brand} / {selected.product_code} ·{" "}
-                        {selected.product_name}
+                        {selected.brand} / {selected.product_code}
+                        {" · "}{selected.product_name}
                       </strong>
 
                       {tab === "dealers" ? (
@@ -542,17 +463,15 @@ export default function FilmDealerInventory() {
                               onChange={e => setPrice(e.target.value)}
                             />
                           </label>
-
                           <button
                             disabled={!valid(price, 10000000)}
-                            onClick={() =>
-                              save("price", {
-                                dealerId,
-                                productId: selected.id,
-                                unitPrice: price,
-                                priceRevision: savedPrice?.revision || 0,
-                              })
-                            }
+                            onClick={() => save("price", {
+                              dealerId,
+                              productId: selected.id,
+                              priceType,
+                              unitPrice: price,
+                              priceRevision: savedPrice?.revision || 0,
+                            })}
                           >
                             제품·공급가 저장
                           </button>
@@ -560,7 +479,8 @@ export default function FilmDealerInventory() {
                       ) : savedPrice ? (
                         <>
                           <p>
-                            공급가 {money(savedPrice.unit_price)}원/m ·
+                            {types[priceType]} 공급가{" "}
+                            {money(savedPrice.unit_price)}원/m ·
                             입고 후 단가는 이 롤에 고정됩니다.
                           </p>
 
@@ -572,12 +492,9 @@ export default function FilmDealerInventory() {
                                 min="0.001"
                                 step="any"
                                 value={length}
-                                onChange={e =>
-                                  setLength(e.target.value)
-                                }
+                                onChange={e => setLength(e.target.value)}
                               />
                             </label>
-
                             <label>
                               같은 길이 롤 수
                               <input
@@ -586,9 +503,7 @@ export default function FilmDealerInventory() {
                                 max="50"
                                 step="1"
                                 value={count}
-                                onChange={e =>
-                                  setCount(e.target.value)
-                                }
+                                onChange={e => setCount(e.target.value)}
                               />
                             </label>
                           </div>
@@ -598,9 +513,7 @@ export default function FilmDealerInventory() {
                             <input
                               value={location}
                               maxLength={100}
-                              onChange={e =>
-                                setLocation(e.target.value)
-                              }
+                              onChange={e => setLocation(e.target.value)}
                             />
                           </label>
 
@@ -617,11 +530,9 @@ export default function FilmDealerInventory() {
                           <p>
                             총 {number(Number(length) * Number(count))}m ·{" "}
                             {money(
-                              Number(length) *
-                                Number(count) *
-                                Number(savedPrice.unit_price)
-                            )}
-                            원
+                              Number(length) * Number(count) *
+                              Number(savedPrice.unit_price)
+                            )}원
                           </p>
 
                           <button
@@ -633,14 +544,13 @@ export default function FilmDealerInventory() {
                               !Number.isInteger(Number(count))
                             }
                             onClick={() => {
-                              if (
-                                confirm(
-                                  `${length}m × ${count}롤을 입고할까요?`
-                                )
-                              ) {
+                              if (confirm(
+                                `${types[priceType]} ${length}m × ${count}롤을 입고할까요?`
+                              )) {
                                 save("receive", {
                                   dealerId,
                                   productId: selected.id,
+                                  priceType,
                                   priceRevision: savedPrice.revision,
                                   length,
                                   count,
@@ -673,36 +583,25 @@ export default function FilmDealerInventory() {
               <article>
                 <h2>
                   보관 중 {stored.length}롤 ·{" "}
-                  {number(
-                    stored.reduce(
-                      (s, r) => s + Number(r.remaining),
-                      0
-                    )
-                  )}
-                  m
+                  {number(stored.reduce(
+                    (s, r) => s + Number(r.remaining), 0
+                  ))}m
                 </h2>
-
                 <p>
                   단가 등록분 재고금액{" "}
                   <strong>{money(inventoryValue)}원</strong>
                 </p>
-
                 {!!unknown && (
                   <p>
                     기존 재고 {unknown}롤은 입고단가 미등록으로
                     금액 합계에서 제외됩니다.
                   </p>
                 )}
-
                 <p>
                   현장 반출 중{" "}
-                  {
-                    allRolls.filter(r => r.status === "on_site")
-                      .length
-                  }
-                  롤 · 실제 잔량은 반입 시 확정
+                  {allRolls.filter(r => r.status === "on_site").length}롤 ·
+                  실제 잔량은 반입 시 확정
                 </p>
-
                 {[...grouped].map(([key, g]) => (
                   <p key={key}>
                     {key} · {number(g.metres)}m · {g.rolls}롤
@@ -725,9 +624,7 @@ export default function FilmDealerInventory() {
               >
                 <option value="all">전체</option>
                 {Object.entries(statuses).map(([key, title]) => (
-                  <option key={key} value={key}>
-                    {title}
-                  </option>
+                  <option key={key} value={key}>{title}</option>
                 ))}
               </select>
 
@@ -735,29 +632,18 @@ export default function FilmDealerInventory() {
 
               {rolls.map(r => {
                 const p = purchases.get(r.id);
-
                 return (
                   <article key={r.id}>
                     <header>
                       <FilmThumbnail
-                        material={{
-                          ...r,
-                          film_product_id: p?.product_id,
-                        }}
+                        material={{ ...r, film_product_id: p?.product_id }}
                         size={60}
                       />
-                      <h2>
-                        {r.brand} / {r.product_code}
-                      </h2>
+                      <h2>{r.brand} / {r.product_code}</h2>
                       <strong>{r.remaining}m</strong>
                     </header>
-
-                    <p>
-                      {p?.product_name} · {statuses[r.status]}
-                    </p>
-
+                    <p>{p?.product_name} · {statuses[r.status]}</p>
                     <small>롤 번호: {r.label}</small>
-
                     <p>
                       입고처 {r.supplier} ·{" "}
                       {r.status === "on_site"
@@ -767,6 +653,7 @@ export default function FilmDealerInventory() {
 
                     {p ? (
                       <p>
+                        {types[p.price_type] || "구분 미지정"} ·
                         입고단가 {money(p.unit_price)}원/m
                         {r.status === "available" &&
                           `· 잔량금액 ${money(
@@ -784,19 +671,13 @@ export default function FilmDealerInventory() {
                     )}
 
                     {r.status === "available" && (
-                      <button
-                        onClick={() => {
-                          setReturnId(r.id);
-                          setCredit(
-                            p
-                              ? String(
-                                  Number(r.remaining) *
-                                    Number(p.unit_price)
-                                )
-                              : ""
-                          );
-                        }}
-                      >
+                      <button onClick={() => {
+                        setReturnId(r.id);
+                        setCredit(p
+                          ? String(Number(r.remaining) * Number(p.unit_price))
+                          : ""
+                        );
+                      }}>
                         남은 롤 전체를 대리점에 반납
                       </button>
                     )}
@@ -806,34 +687,24 @@ export default function FilmDealerInventory() {
                         <p>
                           {r.supplier}에 {r.remaining}m 롤 전체 반납
                         </p>
-
                         {returnPurchase && (
                           <label>
-                            반납 정산금액
-                            (원, 수정 가능·공란이면 미확정)
+                            반납 정산금액 (원, 수정 가능·공란이면 미확정)
                             <input
                               type="number"
                               min="0"
                               step="any"
                               value={credit}
-                              onChange={e =>
-                                setCredit(e.target.value)
-                              }
+                              onChange={e => setCredit(e.target.value)}
                             />
                           </label>
                         )}
-
                         <button
                           disabled={
-                            credit !== "" &&
-                            !valid(credit, 1000000000000)
+                            credit !== "" && !valid(credit, 1000000000000)
                           }
                           onClick={() => {
-                            if (
-                              confirm(
-                                "남은 롤 전체를 반납 처리할까요?"
-                              )
-                            ) {
+                            if (confirm("남은 롤 전체를 반납 처리할까요?")) {
                               save("supplier_return", {
                                 rollId: r.id,
                                 revision: r.revision,
@@ -844,7 +715,6 @@ export default function FilmDealerInventory() {
                         >
                           반납 확정
                         </button>
-
                         <button onClick={() => setReturnId("")}>
                           취소
                         </button>
@@ -856,15 +726,13 @@ export default function FilmDealerInventory() {
 
               <details>
                 <summary>최근 입출고 이력 (최대 100건)</summary>
-
                 {data.stock.events.map(e => (
                   <p key={e.id}>
-                    {new Date(e.created_at).toLocaleString(
-                      "ko-KR",
-                      { timeZone: "Asia/Seoul" }
-                    )}{" "}
-                    · {e.product_code} · {actions[e.action]} ·{" "}
-                    {e.after_qty}m · {e.memo || ""}
+                    {new Date(e.created_at).toLocaleString("ko-KR", {
+                      timeZone: "Asia/Seoul",
+                    })}
+                    {" · "}{e.product_code} · {actions[e.action]}
+                    {" · "}{e.after_qty}m · {e.memo || ""}
                   </p>
                 ))}
               </details>
@@ -879,8 +747,7 @@ export default function FilmDealerInventory() {
           margin-top: 20px;
           overflow-wrap: anywhere;
         }
-        header,
-        nav {
+        header, nav {
           display: flex;
           align-items: center;
           gap: 10px;
@@ -890,21 +757,10 @@ export default function FilmDealerInventory() {
           justify-content: flex-start;
           flex-wrap: wrap;
         }
-        h1 {
-          font-size: 25px;
-        }
-        h2 {
-          font-size: 18px;
-        }
-        p {
-          font-size: 14px;
-          line-height: 1.7;
-        }
-        fieldset {
-          border: 0;
-          padding: 0;
-          min-width: 0;
-        }
+        h1 { font-size: 25px; }
+        h2 { font-size: 18px; }
+        p { font-size: 14px; line-height: 1.7; }
+        fieldset { border: 0; padding: 0; min-width: 0; }
         article {
           background: #fffdfa;
           border: 1px solid #dfd4c4;
@@ -917,8 +773,7 @@ export default function FilmDealerInventory() {
           font-size: 14px;
           margin: 12px 0;
         }
-        input,
-        select {
+        input, select {
           display: block;
           box-sizing: border-box;
           width: 100%;
@@ -943,14 +798,8 @@ export default function FilmDealerInventory() {
           background: #243648;
           color: white;
         }
-        button:disabled {
-          opacity: 0.5;
-          cursor: default;
-        }
-        .products {
-          max-height: 320px;
-          overflow: auto;
-        }
+        button:disabled { opacity: .5; cursor: default; }
+        .products { max-height: 320px; overflow: auto; }
         .products button {
           display: flex;
           align-items: center;
@@ -969,20 +818,11 @@ export default function FilmDealerInventory() {
           grid-template-columns: 1fr 1fr;
           gap: 12px;
         }
-        .error {
-          color: #b91c1c;
-        }
-        .success {
-          color: #166534;
-        }
-        small {
-          font-size: 11px;
-        }
-        summary {
-          cursor: pointer;
-          font-weight: 700;
-        }
+        .error { color: #b91c1c; }
+        .success { color: #166534; }
+        small { font-size: 11px; }
+        summary { cursor: pointer; font-weight: 700; }
       `}</style>
     </section>
   );
-              }
+                          }
