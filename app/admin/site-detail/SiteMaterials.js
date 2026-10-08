@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import ActualMaterialEditor from "../ActualMaterialEditor";
-import { formatWon, formatQuantity } from "./siteDetailUtils";
+import { formatWon } from "./siteDetailUtils";
 
 const endpoint = "/api/admin/site-planned-materials";
 
@@ -12,7 +12,6 @@ const emptyForm = () => ({
   brand: "",
   product_code: "",
   product_name: "",
-  quantity: "",
   unit: "m",
   unit_price: "",
   memo: "",
@@ -69,24 +68,18 @@ async function api(method, siteId, body, signal) {
       ...(method === "GET"
         ? {}
         : { body: JSON.stringify({ ...body, siteId }) }),
-    },
+    }
   );
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(
-      result.error || "자재 요청을 처리하지 못했습니다.",
-    );
+    throw new Error(result.error || "자재 요청을 처리하지 못했습니다.");
   }
 
   return result;
 }
 
-/*
- * 완료 현장은 매출에 반영되는 실제 사용 자재를 편집합니다.
- * 그 외 현장은 기존 예정 자재 관리 기능을 사용합니다.
- */
 export default function SiteMaterials({ site }) {
   if (!site?.id) return null;
 
@@ -107,13 +100,11 @@ export default function SiteMaterials({ site }) {
   );
 }
 
-/* 완료 현장: 실제 사용 자재 */
 function CompletedSiteMaterials({ siteId }) {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [hasReport, setHasReport] = useState(false);
-
   const controllerRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -129,17 +120,12 @@ function CompletedSiteMaterials({ siteId }) {
       const { data, error: sessionError } =
         await supabase.auth.getSession();
 
-      if (
-        sessionError ||
-        !data?.session?.access_token
-      ) {
+      if (sessionError || !data?.session?.access_token) {
         throw new Error("관리자로 다시 로그인해주세요.");
       }
 
       const response = await fetch(
-        `/api/admin/site-work-report-review?siteId=${encodeURIComponent(
-          siteId,
-        )}`,
+        `/api/admin/site-work-report-review?siteId=${encodeURIComponent(siteId)}`,
         {
           method: "GET",
           cache: "no-store",
@@ -148,14 +134,14 @@ function CompletedSiteMaterials({ siteId }) {
             Authorization: `Bearer ${data.session.access_token}`,
             Accept: "application/json",
           },
-        },
+        }
       );
 
       const result = await response.json();
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.error || "실제 사용 자재를 불러오지 못했습니다.",
+          result.error || "실제 사용 자재를 불러오지 못했습니다."
         );
       }
 
@@ -163,12 +149,12 @@ function CompletedSiteMaterials({ siteId }) {
 
       setHasReport(Boolean(result.hasReport && result.report));
       setMaterials(
-        Array.isArray(result.materials) ? result.materials : [],
+        Array.isArray(result.materials) ? result.materials : []
       );
     } catch (cause) {
       if (!controller.signal.aborted) {
         setError(
-          cause.message || "실제 사용 자재를 불러오지 못했습니다.",
+          cause.message || "실제 사용 자재를 불러오지 못했습니다."
         );
       }
     } finally {
@@ -189,11 +175,8 @@ function CompletedSiteMaterials({ siteId }) {
   async function handleSaved() {
     window.dispatchEvent(
       new CustomEvent("site-materials-changed", {
-        detail: {
-          siteId,
-          materialType: "actual",
-        },
-      }),
+        detail: { siteId, materialType: "actual" },
+      })
     );
 
     await load();
@@ -217,9 +200,7 @@ function CompletedSiteMaterials({ siteId }) {
           marginBottom: 14,
         }}
       >
-        <h3 style={{ margin: 0, flex: 1 }}>
-          📦 실제 사용 자재
-        </h3>
+        <h3 style={{ margin: 0, flex: 1 }}>📦 실제 사용 자재</h3>
 
         <button
           type="button"
@@ -249,11 +230,7 @@ function CompletedSiteMaterials({ siteId }) {
       {error && (
         <p
           role="alert"
-          style={{
-            ...box,
-            color: "#b91c1c",
-            background: "#fef2f2",
-          }}
+          style={{ ...box, color: "#b91c1c", background: "#fef2f2" }}
         >
           {error}
         </p>
@@ -266,17 +243,10 @@ function CompletedSiteMaterials({ siteId }) {
           다시 불러오기
         </button>
       ) : !hasReport ? (
-        <div
-          style={{
-            ...box,
-            color: "#64748b",
-            lineHeight: 1.7,
-          }}
-        >
+        <div style={{ ...box, color: "#64748b", lineHeight: 1.7 }}>
           아직 완료보고가 없습니다.
           <br />
-          완료보고 메뉴에서 실제 사용 자재를 포함한 보고서를
-          먼저 등록해주세요.
+          완료보고 메뉴에서 실제 사용 자재를 포함한 보고서를 먼저 등록해주세요.
         </div>
       ) : (
         <ActualMaterialEditor
@@ -289,7 +259,6 @@ function CompletedSiteMaterials({ siteId }) {
   );
 }
 
-/* 진행 현장: 기존 예정 자재 */
 function PlannedSiteMaterials({ site }) {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -309,6 +278,7 @@ function PlannedSiteMaterials({ site }) {
 
     const controller = new AbortController();
     loadController.current = controller;
+
     setLoading(true);
 
     try {
@@ -316,21 +286,19 @@ function PlannedSiteMaterials({ site }) {
         "GET",
         siteId,
         null,
-        controller.signal,
+        controller.signal
       );
 
       if (controller.signal.aborted) return;
 
       setMaterials(
-        Array.isArray(result.materials) ? result.materials : [],
+        Array.isArray(result.materials) ? result.materials : []
       );
       setCanWrite(result.canWrite);
     } catch (error) {
       if (!controller.signal.aborted) {
         setCanWrite(false);
-        setMessage(
-          error.message || "자재를 불러오지 못했습니다.",
-        );
+        setMessage(error.message || "자재를 불러오지 못했습니다.");
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -370,7 +338,7 @@ function PlannedSiteMaterials({ site }) {
             product_code: material.product_code || "",
             product_name: material.product_name || "",
           }
-        : emptyForm(),
+        : emptyForm()
     );
   }
 
@@ -392,19 +360,18 @@ function PlannedSiteMaterials({ site }) {
       await api(editing ? "PATCH" : "POST", siteId, form);
 
       setForm(null);
-      setMessage("예정 자재를 저장했습니다.");
+      setMessage("사용 필름을 저장했습니다.");
 
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
           detail: { siteId },
-        }),
+        })
       );
 
       await load();
     } catch (error) {
       setMessage(
-        error.message ||
-          "저장하지 못했습니다. 입력 내용은 유지됩니다.",
+        error.message || "저장하지 못했습니다. 입력 내용은 유지됩니다."
       );
     } finally {
       lock.current = false;
@@ -417,9 +384,7 @@ function PlannedSiteMaterials({ site }) {
       lock.current ||
       !canWrite ||
       !window.confirm(
-        `${
-          material.product_code || material.product_name
-        } 예정 자재를 삭제할까요?`,
+        `${material.product_code || material.product_name} 사용 필름을 삭제할까요?`
       )
     ) {
       return;
@@ -436,12 +401,12 @@ function PlannedSiteMaterials({ site }) {
         setForm(null);
       }
 
-      setMessage("예정 자재를 삭제했습니다.");
+      setMessage("사용 필름을 삭제했습니다.");
 
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
           detail: { siteId },
-        }),
+        })
       );
 
       await load();
@@ -481,12 +446,12 @@ function PlannedSiteMaterials({ site }) {
 
   return (
     <section
+      aria-label="사용 필름"
       style={{
         marginTop: 18,
         paddingTop: 14,
         borderTop: "1px solid #e2e8f0",
       }}
-      aria-label="예정 시공 자재"
     >
       <div
         style={{
@@ -498,7 +463,7 @@ function PlannedSiteMaterials({ site }) {
         }}
       >
         <h3 style={{ margin: 0, flex: 1 }}>
-          📦 예정 시공 자재{" "}
+          📦 사용 필름{" "}
           <small style={{ color: "#64748b" }}>
             {materials.length}건
           </small>
@@ -560,7 +525,7 @@ function PlannedSiteMaterials({ site }) {
           }}
         >
           <h4 style={{ margin: "0 0 14px" }}>
-            {editing ? "예정 자재 수정" : "예정 자재 추가"}
+            {editing ? "사용 필름 수정" : "사용 필름 추가"}
           </h4>
 
           <fieldset
@@ -596,20 +561,10 @@ function PlannedSiteMaterials({ site }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "minmax(0, 1fr) minmax(0, 1fr)",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
                 gap: 12,
               }}
             >
-              {field("quantity", "예정 수량", {
-                type: "number",
-                inputMode: "decimal",
-                min: "0.001",
-                max: "1000000",
-                step: "any",
-                required: true,
-              })}
-
               {field("unit", "단위", {
                 placeholder: "m / 롤 / 개",
                 maxLength: 20,
@@ -617,14 +572,21 @@ function PlannedSiteMaterials({ site }) {
               })}
             </div>
 
-            {field("unit_price", "단가 (선택 · 원)", {
-              type: "number",
-              inputMode: "decimal",
-              min: "0",
-              max: "100000000",
-              step: "any",
-              placeholder: "미정이면 비워두세요",
-            })}
+            <details>
+              <summary>원가 단가 관리</summary>
+              <p>
+                수량은 시공자가 입력합니다. 소모량이 있는 필름은
+                보고서 제출 전 단가를 등록해주세요.
+              </p>
+              {field("unit_price", "원가 단가 (원)", {
+                type: "number",
+                inputMode: "decimal",
+                min: "0",
+                max: "100000000",
+                step: "any",
+                placeholder: "미정이면 비워두세요",
+              })}
+            </details>
 
             <label
               style={{
@@ -683,7 +645,7 @@ function PlannedSiteMaterials({ site }) {
             color: "#64748b",
           }}
         >
-          등록된 예정 시공 자재가 없습니다.
+          등록된 사용 필름이 없습니다.
         </div>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
@@ -696,33 +658,18 @@ function PlannedSiteMaterials({ site }) {
                 {material.product_code || material.product_name}
               </strong>
 
-              <p
-                style={{
-                  margin: "8px 0",
-                  color: "#64748b",
-                }}
-              >
+              <p style={{ margin: "8px 0", color: "#64748b" }}>
                 {[material.brand, material.product_name]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
 
               <p>
-                예정 수량:{" "}
-                <b>
-                  {formatQuantity(
-                    material.quantity,
-                    material.unit,
-                  )}
-                </b>
+                수량은 시공자 보고서에서 입력합니다. · {material.unit}
               </p>
 
               {material.unit_price != null && (
-                <p>
-                  단가 {formatWon(material.unit_price)}
-                  {" · "}
-                  합계 {formatWon(material.total_price)}
-                </p>
+                <p>단가 {formatWon(material.unit_price)}</p>
               )}
 
               {material.memo && (
@@ -744,10 +691,7 @@ function PlannedSiteMaterials({ site }) {
 
                   <button
                     type="button"
-                    style={{
-                      ...button,
-                      color: "#b91c1c",
-                    }}
+                    style={{ ...button, color: "#b91c1c" }}
                     disabled={busy || loading}
                     onClick={() => remove(material)}
                   >
@@ -761,4 +705,4 @@ function PlannedSiteMaterials({ site }) {
       )}
     </section>
   );
-              }
+            }
