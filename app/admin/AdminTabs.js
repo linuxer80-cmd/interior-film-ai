@@ -5,22 +5,10 @@ import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
   {
-    href: "/admin/inventory",
-    label: "필름 재고",
-    description: "롤별 입고·반출·반입·자재상 반납",
-    icon: "box",
-  },
-  {
-    href: "/admin/workers",
-    label: "시공자 관리",
-    description: "시공자 등록·초대와 일당 관리",
-    icon: "people",
-  },
-  {
-    href: "/admin/attendance",
-    label: "출퇴근 관리",
-    description: "현장 위치와 연장근무 확인",
-    icon: "attendance",
+    href: "/admin/today",
+    label: "보고서 · 오늘 할 일",
+    description: "검수 대기와 오늘 업무",
+    icon: "report",
   },
   {
     id: "sites",
@@ -29,16 +17,28 @@ const menus = [
     icon: "home",
   },
   {
+    href: "/admin/workers",
+    label: "시공자 관리",
+    description: "시공자 등록·초대와 일당 관리",
+    icon: "people",
+  },
+  {
     id: "leads",
     label: "고객 상담",
     description: "견적 요청과 상담 확인",
     icon: "chat",
   },
   {
-    href: "/admin/today",
-    label: "보고서 · 오늘 할 일",
-    description: "검수 대기와 오늘 업무",
-    icon: "report",
+    id: "register",
+    label: "시공 등록",
+    description: "시공 사진과 실적 기록",
+    icon: "camera",
+  },
+  {
+    href: "/admin/attendance",
+    label: "출퇴근 관리",
+    description: "현장 위치와 연장근무 확인",
+    icon: "attendance",
   },
   {
     id: "profit",
@@ -47,16 +47,16 @@ const menus = [
     icon: "money",
   },
   {
+    href: "/admin/inventory",
+    label: "필름 재고",
+    description: "롤별 입고·반출·반입·자재상 반납",
+    icon: "box",
+  },
+  {
     href: "/admin/material-order",
     label: "자재 주문",
     description: "현장에 필요한 필름 주문",
     icon: "box",
-  },
-  {
-    id: "register",
-    label: "시공 등록",
-    description: "시공 사진과 실적 기록",
-    icon: "camera",
   },
 ];
 
