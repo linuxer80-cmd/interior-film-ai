@@ -2,10 +2,11 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const json = (value, status = 200) => Response.json(value, {
-  status,
-  headers: { "Cache-Control": "private, no-store" },
-});
+const json = (value, status = 200) =>
+  Response.json(value, {
+    status,
+    headers: { "Cache-Control": "private, no-store" },
+  });
 
 const uuid = value =>
   typeof value === "string" &&
@@ -36,7 +37,7 @@ async function handle(request) {
           persistSession: false,
           autoRefreshToken: false,
         },
-      },
+      }
     );
 
     const {
@@ -71,27 +72,36 @@ async function handle(request) {
     }
 
     const action = request.method === "GET"
-      ? (body.siteId ? "get" : "list")
+      ? body.siteId
+        ? "get"
+        : body.completed === "1"
+          ? "completed_list"
+          : "list"
       : body.action;
 
     const allowed = request.method === "GET"
-      ? ["get", "list"]
-      : ["initialize", "add", "void", "due"];
+      ? ["get", "list", "completed_list"]
+      : ["initialize", "add", "void", "due", "settle"];
 
     if (!allowed.includes(action)) {
       return json({ error: "지원하지 않는 요청입니다." }, 400);
     }
 
-    if (action !== "list" && !uuid(body.siteId)) {
+    const listing = ["list", "completed_list"].includes(action);
+
+    if (!listing && !uuid(body.siteId)) {
       return json({ error: "현장을 확인해주세요." }, 400);
     }
 
-    const { data, error } = await db.rpc("manage_site_receivables", {
-      p_user: user.id,
-      p_site: action === "list" ? null : body.siteId,
-      p_action: action,
-      p_body: body,
-    });
+    const { data, error } = await db.rpc(
+      "manage_site_receivables_quick",
+      {
+        p_user: user.id,
+        p_site: listing ? null : body.siteId,
+        p_action: action,
+        p_body: body,
+      }
+    );
 
     if (error) {
       if (["PGRST202", "42P01", "42883"].includes(error.code)) {
