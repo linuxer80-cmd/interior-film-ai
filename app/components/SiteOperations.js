@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import FilmThumbnail from "../worker/cutting/FilmThumbnail";
 
 const card = {
   padding: 16,
@@ -375,9 +376,18 @@ export default function SiteOperations({
                 data-material-id={material.id}
                 style={{ ...card, background: "#f8fafc" }}
               >
-                <strong>
-                  {material.brand} {material.code || material.name}
-                </strong>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <FilmThumbnail material={material} size={64} />
+                  <strong>
+                    {material.brand} {material.code || material.name}
+                  </strong>
+                </div>
 
                 <p>
                   반출 {material.issued}{material.unit} · 반입{" "}
@@ -596,6 +606,43 @@ export default function SiteOperations({
             내용을 확인한 뒤 확인 버튼을 눌러주세요.
           </p>
 
+          <div style={{ ...card, background: "#f8fafc" }}>
+            <strong>현장 사용 필름</strong>
+
+            <p style={{ fontSize: 12, color: "#64748b" }}>
+              현재 등록된 제품 사진입니다.
+              아래 변경 이력의 과거 사진은 아닙니다.
+            </p>
+
+            {!data.materials.length && (
+              <p>등록된 사용 필름이 없습니다.</p>
+            )}
+
+            {data.materials.map((material) => (
+              <div
+                key={material.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
+                <FilmThumbnail material={material} size={72} />
+                <div>
+                  <strong>
+                    {material.brand} {material.code || material.name}
+                  </strong>
+                  {material.name && (
+                    <p style={{ margin: "4px 0", fontSize: 13 }}>
+                      {material.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
           {!data.events.length && <p>확인할 변경사항이 없습니다.</p>}
 
           {data.events.map((event) => (
@@ -696,14 +743,22 @@ export default function SiteOperations({
                       )}
 
                       {review.snapshot.materials.map((row) => (
-                        <p
+                        <div
                           key={row.id}
-                          style={{ whiteSpace: "pre-wrap" }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            marginTop: 12,
+                          }}
                         >
-                          {row.brand} {row.code || row.name} · {row.unit}
-                          <br />
-                          {row.memo || ""}
-                        </p>
+                          <FilmThumbnail material={row} size={64} />
+                          <p style={{ whiteSpace: "pre-wrap" }}>
+                            {row.brand} {row.code || row.name} · {row.unit}
+                            <br />
+                            {row.memo || ""}
+                          </p>
+                        </div>
                       ))}
 
                       <button
@@ -730,4 +785,4 @@ export default function SiteOperations({
       )}
     </section>
   );
-}
+                  }
