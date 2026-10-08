@@ -37,13 +37,7 @@ const menus = [
   {
     id: "profit",
     label: "매출 · 수익",
-    description: "인건비와 자재비 확인",
-    icon: "money",
-  },
-  {
-    href: "/admin/receivables",
-    label: "미수금 · 잔금",
-    description: "입금 내역과 남은 잔금 관리",
+    description: "매출·비용·미수금 확인",
     icon: "money",
   },
   {
@@ -179,6 +173,60 @@ export default function AdminTabs({
         </div>
       )}
 
+      {activeTab === "profit" && (
+        <nav
+          aria-label="매출·수익 세부 메뉴"
+          style={{ margin: "0 0 20px" }}
+        >
+          <a
+            href="/admin/receivables"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: 16,
+              border: "1px solid #dfd4c4",
+              borderRadius: 18,
+              background: "#fffdfa",
+              color: "#243648",
+              textDecoration: "none",
+              boxShadow: "0 6px 20px #4b392409",
+            }}
+          >
+            <ToolIllustration kind="money" size={58} />
+
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: 17,
+                }}
+              >
+                미수금 · 잔금 관리
+              </strong>
+
+              <small
+                style={{
+                  display: "block",
+                  marginTop: 5,
+                  color: "#716c63",
+                  lineHeight: 1.6,
+                }}
+              >
+                계약금·중도금·잔금 입금 내역과 남은 미수금 확인
+              </small>
+            </span>
+
+            <span
+              aria-hidden="true"
+              style={{ fontSize: 24 }}
+            >
+              ›
+            </span>
+          </a>
+        </nav>
+      )}
+
       {moreOpen && (
         <nav
           className="film-admin-more"
@@ -208,7 +256,6 @@ export default function AdminTabs({
           </button>
 
           <a href="/admin/material-order">자재 주문</a>
-          <a href="/admin/receivables">미수금 · 잔금</a>
           <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
