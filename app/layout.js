@@ -1,4 +1,5 @@
 import "./globals.css";
+import PhotoTheme from "./components/ui/PhotoTheme";
 
 export const metadata = {
   title: "기분좋은공간 AI 견적",
@@ -12,7 +13,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body><PhotoTheme>{children}</PhotoTheme></body>
     </html>
   );
 }
