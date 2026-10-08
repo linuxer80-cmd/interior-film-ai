@@ -54,9 +54,16 @@ async function handle(request) {
 
     if (
       !uuid(body?.siteId) ||
-      !["get", "latest", "confirm", "issue", "void", "return", "settle"].includes(
-        body.action
-      )
+      ![
+        "get",
+        "latest",
+        "confirm",
+        "issue",
+        "void",
+        "return",
+        "settle",
+        "outgoing",
+      ].includes(body.action)
     ) {
       return json({ error: "현장과 요청을 확인해주세요." }, 400);
     }
@@ -66,14 +73,14 @@ async function handle(request) {
     }
 
     if (
-      ["issue", "void", "return", "settle"].includes(body.action) &&
+      ["issue", "void", "return", "settle", "outgoing"].includes(body.action) &&
       !uuid(body.materialId)
     ) {
       return json({ error: "자재를 확인해주세요." }, 400);
     }
 
     if (
-      ["issue", "settle"].includes(body.action) &&
+      ["issue", "settle", "outgoing"].includes(body.action) &&
       !uuid(body.requestId)
     ) {
       return json({ error: "등록 요청을 확인해주세요." }, 400);
@@ -126,12 +133,44 @@ async function handle(request) {
       }
     }
 
-    const result = await db.rpc("site_operations", {
+    if (body.action === "outgoing") {
+      const numeric = (value) =>
+        ["string", "number"].includes(typeof value) &&
+        String(value).trim() !== "" &&
+        Number.isFinite(Number(value));
+
+      if (
+        !numeric(body.outgoing) ||
+        !numeric(body.expectedIssued) ||
+        Number(body.outgoing) < 0 ||
+        Number(body.outgoing) > 1000000 ||
+        Number(body.expectedIssued) < 0
+      ) {
+        return json(
+          {
+            error: "총 반출량은 0 이상 1,000,000 이하로 입력해주세요.",
+          },
+          400
+        );
+      }
+    }
+
+    const args = {
       p_user: data.user.id,
       p_site: body.siteId,
-      p_action: body.action,
       p_body: body,
-    });
+    };
+
+    if (body.action !== "outgoing") {
+      args.p_action = body.action;
+    }
+
+    const result = await db.rpc(
+      body.action === "outgoing"
+        ? "save_site_material_outgoing"
+        : "site_operations",
+      args
+    );
 
     if (result.error) {
       const code = result.error.code || "";
