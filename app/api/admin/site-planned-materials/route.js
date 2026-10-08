@@ -5,38 +5,27 @@ export const runtime = "nodejs";
 const json = (body, status = 200) =>
   Response.json(body, {
     status,
-    headers: {
-      "Cache-Control": "private, no-store",
-    },
+    headers: { "Cache-Control": "private, no-store" },
   });
 
 const uuid = (value) =>
   typeof value === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value
-  );
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 async function handle(request) {
   try {
-    const token = (
-      request.headers.get("authorization") || ""
-    ).match(/^Bearer (.+)$/i)?.[1];
+    const token = (request.headers.get("authorization") || "")
+      .match(/^Bearer (.+)$/i)?.[1];
 
     if (!token) {
-      return json(
-        { error: "관리자 로그인이 필요합니다." },
-        401
-      );
+      return json({ error: "관리자 로그인이 필요합니다." }, 401);
     }
 
     if (
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
       !process.env.SUPABASE_SERVICE_ROLE_KEY
     ) {
-      return json(
-        { error: "서버 설정을 확인해주세요." },
-        503
-      );
+      return json({ error: "서버 설정을 확인해주세요." }, 503);
     }
 
     const db = createClient(
@@ -56,16 +45,10 @@ async function handle(request) {
     } = await db.auth.getUser(token);
 
     if (authError || !user) {
-      return json(
-        { error: "로그인이 만료되었습니다." },
-        401
-      );
+      return json({ error: "로그인이 만료되었습니다." }, 401);
     }
 
-    const {
-      data: profile,
-      error: profileError,
-    } = await db
+    const { data: profile, error: profileError } = await db
       .from("profiles")
       .select("company_id,role,is_active")
       .eq("id", user.id)
@@ -78,16 +61,10 @@ async function handle(request) {
       profile.role !== "owner" ||
       profile.is_active === false
     ) {
-      return json(
-        { error: "관리자 권한이 필요합니다." },
-        403
-      );
+      return json({ error: "관리자 권한이 필요합니다." }, 403);
     }
 
-    const {
-      data: company,
-      error: companyError,
-    } = await db
+    const { data: company, error: companyError } = await db
       .from("companies")
       .select("id,is_active")
       .eq("id", profile.company_id)
@@ -96,10 +73,7 @@ async function handle(request) {
     if (companyError) throw companyError;
 
     if (!company || company.is_active === false) {
-      return json(
-        { error: "업체를 확인할 수 없습니다." },
-        403
-      );
+      return json({ error: "업체를 확인할 수 없습니다." }, 403);
     }
 
     let body;
@@ -108,31 +82,21 @@ async function handle(request) {
       body =
         request.method === "GET"
           ? {
-              siteId: new URL(request.url)
-                .searchParams.get("siteId"),
+              siteId: new URL(request.url).searchParams.get("siteId"),
             }
           : await request.json();
     } catch {
-      return json(
-        { error: "입력 형식을 확인해주세요." },
-        400
-      );
+      return json({ error: "입력 형식을 확인해주세요." }, 400);
     }
 
     if (
       !uuid(body?.siteId) ||
       (request.method !== "GET" && !uuid(body?.id))
     ) {
-      return json(
-        { error: "현장과 자재를 확인해주세요." },
-        400
-      );
+      return json({ error: "현장과 자재를 확인해주세요." }, 400);
     }
 
-    const {
-      data: site,
-      error: siteError,
-    } = await db
+    const { data: site, error: siteError } = await db
       .from("sites")
       .select("id,status")
       .eq("id", body.siteId)
@@ -142,10 +106,7 @@ async function handle(request) {
     if (siteError) throw siteError;
 
     if (!site) {
-      return json(
-        { error: "현장을 찾을 수 없습니다." },
-        404
-      );
+      return json({ error: "현장을 찾을 수 없습니다." }, 404);
     }
 
     const columns = [
@@ -168,9 +129,7 @@ async function handle(request) {
         .eq("company_id", profile.company_id)
         .eq("site_id", site.id)
         .eq("material_type", "planned")
-        .order("created_at", {
-          ascending: true,
-        });
+        .order("created_at", { ascending: true });
 
       if (error) throw error;
 
@@ -182,10 +141,7 @@ async function handle(request) {
 
     if (site.status === "cancelled") {
       return json(
-        {
-          error:
-            "취소된 현장의 자재는 변경할 수 없습니다.",
-        },
+        { error: "취소된 현장의 자재는 변경할 수 없습니다." },
         409
       );
     }
@@ -198,42 +154,28 @@ async function handle(request) {
           ? body[key].trim().slice(0, limit)
           : "";
 
-      const quantity = Number(body.quantity);
+      const quantity = 0;
 
       const unitPrice =
-        body.unit_price === "" ||
-        body.unit_price == null
+        body.unit_price === "" || body.unit_price == null
           ? null
           : Number(body.unit_price);
 
       if (
-        !(
-          text("product_code", 100) ||
-          text("product_name", 200)
-        ) ||
-        !["string", "number"].includes(
-          typeof body.quantity
-        ) ||
-        !String(body.quantity).trim() ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0 ||
-        quantity > 1000000 ||
-        (unitPrice !== null &&
-          (!["string", "number"].includes(
-            typeof body.unit_price
-          ) ||
+        !(text("product_code", 100) || text("product_name", 200)) ||
+        (
+          unitPrice !== null &&
+          (
+            !["string", "number"].includes(typeof body.unit_price) ||
             !Number.isFinite(unitPrice) ||
             unitPrice < 0 ||
             unitPrice > 100000000 ||
-            !Number.isSafeInteger(
-              Math.round(quantity * unitPrice)
-            )))
+            !Number.isSafeInteger(Math.round(quantity * unitPrice))
+          )
+        )
       ) {
         return json(
-          {
-            error:
-              "제품명 또는 코드, 수량(0 초과), 단가를 확인해주세요.",
-          },
+          { error: "제품명 또는 코드와 원가 단가를 확인해주세요." },
           400
         );
       }
@@ -246,9 +188,7 @@ async function handle(request) {
         unit: text("unit", 20) || "m",
         unit_price: unitPrice,
         total_price:
-          unitPrice === null
-            ? null
-            : Math.round(quantity * unitPrice),
+          unitPrice === null ? null : Math.round(quantity * unitPrice),
         memo: text("memo", 1000),
         updated_at: new Date().toISOString(),
       };
@@ -258,9 +198,7 @@ async function handle(request) {
       if (request.method === "PATCH") {
         const result = await db
           .from("site_materials")
-          .select(
-            "brand,product_code,product_name,unit,film_product_id"
-          )
+          .select("brand,product_code,product_name,unit,film_product_id")
           .eq("id", body.id)
           .eq("site_id", site.id)
           .eq("company_id", profile.company_id)
@@ -270,28 +208,22 @@ async function handle(request) {
         if (result.error) throw result.error;
 
         if (!result.data) {
-          return json(
-            { error: "자재를 찾을 수 없습니다." },
-            404
-          );
+          return json({ error: "자재를 찾을 수 없습니다." }, 404);
         }
 
         previous = result.data;
 
-        // 단가·수량만 수정할 때 기존 제품정보를 유지합니다.
-        // 특히 NULL인 제품명을 빈 문자열로 바꾸지 않습니다.
-        // 반출된 자재의 제품 변경으로 잘못 판단되는 것을
-        // 방지합니다.
+        // 과거에 저장된 예정 수량·금액은 보존합니다.
+        delete values.quantity;
+        delete values.total_price;
+
         for (const key of [
           "brand",
           "product_code",
           "product_name",
           "unit",
         ]) {
-          if (
-            String(previous[key] ?? "").trim() ===
-            values[key]
-          ) {
+          if (String(previous[key] ?? "").trim() === values[key]) {
             values[key] = previous[key];
           }
         }
@@ -301,18 +233,11 @@ async function handle(request) {
 
       if (
         previous &&
-        (previous.brand || "") ===
-          (values.brand || "") &&
-        (previous.product_code || "") ===
-          (values.product_code || "")
+        (previous.brand || "") === (values.brand || "") &&
+        (previous.product_code || "") === (values.product_code || "")
       ) {
-        // 같은 제품이면 기존 이미지 연결도 유지합니다.
-        values.film_product_id =
-          previous.film_product_id;
-      } else if (
-        values.brand &&
-        values.product_code
-      ) {
+        values.film_product_id = previous.film_product_id;
+      } else if (values.brand && values.product_code) {
         const result = await db
           .from("film_products")
           .select("id")
@@ -323,8 +248,7 @@ async function handle(request) {
         if (result.error) throw result.error;
 
         if (result.data?.length === 1) {
-          values.film_product_id =
-            result.data[0].id;
+          values.film_product_id = result.data[0].id;
         }
       }
     }
@@ -353,15 +277,12 @@ async function handle(request) {
         .eq("material_type", "planned");
     }
 
-    const { data, error } = await query
-      .select("id")
-      .maybeSingle();
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error?.code === "23505") {
       return json(
         {
-          error:
-            "이미 등록된 요청입니다. 목록을 새로고침해 확인해주세요.",
+          error: "이미 등록된 요청입니다. 목록을 새로고침해 확인해주세요.",
         },
         409
       );
@@ -372,38 +293,23 @@ async function handle(request) {
     if (!data) {
       return json(
         {
-          error:
-            "자재가 삭제되었거나 찾을 수 없습니다. 새로고침해주세요.",
+          error: "자재가 삭제되었거나 찾을 수 없습니다. 새로고침해주세요.",
         },
         404
       );
     }
 
-    return json({
-      success: true,
-    });
+    return json({ success: true });
   } catch (error) {
-    console.error(
-      "관리자 예정 자재 저장 실패:",
-      error
-    );
+    console.error("관리자 예정 자재 저장 실패:", error);
 
-    // 반출 제품 변경이나 제출된 보고서의 단가 변경처럼
-    // DB에서 제한한 경우 실제 이유를 화면에 표시합니다.
-    if (
-      error?.code === "P0001" ||
-      error?.code === "23514"
-    ) {
-      return json(
-        { error: error.message },
-        409
-      );
+    if (error?.code === "P0001" || error?.code === "23514") {
+      return json({ error: error.message }, 409);
     }
 
     return json(
       {
-        error:
-          "자재를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.",
+        error: "자재를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.",
       },
       500
     );
