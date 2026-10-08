@@ -50,6 +50,7 @@ export default function SiteOperations({
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState({});
   const [review, setReview] = useState(null);
@@ -198,6 +199,7 @@ export default function SiteOperations({
 
     setBusy(true);
     setError("");
+    setMessage("");
 
     try {
       const result = await call(body);
@@ -215,6 +217,14 @@ export default function SiteOperations({
       setData(result);
       dataCallback.current?.(result);
       callback.current?.(result.materials.length > 0);
+
+      if (body.action === "outgoing" || body.action === "settle") {
+        setMessage(
+          body.action === "outgoing"
+            ? "반출량이 저장되었습니다. 작업이 끝나면 반입량을 입력해주세요. 완료보고는 아직 제출되지 않았습니다."
+            : "반출·반입량이 저장되었습니다."
+        );
+      }
 
       if (clearKey) {
         setValues((previous) => {
@@ -236,6 +246,16 @@ export default function SiteOperations({
       lock.current = false;
       setBusy(false);
     }
+  }
+
+  function requestId(key, action) {
+    if (requests.current[key]?.action !== action) {
+      requests.current[key] = {
+        action,
+        id: crypto.randomUUID(),
+      };
+    }
+    return requests.current[key].id;
   }
 
   const materialsMode = mode === "materials";
@@ -269,6 +289,12 @@ export default function SiteOperations({
       {error && (
         <p role="alert" style={{ color: "#b91c1c" }}>
           {error}
+        </p>
+      )}
+
+      {message && (
+        <p role="status" style={{ color: "#166534" }}>
+          {message}
         </p>
       )}
 
@@ -307,6 +333,12 @@ export default function SiteOperations({
             const returned =
               draft.returned ?? material.returned ?? "";
 
+            const outgoingValid =
+              String(outgoing).trim() !== "" &&
+              Number.isFinite(Number(outgoing)) &&
+              Number(outgoing) >= 0 &&
+              Number(outgoing) <= 1000000;
+
             const valid =
               String(outgoing).trim() !== "" &&
               String(returned).trim() !== "" &&
@@ -318,6 +350,8 @@ export default function SiteOperations({
               Number(returned) <= Number(outgoing);
 
             const change = (field, value) => {
+              setMessage("");
+
               returnVersions.current[flowKey] ||= {
                 expectedIssued: material.issued,
                 returnUpdatedAt: material.returnUpdatedAt,
@@ -376,7 +410,9 @@ export default function SiteOperations({
                 {reportEditable && !data.locked && data.canReturn && (
                   <div style={{ marginTop: 12 }}>
                     <p>
-                      현장에 가져간 총량과 남아서 가져온 총량을 입력하세요.
+                      일 시작 전에는 총 반출량만 먼저 저장하세요.
+                      작업이 끝나면 남은 총 반입량을 입력하세요.
+                      추가로 가져간 자재는 기존 반출량을 포함한 총량으로 수정하세요.
                       사용하지 않은 필름은 둘 다 0으로 저장하세요.
                     </p>
 
@@ -396,6 +432,45 @@ export default function SiteOperations({
                         }
                       />
                     </label>
+
+                    <button
+                      type="button"
+                      style={{ ...btn, margin: "10px 0" }}
+                      disabled={busy || disabled || !outgoingValid}
+                      onClick={() => {
+                        if (
+                          String(returned).trim() !== "" &&
+                          !confirm(
+                            "반출량만 저장합니다. 입력 중인 반입량은 저장하지 않으며, 반출량이 바뀌면 기존 반입량도 다시 입력해야 합니다. 계속할까요?"
+                          )
+                        ) {
+                          return;
+                        }
+
+                        act(
+                          {
+                            action: "outgoing",
+                            materialId: material.id,
+                            outgoing,
+                            requestId: requestId(flowKey, "outgoing"),
+                            ...(
+                              returnVersions.current[flowKey] || {
+                                expectedIssued: material.issued,
+                                returnUpdatedAt: material.returnUpdatedAt,
+                              }
+                            ),
+                          },
+                          flowKey
+                        );
+                      }}
+                    >
+                      반출량만 저장
+                    </button>
+
+                    <p style={{ fontSize: 12, color: "#64748b" }}>
+                      반입량·완료사진·시공 내용을 아직 입력하지 않아도
+                      반출량만 저장할 수 있습니다.
+                    </p>
 
                     <label>
                       총 반입량 ({material.unit})
@@ -426,15 +501,13 @@ export default function SiteOperations({
                       style={btn}
                       disabled={busy || disabled || !valid}
                       onClick={() => {
-                        requests.current[flowKey] ||= crypto.randomUUID();
-
                         act(
                           {
                             action: "settle",
                             materialId: material.id,
                             outgoing,
                             returned,
-                            requestId: requests.current[flowKey],
+                            requestId: requestId(flowKey, "settle"),
                             ...(
                               returnVersions.current[flowKey] || {
                                 expectedIssued: material.issued,
@@ -657,4 +730,4 @@ export default function SiteOperations({
       )}
     </section>
   );
-                }
+}
