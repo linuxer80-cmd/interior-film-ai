@@ -72,7 +72,6 @@ export default function FilmDealerInventory() {
     mounted.current = true;
 
     async function connect(userId) {
-      // 같은 계정의 재로그인 알림·화면 복귀에는 입력값을 지우지 않습니다.
       if (!mounted.current || userRef.current === userId) return;
 
       persistDraft();
@@ -472,7 +471,7 @@ export default function FilmDealerInventory() {
           <button disabled={!query.trim()} onClick={search}>전체 필름에서 검색</button>
           <p>이 대리점 등록 제품 ({prices.length}개) · 공급가는 1m 기준, 실제 거래 기준으로 입력하세요.</p>
 
-          <div className="products">
+          {query.trim() && <div className="products">
             {prices.filter(p =>
               `${p.product_code} ${p.product_name || ""}`.toUpperCase().includes(query.trim().toUpperCase())
             ).map(p =>
@@ -482,7 +481,7 @@ export default function FilmDealerInventory() {
                 {!p.is_active && " (판매 중지)"}
               </button>
             )}
-          </div>
+          </div>}
 
           {searched && <>
             <p>검색 결과 (최대 40개) · 브랜드와 사진을 확인해서 선택해주세요.</p>
@@ -647,5 +646,3 @@ export default function FilmDealerInventory() {
       small{font-size:11px}
       summary{cursor:pointer;font-weight:700}
     `}</style>
-  </section>;
-    }
