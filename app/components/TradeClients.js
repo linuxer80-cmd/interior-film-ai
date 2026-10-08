@@ -13,9 +13,7 @@ export async function tradeApi(body) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session) {
-    throw Error("관리자로 로그인해주세요.");
-  }
+  if (!session) throw Error("관리자로 로그인해주세요.");
 
   const response = await fetch("/api/admin/trade-clients", {
     method: body ? "POST" : "GET",
@@ -45,21 +43,14 @@ const totals = (rows) =>
     .reduce(
       (acc, site) => ({
         count: acc.count + 1,
-        contract:
-          acc.contract + Number(site.contract_amount || 0),
+        contract: acc.contract + Number(site.contract_amount || 0),
         paid: acc.paid + Number(site.paid || 0),
         due: acc.due + Number(site.outstanding || 0),
         unknown:
           acc.unknown +
           Number(!site.confirmed || site.contract_amount == null),
       }),
-      {
-        count: 0,
-        contract: 0,
-        paid: 0,
-        due: 0,
-        unknown: 0,
-      }
+      { count: 0, contract: 0, paid: 0, due: 0, unknown: 0 }
     );
 
 function Summary({ title, rows }) {
@@ -67,14 +58,11 @@ function Summary({ title, rows }) {
 
   return (
     <div className="trade-summary">
-      <b>
-        {title} · {total.count}현장
-      </b>
+      <b>{title} · {total.count}현장</b>
       <p>
         계약 {won(total.contract)} · 입금 {won(total.paid)}
         <br />
-        확인된 미수금 {won(total.due)} · 금액 확인 필요{" "}
-        {total.unknown}건
+        확인된 미수금 {won(total.due)} · 금액 확인 필요 {total.unknown}건
       </p>
     </div>
   );
@@ -101,6 +89,9 @@ export default function TradeClients({ siteId, onScope }) {
   const [alloc, setAlloc] = useState(null);
   const [paymentSite, setPaymentSite] = useState("");
 
+  const [manageQuery, setManageQuery] = useState("");
+  const [manageId, setManageId] = useState("");
+
   const [page, setPage] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -119,9 +110,7 @@ export default function TradeClients({ siteId, onScope }) {
         setError("");
       }
     } catch (err) {
-      if (alive.current) {
-        setError(err.message);
-      }
+      if (alive.current) setError(err.message);
     }
   }
 
@@ -130,9 +119,7 @@ export default function TradeClients({ siteId, onScope }) {
     load();
 
     const sync = () => {
-      if (!lock.current && !pending.current) {
-        load();
-      }
+      if (!lock.current && !pending.current) load();
     };
 
     window.addEventListener("trade-clients-changed", sync);
@@ -195,10 +182,7 @@ export default function TradeClients({ siteId, onScope }) {
       }
     } finally {
       lock.current = false;
-
-      if (alive.current) {
-        setBusy(false);
-      }
+      if (alive.current) setBusy(false);
     }
   }
 
@@ -238,8 +222,7 @@ export default function TradeClients({ siteId, onScope }) {
       callback.current?.({
         clientId: realClient?.id || "",
         contactId: contacts.some(
-          (item) =>
-            item.id === contact && item.client_id === client
+          (item) => item.id === contact && item.client_id === client
         )
           ? contact
           : "",
@@ -284,9 +267,7 @@ export default function TradeClients({ siteId, onScope }) {
           (!site.confirmed || site.contract_amount == null)
       )
     ) {
-      setError(
-        "완료 현장의 기존 입금액과 계약금액을 먼저 확인해주세요."
-      );
+      setError("완료 현장의 기존 입금액과 계약금액을 먼저 확인해주세요.");
       return;
     }
 
@@ -294,17 +275,10 @@ export default function TradeClients({ siteId, onScope }) {
       (acc, site) => acc + Number(site.outstanding),
       0
     );
-
     const input = full ? sum : Number(amount);
 
-    if (
-      !Number.isSafeInteger(input) ||
-      input <= 0 ||
-      input > sum
-    ) {
-      setError(
-        "입금액은 선택 범위의 미수금 이내로 입력해주세요."
-      );
+    if (!Number.isSafeInteger(input) || input <= 0 || input > sum) {
+      setError("입금액은 선택 범위의 미수금 이내로 입력해주세요.");
       return;
     }
 
@@ -341,9 +315,7 @@ export default function TradeClients({ siteId, onScope }) {
     <section className="trade">
       <header>
         <h3>
-          {siteId
-            ? "고객 구분 · 거래처 연결"
-            : "거래처별 현장 · 정산"}
+          {siteId ? "고객 구분 · 거래처 연결" : "거래처별 현장 · 정산"}
         </h3>
         <button disabled={blocked} onClick={load}>
           새로고침
@@ -415,21 +387,17 @@ export default function TradeClients({ siteId, onScope }) {
                   <select
                     disabled={blocked}
                     value={contact}
-                    onChange={(event) =>
-                      setContact(event.target.value)
-                    }
+                    onChange={(event) => setContact(event.target.value)}
                   >
                     <option value="all">모든 담당자</option>
                     <option value="none">담당자 미지정</option>
                     {contacts
                       .filter(
-                        (item) =>
-                          !realClient || item.client_id === client
+                        (item) => !realClient || item.client_id === client
                       )
                       .map((item) => (
                         <option key={item.id} value={item.id}>
-                          {item.name} ·{" "}
-                          {item.phone || "연락처 없음"}
+                          {item.name} · {item.phone || "연락처 없음"}
                         </option>
                       ))}
                   </select>
@@ -450,9 +418,8 @@ export default function TradeClients({ siteId, onScope }) {
               <Summary title="선택·검색 결과" rows={visible} />
 
               <small>
-                취소 현장은 합계에서 제외합니다. 입금 미확인은
-                0원 수금으로 확정하지 않으며, 미수금 합계에서
-                제외합니다.
+                취소 현장은 합계에서 제외합니다. 입금 미확인은 0원 수금으로
+                확정하지 않으며, 미수금 합계에서 제외합니다.
               </small>
             </>
           )}
@@ -462,77 +429,124 @@ export default function TradeClients({ siteId, onScope }) {
 
             <button
               disabled={blocked}
-              onClick={() =>
+              onClick={() => {
+                setManageId("");
+                setManageQuery("");
                 setEdit({
                   action: "client",
                   name: "",
                   phone: "",
                   settlementDay: "",
-                })
-              }
+                });
+              }}
             >
               ＋업체 등록
             </button>
 
-            {clients.map((item) => (
-              <div key={item.id}>
-                <b>{item.name}</b> · {item.phone}{" "}
-                {item.settlement_day
-                  ? `매월 ${item.settlement_day}일 정산`
-                  : ""}
-
-                <button
+            {!edit && (
+              <label>
+                기존 업체 검색
+                <input
                   disabled={blocked}
-                  onClick={() =>
-                    setEdit({
-                      action: "client",
-                      clientId: item.id,
-                      revision: item.revision,
-                      name: item.name,
-                      phone: item.phone,
-                      settlementDay: item.settlement_day || "",
-                    })
-                  }
-                >
-                  업체 수정
-                </button>
+                  value={manageQuery}
+                  placeholder="수정할 업체명을 입력하세요"
+                  onChange={(event) => {
+                    setManageQuery(event.target.value);
+                    setManageId("");
+                  }}
+                />
+              </label>
+            )}
 
-                <button
-                  disabled={blocked}
-                  onClick={() =>
-                    setEdit({
-                      action: "contact",
-                      clientId: item.id,
-                      name: "",
-                      phone: "",
-                    })
-                  }
-                >
-                  ＋담당자
-                </button>
+            {!edit && !manageId && manageQuery.trim() && (
+              <div>
+                {clients
+                  .filter((item) =>
+                    item.name
+                      .toLowerCase()
+                      .includes(manageQuery.trim().toLowerCase())
+                  )
+                  .slice(0, 5)
+                  .map((item) => (
+                    <button
+                      key={item.id}
+                      disabled={blocked}
+                      onClick={() => setManageId(item.id)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
 
-                {contacts
-                  .filter((person) => person.client_id === item.id)
-                  .map((person) => (
+                {!clients.some((item) =>
+                  item.name
+                    .toLowerCase()
+                    .includes(manageQuery.trim().toLowerCase())
+                ) && <small>검색된 업체가 없습니다.</small>}
+              </div>
+            )}
+
+            {!edit &&
+              clients
+                .filter((item) => item.id === manageId)
+                .map((item) => (
+                  <div key={item.id}>
+                    <b>{item.name}</b> · {item.phone}{" "}
+                    {item.settlement_day
+                      ? `매월 ${item.settlement_day}일 정산`
+                      : ""}
+
                     <button
                       disabled={blocked}
-                      key={person.id}
+                      onClick={() =>
+                        setEdit({
+                          action: "client",
+                          clientId: item.id,
+                          revision: item.revision,
+                          name: item.name,
+                          phone: item.phone,
+                          settlementDay: item.settlement_day || "",
+                        })
+                      }
+                    >
+                      업체 수정
+                    </button>
+
+                    <button
+                      disabled={blocked}
                       onClick={() =>
                         setEdit({
                           action: "contact",
                           clientId: item.id,
-                          contactId: person.id,
-                          revision: person.revision,
-                          name: person.name,
-                          phone: person.phone,
+                          name: "",
+                          phone: "",
                         })
                       }
                     >
-                      {person.name} 수정
+                      ＋담당자
                     </button>
-                  ))}
-              </div>
-            ))}
+
+                    {contacts
+                      .filter((person) => person.client_id === item.id)
+                      .map((person) => (
+                        <button
+                          disabled={blocked}
+                          key={person.id}
+                          onClick={() =>
+                            setEdit({
+                              action: "contact",
+                              clientId: item.id,
+                              contactId: person.id,
+                              revision: person.revision,
+                              name: person.name,
+                              phone: person.phone,
+                            })
+                          }
+                        >
+                          {person.name} 수정
+                        </button>
+                      ))}
+                  </div>
+                ))}
 
             {edit && (
               <form
@@ -600,9 +614,7 @@ export default function TradeClients({ siteId, onScope }) {
           </details>
 
           <details open={!!siteId}>
-            <summary>
-              현장을 거래처에 연결 / 개인 고객으로 변경
-            </summary>
+            <summary>현장을 거래처에 연결 / 개인 고객으로 변경</summary>
 
             {!siteId && (
               <label>
@@ -610,15 +622,12 @@ export default function TradeClients({ siteId, onScope }) {
                 <select
                   value={linkSite}
                   disabled={blocked}
-                  onChange={(event) =>
-                    setLinkSite(event.target.value)
-                  }
+                  onChange={(event) => setLinkSite(event.target.value)}
                 >
                   <option value="">현장 선택</option>
                   {sites.map((site) => (
                     <option key={site.id} value={site.id}>
-                      {site.site_name} ·{" "}
-                      {site.client_name || "개인 고객"}
+                      {site.site_name} · {site.client_name || "개인 고객"}
                     </option>
                   ))}
                 </select>
@@ -650,9 +659,7 @@ export default function TradeClients({ siteId, onScope }) {
                 <select
                   disabled={blocked}
                   value={linkContact}
-                  onChange={(event) =>
-                    setLinkContact(event.target.value)
-                  }
+                  onChange={(event) => setLinkContact(event.target.value)}
                 >
                   <option value="">미지정 · 1인 업체</option>
                   {contacts
@@ -687,14 +694,12 @@ export default function TradeClients({ siteId, onScope }) {
             <>
               {realClient && (
                 <details>
-                  <summary>
-                    선택 범위 일괄 입금 · 전액입금
-                  </summary>
+                  <summary>선택 범위 일괄 입금 · 전액입금</summary>
 
                   <p>
-                    {realClient.name} · 현재 담당자·검색 조건에
-                    맞는 완료 현장에 배분합니다. 오래된 현장부터
-                    제안하며 저장 전 수정할 수 있습니다.
+                    {realClient.name} · 현재 담당자·검색 조건에 맞는 완료
+                    현장에 배분합니다. 오래된 현장부터 제안하며 저장 전
+                    수정할 수 있습니다.
                   </p>
 
                   <label>
@@ -741,8 +746,7 @@ export default function TradeClients({ siteId, onScope }) {
                               Number(item.amount) > item.max
                           ) ||
                           lines.reduce(
-                            (sum, item) =>
-                              sum + Number(item.amount),
+                            (sum, item) => sum + Number(item.amount),
                             0
                           ) !== Number(amount)
                         ) {
@@ -781,10 +785,7 @@ export default function TradeClients({ siteId, onScope }) {
                               setAlloc((rows) =>
                                 rows.map((row, rowIndex) =>
                                   rowIndex === index
-                                    ? {
-                                        ...row,
-                                        amount: event.target.value,
-                                      }
+                                    ? { ...row, amount: event.target.value }
                                     : row
                                 )
                               );
@@ -798,8 +799,7 @@ export default function TradeClients({ siteId, onScope }) {
                         배분 합계{" "}
                         {won(
                           alloc.reduce(
-                            (sum, item) =>
-                              sum + Number(item.amount),
+                            (sum, item) => sum + Number(item.amount),
                             0
                           )
                         )}{" "}
@@ -814,9 +814,7 @@ export default function TradeClients({ siteId, onScope }) {
                           max={koreanDay()}
                           disabled={blocked}
                           value={paidOn}
-                          onChange={(event) =>
-                            setPaidOn(event.target.value)
-                          }
+                          onChange={(event) => setPaidOn(event.target.value)}
                         />
                       </label>
 
@@ -826,30 +824,23 @@ export default function TradeClients({ siteId, onScope }) {
                           required
                           disabled={blocked}
                           checked={ready}
-                          onChange={(event) =>
-                            setReady(event.target.checked)
-                          }
+                          onChange={(event) => setReady(event.target.checked)}
                         />{" "}
                         입금과 배분 내용을 확인했습니다.
                       </label>
 
-                      <button disabled={blocked}>
-                        일괄 입금 저장
-                      </button>
+                      <button disabled={blocked}>일괄 입금 저장</button>
                     </form>
                   )}
                 </details>
               )}
 
               <details>
-                <summary>
-                  거래처 일괄 입금 내역 (최근 100건)
-                </summary>
+                <summary>거래처 일괄 입금 내역 (최근 100건)</summary>
 
                 {data.batches
                   .filter(
-                    (batch) =>
-                      !realClient || batch.client_id === client
+                    (batch) => !realClient || batch.client_id === client
                   )
                   .map((batch) => (
                     <p key={batch.id}>
@@ -885,55 +876,50 @@ export default function TradeClients({ siteId, onScope }) {
               </details>
 
               <div>
-                {visible
-                  .slice(page * 5, page * 5 + 5)
-                  .map((site) => (
-                    <article key={site.id}>
-                      <b>{site.site_name}</b>
-                      <small>
-                        {site.client_name || "개인 고객"} ·{" "}
-                        {site.contact_name || "담당자 미지정"} ·{" "}
-                        {site.status}
-                      </small>
-                      <p>
-                        계약{" "}
-                        {site.contract_amount == null
-                          ? "미정"
-                          : won(site.contract_amount)}{" "}
-                        · 입금{" "}
-                        {site.confirmed
-                          ? won(site.paid)
-                          : "미확인"}{" "}
-                        · 미수금{" "}
-                        {site.outstanding == null
-                          ? "확인 필요"
-                          : won(site.outstanding)}
-                      </p>
+                {visible.slice(page * 5, page * 5 + 5).map((site) => (
+                  <article key={site.id}>
+                    <b>{site.site_name}</b>
+                    <small>
+                      {site.client_name || "개인 고객"} ·{" "}
+                      {site.contact_name || "담당자 미지정"} · {site.status}
+                    </small>
 
-                      <a href={`/admin?tab=sites&site=${site.id}`}>
-                        현장 상세
-                      </a>{" "}
+                    <p>
+                      계약{" "}
+                      {site.contract_amount == null
+                        ? "미정"
+                        : won(site.contract_amount)}{" "}
+                      · 입금 {site.confirmed ? won(site.paid) : "미확인"} ·
+                      미수금{" "}
+                      {site.outstanding == null
+                        ? "확인 필요"
+                        : won(site.outstanding)}
+                    </p>
 
-                      <button
-                        disabled={blocked}
-                        onClick={() =>
-                          setPaymentSite(
-                            paymentSite === site.id ? "" : site.id
-                          )
-                        }
-                      >
-                        입금 확인·처리
-                      </button>
+                    <a href={`/admin?tab=sites&site=${site.id}`}>
+                      현장 상세
+                    </a>{" "}
 
-                      {paymentSite === site.id && (
-                        <SitePaymentQuick
-                          key={site.id}
-                          siteId={site.id}
-                          onChanged={load}
-                        />
-                      )}
-                    </article>
-                  ))}
+                    <button
+                      disabled={blocked}
+                      onClick={() =>
+                        setPaymentSite(
+                          paymentSite === site.id ? "" : site.id
+                        )
+                      }
+                    >
+                      입금 확인·처리
+                    </button>
+
+                    {paymentSite === site.id && (
+                      <SitePaymentQuick
+                        key={site.id}
+                        siteId={site.id}
+                        onChanged={load}
+                      />
+                    )}
+                  </article>
+                ))}
               </div>
 
               <nav>
@@ -943,8 +929,7 @@ export default function TradeClients({ siteId, onScope }) {
                 >
                   이전
                 </button>
-                {page + 1} /{" "}
-                {Math.max(1, Math.ceil(visible.length / 5))}
+                {page + 1} / {Math.max(1, Math.ceil(visible.length / 5))}
                 <button
                   disabled={(page + 1) * 5 >= visible.length}
                   onClick={() => setPage((value) => value + 1)}
@@ -1057,4 +1042,4 @@ export default function TradeClients({ siteId, onScope }) {
       `}</style>
     </section>
   );
-    }
+            }
