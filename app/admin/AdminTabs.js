@@ -182,6 +182,22 @@ export default function AdminTabs({
           style={{ margin: "0 0 20px" }}
         >
           <a
+            href="/admin/client-sales"
+            style={{
+              display: "block",
+              padding: 16,
+              marginBottom: 12,
+              border: "1px solid #dfd4c4",
+              borderRadius: 18,
+              background: "#fffdfa",
+              color: "#243648",
+              fontWeight: 800,
+            }}
+          >
+            업체별 매출 · 입금 · 미수금 →
+          </a>
+
+          <a
             href="/admin/receivables"
             style={{
               display: "flex",
