@@ -67,8 +67,7 @@ export default function SiteCuttingMaterials({
                 marginTop: 4,
               }}
             >
-              {material.product_name} · 예정{" "}
-              {material.quantity} {material.unit}
+              {material.product_name || "현장 사용 필름"}
             </small>
           </span>
 
@@ -77,7 +76,7 @@ export default function SiteCuttingMaterials({
       ))}
 
       {!materials.length && (
-        <p>등록된 예정 필름이 없습니다.</p>
+        <p>등록된 사용 필름이 없습니다.</p>
       )}
 
       <Link
@@ -94,4 +93,4 @@ export default function SiteCuttingMaterials({
       </Link>
     </section>
   );
-        }
+          }
