@@ -231,22 +231,30 @@ export default function SiteOperations({
       {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
       {message && <p role="status" style={{ color: "#166534" }}>{message}</p>}
 
+      <details style={{ margin: "16px 0" }}>
+        <summary style={{ ...btn, listStyle: "none" }}>
+          📦 롤 반출 · 자재 반납 완료
+        </summary>
+        <FilmRollInventory
+          key={siteId}
+          siteId={siteId}
+          disabled={disabled}
+          onTracked={handleTrackedRolls}
+          onChanged={refresh}
+        />
+      </details>
+
       {!data ? <p>불러오는 중…</p> : materialsMode ? (
         <>
-          {reportEditable && (
-            <FilmRollInventory
-              key={siteId}
-              siteId={siteId}
-              disabled={disabled}
-              onTracked={handleTrackedRolls}
-              onChanged={refresh}
-            />
-          )}
-
           <p style={{ color: "#64748b", fontSize: 13 }}>
             소모량 = 총 반출량 − 남은 자재 반입량. 재단 손실도 포함됩니다.
           </p>
-          {data.locked && <p>보고서 제출·승인 또는 현장 취소로 수량이 잠겨 있습니다.</p>}
+          {data.locked && (
+            <p>
+              수동 수량 수정은 잠겨 있습니다.
+              이미 반출한 롤은 위 메뉴에서 반납 권한을 확인하고 처리할 수 있습니다.
+            </p>
+          )}
           {!data.materials.length && <p>관리자가 사용할 필름을 먼저 등록해주세요.</p>}
 
           {data.materials.map(material => {
@@ -587,4 +595,4 @@ export default function SiteOperations({
       )}
     </section>
   );
-                  }
+                              }
