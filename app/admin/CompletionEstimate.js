@@ -34,35 +34,61 @@ const button = {
 };
 
 async function request(siteId, body, signal) {
-  const { data, error } = await supabase.auth.getSession();
+  const timeout = new AbortController();
+  const abort = () => timeout.abort();
 
-  if (error || !data.session) {
-    throw Error("관리자로 다시 로그인해주세요.");
-  }
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, 25000);
 
-  const response = await fetch(
-    `/api/admin/completion-estimate?siteId=${encodeURIComponent(siteId)}`,
-    {
-      method: body ? "POST" : "GET",
-      signal,
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${data.session.access_token}`,
-        "Content-Type": "application/json",
+  try {
+    if (signal?.aborted) {
+      throw Error("요청이 취소되었습니다.");
+    }
+
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error || !data.session) {
+      throw Error("관리자로 다시 로그인해주세요.");
+    }
+
+    const response = await fetch(
+      `/api/admin/completion-estimate?siteId=${encodeURIComponent(siteId)}`,
+      {
+        method: body ? "POST" : "GET",
+        signal: timeout.signal,
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        ...(body
+          ? { body: JSON.stringify({ ...body, siteId }) }
+          : {}),
       },
-      ...(body
-        ? { body: JSON.stringify({ ...body, siteId }) }
-        : {}),
-    },
-  );
+    );
 
-  const result = await response.json();
+    const result = await response.json().catch(() => ({
+      error:
+        "서버 응답을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.",
+    }));
 
-  if (!response.ok) {
-    throw Error(result.error || "견적서 처리 실패");
+    if (!response.ok) {
+      throw Error(result.error || "견적서 처리 실패");
+    }
+
+    return result;
+  } catch (error) {
+    if (timeout.signal.aborted && !signal?.aborted) {
+      throw Error(
+        "응답이 지연되고 있습니다. 입력은 유지됩니다. 저장 요청이 처리됐을 수 있으니 저장본을 확인한 후 다시 시도해주세요.",
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
-
-  return result;
 }
 
 export default function CompletionEstimate({
@@ -106,10 +132,12 @@ export default function CompletionEstimate({
 
   useEffect(() => {
     const next = new AbortController();
+
     controller.current = next;
     setDraft(null);
     setAutomatic(null);
     load(next.signal);
+
     return () => next.abort();
   }, [siteId]);
 
@@ -142,7 +170,43 @@ export default function CompletionEstimate({
 
   async function save(event) {
     event.preventDefault();
-    if (lock.current) return;
+    event.stopPropagation();
+
+    if (lock.current || !draft || busy) return;
+
+    for (const [index, row] of draft.items.entries()) {
+      const prefix = `${index + 1}번 항목 (${row.name || "이름 없음"})`;
+      let problem = "";
+
+      if (!String(row.name || "").trim()) {
+        problem = "항목명을 입력해주세요.";
+      } else if (String(row.name).length > 500) {
+        problem = "항목명은 500자 이하로 입력해주세요.";
+      } else if (
+        String(row.quantity ?? "").trim() === "" ||
+        !Number.isFinite(Number(row.quantity)) ||
+        Number(row.quantity) < 0 ||
+        Number(row.quantity) > 1000000
+      ) {
+        problem = "수량은 0~1,000,000 범위로 입력해주세요.";
+      } else if (
+        String(row.amount ?? "").trim() === "" ||
+        !Number.isSafeInteger(Number(row.amount)) ||
+        Number(row.amount) < 0 ||
+        Number(row.amount) > 1000000000
+      ) {
+        problem =
+          "금액은 0~1,000,000,000원의 정수로 입력해주세요.";
+      } else if (String(row.unit || "").length > 20) {
+        problem = "단위는 20자 이하로 입력해주세요.";
+      }
+
+      if (problem) {
+        setError(`${prefix}: ${problem}`);
+        setMessage("");
+        return;
+      }
+    }
 
     lock.current = true;
     setBusy(true);
@@ -240,7 +304,7 @@ export default function CompletionEstimate({
       </button>
 
       {draft && (
-        <form onSubmit={save}>
+        <form onSubmit={save} noValidate>
           <fieldset
             disabled={busy}
             style={{ border: 0, padding: 0, margin: 0 }}
@@ -474,7 +538,36 @@ export default function CompletionEstimate({
               />
             </label>
 
+            <div
+              aria-live="polite"
+              style={{ marginTop: 12 }}
+            >
+              {error && (
+                <p
+                  role="alert"
+                  style={{
+                    color: "#b91c1c",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {error}
+                </p>
+              )}
+
+              {message && (
+                <p role="status" style={{ color: "#15803d" }}>
+                  {message}
+                </p>
+              )}
+
+              {busy && (
+                <p role="status">견적서 처리 중…</p>
+              )}
+            </div>
+
             <button
+              type="submit"
+              disabled={busy}
               style={{
                 ...button,
                 width: "100%",
@@ -483,11 +576,11 @@ export default function CompletionEstimate({
                 color: "#fff",
               }}
             >
-              견적서 저장
+              {busy ? "저장 중…" : "견적서 저장"}
             </button>
           </fieldset>
         </form>
       )}
     </section>
   );
-            }
+}
