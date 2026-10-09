@@ -66,16 +66,23 @@ async function handle(request) {
         "price",
         "receive",
         "supplier_return",
+        "register_product",
       ].includes(body.action)
     ) {
       return reply({ error: "지원하지 않는 요청입니다." }, 400);
     }
 
-    const result = await db.rpc("film_dealers", {
-      p_user: data.user.id,
-      p_action: body.action,
-      p_body: body,
-    });
+    const result =
+      body.action === "register_product"
+        ? await db.rpc("register_dealer_film", {
+            p_user: data.user.id,
+            p_body: body,
+          })
+        : await db.rpc("film_dealers", {
+            p_user: data.user.id,
+            p_action: body.action,
+            p_body: body,
+          });
 
     if (result.error) {
       const code = result.error.code || "";
