@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { saveConsultation } from "../../lib/saveConsultationClient";
 
 function makeSafeFileName(fileName = "photo.jpg") {
   const extension = fileName.includes(".")
@@ -26,16 +27,16 @@ function toNumberOrNull(value) {
 
 function getSiteSortTime(site) {
   if (site?.schedule_start) {
-    const value = new Date(site.schedule_start).getTime();
-    if (Number.isFinite(value)) return value;
+    const time = new Date(site.schedule_start).getTime();
+    if (Number.isFinite(time)) return time;
   }
 
   if (site?.schedule_date) {
-    const value = new Date(
+    const time = new Date(
       `${site.schedule_date}T00:00:00+09:00`
     ).getTime();
 
-    if (Number.isFinite(value)) return value;
+    if (Number.isFinite(time)) return time;
   }
 
   return null;
@@ -56,6 +57,7 @@ function getLocalDateString(value) {
   if (!value) return null;
 
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) return null;
 
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -163,8 +165,11 @@ export default function useSites({ companyId }) {
       } catch (error) {
         console.error("현장 목록 조회 오류:", error);
         setSites([]);
+
         setSitesMessage(
-          `❌ 현장 목록 조회 실패: ${error?.message || "알 수 없는 오류"}`
+          `❌ 현장 목록 조회 실패: ${
+            error?.message || "알 수 없는 오류"
+          }`
         );
       } finally {
         setSitesLoading(false);
@@ -183,6 +188,7 @@ export default function useSites({ companyId }) {
         if (!file) continue;
 
         const safeFileName = makeSafeFileName(file.name);
+
         const storagePath =
           `sites/${companyId}/${siteId}/request/${safeFileName}`;
 
@@ -200,21 +206,19 @@ export default function useSites({ companyId }) {
           );
         }
 
-        const photoRow = {
-          company_id: companyId,
-          site_id: siteId,
-          photo_type: "request",
-          storage_path: storagePath,
-          photo_url: null,
-          description: "시공 요청사진",
-        };
-
         const {
           data: insertedPhoto,
           error: photoError,
         } = await supabase
           .from("site_photos")
-          .insert(photoRow)
+          .insert({
+            company_id: companyId,
+            site_id: siteId,
+            photo_type: "request",
+            storage_path: storagePath,
+            photo_url: null,
+            description: "시공 요청사진",
+          })
           .select()
           .single();
 
@@ -263,39 +267,28 @@ export default function useSites({ companyId }) {
           files: normalizedFiles,
         });
 
-        setSites((previous) =>
-          previous.map((site) => {
-            if (site.id !== siteId) return site;
-
-            const existingPhotos = Array.isArray(site.site_photos)
-              ? site.site_photos
-              : [];
-
-            return {
-              ...site,
-              site_photos: [
-                ...existingPhotos,
-                ...uploadedPhotos,
-              ],
-            };
-          })
-        );
-
-        setSelectedSite((previous) => {
-          if (!previous || previous.id !== siteId) return previous;
-
-          const existingPhotos = Array.isArray(previous.site_photos)
-            ? previous.site_photos
+        const appendPhotos = (site) => {
+          const existing = Array.isArray(site.site_photos)
+            ? site.site_photos
             : [];
 
           return {
-            ...previous,
-            site_photos: [
-              ...existingPhotos,
-              ...uploadedPhotos,
-            ],
+            ...site,
+            site_photos: [...existing, ...uploadedPhotos],
           };
-        });
+        };
+
+        setSites((previous) =>
+          previous.map((site) =>
+            site.id === siteId ? appendPhotos(site) : site
+          )
+        );
+
+        setSelectedSite((previous) =>
+          previous?.id === siteId
+            ? appendPhotos(previous)
+            : previous
+        );
 
         setSitesMessage(
           `✅ 요청사진 ${uploadedPhotos.length}장이 추가되었습니다.`
@@ -323,11 +316,7 @@ export default function useSites({ companyId }) {
   );
 
   const deleteSiteRequestPhoto = useCallback(
-    async ({
-      siteId,
-      photoId,
-      storagePath = null,
-    }) => {
+    async ({ siteId, photoId, storagePath = null }) => {
       if (!companyId || !siteId || !photoId) {
         return {
           success: false,
@@ -394,33 +383,26 @@ export default function useSites({ companyId }) {
           }
         }
 
-        setSites((previous) =>
-          previous.map((site) => {
-            if (site.id !== siteId) return site;
+        const removePhoto = (site) => ({
+          ...site,
+          site_photos: Array.isArray(site.site_photos)
+            ? site.site_photos.filter(
+                (photo) => photo.id !== photoId
+              )
+            : [],
+        });
 
-            return {
-              ...site,
-              site_photos: Array.isArray(site.site_photos)
-                ? site.site_photos.filter(
-                    (photo) => photo.id !== photoId
-                  )
-                : [],
-            };
-          })
+        setSites((previous) =>
+          previous.map((site) =>
+            site.id === siteId ? removePhoto(site) : site
+          )
         );
 
-        setSelectedSite((previous) => {
-          if (!previous || previous.id !== siteId) return previous;
-
-          return {
-            ...previous,
-            site_photos: Array.isArray(previous.site_photos)
-              ? previous.site_photos.filter(
-                  (photo) => photo.id !== photoId
-                )
-              : [],
-          };
-        });
+        setSelectedSite((previous) =>
+          previous?.id === siteId
+            ? removePhoto(previous)
+            : previous
+        );
 
         setSitesMessage(
           storageWarning
@@ -454,16 +436,17 @@ export default function useSites({ companyId }) {
       if (!companyId || !siteId || !materials.length) return [];
 
       const rows = materials
-        .filter(
-          (material) =>
-            material &&
-            (material.product_code || material.product_name)
+        .filter((material) =>
+          material &&
+          (material.product_code || material.product_name)
         )
         .map((material) => {
           const quantity =
             toNumberOrNull(material.quantity) ?? 0;
+
           const unitPrice =
             toNumberOrNull(material.unit_price);
+
           let totalPrice =
             toNumberOrNull(material.total_price);
 
@@ -521,14 +504,6 @@ export default function useSites({ companyId }) {
       try {
         const insertData = {
           company_id: companyId,
-
-          ...(form.consultation_quote_seed
-            ? {
-                consultation_quote_seed:
-                  form.consultation_quote_seed,
-              }
-            : {}),
-
           customer_name: form.customer_name?.trim() || null,
           customer_phone: form.customer_phone?.trim() || null,
           site_name: form.site_name?.trim() || null,
@@ -554,6 +529,13 @@ export default function useSites({ companyId }) {
             (form.schedule_start ? "scheduled" : "consulting"),
 
           memo: form.memo?.trim() || null,
+
+          ...(form.consultation_quote_seed
+            ? {
+                consultation_quote_seed:
+                  form.consultation_quote_seed,
+              }
+            : {}),
         };
 
         if (form.work_dates !== undefined) {
@@ -575,24 +557,39 @@ export default function useSites({ companyId }) {
           }
         }
 
-        const { data, error } = await supabase
-          .from("sites")
-          .insert(insertData)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        createdSite = data;
-
         const materials = Array.isArray(form.materials)
           ? form.materials
           : [];
 
-        const savedMaterials = await saveSiteMaterials({
-          siteId: createdSite.id,
-          materials,
-        });
+        let savedMaterials = [];
+        let merged = false;
+
+        if (form.consultation_quote_seed) {
+          const result = await saveConsultation({
+            ...insertData,
+            work_dates: insertData.work_dates || [],
+            materials,
+          });
+
+          createdSite = result.site;
+          savedMaterials = result.materials || [];
+          merged = Boolean(result.merged);
+        } else {
+          const { data, error } = await supabase
+            .from("sites")
+            .insert(insertData)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          createdSite = data;
+
+          savedMaterials = await saveSiteMaterials({
+            siteId: createdSite.id,
+            materials,
+          });
+        }
 
         const requestPhotos = Array.isArray(form.request_photos)
           ? form.request_photos
@@ -603,28 +600,56 @@ export default function useSites({ companyId }) {
           files: requestPhotos,
         });
 
-        const siteForState = {
+        const applySavedSite = (existing) => ({
+          ...existing,
           ...createdSite,
-          site_workers: [],
+          site_workers: existing?.site_workers || [],
           site_materials: savedMaterials,
-          site_photos: savedPhotos,
-        };
+          site_photos: [
+            ...(existing?.site_photos || []),
+            ...savedPhotos,
+          ],
+        });
 
-        setSites((previous) =>
-          [...previous, siteForState].sort(sortSitesBySchedule)
+        setSites((previous) => {
+          const existing = previous.find(
+            (site) => site.id === createdSite.id
+          );
+
+          const next = applySavedSite(existing);
+
+          return [
+            ...previous.filter(
+              (site) => site.id !== createdSite.id
+            ),
+            next,
+          ].sort(sortSitesBySchedule);
+        });
+
+        setSelectedSite((previous) =>
+          previous?.id === createdSite.id
+            ? applySavedSite(previous)
+            : previous
         );
 
         setSitesMessage(
-          createdSite.status === "consulting"
-            ? "✅ 상담중 현장으로 등록되었습니다."
-            : "✅ 현장 일정이 등록되었습니다."
+          merged
+            ? "✅ 기존 현장에 상담 내용과 견적 항목을 추가했습니다."
+            : createdSite.status === "consulting"
+              ? "✅ 상담중 현장으로 등록되었습니다."
+              : "✅ 현장 일정이 등록되었습니다."
         );
 
         return {
           success: true,
-          site: siteForState,
+          site: {
+            ...createdSite,
+            site_materials: savedMaterials,
+            site_photos: savedPhotos,
+          },
           materials: savedMaterials,
           photos: savedPhotos,
+          merged,
         };
       } catch (error) {
         console.error("현장 등록 오류:", error);
@@ -645,7 +670,7 @@ export default function useSites({ companyId }) {
         return {
           success: false,
           error: createdSite
-            ? `현장은 생성되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
+            ? `현장은 저장되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
             : message,
           site: createdSite,
         };
@@ -714,7 +739,9 @@ export default function useSites({ companyId }) {
         setSites((previous) =>
           previous
             .map((site) =>
-              site.id === siteId ? { ...site, ...data } : site
+              site.id === siteId
+                ? { ...site, ...data }
+                : site
             )
             .sort(sortSitesBySchedule)
         );
@@ -735,7 +762,8 @@ export default function useSites({ companyId }) {
         console.error("현장 기본정보 수정 오류:", error);
 
         const message =
-          error?.message || "현장 기본정보 저장 중 오류가 발생했습니다.";
+          error?.message ||
+          "현장 기본정보 저장 중 오류가 발생했습니다.";
 
         setSitesMessage(`❌ 기본정보 저장 실패: ${message}`);
 
@@ -884,7 +912,9 @@ export default function useSites({ companyId }) {
         setSites((previous) =>
           previous
             .map((site) =>
-              site.id === siteId ? { ...site, ...data } : site
+              site.id === siteId
+                ? { ...site, ...data }
+                : site
             )
             .sort(sortSitesBySchedule)
         );
@@ -967,7 +997,9 @@ export default function useSites({ companyId }) {
         setSites((previous) =>
           previous
             .map((site) =>
-              site.id === siteId ? { ...site, ...data } : site
+              site.id === siteId
+                ? { ...site, ...data }
+                : site
             )
             .sort(sortSitesBySchedule)
         );
@@ -986,7 +1018,9 @@ export default function useSites({ companyId }) {
         console.error("현장 상태 변경 오류:", error);
 
         setSitesMessage(
-          `❌ 상태 변경 실패: ${error?.message || "알 수 없는 오류"}`
+          `❌ 상태 변경 실패: ${
+            error?.message || "알 수 없는 오류"
+          }`
         );
 
         return {
@@ -1028,4 +1062,4 @@ export default function useSites({ companyId }) {
     closeSite,
     clearSitesMessage,
   };
-}
+            }
