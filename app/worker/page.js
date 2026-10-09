@@ -29,9 +29,12 @@ export default function WorkerPage({ mode = "home" }) {
   const [sitesLoading, setSitesLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const [notificationEnabled, setNotificationEnabled] = useState(false);
-  const [notificationLoading, setNotificationLoading] = useState(false);
-  const [notificationMessage, setNotificationMessage] = useState("");
+  const [notificationEnabled, setNotificationEnabled] =
+    useState(false);
+  const [notificationLoading, setNotificationLoading] =
+    useState(false);
+  const [notificationMessage, setNotificationMessage] =
+    useState("");
 
   const refreshInFlight = useRef(false);
 
@@ -45,7 +48,7 @@ export default function WorkerPage({ mode = "home" }) {
 
   useEffect(() => {
     const target = workerDestination(
-      window.location.pathname + window.location.search,
+      window.location.pathname + window.location.search
     );
 
     if (mode === "home" && target !== "/worker") {
@@ -61,7 +64,7 @@ export default function WorkerPage({ mode = "home" }) {
       }
     };
 
-    const restore = (event) => {
+    const restore = event => {
       if (event.persisted) refresh();
     };
 
@@ -72,11 +75,16 @@ export default function WorkerPage({ mode = "home" }) {
     return () => {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("pageshow", restore);
-      document.removeEventListener("visibilitychange", refresh);
+      document.removeEventListener(
+        "visibilitychange",
+        refresh
+      );
     };
   }, [router, mode]);
 
-  async function loadWorkerPage({ background = false } = {}) {
+  async function loadWorkerPage({
+    background = false,
+  } = {}) {
     if (refreshInFlight.current) return;
 
     refreshInFlight.current = true;
@@ -101,7 +109,10 @@ export default function WorkerPage({ mode = "home" }) {
         setWorker(null);
         router.replace(workerLoginUrl());
       } else {
-        setMessage(error.message || "배정 현장을 불러오지 못했습니다.");
+        setMessage(
+          error.message ||
+            "배정 현장을 불러오지 못했습니다."
+        );
       }
     } finally {
       refreshInFlight.current = false;
@@ -117,13 +128,16 @@ export default function WorkerPage({ mode = "home" }) {
       const enabled = Boolean(
         status?.supported &&
           status?.permission === "granted" &&
-          status?.subscribed,
+          status?.subscribed
       );
 
       setNotificationEnabled(enabled);
       return enabled;
     } catch (error) {
-      console.error("시공자 Push 상태 확인 오류:", error);
+      console.error(
+        "시공자 Push 상태 확인 오류:",
+        error
+      );
       setNotificationEnabled(false);
       return false;
     }
@@ -139,15 +153,25 @@ export default function WorkerPage({ mode = "home" }) {
       await enablePushNotifications();
 
       if (!(await syncNotificationStatus())) {
-        throw new Error("Push 알림 구독을 확인하지 못했습니다.");
+        throw new Error(
+          "Push 알림 구독을 확인하지 못했습니다."
+        );
       }
 
-      setNotificationMessage("✅ 현장 알림이 켜졌습니다.");
+      setNotificationMessage(
+        "✅ 현장 알림이 켜졌습니다."
+      );
     } catch (error) {
-      console.error("시공자 Push 활성화 오류:", error);
+      console.error(
+        "시공자 Push 활성화 오류:",
+        error
+      );
       setNotificationEnabled(false);
       setNotificationMessage(
-        `❌ ${error?.message || "알림을 켜지 못했습니다."}`,
+        `❌ ${
+          error?.message ||
+          "알림을 켜지 못했습니다."
+        }`
       );
     } finally {
       setNotificationLoading(false);
@@ -165,8 +189,10 @@ export default function WorkerPage({ mode = "home" }) {
     }
   }
 
-  const visibleSites = sites.filter((site) => {
-    if (siteStatus(site) === "cancelled") return false;
+  const visibleSites = sites.filter(site => {
+    if (siteStatus(site) === "cancelled") {
+      return false;
+    }
 
     const text = [
       site.site_name,
@@ -177,13 +203,18 @@ export default function WorkerPage({ mode = "home" }) {
       .join(" ")
       .toLowerCase();
 
-    return text.includes(search.toLowerCase().trim());
+    return text.includes(
+      search.toLowerCase().trim()
+    );
   });
 
   if (loading) {
     return (
       <main className={styles.page}>
-        <div className={styles.loadingPage} role="status">
+        <div
+          className={styles.loadingPage}
+          role="status"
+        >
           내 현장 일정을 불러오고 있습니다...
         </div>
       </main>
@@ -195,10 +226,16 @@ export default function WorkerPage({ mode = "home" }) {
       <main className={styles.page}>
         <div className={styles.content}>
           <section className={styles.accountError}>
-            <h1 className={styles.pageTitle}>시공자 페이지</h1>
+            <h1 className={styles.pageTitle}>
+              시공자 페이지
+            </h1>
 
-            <div className={styles.error} role="alert">
-              {message || "시공자 정보를 확인할 수 없습니다."}
+            <div
+              className={styles.error}
+              role="alert"
+            >
+              {message ||
+                "시공자 정보를 확인할 수 없습니다."}
             </div>
 
             <div className={styles.accountActions}>
@@ -213,7 +250,9 @@ export default function WorkerPage({ mode = "home" }) {
               <button
                 type="button"
                 className={styles.pushButton}
-                onClick={() => router.replace(workerLoginUrl())}
+                onClick={() =>
+                  router.replace(workerLoginUrl())
+                }
               >
                 시공자 로그인
               </button>
@@ -229,8 +268,12 @@ export default function WorkerPage({ mode = "home" }) {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <div>
-            <p className={styles.eyebrow}>시공자 전용</p>
-            <h1 className={styles.pageTitle}>필름장이</h1>
+            <p className={styles.eyebrow}>
+              시공자 전용
+            </p>
+            <h1 className={styles.pageTitle}>
+              필름장이
+            </h1>
           </div>
 
           <button
@@ -249,7 +292,10 @@ export default function WorkerPage({ mode = "home" }) {
           aria-label="시공자 정보 및 알림"
         >
           <div className={styles.identity}>
-            <span className={styles.avatar} aria-hidden="true">
+            <span
+              className={styles.avatar}
+              aria-hidden="true"
+            >
               👷
             </span>
 
@@ -258,13 +304,16 @@ export default function WorkerPage({ mode = "home" }) {
                 {worker.worker_name || "시공자"}
               </p>
               <p className={styles.workerPhone}>
-                {worker.worker_phone || "연락처 미등록"}
+                {worker.worker_phone ||
+                  "연락처 미등록"}
               </p>
             </div>
           </div>
 
           {notificationEnabled ? (
-            <span className={styles.pushOn}>✓ 알림 켜짐</span>
+            <span className={styles.pushOn}>
+              ✓ 알림 켜짐
+            </span>
           ) : (
             <button
               type="button"
@@ -272,7 +321,9 @@ export default function WorkerPage({ mode = "home" }) {
               onClick={handleEnableNotifications}
               disabled={notificationLoading}
             >
-              {notificationLoading ? "설정 중..." : "🔔 현장 알림 켜기"}
+              {notificationLoading
+                ? "설정 중..."
+                : "🔔 현장 알림 켜기"}
             </button>
           )}
 
@@ -281,9 +332,10 @@ export default function WorkerPage({ mode = "home" }) {
               className={styles.pushMessage}
               role="status"
               style={{
-                color: notificationMessage.startsWith("✅")
-                  ? "#15803d"
-                  : "#b91c1c",
+                color:
+                  notificationMessage.startsWith("✅")
+                    ? "#15803d"
+                    : "#b91c1c",
               }}
             >
               {notificationMessage}
@@ -294,7 +346,10 @@ export default function WorkerPage({ mode = "home" }) {
         {mode === "home" ? (
           <>
             {message && (
-              <p role="alert" className={styles.error}>
+              <p
+                role="alert"
+                className={styles.error}
+              >
                 {message}
               </p>
             )}
@@ -305,8 +360,10 @@ export default function WorkerPage({ mode = "home" }) {
               onOpen={(id, section) =>
                 router.push(
                   `/worker/site/${id}${
-                    section ? `?section=${section}` : ""
-                  }`,
+                    section
+                      ? `?section=${section}`
+                      : ""
+                  }`
                 )
               }
             />
@@ -314,7 +371,9 @@ export default function WorkerPage({ mode = "home" }) {
         ) : (
           <>
             <div className="worker-menu-heading">
-              <Link href="/worker">‹ 홈으로</Link>
+              <Link href="/worker">
+                ‹ 홈으로
+              </Link>
               <h2>{titles[mode]}</h2>
             </div>
 
@@ -324,9 +383,15 @@ export default function WorkerPage({ mode = "home" }) {
                 loading={sitesLoading}
                 error={message}
                 onRefresh={() =>
-                  loadWorkerPage({ background: true })
+                  loadWorkerPage({
+                    background: true,
+                  })
                 }
-                onOpen={(id) => router.push(`/worker/site/${id}`)}
+                onOpen={id =>
+                  router.push(
+                    `/worker/site/${id}`
+                  )
+                }
               />
             )}
 
@@ -337,33 +402,95 @@ export default function WorkerPage({ mode = "home" }) {
               />
             )}
 
-            {["film", "report", "photos"].includes(mode) && (
+            {["film", "report", "photos"].includes(
+              mode
+            ) && (
               <section className="worker-menu-picker">
-                <p>작업할 현장을 선택하세요.</p>
+                {mode === "film" && (
+                  <div
+                    style={{
+                      marginBottom: 20,
+                      padding: 16,
+                      borderRadius: 16,
+                      background: "#edf6ff",
+                      border:
+                        "1px solid #c9e1f7",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: "#173456",
+                        fontSize: 17,
+                      }}
+                    >
+                      ✂️ 현장 없이 재단하기
+                    </strong>
+
+                    <p
+                      style={{
+                        margin: "8px 0 14px",
+                      }}
+                    >
+                      필름 코드와 롤 길이를 직접
+                      입력해 재단할 수 있습니다.
+                    </p>
+
+                    <Link
+                      href="/worker/cutting"
+                      style={{
+                        display: "block",
+                        padding: "14px 16px",
+                        borderRadius: 12,
+                        background: "#243f52",
+                        color: "#fff",
+                        textAlign: "center",
+                        textDecoration: "none",
+                        fontWeight: 800,
+                      }}
+                    >
+                      재단앱 사용 →
+                    </Link>
+                  </div>
+                )}
+
+                <p>
+                  {mode === "film"
+                    ? "현장 필름으로 재단하려면 아래 현장을 선택하세요."
+                    : "작업할 현장을 선택하세요."}
+                </p>
 
                 <label>
                   현장 검색
                   <input
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={event =>
+                      setSearch(
+                        event.target.value
+                      )
+                    }
                     placeholder="현장명 또는 주소"
                   />
                 </label>
 
                 {message && (
-                  <p role="alert" className={styles.error}>
+                  <p
+                    role="alert"
+                    className={styles.error}
+                  >
                     {message}
                   </p>
                 )}
 
-                {visibleSites.map((site) => (
+                {visibleSites.map(site => (
                   <Link
                     key={site.site_id}
                     href={`/worker/site/${site.site_id}?section=${mode}`}
                   >
                     <span>
                       <strong>
-                        {site.site_name || site.customer_name || "현장"}
+                        {site.site_name ||
+                          site.customer_name ||
+                          "현장"}
                       </strong>
                       <small>
                         {site.address ||
@@ -376,17 +503,23 @@ export default function WorkerPage({ mode = "home" }) {
                 ))}
 
                 {!visibleSites.length && (
-                  <p>표시할 현장이 없습니다.</p>
+                  <p>
+                    표시할 현장이 없습니다.
+                  </p>
                 )}
 
                 <button
                   type="button"
                   disabled={sitesLoading}
                   onClick={() =>
-                    loadWorkerPage({ background: true })
+                    loadWorkerPage({
+                      background: true,
+                    })
                   }
                 >
-                  {sitesLoading ? "확인 중…" : "현장 새로고침"}
+                  {sitesLoading
+                    ? "확인 중…"
+                    : "현장 새로고침"}
                 </button>
               </section>
             )}
@@ -397,11 +530,20 @@ export default function WorkerPage({ mode = "home" }) {
             >
               {[
                 { id: "home", label: "홈" },
-                { id: "sites", label: "내 현장" },
+                {
+                  id: "sites",
+                  label: "내 현장",
+                },
                 { id: "film", label: "재단" },
-                { id: "report", label: "완료보고" },
-                { id: "pay", label: "근무금액" },
-              ].map((item) => (
+                {
+                  id: "report",
+                  label: "완료보고",
+                },
+                {
+                  id: "pay",
+                  label: "근무금액",
+                },
+              ].map(item => (
                 <Link
                   key={item.id}
                   href={
@@ -409,7 +551,11 @@ export default function WorkerPage({ mode = "home" }) {
                       ? "/worker"
                       : `/worker/menu/${item.id}`
                   }
-                  aria-current={mode === item.id ? "page" : undefined}
+                  aria-current={
+                    mode === item.id
+                      ? "page"
+                      : undefined
+                  }
                 >
                   {item.label}
                 </Link>
@@ -524,7 +670,11 @@ export default function WorkerPage({ mode = "home" }) {
             z-index: 40;
             background: #fffffff7;
             border-top: 1px solid #eee8dd;
-            padding: 12px 5px calc(12px + env(safe-area-inset-bottom));
+            padding: 12px 5px
+              calc(
+                12px +
+                env(safe-area-inset-bottom)
+              );
           }
 
           .worker-menu-bottom a {
@@ -537,7 +687,8 @@ export default function WorkerPage({ mode = "home" }) {
             border-radius: 12px;
           }
 
-          .worker-menu-bottom a[aria-current="page"] {
+          .worker-menu-bottom
+            a[aria-current="page"] {
             background: #edf6ff;
             color: #398bdb;
             font-weight: 700;
@@ -546,5 +697,4 @@ export default function WorkerPage({ mode = "home" }) {
       </div>
     </main>
   );
-}
-// 파일 끝
+                  }
