@@ -1,716 +1,1031 @@
-export const cutRowSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    page: { type: "integer" },
-    group: { type: "string" },
-    location: { type: "string" },
-    part: { type: "string" },
-    color: { type: "string" },
-    width: { type: ["number", "null"] },
-    height: { type: ["number", "null"] },
-    quantity: { type: ["integer", "null"] },
-    unit: {
-      type: "string",
-      enum: ["mm", "cm", "m", "unknown"],
-    },
-    raw: { type: "string" },
-    notes: { type: "string" },
-    issues: {
-      type: "array",
-      items: { type: "string" },
-    },
-  },
+"use client";
+
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { supabase } from "../../../lib/supabase";
+import {
+  confirmedSize,
+  normalizePhotoRow,
+  photoRowProblem,
+} from "../../../lib/cuttingPhotoImport.mjs";
+
+const box = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 14,
+  padding: 16,
+  margin: "12px 0",
 };
 
-cutRowSchema.required = Object.keys(
-  cutRowSchema.properties
-);
-
-export const cutSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    rows: {
-      type: "array",
-      items: cutRowSchema,
-    },
-    warnings: {
-      type: "array",
-      items: { type: "string" },
-    },
-  },
-  required: ["rows", "warnings"],
+const inputStyle = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 44,
+  padding: 9,
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  boxSizing: "border-box",
+  fontSize: 16,
 };
 
-const norm = value =>
-  String(value || "").trim().toUpperCase();
-
-const label = material =>
-  [
-    material.brand,
-    material.product_code ||
-      material.code ||
-      material.product_name ||
-      material.name,
-  ]
-    .filter(Boolean)
-    .join(" / ")
-    .trim()
-    .toUpperCase();
-
-export function checkAnalysis(data, pageCount) {
+async function preparePhoto(file) {
   if (
-    !Array.isArray(data?.rows) ||
-    data.rows.length > 300 ||
-    !Array.isArray(data.warnings) ||
-    data.warnings.some(
-      value => typeof value !== "string"
-    )
+    !file.type.startsWith("image/") ||
+    file.size > 20000000
   ) {
     throw Error(
-      "분석 결과가 불완전합니다. 사진을 나눠 다시 분석해주세요."
+      "20MB 이하의 사진을 선택해주세요."
     );
   }
 
-  return {
-    warnings: data.warnings,
-    rows: data.rows.map((row, index) => {
-      if (
-        !row ||
-        !Number.isInteger(row.page) ||
-        row.page < 1 ||
-        row.page > pageCount ||
-        [
-          "group",
-          "location",
-          "part",
-          "color",
-          "raw",
-          "notes",
-        ].some(
-          key => typeof row[key] !== "string"
-        ) ||
-        !["mm", "cm", "m", "unknown"].includes(
-          row.unit
-        ) ||
-        !Array.isArray(row.issues) ||
-        row.issues.some(
-          value => typeof value !== "string"
-        ) ||
-        ["width", "height", "quantity"].some(
-          key =>
-            row[key] !== null &&
-            (
-              typeof row[key] !== "number" ||
-              !Number.isFinite(row[key])
-            )
-        )
-      ) {
-        throw Error(
-          "분석 결과 형식을 확인하지 못했습니다."
-        );
-      }
-
-      return {
-        ...row,
-        id: "photo-row-" + index,
-        include: false,
-      };
-    }),
-  };
-}
-
-function sourceDimensions(raw) {
-  const text = String(raw || "");
-
-  const decimal = text.match(
-    /(^|[^\d.])(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)(?![\d.])/
-  );
-
-  if (decimal) {
-    return {
-      width: Number(decimal[2]),
-      height: Number(decimal[3]),
-      decimal:
-        decimal[2].includes(".") ||
-        decimal[3].includes("."),
-    };
-  }
-
-  const dotted = text.match(
-    /(^|[^\d.])(\d{2,})\s*\.\s*(\d{2,})(?!\d)/
-  );
-
-  return dotted
-    ? {
-        width: Number(dotted[2]),
-        height: Number(dotted[3]),
-        decimal: false,
-      }
-    : null;
-}
-
-export function normalizePhotoRow(
-  row,
-  colors = [],
-  defaultColor = ""
-) {
-  const next = {
-    ...row,
-    issues: [...(row.issues || [])],
-  };
-
-  const source = sourceDimensions(next.raw);
-
-  if (source) {
-    for (const key of ["width", "height"]) {
-      if (
-        next[key] == null ||
-        next[key] === ""
-      ) {
-        next[key] = source[key];
-      } else if (
-        Math.abs(
-          Number(next[key]) - source[key]
-        ) > 0.000001
-      ) {
-        next.issues.push(
-          "원문과 " +
-            key +
-            " 숫자가 달라 확인이 필요합니다."
-        );
-      }
-    }
-  }
-
-  if (!["mm", "cm", "m"].includes(next.unit)) {
-    if (
-      source?.decimal &&
-      source.width > 0 &&
-      source.height > 0 &&
-      source.width <= 50 &&
-      source.height <= 50
-    ) {
-      next.unit = "m";
-    } else if (
-      (source && !source.decimal) ||
-      (
-        Number.isInteger(
-          Number(next.width)
-        ) &&
-        Number.isInteger(
-          Number(next.height)
-        ) &&
-        Number(next.width) >= 10 &&
-        Number(next.height) >= 10
-      )
-    ) {
-      next.unit = "mm";
-    }
-  }
-
-  if (["mm", "cm", "m"].includes(next.unit)) {
-    next.issues = next.issues.filter(
-      issue =>
-        !/^(치수\s*)?단위\s*(확인\s*필요|미표기|미기재|불명확|확인|모름)[.!]?\s*$/.test(
-          issue.trim()
-        )
-    );
-  }
-
-  if (
-    next.quantity == null ||
-    next.quantity === ""
-  ) {
-    next.quantity = 1;
-
-    next.notes = [
-      next.notes,
-      "수량 표기 없음: 1장",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
-
-  const allowed = [
-    ...new Set(
-      colors.map(norm).filter(Boolean)
-    ),
-  ];
-
-  const color = norm(next.color);
-
-  if (allowed.length) {
-    if (allowed.includes(color)) {
-      next.color = color;
-    } else if (color) {
-      const matches = allowed.filter(
-        value =>
-          norm(
-            value.split("/").at(-1)
-          ) === color
-      );
-
-      if (matches.length === 1) {
-        next.color = matches[0];
-      } else {
-        next.issues.push(
-          "현장 필름을 선택해주세요."
-        );
-      }
-    } else {
-      const fallback =
-        norm(defaultColor) ||
-        (
-          allowed.length === 1
-            ? allowed[0]
-            : ""
-        );
-
-      if (allowed.includes(fallback)) {
-        next.color = fallback;
-      } else {
-        next.issues.push(
-          "현장 필름을 선택해주세요."
-        );
-      }
-    }
-  }
-
-  next.issues = [
-    ...new Set(next.issues),
-  ];
-
-  return next;
-}
-
-export function confirmedSize(row) {
-  if (
-    !String(row.color || "").trim()
-  ) {
-    throw Error(
-      "필름을 선택해주세요."
-    );
-  }
-
-  const factor = {
-    mm: 1,
-    cm: 10,
-    m: 1000,
-  }[row.unit];
-
-  if (!factor) {
-    throw Error(
-      "치수 단위를 확인해주세요."
-    );
-  }
-
-  const rawWidth =
-    Number(row.width) * factor;
-  const rawHeight =
-    Number(row.height) * factor;
-
-  const width = Math.round(rawWidth);
-  const height = Math.round(rawHeight);
-  const quantity = Number(row.quantity);
-
-  if (
-    ![
-      rawWidth,
-      rawHeight,
-      quantity,
-    ].every(Number.isFinite) ||
-    Math.abs(rawWidth - width) >
-      0.000001 ||
-    Math.abs(rawHeight - height) >
-      0.000001 ||
-    ![
-      width,
-      height,
-      quantity,
-    ].every(Number.isSafeInteger) ||
-    width <= 0 ||
-    height <= 0 ||
-    width > 100000 ||
-    height > 100000 ||
-    quantity < 1 ||
-    quantity > 500
-  ) {
-    throw Error(
-      "폭·길이와 수량을 확인해주세요."
-    );
-  }
-
-  return {
-    width,
-    height,
-    quantity,
-  };
-}
-
-export function photoRowProblem(
-  row,
-  colors = []
-) {
-  if (row.issues?.length) {
-    return row.issues.join(" / ");
-  }
+  const url = URL.createObjectURL(file);
 
   try {
-    confirmedSize(row);
+    const img = new Image();
 
-    if (
-      colors.length &&
-      !colors
-        .map(norm)
-        .includes(norm(row.color))
-    ) {
-      return "현장 필름을 선택해주세요.";
-    }
-
-    return "";
-  } catch (error) {
-    return error.message;
-  }
-}
-
-export function appendPhotoRows(
-  draft,
-  rows,
-  makeId
-) {
-  if (
-    draft?.version !== 1 ||
-    !Array.isArray(draft.sections) ||
-    !Array.isArray(draft.rolls)
-  ) {
-    throw Error(
-      "재단 입력을 준비하지 못했습니다. 화면을 다시 열어주세요."
-    );
-  }
-
-  if (
-    Object.values(
-      draft.progress || {}
-    ).some(Boolean)
-  ) {
-    throw Error(
-      "완료 체크가 있습니다. 먼저 재단 계획 다시 작성을 눌러주세요."
-    );
-  }
-
-  const knownSources = new Set(
-    draft.sections.flatMap(section =>
-      section.colors.flatMap(group =>
-        group.sizes
-          .map(
-            size =>
-              size.photoSource?.importKey
-          )
-          .filter(Boolean)
-      )
-    )
-  );
-
-  const selected = rows.filter(
-    row =>
-      row.include &&
-      (
-        !row.importKey ||
-        !knownSources.has(row.importKey)
-      )
-  );
-
-  if (!selected.length) return draft;
-
-  const groups = new Map();
-
-  for (const row of selected) {
-    const size = confirmedSize(row);
-    const color = norm(row.color);
-    const location = String(
-      row.location || ""
-    ).trim();
-    const part = String(
-      row.part || ""
-    ).trim();
-
-    const key = JSON.stringify([
-      row.page,
-      row.group,
-      location,
-      part,
-      color,
-    ]);
-
-    if (!groups.has(key)) {
-      groups.set(key, {
-        id: makeId("section"),
-        location,
-        part,
-        colors: [
-          {
-            id: makeId("color"),
-            color,
-            sizes: [],
-          },
-        ],
-      });
-    }
-
-    groups.get(key).colors[0].sizes.push({
-      id: makeId("size"),
-      ...size,
-      photoSource: {
-        importKey:
-          row.importKey || null,
-        page: row.page,
-        raw: row.raw,
-        notes: row.notes,
-        issues: row.issues,
-      },
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
     });
-  }
 
-  const empty = section =>
-    !section.location &&
-    !section.part &&
-    section.colors.every(group =>
-      group.sizes.every(
-        size =>
-          !size.width &&
-          !size.height
-      )
+    const scale = Math.min(
+      1,
+      2200 /
+        Math.max(img.width, img.height)
     );
 
-  const sections = [
-    ...draft.sections.filter(
-      section => !empty(section)
-    ),
-    ...groups.values(),
-  ];
+    const canvas =
+      document.createElement("canvas");
 
-  if (sections.length > 500) {
-    throw Error(
-      "부위가 너무 많습니다."
+    canvas.width = Math.max(
+      1,
+      Math.round(img.width * scale)
     );
-  }
+    canvas.height = Math.max(
+      1,
+      Math.round(img.height * scale)
+    );
 
-  const known = new Set(
-    draft.rolls.map(
-      roll => norm(roll.color)
-    )
-  );
+    const ctx = canvas.getContext("2d");
 
-  const rolls = [...draft.rolls];
-
-  for (const section of groups.values()) {
-    const color =
-      section.colors[0].color;
-
-    if (!known.has(color)) {
-      rolls.push({
-        id: makeId("roll"),
-        color,
-        lengthM: "",
-        grainDirection: false,
-      });
-
-      known.add(color);
+    if (!ctx) {
+      throw Error(
+        "사진을 준비하지 못했습니다."
+      );
     }
-  }
 
-  if (rolls.length > 100) {
-    throw Error(
-      "롤이 너무 많습니다."
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(
+      0,
+      0,
+      canvas.width,
+      canvas.height
     );
-  }
+    ctx.drawImage(
+      img,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
 
-  return {
-    ...draft,
-    rolls,
-    sections,
-    result: null,
-    progress: {},
-  };
-}
-
-export function issuedCuttingRolls(
-  stock,
-  materials,
-  siteId
-) {
-  const seen = new Set();
-
-  return (stock.trips || [])
-    .filter(
-      trip =>
-        trip.site_id === siteId &&
-        trip.returned == null &&
-        Number(trip.issued) > 0
-    )
-    .map(trip => {
-      if (
-        !trip.id ||
-        seen.has(trip.id)
-      ) {
-        throw Error(
-          "반출 롤 기록을 확인해주세요."
-        );
-      }
-
-      seen.add(trip.id);
-
-      const material = materials.find(
-        item =>
-          item.material_id ===
-          trip.material_id
+    for (const quality of [0.9, 0.8, 0.7]) {
+      const blob = await new Promise(
+        resolve =>
+          canvas.toBlob(
+            resolve,
+            "image/jpeg",
+            quality
+          )
       );
 
-      if (!material) {
-        throw Error(
-          "반출 롤 " +
-            (
-              trip.label ||
-              trip.product_code
-            ) +
-            "의 현장 필름 연결을 확인해주세요."
+      if (
+        blob &&
+        blob.size <= 550000
+      ) {
+        return {
+          name: file.name,
+          blob,
+          url: URL.createObjectURL(blob),
+        };
+      }
+    }
+
+    throw Error(
+      "사진을 한 페이지씩 가까이 촬영해주세요."
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export default function CuttingPhotoImport({
+  siteId,
+  colors = [],
+  onApply,
+  onBusy,
+}) {
+  const [photos, setPhotos] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [addedIds, setAddedIds] = useState([]);
+  const [warnings, setWarnings] = useState([]);
+  const [defaultColor, setDefaultColor] =
+    useState("");
+  const [busy, setBusy] = useState(false);
+  const [analyzed, setAnalyzed] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const photoRef = useRef([]);
+  const lock = useRef(false);
+  const abort = useRef(null);
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+
+    return () => {
+      alive.current = false;
+      abort.current?.abort();
+
+      photoRef.current.forEach(photo =>
+        URL.revokeObjectURL(photo.url)
+      );
+    };
+  }, []);
+
+  function setWorking(value) {
+    lock.current = value;
+
+    if (alive.current) {
+      setBusy(value);
+      onBusy?.(value);
+    }
+  }
+
+  async function choose(event) {
+    const files = Array.from(
+      event.target.files || []
+    );
+    event.target.value = "";
+
+    if (
+      lock.current ||
+      !files.length
+    ) {
+      return;
+    }
+
+    if (files.length > 6) {
+      setMessage(
+        "한 번에 최대 6장까지 선택해주세요."
+      );
+      return;
+    }
+
+    if (
+      rows.some(
+        row =>
+          !addedIds.includes(row.id)
+      ) &&
+      !window.confirm(
+        "확인하지 않은 항목이 남아 있습니다. 새 사진으로 바꿀까요? 이미 추가된 사이즈는 유지됩니다."
+      )
+    ) {
+      return;
+    }
+
+    setWorking(true);
+    setMessage("");
+
+    const prepared = [];
+
+    try {
+      for (const file of files) {
+        prepared.push(
+          await preparePhoto(file)
         );
       }
 
-      const lengthM =
-        Number(trip.issued);
+      if (!alive.current) {
+        prepared.forEach(photo =>
+          URL.revokeObjectURL(photo.url)
+        );
+        return;
+      }
+
+      photoRef.current.forEach(photo =>
+        URL.revokeObjectURL(photo.url)
+      );
+
+      photoRef.current = prepared;
+      setPhotos(prepared);
+      setRows([]);
+      setAddedIds([]);
+      setWarnings([]);
+      setAnalyzed(false);
+    } catch (cause) {
+      prepared.forEach(photo =>
+        URL.revokeObjectURL(photo.url)
+      );
+
+      if (alive.current) {
+        setMessage(
+          cause.message ||
+            "사진을 열지 못했습니다."
+        );
+      }
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function move(index, offset) {
+    if (lock.current || analyzed) return;
+
+    const next = [...photos];
+    const target = index + offset;
+
+    if (
+      target < 0 ||
+      target >= next.length
+    ) {
+      return;
+    }
+
+    [next[index], next[target]] = [
+      next[target],
+      next[index],
+    ];
+
+    photoRef.current = next;
+    setPhotos(next);
+  }
+
+  async function analyze() {
+    if (
+      lock.current ||
+      !photos.length ||
+      analyzed
+    ) {
+      return;
+    }
+
+    setWorking(true);
+    setMessage("");
+    setWarnings([]);
+
+    const controller =
+      new AbortController();
+
+    abort.current = controller;
+
+    const timeout = setTimeout(
+      () => controller.abort(),
+      65000
+    );
+
+    try {
+      const { data, error } =
+        await supabase.auth.getSession();
 
       if (
-        !Number.isFinite(lengthM)
+        error ||
+        !data.session?.access_token
       ) {
         throw Error(
-          "반출 길이가 올바르지 않습니다."
+          "시공자로 다시 로그인해주세요."
         );
       }
 
-      return {
-        id: "stock-trip-" + trip.id,
-        stockTripId: trip.id,
-        stockRollId: trip.roll_id,
-        stockLabel: trip.label || "",
-        color: label(material),
-        lengthM,
-        grainDirection: false,
-      };
-    });
-}
+      const form = new FormData();
 
-export function seedIssuedDraft(
-  draft,
-  issued,
-  makeId,
-  force = false
-) {
-  const snapshot = JSON.stringify(
-    issued
-      .map(roll => [
-        roll.stockTripId,
-        roll.color,
-        roll.lengthM,
-      ])
-      .sort((a, b) =>
-        String(a[0]).localeCompare(
-          String(b[0])
+      photos.forEach((photo, index) =>
+        form.append(
+          "images",
+          photo.blob,
+          `page-${index + 1}.jpg`
         )
+      );
+
+      const response = await fetch(
+        "/api/worker/cutting-notes" +
+          (
+            siteId
+              ? "?siteId=" +
+                encodeURIComponent(siteId)
+              : ""
+          ),
+        {
+          method: "POST",
+          body: form,
+          signal: controller.signal,
+          headers: {
+            Authorization:
+              "Bearer " +
+              data.session.access_token,
+          },
+        }
+      );
+
+      const result = await response
+        .json()
+        .catch(() => null);
+
+      if (
+        !response.ok ||
+        !Array.isArray(result?.rows) ||
+        !Array.isArray(result?.warnings)
+      ) {
+        throw Error(
+          result?.error ||
+            "사진을 나눠 다시 분석해주세요."
+        );
+      }
+
+      if (!alive.current) return;
+
+      const batchId =
+        Date.now() +
+        "-" +
+        Math.random()
+          .toString(36)
+          .slice(2, 10);
+
+      const needsPhotoReview =
+        result.warnings.some(warning =>
+          /중복|겹친|겹침|동일.{0,10}사진|수정.{0,10}전후/.test(
+            warning
+          )
+        );
+
+      const normalized = result.rows.map(
+        (row, index) => {
+          const next = normalizePhotoRow(
+            row,
+            colors,
+            defaultColor
+          );
+
+          return {
+            ...next,
+            id: `${batchId}:${index}`,
+            importKey: `${batchId}:${index}`,
+            issues: needsPhotoReview
+              ? [
+                  ...next.issues,
+                  "사진 중복·수정 여부를 확인해주세요.",
+                ]
+              : next.issues,
+          };
+        }
+      );
+
+      setRows(normalized);
+      setWarnings(result.warnings);
+      setAnalyzed(true);
+
+      const ready = normalized.filter(
+        row =>
+          !photoRowProblem(
+            row,
+            colors
+          )
+      );
+
+      if (!normalized.length) {
+        setMessage(
+          "읽힌 사이즈가 없습니다. 사진을 확인해주세요."
+        );
+        return;
+      }
+
+      if (!ready.length) {
+        setMessage(
+          `${normalized.length}개 항목을 아래 확인 목록에서 확인해주세요.`
+        );
+        return;
+      }
+
+      try {
+        await onApply(
+          ready.map(row => ({
+            ...row,
+            include: true,
+          }))
+        );
+
+        if (!alive.current) return;
+
+        setAddedIds(
+          ready.map(row => row.id)
+        );
+
+        setMessage(
+          `${ready.length}개 자동 입력 완료 · ${
+            normalized.length - ready.length
+          }개 확인 필요`
+        );
+      } catch (cause) {
+        if (alive.current) {
+          setMessage(
+            "자동 추가를 완료하지 못했습니다. " +
+              cause.message +
+              " 아래 항목은 아직 추가되지 않았습니다."
+          );
+        }
+      }
+    } catch (cause) {
+      if (alive.current) {
+        setMessage(
+          cause.name === "AbortError"
+            ? "분석 시간이 길어졌습니다. 사진을 나눠 다시 시도해주세요."
+            : cause.message
+        );
+      }
+    } finally {
+      clearTimeout(timeout);
+      abort.current = null;
+      setWorking(false);
+    }
+  }
+
+  function edit(id, field, value) {
+    setRows(previous =>
+      previous.map(row =>
+        row.id === id
+          ? {
+              ...row,
+              [field]: value,
+            }
+          : row
       )
+    );
+  }
+
+  async function confirmRow(row) {
+    if (
+      lock.current ||
+      addedIds.includes(row.id)
+    ) {
+      return;
+    }
+
+    const confirmed = {
+      ...row,
+      issues: [],
+      include: true,
+    };
+
+    const problem = photoRowProblem(
+      confirmed,
+      colors
+    );
+
+    if (problem) {
+      setMessage(problem);
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      await onApply([confirmed]);
+
+      if (!alive.current) return;
+
+      setRows(previous =>
+        previous.map(item =>
+          item.id === row.id
+            ? confirmed
+            : item
+        )
+      );
+
+      setAddedIds(previous => [
+        ...new Set([
+          ...previous,
+          row.id,
+        ]),
+      ]);
+
+      setMessage(
+        "확인한 사이즈를 추가했습니다."
+      );
+    } catch (cause) {
+      if (alive.current) {
+        setMessage(cause.message);
+      }
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const pending = rows.filter(
+    row => !addedIds.includes(row.id)
   );
 
-  if (
-    draft &&
-    (
-      draft.version !== 1 ||
-      !Array.isArray(draft.rolls) ||
-      !Array.isArray(draft.sections)
-    )
-  ) {
-    throw Error(
-      "저장된 재단 기록 형식을 확인해주세요."
-    );
-  }
+  const added = rows.filter(
+    row => addedIds.includes(row.id)
+  );
 
-  const blank =
-    !draft ||
-    (
-      !draft.result &&
-      !Object.values(
-        draft.progress || {}
-      ).some(Boolean) &&
-      draft.rolls.every(
-        roll =>
-          !String(
-            roll.lengthM ?? ""
-          ).trim() ||
-          Number(roll.lengthM) === 0
-      )
-    );
+  const selectedDefault =
+    colors.length === 1
+      ? colors[0]
+      : defaultColor;
 
-  if (!force && !blank) {
-    return {
-      draft,
-      pending:
-        draft.stockRollSnapshot !==
-        snapshot,
-    };
-  }
+  return (
+    <section style={box}>
+      <h2 style={{ marginTop: 0 }}>
+        종이 재단표 자동 입력
+      </h2>
 
-  const first =
-    issued[0]?.color || "";
+      <p
+        style={{
+          fontSize: 13,
+          lineHeight: 1.7,
+          color: "#64748b",
+        }}
+      >
+        읽힌 사이즈는 바로 입력하고,
+        확인이 필요한 항목만 아래에 모아드립니다.
+      </p>
 
-  const rolls = issued.length
-    ? issued
-    : [
-        {
-          id: makeId("roll"),
-          color: "",
-          lengthM: "",
-          grainDirection: false,
-        },
-      ];
+      <fieldset
+        disabled={busy}
+        style={{
+          border: 0,
+          padding: 0,
+          minWidth: 0,
+        }}
+      >
+        {colors.length > 1 && (
+          <label
+            style={{
+              display: "block",
+              marginBottom: 14,
+            }}
+          >
+            재단표에 필름코드가 없을 때 사용할 필름
+            <select
+              style={inputStyle}
+              value={defaultColor}
+              disabled={analyzed}
+              onChange={event =>
+                setDefaultColor(
+                  event.target.value
+                )
+              }
+            >
+              <option value="">
+                항목별로 확인하기
+              </option>
 
-  const sections =
-    draft?.sections?.length
-      ? draft.sections
-      : [
-          {
-            id: makeId("section"),
-            location: "",
-            part: "",
-            colors: [
-              {
-                id: makeId("color"),
-                color: first,
-                sizes: [
-                  {
-                    id: makeId("size"),
-                    width: "",
-                    height: "",
-                    quantity: 1,
-                  },
-                ],
-              },
-            ],
-          },
-        ];
+              {colors.map(color => (
+                <option
+                  key={color}
+                  value={color}
+                >
+                  {color}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
-  return {
-    pending: false,
-    draft: {
-      ...(draft || {}),
-      version: 1,
-      rolls,
-      sections,
-      rollMode:
-        draft?.rollMode || "waste",
-      result: null,
-      progress: {},
-      stockRollSnapshot: snapshot,
-    },
-  };
-}
+        {colors.length === 1 && (
+          <p>
+            사용 필름: {selectedDefault}
+          </p>
+        )}
+
+        <label>
+          재단표 사진 선택 · 최대 6장
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={choose}
+            style={{
+              display: "block",
+              marginTop: 8,
+              marginBottom: 14,
+            }}
+          />
+        </label>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            overflowX: "auto",
+            paddingBottom: 12,
+          }}
+        >
+          {photos.map((photo, index) => (
+            <div
+              key={photo.url}
+              style={{
+                flex: "0 0 120px",
+              }}
+            >
+              <a
+                href={photo.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img
+                  src={photo.url}
+                  alt={`${index + 1}번 재단표`}
+                  style={{
+                    width: 120,
+                    height: 140,
+                    objectFit: "contain",
+                  }}
+                />
+              </a>
+
+              <small>
+                사진 {index + 1}
+              </small>
+
+              {!analyzed && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    marginTop: 6,
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={index === 0}
+                    onClick={() =>
+                      move(index, -1)
+                    }
+                  >
+                    ←
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      index ===
+                      photos.length - 1
+                    }
+                    onClick={() =>
+                      move(index, 1)
+                    }
+                  >
+                    →
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={analyze}
+          disabled={
+            !photos.length ||
+            analyzed
+          }
+          style={{
+            ...inputStyle,
+            background: "#2563eb",
+            color: "#fff",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          {analyzed
+            ? "분석 완료"
+            : "사진 분석하고 자동 입력"}
+        </button>
+      </fieldset>
+
+      {busy && (
+        <p role="status">
+          사진을 준비하거나 분석 중입니다…
+        </p>
+      )}
+
+      {message && (
+        <p
+          role="status"
+          style={{
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.7,
+          }}
+        >
+          {message}
+        </p>
+      )}
+
+      {warnings.length > 0 && (
+        <details
+          style={{
+            background: "#fff7ed",
+            padding: 12,
+            borderRadius: 10,
+          }}
+        >
+          <summary>
+            사진 분석 안내 {warnings.length}건
+          </summary>
+
+          {warnings.map((warning, index) => (
+            <p key={index}>{warning}</p>
+          ))}
+        </details>
+      )}
+
+      {added.length > 0 && (
+        <details
+          style={{
+            marginTop: 14,
+            padding: 12,
+            background: "#f0fdf4",
+            borderRadius: 10,
+          }}
+        >
+          <summary>
+            입력 완료 {added.length}개 보기
+          </summary>
+
+          {added.map(row => {
+            const size = confirmedSize(row);
+
+            return (
+              <p key={row.id}>
+                {row.location || "위치 미지정"}
+                {" · "}
+                {row.part || "부위 미지정"}
+                <br />
+                {row.color}
+                {" · "}
+                {size.width}×{size.height}mm
+                {" · "}
+                {size.quantity}장
+              </p>
+            );
+          })}
+        </details>
+      )}
+
+      {pending.length > 0 && (
+        <h3 style={{ marginTop: 20 }}>
+          확인 필요한 항목 {pending.length}개
+        </h3>
+      )}
+
+      {pending.map(row => {
+        const problem = photoRowProblem(
+          row,
+          colors
+        );
+
+        return (
+          <article
+            key={row.id}
+            style={{
+              ...box,
+              background: "#fffbeb",
+            }}
+          >
+            <a
+              href={
+                photos[row.page - 1]?.url
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              사진 {row.page} 원본 보기
+            </a>
+
+            <p
+              style={{
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {row.raw}
+            </p>
+
+            {problem && (
+              <p
+                style={{
+                  color: "#b45309",
+                  fontSize: 13,
+                }}
+              >
+                {problem}
+              </p>
+            )}
+
+            {row.notes && (
+              <p
+                style={{
+                  color: "#64748b",
+                  fontSize: 12,
+                }}
+              >
+                {row.notes}
+              </p>
+            )}
+
+            <fieldset
+              disabled={busy}
+              style={{
+                border: 0,
+                padding: 0,
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                }}
+              >
+                {[
+                  ["location", "위치"],
+                  ["part", "부위"],
+                  ["width", "가로"],
+                  ["height", "세로"],
+                  ["quantity", "수량"],
+                ].map(([key, title]) => (
+                  <label key={key}>
+                    {title}
+
+                    <input
+                      style={inputStyle}
+                      value={row[key] ?? ""}
+                      type={
+                        [
+                          "width",
+                          "height",
+                          "quantity",
+                        ].includes(key)
+                          ? "number"
+                          : "text"
+                      }
+                      step={
+                        key === "quantity"
+                          ? "1"
+                          : "any"
+                      }
+                      onChange={event =>
+                        edit(
+                          row.id,
+                          key,
+                          event.target.value
+                        )
+                      }
+                    />
+                  </label>
+                ))}
+
+                <label>
+                  단위
+                  <select
+                    style={inputStyle}
+                    value={row.unit}
+                    onChange={event =>
+                      edit(
+                        row.id,
+                        "unit",
+                        event.target.value
+                      )
+                    }
+                  >
+                    <option value="unknown">
+                      단위 선택
+                    </option>
+                    <option value="mm">
+                      mm
+                    </option>
+                    <option value="cm">
+                      cm
+                    </option>
+                    <option value="m">
+                      m
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <label
+                style={{
+                  display: "block",
+                  marginTop: 10,
+                }}
+              >
+                사용할 필름
+
+                {colors.length ? (
+                  <select
+                    style={inputStyle}
+                    value={
+                      colors.includes(
+                        row.color
+                      )
+                        ? row.color
+                        : ""
+                    }
+                    onChange={event =>
+                      edit(
+                        row.id,
+                        "color",
+                        event.target.value
+                      )
+                    }
+                  >
+                    <option value="">
+                      현장 필름 선택
+                    </option>
+
+                    {colors.map(color => (
+                      <option
+                        key={color}
+                        value={color}
+                      >
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    style={inputStyle}
+                    value={row.color}
+                    onChange={event =>
+                      edit(
+                        row.id,
+                        "color",
+                        event.target.value
+                      )
+                    }
+                  />
+                )}
+              </label>
+
+              <button
+                type="button"
+                onClick={() =>
+                  confirmRow(row)
+                }
+                style={{
+                  ...inputStyle,
+                  marginTop: 12,
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 800,
+                }}
+              >
+                숫자·수량 확인 후 추가
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setRows(previous =>
+                    previous.filter(
+                      item =>
+                        item.id !== row.id
+                    )
+                  )
+                }
+                style={{
+                  marginTop: 10,
+                }}
+              >
+                이 항목 제외
+              </button>
+            </fieldset>
+          </article>
+        );
+      })}
+
+      <p
+        style={{
+          color: "#64748b",
+          fontSize: 12,
+          lineHeight: 1.7,
+        }}
+      >
+        100.2000 → 100×2000mm
+        <br />
+        2.4*3.5 → 2400×3500mm
+        <br />
+        수량 표기가 없으면 1장으로 입력합니다.
+        같은 치수의 다른 항목은 각각 유지합니다.
+      </p>
+    </section>
+  );
+                      }
