@@ -27,6 +27,13 @@ const menus = [
     subtitle: "정확한 재단이 좋은 마감의 시작",
   },
   {
+    id: "inventory",
+    href: "/worker/inventory",
+    icon: "film",
+    title: "재고 확인",
+    subtitle: "브랜드별 창고 재고와 남은 길이 확인",
+  },
+  {
     id: "report",
     icon: "report",
     title: "완료보고",
@@ -148,14 +155,16 @@ export default function WorkerHomeDashboard({
           <span aria-hidden="true">⌂</span>
           <small>홈</small>
         </Link>
-        {menus.filter(menu => menu.id !== "attendance").map(menu => (
-          <Link key={menu.id} href={`/worker/menu/${menu.id}`}>
-            <span aria-hidden="true">
-              {{ sites: "▣", film: "✂", report: "☑", pay: "₩" }[menu.id]}
-            </span>
-            <small>{menu.title}</small>
-          </Link>
-        ))}
+        {menus
+          .filter(menu => !["attendance", "inventory"].includes(menu.id))
+          .map(menu => (
+            <Link key={menu.id} href={`/worker/menu/${menu.id}`}>
+              <span aria-hidden="true">
+                {{ sites: "▣", film: "✂", report: "☑", pay: "₩" }[menu.id]}
+              </span>
+              <small>{menu.title}</small>
+            </Link>
+          ))}
       </nav>
     </section>
   );
