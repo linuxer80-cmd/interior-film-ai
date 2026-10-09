@@ -4,7 +4,7 @@
   "short_name": "필름장이",
   "description": "인테리어필름 견적과 현장 관리",
   "lang": "ko",
-  "start_url": "/admin",
+  "start_url": "/start",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f5ef",
