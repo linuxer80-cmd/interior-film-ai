@@ -1,16 +1,21 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
-  useEffect,
-  useState,
-} from "react";
-
-import { loadMyWorkerSites } from "../../utils/workerSites";
+  loadMyWorkerSites,
+} from "../../utils/workerSites";
+import {
+  appendPhotoRows,
+} from "../../../lib/cuttingPhotoImport.mjs";
+import { filmLabel } from "./FilmThumbnail";
 import FilmCuttingOptimizer from "./FilmCuttingOptimizer";
+import CuttingPhotoImport from "./CuttingPhotoImport";
 
 export default function CuttingWorkspace() {
   const [context, setContext] = useState(null);
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -26,7 +31,7 @@ export default function CuttingWorkspace() {
         ? { siteId }
         : { profileOnly: true }
     )
-      .then((data) => {
+      .then(data => {
         if (!active) return;
 
         setContext({
@@ -34,20 +39,45 @@ export default function CuttingWorkspace() {
           selectedMaterialId:
             params.get("materialId"),
           storageKey:
-            `film-cutting-v2:${data.worker.worker_id}:` +
-            `${siteId || "general"}`,
+            "film-cutting-v2:" +
+            data.worker.worker_id +
+            ":" +
+            (siteId || "general"),
         });
       })
-      .catch((error) => {
-        if (active) {
-          setError(error.message);
-        }
+      .catch(error => {
+        if (active) setError(error.message);
       });
 
     return () => {
       active = false;
     };
   }, []);
+
+  function applyPhotos(rows) {
+    const raw = window.localStorage.getItem(
+      context.storageKey
+    );
+
+    const draft = raw ? JSON.parse(raw) : null;
+
+    const makeId = prefix =>
+      prefix + "-" + crypto.randomUUID();
+
+    const next = appendPhotoRows(
+      draft,
+      rows,
+      makeId
+    );
+
+    // 저장에 성공한 경우에만 기존 재단 화면을 다시 불러옵니다.
+    window.localStorage.setItem(
+      context.storageKey,
+      JSON.stringify(next)
+    );
+
+    setRevision(value => value + 1);
+  }
 
   if (error) {
     return (
@@ -70,9 +100,46 @@ export default function CuttingWorkspace() {
   }
 
   return (
-    <FilmCuttingOptimizer
-      key={context.storageKey}
-      context={context}
-    />
+    <>
+      <div
+        style={{
+          maxWidth: 760,
+          margin: "auto",
+          padding: "0 16px",
+        }}
+      >
+        <CuttingPhotoImport
+          siteId={context.site?.site_id}
+          colors={[
+            ...new Set(
+              (context.materials || []).map(
+                filmLabel
+              )
+            ),
+          ]}
+          onApply={applyPhotos}
+          onBusy={setPhotoBusy}
+        />
+      </div>
+
+      <fieldset
+        disabled={photoBusy}
+        style={{
+          border: 0,
+          padding: 0,
+          margin: 0,
+          minWidth: 0,
+        }}
+      >
+        <FilmCuttingOptimizer
+          key={
+            context.storageKey +
+            ":" +
+            revision
+          }
+          context={context}
+        />
+      </fieldset>
+    </>
   );
 }
