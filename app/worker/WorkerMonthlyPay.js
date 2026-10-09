@@ -226,7 +226,7 @@ export default function WorkerMonthlyPay({
           {!data.totals.leaderDays &&
             !data.totals.memberDays && (
               <p className={styles.note}>
-                이 달에 집계할 완료 현장 배정일이
+                이 달에 오늘까지 집계할 배정일이
                 없습니다.
               </p>
             )}
@@ -258,7 +258,7 @@ export default function WorkerMonthlyPay({
 
               {company.undatedSites > 0 && (
                 <p className={styles.warning}>
-                  날짜가 없는 완료 현장{" "}
+                  날짜가 없는 배정 현장{" "}
                   {company.undatedSites}건은 집계하지
                   못했습니다. 관리자에게 배정일을
                   확인해주세요.
@@ -296,9 +296,7 @@ export default function WorkerMonthlyPay({
                     {company.entries.map((entry) => (
                       <li key={entry.date}>
                         <div
-                          className={
-                            styles.entryHeading
-                          }
+                          className={styles.entryHeading}
                         >
                           <strong>
                             {Number(
@@ -317,9 +315,7 @@ export default function WorkerMonthlyPay({
                           <strong>
                             {entry.pending
                               ? "확인 필요"
-                              : won(
-                                  entry.totalAmount
-                                )}
+                              : won(entry.totalAmount)}
                           </strong>
                         </div>
 
@@ -354,13 +350,17 @@ export default function WorkerMonthlyPay({
           ))}
 
           <p className={styles.note}>
-            완료 처리된 현장의 배정일 중 {data.asOf}까지
-            집계합니다. 같은 업체·같은 날은 일당 1회, 팀장
-            배정이 있으면 수당 1회를 더합니다. 연장비용은 현장
-            완료 여부와 관계없이 실제 근무일이 이 달인 승인
-            기록을 합산합니다. 관리자 지급 관리의 현장 시작월
-            기준과는 다를 수 있습니다. 실제 지급 여부와는
-            별도입니다.
+            현장 완료 여부와 관계없이 본인 배정일 중
+            {" "}{data.asOf}까지 집계합니다.
+            미래 일정과 취소 현장은 제외합니다.
+            배정일 기준이므로 실제로 일하지 않은 날짜는
+            관리자에게 배정 수정을 요청해주세요.
+            같은 업체·같은 날은 일당 1회, 팀장 배정이
+            있으면 수당 1회를 더합니다. 연장비용은 현장
+            완료 여부와 관계없이 실제 근무일이 이 달인
+            승인 기록을 합산합니다. 관리자 지급 관리의
+            현장 시작월 기준과는 다를 수 있습니다.
+            실제 지급 여부와는 별도입니다.
           </p>
 
           {data.companies.length > 1 && (
@@ -374,4 +374,4 @@ export default function WorkerMonthlyPay({
       )}
     </section>
   );
-}
+            }
