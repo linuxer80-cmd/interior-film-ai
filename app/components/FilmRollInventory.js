@@ -7,6 +7,12 @@ const same = (a, b) =>
   String(a || "").trim().toUpperCase() ===
   String(b || "").trim().toUpperCase();
 
+const matchesMaterial = (roll, material) =>
+  Array.isArray(roll.matching_material_ids)
+    ? roll.matching_material_ids.includes(material.id)
+    : same(roll.brand, material.brand) &&
+      same(roll.product_code, material.code);
+
 const metres = value => Number(Number(value || 0).toFixed(3));
 
 const valid = (value, max) =>
@@ -130,7 +136,6 @@ export default function FilmRollInventory({
       while (work.index < work.jobs.length) {
         const job = work.jobs[work.index];
         const result = await reportRequest("/api/film-stock", job);
-
         work.index++;
 
         if (!mounted.current) return;
@@ -173,10 +178,10 @@ export default function FilmRollInventory({
 
   const stock = (data?.rolls || []).filter(
     r =>
-      r.status === "available" && Number(r.remaining) > 0 &&
+      r.status === "available" &&
+      Number(r.remaining) > 0 &&
       material &&
-      same(r.brand, material.brand) &&
-      same(r.product_code, material.code)
+      matchesMaterial(r, material)
   );
 
   const picked = stock.filter(r => checked.includes(r.id));
@@ -187,7 +192,9 @@ export default function FilmRollInventory({
 
   const canIssue = data?.canIssue ?? data?.canEdit;
   const canReturnRoll = data?.canReturnRoll ?? data?.canEdit;
-  const blocked = disabled || busy || loading || pending ||
+
+  const blocked =
+    disabled || busy || loading || pending ||
     !(tab === "issue" ? canIssue : canReturnRoll);
 
   const sum = rows =>
@@ -203,7 +210,8 @@ export default function FilmRollInventory({
     <section className="stock" aria-busy={busy || loading}>
       <header>
         <h3>롤 반출 · 자재 반납</h3>
-        <button type="button"
+        <button
+          type="button"
           disabled={busy || pending || loading}
           onClick={refresh}
         >
@@ -212,14 +220,16 @@ export default function FilmRollInventory({
       </header>
 
       <nav>
-        <button type="button"
+        <button
+          type="button"
           disabled={busy || pending}
           aria-pressed={tab === "issue"}
           onClick={() => setTab("issue")}
         >
           창고 → 현장
         </button>
-        <button type="button"
+        <button
+          type="button"
           disabled={busy || pending}
           aria-pressed={tab === "return"}
           onClick={() => setTab("return")}
@@ -240,7 +250,8 @@ export default function FilmRollInventory({
             처리 중에는 이 화면을 유지해주세요.
             재시도는 같은 요청 번호를 사용해 중복 반출을 방지합니다.
           </p>
-          <button type="button"
+          <button
+            type="button"
             disabled={busy || disabled}
             onClick={() => run()}
           >
@@ -248,7 +259,8 @@ export default function FilmRollInventory({
           </button>
 
           {!busy && (
-            <button type="button"
+            <button
+              type="button"
               onClick={() => {
                 if (
                   confirm(
@@ -273,44 +285,58 @@ export default function FilmRollInventory({
         <>
           {!(tab === "issue" ? canIssue : canReturnRoll) && (
             <p>
-              현재 메뉴의 처리 권한이 없습니다. 보고서 제출 후에는 새 반출이 제한되며, 반납은 관리자·팀장 또는 팀장이 없는 현장의 담당자가 처리합니다.
+              현재 메뉴의 처리 권한이 없습니다.
+              보고서 제출 후에는 새 반출이 제한되며,
+              반납은 관리자·팀장 또는 팀장이 없는 현장의 담당자가 처리합니다.
             </p>
           )}
 
           {tab === "issue" ? (
             <>
-              <p>현장에 사용할 필름을 누르면 가져갈 수 있는 롤이 표시됩니다.</p>
+              <p>
+                현장에 사용할 필름을 누르면 가져갈 수 있는 롤이 표시됩니다.
+              </p>
+
               <div className="materials">
                 {materials.map(m => {
-                  const available = (data.rolls || []).filter(r =>
-                    r.status === "available" && Number(r.remaining) > 0 &&
-                    same(r.brand, m.brand) && same(r.product_code, m.code)
+                  const available = (data.rolls || []).filter(
+                    r =>
+                      r.status === "available" &&
+                      Number(r.remaining) > 0 &&
+                      matchesMaterial(r, m)
                   );
+
                   return (
-                    <button type="button" key={m.id}
+                    <button
+                      type="button"
+                      key={m.id}
                       disabled={busy || pending || loading}
                       aria-pressed={selectedId === m.id}
-                      onClick={() => { setMaterialId(m.id); setChecked([]); }}>
+                      onClick={() => {
+                        setMaterialId(m.id);
+                        setChecked([]);
+                      }}
+                    >
                       <strong>{m.brand} / {m.code || m.name}</strong>
                       {m.name && <small>{m.name}</small>}
-                      <small>{available.length ? `창고 ${available.length}롤 · ${sum(available)}m` : "창고 재고 없음"}</small>
+                      <small>
+                        {available.length
+                          ? `창고 ${available.length}롤 · ${sum(available)}m`
+                          : "창고 재고 없음"}
+                      </small>
                     </button>
                   );
                 })}
               </div>
 
               {!materials.length && (
-                <p>
-                  관리자가 현장에 사용할 필름을 먼저 등록해주세요.
-                </p>
+                <p>관리자가 현장에 사용할 필름을 먼저 등록해주세요.</p>
               )}
 
               {material && (
                 <>
                   <p>
-                    <b>
-                      보관 재고 {stock.length}롤 · {sum(stock)}m
-                    </b>
+                    <b>보관 재고 {stock.length}롤 · {sum(stock)}m</b>
                   </p>
                   <p>
                     가져갈 롤을 체크하세요.
@@ -335,9 +361,7 @@ export default function FilmRollInventory({
                         <span>
                           <b>{r.remaining}m</b>
                           <small>{r.label}</small>
-                          <small>
-                            {r.supplier} · {r.location}
-                          </small>
+                          <small>{r.supplier} · {r.location}</small>
                         </span>
                       </label>
                     ))}
@@ -346,17 +370,22 @@ export default function FilmRollInventory({
                   {!stock.length && (
                     <p>
                       반출 가능한 롤이 없습니다.
-                      대리점 입고와 현장 필름의 브랜드·제품 번호를
-                      확인해주세요.
+                      대리점 입고와 현장 필름의 브랜드·제품 번호를 확인해주세요.
                     </p>
                   )}
 
-                  <p>반출량은 선택한 롤의 남은 길이로 자동 입력됩니다. 반출 후 이 제품의 창고 잔량: <b>{metres(sum(stock) - sum(picked))}m</b></p>
+                  <p>
+                    반출량은 선택한 롤의 남은 길이로 자동 입력됩니다.
+                    반출 후 이 제품의 창고 잔량:{" "}
+                    <b>{metres(sum(stock) - sum(picked))}m</b>
+                  </p>
+
                   <div className="total">
                     <strong>
                       반출량 {picked.length}롤 · {sum(picked)}m
                     </strong>
-                    <button type="button"
+                    <button
+                      type="button"
                       disabled={blocked || !picked.length}
                       onClick={() => {
                         if (
@@ -397,7 +426,8 @@ export default function FilmRollInventory({
 
               <p>
                 반출했던 롤마다 남은 길이를 입력하세요.
-                실제로 창고에 반납한 뒤 완료 버튼을 누르세요. 0m는 전량 사용 처리합니다.
+                실제로 창고에 반납한 뒤 완료 버튼을 누르세요.
+                0m는 전량 사용 처리합니다.
               </p>
 
               {!trips.length && (
@@ -433,25 +463,26 @@ export default function FilmRollInventory({
                         }
                       />
                       <span>m</span>
-                      <button type="button"
-                        disabled={
-                          blocked || !valid(value, t.issued)
-                        }
+                      <button
+                        type="button"
+                        disabled={blocked || !valid(value, t.issued)}
                         onClick={() => {
                           if (
-                            confirm(Number(value) === 0 ? "이 롤을 전량 사용 처리할까요? 창고에 복귀하는 길이는 0m입니다." : `자재 반납을 완료하고 남은 ${value}m를 창고 재고에 복귀시킬까요?`)
+                            confirm(
+                              Number(value) === 0
+                                ? "이 롤을 전량 사용 처리할까요? 창고에 복귀하는 길이는 0m입니다."
+                                : `자재 반납을 완료하고 남은 ${value}m를 창고 재고에 복귀시킬까요?`
+                            )
                           ) {
-                            run([
-                              {
-                                action: "return",
-                                siteId,
-                                rollId: t.roll_id,
-                                revision: t.revision,
-                                remaining: value,
-                                location,
-                                requestId: crypto.randomUUID(),
-                              },
-                            ]);
+                            run([{
+                              action: "return",
+                              siteId,
+                              rollId: t.roll_id,
+                              revision: t.revision,
+                              remaining: value,
+                              location,
+                              requestId: crypto.randomUUID(),
+                            }]);
                           }
                         }}
                       >
@@ -462,9 +493,7 @@ export default function FilmRollInventory({
                     <small>
                       실제 사용량{" "}
                       {valid(value, t.issued)
-                        ? `${metres(
-                            Number(t.issued) - Number(value)
-                          )}m`
+                        ? `${metres(Number(t.issued) - Number(value))}m`
                         : "미입력"}
                     </small>
                   </article>
@@ -493,7 +522,9 @@ export default function FilmRollInventory({
 
           <small>
             반출 즉시 보관 재고에서 제외됩니다.
-            반납 완료한 길이만 창고 재고로 복귀합니다. 시공 완료만으로 자동 반납되지 않습니다. 모든 롤을 반납하면 현장 사용량이 확정됩니다.
+            반납 완료한 길이만 창고 재고로 복귀합니다.
+            시공 완료만으로 자동 반납되지 않습니다.
+            모든 롤을 반납하면 현장 사용량이 확정됩니다.
           </small>
         </>
       )}
@@ -516,25 +547,15 @@ export default function FilmRollInventory({
           color: #243648;
           overflow-wrap: anywhere;
         }
-        header,
-        nav,
-        .total,
-        .return-row {
+        header, nav, .total, .return-row {
           display: flex;
           align-items: center;
           gap: 8px;
           justify-content: space-between;
         }
-        h3 {
-          font-size: 17px;
-          margin: 0;
-        }
-        nav {
-          margin: 12px 0;
-        }
-        nav button {
-          flex: 1;
-        }
+        h3 { font-size: 17px; margin: 0; }
+        nav { margin: 12px 0; }
+        nav button { flex: 1; }
         button {
           padding: 11px;
           border: 1px solid #cbd5e1;
@@ -548,20 +569,10 @@ export default function FilmRollInventory({
           background: #243648;
           color: white;
         }
-        button:disabled {
-          opacity: 0.5;
-          cursor: default;
-        }
-        p {
-          font-size: 13px;
-          line-height: 1.6;
-        }
-        label {
-          display: block;
-          font-size: 13px;
-        }
-        select,
-        input:not([type="checkbox"]) {
+        button:disabled { opacity: 0.5; cursor: default; }
+        p { font-size: 13px; line-height: 1.6; }
+        label { display: block; font-size: 13px; }
+        select, input:not([type="checkbox"]) {
           box-sizing: border-box;
           width: 100%;
           padding: 12px;
@@ -571,10 +582,7 @@ export default function FilmRollInventory({
           font-size: 16px;
           margin: 6px 0;
         }
-        .rolls {
-          max-height: 300px;
-          overflow: auto;
-        }
+        .rolls { max-height: 300px; overflow: auto; }
         .roll {
           display: flex;
           gap: 12px;
@@ -587,9 +595,7 @@ export default function FilmRollInventory({
           height: 22px;
           flex-shrink: 0;
         }
-        .roll span {
-          min-width: 0;
-        }
+        .roll span { min-width: 0; }
         small {
           display: block;
           color: #64748b;
@@ -606,32 +612,21 @@ export default function FilmRollInventory({
           z-index: 2;
           font-size: 13px;
         }
-        .return-row input {
-          min-width: 0;
-          flex: 1;
-        }
-        .return-row button {
-          white-space: nowrap;
-        }
+        .return-row input { min-width: 0; flex: 1; }
+        .return-row button { white-space: nowrap; }
         article {
           padding: 12px 0;
           border-bottom: 1px solid #e5e7eb;
         }
-        article strong {
-          font-size: 14px;
-        }
+        article strong { font-size: 14px; }
         summary {
           padding: 14px 0;
           cursor: pointer;
           font-size: 13px;
           font-weight: 700;
         }
-        .error {
-          color: #b91c1c;
-        }
-        .success {
-          color: #166534;
-        }
+        .error { color: #b91c1c; }
+        .success { color: #166534; }
         .notice {
           padding: 10px;
           background: #fff3d6;
@@ -640,4 +635,4 @@ export default function FilmRollInventory({
       `}</style>
     </section>
   );
-                }
+}
