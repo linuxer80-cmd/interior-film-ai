@@ -7,11 +7,19 @@ function makeSafeFileName(fileName = "photo.jpg") {
   const extension = fileName.includes(".")
     ? fileName.split(".").pop().toLowerCase()
     : "jpg";
+
   return `${Date.now()}-${crypto.randomUUID()}.${extension}`;
 }
 
 function toNumberOrNull(value) {
-  if (value === "" || value === null || value === undefined) return null;
+  if (
+    value === "" ||
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -21,24 +29,32 @@ function getSiteSortTime(site) {
     const value = new Date(site.schedule_start).getTime();
     if (Number.isFinite(value)) return value;
   }
+
   if (site?.schedule_date) {
-    const value = new Date(`${site.schedule_date}T00:00:00+09:00`).getTime();
+    const value = new Date(
+      `${site.schedule_date}T00:00:00+09:00`
+    ).getTime();
+
     if (Number.isFinite(value)) return value;
   }
+
   return null;
 }
 
 function sortSitesBySchedule(a, b) {
   const aValue = getSiteSortTime(a);
   const bValue = getSiteSortTime(b);
+
   if (aValue === null && bValue === null) return 0;
   if (aValue === null) return 1;
   if (bValue === null) return -1;
+
   return aValue - bValue;
 }
 
 function getLocalDateString(value) {
   if (!value) return null;
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
 
@@ -49,7 +65,9 @@ function getLocalDateString(value) {
     day: "2-digit",
   }).formatToParts(date);
 
-  const get = (type) => parts.find((part) => part.type === type)?.value;
+  const get = (type) =>
+    parts.find((part) => part.type === type)?.value;
+
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
@@ -59,22 +77,33 @@ function normalizeWorkDates(values) {
   }
 
   const invalid = values.some((value) => {
-    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (
+      typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(value)
+    ) {
       return true;
     }
+
     const date = new Date(`${value}T00:00:00Z`);
+
     return (
       Number.isNaN(date.getTime()) ||
       date.toISOString().slice(0, 10) !== value
     );
   });
 
-  if (invalid) throw new Error("올바르지 않은 시공 날짜가 있습니다.");
+  if (invalid) {
+    throw new Error("올바르지 않은 시공 날짜가 있습니다.");
+  }
 
   const dates = [...new Set(values)].sort();
+
   if (dates.length > 366) {
-    throw new Error("시공 날짜는 최대 366일 선택할 수 있습니다.");
+    throw new Error(
+      "시공 날짜는 최대 366일 선택할 수 있습니다."
+    );
   }
+
   return dates;
 }
 
@@ -85,7 +114,9 @@ function dateBounds(dates) {
       ? new Date(`${dates[0]}T00:00:00+09:00`).toISOString()
       : null,
     schedule_end: dates.length
-      ? new Date(`${dates[dates.length - 1]}T23:59:00+09:00`).toISOString()
+      ? new Date(
+          `${dates[dates.length - 1]}T23:59:00+09:00`
+        ).toISOString()
       : null,
   };
 }
@@ -127,6 +158,7 @@ export default function useSites({ companyId }) {
           });
 
         if (error) throw error;
+
         setSites((data || []).sort(sortSitesBySchedule));
       } catch (error) {
         console.error("현장 목록 조회 오류:", error);
@@ -163,7 +195,9 @@ export default function useSites({ companyId }) {
           });
 
         if (uploadError) {
-          throw new Error(`요청사진 업로드 실패: ${uploadError.message}`);
+          throw new Error(
+            `요청사진 업로드 실패: ${uploadError.message}`
+          );
         }
 
         const photoRow = {
@@ -175,15 +209,23 @@ export default function useSites({ companyId }) {
           description: "시공 요청사진",
         };
 
-        const { data: insertedPhoto, error: photoError } = await supabase
+        const {
+          data: insertedPhoto,
+          error: photoError,
+        } = await supabase
           .from("site_photos")
           .insert(photoRow)
           .select()
           .single();
 
         if (photoError) {
-          await supabase.storage.from("work-photos").remove([storagePath]);
-          throw new Error(`요청사진 정보 저장 실패: ${photoError.message}`);
+          await supabase.storage
+            .from("work-photos")
+            .remove([storagePath]);
+
+          throw new Error(
+            `요청사진 정보 저장 실패: ${photoError.message}`
+          );
         }
 
         uploadedRows.push(insertedPhoto);
@@ -203,9 +245,14 @@ export default function useSites({ companyId }) {
         };
       }
 
-      const normalizedFiles = Array.from(files || []).filter(Boolean);
+      const normalizedFiles = Array.from(files || [])
+        .filter(Boolean);
+
       if (!normalizedFiles.length) {
-        return { success: false, error: "추가할 사진을 선택해주세요." };
+        return {
+          success: false,
+          error: "추가할 사진을 선택해주세요.",
+        };
       }
 
       setSitesMessage("");
@@ -216,44 +263,71 @@ export default function useSites({ companyId }) {
           files: normalizedFiles,
         });
 
-        setSites((prev) =>
-          prev.map((site) => {
+        setSites((previous) =>
+          previous.map((site) => {
             if (site.id !== siteId) return site;
+
             const existingPhotos = Array.isArray(site.site_photos)
               ? site.site_photos
               : [];
+
             return {
               ...site,
-              site_photos: [...existingPhotos, ...uploadedPhotos],
+              site_photos: [
+                ...existingPhotos,
+                ...uploadedPhotos,
+              ],
             };
           })
         );
 
-        setSelectedSite((prev) => {
-          if (!prev || prev.id !== siteId) return prev;
-          const existingPhotos = Array.isArray(prev.site_photos)
-            ? prev.site_photos
+        setSelectedSite((previous) => {
+          if (!previous || previous.id !== siteId) return previous;
+
+          const existingPhotos = Array.isArray(previous.site_photos)
+            ? previous.site_photos
             : [];
+
           return {
-            ...prev,
-            site_photos: [...existingPhotos, ...uploadedPhotos],
+            ...previous,
+            site_photos: [
+              ...existingPhotos,
+              ...uploadedPhotos,
+            ],
           };
         });
 
-        setSitesMessage(`✅ 요청사진 ${uploadedPhotos.length}장이 추가되었습니다.`);
-        return { success: true, photos: uploadedPhotos };
+        setSitesMessage(
+          `✅ 요청사진 ${uploadedPhotos.length}장이 추가되었습니다.`
+        );
+
+        return {
+          success: true,
+          photos: uploadedPhotos,
+        };
       } catch (error) {
         console.error("현장 요청사진 추가 오류:", error);
-        const message = error?.message || "사진 추가 중 오류가 발생했습니다.";
+
+        const message =
+          error?.message || "사진 추가 중 오류가 발생했습니다.";
+
         setSitesMessage(`❌ 요청사진 추가 실패: ${message}`);
-        return { success: false, error: message };
+
+        return {
+          success: false,
+          error: message,
+        };
       }
     },
     [companyId, uploadRequestPhotos]
   );
 
   const deleteSiteRequestPhoto = useCallback(
-    async ({ siteId, photoId, storagePath = null }) => {
+    async ({
+      siteId,
+      photoId,
+      storagePath = null,
+    }) => {
       if (!companyId || !siteId || !photoId) {
         return {
           success: false,
@@ -264,18 +338,28 @@ export default function useSites({ companyId }) {
       setSitesMessage("");
 
       try {
-        const { data: photoRow, error: photoLoadError } = await supabase
+        const {
+          data: photoRow,
+          error: photoLoadError,
+        } = await supabase
           .from("site_photos")
-          .select("id, company_id, site_id, photo_type, storage_path")
+          .select(
+            "id, company_id, site_id, photo_type, storage_path"
+          )
           .eq("id", photoId)
           .eq("company_id", companyId)
           .eq("site_id", siteId)
           .maybeSingle();
 
         if (photoLoadError) {
-          throw new Error(`사진 정보 확인 실패: ${photoLoadError.message}`);
+          throw new Error(
+            `사진 정보 확인 실패: ${photoLoadError.message}`
+          );
         }
-        if (!photoRow) throw new Error("삭제할 사진을 찾을 수 없습니다.");
+
+        if (!photoRow) {
+          throw new Error("삭제할 사진을 찾을 수 없습니다.");
+        }
 
         const targetStoragePath =
           photoRow.storage_path || storagePath || null;
@@ -288,40 +372,52 @@ export default function useSites({ companyId }) {
           .eq("site_id", siteId);
 
         if (deleteDbError) {
-          throw new Error(`사진 정보 삭제 실패: ${deleteDbError.message}`);
+          throw new Error(
+            `사진 정보 삭제 실패: ${deleteDbError.message}`
+          );
         }
 
         let storageWarning = null;
 
         if (targetStoragePath) {
-          const { error: storageDeleteError } = await supabase.storage
-            .from("work-photos")
-            .remove([targetStoragePath]);
+          const { error: storageDeleteError } =
+            await supabase.storage
+              .from("work-photos")
+              .remove([targetStoragePath]);
 
           if (storageDeleteError) {
-            console.error("현장 요청사진 Storage 삭제 오류:", storageDeleteError);
+            console.error(
+              "현장 요청사진 Storage 삭제 오류:",
+              storageDeleteError
+            );
             storageWarning = storageDeleteError.message;
           }
         }
 
-        setSites((prev) =>
-          prev.map((site) => {
+        setSites((previous) =>
+          previous.map((site) => {
             if (site.id !== siteId) return site;
+
             return {
               ...site,
               site_photos: Array.isArray(site.site_photos)
-                ? site.site_photos.filter((photo) => photo.id !== photoId)
+                ? site.site_photos.filter(
+                    (photo) => photo.id !== photoId
+                  )
                 : [],
             };
           })
         );
 
-        setSelectedSite((prev) => {
-          if (!prev || prev.id !== siteId) return prev;
+        setSelectedSite((previous) => {
+          if (!previous || previous.id !== siteId) return previous;
+
           return {
-            ...prev,
-            site_photos: Array.isArray(prev.site_photos)
-              ? prev.site_photos.filter((photo) => photo.id !== photoId)
+            ...previous,
+            site_photos: Array.isArray(previous.site_photos)
+              ? previous.site_photos.filter(
+                  (photo) => photo.id !== photoId
+                )
               : [],
           };
         });
@@ -332,12 +428,22 @@ export default function useSites({ companyId }) {
             : "✅ 요청사진이 삭제되었습니다."
         );
 
-        return { success: true, storageWarning };
+        return {
+          success: true,
+          storageWarning,
+        };
       } catch (error) {
         console.error("현장 요청사진 삭제 오류:", error);
-        const message = error?.message || "사진 삭제 중 오류가 발생했습니다.";
+
+        const message =
+          error?.message || "사진 삭제 중 오류가 발생했습니다.";
+
         setSitesMessage(`❌ 요청사진 삭제 실패: ${message}`);
-        return { success: false, error: message };
+
+        return {
+          success: false,
+          error: message,
+        };
       }
     },
     [companyId]
@@ -350,12 +456,16 @@ export default function useSites({ companyId }) {
       const rows = materials
         .filter(
           (material) =>
-            material && (material.product_code || material.product_name)
+            material &&
+            (material.product_code || material.product_name)
         )
         .map((material) => {
-          const quantity = toNumberOrNull(material.quantity) ?? 0;
-          const unitPrice = toNumberOrNull(material.unit_price);
-          let totalPrice = toNumberOrNull(material.total_price);
+          const quantity =
+            toNumberOrNull(material.quantity) ?? 0;
+          const unitPrice =
+            toNumberOrNull(material.unit_price);
+          let totalPrice =
+            toNumberOrNull(material.total_price);
 
           if (totalPrice === null && unitPrice !== null) {
             totalPrice = quantity * unitPrice;
@@ -384,8 +494,11 @@ export default function useSites({ companyId }) {
         .select();
 
       if (error) {
-        throw new Error(`시공 자재 저장 실패: ${error.message}`);
+        throw new Error(
+          `시공 자재 저장 실패: ${error.message}`
+        );
       }
+
       return data || [];
     },
     [companyId]
@@ -394,26 +507,40 @@ export default function useSites({ companyId }) {
   const createSite = useCallback(
     async (form) => {
       if (!companyId) {
-        return { success: false, error: "회사 정보를 확인할 수 없습니다." };
+        return {
+          success: false,
+          error: "회사 정보를 확인할 수 없습니다.",
+        };
       }
 
       setSitesLoading(true);
       setSitesMessage("");
+
       let createdSite = null;
 
       try {
         const insertData = {
           company_id: companyId,
+
+          ...(form.consultation_quote_seed
+            ? {
+                consultation_quote_seed:
+                  form.consultation_quote_seed,
+              }
+            : {}),
+
           customer_name: form.customer_name?.trim() || null,
           customer_phone: form.customer_phone?.trim() || null,
           site_name: form.site_name?.trim() || null,
           address: form.address?.trim() || null,
           address_detail: form.address_detail?.trim() || null,
           region: form.region?.trim() || null,
+
           schedule_date:
             form.schedule_date ||
             getLocalDateString(form.schedule_start) ||
             null,
+
           schedule_start: form.schedule_start || null,
           schedule_end: form.schedule_end || null,
           work_type: form.work_type?.trim() || null,
@@ -421,8 +548,11 @@ export default function useSites({ companyId }) {
           contract_amount: toNumberOrNull(form.contract_amount),
           deposit_amount: toNumberOrNull(form.deposit_amount),
           source: form.source || "phone",
+
           status:
-            form.status || (form.schedule_start ? "scheduled" : "consulting"),
+            form.status ||
+            (form.schedule_start ? "scheduled" : "consulting"),
+
           memo: form.memo?.trim() || null,
         };
 
@@ -437,7 +567,11 @@ export default function useSites({ companyId }) {
             !form.status ||
             ["consulting", "scheduled"].includes(form.status)
           ) {
-            insertData.status = dates.length ? "scheduled" : "consulting";
+            insertData.status = form.consultation_quote_seed
+              ? "consulting"
+              : dates.length
+                ? "scheduled"
+                : "consulting";
           }
         }
 
@@ -448,9 +582,13 @@ export default function useSites({ companyId }) {
           .single();
 
         if (error) throw error;
+
         createdSite = data;
 
-        const materials = Array.isArray(form.materials) ? form.materials : [];
+        const materials = Array.isArray(form.materials)
+          ? form.materials
+          : [];
+
         const savedMaterials = await saveSiteMaterials({
           siteId: createdSite.id,
           materials,
@@ -472,7 +610,9 @@ export default function useSites({ companyId }) {
           site_photos: savedPhotos,
         };
 
-        setSites((prev) => [...prev, siteForState].sort(sortSitesBySchedule));
+        setSites((previous) =>
+          [...previous, siteForState].sort(sortSitesBySchedule)
+        );
 
         setSitesMessage(
           createdSite.status === "consulting"
@@ -488,7 +628,10 @@ export default function useSites({ companyId }) {
         };
       } catch (error) {
         console.error("현장 등록 오류:", error);
-        const message = error?.message || "현장 등록 중 오류가 발생했습니다.";
+
+        const message =
+          error?.message || "현장 등록 중 오류가 발생했습니다.";
+
         setSitesMessage(`❌ ${message}`);
 
         if (createdSite) {
@@ -510,7 +653,12 @@ export default function useSites({ companyId }) {
         setSitesLoading(false);
       }
     },
-    [companyId, loadSites, saveSiteMaterials, uploadRequestPhotos]
+    [
+      companyId,
+      loadSites,
+      saveSiteMaterials,
+      uploadRequestPhotos,
+    ]
   );
 
   const updateSiteBasicInfo = useCallback(
@@ -563,31 +711,50 @@ export default function useSites({ companyId }) {
 
         if (error) throw error;
 
-        setSites((prev) =>
-          prev
-            .map((site) => (site.id === siteId ? { ...site, ...data } : site))
+        setSites((previous) =>
+          previous
+            .map((site) =>
+              site.id === siteId ? { ...site, ...data } : site
+            )
             .sort(sortSitesBySchedule)
         );
 
-        setSelectedSite((prev) =>
-          prev?.id === siteId ? { ...prev, ...data } : prev
+        setSelectedSite((previous) =>
+          previous?.id === siteId
+            ? { ...previous, ...data }
+            : previous
         );
 
         setSitesMessage("✅ 현장 기본정보가 저장되었습니다.");
-        return { success: true, site: data };
+
+        return {
+          success: true,
+          site: data,
+        };
       } catch (error) {
         console.error("현장 기본정보 수정 오류:", error);
+
         const message =
           error?.message || "현장 기본정보 저장 중 오류가 발생했습니다.";
+
         setSitesMessage(`❌ 기본정보 저장 실패: ${message}`);
-        return { success: false, error: message };
+
+        return {
+          success: false,
+          error: message,
+        };
       }
     },
     [companyId]
   );
 
   const updateSiteSchedule = useCallback(
-    async ({ siteId, workDates, scheduleStart, scheduleEnd = null }) => {
+    async ({
+      siteId,
+      workDates,
+      scheduleStart,
+      scheduleEnd = null,
+    }) => {
       if (!companyId || !siteId) {
         return {
           success: false,
@@ -604,18 +771,28 @@ export default function useSites({ companyId }) {
           const dates = normalizeWorkDates(workDates);
 
           if (!dates.length) {
-            throw new Error("시공 날짜를 하나 이상 선택해주세요.");
+            throw new Error(
+              "시공 날짜를 하나 이상 선택해주세요."
+            );
           }
 
-          const result = await supabase.rpc("set_site_work_dates", {
-            p_site_id: siteId,
-            p_work_dates: dates,
-          });
+          const result = await supabase.rpc(
+            "set_site_work_dates",
+            {
+              p_site_id: siteId,
+              p_work_dates: dates,
+            }
+          );
 
           if (result.error) {
-            if (["PGRST202", "42883"].includes(result.error.code)) {
-              throw new Error("여러 날짜 저장 SQL을 먼저 적용해주세요.");
+            if (
+              ["PGRST202", "42883"].includes(result.error.code)
+            ) {
+              throw new Error(
+                "여러 날짜 저장 SQL을 먼저 적용해주세요."
+              );
             }
+
             throw result.error;
           }
 
@@ -628,14 +805,18 @@ export default function useSites({ companyId }) {
             data.id !== siteId ||
             data.company_id !== companyId
           ) {
-            throw new Error("저장 결과의 현장 정보를 확인할 수 없습니다.");
+            throw new Error(
+              "저장 결과의 현장 정보를 확인할 수 없습니다."
+            );
           }
         } else {
           if (
             !scheduleStart ||
             Number.isNaN(new Date(scheduleStart).getTime())
           ) {
-            throw new Error("시공 시작 일정이 올바르지 않습니다.");
+            throw new Error(
+              "시공 시작 일정이 올바르지 않습니다."
+            );
           }
 
           if (
@@ -645,7 +826,9 @@ export default function useSites({ companyId }) {
               new Date(scheduleEnd) < new Date(scheduleStart)
             )
           ) {
-            throw new Error("시공 종료 일정이 올바르지 않습니다.");
+            throw new Error(
+              "시공 종료 일정이 올바르지 않습니다."
+            );
           }
 
           const current = await supabase
@@ -664,7 +847,9 @@ export default function useSites({ companyId }) {
           }
 
           if (
-            ["completed", "cancelled", "canceled"].includes(current.data.status)
+            ["completed", "cancelled", "canceled"].includes(
+              current.data.status
+            )
           ) {
             throw new Error(
               "완료되거나 취소된 현장은 일정을 변경할 수 없습니다."
@@ -692,25 +877,40 @@ export default function useSites({ companyId }) {
             .single();
 
           if (result.error) throw result.error;
+
           data = result.data;
         }
 
-        setSites((prev) =>
-          prev
-            .map((site) => (site.id === siteId ? { ...site, ...data } : site))
+        setSites((previous) =>
+          previous
+            .map((site) =>
+              site.id === siteId ? { ...site, ...data } : site
+            )
             .sort(sortSitesBySchedule)
         );
 
-        setSelectedSite((prev) =>
-          prev?.id === siteId ? { ...prev, ...data } : prev
+        setSelectedSite((previous) =>
+          previous?.id === siteId
+            ? { ...previous, ...data }
+            : previous
         );
 
         setSitesMessage("✅ 시공 일정이 저장되었습니다.");
-        return { success: true, site: data };
+
+        return {
+          success: true,
+          site: data,
+        };
       } catch (error) {
-        const message = error?.message || "일정 저장 중 오류가 발생했습니다.";
+        const message =
+          error?.message || "일정 저장 중 오류가 발생했습니다.";
+
         setSitesMessage(`❌ 일정 변경 실패: ${message}`);
-        return { success: false, error: message };
+
+        return {
+          success: false,
+          error: message,
+        };
       }
     },
     [companyId]
@@ -720,55 +920,79 @@ export default function useSites({ companyId }) {
 
   const updateSiteStatus = useCallback(
     async (siteId, nextStatus, expectedStatus) => {
-      if (!companyId || !siteId) return { success: false };
+      if (!companyId || !siteId) {
+        return { success: false };
+      }
 
       try {
-        const { data: session, error: sessionError } =
-          await supabase.auth.getSession();
+        const {
+          data: session,
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
         if (sessionError) throw sessionError;
 
         const token = session?.session?.access_token;
-        if (!token) throw new Error("다시 로그인해주세요.");
 
-        const response = await fetch("/api/admin/site-status", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            siteId,
-            status: nextStatus,
-            expectedStatus,
-          }),
-        });
+        if (!token) {
+          throw new Error("다시 로그인해주세요.");
+        }
+
+        const response = await fetch(
+          "/api/admin/site-status",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              siteId,
+              status: nextStatus,
+              expectedStatus,
+            }),
+          }
+        );
 
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-          throw new Error(result.error || "현장 상태 변경에 실패했습니다.");
+          throw new Error(
+            result.error || "현장 상태 변경에 실패했습니다."
+          );
         }
 
         const data = result.site;
 
-        setSites((prev) =>
-          prev
-            .map((site) => (site.id === siteId ? { ...site, ...data } : site))
+        setSites((previous) =>
+          previous
+            .map((site) =>
+              site.id === siteId ? { ...site, ...data } : site
+            )
             .sort(sortSitesBySchedule)
         );
 
-        setSelectedSite((prev) =>
-          prev?.id === siteId ? { ...prev, ...data } : prev
+        setSelectedSite((previous) =>
+          previous?.id === siteId
+            ? { ...previous, ...data }
+            : previous
         );
 
-        return { success: true, site: data };
+        return {
+          success: true,
+          site: data,
+        };
       } catch (error) {
         console.error("현장 상태 변경 오류:", error);
+
         setSitesMessage(
           `❌ 상태 변경 실패: ${error?.message || "알 수 없는 오류"}`
         );
-        return { success: false, error: error?.message };
+
+        return {
+          success: false,
+          error: error?.message,
+        };
       }
     },
     [companyId]
@@ -804,4 +1028,4 @@ export default function useSites({ companyId }) {
     closeSite,
     clearSitesMessage,
   };
-    }
+}
