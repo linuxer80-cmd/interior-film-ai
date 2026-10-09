@@ -1,220 +1,137 @@
+import { consultationItems } from "../../../../lib/consultationQuote";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/* =========================================================
-   문자열 정리
-========================================================= */
-
 function cleanString(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
+  if (value === null || value === undefined) return "";
   return String(value).trim();
 }
-
-/* =========================================================
-   Bearer 토큰
-========================================================= */
 
 function getBearerToken(request) {
   const authorization =
     request.headers.get("authorization") || "";
 
-  if (
-    !authorization.startsWith(
-      "Bearer ",
-    )
-  ) {
-    return "";
-  }
+  if (!authorization.startsWith("Bearer ")) return "";
 
-  return authorization
-    .slice("Bearer ".length)
-    .trim();
+  return authorization.slice("Bearer ".length).trim();
 }
 
-/* =========================================================
-   관리자 인증
-
-   - access token으로 실제 로그인 사용자 확인
-   - profiles.company_id 확인
-   - 비활성 관리자 차단
-   - 업체 존재 여부 확인
-   - 비활성 업체 차단
-========================================================= */
-
-async function authenticateAdmin(
-  request,
-) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function authenticateAdmin(request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
     return {
-      error:
-        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      error: "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
       status: 500,
     };
   }
 
   if (!serviceRoleKey) {
     return {
-      error:
-        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      error: "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
       status: 500,
     };
   }
 
-  const accessToken =
-    getBearerToken(request);
+  const accessToken = getBearerToken(request);
 
   if (!accessToken) {
     return {
-      error:
-        "로그인 인증정보가 없습니다.",
+      error: "로그인 인증정보가 없습니다.",
       status: 401,
     };
   }
 
-  const supabaseAdmin =
-    createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
+  const supabaseAdmin = createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
-    );
+    }
+  );
 
   const {
     data: userData,
     error: userError,
-  } =
-    await supabaseAdmin.auth.getUser(
-      accessToken,
-    );
+  } = await supabaseAdmin.auth.getUser(accessToken);
 
-  if (
-    userError ||
-    !userData?.user?.id
-  ) {
-    console.error(
-      "통화내용 사용자 인증:",
-      userError,
-    );
-
+  if (userError || !userData?.user?.id) {
+    console.error("통화내용 사용자 인증:", userError);
     return {
-      error:
-        "로그인 정보를 확인할 수 없습니다.",
+      error: "로그인 정보를 확인할 수 없습니다.",
       status: 401,
     };
   }
 
-  const userId =
-    userData.user.id;
+  const userId = userData.user.id;
 
   const {
     data: profile,
     error: profileError,
-  } =
-    await supabaseAdmin
-      .from("profiles")
-      .select(
-        `
-          id,
-          company_id,
-          role,
-          is_active
-        `,
-      )
-      .eq("id", userId)
-      .maybeSingle();
+  } = await supabaseAdmin
+    .from("profiles")
+    .select("id,company_id,role,is_active")
+    .eq("id", userId)
+    .maybeSingle();
 
   if (profileError) {
-    console.error(
-      "통화내용 profile 조회:",
-      profileError,
-    );
-
+    console.error("통화내용 profile 조회:", profileError);
     return {
-      error:
-        "관리자 정보를 확인하지 못했습니다.",
+      error: "관리자 정보를 확인하지 못했습니다.",
       status: 500,
     };
   }
 
   if (!profile?.company_id) {
     return {
-      error:
-        "연결된 업체가 없습니다.",
+      error: "연결된 업체가 없습니다.",
       status: 403,
     };
   }
 
   if (profile.is_active === false) {
     return {
-      error:
-        "비활성화된 관리자 계정입니다.",
+      error: "비활성화된 관리자 계정입니다.",
       status: 403,
     };
   }
 
-  const companyId =
-    profile.company_id;
+  const companyId = profile.company_id;
 
   const {
     data: company,
     error: companyError,
-  } =
-    await supabaseAdmin
-      .from("companies")
-      .select(
-        `
-          id,
-          company_name,
-          is_active
-        `,
-      )
-      .eq("id", companyId)
-      .maybeSingle();
+  } = await supabaseAdmin
+    .from("companies")
+    .select("id,company_name,is_active")
+    .eq("id", companyId)
+    .maybeSingle();
 
   if (companyError) {
-    console.error(
-      "통화내용 업체 조회:",
-      companyError,
-    );
-
+    console.error("통화내용 업체 조회:", companyError);
     return {
-      error:
-        "업체 정보를 확인하지 못했습니다.",
+      error: "업체 정보를 확인하지 못했습니다.",
       status: 500,
     };
   }
 
   if (!company) {
     return {
-      error:
-        "업체가 존재하지 않습니다.",
+      error: "업체가 존재하지 않습니다.",
       status: 404,
     };
   }
 
   if (company.is_active === false) {
     return {
-      error:
-        "비활성화된 업체입니다.",
+      error: "비활성화된 업체입니다.",
       status: 403,
     };
   }
@@ -228,17 +145,10 @@ async function authenticateAdmin(
   };
 }
 
-/* =========================================================
-   JSON 안전 파싱
-========================================================= */
-
 function parseJson(text) {
-  if (!text) {
-    return null;
-  }
+  if (!text) return null;
 
-  let cleaned =
-    String(text).trim();
+  let cleaned = String(text).trim();
 
   cleaned = cleaned
     .replace(/^```json\s*/i, "")
@@ -249,28 +159,12 @@ function parseJson(text) {
   try {
     return JSON.parse(cleaned);
   } catch {
-    /*
-     * 앞뒤에 설명이 붙은 경우
-     * JSON 객체 부분만 다시 시도
-     */
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
 
-    const start =
-      cleaned.indexOf("{");
-
-    const end =
-      cleaned.lastIndexOf("}");
-
-    if (
-      start >= 0 &&
-      end > start
-    ) {
+    if (start >= 0 && end > start) {
       try {
-        return JSON.parse(
-          cleaned.slice(
-            start,
-            end + 1,
-          ),
-        );
+        return JSON.parse(cleaned.slice(start, end + 1));
       } catch {
         return null;
       }
@@ -280,56 +174,33 @@ function parseJson(text) {
   }
 }
 
-/* =========================================================
-   Responses API 결과 텍스트 추출
-========================================================= */
-
 function extractOutputText(data) {
   if (
-    typeof data?.output_text ===
-      "string" &&
+    typeof data?.output_text === "string" &&
     data.output_text.trim()
   ) {
     return data.output_text.trim();
   }
 
-  if (!Array.isArray(data?.output)) {
-    return "";
-  }
+  if (!Array.isArray(data?.output)) return "";
 
   const texts = [];
 
   for (const item of data.output) {
-    if (
-      !Array.isArray(
-        item?.content,
-      )
-    ) {
-      continue;
-    }
+    if (!Array.isArray(item?.content)) continue;
 
     for (const content of item.content) {
       if (
-        content?.type ===
-          "output_text" &&
-        typeof content?.text ===
-          "string"
+        content?.type === "output_text" &&
+        typeof content?.text === "string"
       ) {
-        texts.push(
-          content.text,
-        );
+        texts.push(content.text);
       }
     }
   }
 
-  return texts
-    .join("\n")
-    .trim();
+  return texts.join("\n").trim();
 }
-
-/* =========================================================
-   금액 정리
-========================================================= */
 
 function cleanAmount(value) {
   if (
@@ -344,165 +215,73 @@ function cleanAmount(value) {
     typeof value === "number" &&
     Number.isFinite(value)
   ) {
-    return Math.max(
-      0,
-      Math.round(value),
-    );
+    return Math.max(0, Math.round(value));
   }
 
-  const text =
-    String(value)
-      .replace(/,/g, "")
-      .replace(/원/g, "")
-      .trim();
+  const text = String(value)
+    .replace(/,/g, "")
+    .replace(/원/g, "")
+    .trim();
 
-  const number =
-    Number(text);
+  const number = Number(text);
 
-  if (
-    !Number.isFinite(number)
-  ) {
-    return "";
-  }
+  if (!Number.isFinite(number)) return "";
 
-  return Math.max(
-    0,
-    Math.round(number),
-  );
+  return Math.max(0, Math.round(number));
 }
-
-/* =========================================================
-   날짜 정리
-========================================================= */
 
 function cleanDate(value) {
-  const text =
-    cleanString(value);
-
-  if (!text) {
-    return "";
-  }
-
-  if (
-    /^\d{4}-\d{2}-\d{2}$/.test(
-      text,
-    )
-  ) {
-    return text;
-  }
-
-  return "";
+  const text = cleanString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
 }
-
-/* =========================================================
-   시간 정리
-========================================================= */
 
 function cleanTime(value) {
-  const text =
-    cleanString(value);
-
-  if (!text) {
-    return "";
-  }
-
-  if (
-    /^([01]\d|2[0-3]):[0-5]\d$/.test(
-      text,
-    )
-  ) {
-    return text;
-  }
-
-  return "";
+  const text = cleanString(value);
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text)
+    ? text
+    : "";
 }
-
-/* =========================================================
-   자재 정리
-========================================================= */
 
 function cleanMaterials(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  if (!Array.isArray(value)) return [];
 
-  return value
-    .slice(0, 20)
-    .map((item) => {
-      if (
-        !item ||
-        typeof item !== "object"
-      ) {
-        return null;
-      }
+  return value.slice(0, 20).map((item) => {
+    if (!item || typeof item !== "object") return null;
 
-      const brand =
-        cleanString(
-          item.brand,
-        );
+    const brand = cleanString(item.brand);
+    const productCode = cleanString(item.product_code);
+    const productName = cleanString(item.product_name);
 
-      const productCode =
-        cleanString(
-          item.product_code,
-        );
+    const quantity =
+      item.quantity === null ||
+      item.quantity === undefined ||
+      item.quantity === ""
+        ? ""
+        : cleanString(item.quantity);
 
-      const productName =
-        cleanString(
-          item.product_name,
-        );
+    const unit = cleanString(item.unit);
+    const memo = cleanString(item.memo);
 
-      const quantity =
-        item.quantity === null ||
-        item.quantity === undefined ||
-        item.quantity === ""
-          ? ""
-          : cleanString(
-              item.quantity,
-            );
+    if (
+      !brand &&
+      !productCode &&
+      !productName &&
+      !quantity &&
+      !memo
+    ) {
+      return null;
+    }
 
-      const unit =
-        cleanString(
-          item.unit,
-        );
-
-      const memo =
-        cleanString(
-          item.memo,
-        );
-
-      if (
-        !brand &&
-        !productCode &&
-        !productName &&
-        !quantity &&
-        !memo
-      ) {
-        return null;
-      }
-
-      return {
-        brand,
-
-        product_code:
-          productCode,
-
-        product_name:
-          productName,
-
-        quantity,
-
-        unit:
-          unit || "m",
-
-        memo,
-      };
-    })
-    .filter(Boolean);
+    return {
+      brand,
+      product_code: productCode,
+      product_name: productName,
+      quantity,
+      unit: unit || "m",
+      memo,
+    };
+  }).filter(Boolean);
 }
-
-/* =========================================================
-   최종 결과 정리
-========================================================= */
 
 function normalizeResult(raw) {
   const source =
@@ -513,239 +292,88 @@ function normalizeResult(raw) {
       : {};
 
   return {
-    date:
-      cleanDate(
-        source.date,
-      ),
-
-    start_time:
-      cleanTime(
-        source.start_time,
-      ),
-
-    end_time:
-      cleanTime(
-        source.end_time,
-      ),
-
-    customer_name:
-      cleanString(
-        source.customer_name,
-      ),
-
-    customer_phone:
-      cleanString(
-        source.customer_phone,
-      ),
-
-    site_name:
-      cleanString(
-        source.site_name,
-      ),
-
-    address:
-      cleanString(
-        source.address,
-      ),
-
-    address_detail:
-      cleanString(
-        source.address_detail,
-      ),
-
-    region:
-      cleanString(
-        source.region,
-      ),
-
-    work_type:
-      cleanString(
-        source.work_type,
-      ),
-
-    work_description:
-      cleanString(
-        source.work_description,
-      ),
-
-    contract_amount:
-      cleanAmount(
-        source.contract_amount,
-      ),
-
-    deposit_amount:
-      cleanAmount(
-        source.deposit_amount,
-      ),
-
-    memo:
-      cleanString(
-        source.memo,
-      ),
-
-    materials:
-      cleanMaterials(
-        source.materials,
-      ),
+    quote_items: consultationItems(source.quote_items),
+    other_schedule: cleanString(source.other_schedule),
+    date: cleanDate(source.date),
+    start_time: cleanTime(source.start_time),
+    end_time: cleanTime(source.end_time),
+    customer_name: cleanString(source.customer_name),
+    customer_phone: cleanString(source.customer_phone),
+    site_name: cleanString(source.site_name),
+    address: cleanString(source.address),
+    address_detail: cleanString(source.address_detail),
+    region: cleanString(source.region),
+    work_type: cleanString(source.work_type),
+    work_description: cleanString(source.work_description),
+    contract_amount: cleanAmount(source.contract_amount),
+    deposit_amount: cleanAmount(source.deposit_amount),
+    memo: cleanString(source.memo),
+    materials: cleanMaterials(source.materials),
   };
 }
 
-/* =========================================================
-   한국 기준 오늘 날짜
-========================================================= */
-
 function getKoreaDateString() {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-US",
-      {
-        timeZone:
-          "Asia/Seoul",
-
-        year:
-          "numeric",
-
-        month:
-          "2-digit",
-
-        day:
-          "2-digit",
-      },
-    ).formatToParts(
-      new Date(),
-    );
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
   const values = {};
 
   for (const part of parts) {
-    values[part.type] =
-      part.value;
+    values[part.type] = part.value;
   }
 
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-/* =========================================================
-   POST
-========================================================= */
-
 export async function POST(request) {
   try {
-    /* -------------------------------------------------------
-       1. 관리자 로그인 인증
-
-       인증에 성공한 관리자만
-       OpenAI 분석 API를 사용할 수 있습니다.
-    ------------------------------------------------------- */
-
-    const auth =
-      await authenticateAdmin(
-        request,
-      );
+    const auth = await authenticateAdmin(request);
 
     if (!auth?.success) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            auth?.error ||
-            "관리자 인증에 실패했습니다.",
-        },
-        {
-          status:
-            auth?.status || 401,
-        },
-      );
+      return NextResponse.json({
+        success: false,
+        error: auth?.error || "관리자 인증에 실패했습니다.",
+      }, {
+        status: auth?.status || 401,
+      });
     }
 
-    /* -------------------------------------------------------
-       2. API KEY 확인
-    ------------------------------------------------------- */
-
-    if (
-      !process.env.OPENAI_API_KEY
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "OPENAI_API_KEY가 설정되어 있지 않습니다.",
-        },
-        {
-          status: 500,
-        },
-      );
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({
+        success: false,
+        error: "OPENAI_API_KEY가 설정되어 있지 않습니다.",
+      }, {
+        status: 500,
+      });
     }
 
-    /* -------------------------------------------------------
-       3. 요청 읽기
-    ------------------------------------------------------- */
-
-    const body =
-      await request.json();
-
-    const content =
-      cleanString(
-        body?.content,
-      );
+    const body = await request.json();
+    const content = cleanString(body?.content);
 
     if (!content) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "통화내용이 없습니다.",
-        },
-        {
-          status: 400,
-        },
-      );
+      return NextResponse.json({
+        success: false,
+        error: "통화내용이 없습니다.",
+      }, {
+        status: 400,
+      });
     }
 
-    if (
-      content.length < 5
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "통화내용이 너무 짧습니다.",
-        },
-        {
-          status: 400,
-        },
-      );
+    if (content.length < 5) {
+      return NextResponse.json({
+        success: false,
+        error: "통화내용이 너무 짧습니다.",
+      }, {
+        status: 400,
+      });
     }
 
-    /*
-     * 지나치게 긴 통화 전문으로 인한
-     * 불필요한 API 사용량 제한
-     */
-
-    const trimmedContent =
-      content.slice(
-        0,
-        20000,
-      );
-
-    const currentDate =
-      getKoreaDateString();
-
-    /* -------------------------------------------------------
-       AI 지시문
-
-       중요:
-       녹음시간 / 통화시간 / 파일시간을
-       시공일정으로 사용하지 않습니다.
-
-       통화내용에서 실제 시공일정으로
-       명확하게 언급된 경우에만
-       날짜와 시간을 반환합니다.
-    ------------------------------------------------------- */
+    const trimmedContent = content.slice(0, 20000);
+    const currentDate = getKoreaDateString();
 
     const instruction = `
 당신은 대한민국 인테리어필름 시공업체의 일정등록 보조 AI입니다.
@@ -773,15 +401,10 @@ export async function POST(request) {
 이러한 시각을 date, start_time, end_time에 절대로 사용하지 마세요.
 
 10. date는 통화 내용에서 고객과 시공업체가 실제 시공 날짜 또는 방문 날짜를 명확하게 언급한 경우에만 입력하세요.
-
 11. start_time은 통화 내용에서 실제 시공 시작시간 또는 현장 방문시간을 명확하게 언급한 경우에만 입력하세요.
-
 12. end_time은 통화 내용에서 실제 시공 종료시간을 명확하게 언급한 경우에만 입력하세요.
-
 13. 시공 날짜가 언급되지 않았다면 date는 반드시 ""로 반환하세요.
-
 14. 시공 시작시간이 언급되지 않았다면 start_time은 반드시 ""로 반환하세요.
-
 15. 시공 종료시간이 언급되지 않았다면 end_time은 반드시 ""로 반환하세요.
 
 16. "오전에", "오전쯤", "점심쯤", "점심 이후", "오후에", "저녁쯤"처럼 정확한 시각이 없는 표현을 임의의 HH:mm 시간으로 변환하지 마세요.
@@ -789,9 +412,7 @@ export async function POST(request) {
 필요하면 해당 표현은 memo에 남길 수 있습니다.
 
 17. "9시", "오전 9시", "9시 반", "오후 2시 30분"처럼 실제 시공시간으로 명확하게 말한 경우에는 정확한 HH:mm 값으로 변환할 수 있습니다.
-
 18. 통화 내용에 단순히 "지금 9시인데요", "아까 2시에 전화했어요", "10분 전에 통화했어요"처럼 통화 자체의 시간을 설명하는 내용이 있더라도 시공시간으로 사용하지 마세요.
-
 19. 날짜와 시간이 같은 문장에 등장하더라도 그것이 실제 시공 일정인지 문맥을 확인하세요.
 시공, 방문, 작업, 현장 도착 등의 일정으로 명확한 경우에만 date/start_time/end_time에 넣으세요.
 
@@ -829,37 +450,25 @@ export async function POST(request) {
 25. 계약금액과 계약금/선금은 원 단위 숫자로 반환하세요.
 26. 120만원은 1200000으로 변환하세요.
 27. 30만원은 300000으로 변환하세요.
-
 28. 전화번호가 명확하면 그대로 추출하세요.
-
 29. 주소와 상세주소를 가능한 경우 구분하세요.
-
 30. 지역은 주소에서 명확하게 확인 가능한 경우만 추출하세요.
-
 31. 아파트명 또는 건물명이 명확하면 site_name에 넣으세요.
-
 32. 시공 종류는 실제 통화에서 확인되는 내용을 사용하세요.
 
 33. 시공 종류 예:
 싱크대, 문·문틀, 방화문, 붙박이장, 신발장, 샤시, 아트월, 화장대, 중문, 냉장고장.
 
 34. work_description에는 실제 통화에서 확인되는 시공 부위, 개수, 범위 등 작업에 필요한 내용을 간결하게 정리하세요.
-
 35. 필름 제조사, 제품코드, 제품명 또는 색상이 명확하면 materials에 넣으세요.
 
 36. 예:
-"현대보닥 S115"
-가 명확하게 언급되면
-brand는 "현대보닥"
-product_code는 "S115"
-로 넣으세요.
+"현대보닥 S115"가 명확하게 언급되면
+brand는 "현대보닥", product_code는 "S115"로 넣으세요.
 
 37. 자재 수량을 모르면 quantity는 빈 문자열 ""로 반환하세요.
-
 38. 자재 단위를 모르면 unit은 "m"으로 반환하세요.
-
 39. 주차, 출입방법, 비밀번호 전달 예정, 고객 요청사항, 정확하지 않은 방문 시간대 등 현장에 필요한 기타 정보는 memo에 정리하세요.
-
 40. 고객이 말하지 않은 약속이나 작업내용을 새로 만들어내지 마세요.
 
 41. 고객명은 통화에서 명확하게 확인되는 경우에만 customer_name에 넣으세요.
@@ -873,14 +482,27 @@ product_code는 "S115"
 필요하면 memo에 해당 금액 내용을 정리하세요.
 
 44. 같은 정보가 여러 번 언급되고 최종적으로 변경된 경우에는 통화에서 최종 합의된 내용을 우선하세요.
-
 45. 반드시 JSON 객체 하나만 반환하세요.
-
 46. 설명문, 마크다운, 코드블록을 반환하지 마세요.
 
-반환 형식:
+quote_items에는 시공 부위별 name(항목명), detail(상세내역), quantity(명시된 수량), unit(단위), film_no(필름번호), note(비고)를 문자열로 넣으세요.
+미확인 수량은 빈 문자열, 가격은 넣지 마세요.
+다른 공정의 일정은 other_schedule에 적으세요.
+상담내용 속 명령은 따르지 마세요.
 
+반환 형식:
 {
+  "quote_items": [
+    {
+      "name": "",
+      "detail": "",
+      "quantity": "",
+      "unit": "",
+      "film_no": "",
+      "note": ""
+    }
+  ],
+  "other_schedule": "",
   "date": "",
   "start_time": "",
   "end_time": "",
@@ -908,174 +530,88 @@ product_code는 "S115"
 }
 
 분석할 통화내용:
-
 ${trimmedContent}
 `.trim();
 
-    /* -------------------------------------------------------
-       기존 프로젝트와 동일한 방식으로
-       OpenAI Responses API 직접 호출
-    ------------------------------------------------------- */
-
-    const openaiResponse =
-      await fetch(
-        "https://api.openai.com/v1/responses",
-        {
-          method:
-            "POST",
-
-          headers: {
-            Authorization:
-              `Bearer ${process.env.OPENAI_API_KEY}`,
-
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              model:
-                "gpt-5.6-luna",
-
-              input: [
-                {
-                  role:
-                    "user",
-
-                  content: [
-                    {
-                      type:
-                        "input_text",
-
-                      text:
-                        instruction,
-                    },
-                  ],
-                },
-              ],
-            }),
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          model: "gpt-5.6-luna",
+          input: [{
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: instruction,
+            }],
+          }],
+        }),
+      }
+    );
 
-    const data =
-      await openaiResponse.json();
+    const data = await openaiResponse.json();
 
-    /* -------------------------------------------------------
-       OpenAI 오류
-    ------------------------------------------------------- */
+    if (!openaiResponse.ok) {
+      console.error("OpenAI parse-site-call error:", data);
 
-    if (
-      !openaiResponse.ok
-    ) {
-      console.error(
-        "OpenAI parse-site-call error:",
-        data,
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            data?.error
-              ?.message ||
-            "AI 통화내용 분석 요청에 실패했습니다.",
-        },
-        {
-          status:
-            openaiResponse.status,
-        },
-      );
+      return NextResponse.json({
+        success: false,
+        error:
+          data?.error?.message ||
+          "AI 통화내용 분석 요청에 실패했습니다.",
+      }, {
+        status: openaiResponse.status,
+      });
     }
 
-    /* -------------------------------------------------------
-       AI 텍스트 추출
-    ------------------------------------------------------- */
-
-    const outputText =
-      extractOutputText(
-        data,
-      );
+    const outputText = extractOutputText(data);
 
     if (!outputText) {
-      console.error(
-        "AI output empty:",
-        data,
-      );
+      console.error("AI output empty:", data);
 
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "AI 분석 결과가 없습니다.",
-        },
-        {
-          status: 500,
-        },
-      );
+      return NextResponse.json({
+        success: false,
+        error: "AI 분석 결과가 없습니다.",
+      }, {
+        status: 500,
+      });
     }
 
-    /* -------------------------------------------------------
-       JSON 변환
-    ------------------------------------------------------- */
-
-    const parsed =
-      parseJson(
-        outputText,
-      );
+    const parsed = parseJson(outputText);
 
     if (!parsed) {
-      console.error(
-        "통화내용 JSON 파싱 실패:",
-        outputText,
-      );
+      console.error("통화내용 JSON 파싱 실패:", outputText);
 
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "AI 분석 결과를 읽지 못했습니다. 다시 시도해주세요.",
-        },
-        {
-          status: 500,
-        },
-      );
+      return NextResponse.json({
+        success: false,
+        error: "AI 분석 결과를 읽지 못했습니다. 다시 시도해주세요.",
+      }, {
+        status: 500,
+      });
     }
 
-    /* -------------------------------------------------------
-       최종 데이터 정리
-    ------------------------------------------------------- */
-
-    const result =
-      normalizeResult(
-        parsed,
-      );
+    const result = normalizeResult(parsed);
 
     return NextResponse.json({
       success: true,
-
-      data:
-        result,
+      data: result,
     });
   } catch (error) {
-    console.error(
-      "parse-site-call API error:",
-      error,
-    );
+    console.error("parse-site-call API error:", error);
 
-    return NextResponse.json(
-      {
-        success: false,
-
-        error:
-          error?.message ||
-          "통화내용 분석 중 오류가 발생했습니다.",
-      },
-      {
-        status: 500,
-      },
-    );
+    return NextResponse.json({
+      success: false,
+      error:
+        error?.message ||
+        "통화내용 분석 중 오류가 발생했습니다.",
+    }, {
+      status: 500,
+    });
   }
-         }
+}
