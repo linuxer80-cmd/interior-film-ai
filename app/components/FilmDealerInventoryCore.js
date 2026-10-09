@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
 import FilmThumbnail from "../worker/cutting/FilmThumbnail";
+import { filmCodeInfo, inferFilmBrand, matchesFilmSearch, receiptSearchCode, receiptMatchesProduct } from "../../lib/hyundaiFilmCode";
 
 const money = n =>
   Number(n || 0).toLocaleString("ko-KR", {
@@ -518,6 +519,12 @@ export default function FilmDealerInventory() {
   }
 
   function chooseProduct(p) {
+    const queryInfo = filmCodeInfo("", query);
+    const productInfo = filmCodeInfo(p.brand, p.product_code);
+    const nextType = queryInfo.priceType !== "unknown" && receiptMatchesProduct({ brand: queryInfo.brand, code: query }, p)
+      ? queryInfo.priceType
+      : productInfo.priceType !== "unknown" ? productInfo.priceType : priceType;
+    setPriceType(nextType);
     setRegistering(false);
     searchEpoch.current++;
     setResults([]);
@@ -528,7 +535,7 @@ export default function FilmDealerInventory() {
     setSelected(p);
     setPrice(
       String(
-        prices.find(x => x.product_id === p.id)?.unit_price ?? ""
+        (data?.prices || []).find(x => x.product_id === p.id && x.dealer_id === dealerId && x.price_type === nextType)?.unit_price ?? ""
       )
     );
   }
@@ -543,7 +550,7 @@ export default function FilmDealerInventory() {
     try {
       const result = await reportRequest("/api/film-dealers", {
         action: "search",
-        query,
+        query: receiptSearchCode(query),
       });
 
       if (
@@ -551,7 +558,7 @@ export default function FilmDealerInventory() {
         searchEpoch.current === version &&
         epoch.current === authVersion
       ) {
-        setResults(result.products);
+        setResults((result.products || []).filter(product => matchesFilmSearch(product, query)));
         setSearched(true);
       }
     } catch (e) {
@@ -939,10 +946,12 @@ export default function FilmDealerInventory() {
                         <input
                           value={query}
                           maxLength={80}
-                          placeholder="예: PS170"
+                          placeholder="예: GS115, FS115, ES89, RS89"
                           onChange={e => {
                             searchEpoch.current++;
                             setQuery(e.target.value);
+                            const info = filmCodeInfo("", e.target.value);
+                            if (info.priceType !== "unknown") setPriceType(info.priceType);
                             setResults([]);
                             setSearched(false);
                           }}
@@ -955,11 +964,7 @@ export default function FilmDealerInventory() {
                             {(() => {
                               const candidates = new Map();
 
-                              prices.filter(p =>
-                                `${p.brand} ${p.product_code} ${p.product_name || ""}`
-                                  .toUpperCase()
-                                  .includes(query.trim().toUpperCase())
-                              ).forEach(p => {
+                              prices.filter(p => matchesFilmSearch(p, query)).forEach(p => {
                                 candidates.set(p.product_id, {
                                   ...p,
                                   id: p.product_id,
@@ -1041,7 +1046,8 @@ export default function FilmDealerInventory() {
                           setRegistering(true);
                           setNewProduct(p => ({
                             ...p,
-                            productCode: query.trim().toUpperCase(),
+                            productCode: filmCodeInfo("", query).baseCode,
+                            brand: inferFilmBrand(query) || p.brand,
                           }));
                         }}
                       >
@@ -1966,4 +1972,5 @@ export default function FilmDealerInventory() {
     </section>
   );
                   }
+
 
