@@ -113,7 +113,11 @@ async function loadCompany(
           "id,company_id,site_name,status,schedule_start,schedule_end,schedule_date"
         )
         .eq("company_id", company.id)
-        .eq("status", "completed")
+        .in("status", [
+          "scheduled",
+          "in_progress",
+          "completed",
+        ])
         .in("id", batch)
         .order("id")
     );
@@ -228,6 +232,7 @@ export async function GET(request) {
     }
 
     const today = koreanDay();
+
     const requestedMonth = new URL(
       request.url
     ).searchParams.get("month");
