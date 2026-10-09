@@ -29,7 +29,9 @@ async function lookup(key) {
       const result = await response.json();
 
       if (!response.ok) {
-        throw Error(result.error || "이미지 조회 실패");
+        throw Error(
+          result.error || "이미지 조회 실패"
+        );
       }
 
       return result.path || "";
@@ -53,6 +55,10 @@ async function lookup(key) {
 }
 
 export function filmLabel(material) {
+  if (!material || typeof material !== "object") {
+    return "필름";
+  }
+
   return (
     [
       material.brand,
@@ -75,8 +81,11 @@ export default function FilmThumbnail({
   const id = material?.film_product_id || "";
   const brand = material?.brand || "";
   const code =
-    material?.product_code || material?.code || "";
+    material?.product_code ||
+    material?.code ||
+    "";
   const path = material?.sample_image_path || "";
+  const label = filmLabel(material);
 
   const key = new URLSearchParams({
     ...(id ? { id } : {}),
@@ -158,7 +167,7 @@ export default function FilmThumbnail({
     return (
       <img
         src={url}
-        alt={`${filmLabel(material)} 샘플`}
+        alt={`${label} 샘플`}
         loading="lazy"
         width={size}
         height={size}
@@ -175,10 +184,32 @@ export default function FilmThumbnail({
     );
   }
 
+  if (!material) {
+    return (
+      <span
+        role="img"
+        aria-label="필름 선택 전"
+        title="현장 필름을 선택해주세요"
+        style={{
+          ...style,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f1f5f9",
+          color: "#64748b",
+          fontSize: 10,
+          textAlign: "center",
+        }}
+      >
+        필름
+      </span>
+    );
+  }
+
   return (
     <span
       role="img"
-      aria-label={`${filmLabel(material)} ${
+      aria-label={`${label} ${
         loading ? "사진 확인 중" : "사진 없음"
       }`}
       title={
@@ -221,4 +252,4 @@ export default function FilmThumbnail({
       )}
     </span>
   );
-}
+  }
