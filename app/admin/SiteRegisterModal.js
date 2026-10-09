@@ -6,10 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
+import { quoteSeed } from "../../lib/consultationQuote";
 import WorkDatePicker from "./WorkDatePicker";
 import { koreanDay } from "../utils/workerCalendar";
 import CallContentAiInput from "./site-register/CallContentAiInput";
 import CustomerChoice from "./site-register/CustomerChoice";
+import ScreenshotSiteInput from "./site-register/ScreenshotSiteInput";
 import { tradeApi } from "../components/TradeClients";
 
 const emptyForm = {
@@ -53,23 +55,24 @@ export default function SiteRegisterModal({
   createSite,
   loading = false,
 }) {
+  const [consultation, setConsultation] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [customer, setCustomer] = useState(emptyCustomer);
   const [materials, setMaterials] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [screenshotBusy, setScreenshotBusy] = useState(false);
   const [saved, setSaved] = useState(null);
 
   const lock = useRef(false);
   const pendingLink = useRef(null);
 
   const previews = useMemo(
-    () =>
-      photos.map((file) => ({
-        file,
-        url: URL.createObjectURL(file),
-      })),
+    () => photos.map((file) => ({
+      file,
+      url: URL.createObjectURL(file),
+    })),
     [photos]
   );
 
@@ -85,6 +88,7 @@ export default function SiteRegisterModal({
   useEffect(() => {
     if (!open) return;
 
+    setConsultation(null);
     setForm({ ...emptyForm, work_dates: [] });
     setCustomer({ ...emptyCustomer });
     setMaterials([]);
@@ -94,29 +98,67 @@ export default function SiteRegisterModal({
     pendingLink.current = null;
   }, [open]);
 
-  const blocked = busy || loading;
+  const blocked = busy || loading || screenshotBusy;
 
   function field(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
   }
 
   function choose(next) {
     setCustomer(next);
-    setForm((prev) => ({
-      ...prev,
+
+    setForm((previous) => ({
+      ...previous,
       customer_name: next.name,
       customer_phone: next.phone,
     }));
   }
 
-  function applyAnalysis(data) {
+  function applyAnalysis(data, origin = "call") {
     if (!data || typeof data !== "object") return;
 
-    setForm((prev) => {
-      const next = { ...prev, source: "phone" };
+    setConsultation((previous) => {
+      const next = quoteSeed(data);
+
+      return {
+        ...next,
+        items: [
+          ...new Map(
+            [
+              ...(previous?.items || []),
+              ...next.items,
+            ].map((item) => [JSON.stringify(item), item])
+          ).values(),
+        ],
+        other_schedule: [
+          previous?.other_schedule,
+          next.other_schedule,
+        ]
+          .filter(Boolean)
+          .filter((value, index, array) =>
+            array.indexOf(value) === index
+          )
+          .join("\n"),
+      };
+    });
+
+    setForm((previous) => {
+      const next = {
+        ...previous,
+        source: origin === "screenshot" ? "other" : "phone",
+      };
 
       Object.keys(emptyForm)
-        .filter((key) => key !== "work_dates")
+        .filter((key) =>
+          ![
+            "work_dates",
+            "contract_amount",
+            "deposit_amount",
+          ].includes(key)
+        )
         .forEach((key) => {
           if (
             customer.type === "business" &&
@@ -127,7 +169,12 @@ export default function SiteRegisterModal({
 
           if (
             data[key] != null &&
-            String(data[key]).trim()
+            String(data[key]).trim() &&
+            (
+              origin !== "screenshot" ||
+              key === "source" ||
+              !String(previous[key] ?? "").trim()
+            )
           ) {
             next[key] = String(data[key]).trim();
           }
@@ -135,10 +182,12 @@ export default function SiteRegisterModal({
 
       next.work_dates = [
         ...new Set([
-          ...prev.work_dates,
-          ...(Array.isArray(data.work_dates)
-            ? data.work_dates
-            : [data.date])
+          ...previous.work_dates,
+          ...(
+            Array.isArray(data.work_dates)
+              ? data.work_dates
+              : [data.date]
+          )
             .filter(Boolean)
             .map(koreanDay)
             .filter(Boolean),
@@ -149,11 +198,11 @@ export default function SiteRegisterModal({
     });
 
     if (Array.isArray(data.materials)) {
-      setMaterials((prev) => [
-        ...prev,
+      setMaterials((previous) => [
+        ...previous,
         ...data.materials
-          .filter(
-            (item) => item && typeof item === "object"
+          .filter((item) =>
+            item && typeof item === "object"
           )
           .map((item) => ({
             ...material(),
@@ -163,7 +212,6 @@ export default function SiteRegisterModal({
                 "product_code",
                 "product_name",
                 "unit",
-                "unit_price",
                 "memo",
               ]
                 .filter((key) => item[key] != null)
@@ -174,7 +222,9 @@ export default function SiteRegisterModal({
     }
 
     setMessage(
-      "통화 내용을 반영했습니다. 확인 후 등록해주세요."
+      origin === "screenshot"
+        ? "상담중 현장으로 등록합니다. 견적서 초안은 현장 상세의 상담 견적서에서 확인하고 가격을 직접 입력하세요."
+        : "상담중 현장으로 등록합니다. 견적서 초안은 현장 상세에서 확인하세요."
     );
   }
 
@@ -182,28 +232,22 @@ export default function SiteRegisterModal({
     await tradeApi(pendingLink.current);
     pendingLink.current = null;
 
-    window.dispatchEvent(
-      new Event("trade-clients-changed")
-    );
-
+    window.dispatchEvent(new Event("trade-clients-changed"));
     onClose();
   }
 
   async function submit(event) {
     event.preventDefault();
 
-    if (lock.current || loading) return;
+    if (lock.current || loading || screenshotBusy) return;
 
     lock.current = true;
     setBusy(true);
     setMessage("");
 
     try {
-      // 이미 만든 현장은 다시 생성하지 않습니다.
       if (saved) {
-        if (pendingLink.current) {
-          await finishLink();
-        }
+        if (pendingLink.current) await finishLink();
         return;
       }
 
@@ -232,7 +276,6 @@ export default function SiteRegisterModal({
       let customerName = form.customer_name;
       let customerPhone = form.customer_phone;
 
-      // 저장 직전에 거래처와 담당자를 다시 확인합니다.
       if (customer.type === "business") {
         const data = await tradeApi();
 
@@ -256,8 +299,7 @@ export default function SiteRegisterModal({
         }
 
         customerName = client.name;
-        customerPhone =
-          person?.phone || client.phone || "";
+        customerPhone = person?.phone || client.phone || "";
       }
 
       const result = await createSite({
@@ -268,21 +310,28 @@ export default function SiteRegisterModal({
         work_dates: days,
         schedule_date: days[0] || null,
         schedule_start: days.length
-          ? new Date(
-              `${days[0]}T00:00:00+09:00`
-            ).toISOString()
+          ? new Date(`${days[0]}T00:00:00+09:00`).toISOString()
           : null,
         schedule_end: days.length
           ? new Date(
               `${days.at(-1)}T23:59:00+09:00`
             ).toISOString()
           : null,
-        status: days.length ? "scheduled" : "consulting",
+        status: consultation
+          ? "consulting"
+          : days.length
+            ? "scheduled"
+            : "consulting",
+        consultation_quote_seed: consultation
+          ? {
+              ...consultation,
+              work_date: days.join(", "),
+            }
+          : null,
         materials: materials
-          .filter(
-            (item) =>
-              item.product_code.trim() ||
-              item.product_name.trim()
+          .filter((item) =>
+            item.product_code.trim() ||
+            item.product_name.trim()
           )
           .map((item) => ({
             ...item,
@@ -318,7 +367,7 @@ export default function SiteRegisterModal({
               new Event("trade-clients-changed")
             );
           } catch {
-            // 연결 실패 시 같은 요청으로 재시도합니다.
+            // 같은 요청으로 거래처 연결을 다시 시도합니다.
           }
         }
 
@@ -336,9 +385,7 @@ export default function SiteRegisterModal({
         onClose();
       }
     } catch (error) {
-      setMessage(
-        error.message || "저장에 실패했습니다."
-      );
+      setMessage(error.message || "저장에 실패했습니다.");
     } finally {
       lock.current = false;
       setBusy(false);
@@ -359,9 +406,7 @@ export default function SiteRegisterModal({
             customer.type === "business" &&
             ["customer_name", "customer_phone"].includes(key)
           }
-          onChange={(event) =>
-            field(key, event.target.value)
-          }
+          onChange={(event) => field(key, event.target.value)}
         />
       </label>
     ));
@@ -375,7 +420,9 @@ export default function SiteRegisterModal({
     >
       <div className="site-register-panel">
         <header>
-          <h2>현장 등록</h2>
+          <h2>
+            {consultation ? "상담중 현장 등록" : "현장 등록"}
+          </h2>
           <button
             type="button"
             disabled={blocked}
@@ -390,6 +437,14 @@ export default function SiteRegisterModal({
             disabled={blocked || !!saved}
             className="site-register-fields"
           >
+            <ScreenshotSiteInput
+              onApply={(data) =>
+                applyAnalysis(data, "screenshot")
+              }
+              disabled={busy || loading || !!saved}
+              onBusyChange={setScreenshotBusy}
+            />
+
             <CallContentAiInput
               onApply={applyAnalysis}
               disabled={blocked || !!saved}
@@ -446,6 +501,7 @@ export default function SiteRegisterModal({
 
             <section>
               <h3>시공 내용</h3>
+
               {inputs([["work_type", "시공 종류"]])}
 
               <label>
@@ -454,10 +510,7 @@ export default function SiteRegisterModal({
                   rows={3}
                   value={form.work_description}
                   onChange={(event) =>
-                    field(
-                      "work_description",
-                      event.target.value
-                    )
+                    field("work_description", event.target.value)
                   }
                 />
               </label>
@@ -465,11 +518,12 @@ export default function SiteRegisterModal({
 
             <section>
               <h3>시공 자재</h3>
+
               <button
                 type="button"
                 onClick={() =>
-                  setMaterials((prev) => [
-                    ...prev,
+                  setMaterials((previous) => [
+                    ...previous,
                     material(),
                   ])
                 }
@@ -487,10 +541,9 @@ export default function SiteRegisterModal({
                   <button
                     type="button"
                     onClick={() =>
-                      setMaterials((prev) =>
-                        prev.filter(
-                          (row) =>
-                            row.local_id !== item.local_id
+                      setMaterials((previous) =>
+                        previous.filter((row) =>
+                          row.local_id !== item.local_id
                         )
                       )
                     }
@@ -513,15 +566,11 @@ export default function SiteRegisterModal({
                             ? "number"
                             : "text"
                         }
-                        min={
-                          key === "unit_price"
-                            ? 0
-                            : undefined
-                        }
+                        min={key === "unit_price" ? 0 : undefined}
                         value={item[key]}
                         onChange={(event) =>
-                          setMaterials((prev) =>
-                            prev.map((row) =>
+                          setMaterials((previous) =>
+                            previous.map((row) =>
                               row.local_id === item.local_id
                                 ? {
                                     ...row,
@@ -540,8 +589,8 @@ export default function SiteRegisterModal({
                     <select
                       value={item.unit}
                       onChange={(event) =>
-                        setMaterials((prev) =>
-                          prev.map((row) =>
+                        setMaterials((previous) =>
+                          previous.map((row) =>
                             row.local_id === item.local_id
                               ? {
                                   ...row,
@@ -576,8 +625,8 @@ export default function SiteRegisterModal({
                     file.type.startsWith("image/")
                   );
 
-                  setPhotos((prev) => [
-                    ...prev,
+                  setPhotos((previous) => [
+                    ...previous,
                     ...selected,
                   ]);
 
@@ -597,11 +646,12 @@ export default function SiteRegisterModal({
                         objectFit: "cover",
                       }}
                     />
+
                     <button
                       type="button"
                       onClick={() =>
-                        setPhotos((prev) =>
-                          prev.filter(
+                        setPhotos((previous) =>
+                          previous.filter(
                             (_, photoIndex) =>
                               index !== photoIndex
                           )
@@ -621,11 +671,7 @@ export default function SiteRegisterModal({
               <div className="site-register-grid">
                 {inputs([
                   ["contract_amount", "계약금액", "number"],
-                  [
-                    "deposit_amount",
-                    "계약금 / 선금",
-                    "number",
-                  ],
+                  ["deposit_amount", "계약금 / 선금", "number"],
                 ])}
               </div>
 
@@ -680,8 +726,7 @@ export default function SiteRegisterModal({
 
           {saved && (
             <p>
-              현장은 이미 등록됐습니다.
-              다시 등록하지 마세요.{" "}
+              현장은 이미 등록됐습니다. 다시 등록하지 마세요.{" "}
               {pendingLink.current
                 ? "아래 버튼으로 거래처 연결만 다시 시도하세요."
                 : "현장 상세에서 추가정보를 확인해주세요."}
@@ -721,7 +766,6 @@ export default function SiteRegisterModal({
           justify-content: center;
           padding: 12px;
         }
-
         .site-register-panel {
           background: #f8fafc;
           border-radius: 20px;
@@ -732,15 +776,12 @@ export default function SiteRegisterModal({
           padding: 18px;
           box-sizing: border-box;
         }
-
-        header,
-        footer {
+        header, footer {
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 12px;
         }
-
         header {
           position: sticky;
           top: -18px;
@@ -748,22 +789,18 @@ export default function SiteRegisterModal({
           z-index: 2;
           padding: 10px 0;
         }
-
         h2 {
           margin: 0;
         }
-
         h3 {
           margin-top: 0;
         }
-
         .site-register-fields {
           border: 0;
           padding: 0;
           margin: 0;
           min-width: 0;
         }
-
         section {
           background: white;
           border: 1px solid #e2e8f0;
@@ -771,26 +808,22 @@ export default function SiteRegisterModal({
           padding: 16px;
           margin: 16px 0;
         }
-
         .site-register-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-
         .site-register-material {
           border: 1px solid #ddd;
           border-radius: 10px;
           padding: 12px;
           margin-top: 12px;
         }
-
         .site-register-panel :global(label) {
           display: block;
           margin: 10px 0;
           font-weight: 700;
         }
-
         .site-register-panel :global(input:not([type="radio"])),
         .site-register-panel :global(select),
         .site-register-panel :global(textarea) {
@@ -805,7 +838,6 @@ export default function SiteRegisterModal({
           background: white;
           color: #111827;
         }
-
         button {
           padding: 12px;
           border: 1px solid #cbd5e1;
@@ -813,25 +845,21 @@ export default function SiteRegisterModal({
           background: white;
           cursor: pointer;
         }
-
         button:disabled {
-          opacity: 0.5;
+          opacity: .5;
           cursor: default;
         }
-
         button[type="submit"] {
           background: #243648;
           color: white;
         }
-
         p {
           line-height: 1.6;
         }
-
         footer {
           padding: 14px 0;
         }
       `}</style>
     </div>
   );
-                  }
+                    }
