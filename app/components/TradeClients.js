@@ -92,6 +92,8 @@ export default function TradeClients({ siteId, onScope }) {
   const [manageQuery, setManageQuery] = useState("");
   const [manageId, setManageId] = useState("");
 
+  const [menu, setMenu] = useState("sites");
+  const [historyPage, setHistoryPage] = useState(0);
   const [page, setPage] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -139,6 +141,7 @@ export default function TradeClients({ siteId, onScope }) {
   useEffect(() => {
     setAlloc(null);
     setPage(0);
+    setHistoryPage(0);
   }, [client, contact, query, personQuery]);
 
   async function save(action, values = {}) {
@@ -255,6 +258,13 @@ export default function TradeClients({ siteId, onScope }) {
         ) || a.id.localeCompare(b.id)
     );
 
+  const batches = (data?.batches || []).filter(
+    (batch) => client === "all" || batch.client_id === client
+  );
+  const sitePage = Math.min(page, Math.max(0, Math.ceil(visible.length / 5) - 1));
+  const batchPage = Math.min(historyPage, Math.max(0, Math.ceil(batches.length / 5) - 1));
+  const narrowed = contact !== "all" || !!query.trim() || !!personQuery.trim();
+
   const blocked = busy || retry;
 
   function preview(full) {
@@ -335,9 +345,18 @@ export default function TradeClients({ siteId, onScope }) {
       ) : (
         <>
           {!siteId && (
-            <>
+            <nav className="menus" aria-label="업체 관리 메뉴">
+              {[["sites", "현장·정산"], ["manage", "업체·담당자"],
+                ["link", "현장 연결"], ["history", "입금 내역"]].map(([id, title]) => (
+                <button type="button" key={id} aria-pressed={menu === id}
+                  onClick={() => setMenu(id)}>{title}</button>
+              ))}
+            </nav>
+          )}
+          {!siteId && (
+            <div hidden={menu !== "sites" && menu !== "history"}>
               <div className="grid">
-                <label>
+                <label hidden={menu !== "sites"}>
                   업체명·현장 검색
                   <input
                     disabled={blocked}
@@ -369,6 +388,8 @@ export default function TradeClients({ siteId, onScope }) {
                 </label>
               </div>
 
+              <details hidden={menu !== "sites"}>
+                <summary>담당자로 좁혀보기{contact !== "all" || personQuery.trim() ? " · 적용 중" : ""}</summary>
               <div className="grid">
                 <label>
                   담당자 검색
@@ -404,6 +425,8 @@ export default function TradeClients({ siteId, onScope }) {
                 </label>
               </div>
 
+              </details>
+              <div hidden={menu !== "sites"}>
               <Summary
                 title={
                   realClient
@@ -415,16 +438,21 @@ export default function TradeClients({ siteId, onScope }) {
                 rows={clientRows}
               />
 
-              <Summary title="선택·검색 결과" rows={visible} />
+              {narrowed && <Summary title="선택·검색 결과" rows={visible} />}
 
+              <details>
+                <summary>금액 집계 기준</summary>
               <small>
                 취소 현장은 합계에서 제외합니다. 입금 미확인은 0원 수금으로
                 확정하지 않으며, 미수금 합계에서 제외합니다.
               </small>
-            </>
+              </details>
+              </div>
+            </div>
           )}
 
-          <details>
+          <div hidden={!siteId && menu !== "manage"}>
+          <details open={!siteId}>
             <summary>거래처 · 담당자 등록 및 수정</summary>
 
             <button
@@ -613,7 +641,9 @@ export default function TradeClients({ siteId, onScope }) {
             )}
           </details>
 
-          <details open={!!siteId}>
+          </div>
+          <div hidden={!siteId && menu !== "link"}>
+          <details open>
             <summary>현장을 거래처에 연결 / 개인 고객으로 변경</summary>
 
             {!siteId && (
@@ -690,8 +720,10 @@ export default function TradeClients({ siteId, onScope }) {
             </button>
           </details>
 
+          </div>
           {!siteId && (
             <>
+              <div hidden={menu !== "sites"}>
               {realClient && (
                 <details>
                   <summary>선택 범위 일괄 입금 · 전액입금</summary>
@@ -835,13 +867,11 @@ export default function TradeClients({ siteId, onScope }) {
                 </details>
               )}
 
-              <details>
-                <summary>거래처 일괄 입금 내역 (최근 100건)</summary>
-
-                {data.batches
-                  .filter(
-                    (batch) => !realClient || batch.client_id === client
-                  )
+              </div>
+              <div hidden={menu !== "history"}>
+              <h4>일괄 입금 내역 · {batches.length}건 (최근 100건)</h4>
+              {!batches.length && <p>해당 업체의 일괄 입금 내역이 없습니다.</p>}
+                {batches.slice(batchPage * 5, batchPage * 5 + 5)
                   .map((batch) => (
                     <p key={batch.id}>
                       {
@@ -873,10 +903,18 @@ export default function TradeClients({ siteId, onScope }) {
                       )}
                     </p>
                   ))}
-              </details>
+              {batches.length > 5 && <nav aria-label="입금 내역 페이지">
+                <button type="button" disabled={batchPage === 0}
+                  onClick={() => setHistoryPage(batchPage - 1)}>이전</button>
+                <span>{batchPage + 1} / {Math.ceil(batches.length / 5)}</span>
+                <button type="button" disabled={(batchPage + 1) * 5 >= batches.length}
+                  onClick={() => setHistoryPage(batchPage + 1)}>다음</button>
+              </nav>}
+              </div>
 
-              <div>
-                {visible.slice(page * 5, page * 5 + 5).map((site) => (
+              <div hidden={menu !== "sites"}>
+                {!visible.length && <p>검색 조건에 맞는 현장이 없습니다.</p>}
+                {visible.slice(sitePage * 5, sitePage * 5 + 5).map((site) => (
                   <article key={site.id}>
                     <b>{site.site_name}</b>
                     <small>
@@ -922,17 +960,17 @@ export default function TradeClients({ siteId, onScope }) {
                 ))}
               </div>
 
-              <nav>
+              <nav hidden={menu !== "sites" || visible.length <= 5} aria-label="현장 페이지">
                 <button
-                  disabled={page === 0}
-                  onClick={() => setPage((value) => value - 1)}
+                  disabled={sitePage === 0}
+                  onClick={() => setPage(sitePage - 1)}
                 >
                   이전
                 </button>
-                {page + 1} / {Math.max(1, Math.ceil(visible.length / 5))}
+                {sitePage + 1} / {Math.max(1, Math.ceil(visible.length / 5))}
                 <button
-                  disabled={(page + 1) * 5 >= visible.length}
-                  onClick={() => setPage((value) => value + 1)}
+                  disabled={(sitePage + 1) * 5 >= visible.length}
+                  onClick={() => setPage(sitePage + 1)}
                 >
                   다음
                 </button>
@@ -943,6 +981,17 @@ export default function TradeClients({ siteId, onScope }) {
       )}
 
       <style jsx>{`
+        [hidden] { display: none !important; }
+        .menus {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+          margin: 12px 0;
+        }
+        .menus button { margin: 0; font-weight: 700; }
+        .menus button[aria-pressed="true"] {
+          background: #243648; color: white; border-color: #243648;
+        }
         .trade {
           padding: 14px;
           border: 1px solid #dfd4c4;
