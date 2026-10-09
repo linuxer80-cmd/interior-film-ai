@@ -1,5 +1,6 @@
 import "./globals.css";
 import PhotoTheme from "./components/ui/PhotoTheme";
+import AppRoleSwitch from "./components/AppRoleSwitch";
 
 export const metadata = {
   title: "기분좋은공간 AI 견적",
@@ -28,7 +29,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ko">
       <body>
-        <PhotoTheme>{children}</PhotoTheme>
+        <PhotoTheme>
+          <AppRoleSwitch />
+          {children}
+        </PhotoTheme>
       </body>
     </html>
   );
