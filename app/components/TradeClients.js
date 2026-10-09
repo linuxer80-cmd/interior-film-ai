@@ -57,9 +57,7 @@ function Summary({ title, rows }) {
 
   return (
     <div className="trade-summary">
-      <b>
-        {title} · {total.count}현장
-      </b>
+      <b>{title} · {total.count}현장</b>
       <p>
         계약 {won(total.contract)} · 입금 {won(total.paid)}
         <br />
@@ -90,7 +88,6 @@ function PaymentHistory({ allSites, scope }) {
 
   useEffect(() => {
     let active = true;
-
     setDetail(null);
     setError("");
     setEntryPage(0);
@@ -120,8 +117,8 @@ function PaymentHistory({ allSites, scope }) {
     <section>
       <h4>현장별 입금 내역 · {sites.length}현장</h4>
       <p>
-        현장에서 처리한 전액입금·개별입금도 표시합니다. 누적 입금액에는
-        기존 입금액과 일괄 배분액이 포함될 수 있습니다.
+        현장에서 처리한 전액입금·개별입금도 표시합니다.
+        누적 입금액에는 기존 입금액과 일괄 배분액이 포함될 수 있습니다.
       </p>
 
       {!sites.length && (
@@ -186,8 +183,8 @@ function PaymentHistory({ allSites, scope }) {
 
                   {!entries.length && (
                     <p>
-                      추가 입금·환불 기록이 없습니다. 기존 입금액으로
-                      확인된 금액은 위에 표시됩니다.
+                      추가 입금·환불 기록이 없습니다.
+                      기존 입금액으로 확인된 금액은 위에 표시됩니다.
                     </p>
                   )}
 
@@ -269,18 +266,173 @@ function PaymentHistory({ allSites, scope }) {
           margin: 4px;
           cursor: pointer;
         }
-        button:disabled {
-          opacity: 0.5;
-        }
-        p {
-          font-size: 13px;
-          line-height: 1.6;
-        }
-        [role="alert"] {
-          color: #b91c1c;
-        }
+        button:disabled { opacity: .5; }
+        p { font-size: 13px; line-height: 1.6; }
+        [role="alert"] { color: #b91c1c; }
       `}</style>
     </section>
+  );
+}
+
+const siteTitle = (site) =>
+  site.site_name?.trim() ||
+  site.customer_name?.trim() ||
+  `이름 없는 현장 (${String(site.id).slice(0, 8)})`;
+
+function SearchChoice({
+  label,
+  placeholder,
+  rows,
+  selectedId,
+  onSelect,
+  disabled,
+}) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  const selected = rows.find((row) => row.id === selectedId);
+  const keyword = query.trim().toLocaleLowerCase("ko-KR");
+
+  const matches = keyword
+    ? rows.filter((row) =>
+        `${row.title} ${row.subtitle || ""}`
+          .toLocaleLowerCase("ko-KR")
+          .includes(keyword)
+      )
+    : [];
+
+  const current = Math.min(
+    page,
+    Math.max(0, Math.ceil(matches.length / 5) - 1)
+  );
+
+  return (
+    <div className="search-choice">
+      {selected ? (
+        <div className="picked">
+          <strong>{selected.title}</strong>
+          <small>{selected.subtitle}</small>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              onSelect("");
+              setQuery("");
+              setPage(0);
+            }}
+          >
+            다시 선택
+          </button>
+        </div>
+      ) : (
+        <>
+          <label>
+            {label}
+            <input
+              value={query}
+              placeholder={placeholder}
+              disabled={disabled}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+            />
+          </label>
+
+          {!keyword && (
+            <small>검색어를 입력하면 일치하는 항목만 표시합니다.</small>
+          )}
+
+          {keyword && <small>검색 결과 {matches.length}개</small>}
+
+          {matches.slice(current * 5, current * 5 + 5).map((row) => (
+            <button
+              className="result"
+              type="button"
+              key={row.id}
+              disabled={disabled}
+              onClick={() => onSelect(row.id)}
+            >
+              <strong>{row.title}</strong>
+              <small>{row.subtitle}</small>
+            </button>
+          ))}
+
+          {matches.length > 5 && (
+            <div className="pages">
+              <button
+                type="button"
+                disabled={disabled || !current}
+                onClick={() => setPage(current - 1)}
+              >
+                이전
+              </button>
+              <span>
+                {current + 1} / {Math.ceil(matches.length / 5)}
+              </span>
+              <button
+                type="button"
+                disabled={
+                  disabled || (current + 1) * 5 >= matches.length
+                }
+                onClick={() => setPage(current + 1)}
+              >
+                다음
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      <style jsx>{`
+        .search-choice { margin: 10px 0; }
+        label, small { display: block; }
+        label { font-size: 14px; }
+        small {
+          color: #64748b;
+          font-size: 12px;
+          margin-top: 5px;
+          line-height: 1.5;
+        }
+        button, input {
+          box-sizing: border-box;
+          min-height: 44px;
+          padding: 10px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          background: white;
+          color: #243648;
+          font-size: 14px;
+          max-width: 100%;
+        }
+        input {
+          display: block;
+          width: 100%;
+          margin: 6px 0;
+        }
+        button { cursor: pointer; }
+        button:disabled { opacity: .5; }
+        .result {
+          display: block;
+          width: 100%;
+          text-align: left;
+          margin: 6px 0;
+        }
+        .picked {
+          padding: 12px;
+          border-radius: 12px;
+          background: #edf5ff;
+        }
+        .picked button { margin-top: 8px; }
+        .pages {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          margin-top: 8px;
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -299,6 +451,9 @@ export default function TradeClients({ siteId, onScope }) {
   const [linkSite, setLinkSite] = useState(siteId || "");
   const [linkClient, setLinkClient] = useState("");
   const [linkContact, setLinkContact] = useState("");
+  const [linkKind, setLinkKind] = useState("personal");
+  const [linkMessage, setLinkMessage] = useState("");
+  const linkPanel = useRef(null);
 
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(koreanDay);
@@ -352,7 +507,12 @@ export default function TradeClients({ siteId, onScope }) {
     const site = data?.sites.find((item) => item.id === linkSite);
     setLinkClient(site?.client_id || "");
     setLinkContact(site?.contact_id || "");
+    setLinkKind(site?.client_id ? "business" : "personal");
   }, [data, linkSite]);
+
+  useEffect(() => {
+    setLinkSite(siteId || "");
+  }, [siteId]);
 
   useEffect(() => {
     setAlloc(null);
@@ -373,6 +533,7 @@ export default function TradeClients({ siteId, onScope }) {
     lock.current = true;
     setBusy(true);
     setError("");
+    setLinkMessage("");
 
     try {
       await tradeApi(body);
@@ -386,6 +547,12 @@ export default function TradeClients({ siteId, onScope }) {
         setAlloc(null);
         setReady(false);
         await load();
+
+        if (body.action === "link") {
+          setLinkMessage(
+            "저장했습니다. 이 현장의 거래처 지정이 반영되었습니다."
+          );
+        }
       }
     } catch (err) {
       if (alive.current) {
@@ -482,12 +649,15 @@ export default function TradeClients({ siteId, onScope }) {
     page,
     Math.max(0, Math.ceil(visible.length / 5) - 1)
   );
+
   const batchPage = Math.min(
     historyPage,
     Math.max(0, Math.ceil(batches.length / 5) - 1)
   );
+
   const narrowed =
     contact !== "all" || !!query.trim() || !!personQuery.trim();
+
   const blocked = busy || retry;
 
   function preview(full) {
@@ -572,7 +742,7 @@ export default function TradeClients({ siteId, onScope }) {
               {[
                 ["sites", "현장·정산"],
                 ["manage", "업체·담당자"],
-                ["link", "현장 연결"],
+                ["link", "거래처 지정"],
                 ["history", "입금 내역"],
               ].map(([id, title]) => (
                 <button
@@ -685,8 +855,8 @@ export default function TradeClients({ siteId, onScope }) {
                 <details>
                   <summary>금액 집계 기준</summary>
                   <small>
-                    취소 현장은 합계에서 제외합니다. 입금 미확인은 0원
-                    수금으로 확정하지 않으며, 미수금 합계에서 제외합니다.
+                    취소 현장은 합계에서 제외합니다. 입금 미확인은
+                    0원 수금으로 확정하지 않으며, 미수금 합계에서 제외합니다.
                   </small>
                 </details>
               </div>
@@ -884,83 +1054,177 @@ export default function TradeClients({ siteId, onScope }) {
             </details>
           </div>
 
-          <div hidden={!siteId && menu !== "link"}>
-            <details open>
-              <summary>현장을 거래처에 연결 / 개인 고객으로 변경</summary>
+          <div
+            hidden={!siteId && menu !== "link"}
+            ref={linkPanel}
+            tabIndex={-1}
+            style={{ scrollMarginTop: 120 }}
+          >
+            <h4>거래처 지정</h4>
 
-              {!siteId && (
-                <label>
-                  현장
-                  <select
-                    value={linkSite}
-                    disabled={blocked}
-                    onChange={(event) => setLinkSite(event.target.value)}
-                  >
-                    <option value="">현장 선택</option>
-                    {sites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.site_name} · {site.client_name || "개인 고객"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+            {!siteId ? (
+              <SearchChoice
+                label="1. 현장 찾기"
+                placeholder="현장명 또는 고객명 검색"
+                rows={sites.map((site) => ({
+                  id: site.id,
+                  title: siteTitle(site),
+                  subtitle: `${site.customer_name || ""} · ${
+                    site.schedule_start || "일정 미정"
+                  } · ${site.client_name || "개인 고객"}`,
+                }))}
+                selectedId={linkSite}
+                disabled={blocked}
+                onSelect={(id) => {
+                  setLinkSite(id);
+                  setLinkMessage("");
+                }}
+              />
+            ) : (
+              <p>
+                <b>
+                  {sites.find((site) => site.id === linkSite)
+                    ? siteTitle(sites.find((site) => site.id === linkSite))
+                    : "현재 현장"}
+                </b>
+              </p>
+            )}
 
-              <label>
-                거래처
-                <select
-                  disabled={blocked}
-                  value={linkClient}
-                  onChange={(event) => {
-                    setLinkClient(event.target.value);
-                    setLinkContact("");
-                  }}
-                >
-                  <option value="">개인 고객</option>
-                  {clients.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
+            {sites.some((site) => site.id === linkSite) && (
+              <>
+                <p><b>2. 고객 구분</b></p>
+
+                <div className="grid">
+                  {[
+                    ["personal", "개인 고객"],
+                    ["business", "거래처 현장"],
+                  ].map(([id, title]) => (
+                    <button
+                      type="button"
+                      key={id}
+                      disabled={blocked}
+                      aria-pressed={linkKind === id}
+                      style={{
+                        background: linkKind === id ? "#243648" : "white",
+                        color: linkKind === id ? "white" : "#243648",
+                      }}
+                      onClick={() => {
+                        if (id === linkKind) return;
+                        setLinkKind(id);
+                        setLinkClient("");
+                        setLinkContact("");
+                        setLinkMessage("");
+                      }}
+                    >
+                      {title}
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
 
-              {linkClient && (
-                <label>
-                  담당자 (선택)
-                  <select
-                    disabled={blocked}
-                    value={linkContact}
-                    onChange={(event) => setLinkContact(event.target.value)}
+                {linkKind === "business" && (
+                  <>
+                    <SearchChoice
+                      label="3. 업체 찾기"
+                      placeholder="업체명 검색"
+                      rows={clients.map((item) => ({
+                        id: item.id,
+                        title: item.name,
+                        subtitle: item.phone || "",
+                      }))}
+                      selectedId={linkClient}
+                      disabled={blocked}
+                      onSelect={(id) => {
+                        setLinkClient(id);
+                        setLinkContact("");
+                        setLinkMessage("");
+                      }}
+                    />
+
+                    {!clients.length && (
+                      <p>
+                        등록된 업체가 없습니다. 업체·담당자 메뉴에서
+                        업체를 먼저 등록해주세요.
+                      </p>
+                    )}
+
+                    {linkClient && (
+                      <label>
+                        담당자 (선택하지 않아도 됩니다)
+                        <select
+                          disabled={blocked}
+                          value={linkContact}
+                          onChange={(event) => {
+                            setLinkContact(event.target.value);
+                            setLinkMessage("");
+                          }}
+                        >
+                          <option value="">
+                            담당자 없음 · 업체명으로 관리
+                          </option>
+                          {contacts
+                            .filter((item) => item.client_id === linkClient)
+                            .map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    )}
+                  </>
+                )}
+
+                <p>
+                  {linkKind === "personal"
+                    ? "이 현장을 개인 고객 현장으로 저장합니다."
+                    : linkClient
+                      ? `${
+                          clients.find((item) => item.id === linkClient)
+                            ?.name || "선택한 업체"
+                        }의 현장으로 저장합니다.`
+                      : "업체를 검색해서 선택해주세요."}
+                </p>
+
+                {linkMessage && (
+                  <p role="status" style={{ color: "#15803d" }}>
+                    {linkMessage}
+                  </p>
+                )}
+
+                {error && <p role="alert">{error}</p>}
+
+                <button
+                  type="button"
+                  disabled={
+                    blocked ||
+                    (linkKind === "business" &&
+                      !clients.some((item) => item.id === linkClient))
+                  }
+                  onClick={() =>
+                    save("link", {
+                      siteId: linkSite,
+                      clientId: linkKind === "business" ? linkClient : "",
+                      contactId: linkKind === "business" ? linkContact : "",
+                      revision:
+                        sites.find((site) => site.id === linkSite)
+                          ?.link_revision || 0,
+                    })
+                  }
+                >
+                  {busy ? "저장 중…" : "거래처 지정 저장"}
+                </button>
+
+                {retry && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => save()}
                   >
-                    <option value="">미지정 · 1인 업체</option>
-                    {contacts
-                      .filter((item) => item.client_id === linkClient)
-                      .map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              )}
-
-              <button
-                disabled={blocked || !linkSite}
-                onClick={() =>
-                  save("link", {
-                    siteId: linkSite,
-                    clientId: linkClient,
-                    contactId: linkContact,
-                    revision:
-                      sites.find((site) => site.id === linkSite)
-                        ?.link_revision || 0,
-                  })
-                }
-              >
-                고객 구분 저장
-              </button>
-            </details>
+                    같은 요청 다시 확인
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           {!siteId && (
@@ -969,11 +1233,10 @@ export default function TradeClients({ siteId, onScope }) {
                 {realClient && (
                   <details>
                     <summary>선택 범위 일괄 입금 · 전액입금</summary>
-
                     <p>
-                      {realClient.name} · 현재 담당자·검색 조건에 맞는 완료
-                      현장에 배분합니다. 오래된 현장부터 제안하며 저장 전
-                      수정할 수 있습니다.
+                      {realClient.name} · 현재 담당자·검색 조건에 맞는
+                      완료 현장에 배분합니다. 오래된 현장부터 제안하며
+                      저장 전 수정할 수 있습니다.
                     </p>
 
                     <label>
@@ -1113,6 +1376,7 @@ export default function TradeClients({ siteId, onScope }) {
                   <summary>
                     일괄 입금 배분 관리 (개별 입금과 중복 합산하지 않습니다)
                   </summary>
+
                   <h4>
                     일괄 입금 내역 · {batches.length}건 (최근 100건)
                   </h4>
@@ -1221,6 +1485,27 @@ export default function TradeClients({ siteId, onScope }) {
                         입금 확인·처리
                       </button>
 
+                      <button
+                        type="button"
+                        disabled={blocked}
+                        onClick={() => {
+                          setLinkSite(site.id);
+                          setLinkMessage("");
+                          setMenu("link");
+                          requestAnimationFrame(() => {
+                            linkPanel.current?.focus({
+                              preventScroll: true,
+                            });
+                            linkPanel.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          });
+                        }}
+                      >
+                        거래처 지정·변경
+                      </button>
+
                       {paymentSite === site.id && (
                         <SitePaymentQuick
                           key={site.id}
@@ -1256,19 +1541,14 @@ export default function TradeClients({ siteId, onScope }) {
       )}
 
       <style jsx>{`
-        [hidden] {
-          display: none !important;
-        }
+        [hidden] { display: none !important; }
         .menus {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 6px;
           margin: 12px 0;
         }
-        .menus button {
-          margin: 0;
-          font-weight: 700;
-        }
+        .menus button { margin: 0; font-weight: 700; }
         .menus button[aria-pressed="true"] {
           background: #243648;
           color: white;
@@ -1289,13 +1569,8 @@ export default function TradeClients({ siteId, onScope }) {
           justify-content: space-between;
           gap: 8px;
         }
-        h3 {
-          font-size: 18px;
-          margin: 0;
-        }
-        button,
-        input,
-        select {
+        h3 { font-size: 18px; margin: 0; }
+        button, input, select {
           font-size: 14px;
           padding: 10px;
           border: 1px solid #cbd5e1;
@@ -1306,31 +1581,20 @@ export default function TradeClients({ siteId, onScope }) {
           box-sizing: border-box;
           max-width: 100%;
         }
-        button {
-          margin: 4px;
-          cursor: pointer;
-        }
-        button:disabled {
-          opacity: 0.5;
-        }
+        button { margin: 4px; cursor: pointer; }
+        button:disabled { opacity: .5; }
         label {
           display: block;
           margin: 8px 0;
           font-size: 13px;
         }
-        input:not([type="checkbox"]),
-        select {
+        input:not([type="checkbox"]), select {
           display: block;
           width: 100%;
           margin: 4px 0;
         }
-        input[type="checkbox"] {
-          min-height: 0;
-        }
-        p {
-          font-size: 13px;
-          line-height: 1.6;
-        }
+        input[type="checkbox"] { min-height: 0; }
+        p { font-size: 13px; line-height: 1.6; }
         small {
           display: block;
           color: #64748b;
@@ -1357,12 +1621,8 @@ export default function TradeClients({ siteId, onScope }) {
           grid-template-columns: 1fr 1fr;
           gap: 8px;
         }
-        [role="alert"] {
-          color: #b91c1c;
-        }
-        a {
-          color: #315c91;
-        }
+        [role="alert"] { color: #b91c1c; }
+        a { color: #315c91; }
         :global(.trade-summary) {
           padding: 10px;
           background: #f1f5f9;
@@ -1373,4 +1633,4 @@ export default function TradeClients({ siteId, onScope }) {
       `}</style>
     </section>
   );
-        }
+            }
