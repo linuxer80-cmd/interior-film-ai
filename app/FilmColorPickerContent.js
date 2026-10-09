@@ -1,5 +1,7 @@
 "use client";
 
+import { matchesFilmSearch } from "../lib/hyundaiFilmCode";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import FilmSampleImage from "./components/FilmSampleImage";
@@ -633,7 +635,7 @@ export default function FilmColorPicker({
           .join(" ")
           .toLowerCase();
 
-        return text.includes(keyword);
+        return matchesFilmSearch(item, search, true);
       }
 
       return true;
@@ -1523,3 +1525,4 @@ export default function FilmColorPicker({
     </>
   );
     }
+
