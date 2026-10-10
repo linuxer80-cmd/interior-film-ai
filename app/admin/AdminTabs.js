@@ -226,4 +226,109 @@ export default function AdminTabs({
               <strong
                 style={{ display: "block", fontSize: 17 }}
               >
-                미수금 ·
+                미수금 · 잔금 관리
+              </strong>
+
+              <small
+                style={{
+                  display: "block",
+                  marginTop: 5,
+                  color: "#716c63",
+                  lineHeight: 1.6,
+                }}
+              >
+                계약금·중도금·잔금 입금 내역과
+                남은 미수금 확인
+              </small>
+            </span>
+
+            <span
+              aria-hidden="true"
+              style={{ fontSize: 24 }}
+            >
+              ›
+            </span>
+          </a>
+        </nav>
+      )}
+
+      {moreOpen && (
+        <nav
+          className="film-admin-more"
+          aria-label="추가 관리 메뉴"
+        >
+          <div className="film-admin-more-title">
+            <strong>관리 메뉴</strong>
+
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+            >
+              닫기
+            </button>
+          </div>
+
+          <a href="/admin/clients">업체 관리</a>
+          <a href="/admin/customer-page">고객페이지 관리</a>
+
+          <button
+            type="button"
+            onClick={() => go("jobs")}
+          >
+            시공 DB
+          </button>
+
+          <button
+            type="button"
+            onClick={() => go("register")}
+          >
+            시공 등록
+          </button>
+
+          <button
+            type="button"
+            onClick={() => go("usage")}
+          >
+            로그 분석
+          </button>
+
+          <a href="/admin/material-order">자재 주문</a>
+          <a href="/admin/billing">요금제 · 결제</a>
+        </nav>
+      )}
+
+      <nav
+        className="film-admin-bottom"
+        aria-label="관리자 하단 메뉴"
+      >
+        {[
+          { id: "today", label: "홈", icon: "⌂" },
+          { id: "sites", label: "현장", icon: "▣" },
+          { id: "leads", label: "상담", icon: "♧" },
+          { id: "profit", label: "매출·수익", icon: "▥" },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-current={
+              activeTab === item.id ? "page" : undefined
+            }
+            onClick={() => go(item.id)}
+          >
+            <span aria-hidden="true">{item.icon}</span>
+            <small>{item.label}</small>
+          </button>
+        ))}
+
+        <button
+          type="button"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((value) => !value)}
+        >
+          <span aria-hidden="true">···</span>
+          <small>더보기</small>
+        </button>
+      </nav>
+    </section>
+  );
+}
