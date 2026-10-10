@@ -1,4 +1,4 @@
-import { doorStructureDescription } from "../utils/doorStructure.mjs";
+import { photoStructureDescription } from "../utils/windowStructure.mjs";
 import { supabase } from "../../lib/supabase";
 
 export async function createEmbedding(text) {
@@ -87,7 +87,7 @@ export async function analyzeImage(file, photoType) {
       result?.analysis?.sub_category ||
       "",
 
-    description: doorStructureDescription(
+    description: photoStructureDescription(
       result?.analysis || result
     ),
 
