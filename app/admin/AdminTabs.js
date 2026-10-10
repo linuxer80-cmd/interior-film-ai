@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
@@ -9,12 +10,6 @@ const menus = [
     label: "고객페이지 관리",
     description: "공개 시공 사례와 업체 정보",
     icon: "camera",
-  },
-  {
-    href: "/admin/today",
-    label: "보고서 · 오늘 할 일",
-    description: "검수 대기와 오늘 업무",
-    icon: "report",
   },
   {
     id: "sites",
@@ -83,6 +78,7 @@ const sections = {
 
 export default function AdminTabs({
   activeTab,
+  companyId,
   changeTab,
   unreadCount = 0,
   secondaryOnly = false,
@@ -105,71 +101,81 @@ export default function AdminTabs({
     <section className="film-admin-dashboard">
       {isHome ? (
         <>
-          <div className="film-admin-hero">
-            <div>
-              <span className="film-admin-kicker">
-                오늘도 좋은 공간을 만듭니다
-              </span>
+          <AdminHomeSummary
+            key={companyId}
+            companyId={companyId}
+          />
 
-              <h2>
-                안녕하세요!
-                <br />
-                필름장이 관리자입니다.
-              </h2>
+          <div className="home-actions">
+            <button
+              type="button"
+              onClick={() => go("sites")}
+            >
+              현장 관리
+            </button>
 
-              <p>
-                현장부터 완료보고까지
-                <br />
-                오늘의 업무를 편하게 확인하세요.
-              </p>
-            </div>
+            <a href="/admin/inventory">필름 입고·재고</a>
 
-            <ToolIllustration kind="home" size={176} />
+            <button
+              type="button"
+              onClick={() => go("leads")}
+            >
+              고객 상담
+              {unreadCount > 0
+                ? ` · 새 상담 ${unreadCount}건`
+                : ""}
+            </button>
           </div>
 
           <h3 className="film-admin-menu-heading">
-            무엇을 도와드릴까요?
+            업무 메뉴
           </h3>
 
           <nav
             className="film-admin-menu-grid"
             aria-label="관리자 업무 메뉴"
           >
-            {menus.map((menu) => {
-              const content = (
-                <>
-                  <ToolIllustration
-                    kind={menu.icon}
-                    size="100%"
-                    className="photo-menu-art"
-                  />
+            {menus
+              .filter(
+                (menu) =>
+                  ["sites", "leads", "profit"].includes(menu.id) ||
+                  menu.href === "/admin/inventory"
+              )
+              .map((menu) => {
+                const content = (
+                  <>
+                    <ToolIllustration
+                      kind={menu.icon}
+                      size={40}
+                      className="home-menu-icon"
+                    />
 
-                  <span>
-                    <strong>{menu.label}</strong>
+                    <span>
+                      <strong>{menu.label}</strong>
 
-                    <small>
-                      {menu.id === "leads" && unreadCount > 0
-                        ? `새 상담 ${unreadCount}건 · 확인해주세요`
-                        : menu.description}
-                    </small>
-                  </span>
-                </>
-              );
+                      <small>
+                        {menu.id === "leads" && unreadCount > 0
+                          ? `새 상담 ${unreadCount}건 · 확인해주세요`
+                          : menu.description}
+                      </small>
+                    </span>
+                  </>
+                );
 
-              return menu.href ? (
-                <a key={menu.href} href={menu.href}>
-                  {content}
-                </a>
-              ) : (
-                <button
-                  key={menu.id}
-                  type="button"
-                  onClick={() => go(menu.id)}
-                >
-                  {content}
-                </button>
-              );
-            })}
+                return menu.href ? (
+                  <a key={menu.href} href={menu.href}>
+                    {content}
+                  </a>
+                ) : (
+                  <button
+                    key={menu.id}
+                    type="button"
+                    onClick={() => go(menu.id)}
+                  >
+                    {content}
+                  </button>
+                );
+              })}
           </nav>
 
           <div
@@ -281,11 +287,64 @@ export default function AdminTabs({
             </button>
           </div>
 
-          <a href="/admin/clients">업체 관리</a>
+          {[
+            [
+              "현장·자재",
+              menus.filter((m) =>
+                [
+                  "/admin/clients",
+                  "/admin/workers",
+                  "/admin/attendance",
+                  "/admin/inventory",
+                  "/admin/material-order",
+                ].includes(m.href)
+              ),
+            ],
+            [
+              "고객·시공 기록",
+              menus.filter(
+                (m) =>
+                  m.href === "/admin/customer-page" ||
+                  m.id === "register"
+              ),
+            ],
+          ].map(([title, items]) => (
+            <section key={title}>
+              <h3
+                style={{
+                  fontSize: 14,
+                  margin: "14px 0 6px",
+                }}
+              >
+                {title}
+              </h3>
 
-          <a href="/admin/customer-page">
-            고객페이지 관리
-          </a>
+              {items.map((m) =>
+                m.href ? (
+                  <a key={m.href} href={m.href}>
+                    {m.label}
+                  </a>
+                ) : (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => go(m.id)}
+                  >
+                    {m.label}
+                  </button>
+                )
+              )}
+            </section>
+          ))}
+
+          <h3
+            style={{
+              fontSize: 14,
+              margin: "14px 0 6px",
+            }}
+          >
+            설정·데이터
+          </h3>
 
           <button
             type="button"
@@ -296,19 +355,11 @@ export default function AdminTabs({
 
           <button
             type="button"
-            onClick={() => go("register")}
-          >
-            시공 등록
-          </button>
-
-          <button
-            type="button"
             onClick={() => go("usage")}
           >
             로그 분석
           </button>
 
-          <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
@@ -345,6 +396,58 @@ export default function AdminTabs({
           <small>더보기</small>
         </button>
       </nav>
+
+      <style jsx>{`
+        .home-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin: 14px 0;
+        }
+
+        .home-actions a,
+        .home-actions button {
+          min-height: 44px;
+          padding: 10px 12px;
+          border: 1px solid #ddd5c9;
+          border-radius: 12px;
+          background: #fffdfa;
+          color: #243648;
+          text-decoration: none;
+          font: inherit;
+          font-size: 13px;
+          cursor: pointer;
+        }
+
+        .film-admin-menu-grid > a,
+        .film-admin-menu-grid > button {
+          flex-direction: row;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 12px;
+          border-radius: 16px;
+        }
+
+        .film-admin-menu-heading {
+          margin: 20px 0 12px;
+        }
+
+        .film-admin-more {
+          max-height: 65vh;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+
+        .film-admin-more section {
+          display: grid;
+          gap: 6px;
+        }
+
+        .film-admin-more a,
+        .film-admin-more button {
+          min-height: 44px;
+        }
+      `}</style>
     </section>
   );
-            }
+                }
