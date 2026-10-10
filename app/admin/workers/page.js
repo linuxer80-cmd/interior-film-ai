@@ -45,7 +45,7 @@ export default function AdminWorkersPage() {
           company.is_active === false
         ) {
           throw new Error(
-            "활성 관리자 계정으로 로그인해주세요.",
+            "활성 관리자 계정으로 로그인해주세요."
           );
         }
 
@@ -56,13 +56,11 @@ export default function AdminWorkersPage() {
         if (active) {
           setError(
             cause.message ||
-              "관리자 정보를 확인하지 못했습니다.",
+              "관리자 정보를 확인하지 못했습니다."
           );
         }
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -140,6 +138,25 @@ export default function AdminWorkersPage() {
       )}
 
       {!loading && !error && companyId && (
+        <Link
+          href="/admin/attendance"
+          style={{
+            display: "block",
+            padding: "14px 16px",
+            marginBottom: 16,
+            borderRadius: 14,
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            color: "#1d4ed8",
+            textDecoration: "none",
+            fontWeight: 800,
+          }}
+        >
+          오늘 출퇴근 현황 · 전체 내역 ›
+        </Link>
+      )}
+
+      {!loading && !error && companyId && (
         <WorkerContent
           key={companyId}
           companyId={companyId}
@@ -147,4 +164,4 @@ export default function AdminWorkersPage() {
       )}
     </main>
   );
-          }
+      }
