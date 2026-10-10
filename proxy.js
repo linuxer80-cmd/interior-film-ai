@@ -52,7 +52,9 @@ export async function proxy(request) {
 
   if (!secret) {
     return NextResponse.json(
-      { error: "AI 서버 설정을 확인해주세요." },
+      {
+        error: "AI 서버 설정을 확인해주세요.",
+      },
       { status: 503 }
     );
   }
@@ -63,25 +65,29 @@ export async function proxy(request) {
     const type =
       request.headers.get("content-type") || "";
 
-    if (type.includes("multipart/form-data")) {
+    // 실행 환경별 FormData 생성자 차이에 영향을 받지 않도록
+    // 요청 형식으로 구분합니다.
+    const isMultipart =
+      type.includes("multipart/form-data");
+
+    if (isMultipart) {
       body = await request.clone().formData();
     } else if (type.includes("application/json")) {
       body = await request.clone().json();
     }
 
     const field = (key) =>
-      body instanceof FormData
+      isMultipart
         ? body.get(key)
         : body?.[key];
 
-    const files =
-      body instanceof FormData
-        ? [...body.values()].filter(
-            (value) =>
-              typeof value !== "string" &&
-              value.type?.startsWith("image/")
-          )
-        : [];
+    const files = isMultipart
+      ? [...body.values()].filter(
+          (value) =>
+            typeof value !== "string" &&
+            value.type?.startsWith("image/")
+        )
+      : [];
 
     const imageFeatures = [
       "ai_photo_analysis",
@@ -97,7 +103,30 @@ export async function proxy(request) {
 
     if (units > 30) {
       return NextResponse.json(
-        { error: "사진을 나누어 분석해주세요." },
+        {
+          error: "사진을 나누어 분석해주세요.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const companySlug = String(
+      field("company_slug") || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (
+      publicPaths.has(path) &&
+      !companySlug &&
+      !headers.get("authorization")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "견적을 요청할 업체 정보가 없습니다. 업체 견적 링크에서 다시 시도해주세요.",
+          code: "AI_COMPANY_REQUIRED",
+        },
         { status: 400 }
       );
     }
@@ -109,18 +138,18 @@ export async function proxy(request) {
       feature,
       units,
       public: publicPaths.has(path),
-      companySlug: String(
-        field("company_slug") || ""
-      )
-        .trim()
-        .toLowerCase(),
-      worker: path === "/api/worker/cutting-notes",
+      companySlug,
+      worker:
+        path === "/api/worker/cutting-notes",
       siteId:
-        request.nextUrl.searchParams.get("siteId") ||
-        "",
+        request.nextUrl.searchParams.get(
+          "siteId"
+        ) || "",
       targetCompany:
         feature === "structure_analysis"
-          ? String(field("company_id") || "")
+          ? String(
+              field("company_id") || ""
+            )
           : "",
     });
 
@@ -151,7 +180,9 @@ export async function proxy(request) {
           error.code ||
           "AI_QUOTA_UNAVAILABLE",
       },
-      { status: error.status || 503 }
+      {
+        status: error.status || 503,
+      }
     );
   }
 }
