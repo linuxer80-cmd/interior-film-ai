@@ -1,5 +1,8 @@
+import { DOOR_STRUCTURE_RULES } from "./doorStructure.mjs";
+
 // Shared across registration, customer analysis and visual comparison.
 export const FILM_TARGET_RULES = `
+${DOOR_STRUCTURE_RULES}
 사진의 실제 시공 주 대상을 배경 물체와 구분한다. 색상·광택·흰색 문짝만으로 용도를 확정하지 않는다.
 냉장고가 없어도 바닥까지 열린 큰 가전 칸, 깊은 측판과 위쪽 수납부가 있으면 냉장고장 후보다.
 붙박이장은 옷걸이 봉·옷 수납 선반·서랍·연속 옷장 문 등 구조 근거가 필요하다. 빈 칸 자체는 옷장 근거가 아니다.
