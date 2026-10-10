@@ -1,5 +1,19 @@
 "use client";
 
+import { useState } from "react";
+import dynamic from "next/dynamic";
+
+const AttendancePage = dynamic(
+  () => import("../../components/AttendancePage"),
+  {
+    loading: () => (
+      <p role="status">
+        출퇴근 화면을 불러오는 중입니다…
+      </p>
+    ),
+  }
+);
+
 export default function WorkerCard({
   worker,
   inviteLoading = false,
@@ -8,16 +22,14 @@ export default function WorkerCard({
   onEdit,
   onActiveChange,
 }) {
-  const active =
-    worker?.is_active !== false;
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
 
-  const accountLinked =
-    Boolean(worker?.user_id);
+  const active = worker?.is_active !== false;
+  const accountLinked = Boolean(worker?.user_id);
 
-  const specialties =
-    Array.isArray(worker?.specialties)
-      ? worker.specialties
-      : [];
+  const specialties = Array.isArray(worker?.specialties)
+    ? worker.specialties
+    : [];
 
   return (
     <div
@@ -25,9 +37,7 @@ export default function WorkerCard({
         padding: "13px",
         border: "1px solid #e2e8f0",
         borderRadius: "12px",
-        background: active
-          ? "#ffffff"
-          : "#f8fafc",
+        background: active ? "#ffffff" : "#f8fafc",
         opacity: active ? 1 : 0.7,
       }}
     >
@@ -39,10 +49,6 @@ export default function WorkerCard({
           gap: "10px",
         }}
       >
-        {/* =========================
-            시공자 정보
-        ========================= */}
-
         <div
           style={{
             minWidth: 0,
@@ -57,14 +63,26 @@ export default function WorkerCard({
               gap: "6px",
             }}
           >
-            <strong
+            <button
+              type="button"
+              aria-expanded={attendanceOpen}
+              onClick={() =>
+                setAttendanceOpen((value) => !value)
+              }
               style={{
-                color: "#111827",
-                fontSize: "15px",
+                border: 0,
+                padding: "8px 0",
+                minHeight: 44,
+                background: "transparent",
+                color: "#163153",
+                fontSize: 16,
+                fontWeight: 800,
+                textAlign: "left",
+                cursor: "pointer",
               }}
             >
-              {worker?.name || "시공자"}
-            </strong>
+              {worker?.name || "시공자"} · 출퇴근 보기 ›
+            </button>
 
             {worker?.position && (
               <span
@@ -97,8 +115,6 @@ export default function WorkerCard({
             )}
           </div>
 
-          {/* 전화번호 */}
-
           {worker?.phone && (
             <div
               style={{
@@ -111,17 +127,26 @@ export default function WorkerCard({
             </div>
           )}
 
-          <div style={{ marginTop: 9, display: "grid", gap: 4, fontSize: 12, color: "#475569" }}>
-            <span>기본 일당 <strong>{worker?.daily_wage == null ? "미설정" : `${Number(worker.daily_wage).toLocaleString("ko-KR")}원`}</strong></span>
-          </div>
-
-          {/* 계정 상태 */}
-
           <div
             style={{
-              marginTop: "8px",
+              marginTop: 9,
+              display: "grid",
+              gap: 4,
+              fontSize: 12,
+              color: "#475569",
             }}
           >
+            <span>
+              기본 일당{" "}
+              <strong>
+                {worker?.daily_wage == null
+                  ? "미설정"
+                  : `${Number(worker.daily_wage).toLocaleString("ko-KR")}원`}
+              </strong>
+            </span>
+          </div>
+
+          <div style={{ marginTop: "8px" }}>
             {accountLinked ? (
               <span
                 style={{
@@ -153,8 +178,6 @@ export default function WorkerCard({
             )}
           </div>
 
-          {/* 전문 분야 */}
-
           {specialties.length > 0 && (
             <div
               style={{
@@ -164,27 +187,23 @@ export default function WorkerCard({
                 marginTop: "8px",
               }}
             >
-              {specialties.map(
-                (specialty, index) => (
-                  <span
-                    key={`${specialty}-${index}`}
-                    style={{
-                      padding: "4px 7px",
-                      borderRadius: "6px",
-                      background: "#f1f5f9",
-                      color: "#475569",
-                      fontSize: "10px",
-                      fontWeight: "700",
-                    }}
-                  >
-                    {specialty}
-                  </span>
-                ),
-              )}
+              {specialties.map((specialty, index) => (
+                <span
+                  key={`${specialty}-${index}`}
+                  style={{
+                    padding: "4px 7px",
+                    borderRadius: "6px",
+                    background: "#f1f5f9",
+                    color: "#475569",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                  }}
+                >
+                  {specialty}
+                </span>
+              ))}
             </div>
           )}
-
-          {/* 메모 */}
 
           {worker?.memo && (
             <div
@@ -201,10 +220,6 @@ export default function WorkerCard({
           )}
         </div>
 
-        {/* =========================
-            버튼
-        ========================= */}
-
         <div
           style={{
             display: "grid",
@@ -213,10 +228,21 @@ export default function WorkerCard({
             minWidth: "82px",
           }}
         >
-          {/* 계정 초대 */}
-
           {!accountLinked && active && (
-            <button type="button" onClick={onLinkSelf} style={{ padding: "7px 9px", border: "1px solid #16a34a", borderRadius: 8, background: "#f0fdf4", color: "#166534", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+            <button
+              type="button"
+              onClick={onLinkSelf}
+              style={{
+                padding: "7px 9px",
+                border: "1px solid #16a34a",
+                borderRadius: 8,
+                background: "#f0fdf4",
+                color: "#166534",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
               내 계정 연결
             </button>
           )}
@@ -230,16 +256,12 @@ export default function WorkerCard({
                 padding: "7px 9px",
                 border: "1px solid #2563eb",
                 borderRadius: "8px",
-
                 background: inviteLoading
                   ? "#dbeafe"
                   : "#eff6ff",
-
                 color: "#1d4ed8",
-
                 fontSize: "11px",
                 fontWeight: "800",
-
                 cursor: inviteLoading
                   ? "default"
                   : "pointer",
@@ -250,8 +272,6 @@ export default function WorkerCard({
                 : "🔗 계정 초대"}
             </button>
           )}
-
-          {/* 계정 연결 완료 */}
 
           {accountLinked && (
             <div
@@ -270,7 +290,26 @@ export default function WorkerCard({
             </div>
           )}
 
-          {/* 수정 */}
+          <button
+            type="button"
+            aria-expanded={attendanceOpen}
+            onClick={() =>
+              setAttendanceOpen((value) => !value)
+            }
+            style={{
+              minHeight: 44,
+              padding: "7px 10px",
+              border: "1px solid #bfdbfe",
+              borderRadius: 8,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {attendanceOpen ? "출퇴근 닫기" : "출퇴근 내역"}
+          </button>
 
           <button
             type="button"
@@ -289,8 +328,6 @@ export default function WorkerCard({
             수정
           </button>
 
-          {/* 활성/비활성 */}
-
           <button
             type="button"
             onClick={onActiveChange}
@@ -298,26 +335,33 @@ export default function WorkerCard({
               padding: "7px 10px",
               border: "1px solid #cbd5e1",
               borderRadius: "8px",
-
-              background: active
-                ? "#ffffff"
-                : "#111827",
-
-              color: active
-                ? "#64748b"
-                : "#ffffff",
-
+              background: active ? "#ffffff" : "#111827",
+              color: active ? "#64748b" : "#ffffff",
               fontSize: "11px",
               fontWeight: "700",
               cursor: "pointer",
             }}
           >
-            {active
-              ? "비활성"
-              : "재활성"}
+            {active ? "비활성" : "재활성"}
           </button>
         </div>
       </div>
+
+      {attendanceOpen && worker?.id && (
+        <div
+          style={{
+            marginTop: 14,
+            borderTop: "1px solid #e2e8f0",
+            paddingTop: 14,
+          }}
+        >
+          <AttendancePage
+            mode="admin"
+            workerId={worker.id}
+            embedded
+          />
+        </div>
+      )}
     </div>
   );
-                }
+              }
