@@ -1,19 +1,13 @@
-import CustomerEstimatePage from "../../components/CustomerEstimatePage";
+import CustomerHomepage from "../../components/CustomerHomepage";
 
-export default async function CompanyEstimatePage({
-  params,
-}) {
-  const resolvedParams = await params;
+export const dynamic = "force-dynamic";
 
-  const slug = String(
-    resolvedParams?.slug || ""
-  )
-    .trim()
-    .toLowerCase();
+export default async function CompanyEstimatePage({ params }) {
+  const { slug = "" } = await params;
 
   return (
-    <CustomerEstimatePage
-      companySlug={slug}
+    <CustomerHomepage
+      slug={String(slug).trim().toLowerCase()}
     />
   );
 }
