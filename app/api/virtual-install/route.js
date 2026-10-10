@@ -153,9 +153,7 @@ async function finishUsage(
   if (error) throw error;
 
   if (data !== true) {
-    throw new Error(
-      "사용량 확정을 확인하지 못했습니다."
-    );
+    throw new Error("사용량 확정을 확인하지 못했습니다.");
   }
 }
 
@@ -207,9 +205,7 @@ async function fetchSampleImage(
     if (
       url.protocol !== "https:" ||
       !getAllowedSampleHosts().has(url.hostname)
-    ) {
-      return null;
-    }
+    ) return null;
 
     const response = await fetch(url.toString(), {
       cache: "no-store",
@@ -223,24 +219,20 @@ async function fetchSampleImage(
       response.headers.get("content-type") ||
       "image/jpeg";
 
-    if (!contentType.startsWith("image/")) {
-      return null;
-    }
+    if (!contentType.startsWith("image/")) return null;
 
     const buffer = await response.arrayBuffer();
 
     if (
       !buffer.byteLength ||
       buffer.byteLength > MAX_SAMPLE_SIZE
-    ) {
-      return null;
-    }
+    ) return null;
 
     const extension = contentType.includes("png")
       ? "png"
       : contentType.includes("webp")
-      ? "webp"
-      : "jpg";
+        ? "webp"
+        : "jpg";
 
     return new File(
       [buffer],
@@ -263,19 +255,10 @@ function getPrimaryFilm(form) {
     areaKey: "all",
     areaLabel: "전체 시공 부위",
     brand: cleanText(form.get("brand"), 100),
-    productCode: cleanText(
-      form.get("productCode"),
-      100
-    ),
-    productName: cleanText(
-      form.get("productName"),
-      200
-    ),
+    productCode: cleanText(form.get("productCode"), 100),
+    productName: cleanText(form.get("productName"), 200),
     texture: cleanText(form.get("texture"), 100),
-    colorFamily: cleanText(
-      form.get("colorFamily"),
-      100
-    ),
+    colorFamily: cleanText(form.get("colorFamily"), 100),
     colorDescription: cleanText(
       form.get("colorDescription"),
       300
@@ -302,19 +285,10 @@ function getAreaFilms(form) {
         areaKey: cleanText(item?.areaKey, 100),
         areaLabel: cleanText(item?.areaLabel, 100),
         brand: cleanText(item?.brand, 100),
-        productCode: cleanText(
-          item?.productCode,
-          100
-        ),
-        productName: cleanText(
-          item?.productName,
-          200
-        ),
+        productCode: cleanText(item?.productCode, 100),
+        productName: cleanText(item?.productName, 200),
         texture: cleanText(item?.texture, 100),
-        colorFamily: cleanText(
-          item?.colorFamily,
-          100
-        ),
+        colorFamily: cleanText(item?.colorFamily, 100),
         colorDescription: cleanText(
           item?.colorDescription,
           300
@@ -366,7 +340,11 @@ function getTargetPrompt(targetType) {
     ],
     kitchen: [
       "The target is EXISTING KITCHEN CABINETRY ONLY.",
-      "Apply film only to existing visible cabinet fronts, drawer fronts and film-finished cabinet side panels.",
+      "Each assigned kitchen area includes its complete existing exposed cabinetry: doors, drawers, fixed face frames, narrow vertical stiles, horizontal rails, filler strips, edge trims, top and bottom finishing panels, exposed side/end panels, plinths and toe kicks.",
+      "Do not leave existing white frames, fillers or side panels unchanged merely because they are not doors; change them to the film assigned to their own cabinet area.",
+      "Treat upper cabinets, lower cabinets and refrigerator enclosure as separate material zones. Refrigerator enclosure includes its surround, side panels, overhead storage, fixed frames and trims, but never the refrigerator appliance.",
+      "Upper/lower cabinet assignment must NOT recolor a refrigerator enclosure assigned a separate film. The overhead cupboard of the refrigerator belongs to the refrigerator zone, not the ordinary upper-cabinet zone.",
+      "Preserve the exact thickness, edges, gaps, profile, depth, count and position of every frame, trim and panel. Never erase, merge or flatten frames into door fronts.",
       "Modify only the requested cabinet areas that actually exist in IMAGE 1.",
       "Do not invent or extend cabinets.",
       "Preserve every architectural room door and door frame unchanged.",
@@ -395,7 +373,7 @@ function getTargetPrompt(targetType) {
     ],
     fridge_cabinet: [
       "The target is the EXISTING REFRIGERATOR CABINET OR ENCLOSURE ONLY.",
-      "Apply film only to its existing cabinet fronts and film-finished enclosure panels.",
+      "Apply film to all existing exposed refrigerator-enclosure doors, surrounding side/end panels, overhead storage, fixed face frames, filler strips, top/bottom trims and plinths. Do not omit narrow white frame strips or side panels. Preserve all frame thicknesses, openings and seams.",
       "Preserve the refrigerator and all appliances unchanged.",
       "Preserve cabinet dimensions, divisions, gaps, handles and hardware.",
       "Never create a room door, doorway or frame.",
@@ -417,13 +395,13 @@ function getAreaInstruction(key, label) {
     artwall_surface:
       "Apply the assigned film only to the existing art wall surface. Preserve seams, joints, outlets, cables and boundaries. Never add a door, frame, handle or opening.",
     kitchen_all:
-      "Apply film only to existing visible kitchen cabinet fronts and film-finished exposed panels. Preserve every non-cabinet surface.",
+      "Apply the assigned film to all existing visible kitchen cabinetry, including upper and lower cabinets, refrigerator enclosure and its overhead storage, tall/pantry/island cabinetry, all fixed frames, stiles, rails, fillers, trims, exposed side/end panels and toe kicks. Preserve all non-cabinet surfaces and refrigerator appliances. Do not invent absent cabinetry.",
     kitchen_upper:
-      "Apply this film only to existing visible upper kitchen cabinet doors and film-finished panels above the countertop.",
+      "Apply this film to the complete existing ordinary upper-cabinet zone: doors, fixed face frames, stiles, rails, edge trims, fillers, top/bottom finishing panels and exposed side/end panels. Exclude refrigerator-enclosure overhead storage and other separately assigned zones. Preserve every frame profile and seam. If absent, do nothing.",
     kitchen_lower:
-      "Apply this film only to existing lower cabinet doors and drawer fronts below the countertop.",
+      "Apply this film to the complete existing lower-cabinet zone: doors, drawers, fixed frames, narrow vertical stiles, rails, corner and filler panels, exposed side/end panels, finishing trims, plinths and toe kicks. Include narrow white supports and end panels belonging to these cabinets. Exclude the countertop, appliances and separately assigned refrigerator/tall/pantry/island zones. Preserve exact frame thickness and gaps. If absent, do nothing.",
     fridge_cabinet:
-      "Apply this film only to existing refrigerator-cabinet fronts and enclosure panels. Preserve the refrigerator and appliances. If the cabinet is absent, do nothing.",
+      "Apply this film to the entire existing refrigerator cabinet/enclosure: surrounding side/end panels, overhead cupboard doors, fixed frames, fillers, top finishing strips, rails, plinths and exposed trims. This zone is separate from ordinary upper and lower cabinets, even where it touches them. Preserve the refrigerator appliance, openings, dimensions and frame thickness. If the cabinet is absent, do nothing.",
     tall_cabinet:
       "Apply this film only to the existing tall cabinet fronts and film-finished panels. If absent, do nothing.",
     pantry_cabinet:
@@ -467,9 +445,7 @@ function getFilmDetails(film) {
     film.productName
       ? `Product name: ${film.productName}.`
       : "",
-    film.texture
-      ? `Texture: ${film.texture}.`
-      : "",
+    film.texture ? `Texture: ${film.texture}.` : "",
     film.colorFamily
       ? `Color family: ${film.colorFamily}.`
       : "",
@@ -533,10 +509,7 @@ export async function POST(request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        {
-          error:
-            "OPENAI_API_KEY가 설정되지 않았습니다.",
-        },
+        { error: "OPENAI_API_KEY가 설정되지 않았습니다." },
         { status: 500 }
       );
     }
@@ -550,24 +523,16 @@ export async function POST(request) {
 
     if (!companySlug) {
       return NextResponse.json(
-        {
-          error:
-            "업체 페이지에서 다시 시도해주세요.",
-        },
+        { error: "업체 페이지에서 다시 시도해주세요." },
         { status: 400 }
       );
     }
 
-    const company = await resolveCompanyBySlug(
-      companySlug
-    );
+    const company = await resolveCompanyBySlug(companySlug);
 
     if (!company) {
       return NextResponse.json(
-        {
-          error:
-            "사용 가능한 업체 정보를 찾을 수 없습니다.",
-        },
+        { error: "사용 가능한 업체 정보를 찾을 수 없습니다." },
         { status: 404 }
       );
     }
@@ -579,23 +544,14 @@ export async function POST(request) {
       !image.type?.startsWith("image/")
     ) {
       return NextResponse.json(
-        {
-          error:
-            "가상시공할 원본 이미지가 없습니다.",
-        },
+        { error: "가상시공할 원본 이미지가 없습니다." },
         { status: 400 }
       );
     }
 
-    if (
-      !image.size ||
-      image.size > MAX_IMAGE_SIZE
-    ) {
+    if (!image.size || image.size > MAX_IMAGE_SIZE) {
       return NextResponse.json(
-        {
-          error:
-            "사진은 10MB 이하만 사용할 수 있습니다.",
-        },
+        { error: "사진은 10MB 이하만 사용할 수 있습니다." },
         { status: 400 }
       );
     }
@@ -607,10 +563,7 @@ export async function POST(request) {
 
     if (!ALLOWED_TARGET_TYPES.has(targetType)) {
       return NextResponse.json(
-        {
-          error:
-            "사용할 수 없는 가상시공 종류입니다.",
-        },
+        { error: "사용할 수 없는 가상시공 종류입니다." },
         { status: 400 }
       );
     }
@@ -620,27 +573,21 @@ export async function POST(request) {
 
     if (!primaryFilm.productCode) {
       return NextResponse.json(
-        {
-          error:
-            "선택한 필름 정보가 없습니다.",
-        },
+        { error: "선택한 필름 정보가 없습니다." },
         { status: 400 }
       );
     }
 
     const useSplitTone =
       MULTI_TONE_TARGET_TYPES.has(targetType) &&
-      String(form.get("useSplitTone") || "") ===
-        "true";
+      String(form.get("useSplitTone") || "") === "true";
 
     let areaFilms = getAreaFilms(form);
 
     if (
       areaFilms.some(
         (film) =>
-          !ALLOWED_AREAS[targetType].has(
-            film.areaKey
-          )
+          !ALLOWED_AREAS[targetType].has(film.areaKey)
       )
     ) {
       return NextResponse.json(
@@ -698,9 +645,7 @@ export async function POST(request) {
       referenceFilms.push({
         ...film,
         sampleImage,
-        imageNumber: sampleImage
-          ? imageNumber++
-          : null,
+        imageNumber: sampleImage ? imageNumber++ : null,
       });
     }
 
@@ -728,10 +673,7 @@ export async function POST(request) {
 
       promptParts.push(
         `Target area: ${film.areaLabel}.`,
-        getAreaInstruction(
-          film.areaKey,
-          film.areaLabel
-        ),
+        getAreaInstruction(film.areaKey, film.areaLabel),
         getFilmDetails(film)
       );
 
@@ -744,26 +686,27 @@ export async function POST(request) {
 
     promptParts.push(
       useSplitTone
-        ? "MULTI-TONE: Keep each film strictly within its own assigned existing area. Never swap or blend finishes between areas."
+        ? "MULTI-TONE: Keep each film strictly within its own assigned existing area, including that area's fixed frames, filler strips, finishing trims, side/end panels and toe kicks. Refrigerator enclosure and its overhead storage use only their own assigned film. Never swap, blend or inherit an adjacent zone's finish."
         : "UNIFIED COLOR: Apply the same film consistently only to the selected existing target surfaces. Leave unrelated objects unchanged.",
+      targetType === "kitchen"
+        ? "FINAL CABINET COVERAGE CHECK: For every assigned zone, verify all its visible frames, filler strips, corner panels, end/side panels and plinths received that zone's film. An omitted zone must remain unchanged. Preserve counters, tiles, windows, sink, hood and appliances. Apply assignments only to cabinetry already visible; never generate missing refrigerator/tall cabinets."
+        : "",
       "FINAL STRUCTURE CHECK: IMAGE 1 must remain structurally identical. Never create a new door, frame, handle or opening. Change only the selected existing surface finish."
     );
 
     const model =
-      process.env.OPENAI_IMAGE_MODEL ||
-      "gpt-image-1.5";
+      process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
 
     const size =
-      process.env.OPENAI_IMAGE_SIZE ||
-      "1024x1024";
+      process.env.OPENAI_IMAGE_SIZE || "1024x1024";
 
     const quality =
-      process.env.OPENAI_IMAGE_QUALITY ||
-      "low";
+      process.env.OPENAI_IMAGE_QUALITY || "low";
 
     const openAIForm = new FormData();
 
     openAIForm.append("model", model);
+
     openAIForm.append(
       "image[]",
       image,
@@ -784,6 +727,7 @@ export async function POST(request) {
       "prompt",
       promptParts.filter(Boolean).join(" ")
     );
+
     openAIForm.append("size", size);
     openAIForm.append("quality", quality);
     openAIForm.append("output_format", "webp");
@@ -807,9 +751,7 @@ export async function POST(request) {
           remaining: virtualLimit.remaining,
         },
         {
-          status: virtualLimit.limitReached
-            ? 429
-            : 503,
+          status: virtualLimit.limitReached ? 429 : 503,
         }
       );
     }
@@ -840,9 +782,7 @@ export async function POST(request) {
       console.error("가상시공 API 오류:", result);
 
       return NextResponse.json(
-        {
-          error: getOpenAIError(result),
-        },
+        { error: getOpenAIError(result) },
         {
           status:
             response.status >= 400 &&
@@ -861,10 +801,7 @@ export async function POST(request) {
 
     if (!imageUrl) {
       return NextResponse.json(
-        {
-          error:
-            "생성된 이미지 데이터가 없습니다.",
-        },
+        { error: "생성된 이미지 데이터가 없습니다." },
         { status: 502 }
       );
     }
@@ -888,8 +825,7 @@ export async function POST(request) {
         target_type: targetType,
         split_tone: Boolean(useSplitTone),
         product_code: primaryFilm.productCode,
-        sample_reference_count:
-          sampleReferenceCount,
+        sample_reference_count: sampleReferenceCount,
         openai_usage: result?.usage || null,
       }
     );
@@ -919,22 +855,15 @@ export async function POST(request) {
         limit: virtualLimit.limit,
         remaining: virtualLimit.unlimited
           ? null
-          : Math.max(
-              0,
-              virtualLimit.remaining - 1
-            ),
-        unlimited: Boolean(
-          virtualLimit.unlimited
-        ),
+          : Math.max(0, virtualLimit.remaining - 1),
+        unlimited: Boolean(virtualLimit.unlimited),
       },
     });
   } catch (error) {
     console.error("가상시공 처리 오류:", error);
 
     if (
-      ["TimeoutError", "AbortError"].includes(
-        error?.name
-      )
+      ["TimeoutError", "AbortError"].includes(error?.name)
     ) {
       return NextResponse.json(
         {
