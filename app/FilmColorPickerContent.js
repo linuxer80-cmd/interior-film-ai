@@ -1,7 +1,10 @@
 "use client";
 
 import { matchesFilmSearch } from "../lib/hyundaiFilmCode";
-
+import {
+  pickerBrand,
+  pickerProductLine,
+} from "../lib/filmPickerClassification.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import FilmSampleImage from "./components/FilmSampleImage";
@@ -110,39 +113,21 @@ function unique(values) {
 
 function getProductLine(productCode) {
   const code = String(productCode || "").trim().toUpperCase();
-
   if (!code) return null;
-
-  return (
-    PRODUCT_LINES.find((line) => code.startsWith(line.prefix)) ||
-    null
-  );
+  return PRODUCT_LINES.find((line) => code.startsWith(line.prefix)) || null;
 }
 
 function getLineFilter(categoryKey) {
   if (categoryKey === "wood") return "wood";
-
-  if (["stone", "fabric", "leather"].includes(categoryKey)) {
-    return "tone";
-  }
-
+  if (["stone", "fabric", "leather"].includes(categoryKey)) return "tone";
   return "color";
 }
 
 function getProductLineInfo(product) {
-  const storedLine = String(product?.pattern_line || "").trim();
-  const storedCategory = String(product?.category_key || "").trim();
-
-  if (storedLine && storedCategory) {
-    return {
-      prefix: `DB:${storedLine}`,
-      label: storedLine,
-      category: storedCategory,
-      filter: getLineFilter(storedCategory),
-    };
-  }
-
-  return getProductLine(product?.product_code);
+  return pickerProductLine(
+    product,
+    getProductLine(product?.product_code)
+  );
 }
 
 function getToneLabel(value) {
@@ -152,7 +137,6 @@ function getToneLabel(value) {
     딥톤: "딥",
     기타톤: "포인트",
   };
-
   return labels[value] || value;
 }
 
@@ -160,7 +144,6 @@ function getProductKey(product) {
   if (product?.id !== null && product?.id !== undefined) {
     return String(product.id);
   }
-
   return `${String(product?.brand || "").trim()}::${String(
     product?.product_code || ""
   ).trim()}`;
@@ -183,18 +166,11 @@ function stablePopularitySort(items, getScore) {
 
 function formatPrice(value) {
   const price = Number(value);
-
   if (!Number.isFinite(price) || price <= 0) return "";
-
   return `${price.toLocaleString("ko-KR")}원`;
 }
 
-function ChipRow({
-  items = [],
-  value,
-  onChange,
-  showAll = false,
-}) {
+function ChipRow({ items = [], value, onChange, showAll = false }) {
   if (!items.length) return null;
 
   return (
@@ -219,7 +195,6 @@ function ChipRow({
     >
       {items.map((item) => {
         const active = value === item.value;
-
         return (
           <button
             key={item.value}
@@ -232,9 +207,7 @@ function ChipRow({
               minHeight: "42px",
               padding: showAll ? "9px 8px" : "8px 13px",
               borderRadius: "999px",
-              border: active
-                ? "2px solid #111827"
-                : "1px solid #d1d5db",
+              border: active ? "2px solid #111827" : "1px solid #d1d5db",
               background: active ? "#111827" : "#ffffff",
               color: active ? "#ffffff" : "#374151",
               fontSize: "13px",
@@ -301,9 +274,7 @@ export default function FilmColorPicker({
   const resultsRef = useRef(null);
 
   useEffect(() => {
-    if (value !== undefined) {
-      setSelected(value || null);
-    }
+    if (value !== undefined) setSelected(value || null);
   }, [value]);
 
   useEffect(() => {
@@ -314,28 +285,14 @@ export default function FilmColorPicker({
       setMessage("");
 
       const FETCH_SIZE = 1000;
-
       const selectColumns = [
-        "id",
-        "brand",
-        "product_code",
-        "product_name",
-        "category_key",
-        "pattern_line",
-        "color_family",
-        "color_description",
-        "color_hex",
-        "texture",
-        "grade",
-        "wood_species",
-        "tone_family",
-        "sample_image_path",
-        "fire_price_per_meter",
-        "non_fire_price_per_meter",
-        "material_price_per_meter",
-        "price_multiplier",
-        "additional_cost",
-        "sort_order",
+        "id", "brand", "product_code", "product_name",
+        "category_key", "pattern_line", "color_family",
+        "color_description", "color_hex", "texture", "grade",
+        "wood_species", "tone_family", "sample_image_path",
+        "fire_price_per_meter", "non_fire_price_per_meter",
+        "material_price_per_meter", "price_multiplier",
+        "additional_cost", "sort_order",
       ].join(",");
 
       let data = [];
@@ -359,9 +316,7 @@ export default function FilmColorPicker({
 
         const rows = result.data || [];
         data = [...data, ...rows];
-
         if (rows.length < FETCH_SIZE) break;
-
         from += FETCH_SIZE;
       }
 
@@ -393,18 +348,17 @@ export default function FilmColorPicker({
           }))
         );
 
-        const brandList = unique(rows.map((item) => item.brand));
+        const brandList = unique(
+          rows.map((item) => pickerBrand(item.brand))
+        );
 
-        if (brandList.length === 1) {
-          setBrand(brandList[0]);
-        }
+        if (brandList.length === 1) setBrand(brandList[0]);
       }
 
       setLoading(false);
     }
 
     loadProducts();
-
     return () => {
       mounted = false;
     };
@@ -423,7 +377,6 @@ export default function FilmColorPicker({
         if (!response.ok) return;
 
         const body = await response.json();
-
         const rows = Array.isArray(body)
           ? body
           : Array.isArray(body?.stats)
@@ -438,7 +391,6 @@ export default function FilmColorPicker({
 
         rows.forEach((row) => {
           const key = String(row?.product_key || "").trim();
-
           if (key) {
             nextStats[key] = Number(row?.selection_count || 0);
           }
@@ -451,7 +403,6 @@ export default function FilmColorPicker({
     }
 
     loadSelectionStats();
-
     return () => {
       mounted = false;
     };
@@ -459,21 +410,21 @@ export default function FilmColorPicker({
 
   useEffect(() => {
     if (!pickerOpen) return;
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     return () => {
       document.body.style.overflow = previousOverflow;
     };
   }, [pickerOpen]);
 
   const brands = useMemo(() => {
-    const brandList = unique(products.map((item) => item.brand));
+    const brandList = unique(
+      products.map((item) => pickerBrand(item.brand))
+    );
 
     return stablePopularitySort(brandList, (brandName) =>
       products
-        .filter((product) => product.brand === brandName)
+        .filter((product) => pickerBrand(product.brand) === brandName)
         .reduce(
           (sum, product) =>
             sum + getSelectionCount(product, selectionStats),
@@ -486,7 +437,7 @@ export default function FilmColorPicker({
     if (!brand) return [];
 
     const brandProducts = products.filter(
-      (product) => product.brand === brand
+      (product) => pickerBrand(product.brand) === brand
     );
 
     return CATEGORIES.filter((categoryItem) =>
@@ -501,14 +452,13 @@ export default function FilmColorPicker({
     if (!brand || !category) return [];
 
     const brandProducts = products.filter(
-      (product) => product.brand === brand
+      (product) => pickerBrand(product.brand) === brand
     );
 
     const lineMap = new Map();
 
     brandProducts.forEach((product) => {
       const line = getProductLineInfo(product);
-
       if (!line || line.category !== category) return;
 
       if (!lineMap.has(line.label)) {
@@ -521,7 +471,6 @@ export default function FilmColorPicker({
       }
 
       const lineItem = lineMap.get(line.label);
-
       if (!lineItem.prefixes.includes(line.prefix)) {
         lineItem.prefixes.push(line.prefix);
       }
@@ -546,8 +495,7 @@ export default function FilmColorPicker({
 
   const selectedLine = useMemo(
     () =>
-      availableLines.find((line) => line.key === lineKey) ||
-      null,
+      availableLines.find((line) => line.key === lineKey) || null,
     [availableLines, lineKey]
   );
 
@@ -555,10 +503,9 @@ export default function FilmColorPicker({
     if (!brand || !category || !selectedLine) return [];
 
     return products.filter((product) => {
-      if (product.brand !== brand) return false;
+      if (pickerBrand(product.brand) !== brand) return false;
 
       const line = getProductLineInfo(product);
-
       if (!line || line.category !== category) return false;
 
       return selectedLine.prefixes.includes(line.prefix);
@@ -599,42 +546,20 @@ export default function FilmColorPicker({
         if (
           selectedLine.filter === "wood" &&
           item.wood_species !== detail
-        ) {
-          return false;
-        }
+        ) return false;
 
         if (
           selectedLine.filter === "tone" &&
           item.tone_family !== detail
-        ) {
-          return false;
-        }
+        ) return false;
 
         if (
           selectedLine.filter === "color" &&
           item.color_family !== detail
-        ) {
-          return false;
-        }
+        ) return false;
       }
 
       if (keyword) {
-        const text = [
-          item.brand,
-          item.product_code,
-          item.product_name,
-          item.pattern_line,
-          item.color_family,
-          item.color_description,
-          item.texture,
-          item.grade,
-          item.wood_species,
-          item.tone_family,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
         return matchesFilmSearch(item, search, true);
       }
 
@@ -658,14 +583,11 @@ export default function FilmColorPicker({
     1,
     Math.ceil(matches.length / PAGE_SIZE)
   );
-
   const currentPage = Math.min(page, totalPages);
-
   const firstPage = Math.max(
     1,
     Math.min(currentPage - 2, totalPages - 4)
   );
-
   const pageNumbers = Array.from(
     { length: Math.min(5, totalPages) },
     (_, index) => firstPage + index
@@ -684,7 +606,6 @@ export default function FilmColorPicker({
     requestAnimationFrame(() => {
       const container = scrollRef.current;
       const results = resultsRef.current;
-
       if (!container || !results) return;
 
       const top =
@@ -903,7 +824,6 @@ export default function FilmColorPicker({
                 >
                   원하는 필름을 선택하세요
                 </div>
-
                 <div
                   style={{
                     marginTop: "3px",
@@ -928,7 +848,6 @@ export default function FilmColorPicker({
                 <div style={{ flex: "0 0 52px" }}>
                   <FilmSample product={selected} size="52px" />
                 </div>
-
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -939,7 +858,6 @@ export default function FilmColorPicker({
                   >
                     {selected.product_code}
                   </div>
-
                   <div
                     style={{
                       marginTop: "2px",
@@ -961,7 +879,6 @@ export default function FilmColorPicker({
                         }`
                       : ""}
                   </div>
-
                   {!sampleMode && selectedPrice > 0 && (
                     <div
                       style={{
@@ -1096,7 +1013,6 @@ export default function FilmColorPicker({
                   >
                     필름 선택
                   </div>
-
                   <div
                     style={{
                       marginTop: "2px",
@@ -1524,5 +1440,4 @@ export default function FilmColorPicker({
       )}
     </>
   );
-    }
-
+                    }
