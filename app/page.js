@@ -1,9 +1,7 @@
-import CustomerEstimatePage from "./components/CustomerEstimatePage";
+import CustomerHomepage from "./components/CustomerHomepage";
+
+export const dynamic = "force-dynamic";
 
 export default function Home() {
-  return (
-    <CustomerEstimatePage
-      companySlug="gibun"
-    />
-  );
+  return <CustomerHomepage slug="gibun" />;
 }
