@@ -1,4 +1,12 @@
-import { consultationItems } from "../../../../lib/consultationQuote";
+import {
+  reviewAiSchedule,
+  validAiDate,
+} from "../../../../lib/aiScheduleDate.mjs";
+
+import {
+  consultationItems,
+} from "../../../../lib/consultationQuote";
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -6,38 +14,57 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 function cleanString(value) {
-  if (value === null || value === undefined) return "";
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
   return String(value).trim();
 }
 
 function getBearerToken(request) {
   const authorization =
-    request.headers.get("authorization") || "";
+    request.headers.get("authorization") ||
+    "";
 
-  if (!authorization.startsWith("Bearer ")) return "";
+  if (
+    !authorization.startsWith("Bearer ")
+  ) {
+    return "";
+  }
 
-  return authorization.slice("Bearer ".length).trim();
+  return authorization
+    .slice("Bearer ".length)
+    .trim();
 }
 
 async function authenticateAdmin(request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
     return {
-      error: "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
+      error:
+        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
       status: 500,
     };
   }
 
   if (!serviceRoleKey) {
     return {
-      error: "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
+      error:
+        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
       status: 500,
     };
   }
 
-  const accessToken = getBearerToken(request);
+  const accessToken =
+    getBearerToken(request);
 
   if (!accessToken) {
     return {
@@ -60,12 +87,22 @@ async function authenticateAdmin(request) {
   const {
     data: userData,
     error: userError,
-  } = await supabaseAdmin.auth.getUser(accessToken);
+  } = await supabaseAdmin.auth.getUser(
+    accessToken
+  );
 
-  if (userError || !userData?.user?.id) {
-    console.error("통화내용 사용자 인증:", userError);
+  if (
+    userError ||
+    !userData?.user?.id
+  ) {
+    console.error(
+      "통화내용 사용자 인증:",
+      userError
+    );
+
     return {
-      error: "로그인 정보를 확인할 수 없습니다.",
+      error:
+        "로그인 정보를 확인할 수 없습니다.",
       status: 401,
     };
   }
@@ -77,14 +114,21 @@ async function authenticateAdmin(request) {
     error: profileError,
   } = await supabaseAdmin
     .from("profiles")
-    .select("id,company_id,role,is_active")
+    .select(
+      "id,company_id,role,is_active"
+    )
     .eq("id", userId)
     .maybeSingle();
 
   if (profileError) {
-    console.error("통화내용 profile 조회:", profileError);
+    console.error(
+      "통화내용 profile 조회:",
+      profileError
+    );
+
     return {
-      error: "관리자 정보를 확인하지 못했습니다.",
+      error:
+        "관리자 정보를 확인하지 못했습니다.",
       status: 500,
     };
   }
@@ -98,7 +142,8 @@ async function authenticateAdmin(request) {
 
   if (profile.is_active === false) {
     return {
-      error: "비활성화된 관리자 계정입니다.",
+      error:
+        "비활성화된 관리자 계정입니다.",
       status: 403,
     };
   }
@@ -110,14 +155,21 @@ async function authenticateAdmin(request) {
     error: companyError,
   } = await supabaseAdmin
     .from("companies")
-    .select("id,company_name,is_active")
+    .select(
+      "id,company_name,is_active"
+    )
     .eq("id", companyId)
     .maybeSingle();
 
   if (companyError) {
-    console.error("통화내용 업체 조회:", companyError);
+    console.error(
+      "통화내용 업체 조회:",
+      companyError
+    );
+
     return {
-      error: "업체 정보를 확인하지 못했습니다.",
+      error:
+        "업체 정보를 확인하지 못했습니다.",
       status: 500,
     };
   }
@@ -159,12 +211,20 @@ function parseJson(text) {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
+    const start =
+      cleaned.indexOf("{");
 
-    if (start >= 0 && end > start) {
+    const end =
+      cleaned.lastIndexOf("}");
+
+    if (
+      start >= 0 &&
+      end > start
+    ) {
       try {
-        return JSON.parse(cleaned.slice(start, end + 1));
+        return JSON.parse(
+          cleaned.slice(start, end + 1)
+        );
       } catch {
         return null;
       }
@@ -176,18 +236,25 @@ function parseJson(text) {
 
 function extractOutputText(data) {
   if (
-    typeof data?.output_text === "string" &&
+    typeof data?.output_text ===
+      "string" &&
     data.output_text.trim()
   ) {
     return data.output_text.trim();
   }
 
-  if (!Array.isArray(data?.output)) return "";
+  if (!Array.isArray(data?.output)) {
+    return "";
+  }
 
   const texts = [];
 
   for (const item of data.output) {
-    if (!Array.isArray(item?.content)) continue;
+    if (
+      !Array.isArray(item?.content)
+    ) {
+      continue;
+    }
 
     for (const content of item.content) {
       if (
@@ -215,7 +282,10 @@ function cleanAmount(value) {
     typeof value === "number" &&
     Number.isFinite(value)
   ) {
-    return Math.max(0, Math.round(value));
+    return Math.max(
+      0,
+      Math.round(value)
+    );
   }
 
   const text = String(value)
@@ -225,62 +295,88 @@ function cleanAmount(value) {
 
   const number = Number(text);
 
-  if (!Number.isFinite(number)) return "";
+  if (!Number.isFinite(number)) {
+    return "";
+  }
 
-  return Math.max(0, Math.round(number));
+  return Math.max(
+    0,
+    Math.round(number)
+  );
 }
 
 function cleanDate(value) {
   const text = cleanString(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+  return validAiDate(text) ? text : "";
 }
 
 function cleanTime(value) {
   const text = cleanString(value);
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text)
+
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(
+    text
+  )
     ? text
     : "";
 }
 
 function cleanMaterials(value) {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-  return value.slice(0, 20).map((item) => {
-    if (!item || typeof item !== "object") return null;
+  return value
+    .slice(0, 20)
+    .map((item) => {
+      if (
+        !item ||
+        typeof item !== "object"
+      ) {
+        return null;
+      }
 
-    const brand = cleanString(item.brand);
-    const productCode = cleanString(item.product_code);
-    const productName = cleanString(item.product_name);
+      const brand =
+        cleanString(item.brand);
 
-    const quantity =
-      item.quantity === null ||
-      item.quantity === undefined ||
-      item.quantity === ""
-        ? ""
-        : cleanString(item.quantity);
+      const productCode =
+        cleanString(item.product_code);
 
-    const unit = cleanString(item.unit);
-    const memo = cleanString(item.memo);
+      const productName =
+        cleanString(item.product_name);
 
-    if (
-      !brand &&
-      !productCode &&
-      !productName &&
-      !quantity &&
-      !memo
-    ) {
-      return null;
-    }
+      const quantity =
+        item.quantity === null ||
+        item.quantity === undefined ||
+        item.quantity === ""
+          ? ""
+          : cleanString(item.quantity);
 
-    return {
-      brand,
-      product_code: productCode,
-      product_name: productName,
-      quantity,
-      unit: unit || "m",
-      memo,
-    };
-  }).filter(Boolean);
+      const unit =
+        cleanString(item.unit);
+
+      const memo =
+        cleanString(item.memo);
+
+      if (
+        !brand &&
+        !productCode &&
+        !productName &&
+        !quantity &&
+        !memo
+      ) {
+        return null;
+      }
+
+      return {
+        brand,
+        product_code: productCode,
+        product_name: productName,
+        quantity,
+        unit: unit || "m",
+        memo,
+      };
+    })
+    .filter(Boolean);
 }
 
 function normalizeResult(raw) {
@@ -292,33 +388,65 @@ function normalizeResult(raw) {
       : {};
 
   return {
-    quote_items: consultationItems(source.quote_items),
-    other_schedule: cleanString(source.other_schedule),
+    quote_items: consultationItems(
+      source.quote_items
+    ),
+    other_schedule: cleanString(
+      source.other_schedule
+    ),
     date: cleanDate(source.date),
-    start_time: cleanTime(source.start_time),
-    end_time: cleanTime(source.end_time),
-    customer_name: cleanString(source.customer_name),
-    customer_phone: cleanString(source.customer_phone),
-    site_name: cleanString(source.site_name),
-    address: cleanString(source.address),
-    address_detail: cleanString(source.address_detail),
+    start_time: cleanTime(
+      source.start_time
+    ),
+    end_time: cleanTime(
+      source.end_time
+    ),
+    customer_name: cleanString(
+      source.customer_name
+    ),
+    customer_phone: cleanString(
+      source.customer_phone
+    ),
+    site_name: cleanString(
+      source.site_name
+    ),
+    address: cleanString(
+      source.address
+    ),
+    address_detail: cleanString(
+      source.address_detail
+    ),
     region: cleanString(source.region),
-    work_type: cleanString(source.work_type),
-    work_description: cleanString(source.work_description),
-    contract_amount: cleanAmount(source.contract_amount),
-    deposit_amount: cleanAmount(source.deposit_amount),
+    work_type: cleanString(
+      source.work_type
+    ),
+    work_description: cleanString(
+      source.work_description
+    ),
+    contract_amount: cleanAmount(
+      source.contract_amount
+    ),
+    deposit_amount: cleanAmount(
+      source.deposit_amount
+    ),
     memo: cleanString(source.memo),
-    materials: cleanMaterials(source.materials),
+    materials: cleanMaterials(
+      source.materials
+    ),
   };
 }
 
 function getKoreaDateString() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    ).formatToParts(new Date());
 
   const values = {};
 
@@ -326,54 +454,81 @@ function getKoreaDateString() {
     values[part.type] = part.value;
   }
 
-  return `${values.year}-${values.month}-${values.day}`;
+  return (
+    `${values.year}-` +
+    `${values.month}-` +
+    `${values.day}`
+  );
 }
 
 export async function POST(request) {
   try {
-    const auth = await authenticateAdmin(request);
+    const auth =
+      await authenticateAdmin(request);
 
     if (!auth?.success) {
-      return NextResponse.json({
-        success: false,
-        error: auth?.error || "관리자 인증에 실패했습니다.",
-      }, {
-        status: auth?.status || 401,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            auth?.error ||
+            "관리자 인증에 실패했습니다.",
+        },
+        {
+          status: auth?.status || 401,
+        }
+      );
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({
-        success: false,
-        error: "OPENAI_API_KEY가 설정되어 있지 않습니다.",
-      }, {
-        status: 500,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "OPENAI_API_KEY가 설정되어 있지 않습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
     }
 
-    const body = await request.json();
-    const content = cleanString(body?.content);
+    const body =
+      await request.json();
+
+    const content =
+      cleanString(body?.content);
 
     if (!content) {
-      return NextResponse.json({
-        success: false,
-        error: "통화내용이 없습니다.",
-      }, {
-        status: 400,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "통화내용이 없습니다.",
+        },
+        {
+          status: 400,
+        }
+      );
     }
 
     if (content.length < 5) {
-      return NextResponse.json({
-        success: false,
-        error: "통화내용이 너무 짧습니다.",
-      }, {
-        status: 400,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "통화내용이 너무 짧습니다.",
+        },
+        {
+          status: 400,
+        }
+      );
     }
 
-    const trimmedContent = content.slice(0, 20000);
-    const currentDate = getKoreaDateString();
+    const trimmedContent =
+      content.slice(0, 20000);
+
+    const currentDate =
+      getKoreaDateString();
 
     const instruction = `
 당신은 대한민국 인테리어필름 시공업체의 일정등록 보조 AI입니다.
@@ -383,6 +538,10 @@ export async function POST(request) {
 통화내용에서 명확하게 확인되는 정보만 추출하세요.
 
 현재 대한민국 기준 날짜는 ${currentDate} 입니다.
+월·일만 언급되고 연도가 없으면 현재 대한민국 기준 연도를 사용하세요.
+통화 내용에 연도가 명시되어 있으면 그 연도를 그대로 사용하세요.
+해석한 날짜가 현재 기준 과거 날짜이면 date/start_time/end_time은 빈 문자열로 남기고 원문 날짜와 확인 필요 이유를 memo에 적으세요.
+2023년 등 임의의 연도를 만들어내거나 과거 날짜를 임의로 다음 해로 변경하지 마세요.
 
 반드시 지켜야 할 규칙:
 
@@ -540,78 +699,115 @@ ${trimmedContent}
         headers: {
           Authorization:
             `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
         body: JSON.stringify({
           model: "gpt-5.6-luna",
-          input: [{
-            role: "user",
-            content: [{
-              type: "input_text",
-              text: instruction,
-            }],
-          }],
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: instruction,
+                },
+              ],
+            },
+          ],
         }),
       }
     );
 
-    const data = await openaiResponse.json();
+    const data =
+      await openaiResponse.json();
 
     if (!openaiResponse.ok) {
-      console.error("OpenAI parse-site-call error:", data);
+      console.error(
+        "OpenAI parse-site-call error:",
+        data
+      );
 
-      return NextResponse.json({
-        success: false,
-        error:
-          data?.error?.message ||
-          "AI 통화내용 분석 요청에 실패했습니다.",
-      }, {
-        status: openaiResponse.status,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            data?.error?.message ||
+            "AI 통화내용 분석 요청에 실패했습니다.",
+        },
+        {
+          status: openaiResponse.status,
+        }
+      );
     }
 
-    const outputText = extractOutputText(data);
+    const outputText =
+      extractOutputText(data);
 
     if (!outputText) {
-      console.error("AI output empty:", data);
+      console.error(
+        "AI output empty:",
+        data
+      );
 
-      return NextResponse.json({
-        success: false,
-        error: "AI 분석 결과가 없습니다.",
-      }, {
-        status: 500,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "AI 분석 결과가 없습니다.",
+        },
+        {
+          status: 500,
+        }
+      );
     }
 
-    const parsed = parseJson(outputText);
+    const parsed =
+      parseJson(outputText);
 
     if (!parsed) {
-      console.error("통화내용 JSON 파싱 실패:", outputText);
+      console.error(
+        "통화내용 JSON 파싱 실패:",
+        outputText
+      );
 
-      return NextResponse.json({
-        success: false,
-        error: "AI 분석 결과를 읽지 못했습니다. 다시 시도해주세요.",
-      }, {
-        status: 500,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "AI 분석 결과를 읽지 못했습니다. 다시 시도해주세요.",
+        },
+        {
+          status: 500,
+        }
+      );
     }
 
-    const result = normalizeResult(parsed);
+    const result = reviewAiSchedule(
+      normalizeResult(parsed),
+      currentDate
+    );
 
     return NextResponse.json({
       success: true,
       data: result,
     });
   } catch (error) {
-    console.error("parse-site-call API error:", error);
+    console.error(
+      "parse-site-call API error:",
+      error
+    );
 
-    return NextResponse.json({
-      success: false,
-      error:
-        error?.message ||
-        "통화내용 분석 중 오류가 발생했습니다.",
-    }, {
-      status: 500,
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error?.message ||
+          "통화내용 분석 중 오류가 발생했습니다.",
+      },
+      {
+        status: 500,
+      }
+    );
   }
 }
