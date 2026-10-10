@@ -3,10 +3,10 @@
 import { useState } from "react";
 
 const section = {
-  marginTop: 20,
-  padding: 20,
+  marginTop: 10,
+  padding: 14,
   border: "1px solid #dbe3ee",
-  borderRadius: 18,
+  borderRadius: 14,
   background: "#fff",
   color: "#172337",
   overflowWrap: "anywhere",
@@ -40,8 +40,9 @@ const won = (value) =>
     : "금액 확인 필요";
 
 const title = (row) =>
-  [...new Set([row.category, row.sub_category].filter(Boolean))]
-    .join(" · ") || "시공 부위";
+  [...new Set(
+    [row.category, row.sub_category].filter(Boolean)
+  )].join(" · ") || "시공 부위";
 
 const priced = (row) =>
   [
@@ -107,12 +108,16 @@ export default function EstimateTotal({
 
   const validTotal =
     total &&
-    [total.min, total.max, total.average].every(positive);
+    [
+      total.min,
+      total.max,
+      total.average,
+    ].every(positive);
 
   const partial = Number(total?.missingCount) > 0;
 
   const heading = partial
-    ? "계산된 부위의 부분 견적"
+    ? "계算된 부위의 부분 견적".replace("算", "산")
     : "총 예상 시공 견적";
 
   const filmName = selectedFilm
@@ -129,7 +134,8 @@ export default function EstimateTotal({
     validTotal &&
     positive(baseEstimate?.average) &&
     filmPriceAvailable
-      ? Number(total.average) - Number(baseEstimate.average)
+      ? Number(total.average) -
+        Number(baseEstimate.average)
       : null;
 
   const copyText = [
@@ -164,7 +170,11 @@ export default function EstimateTotal({
         : "금액 확인 필요 · 합계에 미포함",
 
       ...(positive(row.unit_average) && !row.partial
-        ? [`세트당 참고 평균: 약 ${won(row.unit_average)}`]
+        ? [
+            `세트당 참고 평균: 약 ${won(
+              row.unit_average
+            )}`,
+          ]
         : []),
 
       "",
@@ -201,7 +211,9 @@ export default function EstimateTotal({
 
       await navigator.clipboard.writeText(copyText);
 
-      setCopyMessage("현재 견적 내용을 복사했습니다.");
+      setCopyMessage(
+        "현재 견적 내용을 복사했습니다."
+      );
       setShowCopyText(false);
     } catch {
       setCopyMessage(
@@ -242,9 +254,13 @@ export default function EstimateTotal({
         </span>
       </div>
 
-      <p style={muted}>
-        현재 선택한 시공 범위와 수량을 기준으로 정리했습니다.
-        최종 계약금액은 실측과 업체 상담 후 확정합니다.
+      <p
+        style={{
+          ...muted,
+          margin: "8px 0",
+        }}
+      >
+        최종 금액은 실측과 상담 후 확정합니다.
       </p>
 
       <div
@@ -255,7 +271,9 @@ export default function EstimateTotal({
         }}
       >
         <strong>
-          {validTotal ? heading : "견적 금액 확인 필요"}
+          {validTotal
+            ? heading
+            : "견적 금액 확인 필요"}
         </strong>
 
         <div
@@ -265,23 +283,28 @@ export default function EstimateTotal({
             marginTop: 8,
           }}
         >
-          {validTotal ? won(total.average) : "상담 후 안내"}
+          {validTotal
+            ? won(total.average)
+            : "상담 후 안내"}
         </div>
 
-        {validTotal && (
-          <p
-            style={{
-              margin: "8px 0 0",
-              lineHeight: 1.6,
-            }}
-          >
-            참고 범위 {won(total.min)} ~ {won(total.max)}
-          </p>
-        )}
+        {validTotal &&
+          Number(total.min) !== Number(total.max) && (
+            <p
+              style={{
+                margin: "8px 0 0",
+                lineHeight: 1.6,
+              }}
+            >
+              참고 범위 {won(total.min)} ~{" "}
+              {won(total.max)}
+            </p>
+          )}
 
         {validTotal && (
           <p style={muted}>
-            견적 계산 완료 {total.estimatedGroupCount}/
+            견적 계산 완료{" "}
+            {total.estimatedGroupCount}/
             {total.totalGroupCount}개 부위
           </p>
         )}
@@ -289,7 +312,8 @@ export default function EstimateTotal({
         {!validTotal && (
           <p style={muted}>
             현재 사진만으로는 금액을 산정하기 어렵습니다.
-            아래 부위별 안내를 확인하거나 상담을 신청해주세요.
+            아래 부위별 안내를 확인하거나 상담을
+            신청해주세요.
           </p>
         )}
 
@@ -301,15 +325,37 @@ export default function EstimateTotal({
               lineHeight: 1.7,
             }}
           >
-            아직 견적이 확정되지 않은 {total.missingCount}개
-            부위는 위 금액에 포함되지 않았습니다.
-            미산정 부위는 0원 또는 무료 시공을 뜻하지 않습니다.
+            아직 견적이 확정되지 않은{" "}
+            {total.missingCount}개 부위는 위 금액에
+            포함되지 않았습니다. 미산정 부위는
+            0원 또는 무료 시공을 뜻하지 않습니다.
           </p>
         )}
       </div>
 
-      <div style={card}>
-        <strong>적용 필름·조건</strong>
+      {selectedFilm && !filmPriceAvailable && (
+        <p
+          role="status"
+          style={{
+            ...muted,
+            color: "#92400e",
+          }}
+        >
+          선택 필름의 가격정보가 없어 기본 견적을
+          표시합니다.
+        </p>
+      )}
+
+      <details style={card}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontWeight: 700,
+            fontSize: 14,
+          }}
+        >
+          적용 필름·조건 보기
+        </summary>
 
         <p style={{ marginBottom: 6 }}>
           {filmName}
@@ -317,7 +363,10 @@ export default function EstimateTotal({
 
         {selectedFilm && (
           <p style={muted}>
-            {fireType === "fire" ? "방염" : "비방염"} ·{" "}
+            {fireType === "fire"
+              ? "방염"
+              : "비방염"}{" "}
+            ·{" "}
             {filmPriceAvailable
               ? "선택 필름의 가격 차이를 반영한 예상 금액입니다."
               : "가격정보가 없어 선택 필름의 가격 차이는 반영하지 않았습니다. 위 금액은 기본 견적입니다."}
@@ -326,7 +375,8 @@ export default function EstimateTotal({
 
         {difference !== null && (
           <p style={muted}>
-            기본 예상금액 {won(baseEstimate.average)} 대비{" "}
+            기본 예상금액{" "}
+            {won(baseEstimate.average)} 대비{" "}
             {difference === 0
               ? "변동 없음"
               : `${
@@ -336,22 +386,32 @@ export default function EstimateTotal({
                 ).toLocaleString("ko-KR")}원`}
           </p>
         )}
-      </div>
+      </details>
 
       {rows.length > 0 && (
-        <div style={{ marginTop: 22 }}>
-          <h3 style={{ fontSize: 17 }}>
-            부위별 시공 내역
-          </h3>
+        <details style={card}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: 14,
+            }}
+          >
+            부위별 시공 내역 보기 ·{" "}
+            {rows.length}개
+          </summary>
 
           <p style={muted}>
             사진 장수와 실제 시공 수량은 다릅니다.
-            문·문틀은 요청한 총 세트 수를 한 번만 반영합니다.
+            문·문틀은 요청한 총 세트 수를 한 번만
+            반영합니다.
           </p>
 
           {rows.map((row, index) => (
             <article
-              key={`${row.group_key || "scope"}-${index}`}
+              key={`${
+                row.group_key || "scope"
+              }-${index}`}
               style={card}
             >
               <strong>
@@ -362,12 +422,15 @@ export default function EstimateTotal({
                 {quantityText(row)}
               </p>
 
-              {positive(row.unit_average) && !row.partial && (
-                <p style={muted}>
-                  세트당 참고 평균 약 {won(row.unit_average)}
-                  {" · "}합계는 수량 환산 후 반올림
-                </p>
-              )}
+              {positive(row.unit_average) &&
+                !row.partial && (
+                  <p style={muted}>
+                    세트당 참고 평균 약{" "}
+                    {won(row.unit_average)}
+                    {" · "}
+                    합계는 수량 환산 후 반올림
+                  </p>
+                )}
 
               <div
                 style={{
@@ -382,7 +445,8 @@ export default function EstimateTotal({
 
               {priced(row) ? (
                 <p style={muted}>
-                  참고 범위 {won(row.estimate_min)} ~{" "}
+                  참고 범위{" "}
+                  {won(row.estimate_min)} ~{" "}
                   {won(row.estimate_max)}
                   {row.partial
                     ? " · 계산된 세트만 포함"
@@ -395,25 +459,27 @@ export default function EstimateTotal({
                     color: "#92400e",
                   }}
                 >
-                  합계에 미포함 · 사진 또는 시공 범위를
-                  추가 확인해야 합니다.
+                  합계에 미포함 · 사진 또는 시공
+                  범위를 추가 확인해야 합니다.
                 </p>
               )}
 
               {Number(row.photo_count) > 0 && (
                 <small style={muted}>
-                  참고 사진 {row.photo_count}장
+                  참고 사진{" "}
+                  {row.photo_count}장
                 </small>
               )}
             </article>
           ))}
-        </div>
+        </details>
       )}
 
-      <details style={{ marginTop: 20 }} open>
+      <details style={card}>
         <summary
           style={{
-            fontWeight: 800,
+            fontWeight: 700,
+            fontSize: 14,
             cursor: "pointer",
           }}
         >
@@ -422,8 +488,8 @@ export default function EstimateTotal({
 
         <p style={muted}>
           아래 항목은 포함 또는 별도 비용 여부가
-          아직 확정되지 않았습니다.
-          최종 견적에서 확인해주세요.
+          아직 확정되지 않았습니다. 최종 견적에서
+          확인해주세요.
         </p>
 
         <dl style={{ margin: 0 }}>
@@ -458,8 +524,8 @@ export default function EstimateTotal({
 
         <p style={muted}>
           부위별 금액은 예상 시공금액입니다.
-          자재·시공·부자재의 세부 내역은
-          상담 시 확인해주세요.
+          자재·시공·부자재의 세부 내역은 상담 시
+          확인해주세요.
         </p>
       </details>
 
@@ -494,7 +560,9 @@ export default function EstimateTotal({
           readOnly
           value={copyText}
           rows={12}
-          onFocus={(event) => event.target.select()}
+          onFocus={(event) =>
+            event.target.select()
+          }
           style={{
             width: "100%",
             boxSizing: "border-box",
@@ -506,4 +574,4 @@ export default function EstimateTotal({
       )}
     </section>
   );
-              }
+                }
