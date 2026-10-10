@@ -1,5 +1,10 @@
+import {
+  reviewAiSchedule,
+} from "../../../../lib/aiScheduleDate.mjs";
+
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
+
 import {
   SCREENSHOT_MODEL,
   screenshotSchema,
@@ -24,7 +29,11 @@ const fault = (
   message,
   status = 500,
   code = "ERROR"
-) => Object.assign(new Error(message), { status, code });
+) =>
+  Object.assign(new Error(message), {
+    status,
+    code,
+  });
 
 async function authorize(request) {
   const token = request.headers
@@ -35,11 +44,17 @@ async function authorize(request) {
     throw fault("다시 로그인해주세요.", 401);
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key) {
-    throw fault("서버 설정을 확인해주세요.", 503);
+    throw fault(
+      "서버 설정을 확인해주세요.",
+      503
+    );
   }
 
   const db = createClient(url, key, {
@@ -49,10 +64,14 @@ async function authorize(request) {
     },
   });
 
-  const { data, error } = await db.auth.getUser(token);
+  const { data, error } =
+    await db.auth.getUser(token);
 
   if (error || !data?.user) {
-    throw fault("로그인이 만료되었습니다.", 401);
+    throw fault(
+      "로그인이 만료되었습니다.",
+      401
+    );
   }
 
   return { db, userId: data.user.id };
@@ -94,16 +113,21 @@ function accessResponse(data) {
     RATE_LIMIT: 429,
   }[data.code] || 503;
 
-  return json({
-    error: data.error,
-    code: data.code,
-    usage: data.usage,
-  }, status);
+  return json(
+    {
+      error: data.error,
+      code: data.code,
+      usage: data.usage,
+    },
+    status
+  );
 }
 
 export async function GET(request) {
   try {
-    const { db, userId } = await authorize(request);
+    const { db, userId } =
+      await authorize(request);
+
     const data = await access(db, userId);
 
     return data.ok
@@ -128,7 +152,9 @@ function imageType(bytes) {
 
   if (
     bytes.subarray(0, 8).equals(
-      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+      Buffer.from([
+        137, 80, 78, 71, 13, 10, 26, 10,
+      ])
     )
   ) {
     return "image/png";
@@ -153,21 +179,28 @@ export async function POST(request) {
   let finishing = false;
 
   try {
-    ({ db, userId } = await authorize(request));
+    ({ db, userId } =
+      await authorize(request));
 
-    const permission = await access(db, userId);
+    const permission =
+      await access(db, userId);
 
     if (!permission.ok) {
       return accessResponse(permission);
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      throw fault("OPENAI_API_KEY 설정을 확인해주세요.", 503);
+      throw fault(
+        "OPENAI_API_KEY 설정을 확인해주세요.",
+        503
+      );
     }
 
     if (
-      Number(request.headers.get("content-length") || 0) >
-      4000000
+      Number(
+        request.headers.get("content-length") ||
+          0
+      ) > 4000000
     ) {
       throw fault(
         "업로드 합계는 3.5MB 이하로 줄여주세요.",
@@ -177,15 +210,22 @@ export async function POST(request) {
 
     const form = await request.formData();
 
-    requestId = String(form.get("requestId") || "");
+    requestId = String(
+      form.get("requestId") || ""
+    );
 
     const referenceDate = String(
       form.get("referenceDate") || ""
     );
 
     if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId) ||
-      (referenceDate && !validScreenshotDate(referenceDate))
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        requestId
+      ) ||
+      (
+        referenceDate &&
+        !validScreenshotDate(referenceDate)
+      )
     ) {
       throw fault(
         "요청 번호 또는 대화 기준일을 확인해주세요.",
@@ -200,12 +240,15 @@ export async function POST(request) {
       files.length > 5 ||
       files.some(
         (file) =>
-          typeof file.arrayBuffer !== "function" ||
+          typeof file.arrayBuffer !==
+            "function" ||
           !file.size ||
           file.size > 3500000
       ) ||
-      files.reduce((sum, file) => sum + file.size, 0) >
-        3500000
+      files.reduce(
+        (sum, file) => sum + file.size,
+        0
+      ) > 3500000
     ) {
       throw fault(
         "사진은 최대 5장, 합계 3.5MB 이하로 선택해주세요.",
@@ -214,10 +257,15 @@ export async function POST(request) {
     }
 
     const images = [];
-    const hash = createHash("sha256").update(referenceDate);
+
+    const hash = createHash("sha256")
+      .update(referenceDate);
 
     for (const file of files) {
-      const bytes = Buffer.from(await file.arrayBuffer());
+      const bytes = Buffer.from(
+        await file.arrayBuffer()
+      );
+
       const type = imageType(bytes);
 
       if (!type || type !== file.type) {
@@ -227,12 +275,15 @@ export async function POST(request) {
         );
       }
 
-      hash.update(`${type}:${bytes.length}:`).update(bytes);
+      hash
+        .update(`${type}:${bytes.length}:`)
+        .update(bytes);
 
       images.push({
         type: "input_image",
         image_url:
-          `data:${type};base64,${bytes.toString("base64")}`,
+          `data:${type};base64,` +
+          bytes.toString("base64"),
         detail: "high",
       });
     }
@@ -250,7 +301,7 @@ export async function POST(request) {
 
     if (booking.cached) {
       return json({
-        data: booking.data,
+        data: reviewAiSchedule(booking.data),
         usage: booking.usage,
         cached: true,
       });
@@ -272,18 +323,23 @@ export async function POST(request) {
           model: SCREENSHOT_MODEL,
           store: false,
           max_output_tokens: 3500,
-          instructions: screenshotInstructions(referenceDate),
-          input: [{
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text:
-                  "첨부한 대화 사진에서 한 현장의 등록 초안을 추출해주세요.",
-              },
-              ...images,
-            ],
-          }],
+          instructions:
+            screenshotInstructions(
+              referenceDate
+            ),
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text:
+                    "첨부한 대화 사진에서 한 현장의 등록 초안을 추출해주세요.",
+                },
+                ...images,
+              ],
+            },
+          ],
           text: {
             format: {
               type: "json_schema",
@@ -316,15 +372,22 @@ export async function POST(request) {
     }
 
     const output = (result.output || [])
-      .flatMap((item) => item.content || [])
-      .filter((item) => item.type === "output_text")
+      .flatMap(
+        (item) => item.content || []
+      )
+      .filter(
+        (item) =>
+          item.type === "output_text"
+      )
       .map((item) => item.text)
       .join("");
 
     let draft;
 
     try {
-      draft = normalizeScreenshot(JSON.parse(output));
+      draft = normalizeScreenshot(
+        JSON.parse(output)
+      );
     } catch (error) {
       throw fault(
         error.message === "MULTIPLE_SITES"
@@ -337,14 +400,18 @@ export async function POST(request) {
 
     finishing = true;
 
-    const { data: saved, error } = await db
+    const {
+      data: saved,
+      error,
+    } = await db
       .from("site_screenshot_requests")
       .update({
         status: "succeeded",
         result: draft,
         model: SCREENSHOT_MODEL,
         token_usage: result.usage || null,
-        finished_at: new Date().toISOString(),
+        finished_at:
+          new Date().toISOString(),
       })
       .eq("company_id", companyId)
       .eq("request_id", requestId)
@@ -363,11 +430,14 @@ export async function POST(request) {
 
     reserved = false;
 
-    const current = await access(db, userId);
+    const current =
+      await access(db, userId);
 
     return json({
       data: draft,
-      usage: current.ok ? current.usage : null,
+      usage: current.ok
+        ? current.usage
+        : null,
     });
   } catch (error) {
     if (reserved && !finishing) {
@@ -375,7 +445,8 @@ export async function POST(request) {
         .from("site_screenshot_requests")
         .update({
           status: "failed",
-          finished_at: new Date().toISOString(),
+          finished_at:
+            new Date().toISOString(),
         })
         .eq("company_id", companyId)
         .eq("request_id", requestId)
@@ -383,11 +454,20 @@ export async function POST(request) {
         .eq("status", "pending");
     }
 
-    return json({
-      error: error.status
-        ? error.message
-        : "분석 연결에 실패했습니다. 잠시 후 다시 확인해주세요.",
-      code: error.code || (reserved ? "RETRY_NEW" : "ERROR"),
-    }, error.status || 502);
+    return json(
+      {
+        error: error.status
+          ? error.message
+          : "분석 연결에 실패했습니다. 잠시 후 다시 확인해주세요.",
+        code:
+          error.code ||
+          (
+            reserved
+              ? "RETRY_NEW"
+              : "ERROR"
+          ),
+      },
+      error.status || 502
+    );
   }
 }
