@@ -108,8 +108,10 @@ export default function PhotoCard({
               >
                 {String(photo.ai_description || "")
                   .split("\n")
-                  .find((line) =>
-                    line.startsWith("문 형태:")
+                  .find(
+                    (line) =>
+                      line.startsWith("문 형태:") ||
+                      line.startsWith("샤시 구조:")
                   ) || "AI 분석 · 구조 확인"}
               </summary>
 
@@ -199,7 +201,7 @@ export default function PhotoCard({
             onChange={(e) =>
               setEditPhotoDescription(e.target.value)
             }
-            placeholder="문 형태·홈·몰딩·유리·시공 범위를 확인하고 수정해주세요."
+            placeholder="문·샤시 구조와 실제 시공 범위를 확인하고 수정해주세요."
             rows={4}
             style={{
               ...inputStyle,
@@ -236,4 +238,4 @@ export default function PhotoCard({
       )}
     </div>
   );
-}
+              }
