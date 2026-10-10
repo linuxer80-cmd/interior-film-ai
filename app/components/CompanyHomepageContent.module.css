@@ -1,0 +1,222 @@
+.content {
+  padding: 0 20px 32px;
+  color: #173456;
+  line-height: 1.7;
+}
+
+.content section {
+  padding: 30px 0;
+  border-top: 1px solid #dfe7ef;
+}
+
+.content h2 {
+  font-size: 23px;
+  line-height: 1.4;
+  margin: 0 0 14px;
+  letter-spacing: -.04em;
+}
+
+.content h3 {
+  font-size: 17px;
+  margin: 0 0 10px;
+}
+
+.content p {
+  color: #607086;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.intro {
+  white-space: pre-wrap;
+}
+
+.cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.case {
+  border: 1px solid #dfe7ef;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.case summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.case summary::-webkit-details-marker {
+  display: none;
+}
+
+.case summary > img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  display: block;
+}
+
+.case summary strong,
+.case summary small,
+.case summary span {
+  display: block;
+  margin: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.case summary strong {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.case summary small {
+  color: #69788a;
+  font-size: 12px;
+}
+
+.case summary span {
+  color: #1765cd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.case[open] {
+  grid-column: 1 / -1;
+}
+
+.caseBody {
+  padding: 16px;
+  border-top: 1px solid #dfe7ef;
+}
+
+.caseBody p {
+  white-space: pre-wrap;
+}
+
+.photos {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.photos img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.services {
+  display: grid;
+  gap: 12px;
+}
+
+.services article {
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #dfe7ef;
+  border-radius: 16px;
+}
+
+.services p,
+.steps p {
+  margin: 0;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.steps li::marker {
+  color: #1765cd;
+  font-weight: 800;
+}
+
+.faq {
+  border: 1px solid #dfe7ef;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+
+.faq summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.faq p {
+  margin: 14px 0 0;
+}
+
+.footer {
+  border-top: 1px solid #dfe7ef;
+  padding: 28px 0 0;
+}
+
+.footer dl {
+  font-size: 12px;
+  color: #607086;
+}
+
+.footer dl > div {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.footer dt {
+  flex: 0 0 90px;
+}
+
+.footer dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.phone {
+  display: block;
+  border: 1px solid #1765cd;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: center;
+  color: #1765cd;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+
+.links a {
+  color: #1765cd;
+}
+
+.content a:focus-visible,
+.content summary:focus-visible {
+  outline: 3px solid #94c7f4;
+  outline-offset: 3px;
+}
+
+@media (max-width: 360px) {
+  .content {
+    padding-inline: 14px;
+  }
+
+  .cases {
+    grid-template-columns: 1fr;
+  }
+}
