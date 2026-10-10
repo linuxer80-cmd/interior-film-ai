@@ -35,7 +35,12 @@ const AREA_DEFINITIONS = {
     {
       key: "fridge_cabinet",
       label: "냉장고장",
-      words: ["냉장고장", "냉장고수납장", "fridgecabinet", "refrigeratorcabinet"],
+      words: [
+        "냉장고장",
+        "냉장고수납장",
+        "fridgecabinet",
+        "refrigeratorcabinet",
+      ],
     },
     {
       key: "tall_cabinet",
@@ -57,7 +62,15 @@ const AREA_DEFINITIONS = {
     {
       key: "door_leaf",
       label: "문짝",
-      words: ["문짝", "방문", "방화문", "중문", "현관문", "도어", "door"],
+      words: [
+        "문짝",
+        "방문",
+        "방화문",
+        "중문",
+        "현관문",
+        "도어",
+        "door",
+      ],
     },
     {
       key: "door_frame",
@@ -90,35 +103,69 @@ const AREA_DEFINITIONS = {
     {
       key: "cabinet",
       label: "수납장",
-      words: ["수납장", "장식장", "거실장", "서랍장", "옷장", "책장", "cabinet", "closet"],
+      words: [
+        "수납장",
+        "장식장",
+        "거실장",
+        "서랍장",
+        "옷장",
+        "책장",
+        "cabinet",
+        "closet",
+      ],
     },
   ],
 };
 
 function getImageId(image, index) {
-  return String(image?.id || image?.key || image?.name || image?.file?.name || index);
+  return String(
+    image?.id ||
+      image?.key ||
+      image?.name ||
+      image?.file?.name ||
+      index
+  );
 }
 
 function getImagePreview(image) {
-  return image?.preview || image?.previewUrl || image?.url || image?.src || "";
+  return (
+    image?.preview ||
+    image?.previewUrl ||
+    image?.url ||
+    image?.src ||
+    ""
+  );
 }
 
 function getFilmTitle(film) {
-  return film ? [film.brand, film.product_code].filter(Boolean).join(" ") : "필름 미선택";
+  return film
+    ? [film.brand, film.product_code].filter(Boolean).join(" ")
+    : "필름 미선택";
 }
 
 function getFilmDescription(film) {
-  return film?.color_description || film?.color_family || film?.product_name || "";
+  return (
+    film?.color_description ||
+    film?.color_family ||
+    film?.product_name ||
+    ""
+  );
 }
 
 function includesAny(text, words) {
-  const normalize = (value) => String(value || "").replace(/\s+/g, "").toLowerCase();
+  const normalize = (value) =>
+    String(value || "").replace(/\s+/g, "").toLowerCase();
+
   const value = normalize(text);
-  return words.some((word) => value.includes(normalize(word)));
+
+  return words.some((word) =>
+    value.includes(normalize(word))
+  );
 }
 
 function getAnalysisText(photo, group) {
   let analysisJson = "";
+
   try {
     analysisJson = JSON.stringify(photo?.analysis || {});
   } catch {
@@ -138,65 +185,175 @@ function getAnalysisText(photo, group) {
     photo?.analysis?.subCategory,
     photo?.analysis?.sub_category,
     photo?.analysis?.description,
-    ...(Array.isArray(photo?.analysis?.tags) ? photo.analysis.tags : []),
+    ...(Array.isArray(photo?.analysis?.tags)
+      ? photo.analysis.tags
+      : []),
     ...(Array.isArray(photo?.tags) ? photo.tags : []),
     analysisJson,
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function getMatchedAnalysis(image, groups) {
-  const currentId = image?.id || image?.imageId || image?.image_id;
+  const currentId =
+    image?.id || image?.imageId || image?.image_id;
 
-  const matched = (Array.isArray(groups) ? groups : []).flatMap((group) =>
-    (Array.isArray(group?.photos) ? group.photos : [])
-      .filter((photo) => {
-        const photoId = photo?.id || photo?.imageId || photo?.image_id;
-        return Boolean(currentId && photoId && String(currentId) === String(photoId));
-      })
-      .map((photo) => ({ photo, group })),
+  const matched = (Array.isArray(groups) ? groups : []).flatMap(
+    (group) =>
+      (Array.isArray(group?.photos) ? group.photos : [])
+        .filter((photo) => {
+          const photoId =
+            photo?.id || photo?.imageId || photo?.image_id;
+
+          return Boolean(
+            currentId &&
+              photoId &&
+              String(currentId) === String(photoId)
+          );
+        })
+        .map((photo) => ({ photo, group }))
   );
 
   const photoText = [
     getAnalysisText(image, null),
-    ...matched.map(({ photo }) => getAnalysisText(photo, null)),
-  ].filter(Boolean).join(" ");
+    ...matched.map(({ photo }) =>
+      getAnalysisText(photo, null)
+    ),
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const groupText = matched
     .map(({ group }) => getAnalysisText(null, group))
     .filter(Boolean)
     .join(" ");
 
-  return { photoText, groupText, allText: `${photoText} ${groupText}` };
+  return {
+    photoText,
+    groupText,
+    allText: `${photoText} ${groupText}`,
+  };
 }
 
 function detectType(text) {
-  if (includesAny(text, ["아트월", "artwall", "featurewall", "accentwall"])) return "artwall";
-  if (includesAny(text, ["붙박이", "builtincloset", "built-incloset", "builtincabinet", "wardrobe"])) return "built_in";
-  if (includesAny(text, ["신발장", "신발수납장", "shoecabinet", "shoestorage"])) return "shoe_cabinet";
-  if (includesAny(text, ["싱크대", "주방", "상부장", "하부장", "키큰장", "팬트리", "펜트리", "아일랜드", "kitchen", "uppercabinet", "lowercabinet"])) return "kitchen";
-  if (includesAny(text, ["냉장고장", "냉장고수납장", "fridgecabinet", "refrigeratorcabinet"])) return "fridge_cabinet";
-  if (includesAny(text, ["방문", "방화문", "중문", "현관문", "문틀", "문짝", "도어", "door"])) return "door";
-  if (includesAny(text, ["수납장", "장식장", "거실장", "서랍장", "옷장", "책장", "cabinet", "closet"])) return "cabinet";
+  if (
+    includesAny(text, [
+      "아트월",
+      "artwall",
+      "featurewall",
+      "accentwall",
+    ])
+  ) return "artwall";
+
+  if (
+    includesAny(text, [
+      "붙박이",
+      "builtincloset",
+      "built-incloset",
+      "builtincabinet",
+      "wardrobe",
+    ])
+  ) return "built_in";
+
+  if (
+    includesAny(text, [
+      "신발장",
+      "신발수납장",
+      "shoecabinet",
+      "shoestorage",
+    ])
+  ) return "shoe_cabinet";
+
+  if (
+    includesAny(text, [
+      "싱크대",
+      "주방",
+      "상부장",
+      "하부장",
+      "키큰장",
+      "팬트리",
+      "펜트리",
+      "아일랜드",
+      "kitchen",
+      "uppercabinet",
+      "lowercabinet",
+    ])
+  ) return "kitchen";
+
+  if (
+    includesAny(text, [
+      "냉장고장",
+      "냉장고수납장",
+      "fridgecabinet",
+      "refrigeratorcabinet",
+    ])
+  ) return "fridge_cabinet";
+
+  if (
+    includesAny(text, [
+      "방문",
+      "방화문",
+      "중문",
+      "현관문",
+      "문틀",
+      "문짝",
+      "도어",
+      "door",
+    ])
+  ) return "door";
+
+  if (
+    includesAny(text, [
+      "수납장",
+      "장식장",
+      "거실장",
+      "서랍장",
+      "옷장",
+      "책장",
+      "cabinet",
+      "closet",
+    ])
+  ) return "cabinet";
+
   return "";
 }
 
 function getTargetAreas(targetType, analysis) {
   const definitions = AREA_DEFINITIONS[targetType] || [];
-  const detected = definitions.filter((area) => includesAny(analysis.allText, area.words));
 
-  if (detected.length) {
-    return detected.map(({ key, label }) => ({ key, label }));
-  }
+  const detected = definitions.filter((area) =>
+    includesAny(analysis.allText, area.words)
+  );
 
   if (targetType === "kitchen") {
-    return [{ key: "kitchen_all", label: "싱크대·주방가구" }];
+    return definitions
+      .filter(
+        (area) =>
+          [
+            "kitchen_upper",
+            "kitchen_lower",
+            "fridge_cabinet",
+          ].includes(area.key) ||
+          detected.some((item) => item.key === area.key)
+      )
+      .map(({ key, label }) => ({ key, label }));
+  }
+
+  if (detected.length) {
+    return detected.map(({ key, label }) => ({
+      key,
+      label,
+    }));
   }
 
   if (targetType === "door") {
     return [{ key: "door_all", label: "문·문틀" }];
   }
 
-  return definitions.slice(0, 1).map(({ key, label }) => ({ key, label }));
+  return definitions
+    .slice(0, 1)
+    .map(({ key, label }) => ({ key, label }));
 }
 
 function makeFilmPayload(area, film) {
@@ -236,8 +393,11 @@ export default function VirtualInstallPanel({
 }) {
   const [selectedImageId, setSelectedImageId] = useState("");
   const [targetType, setTargetType] = useState("");
-  const [colorMode, setColorMode] = useState(useSplitTone ? "multi" : "single");
+  const [colorMode, setColorMode] = useState(
+    useSplitTone ? "multi" : "single"
+  );
   const [localAreaFilms, setLocalAreaFilms] = useState(areaFilms);
+  const [excludedAreas, setExcludedAreas] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -247,30 +407,45 @@ export default function VirtualInstallPanel({
   const busyRef = useRef(false);
 
   const safeImages = Array.isArray(images) ? images : [];
+
   const sourceKey = safeImages
-    .map((image, index) => `${getImageId(image, index)}:${getImagePreview(image)}`)
+    .map(
+      (image, index) =>
+        `${getImageId(image, index)}:${getImagePreview(image)}`
+    )
     .join("|");
 
-  const selectedImage = safeImages.find(
-    (image, index) => getImageId(image, index) === selectedImageId,
-  ) || null;
+  const selectedImage =
+    safeImages.find(
+      (image, index) =>
+        getImageId(image, index) === selectedImageId
+    ) || null;
 
   const analysis = useMemo(
     () => getMatchedAnalysis(selectedImage, groups),
-    [selectedImage, groups],
+    [selectedImage, groups]
   );
 
-  const detectedType = detectType(analysis.photoText) || detectType(analysis.groupText);
+  const detectedType =
+    detectType(analysis.photoText) ||
+    detectType(analysis.groupText);
 
   const targetAreas = useMemo(
     () => getTargetAreas(targetType, analysis),
-    [targetType, analysis],
+    [targetType, analysis]
+  );
+
+  const includedAreas = targetAreas.filter(
+    (area) => !excludedAreas.includes(area.key)
   );
 
   const supportsMultiTone =
-    ["kitchen", "door"].includes(targetType) && targetAreas.length > 1;
+    ["kitchen", "door"].includes(targetType) &&
+    targetAreas.length > 1;
 
-  const selectedType = TARGET_TYPES.find((item) => item.key === targetType);
+  const selectedType = TARGET_TYPES.find(
+    (item) => item.key === targetType
+  );
 
   function invalidateRequest() {
     generationRef.current += 1;
@@ -284,16 +459,20 @@ export default function VirtualInstallPanel({
 
   useEffect(() => {
     const exists = safeImages.some(
-      (image, index) => getImageId(image, index) === selectedImageId,
+      (image, index) =>
+        getImageId(image, index) === selectedImageId
     );
 
     if (!exists) {
-      setSelectedImageId(safeImages.length ? getImageId(safeImages[0], 0) : "");
+      setSelectedImageId(
+        safeImages.length ? getImageId(safeImages[0], 0) : ""
+      );
     }
   }, [sourceKey, selectedImageId]);
 
   useEffect(() => {
     invalidateRequest();
+    setExcludedAreas([]);
     setTargetType(detectedType || "");
     setColorMode("single");
     setLocalAreaFilms({});
@@ -324,11 +503,17 @@ export default function VirtualInstallPanel({
       onUseSplitToneChange?.(false);
       onAreaFilmsChange?.({});
     }
-  }, [supportsMultiTone, colorMode, onUseSplitToneChange, onAreaFilmsChange]);
+  }, [
+    supportsMultiTone,
+    colorMode,
+    onUseSplitToneChange,
+    onAreaFilmsChange,
+  ]);
 
   function selectImage(imageId) {
     invalidateRequest();
     setSelectedImageId(imageId);
+    setExcludedAreas([]);
     setTargetType("");
     setColorMode("single");
     setLocalAreaFilms({});
@@ -338,6 +523,7 @@ export default function VirtualInstallPanel({
 
   function selectTarget(value) {
     invalidateRequest();
+    setExcludedAreas([]);
     setTargetType(value);
     setColorMode("single");
     setLocalAreaFilms({});
@@ -347,6 +533,7 @@ export default function VirtualInstallPanel({
 
   function selectColorMode(value) {
     if (value === "multi" && !supportsMultiTone) return;
+
     invalidateRequest();
     setColorMode(value);
     setLocalAreaFilms({});
@@ -356,7 +543,12 @@ export default function VirtualInstallPanel({
 
   function selectAreaFilm(key, film) {
     invalidateRequest();
-    const next = { ...localAreaFilms, [key]: film || product };
+
+    const next = {
+      ...localAreaFilms,
+      [key]: film || product,
+    };
+
     setLocalAreaFilms(next);
     onAreaFilmsChange?.(next);
   }
@@ -369,7 +561,7 @@ export default function VirtualInstallPanel({
       return;
     }
 
-    if (!targetType || !targetAreas.length) {
+    if (!targetType || !includedAreas.length) {
       setMessage("❌ 사진에 실제로 보이는 시공 부위를 선택해주세요.");
       return;
     }
@@ -391,11 +583,14 @@ export default function VirtualInstallPanel({
     requestRef.current?.abort();
     requestRef.current = controller;
     busyRef.current = true;
+
     setLoading(true);
     setResult(null);
     setMessage("선택한 원본 사진을 가상시공하고 있습니다.");
 
-    const multi = supportsMultiTone && colorMode === "multi";
+    const multi =
+      supportsMultiTone && colorMode === "multi";
+
     const form = new FormData();
 
     form.append("company_slug", companySlug);
@@ -406,23 +601,27 @@ export default function VirtualInstallPanel({
 
     const primary = makeFilmPayload(
       { key: "all", label: "전체 시공 부위" },
-      product,
+      product
     );
 
     Object.entries(primary).forEach(([key, value]) => {
-      if (key !== "areaKey" && key !== "areaLabel") form.append(key, value);
+      if (key !== "areaKey" && key !== "areaLabel") {
+        form.append(key, value);
+      }
     });
 
     form.append(
       "areaFilms",
       JSON.stringify(
-        targetAreas.map((area) =>
+        includedAreas.map((area) =>
           makeFilmPayload(
             area,
-            multi ? localAreaFilms[area.key] || product : product,
-          ),
-        ),
-      ),
+            multi
+              ? localAreaFilms[area.key] || product
+              : product
+          )
+        )
+      )
     );
 
     try {
@@ -434,12 +633,15 @@ export default function VirtualInstallPanel({
 
       const data = await response.json().catch(() => ({}));
 
-      if (generation !== generationRef.current || controller.signal.aborted) {
-        return;
-      }
+      if (
+        generation !== generationRef.current ||
+        controller.signal.aborted
+      ) return;
 
       if (!response.ok || !data?.imageUrl) {
-        throw new Error(data?.error || "가상시공에 실패했습니다.");
+        throw new Error(
+          data?.error || "가상시공에 실패했습니다."
+        );
       }
 
       setResult({
@@ -447,12 +649,17 @@ export default function VirtualInstallPanel({
         imageUrl: data.imageUrl,
         targetLabel: selectedType?.label,
       });
+
       setMessage("✅ 가상시공이 완료되었습니다.");
     } catch (error) {
-      if (generation !== generationRef.current || controller.signal.aborted) {
-        return;
-      }
-      setMessage(`❌ ${error.message || "다시 시도해주세요."}`);
+      if (
+        generation !== generationRef.current ||
+        controller.signal.aborted
+      ) return;
+
+      setMessage(
+        `❌ ${error.message || "다시 시도해주세요."}`
+      );
     } finally {
       if (generation === generationRef.current) {
         busyRef.current = false;
@@ -467,6 +674,7 @@ export default function VirtualInstallPanel({
   return (
     <section className="virtual-safe-panel">
       <h3>가상시공</h3>
+
       <p className="virtual-sub">
         원본 사진과 시공 부위를 확인한 뒤 생성해주세요.
       </p>
@@ -478,9 +686,11 @@ export default function VirtualInstallPanel({
       </div>
 
       <h4>1. 원본 사진</h4>
+
       <div className="virtual-images">
         {safeImages.map((image, index) => {
           const id = getImageId(image, index);
+
           return (
             <button
               key={id}
@@ -488,7 +698,11 @@ export default function VirtualInstallPanel({
               className={id === selectedImageId ? "active" : ""}
               onClick={() => selectImage(id)}
             >
-              <img src={getImagePreview(image)} alt={`원본 사진 ${index + 1}`} />
+              <img
+                src={getImagePreview(image)}
+                alt={`원본 사진 ${index + 1}`}
+              />
+
               <span>
                 사진 {index + 1}
                 {id === selectedImageId ? " ✓" : ""}
@@ -500,11 +714,17 @@ export default function VirtualInstallPanel({
 
       <label className="virtual-target">
         2. 시공 부위 확인
+
         <select
           value={targetType}
-          onChange={(event) => selectTarget(event.target.value)}
+          onChange={(event) =>
+            selectTarget(event.target.value)
+          }
         >
-          <option value="">사진에 보이는 시공 부위를 선택하세요</option>
+          <option value="">
+            사진에 보이는 시공 부위를 선택하세요
+          </option>
+
           {TARGET_TYPES.map((item) => (
             <option key={item.key} value={item.key}>
               {item.label}
@@ -514,7 +734,8 @@ export default function VirtualInstallPanel({
       </label>
 
       <p className="virtual-sub">
-        자동판정이 틀리면 직접 수정하세요. 원본에 없는 부위를 선택하지 마세요.
+        자동판정이 틀리면 직접 수정하세요.
+        원본에 없는 부위를 선택하지 마세요.
       </p>
 
       {targetType && (
@@ -522,30 +743,67 @@ export default function VirtualInstallPanel({
           <div className="virtual-areas">
             {targetAreas.map((area) => (
               <div key={area.key}>
-                <strong>✓ {area.label}</strong>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!excludedAreas.includes(area.key)}
+                    onChange={(event) => {
+                      invalidateRequest();
+
+                      const checked = event.target.checked;
+
+                      setExcludedAreas((current) =>
+                        checked
+                          ? current.filter(
+                              (key) => key !== area.key
+                            )
+                          : [...current, area.key]
+                      );
+                    }}
+                  />
+
+                  <strong>{area.label}</strong>
+                </label>
+
                 <span>
-                  {getFilmTitle(
-                    colorMode === "multi"
-                      ? localAreaFilms[area.key] || product
-                      : product,
-                  )}
+                  {excludedAreas.includes(area.key)
+                    ? "시공 제외"
+                    : getFilmTitle(
+                        colorMode === "multi"
+                          ? localAreaFilms[area.key] || product
+                          : product
+                      )}
                 </span>
               </div>
             ))}
           </div>
 
+          {targetType === "kitchen" && (
+            <p className="virtual-sub">
+              문짝·프레임·마감판·측판까지 포함합니다.
+              냉장고장은 별도 컬러를 선택할 수 있습니다.
+              사진에 보이는 부분만 변경하며,
+              제외할 부위는 체크를 꺼주세요.
+            </p>
+          )}
+
           {supportsMultiTone && (
             <div className="virtual-modes">
               <button
                 type="button"
-                className={colorMode === "single" ? "active" : ""}
+                className={
+                  colorMode === "single" ? "active" : ""
+                }
                 onClick={() => selectColorMode("single")}
               >
                 컬러 통일
               </button>
+
               <button
                 type="button"
-                className={colorMode === "multi" ? "active" : ""}
+                className={
+                  colorMode === "multi" ? "active" : ""
+                }
                 onClick={() => selectColorMode("multi")}
               >
                 여러 톤 사용
@@ -553,13 +811,20 @@ export default function VirtualInstallPanel({
             </div>
           )}
 
-          {supportsMultiTone && colorMode === "multi" &&
-            targetAreas.map((area) => (
-              <div key={area.key} className="virtual-area-picker">
+          {supportsMultiTone &&
+            colorMode === "multi" &&
+            includedAreas.map((area) => (
+              <div
+                key={area.key}
+                className="virtual-area-picker"
+              >
                 <strong>{area.label}</strong>
+
                 <FilmColorPicker
                   value={localAreaFilms[area.key] || product}
-                  onSelect={(film) => selectAreaFilm(area.key, film)}
+                  onSelect={(film) =>
+                    selectAreaFilm(area.key, film)
+                  }
                 />
               </div>
             ))}
@@ -567,7 +832,7 @@ export default function VirtualInstallPanel({
           <button
             type="button"
             className="virtual-generate"
-            disabled={loading}
+            disabled={loading || !includedAreas.length}
             onClick={generateVirtualImage}
           >
             {loading
@@ -579,7 +844,9 @@ export default function VirtualInstallPanel({
 
       {message && (
         <p
-          className={`virtual-message ${message.startsWith("❌") ? "error" : ""}`}
+          className={`virtual-message ${
+            message.startsWith("❌") ? "error" : ""
+          }`}
           role="status"
         >
           {message}
@@ -589,19 +856,32 @@ export default function VirtualInstallPanel({
       {result && (
         <div className="virtual-result">
           <h4>{result.targetLabel} 가상시공 결과</h4>
+
           <div className="virtual-comparison">
             <div>
               <strong>원본</strong>
-              <img src={getImagePreview(result.image)} alt="원본 사진" />
+
+              <img
+                src={getImagePreview(result.image)}
+                alt="원본 사진"
+              />
             </div>
+
             <div>
               <strong>가상시공</strong>
-              <img src={result.imageUrl} alt="가상시공 결과" />
+
+              <img
+                src={result.imageUrl}
+                alt="가상시공 결과"
+              />
             </div>
           </div>
+
           <p className="virtual-sub">
-            문·문틀 등 원본에 없던 구조가 생겼다면 해당 결과를 사용하지 마세요.
+            문·문틀 등 원본에 없던 구조가 생겼다면
+            해당 결과를 사용하지 마세요.
           </p>
+
           <button
             type="button"
             className="virtual-save"
@@ -609,6 +889,7 @@ export default function VirtualInstallPanel({
           >
             결과 이미지 저장
           </button>
+
           {onRequestDetail && (
             <button
               type="button"
@@ -630,8 +911,14 @@ export default function VirtualInstallPanel({
           background: #fff;
           color: #173456;
         }
-        .virtual-safe-panel h3 { margin: 0; font-size: 22px; }
-        .virtual-safe-panel h4 { margin: 20px 0 12px; font-size: 16px; }
+        .virtual-safe-panel h3 {
+          margin: 0;
+          font-size: 22px;
+        }
+        .virtual-safe-panel h4 {
+          margin: 20px 0 12px;
+          font-size: 16px;
+        }
         .virtual-sub {
           color: #748292;
           font-size: 13px;
@@ -644,11 +931,13 @@ export default function VirtualInstallPanel({
           padding: 15px;
           border-radius: 16px;
         }
-        .virtual-film small, .virtual-film span {
+        .virtual-film small,
+        .virtual-film span {
           color: #748292;
           font-size: 12px;
         }
-        .virtual-images, .virtual-comparison {
+        .virtual-images,
+        .virtual-comparison {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
@@ -695,7 +984,10 @@ export default function VirtualInstallPanel({
           color: #173456;
           font-size: 16px;
         }
-        .virtual-areas { display: grid; gap: 8px; }
+        .virtual-areas {
+          display: grid;
+          gap: 8px;
+        }
         .virtual-areas > div {
           display: flex;
           justify-content: space-between;
@@ -704,6 +996,17 @@ export default function VirtualInstallPanel({
           border: 1px solid #eee8de;
           border-radius: 12px;
           font-size: 13px;
+        }
+        .virtual-areas label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-height: 44px;
+          cursor: pointer;
+        }
+        .virtual-areas input {
+          width: 18px;
+          height: 18px;
         }
         .virtual-areas span {
           color: #398be0;
@@ -732,8 +1035,11 @@ export default function VirtualInstallPanel({
           background: #398be0;
           color: #fff;
         }
-        .virtual-area-picker { margin-top: 16px; }
-        .virtual-generate, .virtual-save {
+        .virtual-area-picker {
+          margin-top: 16px;
+        }
+        .virtual-generate,
+        .virtual-save {
           width: 100%;
           margin-top: 16px;
           padding: 15px;
@@ -780,5 +1086,4 @@ export default function VirtualInstallPanel({
       `}</style>
     </section>
   );
-}
-// 파일 끝
+                }
