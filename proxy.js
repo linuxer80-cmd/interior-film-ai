@@ -65,8 +65,6 @@ export async function proxy(request) {
     const type =
       request.headers.get("content-type") || "";
 
-    // 실행 환경별 FormData 생성자 차이에 영향을 받지 않도록
-    // 요청 형식으로 구분합니다.
     const isMultipart =
       type.includes("multipart/form-data");
 
@@ -76,10 +74,62 @@ export async function proxy(request) {
       body = await request.clone().json();
     }
 
+    let metadata = null;
+
+    // 유사 시공 검색은 metadata JSON 안에
+    // company_slug 등의 요청 정보를 담습니다.
+    // 실제 검색 API와 같은 값을 읽어야 합니다.
+    if (
+      isMultipart &&
+      path === "/api/similar-estimate"
+    ) {
+      const raw = String(
+        body.get("metadata") || "{}"
+      );
+
+      if (raw.length > 12000) {
+        return NextResponse.json(
+          {
+            error:
+              "비교 사진과 요청 정보를 확인해주세요.",
+          },
+          { status: 400 }
+        );
+      }
+
+      try {
+        metadata = JSON.parse(raw);
+      } catch {
+        return NextResponse.json(
+          {
+            error:
+              "비교 사진과 요청 정보를 확인해주세요.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (
+        !metadata ||
+        typeof metadata !== "object" ||
+        Array.isArray(metadata)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "비교 사진과 요청 정보를 확인해주세요.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const field = (key) =>
-      isMultipart
-        ? body.get(key)
-        : body?.[key];
+      metadata !== null
+        ? metadata[key]
+        : isMultipart
+          ? body.get(key)
+          : body?.[key];
 
     const files = isMultipart
       ? [...body.values()].filter(
