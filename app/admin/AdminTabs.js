@@ -26,7 +26,7 @@ const menus = [
   {
     href: "/admin/workers",
     label: "시공자 관리",
-    description: "시공자 등록·초대와 일당 관리",
+    description: "시공자 등록·출퇴근·일당 관리",
     icon: "people",
   },
   {
@@ -40,12 +40,6 @@ const menus = [
     label: "시공 등록",
     description: "시공 사진과 실적 기록",
     icon: "camera",
-  },
-  {
-    href: "/admin/attendance",
-    label: "출퇴근 관리",
-    description: "현장 위치와 연장근무 확인",
-    icon: "attendance",
   },
   {
     id: "profit",
@@ -85,9 +79,7 @@ export default function AdminTabs({
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
 
-  if (secondaryOnly) {
-    return null;
-  }
+  if (secondaryOnly) return null;
 
   const isHome = activeTab === "today";
   const section = sections[activeTab];
@@ -187,7 +179,6 @@ export default function AdminTabs({
               kind={section?.[1]}
               size={48}
             />
-
             {section?.[0]}
           </span>
         </div>
@@ -233,10 +224,7 @@ export default function AdminTabs({
 
             <span style={{ flex: 1, minWidth: 0 }}>
               <strong
-                style={{
-                  display: "block",
-                  fontSize: 17,
-                }}
+                style={{ display: "block", fontSize: 17 }}
               >
                 미수금 · 잔금 관리
               </strong>
@@ -281,10 +269,7 @@ export default function AdminTabs({
           </div>
 
           <a href="/admin/clients">업체 관리</a>
-
-          <a href="/admin/customer-page">
-            고객페이지 관리
-          </a>
+          <a href="/admin/customer-page">고객페이지 관리</a>
 
           <button
             type="button"
@@ -307,13 +292,8 @@ export default function AdminTabs({
             로그 분석
           </button>
 
-          <a href="/admin/material-order">
-            자재 주문
-          </a>
-
-          <a href="/admin/billing">
-            요금제 · 결제
-          </a>
+          <a href="/admin/material-order">자재 주문</a>
+          <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
 
