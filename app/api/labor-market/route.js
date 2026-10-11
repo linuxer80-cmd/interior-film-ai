@@ -1,17 +1,17 @@
+import { dispatchLaborNotifications } from "../../../lib/laborPush";
 import {
   privateAuth,
   privateJson as json,
   cleanPrivate,
   uuid,
 } from "../../../lib/workerPrivate";
-
 import {
   publicProfileFields,
   dayInKorea,
   fail,
   cleanProfile,
   cleanJob,
-  nextApplication,
+  roughRegion,
 } from "../../../lib/laborMarket.mjs";
 
 export const runtime = "nodejs";
@@ -31,7 +31,6 @@ async function auth(request) {
     .maybeSingle();
 
   if (profile.error) throw profile.error;
-
   if (profile.data?.is_active === false) {
     throw fail("사용이 중지된 계정입니다.", 403);
   }
@@ -46,7 +45,6 @@ async function auth(request) {
       .maybeSingle();
 
     if (company.error) throw company.error;
-
     if (company.data && company.data.is_active !== false) {
       companyId = company.data.id;
     }
@@ -80,19 +78,73 @@ async function photos(db, rows) {
 function errorResponse(error) {
   console.error("구인·구직 오류:", error.code || error.message);
 
-  return json({
-    error: error.status
-      ? error.message
-      : ["42P01", "PGRST205", "PGRST202"].includes(error.code)
-        ? "구인·구직 SQL을 먼저 실행해주세요."
-        : "처리하지 못했습니다. 잠시 후 다시 확인해주세요.",
-  }, error.status || 503);
+  return json(
+    {
+      error: error.status
+        ? error.message
+        : ["42P01", "PGRST205", "PGRST202"].includes(error.code)
+          ? "구인·구직 SQL을 먼저 실행해주세요."
+          : "처리하지 못했습니다. 잠시 후 다시 확인해주세요.",
+    },
+    error.status || 503,
+  );
 }
 
 export async function GET(request) {
   try {
     const { db, user, companyId } = await auth(request);
     const params = new URL(request.url).searchParams;
+
+    if (params.get("mode") === "site") {
+      if (!companyId) throw fail("관리자 권한이 필요합니다.", 403);
+
+      const siteId = params.get("site");
+      if (!uuid(siteId)) throw fail("현장을 확인해주세요.");
+
+      const site = value(await db
+        .from("sites")
+        .select(
+          "id,region,address,work_type,work_description,work_dates,schedule_start,schedule_end,status",
+        )
+        .eq("id", siteId)
+        .eq("company_id", companyId)
+        .maybeSingle());
+
+      if (!site) {
+        throw fail("본인 업체의 현장만 구인할 수 있습니다.", 403);
+      }
+      if (["cancelled", "completed"].includes(site.status)) {
+        throw fail("진행할 현장을 선택해주세요.");
+      }
+
+      const dates = (site.work_dates || [])
+        .filter(day => day >= dayInKorea())
+        .sort();
+
+      return json({
+        site: {
+          id: site.id,
+          region: site.region || roughRegion(site.address),
+          work_content: [site.work_type, site.work_description]
+            .filter(Boolean)
+            .join("\n"),
+          work_dates: dates,
+          work_date: dates[0] || site.schedule_start?.slice(0, 10),
+          end_date: dates.at(-1) || site.schedule_end?.slice(0, 10),
+        },
+      });
+    }
+
+    if (params.get("mode") === "notifications") {
+      const notices = value(await db
+        .from("labor_notifications")
+        .select("id,title,message,link,read_at,created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50));
+
+      return json({ notifications: notices });
+    }
 
     if (params.get("mode") === "me") {
       const profile = value(await db
@@ -143,6 +195,14 @@ export async function GET(request) {
       });
     }
 
+    value(await db.rpc("expire_labor_jobs"));
+
+    try {
+      await dispatchLaborNotifications(db);
+    } catch {
+      // 푸시 오류가 있어도 저장된 알림과 게시판은 사용할 수 있습니다.
+    }
+
     const ownProfile = value(await db
       .from("labor_profiles")
       .select("user_id")
@@ -155,7 +215,7 @@ export async function GET(request) {
 
     const page = Math.max(
       0,
-      Math.min(1000, Number.parseInt(params.get("page") || "0", 10) || 0)
+      Math.min(1000, Number.parseInt(params.get("page") || "0", 10) || 0),
     );
 
     let jobsQuery = db
@@ -164,8 +224,7 @@ export async function GET(request) {
       .order("created_at", { ascending: false })
       .range(page * 30, page * 30 + 29);
 
-    if (params.get("mine") === "1") {
-      if (!companyId) throw fail("관리자 권한이 필요합니다.", 403);
+    if (companyId) {
       jobsQuery = jobsQuery.eq("company_id", companyId);
     } else {
       jobsQuery = jobsQuery
@@ -173,63 +232,106 @@ export async function GET(request) {
         .gte("end_date", dayInKorea());
     }
 
-    if (params.get("region")) {
+    if (!companyId && params.get("region")) {
       jobsQuery = jobsQuery.ilike(
         "region",
-        `%${params.get("region").slice(0, 100).replace(/[%_]/g, "")}%`
+        `%${params.get("region").slice(0, 100).replace(/[%_]/g, "")}%`,
       );
     }
 
+    if (!companyId && params.get("date")) {
+      jobsQuery = jobsQuery.contains("work_dates", [params.get("date")]);
+    }
+
     const jobs = value(await jobsQuery);
+
+    if (params.get("job")) {
+      if (!uuid(params.get("job"))) throw fail("공고를 확인해주세요.");
+
+      const requested = value(await db
+        .from("labor_jobs")
+        .select("*")
+        .eq("id", params.get("job"))
+        .maybeSingle());
+
+      if (requested && !jobs.some(job => job.id === requested.id)) {
+        const application = !companyId
+          ? value(await db
+            .from("labor_applications")
+            .select("id")
+            .eq("job_id", requested.id)
+            .eq("user_id", user.id)
+            .maybeSingle())
+          : null;
+
+        if (
+          companyId
+            ? requested.company_id === companyId
+            : Boolean(application)
+        ) {
+          jobs.push(requested);
+        }
+      }
+    }
+
+    for (const job of jobs) {
+      job.address = job.region;
+      delete job.created_by;
+    }
 
     let applicationsQuery = db
       .from("labor_applications")
       .select("*")
       .order("updated_at", { ascending: false });
 
+    if (!companyId && params.get("job")) {
+      applicationsQuery = applicationsQuery.eq("job_id", params.get("job"));
+    }
+
     const applications = companyId
       ? jobs.length
         ? value(await applicationsQuery
-            .in(
-              "job_id",
-              jobs
-                .filter(j => j.company_id === companyId)
-                .map(j => j.id)
-                .concat("00000000-0000-0000-0000-000000000000")
-            )
-            .limit(300))
+          .in(
+            "job_id",
+            jobs
+              .filter(job => job.company_id === companyId)
+              .map(job => job.id)
+              .concat("00000000-0000-0000-0000-000000000000"),
+          )
+          .limit(300))
         : []
-      : value(await applicationsQuery
-          .eq("user_id", user.id)
-          .limit(300));
+      : value(await applicationsQuery.eq("user_id", user.id).limit(300));
 
     const missingIds = [...new Set(
       applications
-        .map(a => a.job_id)
-        .filter(id => !jobs.some(j => j.id === id))
+        .map(application => application.job_id)
+        .filter(id => !jobs.some(job => job.id === id)),
     )];
 
     const applicationJobs = missingIds.length
-      ? value(await db
-          .from("labor_jobs")
-          .select("*")
-          .in("id", missingIds))
+      ? value(await db.from("labor_jobs").select("*").in("id", missingIds))
       : [];
 
+    for (const job of applicationJobs) {
+      job.address = job.region;
+      delete job.created_by;
+    }
+
     const companyIds = [...new Set(
-      [...jobs, ...applicationJobs].map(j => j.company_id)
+      [...jobs, ...applicationJobs].map(job => job.company_id),
     )];
 
     const companies = companyIds.length
       ? value(await db
-          .from("companies")
-          .select("id,company_name")
-          .in("id", companyIds))
+        .from("companies")
+        .select("id,company_name")
+        .in("id", companyIds))
       : [];
 
     for (const job of [...jobs, ...applicationJobs]) {
       job.company_name =
-        companies.find(c => c.id === job.company_id)?.company_name || "업체";
+        companies.find(company => company.id === job.company_id)?.company_name ||
+        "업체";
     }
 
     let candidates = [];
@@ -246,46 +348,38 @@ export async function GET(request) {
       if (params.get("region")) {
         query = query.ilike(
           "region",
-          `%${params.get("region").slice(0, 100).replace(/[%_]/g, "")}%`
+          `%${params.get("region").slice(0, 100).replace(/[%_]/g, "")}%`,
         );
       }
-
       if (params.get("skill")) {
-        query = query.contains("skills", [
-          params.get("skill").slice(0, 40),
-        ]);
+        query = query.contains("skills", [params.get("skill").slice(0, 40)]);
       }
-
       if (params.get("date")) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(params.get("date"))) {
           throw fail("날짜를 확인해주세요.");
         }
         query = query.contains("available_dates", [params.get("date")]);
       }
-
       if (params.get("wage")) {
         const n = Number(params.get("wage"));
-
         if (!Number.isInteger(n) || n < 0 || n > 2000000) {
           throw fail("일당을 확인해주세요.");
         }
-
         query = query.lte("daily_wage", n);
       }
-
       if (params.get("experience")) {
         const n = Number(params.get("experience"));
-
         if (!Number.isInteger(n) || n < 0 || n > 70) {
           throw fail("경력을 확인해주세요.");
         }
-
         query = query.gte("experience_years", n);
       }
 
       candidates = await photos(db, value(await query));
 
-      const ids = [...new Set(applications.map(a => a.user_id))];
+      const ids = [...new Set(
+        applications.map(application => application.user_id),
+      )];
 
       if (ids.length) {
         const applicantProfiles = await photos(
@@ -293,34 +387,36 @@ export async function GET(request) {
           value(await db
             .from("labor_profiles")
             .select(publicProfileFields)
-            .in("user_id", ids))
+            .in("user_id", ids)),
         );
 
         const consenting = [...new Set(
           applications
-            .filter(a =>
-              a.share_phone &&
-              ["applied", "accepted"].includes(a.status)
-            )
-            .map(a => a.user_id)
+            .filter(application =>
+              application.share_phone &&
+              ["applied", "accepted"].includes(application.status))
+            .map(application => application.user_id),
         )];
 
         const contacts = consenting.length
           ? value(await db
-              .from("labor_personal_details")
-              .select("user_id,phone")
-              .in("user_id", consenting))
+            .from("labor_personal_details")
+            .select("user_id,phone")
+            .in("user_id", consenting))
           : [];
 
-        for (const a of applications) {
-          a.profile = applicantProfiles.find(p => p.user_id === a.user_id);
+        for (const application of applications) {
+          application.profile = applicantProfiles.find(
+            profile => profile.user_id === application.user_id,
+          );
 
           if (
-            a.share_phone &&
-            ["applied", "accepted"].includes(a.status)
+            application.share_phone &&
+            ["applied", "accepted"].includes(application.status)
           ) {
-            a.phone =
-              contacts.find(p => p.user_id === a.user_id)?.phone || "";
+            application.phone =
+              contacts.find(contact =>
+                contact.user_id === application.user_id)?.phone || "";
           }
         }
       }
@@ -345,6 +441,9 @@ export async function POST(request) {
     const { db, user, companyId } = await auth(request);
 
     if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+      if (companyId) {
+        throw fail("관리자는 구인 공고만 등록할 수 있습니다.", 403);
+      }
       if (Number(request.headers.get("content-length")) > 2200000) {
         throw fail("사진은 2MB 이하로 올려주세요.");
       }
@@ -366,8 +465,9 @@ export async function POST(request) {
       const valid = file.type === "image/jpeg"
         ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
         : file.type === "image/png"
-          ? [137, 80, 78, 71, 13, 10, 26, 10]
-              .every((n, i) => bytes[i] === n)
+          ? [137, 80, 78, 71, 13, 10, 26, 10].every(
+            (number, index) => bytes[index] === number,
+          )
           : String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
             String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
 
@@ -381,25 +481,17 @@ export async function POST(request) {
 
       if (!existing) throw fail("개인 프로필을 먼저 저장해주세요.");
 
-      const extension = file.type === "image/jpeg"
-        ? "jpg"
-        : file.type === "image/png" ? "png" : "webp";
-
-      const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+      const path =
+        `${user.id}/${crypto.randomUUID()}.` +
+        (file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp");
 
       value(await db.storage
         .from("labor-avatars")
-        .upload(path, bytes, {
-          contentType: file.type,
-          upsert: false,
-        }));
+        .upload(path, bytes, { contentType: file.type, upsert: false }));
 
       const updated = await db
         .from("labor_profiles")
-        .update({
-          photo_path: path,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ photo_path: path, updated_at: new Date().toISOString() })
         .eq("user_id", user.id)
         .select("user_id")
         .single();
@@ -418,7 +510,23 @@ export async function POST(request) {
 
     const body = await request.json();
 
+    if (body.action === "read_notification") {
+      if (!uuid(body.id)) throw fail("알림을 확인해주세요.");
+
+      value(await db
+        .from("labor_notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", body.id)
+        .eq("user_id", user.id));
+
+      return json({ ok: true });
+    }
+
     if (body.action === "profile") {
+      if (companyId) {
+        throw fail("관리자는 구인 공고만 등록할 수 있습니다.", 403);
+      }
+
       const profile = cleanProfile(body.profile);
       const personal = cleanPrivate(body.personal);
 
@@ -432,10 +540,7 @@ export async function POST(request) {
       value(await db.rpc("save_labor_profile", {
         p_user_id: user.id,
         p_profile: profile,
-        p_private: {
-          ...personal,
-          phone: body.personal.phone.trim(),
-        },
+        p_private: { ...personal, phone: body.personal.phone.trim() },
       }));
 
       return json({ ok: true });
@@ -443,13 +548,65 @@ export async function POST(request) {
 
     if (body.action === "job") {
       if (!companyId) throw fail("관리자 권한이 필요합니다.", 403);
+      if (!uuid(body.job?.site_id)) {
+        throw fail("내 현장에서 구인하기를 눌러주세요.");
+      }
+
+      const site = value(await db
+        .from("sites")
+        .select("id,company_id,work_dates,schedule_start,schedule_end,status")
+        .eq("id", body.job.site_id)
+        .eq("company_id", companyId)
+        .maybeSingle());
+
+      if (!site || ["cancelled", "completed"].includes(site.status)) {
+        throw fail("본인 업체의 진행할 현장만 구인할 수 있습니다.", 403);
+      }
 
       const job = cleanJob(body.job);
+
+      const days = Array.isArray(site.work_dates)
+        ? site.work_dates.filter(
+          day => day >= job.work_date && day <= job.end_date,
+        )
+        : [];
+
+      if (!days.length && !Array.isArray(site.work_dates)) {
+        const start = site.schedule_start?.slice(0, 10);
+        const end = site.schedule_end?.slice(0, 10);
+
+        if (
+          !start || !end ||
+          job.work_date < start ||
+          job.end_date > end
+        ) {
+          throw fail("현장 일정 안에서 날짜를 선택해주세요.");
+        }
+
+        for (
+          let day = new Date(job.work_date);
+          day.toISOString().slice(0, 10) <= job.end_date;
+          day.setUTCDate(day.getUTCDate() + 1)
+        ) {
+          days.push(day.toISOString().slice(0, 10));
+          if (days.length > 90) {
+            throw fail("90일 이내로 공고를 등록해주세요.");
+          }
+        }
+      }
+
+      if (!days.length) {
+        throw fail(
+          "선택한 기간에 시공 예정일이 없습니다. 내 현장의 일정을 먼저 등록해주세요.",
+        );
+      }
 
       const saved = value(await db
         .from("labor_jobs")
         .insert({
           ...job,
+          site_id: site.id,
+          work_dates: days,
           company_id: companyId,
           created_by: user.id,
         })
@@ -469,112 +626,55 @@ export async function POST(request) {
 
     if (!job) throw fail("공고를 찾을 수 없습니다.", 404);
 
-    const manager = ["close", "invite", "accept", "reject"]
-      .includes(body.action);
+    const manager = ["close", "invite", "accept", "reject"].includes(body.action);
 
-    if (
-      manager &&
-      (!companyId || job.company_id !== companyId)
-    ) {
+    if (manager && (!companyId || job.company_id !== companyId)) {
       throw fail("본인 업체의 공고만 관리할 수 있습니다.", 403);
     }
 
-    if (body.action === "close") {
-      value(await db
-        .from("labor_jobs")
-        .update({ status: "closed" })
-        .eq("id", job.id)
-        .eq("company_id", companyId));
-
-      return json({ ok: true });
-    }
-
-    if (!["invite", "apply", "withdraw", "accept", "reject"].includes(body.action)) {
+    if (
+      !["close", "invite", "apply", "withdraw", "accept", "reject"].includes(body.action)
+    ) {
       throw fail("요청을 확인해주세요.");
     }
 
-    if (
-      ["invite", "apply", "accept"].includes(body.action) &&
-      (job.status !== "open" || job.end_date < dayInKorea())
-    ) {
-      throw fail("마감된 구인입니다.", 409);
+    if (companyId && ["apply", "withdraw"].includes(body.action)) {
+      throw fail("관리자는 구인만 등록할 수 있습니다.", 403);
     }
-
-    const userId = manager ? body.userId : user.id;
-    if (!uuid(userId)) throw fail("시공자를 확인해주세요.");
-
-    const profile = value(await db
-      .from("labor_profiles")
-      .select("user_id,seeking,published")
-      .eq("user_id", userId)
-      .maybeSingle());
-
-    if (!profile) throw fail("개인 프로필을 먼저 등록해주세요.");
-
-    if (
-      body.action === "invite" &&
-      (!profile.seeking || !profile.published)
-    ) {
-      throw fail("현재 구직을 공개한 시공자만 제안할 수 있습니다.");
-    }
-
-    if (body.action === "apply") {
-      const contact = value(await db
-        .from("labor_personal_details")
-        .select("phone")
-        .eq("user_id", user.id)
-        .maybeSingle());
-
-      if (!contact?.phone) {
-        throw fail("개인설정에 연락처를 먼저 등록해주세요.");
-      }
-    }
-
-    const current = value(await db
-      .from("labor_applications")
-      .select("*")
-      .eq("job_id", job.id)
-      .eq("user_id", userId)
-      .maybeSingle());
-
-    const status = nextApplication(current?.status, body.action, manager);
 
     if (body.action === "apply" && body.share_phone !== true) {
-      throw fail("지원할 업체에 연락처를 공유하는 데 동의해주세요.");
+      throw fail("지원할 업체에 프로필·연락처 공유를 동의해주세요.");
     }
 
-    const share_phone = body.action === "apply"
-      ? true
-      : body.action === "withdraw" || body.action === "invite"
-        ? false
-        : current?.share_phone || false;
+    if (
+      ["invite", "accept", "reject"].includes(body.action) &&
+      !uuid(body.userId)
+    ) {
+      throw fail("시공자를 확인해주세요.");
+    }
 
-    const row = {
-      job_id: job.id,
-      user_id: userId,
-      status,
-      share_phone,
-      updated_at: new Date().toISOString(),
-    };
+    const result = await db.rpc("labor_action", {
+      p_actor: user.id,
+      p_job: job.id,
+      p_action: body.action,
+      p_target: manager ? body.userId || null : null,
+    });
 
-    if (current) {
-      const changed = value(await db
-        .from("labor_applications")
-        .update(row)
-        .eq("id", current.id)
-        .eq("status", current.status)
-        .eq("updated_at", current.updated_at)
-        .select("id"));
-
-      if (!changed.length) {
-        throw fail("상태가 변경되었습니다. 새로고침해주세요.", 409);
+    if (result.error) {
+      if (result.error.code === "P0001") {
+        throw fail(result.error.message, 409);
       }
-    } else {
-      value(await db.from("labor_applications").insert(row));
+      throw result.error;
     }
 
-    return json({ ok: true });
+    try {
+      await dispatchLaborNotifications(db, job.id);
+    } catch (error) {
+      console.error("구인 알림 발송 대기:", error.code || "push");
+    }
+
+    return json(result.data || { ok: true });
   } catch (error) {
     return errorResponse(error);
   }
-  }
+}
