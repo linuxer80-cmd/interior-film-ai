@@ -8,7 +8,6 @@ async function auth(request) {
   const result = await privateAuth(request, false);
 
   if (result.error) throw fail(result.error,result.status);
-
   if (result.user.is_anonymous || !result.user.email_confirmed_at) {
     throw fail('이메일 인증을 완료해주세요.',403);
   }
@@ -20,7 +19,6 @@ async function auth(request) {
     .maybeSingle();
 
   if (profile.error) throw profile.error;
-
   if (profile.data?.is_active === false) {
     throw fail('사용이 중지된 계정입니다.',403);
   }
@@ -35,13 +33,19 @@ async function auth(request) {
       .maybeSingle();
 
     if (company.error) throw company.error;
-
     if (company.data && company.data.is_active !== false) {
       companyId = company.data.id;
     }
   }
 
-  return {...result,companyId};
+  const ownerCompanyId = companyId;
+
+  // 시공자 화면에서는 관리자 작업 권한을 사용하지 않습니다.
+  if (request.headers.get('x-labor-view') === 'worker') {
+    companyId = null;
+  }
+
+  return {...result,companyId,ownerCompanyId};
 }
 
 const value = result => {
@@ -94,9 +98,7 @@ function validWorkDay(day) {
 
 function siteWorkDays(site) {
   if (Array.isArray(site.work_dates)) {
-    return [
-      ...new Set(site.work_dates.filter(validWorkDay))
-    ].sort();
+    return [...new Set(site.work_dates.filter(validWorkDay))].sort();
   }
 
   const start = site.schedule_start?.slice(0,10);
@@ -127,14 +129,13 @@ function siteWorkDays(site) {
 
 export async function GET(request) {
   try {
-    const {db,user,companyId} = await auth(request);
+    const {db,user,companyId,ownerCompanyId} = await auth(request);
     const params = new URL(request.url).searchParams;
 
     if (params.get('mode') === 'site') {
       if (!companyId) throw fail('관리자 권한이 필요합니다.',403);
 
       const siteId = params.get('site');
-
       if (!uuid(siteId)) throw fail('현장을 확인해주세요.');
 
       const site = value(await db
@@ -162,8 +163,7 @@ export async function GET(request) {
           id:site.id,
           region:site.region || roughRegion(site.address),
           work_content:[site.work_type,site.work_description]
-            .filter(Boolean)
-            .join('\n'),
+            .filter(Boolean).join('\n'),
           work_dates:dates,
           work_date:dates[0] || site.schedule_start?.slice(0,10),
           end_date:dates.at(-1) || site.schedule_end?.slice(0,10)
@@ -240,7 +240,7 @@ export async function GET(request) {
     try {
       await dispatchLaborNotifications(db);
     } catch {
-      // 알림 발송 실패가 공고 조회를 막지 않습니다.
+      // 발송 실패가 다른 기능을 막지 않습니다.
     }
 
     const ownProfile = value(await db
@@ -273,6 +273,10 @@ export async function GET(request) {
       jobsQuery = jobsQuery
         .eq('status','open')
         .gte('end_date',dayInKorea());
+
+      if (ownerCompanyId) {
+        jobsQuery = jobsQuery.neq('company_id',ownerCompanyId);
+      }
     }
 
     if (!companyId && params.get('region')) {
@@ -352,17 +356,13 @@ export async function GET(request) {
 
     const missingIds = [
       ...new Set(
-        applications
-          .map(application => application.job_id)
+        applications.map(application => application.job_id)
           .filter(id => !jobs.some(job => job.id === id))
       )
     ];
 
     const applicationJobs = missingIds.length
-      ? value(await db
-          .from('labor_jobs')
-          .select('*')
-          .in('id',missingIds))
+      ? value(await db.from('labor_jobs').select('*').in('id',missingIds))
       : [];
 
     for (const job of applicationJobs) {
@@ -408,19 +408,14 @@ export async function GET(request) {
       }
 
       if (params.get('skill')) {
-        query = query.contains(
-          'skills',[params.get('skill').slice(0,40)]
-        );
+        query = query.contains('skills',[params.get('skill').slice(0,40)]);
       }
 
       if (params.get('date')) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(params.get('date'))) {
           throw fail('날짜를 확인해주세요.');
         }
-
-        query = query.contains(
-          'available_dates',[params.get('date')]
-        );
+        query = query.contains('available_dates',[params.get('date')]);
       }
 
       if (params.get('wage')) {
@@ -430,9 +425,7 @@ export async function GET(request) {
           !Number.isInteger(amount) ||
           amount < 0 ||
           amount > 2000000
-        ) {
-          throw fail('일당을 확인해주세요.');
-        }
+        ) throw fail('일당을 확인해주세요.');
 
         query = query.lte('daily_wage',amount);
       }
@@ -444,9 +437,7 @@ export async function GET(request) {
           !Number.isInteger(years) ||
           years < 0 ||
           years > 70
-        ) {
-          throw fail('경력을 확인해주세요.');
-        }
+        ) throw fail('경력을 확인해주세요.');
 
         query = query.gte('experience_years',years);
       }
@@ -468,12 +459,10 @@ export async function GET(request) {
 
         const consenting = [
           ...new Set(
-            applications
-              .filter(application =>
-                application.share_phone &&
-                ['applied','accepted'].includes(application.status)
-              )
-              .map(application => application.user_id)
+            applications.filter(application =>
+              application.share_phone &&
+              ['applied','accepted'].includes(application.status)
+            ).map(application => application.user_id)
           )
         ];
 
@@ -516,7 +505,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const {db,user,companyId} = await auth(request);
+    const {db,user,companyId,ownerCompanyId} = await auth(request);
 
     if (
       request.headers.get('content-type')
@@ -538,9 +527,7 @@ export async function POST(request) {
         !file.size ||
         file.size > 2097152 ||
         !['image/jpeg','image/png','image/webp'].includes(file.type)
-      ) {
-        throw fail('2MB 이하 JPG·PNG·WebP 사진을 선택해주세요.');
-      }
+      ) throw fail('2MB 이하 JPG·PNG·WebP 사진을 선택해주세요.');
 
       const bytes = new Uint8Array(await file.arrayBuffer());
 
@@ -564,9 +551,7 @@ export async function POST(request) {
 
       const extension = file.type === 'image/jpeg'
         ? 'jpg'
-        : file.type === 'image/png'
-          ? 'png'
-          : 'webp';
+        : file.type === 'image/png' ? 'png' : 'webp';
 
       const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
 
@@ -576,10 +561,7 @@ export async function POST(request) {
 
       const updated = await db
         .from('labor_profiles')
-        .update({
-          photo_path:path,
-          updated_at:new Date().toISOString()
-        })
+        .update({photo_path:path,updated_at:new Date().toISOString()})
         .eq('user_id',user.id)
         .select('user_id')
         .single();
@@ -590,8 +572,7 @@ export async function POST(request) {
       }
 
       if (existing.photo_path) {
-        await db.storage
-          .from('labor-avatars')
+        await db.storage.from('labor-avatars')
           .remove([existing.photo_path]);
       }
 
@@ -623,17 +604,12 @@ export async function POST(request) {
       if (
         typeof body.personal.phone !== 'string' ||
         !/^[0-9 +()-]{0,30}$/.test(body.personal.phone.trim())
-      ) {
-        throw fail('전화번호를 확인해주세요.');
-      }
+      ) throw fail('전화번호를 확인해주세요.');
 
       value(await db.rpc('save_labor_profile',{
         p_user_id:user.id,
         p_profile:profile,
-        p_private:{
-          ...personal,
-          phone:body.personal.phone.trim()
-        }
+        p_private:{...personal,phone:body.personal.phone.trim()}
       }));
 
       return json({ok:true});
@@ -670,9 +646,7 @@ export async function POST(request) {
           !body.job.work_dates.length ||
           body.job.work_dates.length > 366 ||
           body.job.work_dates.some(day => !validWorkDay(day))
-        ) {
-          throw fail('구인이 필요한 시공 날짜를 선택해주세요.');
-        }
+        ) throw fail('구인이 필요한 시공 날짜를 선택해주세요.');
 
         days = [...new Set(body.job.work_dates)].sort();
 
@@ -682,10 +656,8 @@ export async function POST(request) {
           );
         }
       } else {
-        // 이전 화면의 요청도 실제 현장 시공일만 저장합니다.
         days = allowed.filter(day =>
-          day >= body.job.work_date &&
-          day <= body.job.end_date
+          day >= body.job.work_date && day <= body.job.end_date
         );
       }
 
@@ -730,20 +702,21 @@ export async function POST(request) {
     if (
       manager &&
       (!companyId || job.company_id !== companyId)
-    ) {
-      throw fail('본인 업체의 공고만 관리할 수 있습니다.',403);
-    }
+    ) throw fail('본인 업체의 공고만 관리할 수 있습니다.',403);
 
     if (
       !['close','invite','apply','withdraw','accept','reject']
         .includes(body.action)
-    ) {
-      throw fail('요청을 확인해주세요.');
-    }
+    ) throw fail('요청을 확인해주세요.');
 
     if (companyId && ['apply','withdraw'].includes(body.action)) {
       throw fail('관리자는 구인만 등록할 수 있습니다.',403);
     }
+
+    if (
+      ['apply','withdraw'].includes(body.action) &&
+      ownerCompanyId === job.company_id
+    ) throw fail('본인 업체의 공고에는 지원할 수 없습니다.',403);
 
     if (body.action === 'apply' && body.share_phone !== true) {
       throw fail('지원할 업체에 프로필·연락처 공유를 동의해주세요.');
@@ -752,9 +725,7 @@ export async function POST(request) {
     if (
       ['invite','accept','reject'].includes(body.action) &&
       !uuid(body.userId)
-    ) {
-      throw fail('시공자를 확인해주세요.');
-    }
+    ) throw fail('시공자를 확인해주세요.');
 
     const result = await db.rpc('labor_action',{
       p_actor:user.id,
@@ -780,4 +751,4 @@ export async function POST(request) {
   } catch (error) {
     return errorResponse(error);
   }
-                         }
+}
