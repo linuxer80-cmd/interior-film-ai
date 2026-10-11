@@ -1,11 +1,12 @@
 "use client";
-import LaborNotifications from "../components/LaborNotifications";
 
+import LaborNotifications from "../components/LaborNotifications";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import TomorrowTasks from "../components/TomorrowTasks";
 import SavedCommuteSummary from "../components/SavedCommuteSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
+
 import {
   koreanDay,
   siteStatus,
@@ -18,21 +19,24 @@ const menus = [
     href: "/jobs?view=worker",
     icon: "people",
     title: "구인 찾기 · 내 구직",
-    subtitle: "현장 구인 확인 · 내 구직 공개",
+    subtitle:
+      "현장 구인 확인 · 내 구직 공개",
   },
   {
     id: "account",
     href: "/worker/account",
     icon: "people",
     title: "개인설정",
-    subtitle: "프로필·일당·계좌·활동 지역 설정",
+    subtitle:
+      "프로필·일당·계좌·활동 지역 설정",
   },
   {
     id: "attendance",
     href: "/worker/attendance",
     icon: "attendance",
     title: "출퇴근기록",
-    subtitle: "출근·퇴근 시간과 기록 위치 확인",
+    subtitle:
+      "출근·퇴근 시간과 기록 위치 확인",
   },
   {
     id: "sites",
@@ -44,26 +48,30 @@ const menus = [
     id: "film",
     icon: "film",
     title: "필름 · 재단",
-    subtitle: "정확한 재단이 좋은 마감의 시작",
+    subtitle:
+      "정확한 재단이 좋은 마감의 시작",
   },
   {
     id: "inventory",
     href: "/worker/inventory",
     icon: "film",
-    title: "재고 확인",
-    subtitle: "브랜드별 창고 재고와 남은 길이 확인",
+    title: "현장 자재 재고",
+    subtitle:
+      "팀장으로 맡은 현장의 사용 필름 재고 확인",
   },
   {
     id: "report",
     icon: "report",
     title: "완료보고",
-    subtitle: "작업한 결과를 간단하게 기록",
+    subtitle:
+      "작업한 결과를 간단하게 기록",
   },
   {
     id: "pay",
     icon: "money",
     title: "근무금액",
-    subtitle: "오늘의 노력, 정확한 정산으로",
+    subtitle:
+      "오늘의 노력, 정확한 정산으로",
   },
 ];
 
@@ -103,7 +111,9 @@ export default function WorkerHomeDashboard({
       weekday: "short",
       timeZone: "Asia/Seoul",
     }
-  ).format(new Date(`${today}T03:00:00Z`));
+  ).format(
+    new Date(`${today}T03:00:00Z`)
+  );
 
   return (
     <section
@@ -111,12 +121,16 @@ export default function WorkerHomeDashboard({
       aria-label="시공자 홈"
     >
       <LaborNotifications />
+
       <div className="wp-hello">
         <span>
           {worker?.worker_name || "시공자"}님,
           반갑습니다
         </span>
-        <span className="wp-date">{dateLabel}</span>
+
+        <span className="wp-date">
+          {dateLabel}
+        </span>
       </div>
 
       <div className="wp-hero">
@@ -126,11 +140,13 @@ export default function WorkerHomeDashboard({
             <br />
             안전한 시공!
           </h2>
+
           <p>
             좋은 공간을 만드는
             <br />
             당신의 손을 응원합니다.
           </p>
+
           <span className="wp-hero-tag">
             나의 시공 파트너, 필름장이
           </span>
@@ -143,6 +159,7 @@ export default function WorkerHomeDashboard({
 
       <div className="wp-section-title">
         <h3>오늘의 현장</h3>
+
         <Link href="/worker/menu/sites">
           전체 일정 ›
         </Link>
@@ -155,7 +172,9 @@ export default function WorkerHomeDashboard({
               type="button"
               className="wp-site"
               key={site.site_id}
-              onClick={() => onOpen(site.site_id)}
+              onClick={() =>
+                onOpen(site.site_id)
+              }
             >
               <span className="wp-site-art">
                 <ToolIllustration size={69} />
@@ -199,9 +218,12 @@ export default function WorkerHomeDashboard({
             <strong>
               오늘은 배정된 현장이 없어요
             </strong>
+
             <p>
-              내 현장에서 다음 시공 일정을 확인하세요.
+              내 현장에서 다음 시공 일정을
+              확인하세요.
             </p>
+
             <Link href="/worker/menu/sites">
               내 일정 확인 →
             </Link>
@@ -216,7 +238,10 @@ export default function WorkerHomeDashboard({
         <span>
           여러 업체의 현장을 한 번에 확인하세요
         </span>
-        <strong>소속 업체 · 통합 일정 ›</strong>
+
+        <strong>
+          소속 업체 · 통합 일정 ›
+        </strong>
       </Link>
 
       <TomorrowTasks />
@@ -239,8 +264,11 @@ export default function WorkerHomeDashboard({
               size="100%"
               className="photo-menu-art"
             />
+
             <strong>{menu.title}</strong>
+
             <small>{menu.subtitle}</small>
+
             <span
               className="wp-arrow"
               aria-hidden="true"
@@ -255,7 +283,10 @@ export default function WorkerHomeDashboard({
         href="/worker/menu/photos"
         className="wp-photo-link"
       >
-        <span>시공 전·후 사진도 잊지 마세요</span>
+        <span>
+          시공 전·후 사진도 잊지 마세요
+        </span>
+
         <strong>사진 등록 ›</strong>
       </Link>
 
@@ -263,17 +294,22 @@ export default function WorkerHomeDashboard({
         className="wp-bottom"
         aria-label="시공자 하단 메뉴"
       >
-        <Link href="/worker" aria-current="page">
+        <Link
+          href="/worker"
+          aria-current="page"
+        >
           <span aria-hidden="true">⌂</span>
           <small>홈</small>
         </Link>
 
         {menus
-          .filter(
-            menu =>
-              !["attendance", "inventory", "jobs", "account"].includes(
-                menu.id
-              )
+          .filter(menu =>
+            ![
+              "attendance",
+              "inventory",
+              "jobs",
+              "account",
+            ].includes(menu.id)
           )
           .map(menu => (
             <Link
@@ -290,6 +326,7 @@ export default function WorkerHomeDashboard({
                   }[menu.id]
                 }
               </span>
+
               <small>{menu.title}</small>
             </Link>
           ))}
