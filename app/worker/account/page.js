@@ -1,8 +1,6 @@
 "use client";
-
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import WorkDatePicker from '../../admin/WorkDatePicker';
 import { supabase } from '../../../lib/supabase';
 import '../../components/laborMarket.css';
 
@@ -30,23 +28,26 @@ const privateBlank = {
 export default function WorkerAccount() {
   const [session,setSession]=useState(null);
   const [ready,setReady]=useState(false);
+
   const [signup,setSignup]=useState(false);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
+
   const [profile,setProfile]=useState(blank);
   const [personal,setPersonal]=useState(privateBlank);
   const [skillText,setSkillText]=useState('');
+
   const [message,setMessage]=useState('');
   const [busy,setBusy]=useState(false);
   const [loaded,setLoaded]=useState(false);
+
   const [saved,setSaved]=useState(false);
   const [section,setSection]=useState('profile');
 
   useEffect(()=>{
-    if(
-      new URLSearchParams(window.location.search)
-        .get('section')==='seeking'
-    )setSection('seeking');
+    if(new URLSearchParams(window.location.search).get('section')==='seeking') {
+      setSection('seeking');
+    }
   },[]);
 
   useEffect(()=>{
@@ -93,7 +94,7 @@ export default function WorkerAccount() {
         });
 
         const data=await response.json();
-        if(!response.ok)throw Error(data.error);
+        if(!response.ok) throw Error(data.error);
 
         if(!controller.signal.aborted){
           setProfile({
@@ -118,7 +119,6 @@ export default function WorkerAccount() {
   async function login(e){
     e.preventDefault();
     if(busy)return;
-
     setBusy(true);
     setMessage('');
 
@@ -128,13 +128,11 @@ export default function WorkerAccount() {
           email:email.trim(),
           password,
           options:{
-            emailRedirectTo:
-              `${window.location.origin}/worker/account`
+            emailRedirectTo:`${window.location.origin}/worker/account`
           }
         });
 
         if(error)throw error;
-
         setSession(data.session);
         setMessage(
           data.session
@@ -142,11 +140,10 @@ export default function WorkerAccount() {
             :'인증 메일을 확인한 뒤 이 화면에서 로그인해주세요.'
         );
       }else{
-        const {data,error}=
-          await supabase.auth.signInWithPassword({
-            email:email.trim(),
-            password
-          });
+        const {data,error}=await supabase.auth.signInWithPassword({
+          email:email.trim(),
+          password
+        });
 
         if(error)throw error;
         setSession(data.session);
@@ -161,7 +158,6 @@ export default function WorkerAccount() {
   async function save(e){
     e.preventDefault();
     if(busy||!loaded)return;
-
     setBusy(true);
     setMessage('');
 
@@ -180,8 +176,7 @@ export default function WorkerAccount() {
           action:'profile',
           profile:{
             ...profile,
-            skills:skillText.split(',')
-              .map(s=>s.trim()).filter(Boolean)
+            skills:skillText.split(',').map(s=>s.trim()).filter(Boolean)
           },
           personal
         })
@@ -191,7 +186,7 @@ export default function WorkerAccount() {
       if(!response.ok)throw Error(result.error);
 
       setSaved(true);
-      setMessage('저장했습니다. 구직 공개 설정도 반영되었습니다.');
+      setMessage('개인설정을 저장했습니다. 구직 공고는 구직하기에서 등록해주세요.');
     }catch(e){
       setMessage(e.message);
     }finally{
@@ -202,14 +197,11 @@ export default function WorkerAccount() {
   async function photo(e){
     const file=e.target.files?.[0];
     if(!file||busy)return;
-
     setBusy(true);
     setMessage('');
 
     try{
-      if(file.size>2097152){
-        throw Error('사진은 2MB 이하로 올려주세요.');
-      }
+      if(file.size>2097152)throw Error('사진은 2MB 이하로 올려주세요.');
 
       const {data}=await supabase.auth.getSession();
       if(!data.session)throw Error('다시 로그인해주세요.');
@@ -217,14 +209,12 @@ export default function WorkerAccount() {
       const form=new FormData();
       form.append('photo',file);
 
-      const headers={
-        'X-Labor-View':'worker',
-        Authorization:`Bearer ${data.session.access_token}`
-      };
-
       const response=await fetch('/api/labor-market',{
         method:'POST',
-        headers,
+        headers:{
+          'X-Labor-View':'worker',
+          Authorization:`Bearer ${data.session.access_token}`
+        },
         body:form
       });
 
@@ -232,16 +222,17 @@ export default function WorkerAccount() {
       if(!response.ok)throw Error(result.error);
 
       const me=await fetch('/api/labor-market?mode=me',{
-        headers,
+        headers:{
+          'X-Labor-View':'worker',
+          Authorization:`Bearer ${data.session.access_token}`
+        },
         cache:'no-store'
       });
 
       const info=await me.json();
       if(!me.ok)throw Error(info.error);
 
-      setProfile(p=>({
-        ...p,photo_url:info.profile?.photo_url
-      }));
+      setProfile(p=>({...p,photo_url:info.profile?.photo_url}));
       setMessage('프로필 사진을 등록했습니다.');
     }catch(e){
       setMessage(e.message);
@@ -251,7 +242,7 @@ export default function WorkerAccount() {
     }
   }
 
-  const field=(label,key,type='text',secret=false)=>(
+  const field=(label,key,type='text',secret=false)=>
     <label>
       {label}
       <input
@@ -263,30 +254,27 @@ export default function WorkerAccount() {
             :setProfile(p=>({...p,[key]:e.target.value}))
         }
         maxLength={
-          key==='departure_address'?300:key==='name'?60:100
+          key==='departure_address'
+            ?300
+            :key==='name'?60:100
         }
         min={type==='number'?0:undefined}
       />
-    </label>
-  );
+    </label>;
 
-  return(
-    <main className='labor-shell labor-account'>
-      <nav>
-        <Link href='/worker'>시공자 홈</Link>
-        <Link href='/jobs?view=worker'>구인·구직</Link>
-      </nav>
+  return <main className='labor-shell labor-account'>
+    <nav>
+      <Link href='/worker'>시공자 홈</Link>
+      <Link href='/jobs?view=worker'>구인·구직</Link>
+    </nav>
 
-      <span className='eyebrow'>
-        나를 소개하고 좋은 현장을 찾아요
-      </span>
+    <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>
+    <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
 
-      <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
-
-      {!ready?(
-        <p>계정을 확인하는 중…</p>
-      ):!session?(
-        <form onSubmit={login}>
+    {!ready
+      ?<p>계정을 확인하는 중…</p>
+      :!session
+        ?<form onSubmit={login}>
           <h2>{signup?'시공자 회원가입':'시공자 로그인'}</h2>
           <p>소속 업체 없이도 가입하고 구직할 수 있습니다.</p>
 
@@ -313,7 +301,7 @@ export default function WorkerAccount() {
             />
           </label>
 
-          <button className='primary' disabled={busy}>
+          <button disabled={busy}>
             {busy?'처리 중…':signup?'가입하기':'로그인'}
           </button>
 
@@ -327,22 +315,17 @@ export default function WorkerAccount() {
 
           <Link href='/worker/login'>기존 소속 시공자 로그인</Link>
         </form>
-      ):(
-        <>
-          {!loaded?(
-            <p>
-              개인설정을 불러오는 중입니다.
-              오류가 있으면 새로고침해주세요.
-            </p>
-          ):(
-            <form onSubmit={save}>
+        :<>
+          {!loaded
+            ?<p>개인설정을 불러오는 중입니다. 오류가 있으면 새로고침해주세요.</p>
+            :<form onSubmit={save}>
               <fieldset disabled={busy}>
                 <div className='tabs'>
                   {[
                     ['profile','기본 프로필'],
                     ['seeking','구직 공고'],
                     ['private','계좌·주소']
-                  ].map(([id,label])=>(
+                  ].map(([id,label])=>
                     <button
                       key={id}
                       type='button'
@@ -351,35 +334,31 @@ export default function WorkerAccount() {
                     >
                       {label}
                     </button>
-                  ))}
+                  )}
                 </div>
 
                 <p className='muted'>
-                  기본정보를 한 번 저장하면
-                  구직 공고에 그대로 사용됩니다.
+                  기본정보를 한 번 저장하면 구직 공고에 그대로 사용됩니다.
                 </p>
 
                 <div hidden={section!=='profile'}>
                   <h2>내 프로필</h2>
 
                   <div className='profile-heading'>
-                    {profile.photo_url?(
-                      <img
+                    {profile.photo_url
+                      ?<img
                         src={profile.photo_url}
                         alt='내 프로필 사진'
                         width={80}
                         height={80}
                       />
-                    ):(
-                      <div className='avatar-placeholder'>
+                      :<div className='avatar-placeholder'>
                         {profile.name?.slice(0,1)||'나'}
                       </div>
-                    )}
+                    }
 
                     <div>
-                      <strong>
-                        {profile.name||'프로필 사진'}
-                      </strong>
+                      <strong>{profile.name||'프로필 사진'}</strong>
 
                       <label className='photo-button'>
                         사진 변경
@@ -396,18 +375,14 @@ export default function WorkerAccount() {
                     </div>
                   </div>
 
-                  {!saved&&(
-                    <small>
-                      프로필을 먼저 저장하면 사진을 올릴 수 있습니다.
-                    </small>
-                  )}
+                  {!saved&&
+                    <small>프로필을 먼저 저장하면 사진을 올릴 수 있습니다.</small>
+                  }
 
                   {field('이름','name')}
                   {field('연락처','phone','tel',true)}
 
-                  <small>
-                    지원할 때 동의한 업체에만 연락처를 공유합니다.
-                  </small>
+                  <small>지원할 때 동의한 업체에만 연락처를 공유합니다.</small>
 
                   <div className='pair'>
                     {field('나이 (선택)','age','number')}
@@ -417,18 +392,16 @@ export default function WorkerAccount() {
                   {field('희망 일당 (원)','daily_wage','number')}
 
                   <div className='chips'>
-                    {[200000,250000,300000].map(n=>(
+                    {[200000,250000,300000].map(n=>
                       <button
                         key={n}
                         type='button'
                         aria-pressed={Number(profile.daily_wage)===n}
-                        onClick={()=>setProfile(p=>({
-                          ...p,daily_wage:n
-                        }))}
+                        onClick={()=>setProfile(p=>({...p,daily_wage:n}))}
                       >
                         {n/10000}만원
                       </button>
-                    ))}
+                    )}
                   </div>
 
                   {field('활동 지역 (예: 인천 서구)','region')}
@@ -440,15 +413,13 @@ export default function WorkerAccount() {
 
                   <div className='chips'>
                     {[
-                      '문·문틀','싱크대','붙박이장',
-                      '샤시','상가','전체 시공'
-                    ].map(skill=>(
+                      '문·문틀','싱크대','붙박이장','샤시','상가','전체 시공'
+                    ].map(skill=>
                       <button
                         type='button'
                         key={skill}
                         aria-pressed={
-                          skillText.split(',')
-                            .map(s=>s.trim()).includes(skill)
+                          skillText.split(',').map(s=>s.trim()).includes(skill)
                         }
                         onClick={()=>{
                           const items=skillText.split(',')
@@ -464,7 +435,7 @@ export default function WorkerAccount() {
                       >
                         {skill}
                       </button>
-                    ))}
+                    )}
                   </div>
 
                   <details>
@@ -493,77 +464,30 @@ export default function WorkerAccount() {
 
                   <p>
                     저장한 프로필이 구직 공고가 됩니다.
-                    공개 여부와 가능한 날짜만 선택하세요.
+                    새로 작성할 필요 없이 공개 여부와 가능한 날짜만 선택하세요.
                   </p>
 
                   <article>
-                    <strong>
-                      {profile.name||'이름을 입력해주세요'}
-                    </strong>
-
+                    <strong>{profile.name || '이름을 입력해주세요'}</strong>
                     <p>
-                      {profile.region||'활동 지역 미입력'} ·
-                      희망 일당{' '}
-                      {Number(profile.daily_wage).toLocaleString()}원 ·
-                      경력 {profile.experience_years}년
+                      {profile.region || '활동 지역 미입력'}
+                      {' '}· 희망 일당 {Number(profile.daily_wage).toLocaleString()}원
+                      {' '}· 경력 {profile.experience_years}년
                     </p>
-
                     <p>{skillText}</p>
                   </article>
 
-                  <label>일할 수 있는 날짜 (선택)</label>
+                  <p>
+                    구직하기에서 일할 수 있는 날짜를 선택하고
+                    현장 배정 동의를 하면 관리자에게 공개됩니다.
+                  </p>
 
-                  <WorkDatePicker
-                    value={profile.available_dates}
-                    disabled={busy}
-                    onChange={dates=>setProfile(p=>({
-                      ...p,
-                      available_dates:dates.filter(d=>
-                        d>=new Intl.DateTimeFormat('en-CA',{
-                          timeZone:'Asia/Seoul',
-                          year:'numeric',
-                          month:'2-digit',
-                          day:'2-digit'
-                        }).format(new Date())
-                      )
-                    }))}
-                  />
-
-                  <small>
-                    날짜를 비워두면 업체와 협의할 수 있습니다.
-                    날짜 검색에는 선택한 날짜만 표시됩니다.
-                  </small>
-
-                  <label className='check toggle-row'>
-                    <input
-                      type='checkbox'
-                      checked={profile.published}
-                      onChange={e=>setProfile(p=>({
-                        ...p,
-                        published:e.target.checked,
-                        seeking:e.target.checked?p.seeking:false
-                      }))}
-                    />
-                    모든 관리자에게 프로필 공개
-                  </label>
-
-                  <label className='check toggle-row'>
-                    <input
-                      type='checkbox'
-                      checked={profile.seeking}
-                      onChange={e=>setProfile(p=>({
-                        ...p,
-                        seeking:e.target.checked,
-                        published:e.target.checked?true:p.published
-                      }))}
-                    />
-                    현재 구직 중
-                  </label>
-
-                  <small>
-                    구직 중과 공개를 모두 켜면 모든 관리자의
-                    시공자 찾기에 표시됩니다.
-                  </small>
+                  <Link
+                    className='site-link'
+                    href='/jobs?view=worker&tab=seeking'
+                  >
+                    일할 날짜 선택 · 구직하기 ›
+                  </Link>
                 </div>
 
                 <div hidden={section!=='private'}>
@@ -577,16 +501,11 @@ export default function WorkerAccount() {
                   {field('은행명','bank_name','text',true)}
                   {field('계좌번호','account_number','text',true)}
                   {field('예금주','account_holder','text',true)}
-                  {field(
-                    '출발 상세 주소 (길찾기용)',
-                    'departure_address','text',true
-                  )}
+                  {field('출발 상세 주소 (길찾기용)','departure_address','text',true)}
 
                   <small>
-                    저장하면 현재 연결된 활성 소속 업체의
-                    계좌·출발 주소에도 반영됩니다.
-                    희망 일당은 기존 업체의 계약 일당을
-                    변경하지 않습니다.
+                    저장하면 현재 연결된 활성 소속 업체의 계좌·출발 주소에도 반영됩니다.
+                    희망 일당은 기존 업체의 계약 일당을 변경하지 않습니다.
                   </small>
                 </div>
 
@@ -598,28 +517,25 @@ export default function WorkerAccount() {
                         ?'구직 공고 저장'
                         :section==='private'
                           ?'계좌·주소 저장'
-                          :'프로필 저장'}
+                          :'프로필 저장'
+                    }
                   </button>
                 </div>
               </fieldset>
             </form>
-          )}
+          }
 
-          <button
-            disabled={busy}
-            onClick={async()=>{
-              await supabase.auth.signOut();
-              setProfile(blank);
-              setPersonal(privateBlank);
-              setMessage('로그아웃했습니다.');
-            }}
-          >
+          <button disabled={busy} onClick={async()=>{
+            await supabase.auth.signOut();
+            setProfile(blank);
+            setPersonal(privateBlank);
+            setMessage('로그아웃했습니다.');
+          }}>
             로그아웃
           </button>
         </>
-      )}
+    }
 
-      {message&&<p role='status'>{message}</p>}
-    </main>
-  );
-                        }
+    {message&&<p role='status'>{message}</p>}
+  </main>;
+                      }
