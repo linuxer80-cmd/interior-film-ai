@@ -45,7 +45,7 @@ const menus = [
     href: "/admin/inventory",
     label: "필름 재고",
     description: "롤별 입고·반출·반입·자재상 반납",
-    icon: "box",
+    icon: "stock",
   },
   {
     href: "/admin/material-order",
@@ -331,4 +331,4 @@ export default function AdminTabs({
       </nav>
     </section>
   );
-}
+                }
