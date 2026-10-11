@@ -37,13 +37,11 @@ export default function JobsPage(){
   const [busy,setBusy]=useState(false);
   const [attempt,setAttempt]=useState(0);
   const [tab,setTab]=useState('');
-
   const [filters,setFilters]=useState({
     region:'',skill:'',date:'',wage:'',experience:''
   });
   const [search,setSearch]=useState({});
   const [page,setPage]=useState(0);
-
   const [job,setJob]=useState(blankJob);
   const [jobSkillText,setJobSkillText]=useState('');
   const [showForm,setShowForm]=useState(false);
@@ -55,6 +53,10 @@ export default function JobsPage(){
   const [siteDates,setSiteDates]=useState([]);
 
   async function api(path,body,signal){
+    const workerView=
+      new URLSearchParams(window.location.search)
+        .get('view')==='worker';
+
     const {data:s}=await supabase.auth.getSession();
 
     if(!s.session){
@@ -66,6 +68,7 @@ export default function JobsPage(){
       cache:'no-store',
       signal,
       headers:{
+        'X-Labor-View':workerView?'worker':'manager',
         Authorization:`Bearer ${s.session.access_token}`,
         ...(body?{'Content-Type':'application/json'}:{})
       },
@@ -73,11 +76,7 @@ export default function JobsPage(){
     });
 
     const result=await response.json();
-
-    if(!response.ok){
-      throw Error(result.error||'요청에 실패했습니다.');
-    }
-
+    if(!response.ok)throw Error(result.error||'요청에 실패했습니다.');
     return result;
   }
 
@@ -85,6 +84,7 @@ export default function JobsPage(){
     const {data:listener}=supabase.auth.onAuthStateChange(event=>{
       if(['SIGNED_OUT','SIGNED_IN','USER_UPDATED'].includes(event)){
         setData(null);
+        setTab('');
         setConsentJob('');
         setConfirmation(null);
         setAttempt(n=>n+1);
@@ -199,8 +199,7 @@ export default function JobsPage(){
 
   const field=(label,key,type='text',required=false)=>(
     <label>
-      {label}
-      {!required&&<small>선택</small>}
+      {label}{!required&&<small>선택</small>}
       <input
         required={required}
         type={type}
@@ -227,7 +226,6 @@ export default function JobsPage(){
       </div>
 
       <p>희망 일당 {Number(p.daily_wage).toLocaleString()}원</p>
-
       {p.skills?.length>0&&<p>{p.skills.join(' · ')}</p>}
       {p.introduction&&(
         <p className='multiline'>{p.introduction}</p>
@@ -267,11 +265,9 @@ export default function JobsPage(){
       {j.worker_region&&(
         <p>희망 시공자 지역 {j.worker_region}</p>
       )}
-
       {j.min_experience!=null&&(
         <p>경력 {j.min_experience}년 이상</p>
       )}
-
       {j.skills?.length>0&&(
         <p>필요 분야 {j.skills.join(' · ')}</p>
       )}
@@ -355,10 +351,8 @@ export default function JobsPage(){
                     action:'job',
                     job:{
                       ...job,
-                      skills:jobSkillText
-                        .split(',')
-                        .map(s=>s.trim())
-                        .filter(Boolean)
+                      skills:jobSkillText.split(',')
+                        .map(s=>s.trim()).filter(Boolean)
                     }
                   });
                 }}>
@@ -401,9 +395,7 @@ export default function JobsPage(){
 
                     <button
                       type='button'
-                      onClick={()=>setJob(j=>({
-                        ...j,work_dates:[]
-                      }))}
+                      onClick={()=>setJob(j=>({...j,work_dates:[]}))}
                     >
                       선택 해제
                     </button>
@@ -561,7 +553,6 @@ export default function JobsPage(){
               )}
 
               <button className='primary'>검색</button>
-
               <button type='button' onClick={()=>{
                 setSearch({});
                 setFilters({
@@ -577,7 +568,6 @@ export default function JobsPage(){
           {data.manager&&tab==='candidates'&&(
             <>
               <h2>공개 구직 공고</h2>
-
               {!data.candidates.length&&(
                 <p>조건에 맞는 구직 공고가 없습니다.</p>
               )}
@@ -622,7 +612,6 @@ export default function JobsPage(){
               <h2>
                 {data.manager?'내 업체 구인 공고':'모집 중인 현장'}
               </h2>
-
               {!data.jobs.length&&<p>등록된 공고가 없습니다.</p>}
 
               {data.jobs.map(j=>(
@@ -769,7 +758,6 @@ export default function JobsPage(){
                     ):(
                       <>
                         {j&&jobCard(j)}
-
                         {a.status==='invited'&&(
                           <>
                             <label className='check'>
@@ -853,7 +841,8 @@ export default function JobsPage(){
               <span>{page+1}페이지</span>
               <button
                 disabled={
-                  (tab==='candidates'?data.candidates:data.jobs).length<30
+                  (tab==='candidates'?data.candidates:data.jobs)
+                    .length<30
                 }
                 onClick={()=>setPage(p=>p+1)}
               >
@@ -865,82 +854,59 @@ export default function JobsPage(){
       )}
 
       <style jsx>{`
-        main {
-          max-width:760px;
-          margin:auto;
+        main{
+          max-width:760px;margin:auto;
           padding:24px 18px 80px;
-          background:#f8f7f3;
-          color:#243648;
+          background:#f8f7f3;color:#243648;
           min-height:100vh;
         }
-        nav,.tabs,.pages,.person {
-          display:flex;
-          gap:12px;
-          align-items:center;
-          flex-wrap:wrap;
+        nav,.tabs,.pages,.person{
+          display:flex;gap:12px;align-items:center;flex-wrap:wrap;
         }
         .date-options button[aria-pressed=true],
-        .tabs button[aria-pressed=true],.primary {
-          background:#243648;
-          color:white;
+        .tabs button[aria-pressed=true],.primary{
+          background:#243648;color:white;
         }
-        form,article,aside {
-          padding:20px;
-          background:white;
+        form,article,aside{
+          padding:20px;background:white;
           border:1px solid #e0d5c5;
-          border-radius:20px;
-          margin:16px 0;
+          border-radius:20px;margin:16px 0;
         }
-        aside {background:#eef5ff}
-        fieldset {border:0;padding:0;min-width:0}
-        label {display:block;font-weight:700;margin:16px 0}
-        label small {
-          margin-left:8px;
-          color:#748092;
-          font-weight:400;
+        aside{background:#eef5ff}
+        fieldset{border:0;padding:0;min-width:0}
+        label{display:block;font-weight:700;margin:16px 0}
+        label small{
+          margin-left:8px;color:#748092;font-weight:400;
         }
-        input,textarea,select {
-          display:block;
-          width:100%;
-          box-sizing:border-box;
-          padding:12px;
-          border:1px solid #cbd5e1;
-          border-radius:12px;
-          margin-top:7px;
-          font:inherit;
+        input,textarea,select{
+          display:block;width:100%;box-sizing:border-box;
+          padding:12px;border:1px solid #cbd5e1;
+          border-radius:12px;margin-top:7px;font:inherit;
         }
-        textarea {min-height:120px}
-        button {
-          padding:12px 16px;
-          margin:8px 6px 8px 0;
-          border:1px solid #cbd5e1;
-          border-radius:12px;
-          background:#eff6ff;
-          color:#243648;
-          font:inherit;
-          cursor:pointer;
+        textarea{min-height:120px}
+        button{
+          padding:12px 16px;margin:8px 6px 8px 0;
+          border:1px solid #cbd5e1;border-radius:12px;
+          background:#eff6ff;color:#243648;
+          font:inherit;cursor:pointer;
         }
-        button:disabled {opacity:.45;cursor:default}
-        .check {display:flex;gap:10px;align-items:center}
-        .check input {width:auto}
-        p {line-height:1.7;overflow-wrap:anywhere}
-        .error {color:#b91c1c}
-        .multiline {white-space:pre-wrap}
-        img {border-radius:50%;object-fit:cover}
-        .pair {
-          display:grid;
-          grid-template-columns:1fr 1fr;
-          gap:12px;
+        button:disabled{opacity:.45;cursor:default}
+        .check{display:flex;gap:10px;align-items:center}
+        .check input{width:auto}
+        p{line-height:1.7;overflow-wrap:anywhere}
+        .error{color:#b91c1c}
+        .multiline{white-space:pre-wrap}
+        img{border-radius:50%;object-fit:cover}
+        .pair{
+          display:grid;grid-template-columns:1fr 1fr;gap:12px;
         }
-        summary {
-          cursor:pointer;
-          font-weight:700;
-          padding:10px 0;
+        summary{
+          cursor:pointer;font-weight:700;padding:10px 0;
         }
-        .highlight {border:2px solid #417bc3}
-        .site-link {display:block;padding:14px}
-        .person h3,.person p {margin:5px 0}
+        .highlight{border:2px solid #417bc3}
+        .site-link{display:block;padding:14px}
+        .person h3,.person p{margin:5px 0}
       `}</style>
     </main>
   );
-                        }
+                      }
