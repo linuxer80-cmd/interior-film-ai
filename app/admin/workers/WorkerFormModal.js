@@ -8,10 +8,7 @@ function formatNumber(value) {
   }
 
   const onlyNumber = String(value).replace(/[^\d]/g, "");
-
-  if (!onlyNumber) {
-    return "";
-  }
+  if (!onlyNumber) return "";
 
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
@@ -21,6 +18,7 @@ export default function WorkerFormModal({
   selfRegistration = false,
   form,
   loading = false,
+  saveDisabled = false,
   localMessage = "",
   updateField,
   onSubmit,
@@ -30,16 +28,13 @@ export default function WorkerFormModal({
 
   function handleWageChange(event) {
     const rawValue = event.target.value.replace(/[^\d]/g, "");
-
     updateField?.("daily_wage", rawValue);
   }
 
   return (
     <div
       onClick={() => {
-        if (!loading) {
-          onClose?.();
-        }
+        if (!loading) onClose?.();
       }}
       style={{
         position: "fixed",
@@ -54,7 +49,7 @@ export default function WorkerFormModal({
       }}
     >
       <div
-        onClick={(event) => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
         style={{
           width: "100%",
           maxWidth: "500px",
@@ -64,8 +59,6 @@ export default function WorkerFormModal({
           boxShadow: "0 20px 50px rgba(0,0,0,0.20)",
         }}
       >
-        {/* 제목 */}
-
         <div
           style={{
             display: "flex",
@@ -82,7 +75,11 @@ export default function WorkerFormModal({
                 fontWeight: "900",
               }}
             >
-              {isEdit ? "👷 시공자 정보 수정" : selfRegistration ? "👷 관리자 본인 시공자 등록" : "👷 신규 시공자 등록"}
+              {isEdit
+                ? "👷 시공자 정보 수정"
+                : selfRegistration
+                  ? "👷 관리자 본인 시공자 등록"
+                  : "👷 신규 시공자 등록"}
             </div>
 
             <div
@@ -115,14 +112,7 @@ export default function WorkerFormModal({
           </button>
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          style={{
-            marginTop: "20px",
-          }}
-        >
-          {/* 이름 */}
-
+        <form onSubmit={onSubmit} style={{ marginTop: "20px" }}>
           <FieldLabel required>이름</FieldLabel>
 
           {isEdit ? (
@@ -146,7 +136,7 @@ export default function WorkerFormModal({
               type="text"
               value={form?.name || ""}
               disabled={loading}
-              onChange={(event) =>
+              onChange={event =>
                 updateField?.("name", event.target.value)
               }
               placeholder="예: 홍길동"
@@ -167,17 +157,14 @@ export default function WorkerFormModal({
             </div>
           )}
 
-          {/* 전화번호 */}
-
           <div style={{ height: "16px" }} />
-
           <FieldLabel required>전화번호</FieldLabel>
 
           <input
             type="tel"
             value={form?.phone || ""}
             disabled={loading}
-            onChange={(event) =>
+            onChange={event =>
               updateField?.("phone", event.target.value)
             }
             placeholder="예: 010-1234-5678"
@@ -185,17 +172,10 @@ export default function WorkerFormModal({
             style={inputStyle}
           />
 
-          {/* 기본 일당 */}
-
           <div style={{ height: "16px" }} />
-
           <FieldLabel required>기본 일당</FieldLabel>
 
-          <div
-            style={{
-              position: "relative",
-            }}
-          >
+          <div style={{ position: "relative" }}>
             <input
               type="text"
               inputMode="numeric"
@@ -239,21 +219,87 @@ export default function WorkerFormModal({
               lineHeight: "1.5",
             }}
           >
-            팀장비용은 시공자 관리 목록의 ‘팀장비용 설정’에서 업체 공통으로 정합니다.
-            이 시공자가 팀장으로 일한 날에는 기본 일당에 해당 금액이 자동으로 더해집니다.
+            팀장비용은 시공자 관리 목록의 ‘팀장비용 설정’에서
+            업체 공통으로 정합니다. 이 시공자가 팀장으로 일한 날에는
+            기본 일당에 해당 금액이 자동으로 더해집니다.
           </div>
 
           <div style={{ height: 16 }} />
           <FieldLabel required>기본 일당 적용 시작일</FieldLabel>
-          <input aria-label="기본 일당 적용 시작일" type="date" value={form?.pay_rate_effective_from || ""}
-            min={editingWorker?.pay_rate_effective_from || "2000-01-01"} max={koreanDay()} required disabled={loading}
-            onChange={(event) => updateField?.("pay_rate_effective_from", event.target.value)} style={inputStyle} />
-          <p style={{ margin: "7px 0 0", color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
-            기본 일당을 변경하면 이 날짜부터 새 금액을 적용하고 이전 단가는 보관합니다.
-            이번 달 전체에 적용하려면 월초 날짜를 선택하세요. 같은 적용일의 금액은 수정됩니다.
+
+          <input
+            aria-label="기본 일당 적용 시작일"
+            type="date"
+            value={form?.pay_rate_effective_from || ""}
+            min={editingWorker?.pay_rate_effective_from || "2000-01-01"}
+            max={koreanDay()}
+            required
+            disabled={loading}
+            onChange={event =>
+              updateField?.("pay_rate_effective_from", event.target.value)
+            }
+            style={inputStyle}
+          />
+
+          <p
+            style={{
+              margin: "7px 0 0",
+              color: "#64748b",
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            기본 일당을 변경하면 이 날짜부터 새 금액을 적용하고
+            이전 단가는 보관합니다. 이번 달 전체에 적용하려면
+            월초 날짜를 선택하세요. 같은 적용일의 금액은 수정됩니다.
           </p>
 
-          {/* 메시지 */}
+          {[
+            ["bank_name", "은행명", "예: 국민은행", 100],
+            ["account_number", "계좌번호", "숫자와 하이픈으로 입력", 50],
+            ["account_holder", "예금주", "통장에 표시된 예금주", 100],
+            [
+              "departure_address",
+              "출발 주소",
+              "도로명·건물번호까지 입력 (예: 인천 서구 …)",
+              300,
+            ],
+          ].map(([key, label, placeholder, maxLength]) => (
+            <label
+              key={key}
+              style={{ display: "block", marginTop: 16 }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  marginBottom: 7,
+                  fontWeight: 700,
+                }}
+              >
+                {label}
+              </span>
+
+              <input
+                type="text"
+                inputMode={key === "account_number" ? "numeric" : undefined}
+                autoComplete="off"
+                value={form?.[key] || ""}
+                maxLength={maxLength}
+                disabled={loading}
+                placeholder={placeholder}
+                onChange={event =>
+                  updateField?.(key, event.target.value)
+                }
+                style={inputStyle}
+              />
+            </label>
+          ))}
+
+          <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
+            계좌와 출발 주소는 관리자 전용입니다.
+            출발 주소는 본인 현장의 자동차 이동시간 계산에 사용합니다.
+            상세 동·호수는 입력하지 않아도 됩니다.
+          </p>
 
           {localMessage && (
             <div
@@ -276,8 +322,6 @@ export default function WorkerFormModal({
               {localMessage}
             </div>
           )}
-
-          {/* 버튼 */}
 
           <div
             style={{
@@ -307,7 +351,7 @@ export default function WorkerFormModal({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || saveDisabled}
               style={{
                 padding: "12px",
                 border: "none",
@@ -344,14 +388,8 @@ function FieldLabel({ children, required = false }) {
       }}
     >
       {children}
-
       {required && (
-        <span
-          style={{
-            marginLeft: "3px",
-            color: "#ef4444",
-          }}
-        >
+        <span style={{ marginLeft: "3px", color: "#ef4444" }}>
           *
         </span>
       )}
