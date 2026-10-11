@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { GET as mySitesGET } from "../my-sites/route";
 import {
   koreanDay,
@@ -171,8 +171,7 @@ export async function GET(request) {
 
     const cache = commuteCache(auth.db, identity);
 
-    // 화면 진입 시에는 저장된 결과만 읽습니다.
-    // 이 분기에서는 카카오 API를 호출하지 않습니다.
+    // 저장된 결과 읽기는 카카오 호출과 사용량 차감이 없습니다.
     if (params.get("mode") === "saved") {
       const saved = await cache.read();
 
@@ -265,7 +264,34 @@ export async function GET(request) {
       return `${x},${y}`;
     }
 
+    // 캐시가 있거나 다른 요청이 계산 중이면 이 콜백은 실행되지 않습니다.
     return await cache.run(async () => {
+      const {
+        data: quota,
+        error: quotaError,
+      } = await auth.db.rpc("reserve_commute_quota", {
+        p_company_id: site.company_id,
+        p_request_id: randomUUID(),
+      });
+
+      if (quotaError) {
+        throw Object.assign(
+          Error("출발 시간 횟수 제한 SQL을 먼저 적용해주세요."),
+          { status: 503 }
+        );
+      }
+
+      if (!quota?.ok) {
+        throw Object.assign(
+          Error(
+            quota?.error ||
+            "출발 시간 예측 한도를 모두 사용했습니다."
+          ),
+          { status: 429 }
+        );
+      }
+
+      // 한도 확보 후에만 외부 API를 호출합니다.
       const [origin, destination] = await Promise.all([
         geocode(details.data.departure_address),
         geocode(site.address),
@@ -323,6 +349,6 @@ export async function GET(request) {
       error: error.name === "TimeoutError"
         ? "지도 조회가 지연되고 있습니다. 2분 뒤 다시 조회해주세요."
         : error.message || "출발 시간을 계산하지 못했습니다.",
-    }, 502);
+    }, error.status || 502);
   }
 }
