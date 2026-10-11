@@ -4,6 +4,7 @@ import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {supabase} from '../../lib/supabase';
 import LaborNotifications from '../components/LaborNotifications';
+import '../components/laborMarket.css';
 
 const blankJob={
   site_id:'',
@@ -37,11 +38,13 @@ export default function JobsPage(){
   const [busy,setBusy]=useState(false);
   const [attempt,setAttempt]=useState(0);
   const [tab,setTab]=useState('');
+
   const [filters,setFilters]=useState({
     region:'',skill:'',date:'',wage:'',experience:''
   });
   const [search,setSearch]=useState({});
   const [page,setPage]=useState(0);
+
   const [job,setJob]=useState(blankJob);
   const [jobSkillText,setJobSkillText]=useState('');
   const [showForm,setShowForm]=useState(false);
@@ -76,7 +79,11 @@ export default function JobsPage(){
     });
 
     const result=await response.json();
-    if(!response.ok)throw Error(result.error||'요청에 실패했습니다.');
+
+    if(!response.ok){
+      throw Error(result.error||'요청에 실패했습니다.');
+    }
+
     return result;
   }
 
@@ -199,7 +206,8 @@ export default function JobsPage(){
 
   const field=(label,key,type='text',required=false)=>(
     <label>
-      {label}{!required&&<small>선택</small>}
+      {label}
+      {!required&&<small>선택</small>}
       <input
         required={required}
         type={type}
@@ -226,10 +234,13 @@ export default function JobsPage(){
       </div>
 
       <p>희망 일당 {Number(p.daily_wage).toLocaleString()}원</p>
+
       {p.skills?.length>0&&<p>{p.skills.join(' · ')}</p>}
+
       {p.introduction&&(
         <p className='multiline'>{p.introduction}</p>
       )}
+
       {p.available_dates?.length>0&&(
         <p>가능한 날짜 {p.available_dates.join(', ')}</p>
       )}
@@ -239,11 +250,14 @@ export default function JobsPage(){
   const jobCard=j=>(
     <>
       <h3>{j.title}</h3>
+
       <p>
         {j.company_name} · {j.region} ·
         {j.status==='open'?' 모집 중':' 모집 종료'}
       </p>
+
       <p className='multiline'>{j.work_content}</p>
+
       <p>
         {j.work_dates?.length
           ?j.work_dates.join(', ')
@@ -265,9 +279,11 @@ export default function JobsPage(){
       {j.worker_region&&(
         <p>희망 시공자 지역 {j.worker_region}</p>
       )}
+
       {j.min_experience!=null&&(
         <p>경력 {j.min_experience}년 이상</p>
       )}
+
       {j.skills?.length>0&&(
         <p>필요 분야 {j.skills.join(' · ')}</p>
       )}
@@ -275,7 +291,7 @@ export default function JobsPage(){
   );
 
   return(
-    <main>
+    <main className='labor-shell'>
       <nav>
         <Link href={data?.manager?'/admin':'/worker'}>‹ 홈</Link>
         {!data?.manager&&(
@@ -357,14 +373,23 @@ export default function JobsPage(){
                   });
                 }}>
                   <fieldset disabled={busy}>
-                    <h2>현장에서 구인하기</h2>
-                    <p>
-                      지역과 작업 내용을 가져왔습니다.
-                      공고에 공개할 내용을 확인해주세요.
+                    <span className='eyebrow'>
+                      내 현장으로 간편하게
+                    </span>
+
+                    <h2>시공자를 찾고 있어요</h2>
+
+                    <p className='muted'>
+                      현장 정보는 미리 채웠습니다.
+                      필요한 날짜와 인원만 확인하세요.
                     </p>
 
-                    {field('공고 제목','title','text',true)}
-                    {field('대략적인 현장 지역','region','text',true)}
+                    <details>
+                      <summary>공고 제목 수정</summary>
+                      {field('공고 제목','title','text',true)}
+                    </details>
+
+                    {field('현장 지역','region','text',true)}
 
                     <label>
                       작업 내용
@@ -437,7 +462,52 @@ export default function JobsPage(){
                       </p>
                     )}
 
-                    {field('모집 인원','headcount','number',true)}
+                    <label>
+                      모집 인원
+                      <div className='stepper'>
+                        <button
+                          type='button'
+                          aria-label='모집 인원 줄이기'
+                          disabled={Number(job.headcount)<=1}
+                          onClick={()=>setJob(j=>({
+                            ...j,
+                            headcount:Math.max(
+                              1,Number(j.headcount)-1
+                            )
+                          }))}
+                        >
+                          −
+                        </button>
+
+                        <input
+                          type='number'
+                          min='1'
+                          max='100'
+                          required
+                          aria-label='모집 인원'
+                          value={job.headcount}
+                          onChange={e=>setJob(j=>({
+                            ...j,headcount:e.target.value
+                          }))}
+                        />
+
+                        <span>명</span>
+
+                        <button
+                          type='button'
+                          aria-label='모집 인원 늘리기'
+                          disabled={Number(job.headcount)>=100}
+                          onClick={()=>setJob(j=>({
+                            ...j,
+                            headcount:Math.min(
+                              100,Number(j.headcount)+1
+                            )
+                          }))}
+                        >
+                          ＋
+                        </button>
+                      </div>
+                    </label>
 
                     <details>
                       <summary>
@@ -445,6 +515,30 @@ export default function JobsPage(){
                       </summary>
 
                       {field('제시 일당 (원)','daily_wage','number')}
+
+                      <div className='chips'>
+                        {[200000,250000,300000].map(n=>(
+                          <button
+                            type='button'
+                            key={n}
+                            aria-pressed={Number(job.daily_wage)===n}
+                            onClick={()=>setJob(j=>({
+                              ...j,daily_wage:n
+                            }))}
+                          >
+                            {n/10000}만원
+                          </button>
+                        ))}
+
+                        <button
+                          type='button'
+                          onClick={()=>setJob(j=>({
+                            ...j,daily_wage:''
+                          }))}
+                        >
+                          협의
+                        </button>
+                      </div>
 
                       <div className='pair'>
                         {field('최소 나이','min_age','number')}
@@ -553,6 +647,7 @@ export default function JobsPage(){
               )}
 
               <button className='primary'>검색</button>
+
               <button type='button' onClick={()=>{
                 setSearch({});
                 setFilters({
@@ -568,6 +663,7 @@ export default function JobsPage(){
           {data.manager&&tab==='candidates'&&(
             <>
               <h2>공개 구직 공고</h2>
+
               {!data.candidates.length&&(
                 <p>조건에 맞는 구직 공고가 없습니다.</p>
               )}
@@ -579,6 +675,7 @@ export default function JobsPage(){
                   onChange={e=>setSelectedJob(e.target.value)}
                 >
                   <option value=''>공고 선택</option>
+
                   {myJobs.map(j=>(
                     <option key={j.id} value={j.id}>
                       {j.title} · {j.region}
@@ -590,6 +687,7 @@ export default function JobsPage(){
               {data.candidates.map(p=>(
                 <article key={p.user_id}>
                   {profileCard(p)}
+
                   <button
                     disabled={
                       busy||!myJobs.some(j=>j.id===selectedJob)
@@ -612,6 +710,7 @@ export default function JobsPage(){
               <h2>
                 {data.manager?'내 업체 구인 공고':'모집 중인 현장'}
               </h2>
+
               {!data.jobs.length&&<p>등록된 공고가 없습니다.</p>}
 
               {data.jobs.map(j=>(
@@ -717,6 +816,7 @@ export default function JobsPage(){
                     {data.manager?(
                       <>
                         {a.profile&&profileCard(a.profile)}
+
                         {a.phone&&(
                           <p>
                             <a href={`tel:${a.phone}`}>전화 {a.phone}</a>
@@ -758,6 +858,7 @@ export default function JobsPage(){
                     ):(
                       <>
                         {j&&jobCard(j)}
+
                         {a.status==='invited'&&(
                           <>
                             <label className='check'>
@@ -814,6 +915,7 @@ export default function JobsPage(){
           {confirmation&&(
             <aside role='alert'>
               <p>{confirmation.title}</p>
+
               <button
                 className='primary'
                 disabled={busy}
@@ -821,6 +923,7 @@ export default function JobsPage(){
               >
                 확인
               </button>
+
               <button
                 disabled={busy}
                 onClick={()=>setConfirmation(null)}
@@ -838,7 +941,9 @@ export default function JobsPage(){
               >
                 이전
               </button>
+
               <span>{page+1}페이지</span>
+
               <button
                 disabled={
                   (tab==='candidates'?data.candidates:data.jobs)
@@ -852,61 +957,6 @@ export default function JobsPage(){
           )}
         </>
       )}
-
-      <style jsx>{`
-        main{
-          max-width:760px;margin:auto;
-          padding:24px 18px 80px;
-          background:#f8f7f3;color:#243648;
-          min-height:100vh;
-        }
-        nav,.tabs,.pages,.person{
-          display:flex;gap:12px;align-items:center;flex-wrap:wrap;
-        }
-        .date-options button[aria-pressed=true],
-        .tabs button[aria-pressed=true],.primary{
-          background:#243648;color:white;
-        }
-        form,article,aside{
-          padding:20px;background:white;
-          border:1px solid #e0d5c5;
-          border-radius:20px;margin:16px 0;
-        }
-        aside{background:#eef5ff}
-        fieldset{border:0;padding:0;min-width:0}
-        label{display:block;font-weight:700;margin:16px 0}
-        label small{
-          margin-left:8px;color:#748092;font-weight:400;
-        }
-        input,textarea,select{
-          display:block;width:100%;box-sizing:border-box;
-          padding:12px;border:1px solid #cbd5e1;
-          border-radius:12px;margin-top:7px;font:inherit;
-        }
-        textarea{min-height:120px}
-        button{
-          padding:12px 16px;margin:8px 6px 8px 0;
-          border:1px solid #cbd5e1;border-radius:12px;
-          background:#eff6ff;color:#243648;
-          font:inherit;cursor:pointer;
-        }
-        button:disabled{opacity:.45;cursor:default}
-        .check{display:flex;gap:10px;align-items:center}
-        .check input{width:auto}
-        p{line-height:1.7;overflow-wrap:anywhere}
-        .error{color:#b91c1c}
-        .multiline{white-space:pre-wrap}
-        img{border-radius:50%;object-fit:cover}
-        .pair{
-          display:grid;grid-template-columns:1fr 1fr;gap:12px;
-        }
-        summary{
-          cursor:pointer;font-weight:700;padding:10px 0;
-        }
-        .highlight{border:2px solid #417bc3}
-        .site-link{display:block;padding:14px}
-        .person h3,.person p{margin:5px 0}
-      `}</style>
     </main>
   );
-                      }
+}
