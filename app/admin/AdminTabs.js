@@ -57,7 +57,7 @@ const menus = [
     href: "/admin/customer-page",
     label: "고객페이지 관리",
     description: "공개 시공 사례와 업체 정보",
-    icon: "camera",
+    icon: "customer",
   },
 ];
 
@@ -93,30 +93,24 @@ export default function AdminTabs({
     <section className="film-admin-dashboard">
       {isHome ? (
         <>
-          <AdminHomeSummary
-            key={companyId}
-            companyId={companyId}
-          />
+          <AdminHomeSummary key={companyId} companyId={companyId} />
 
           <div className="film-admin-hero">
             <div>
               <span className="film-admin-kicker">
                 오늘도 좋은 공간을 만듭니다
               </span>
-
               <h2>
                 안녕하세요!
                 <br />
                 필름장이 관리자입니다.
               </h2>
-
               <p>
                 현장부터 완료보고까지
                 <br />
                 오늘의 업무를 편하게 확인하세요.
               </p>
             </div>
-
             <ToolIllustration kind="home" size={176} />
           </div>
 
@@ -136,10 +130,8 @@ export default function AdminTabs({
                     size="100%"
                     className="photo-menu-art"
                   />
-
                   <span>
                     <strong>{menu.label}</strong>
-
                     <small>
                       {menu.id === "leads" && unreadCount > 0
                         ? `새 상담 ${unreadCount}건 · 확인해주세요`
@@ -167,18 +159,11 @@ export default function AdminTabs({
         </>
       ) : (
         <div className="film-admin-section-bar">
-          <button
-            type="button"
-            onClick={() => go("today")}
-          >
+          <button type="button" onClick={() => go("today")}>
             ‹ 관리자 홈
           </button>
-
           <span>
-            <ToolIllustration
-              kind={section?.[1]}
-              size={48}
-            />
+            <ToolIllustration kind={section?.[1]} size={48} />
             {section?.[0]}
           </span>
         </div>
@@ -221,14 +206,10 @@ export default function AdminTabs({
             }}
           >
             <ToolIllustration kind="money" size={58} />
-
             <span style={{ flex: 1, minWidth: 0 }}>
-              <strong
-                style={{ display: "block", fontSize: 17 }}
-              >
+              <strong style={{ display: "block", fontSize: 17 }}>
                 미수금 · 잔금 관리
               </strong>
-
               <small
                 style={{
                   display: "block",
@@ -237,15 +218,10 @@ export default function AdminTabs({
                   lineHeight: 1.6,
                 }}
               >
-                계약금·중도금·잔금 입금 내역과
-                남은 미수금 확인
+                계약금·중도금·잔금 입금 내역과 남은 미수금 확인
               </small>
             </span>
-
-            <span
-              aria-hidden="true"
-              style={{ fontSize: 24 }}
-            >
+            <span aria-hidden="true" style={{ fontSize: 24 }}>
               ›
             </span>
           </a>
@@ -253,54 +229,31 @@ export default function AdminTabs({
       )}
 
       {moreOpen && (
-        <nav
-          className="film-admin-more"
-          aria-label="추가 관리 메뉴"
-        >
+        <nav className="film-admin-more" aria-label="추가 관리 메뉴">
           <div className="film-admin-more-title">
             <strong>관리 메뉴</strong>
-
-            <button
-              type="button"
-              onClick={() => setMoreOpen(false)}
-            >
+            <button type="button" onClick={() => setMoreOpen(false)}>
               닫기
             </button>
           </div>
 
           <a href="/admin/clients">업체 관리</a>
           <a href="/admin/customer-page">고객페이지 관리</a>
-
-          <button
-            type="button"
-            onClick={() => go("jobs")}
-          >
+          <button type="button" onClick={() => go("jobs")}>
             시공 DB
           </button>
-
-          <button
-            type="button"
-            onClick={() => go("register")}
-          >
+          <button type="button" onClick={() => go("register")}>
             시공 등록
           </button>
-
-          <button
-            type="button"
-            onClick={() => go("usage")}
-          >
+          <button type="button" onClick={() => go("usage")}>
             로그 분석
           </button>
-
           <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
         </nav>
       )}
 
-      <nav
-        className="film-admin-bottom"
-        aria-label="관리자 하단 메뉴"
-      >
+      <nav className="film-admin-bottom" aria-label="관리자 하단 메뉴">
         {[
           { id: "today", label: "홈", icon: "⌂" },
           { id: "sites", label: "현장", icon: "▣" },
@@ -310,9 +263,7 @@ export default function AdminTabs({
           <button
             key={item.id}
             type="button"
-            aria-current={
-              activeTab === item.id ? "page" : undefined
-            }
+            aria-current={activeTab === item.id ? "page" : undefined}
             onClick={() => go(item.id)}
           >
             <span aria-hidden="true">{item.icon}</span>
@@ -331,4 +282,4 @@ export default function AdminTabs({
       </nav>
     </section>
   );
-                }
+}
