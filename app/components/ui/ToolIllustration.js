@@ -13,8 +13,14 @@ const positions = {
   money: "100% 50%",
   box: "0% 100%",
   stock: "0% 100%",
+  customer: "100% 100%",
   film: "50% 100%",
   camera: "100% 100%",
+};
+
+const images = {
+  stock: "/images/menu/film-stock.png",
+  customer: "/images/menu/customer-page.png",
 };
 
 export default function ToolIllustration({
@@ -22,8 +28,9 @@ export default function ToolIllustration({
   size = 64,
   className = "",
 }) {
-  const [stockFailed, setStockFailed] = useState(false);
-  const useStock = kind === "stock" && !stockFailed;
+  const [failedImage, setFailedImage] = useState("");
+  const image = images[kind];
+  const showImage = image && failedImage !== image;
 
   return (
     <span
@@ -45,11 +52,12 @@ export default function ToolIllustration({
         borderRadius: 14,
       }}
     >
-      {useStock && (
+      {showImage && (
         <img
-          src="/images/menu/film-stock.png"
+          key={image}
+          src={image}
           alt=""
-          onError={() => setStockFailed(true)}
+          onError={() => setFailedImage(image)}
           style={{
             position: "absolute",
             inset: 0,
