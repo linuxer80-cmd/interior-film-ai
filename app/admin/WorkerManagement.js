@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
@@ -11,6 +11,10 @@ import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
 
 const EMPTY_FORM = {
+  bank_name: "",
+  account_number: "",
+  account_holder: "",
+  departure_address: "",
   name: "",
   phone: "",
   daily_wage: "",
@@ -27,6 +31,10 @@ export default function WorkerManagement({
   createWorkerInvite,
   loadWorkers,
 }) {
+  const [privateBusy, setPrivateBusy] = useState(false);
+  const [privateReady, setPrivateReady] = useState(true);
+  const saving = useRef(false);
+
   const [selfRegistration, setSelfRegistration] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingWorker, setEditingWorker] = useState(null);
@@ -38,6 +46,44 @@ export default function WorkerManagement({
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteLoadingId, setInviteLoadingId] = useState(null);
+
+  async function privateRequest(method, workerId, details) {
+    const { data } = await supabase.auth.getSession();
+
+    if (!data?.session?.access_token) {
+      throw Error("로그인을 다시 해주세요.");
+    }
+
+    const response = await fetch(
+      `/api/admin/worker-private${
+        workerId && method === "GET"
+          ? `?workerId=${workerId}`
+          : ""
+      }`,
+      {
+        method,
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        ...(method === "PUT"
+          ? { body: JSON.stringify({ workerId, ...details }) }
+          : {}),
+      },
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw Error(
+        result.error || "계좌·주소를 처리하지 못했습니다.",
+      );
+    }
+
+    return result;
+  }
 
   async function registerMyself(payload) {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -89,59 +135,52 @@ export default function WorkerManagement({
     if (showInactive) return workers;
 
     return workers.filter(
-      (worker) => worker.is_active !== false,
+      worker => worker.is_active !== false,
     );
   }, [workers, showInactive]);
 
   const activeCount = useMemo(
-    () =>
-      workers.filter(
-        (worker) => worker.is_active !== false,
-      ).length,
+    () => workers.filter(worker => worker.is_active !== false).length,
     [workers],
   );
 
   const inactiveCount = useMemo(
-    () =>
-      workers.filter(
-        (worker) => worker.is_active === false,
-      ).length,
+    () => workers.filter(worker => worker.is_active === false).length,
     [workers],
   );
 
   const linkedCount = useMemo(
-    () =>
-      workers.filter(
-        (worker) => Boolean(worker.user_id),
-      ).length,
+    () => workers.filter(worker => Boolean(worker.user_id)).length,
     [workers],
   );
 
   function updateField(field, value) {
-    setForm((current) => ({
+    setForm(current => ({
       ...current,
       [field]: value,
     }));
   }
 
   function openCreateForm() {
+    setPrivateReady(true);
     setSelfRegistration(false);
     setEditingWorker(null);
-
     setForm({
       ...EMPTY_FORM,
       pay_rate_effective_from: koreanDay(),
     });
-
     setLocalMessage("");
     setShowForm(true);
   }
 
-  function openEditForm(worker) {
+  async function openEditForm(worker) {
+    setPrivateReady(false);
+    setPrivateBusy(true);
     setSelfRegistration(false);
     setEditingWorker(worker);
 
     setForm({
+      ...EMPTY_FORM,
       pay_rate_effective_from: koreanDay(),
       name: worker?.name || "",
       phone: worker?.phone || "",
@@ -154,19 +193,33 @@ export default function WorkerManagement({
 
     setLocalMessage("");
     setShowForm(true);
+
+    try {
+      const result = await privateRequest("GET", worker.id);
+      setForm(current => ({
+        ...current,
+        ...result.details,
+      }));
+      setPrivateReady(true);
+    } catch (error) {
+      setLocalMessage(
+        `❌ ${error.message} 창을 닫고 다시 열어주세요.`,
+      );
+    } finally {
+      setPrivateBusy(false);
+    }
   }
 
   function closeForm() {
-    if (workersLoading) return;
+    if (workersLoading || privateBusy || saving.current) return;
 
     setShowForm(false);
     setEditingWorker(null);
-
+    setPrivateReady(true);
     setForm({
       ...EMPTY_FORM,
       pay_rate_effective_from: koreanDay(),
     });
-
     setLocalMessage("");
   }
 
@@ -197,7 +250,6 @@ export default function WorkerManagement({
       setInviteMessage(
         "✅ 이미 로그인 계정이 연결된 시공자입니다.",
       );
-
       return {
         success: false,
         alreadyLinked: true,
@@ -208,7 +260,6 @@ export default function WorkerManagement({
       setInviteMessage(
         "❌ 비활성 시공자는 계정을 초대할 수 없습니다.",
       );
-
       return {
         success: false,
         error: "비활성 시공자입니다.",
@@ -219,7 +270,6 @@ export default function WorkerManagement({
       setInviteMessage(
         "❌ 계정 초대 기능을 사용할 수 없습니다.",
       );
-
       return {
         success: false,
         error: "계정 초대 기능을 사용할 수 없습니다.",
@@ -233,21 +283,16 @@ export default function WorkerManagement({
 
       if (!result?.success) {
         setInviteMessage(
-          `❌ ${
-            result?.error || "초대코드 생성에 실패했습니다."
-          }`,
+          `❌ ${result?.error || "초대코드 생성에 실패했습니다."}`,
         );
-
         return {
           success: false,
-          error:
-            result?.error || "초대코드 생성에 실패했습니다.",
+          error: result?.error || "초대코드 생성에 실패했습니다.",
         };
       }
 
       if (!result.inviteCode) {
         setInviteMessage("❌ 초대코드를 확인할 수 없습니다.");
-
         return {
           success: false,
           error: "초대코드를 확인할 수 없습니다.",
@@ -257,10 +302,7 @@ export default function WorkerManagement({
       const url = makeInviteUrl(result.inviteCode);
 
       if (!url) {
-        setInviteMessage(
-          "❌ 초대 링크 주소를 만들 수 없습니다.",
-        );
-
+        setInviteMessage("❌ 초대 링크 주소를 만들 수 없습니다.");
         return {
           success: false,
           error: "초대 링크 주소를 만들 수 없습니다.",
@@ -268,11 +310,8 @@ export default function WorkerManagement({
       }
 
       setInviteUrl(url);
-
       setInviteMessage(
-        `✅ ${
-          worker.name || "시공자"
-        } 계정 초대 링크가 생성되었습니다.`,
+        `✅ ${worker.name || "시공자"} 계정 초대 링크가 생성되었습니다.`,
       );
 
       return {
@@ -282,7 +321,6 @@ export default function WorkerManagement({
       };
     } catch (error) {
       console.error("시공자 계정 초대:", error);
-
       const message =
         error?.message || "초대 링크 생성에 실패했습니다.";
 
@@ -299,11 +337,13 @@ export default function WorkerManagement({
 
   async function handleSubmit(event) {
     event.preventDefault();
+
+    if (saving.current || privateBusy || !privateReady) return;
+
     setLocalMessage("");
 
     const cleanName = String(form?.name || "").trim();
     const cleanPhone = String(form?.phone || "").trim();
-
     const cleanDailyWage = String(form?.daily_wage || "")
       .replace(/[^\d]/g, "")
       .trim();
@@ -330,9 +370,7 @@ export default function WorkerManagement({
       return;
     }
 
-    const effectiveFrom = payDate(
-      form.pay_rate_effective_from,
-    );
+    const effectiveFrom = payDate(form.pay_rate_effective_from);
 
     const rateChanged =
       !editingWorker ||
@@ -350,8 +388,7 @@ export default function WorkerManagement({
       (!effectiveFrom ||
         effectiveFrom > koreanDay() ||
         (editingWorker?.pay_rate_effective_from &&
-          effectiveFrom <
-            editingWorker.pay_rate_effective_from))
+          effectiveFrom < editingWorker.pay_rate_effective_from))
     ) {
       setLocalMessage(
         "❌ 적용 시작일은 이전 단가 적용일 이후부터 오늘 사이로 지정해주세요.",
@@ -367,21 +404,55 @@ export default function WorkerManagement({
       update_pay_rate: rateChanged,
     };
 
+    saving.current = true;
+    setPrivateBusy(true);
+    let basicSaved = false;
+
     try {
+      await privateRequest("GET");
+
+      const details = Object.fromEntries(
+        [
+          "bank_name",
+          "account_number",
+          "account_holder",
+          "departure_address",
+        ].map(key => [key, String(form[key] || "").trim()]),
+      );
+
+      if (
+        details.account_number &&
+        (!/^[0-9 -]{3,50}$/.test(details.account_number) ||
+          !details.bank_name ||
+          !details.account_holder)
+      ) {
+        throw Error("은행·계좌번호·예금주를 확인해주세요.");
+      }
+
       if (selfRegistration && !editingWorker?.id) {
-        await registerMyself(submitForm);
+        const created = await registerMyself(submitForm);
+
+        basicSaved = true;
+
+        setEditingWorker({
+          ...submitForm,
+          ...created.worker,
+        });
+
+        await privateRequest(
+          "PUT",
+          created.worker.id,
+          details,
+        );
 
         setShowForm(false);
+        setEditingWorker(null);
         setSelfRegistration(false);
-
         setForm({
           ...EMPTY_FORM,
           pay_rate_effective_from: koreanDay(),
         });
-
-        setLocalMessage(
-          "✅ 내 시공자 계정이 등록되었습니다.",
-        );
+        setLocalMessage("✅ 내 시공자 계정이 등록되었습니다.");
         return;
       }
 
@@ -404,14 +475,20 @@ export default function WorkerManagement({
           return;
         }
 
+        basicSaved = true;
+
+        await privateRequest(
+          "PUT",
+          editingWorker.id,
+          details,
+        );
+
         setShowForm(false);
         setEditingWorker(null);
-
         setForm({
           ...EMPTY_FORM,
           pay_rate_effective_from: koreanDay(),
         });
-
         setLocalMessage("");
         return;
       }
@@ -426,9 +503,7 @@ export default function WorkerManagement({
 
       if (!result?.success) {
         setLocalMessage(
-          `❌ ${
-            result?.error || "시공자 등록에 실패했습니다."
-          }`,
+          `❌ ${result?.error || "시공자 등록에 실패했습니다."}`,
         );
         return;
       }
@@ -441,15 +516,17 @@ export default function WorkerManagement({
       }
 
       const newWorker = result.worker;
+      basicSaved = true;
+      setEditingWorker(newWorker);
+
+      await privateRequest("PUT", newWorker.id, details);
 
       setShowForm(false);
       setEditingWorker(null);
-
       setForm({
         ...EMPTY_FORM,
         pay_rate_effective_from: koreanDay(),
       });
-
       setLocalMessage("");
 
       await createInviteForWorker(newWorker);
@@ -457,8 +534,15 @@ export default function WorkerManagement({
       console.error("시공자 저장:", error);
 
       setLocalMessage(
-        `❌ ${error?.message || "저장에 실패했습니다."}`,
+        `❌ ${
+          basicSaved
+            ? "기본 정보는 저장되었습니다. 계좌·주소 저장을 다시 눌러주세요. "
+            : ""
+        }${error?.message || "저장에 실패했습니다."}`,
       );
+    } finally {
+      saving.current = false;
+      setPrivateBusy(false);
     }
   }
 
@@ -467,7 +551,6 @@ export default function WorkerManagement({
     if (typeof setWorkerActive !== "function") return;
 
     const nextActive = worker.is_active === false;
-
     const text = nextActive
       ? `${worker.name} 시공자를 다시 활성화할까요?`
       : `${worker.name} 시공자를 비활성화할까요?\n\n과거 현장 기록은 삭제되지 않습니다.`;
@@ -502,17 +585,10 @@ export default function WorkerManagement({
         return;
       }
 
-      window.prompt(
-        "아래 초대 링크를 복사해주세요.",
-        inviteUrl,
-      );
+      window.prompt("아래 초대 링크를 복사해주세요.", inviteUrl);
     } catch (error) {
       console.error("초대 링크 복사:", error);
-
-      window.prompt(
-        "아래 초대 링크를 복사해주세요.",
-        inviteUrl,
-      );
+      window.prompt("아래 초대 링크를 복사해주세요.", inviteUrl);
     }
   }
 
@@ -601,13 +677,12 @@ export default function WorkerManagement({
             type="button"
             onClick={() => {
               setEditingWorker(null);
-
               setForm({
                 ...EMPTY_FORM,
                 pay_rate_effective_from: koreanDay(),
               });
-
               setLocalMessage("");
+              setPrivateReady(true);
               setSelfRegistration(true);
               setShowForm(true);
             }}
@@ -633,9 +708,7 @@ export default function WorkerManagement({
 
         <button
           type="button"
-          onClick={() =>
-            setShowInactive((current) => !current)
-          }
+          onClick={() => setShowInactive(current => !current)}
           style={{
             width: "100%",
             marginBottom: "12px",
@@ -698,21 +771,11 @@ export default function WorkerManagement({
               textAlign: "center",
             }}
           >
-            <div
-              style={{
-                fontSize: "28px",
-                marginBottom: "7px",
-              }}
-            >
+            <div style={{ fontSize: "28px", marginBottom: "7px" }}>
               👷
             </div>
 
-            <div
-              style={{
-                color: "#334155",
-                fontWeight: "800",
-              }}
-            >
+            <div style={{ color: "#334155", fontWeight: "800" }}>
               등록된 시공자가 없습니다.
             </div>
 
@@ -723,14 +786,13 @@ export default function WorkerManagement({
                 fontSize: "12px",
               }}
             >
-              시공자를 등록하면 계정 초대 링크가 자동으로
-              생성됩니다.
+              시공자를 등록하면 계정 초대 링크가 자동으로 생성됩니다.
             </div>
           </div>
         )}
 
         <div style={{ display: "grid", gap: "9px" }}>
-          {visibleWorkers.map((worker) => (
+          {visibleWorkers.map(worker => (
             <WorkerCard
               key={worker.id}
               worker={worker}
@@ -749,7 +811,8 @@ export default function WorkerManagement({
           selfRegistration={selfRegistration}
           editingWorker={editingWorker}
           form={form}
-          loading={workersLoading}
+          loading={workersLoading || privateBusy}
+          saveDisabled={!privateReady}
           localMessage={localMessage}
           updateField={updateField}
           onSubmit={handleSubmit}
@@ -770,4 +833,4 @@ export default function WorkerManagement({
       )}
     </>
   );
-}
+                }
