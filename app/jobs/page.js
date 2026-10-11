@@ -86,7 +86,7 @@ export default function JobsPage(){
   const c=new AbortController();setError('');
   const params=new URLSearchParams(window.location.search),q={...search,page:String(page)};if(params.get('job'))q.job=params.get('job');
   api(`/api/labor-market?${new URLSearchParams(q)}`,null,c.signal).then(r=>{
-   if(c.signal.aborted)return;setData(r);setTab(t=>t||params.get('tab')||(params.get('site')?'mine':params.get('job')?'applications':r.manager?'candidates':'jobs'));setDates(r.profile?.available_dates?.filter(d=>d>=today())||[]);
+   if(c.signal.aborted)return;setData(r);setTab(t=>{const tabs=r.manager?['candidates','mine','applications']:['jobs','matching','seeking','applications'];const requested=t||params.get('tab')||(params.get('site')?'mine':params.get('job')?'applications':'');return tabs.includes(requested)?requested:tabs[0];});setDates(r.profile?.available_dates?.filter(d=>d>=today())||[]);
   }).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>c.abort();
  },[reload,search,page]);
 
@@ -120,9 +120,12 @@ export default function JobsPage(){
  const jobs=data?.jobs.filter(j=>j.status==='open'&&(tab!=='matching'||matches(j,data.profile)))||[];
 
  return <main className='labor-shell'>
-  <nav><Link href={data?.manager?'/admin':'/worker'}>‹ 홈</Link><Link href='/worker/account'>개인설정</Link></nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
+  <nav className='labor-navigation' aria-label='구인·구직 화면 이동'>
+   <Link className='labor-nav-button' href={data?.manager?'/admin':'/worker'}><span className='labor-nav-icon' aria-hidden='true'>⌂</span><span>{data?.manager?'관리자 홈':'시공자 홈'}</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+   <Link className='labor-nav-button' href='/worker/account'><span className='labor-nav-icon' aria-hidden='true'>⚙</span><span>개인설정</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+  </nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
   {error&&<p className='error' role='alert'>{error}</p>}{notice&&<aside role='status'>{notice}</aside>}
-  {!data?<p>계정을 확인하는 중입니다. <Link href='/worker/account'>로그인</Link></p>:<>
+  {!data?<p>{error?'계정 확인을 완료하지 못했습니다.':'계정을 확인하는 중입니다.'} <Link href='/worker/account'>로그인 · 계정 확인</Link></p>:<>
    <div className='tabs'>{(data.manager?[['candidates','구직 시공자 찾기'],['mine','내 현장 구인하기'],['applications','내 현장 지원자 보기']]:[['jobs','구인하는 현장'],['matching','내 조건에 맞는 현장'],['seeking','구직하기'],['applications','지원·알림 현황']]).map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>{setTab(id);setPerson(null);setDetail(null);setTarget(null);setJob(null);setConsent(false);}}>{label}</button>)}</div>
    {(tab==='candidates'||tab==='jobs'||tab==='matching')&&<form onSubmit={e=>{e.preventDefault();setSearch(filters);setPage(0);}}><div className='pair'><label>지역<input placeholder='인천 서구' value={filters.region} onChange={e=>setFilters(f=>({...f,region:e.target.value}))}/></label><label>일할 날짜<input type='date' value={filters.date} onChange={e=>setFilters(f=>({...f,date:e.target.value}))}/></label></div>{data.manager&&<details><summary>일당·경력·전문 분야로 검색</summary>{[['wage','희망 일당 상한 (원)','number'],['experience','최소 경력 (년)','number'],['skill','전문 분야','text']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={filters[key]} onChange={e=>setFilters(f=>({...f,[key]:e.target.value}))}/></label>)}</details>}<button className='primary'>검색</button><button type='button' onClick={()=>{setSearch({});setFilters({region:'',date:'',wage:'',experience:'',skill:''});setPage(0);}}>초기화</button></form>}
    {data.manager&&tab==='candidates'&&<><h2>구직 중인 시공자</h2><p>프로필을 확인하고 날짜가 맞는 내 현장을 보내주세요.</p>{!data.candidates.length&&<p>현재 조건에 맞는 구직 시공자가 없습니다.</p>}{data.candidates.map(p=><article key={p.user_id}><Profile p={p}/><button onClick={()=>setPerson(p)}>프로필 자세히 보기</button><button className='primary' onClick={()=>{setTarget(p);setPerson(null);setJob(null);setTab('mine');}}>구인하기</button></article>)}</>}

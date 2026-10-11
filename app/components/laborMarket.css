@@ -138,3 +138,13 @@
   outline:3px solid #93b4f3;
   outline-offset:3px;
 }
+
+/* Shared navigation cards for the jobs and personal-account screens. */
+.labor-shell .labor-navigation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:24px}
+.labor-shell .labor-nav-button{display:flex;align-items:center;gap:10px;min-width:0;min-height:64px;padding:12px 14px;border:1px solid var(--film-line,#e7eaf0);border-radius:16px;background:#fff;color:var(--lm-ink);font-size:14px;font-weight:700;line-height:1.4;text-decoration:none;box-shadow:0 4px 16px #24364806;overflow-wrap:anywhere}
+.labor-shell .labor-nav-icon{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border-radius:11px;background:var(--film-blue-soft,#edf5ff);color:var(--film-blue,#347fec);font-size:22px}
+.labor-shell .labor-nav-arrow{margin-left:auto;color:#8190a2;font-size:22px;font-weight:400}
+.labor-shell .labor-nav-button:focus-visible{outline:3px solid #347fec;outline-offset:3px}
+.labor-shell .labor-nav-button:active{background:#edf5ff;border-color:#a9c9f6}
+@media(hover:hover){.labor-shell .labor-nav-button:hover{background:#f5f9ff;border-color:#a9c9f6}}
+@media(max-width:360px){.labor-shell .labor-nav-button{padding:10px;gap:7px;font-size:13px}.labor-shell .labor-nav-icon{width:28px;height:28px;font-size:20px}}

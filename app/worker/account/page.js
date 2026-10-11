@@ -263,9 +263,9 @@ export default function WorkerAccount() {
     </label>;
 
   return <main className='labor-shell labor-account'>
-    <nav>
-      <Link href='/worker'>시공자 홈</Link>
-      <Link href='/jobs?view=worker'>구인·구직</Link>
+    <nav className='labor-navigation' aria-label='개인설정 화면 이동'>
+      <Link className='labor-nav-button' href='/worker'><span className='labor-nav-icon' aria-hidden='true'>⌂</span><span>시공자 홈</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+      <Link className='labor-nav-button' href='/jobs?view=worker'><span className='labor-nav-icon' aria-hidden='true'>▦</span><span>구인·구직</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
     </nav>
 
     <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>
