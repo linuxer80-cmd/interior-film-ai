@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import WorkDatePicker from '../../admin/WorkDatePicker';
 import { supabase } from '../../../lib/supabase';
+import '../../components/laborMarket.css';
 
 const blank = {
   name:'',
@@ -179,10 +180,8 @@ export default function WorkerAccount() {
           action:'profile',
           profile:{
             ...profile,
-            skills:skillText
-              .split(',')
-              .map(s=>s.trim())
-              .filter(Boolean)
+            skills:skillText.split(',')
+              .map(s=>s.trim()).filter(Boolean)
           },
           personal
         })
@@ -272,13 +271,17 @@ export default function WorkerAccount() {
   );
 
   return(
-    <main>
+    <main className='labor-shell labor-account'>
       <nav>
         <Link href='/worker'>시공자 홈</Link>
         <Link href='/jobs?view=worker'>구인·구직</Link>
       </nav>
 
-      <h1>{session?'시공자 개인설정':'시공자 계정'}</h1>
+      <span className='eyebrow'>
+        나를 소개하고 좋은 현장을 찾아요
+      </span>
+
+      <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
 
       {!ready?(
         <p>계정을 확인하는 중…</p>
@@ -310,7 +313,7 @@ export default function WorkerAccount() {
             />
           </label>
 
-          <button disabled={busy}>
+          <button className='primary' disabled={busy}>
             {busy?'처리 중…':signup?'가입하기':'로그인'}
           </button>
 
@@ -351,32 +354,47 @@ export default function WorkerAccount() {
                   ))}
                 </div>
 
-                <p>
-                  이름과 활동 지역을 먼저 입력하세요.
-                  나머지 정보는 나중에 추가할 수 있습니다.
+                <p className='muted'>
+                  기본정보를 한 번 저장하면
+                  구직 공고에 그대로 사용됩니다.
                 </p>
 
                 <div hidden={section!=='profile'}>
                   <h2>내 프로필</h2>
 
-                  {profile.photo_url&&(
-                    <img
-                      src={profile.photo_url}
-                      alt='내 프로필 사진'
-                      width={90}
-                      height={90}
-                    />
-                  )}
+                  <div className='profile-heading'>
+                    {profile.photo_url?(
+                      <img
+                        src={profile.photo_url}
+                        alt='내 프로필 사진'
+                        width={80}
+                        height={80}
+                      />
+                    ):(
+                      <div className='avatar-placeholder'>
+                        {profile.name?.slice(0,1)||'나'}
+                      </div>
+                    )}
 
-                  <label>
-                    프로필 사진 (2MB 이하)
-                    <input
-                      type='file'
-                      accept='image/jpeg,image/png,image/webp'
-                      disabled={!saved}
-                      onChange={photo}
-                    />
-                  </label>
+                    <div>
+                      <strong>
+                        {profile.name||'프로필 사진'}
+                      </strong>
+
+                      <label className='photo-button'>
+                        사진 변경
+                        <input
+                          className='visually-hidden'
+                          type='file'
+                          accept='image/jpeg,image/png,image/webp'
+                          disabled={!saved}
+                          onChange={photo}
+                        />
+                      </label>
+
+                      <small>JPG·PNG·WebP / 2MB 이하</small>
+                    </div>
+                  </div>
 
                   {!saved&&(
                     <small>
@@ -385,20 +403,42 @@ export default function WorkerAccount() {
                   )}
 
                   {field('이름','name')}
-                  {field(
-                    '연락처 (지원한 업체에만 공유)',
-                    'phone','tel',true
-                  )}
-                  {field('나이 (선택, 공개 시 표시)','age','number')}
-                  {field('희망 일당 (원)','daily_wage','number')}
-                  {field(
-                    '대략적인 주소·활동 지역 (예: 인천 서구)',
-                    'region'
-                  )}
-                  {field('경력 (년)','experience_years','number')}
+                  {field('연락처','phone','tel',true)}
 
-                  <label>전문 분야</label>
-                  <div>
+                  <small>
+                    지원할 때 동의한 업체에만 연락처를 공유합니다.
+                  </small>
+
+                  <div className='pair'>
+                    {field('나이 (선택)','age','number')}
+                    {field('경력 (년)','experience_years','number')}
+                  </div>
+
+                  {field('희망 일당 (원)','daily_wage','number')}
+
+                  <div className='chips'>
+                    {[200000,250000,300000].map(n=>(
+                      <button
+                        key={n}
+                        type='button'
+                        aria-pressed={Number(profile.daily_wage)===n}
+                        onClick={()=>setProfile(p=>({
+                          ...p,daily_wage:n
+                        }))}
+                      >
+                        {n/10000}만원
+                      </button>
+                    ))}
+                  </div>
+
+                  {field('활동 지역 (예: 인천 서구)','region')}
+
+                  <label>
+                    잘하는 작업
+                    <small>여러 개 선택할 수 있어요</small>
+                  </label>
+
+                  <div className='chips'>
                     {[
                       '문·문틀','싱크대','붙박이장',
                       '샤시','상가','전체 시공'
@@ -450,22 +490,24 @@ export default function WorkerAccount() {
 
                 <div hidden={section!=='seeking'}>
                   <h2>내 구직 공고</h2>
+
                   <p>
                     저장한 프로필이 구직 공고가 됩니다.
-                    새로 작성할 필요 없이 공개 여부와
-                    가능한 날짜만 선택하세요.
+                    공개 여부와 가능한 날짜만 선택하세요.
                   </p>
 
                   <article>
                     <strong>
                       {profile.name||'이름을 입력해주세요'}
                     </strong>
+
                     <p>
                       {profile.region||'활동 지역 미입력'} ·
                       희망 일당{' '}
                       {Number(profile.daily_wage).toLocaleString()}원 ·
                       경력 {profile.experience_years}년
                     </p>
+
                     <p>{skillText}</p>
                   </article>
 
@@ -492,7 +534,7 @@ export default function WorkerAccount() {
                     날짜 검색에는 선택한 날짜만 표시됩니다.
                   </small>
 
-                  <label className='check'>
+                  <label className='check toggle-row'>
                     <input
                       type='checkbox'
                       checked={profile.published}
@@ -505,7 +547,7 @@ export default function WorkerAccount() {
                     모든 관리자에게 프로필 공개
                   </label>
 
-                  <label className='check'>
+                  <label className='check toggle-row'>
                     <input
                       type='checkbox'
                       checked={profile.seeking}
@@ -526,6 +568,7 @@ export default function WorkerAccount() {
 
                 <div hidden={section!=='private'}>
                   <h2>연락처·입금 정보</h2>
+
                   <p>
                     전화번호는 지원한 업체에 동의 후 공유됩니다.
                     계좌와 상세 주소는 구인·구직에 공개되지 않습니다.
@@ -547,13 +590,17 @@ export default function WorkerAccount() {
                   </small>
                 </div>
 
-                <button disabled={busy}>
-                  {busy
-                    ?'저장 중…'
-                    :section==='seeking'
-                      ?'구직 공고 저장'
-                      :'프로필 저장'}
-                </button>
+                <div className='save-row'>
+                  <button className='primary' disabled={busy}>
+                    {busy
+                      ?'저장 중…'
+                      :section==='seeking'
+                        ?'구직 공고 저장'
+                        :section==='private'
+                          ?'계좌·주소 저장'
+                          :'프로필 저장'}
+                  </button>
+                </div>
               </fieldset>
             </form>
           )}
@@ -573,50 +620,6 @@ export default function WorkerAccount() {
       )}
 
       {message&&<p role='status'>{message}</p>}
-
-      <style jsx>{`
-        main{
-          max-width:640px;margin:auto;
-          padding:24px 18px 80px;
-          color:#243648;background:#f8f7f3;
-          min-height:100vh;
-        }
-        nav{display:flex;gap:20px}
-        .tabs{display:flex;flex-wrap:wrap}
-        .tabs button[aria-pressed=true],
-        button[aria-pressed=true]{
-          background:#243648;color:white;
-        }
-        details{margin:16px 0}
-        summary{cursor:pointer;font-weight:700}
-        article{
-          background:#eef5ff;padding:14px;border-radius:14px;
-        }
-        form{
-          background:#fff;padding:20px;
-          border:1px solid #e0d5c5;border-radius:20px;
-        }
-        fieldset{border:0;padding:0;min-width:0}
-        label{display:block;margin:14px 0;font-weight:700}
-        input,textarea{
-          display:block;width:100%;box-sizing:border-box;
-          padding:12px;margin-top:6px;
-          border:1px solid #ccd4df;border-radius:10px;
-          font:inherit;
-        }
-        textarea{min-height:100px}
-        button{
-          margin:10px 8px 6px 0;padding:12px;
-          border:1px solid #ccd4df;border-radius:10px;
-          background:#eff6ff;color:#243648;font:inherit;
-        }
-        button:disabled{opacity:.5}
-        .check{display:flex;align-items:center;gap:10px}
-        .check input{width:auto}
-        small,p{line-height:1.7}
-        small{display:block;color:#687588}
-        img{object-fit:cover;border-radius:50%}
-      `}</style>
     </main>
   );
                         }
