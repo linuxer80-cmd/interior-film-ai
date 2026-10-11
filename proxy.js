@@ -1,9 +1,6 @@
 import { checkAiRequestQuota } from "./lib/aiQuota";
 import { NextResponse } from "next/server";
-import {
-  createHmac,
-  randomUUID,
-} from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 const features = {
   "/api/analyze": "ai_photo_analysis",
@@ -31,42 +28,34 @@ const publicPaths = new Set([
 export async function proxy(request) {
   const headers = new Headers(request.headers);
 
+  // 外부에서 주입한 사용량 정보를 신뢰하지 않습니다.
   headers.delete("x-film-ai-context");
   headers.delete("x-film-ai-signature");
 
-  const path = request.nextUrl.pathname.replace(
-    /\/$/,
-    ""
-  );
-
+  const path = request.nextUrl.pathname.replace(/\/$/, "");
   const feature = features[path];
 
+  // 일반 API와 GET 요청은 AI 횟수 제한을 적용하지 않습니다.
+  // 출발 시간 예측은 자체 API에서 캐시 확인 후 별도 제한합니다.
   if (request.method !== "POST" || !feature) {
     return NextResponse.next({
       request: { headers },
     });
   }
 
-  const secret =
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!secret) {
     return NextResponse.json(
-      {
-        error: "AI 서버 설정을 확인해주세요.",
-      },
+      { error: "AI 서버 설정을 확인해주세요." },
       { status: 503 }
     );
   }
 
   try {
     let body;
-
-    const type =
-      request.headers.get("content-type") || "";
-
-    const isMultipart =
-      type.includes("multipart/form-data");
+    const type = request.headers.get("content-type") || "";
+    const isMultipart = type.includes("multipart/form-data");
 
     if (isMultipart) {
       body = await request.clone().formData();
@@ -76,23 +65,12 @@ export async function proxy(request) {
 
     let metadata = null;
 
-    // 유사 시공 검색은 metadata JSON 안에
-    // company_slug 등의 요청 정보를 담습니다.
-    // 실제 검색 API와 같은 값을 읽어야 합니다.
-    if (
-      isMultipart &&
-      path === "/api/similar-estimate"
-    ) {
-      const raw = String(
-        body.get("metadata") || "{}"
-      );
+    if (isMultipart && path === "/api/similar-estimate") {
+      const raw = String(body.get("metadata") || "{}");
 
       if (raw.length > 12000) {
         return NextResponse.json(
-          {
-            error:
-              "비교 사진과 요청 정보를 확인해주세요.",
-          },
+          { error: "비교 사진과 요청 정보를 확인해주세요." },
           { status: 400 }
         );
       }
@@ -101,10 +79,7 @@ export async function proxy(request) {
         metadata = JSON.parse(raw);
       } catch {
         return NextResponse.json(
-          {
-            error:
-              "비교 사진과 요청 정보를 확인해주세요.",
-          },
+          { error: "비교 사진과 요청 정보를 확인해주세요." },
           { status: 400 }
         );
       }
@@ -115,16 +90,13 @@ export async function proxy(request) {
         Array.isArray(metadata)
       ) {
         return NextResponse.json(
-          {
-            error:
-              "비교 사진과 요청 정보를 확인해주세요.",
-          },
+          { error: "비교 사진과 요청 정보를 확인해주세요." },
           { status: 400 }
         );
       }
     }
 
-    const field = (key) =>
+    const field = key =>
       metadata !== null
         ? metadata[key]
         : isMultipart
@@ -133,7 +105,7 @@ export async function proxy(request) {
 
     const files = isMultipart
       ? [...body.values()].filter(
-          (value) =>
+          value =>
             typeof value !== "string" &&
             value.type?.startsWith("image/")
         )
@@ -153,18 +125,14 @@ export async function proxy(request) {
 
     if (units > 30) {
       return NextResponse.json(
-        {
-          error: "사진을 나누어 분석해주세요.",
-        },
+        { error: "사진을 나누어 분석해주세요." },
         { status: 400 }
       );
     }
 
     const companySlug = String(
       field("company_slug") || ""
-    )
-      .trim()
-      .toLowerCase();
+    ).trim().toLowerCase();
 
     if (
       publicPaths.has(path) &&
@@ -189,25 +157,16 @@ export async function proxy(request) {
       units,
       public: publicPaths.has(path),
       companySlug,
-      worker:
-        path === "/api/worker/cutting-notes",
+      worker: path === "/api/worker/cutting-notes",
       siteId:
-        request.nextUrl.searchParams.get(
-          "siteId"
-        ) || "",
+        request.nextUrl.searchParams.get("siteId") || "",
       targetCompany:
         feature === "structure_analysis"
-          ? String(
-              field("company_id") || ""
-            )
+          ? String(field("company_id") || "")
           : "",
     });
 
-    headers.set(
-      "x-film-ai-context",
-      context
-    );
-
+    headers.set("x-film-ai-context", context);
     headers.set(
       "x-film-ai-signature",
       createHmac("sha256", secret)
@@ -215,24 +174,30 @@ export async function proxy(request) {
         .digest("hex")
     );
 
+    // 현재 요청의 기능만 확인합니다.
+    // 다른 기능의 소진 여부나 전체 합산으로 차단하지 않습니다.
     await checkAiRequestQuota(headers);
 
     return NextResponse.next({
       request: { headers },
     });
   } catch (error) {
+    const limited = error.status === 429;
+
+    // 이 요청에만 오류를 반환합니다.
+    // 회사 상태 변경, 로그아웃, 다른 기능 차단은 하지 않습니다.
     return NextResponse.json(
       {
         error: error.status
           ? error.message
           : "AI 요청 또는 횟수 설정을 확인해주세요.",
-        code:
-          error.code ||
-          "AI_QUOTA_UNAVAILABLE",
+        code: error.code || "AI_QUOTA_UNAVAILABLE",
+        feature,
+        blockedFeature: limited ? feature : null,
+        blockScope: limited ? "feature" : "request",
+        otherFeaturesAvailable: limited ? true : undefined,
       },
-      {
-        status: error.status || 503,
-      }
+      { status: error.status || 503 }
     );
   }
 }
