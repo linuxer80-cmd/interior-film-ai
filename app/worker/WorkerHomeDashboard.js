@@ -1,5 +1,6 @@
 "use client";
 
+import LaborNotifications from "../components/LaborNotifications";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import TomorrowTasks from "../components/TomorrowTasks";
@@ -14,9 +15,9 @@ import {
 const menus = [
   {
     id: "jobs",
-    href: "/jobs",
+    href: "/jobs?view=worker",
     icon: "people",
-    title: "구인 · 구직",
+    title: "구인 찾기 · 내 구직",
     subtitle: "현장 구인 확인 · 내 구직 공개",
   },
   {
@@ -94,15 +95,27 @@ export default function WorkerHomeDashboard({
 
   return (
     <section className="worker-polished" aria-label="시공자 홈">
+      <LaborNotifications />
+
       <div className="wp-hello">
-        <span>{worker?.worker_name || "시공자"}님, 반갑습니다</span>
+        <span>
+          {worker?.worker_name || "시공자"}님, 반갑습니다
+        </span>
         <span className="wp-date">{dateLabel}</span>
       </div>
 
       <div className="wp-hero">
         <div>
-          <h2>오늘도<br />안전한 시공!</h2>
-          <p>좋은 공간을 만드는<br />당신의 손을 응원합니다.</p>
+          <h2>
+            오늘도
+            <br />
+            안전한 시공!
+          </h2>
+          <p>
+            좋은 공간을 만드는
+            <br />
+            당신의 손을 응원합니다.
+          </p>
           <span className="wp-hero-tag">
             나의 시공 파트너, 필름장이
           </span>
@@ -205,10 +218,14 @@ export default function WorkerHomeDashboard({
 
         {menus
           .filter(menu =>
-            !["attendance", "inventory", "jobs", "account"].includes(menu.id)
+            !["attendance", "inventory", "jobs", "account"]
+              .includes(menu.id)
           )
           .map(menu => (
-            <Link key={menu.id} href={`/worker/menu/${menu.id}`}>
+            <Link
+              key={menu.id}
+              href={`/worker/menu/${menu.id}`}
+            >
               <span aria-hidden="true">
                 {{
                   sites: "▣",
