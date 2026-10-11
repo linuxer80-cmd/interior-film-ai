@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import MaterialIssueStatus from "../components/MaterialIssueStatus";
 
 export default function AdminHomeSummary({ companyId }) {
   const [data, setData] = useState(null);
@@ -235,6 +236,11 @@ export default function AdminHomeSummary({ companyId }) {
                         <span>자재 확인 ›</span>
                       </a>
 
+                      <MaterialIssueStatus
+                        siteId={site.id}
+                        refreshKey={attempt}
+                      />
+
                       {site.materials?.length ? (
                         site.materials.map((material) => (
                           <p key={material.id}>
@@ -402,4 +408,4 @@ export default function AdminHomeSummary({ companyId }) {
       `}</style>
     </section>
   );
-                              }
+}
