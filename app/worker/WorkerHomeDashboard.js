@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import TomorrowTasks from "../components/TomorrowTasks";
+import SavedCommuteSummary from "../components/SavedCommuteSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import {
   koreanDay,
@@ -162,6 +163,11 @@ export default function WorkerHomeDashboard({
                     ? "책임 팀장"
                     : "팀원"}
                 </span>
+
+                <SavedCommuteSummary
+                  siteId={site.site_id}
+                  workDate={today}
+                />
               </span>
 
               <span
