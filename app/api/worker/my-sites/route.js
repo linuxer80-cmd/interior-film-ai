@@ -60,9 +60,13 @@ async function rows(query, optionalDailyTable = false) {
 
 function localDay(value) {
   if (!value) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
 
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) return null;
 
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -72,8 +76,8 @@ function localDay(value) {
     day: "2-digit",
   }).formatToParts(date);
 
-  const get = type =>
-    parts.find(part => part.type === type)?.value;
+  const get = (type) =>
+    parts.find((part) => part.type === type)?.value;
 
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
@@ -119,7 +123,9 @@ async function companySites(
 
   const ids = [
     ...new Set(
-      [...legacy, ...ownDaily].map(item => item.site_id)
+      [...legacy, ...ownDaily].map(
+        (item) => item.site_id
+      )
     ),
   ];
 
@@ -132,7 +138,11 @@ async function companySites(
       rows(
         db
           .from("sites")
-          .select(siteFields)
+          .select(
+            requestedSiteId
+              ? `${siteFields},memo`
+              : siteFields
+          )
           .eq("company_id", companyId)
           .in("id", batch)
           .order("id")
@@ -140,7 +150,9 @@ async function companySites(
       rows(
         db
           .from("site_daily_assignments")
-          .select("id,site_id,worker_id,work_date,role")
+          .select(
+            "id,site_id,worker_id,work_date,role"
+          )
           .eq("company_id", companyId)
           .in("site_id", batch)
           .order("id"),
@@ -150,22 +162,23 @@ async function companySites(
 
     for (const site of sites) {
       const allDates = daily.filter(
-        item => item.site_id === site.id
+        (item) => item.site_id === site.id
       );
 
       const explicit = Array.isArray(site.work_dates);
+
       const allowed = explicit
         ? new Set(site.work_dates)
         : null;
 
       const myDates = allDates.filter(
-        item =>
+        (item) =>
           ownIds.has(item.worker_id) &&
           (!allowed || allowed.has(item.work_date))
       );
 
       const myLegacy = legacy.filter(
-        item => item.site_id === site.id
+        (item) => item.site_id === site.id
       );
 
       if (explicit && !myDates.length) continue;
@@ -185,13 +198,14 @@ async function companySites(
         }
       }
 
-      const dates = [...byDate.values()].sort((a, b) =>
-        a.work_date.localeCompare(b.work_date)
+      const dates = [...byDate.values()].sort(
+        (a, b) =>
+          a.work_date.localeCompare(b.work_date)
       );
 
       const role = (
         dates.length ? dates : myLegacy
-      ).some(row => row.role === "leader")
+      ).some((row) => row.role === "leader")
         ? "leader"
         : "member";
 
@@ -199,7 +213,7 @@ async function companySites(
       const end = localDay(site.schedule_end) || start;
 
       const scheduleNotice = dates.some(
-        day =>
+        (day) =>
           (start && day.work_date < start) ||
           (end && day.work_date > end)
       )
@@ -209,7 +223,7 @@ async function companySites(
       result.push({
         ...site,
         work_dates: explicit
-          ? dates.map(day => day.work_date)
+          ? dates.map((day) => day.work_date)
           : null,
         site_id: site.id,
         site_status: site.status,
@@ -251,7 +265,8 @@ function materialSample(material, products) {
   if (material.film_product_id) {
     return (
       products.find(
-        product => product.id === material.film_product_id
+        (product) =>
+          product.id === material.film_product_id
       )?.sample_image_path || null
     );
   }
@@ -265,14 +280,13 @@ function materialSample(material, products) {
   if (!brand || !code) return null;
 
   const matches = products.filter(
-    product =>
+    (product) =>
       normalizeFilmBrand(product.brand) === brand &&
       String(product.product_code || "")
         .trim()
         .toUpperCase() === code
   );
 
-  // 같은 브랜드·코드에 여러 제품이 있으면 임의로 선택하지 않습니다.
   return matches.length === 1
     ? matches[0].sample_image_path || null
     : null;
@@ -291,8 +305,10 @@ export async function GET(request) {
       );
     }
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const url =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!url || !key) {
       return json(
@@ -335,7 +351,9 @@ export async function GET(request) {
       rows(
         db
           .from("workers")
-          .select("id,company_id,name,phone,is_active")
+          .select(
+            "id,company_id,name,phone,is_active"
+          )
           .eq("user_id", auth.user.id)
           .eq("is_active", true)
           .order("id")
@@ -347,7 +365,9 @@ export async function GET(request) {
         .maybeSingle(),
     ]);
 
-    if (profileResult.error) throw profileResult.error;
+    if (profileResult.error) {
+      throw profileResult.error;
+    }
 
     if (
       profileResult.data?.is_active === false ||
@@ -370,7 +390,9 @@ export async function GET(request) {
           "id",
           [
             ...new Set(
-              linked.map(worker => worker.company_id)
+              linked.map(
+                (worker) => worker.company_id
+              )
             ),
           ]
         )
@@ -379,17 +401,22 @@ export async function GET(request) {
 
     const activeCompanies = new Set(
       companies
-        .filter(company => company.is_active !== false)
-        .map(company => company.id)
+        .filter(
+          (company) => company.is_active !== false
+        )
+        .map((company) => company.id)
     );
 
-    const workers = linked.filter(worker =>
+    const workers = linked.filter((worker) =>
       activeCompanies.has(worker.company_id)
     );
 
     if (!workers.length) {
       return json(
-        { error: "사용 가능한 소속 업체가 없습니다." },
+        {
+          error:
+            "사용 가능한 소속 업체가 없습니다.",
+        },
         403
       );
     }
@@ -412,15 +439,16 @@ export async function GET(request) {
 
     const sites = (
       await Promise.all(
-        [...activeCompanies].map(companyId =>
+        [...activeCompanies].map((companyId) =>
           companySites(
             db,
             companyId,
             workers
               .filter(
-                item => item.company_id === companyId
+                (item) =>
+                  item.company_id === companyId
               )
-              .map(item => item.id),
+              .map((item) => item.id),
             siteId
           )
         )
@@ -438,7 +466,7 @@ export async function GET(request) {
     }
 
     const site = sites.find(
-      item => item.site_id === siteId
+      (item) => item.site_id === siteId
     );
 
     if (!site) {
@@ -484,7 +512,7 @@ export async function GET(request) {
     const productIds = [
       ...new Set(
         materials
-          .map(item => item.film_product_id)
+          .map((item) => item.film_product_id)
           .filter(Boolean)
       ),
     ];
@@ -492,8 +520,8 @@ export async function GET(request) {
     const productCodes = [
       ...new Set(
         materials
-          .filter(item => !item.film_product_id)
-          .flatMap(item => {
+          .filter((item) => !item.film_product_id)
+          .flatMap((item) => {
             const code = String(
               item.product_code || ""
             ).trim();
@@ -525,12 +553,15 @@ export async function GET(request) {
             .select(fields)
             .in(
               "id",
-              productIds.slice(offset, offset + 100)
+              productIds.slice(
+                offset,
+                offset + 100
+              )
             )
             .order("id")
         );
 
-        products.forEach(product =>
+        products.forEach((product) =>
           productsById.set(product.id, product)
         );
       }
@@ -546,19 +577,22 @@ export async function GET(request) {
             .select(fields)
             .in(
               "product_code",
-              productCodes.slice(offset, offset + 100)
+              productCodes.slice(
+                offset,
+                offset + 100
+              )
             )
             .order("id")
         );
 
-        products.forEach(product =>
+        products.forEach((product) =>
           productsById.set(product.id, product)
         );
       }
 
       const products = [...productsById.values()];
 
-      materials = materials.map(material => ({
+      materials = materials.map((material) => ({
         ...material,
         sample_image_path: materialSample(
           material,
@@ -566,7 +600,10 @@ export async function GET(request) {
         ),
       }));
     } catch (error) {
-      console.error("필름 샘플 조회 오류:", error);
+      console.error(
+        "필름 샘플 조회 오류:",
+        error
+      );
     }
 
     return json({
@@ -576,7 +613,10 @@ export async function GET(request) {
       materialsError,
     });
   } catch (error) {
-    console.error("시공자 현장 조회 오류:", error);
+    console.error(
+      "시공자 현장 조회 오류:",
+      error
+    );
 
     return json(
       {

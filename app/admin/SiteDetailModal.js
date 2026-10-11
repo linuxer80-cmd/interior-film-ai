@@ -6,12 +6,17 @@ import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
 import SiteWorkReportReview from "./SiteWorkReportReview";
+import ReportHistory from "../components/ReportHistory";
 import useSiteWorkReport from "./hooks/useSiteWorkReport";
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
+import SiteOperations from "../components/SiteOperations";
 import SiteMaterials from "./site-detail/SiteMaterials";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
+import SiteExpenses from "../components/SiteExpenses";
+import ConsultationQuote from "./ConsultationQuote";
+import CompletionEstimate from "./CompletionEstimate";
 
 const STATUS_INFO = {
   consulting: {
@@ -43,13 +48,16 @@ const STATUS_INFO = {
 
 const MENUS = [
   { id: "info", label: "현장정보", kind: "home" },
+  { id: "quote", label: "상담 견적서", kind: "report" },
   { id: "schedule", label: "일정배정", kind: "people" },
   { id: "materials", label: "자재", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
+  { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
 ];
 
 const SECTION_MENU = {
+  expenses: "expenses",
   schedule: "schedule",
   assignment: "schedule",
   report: "report",
@@ -84,6 +92,8 @@ export default function SiteDetailModal({
   reloadSites,
 }) {
   const [menu, setMenu] = useState("info");
+  const [quoteDirty, setQuoteDirty] = useState(false);
+  const [estimateDirty, setEstimateDirty] = useState(false);
   const [visited, setVisited] = useState({ info: true });
   const [reportOpen, setReportOpen] = useState(false);
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
@@ -97,10 +107,7 @@ export default function SiteDetailModal({
     reportMessage,
     submitWorkReport,
     clearReportMessage,
-  } = useSiteWorkReport({
-    companyId,
-    reloadSites,
-  });
+  } = useSiteWorkReport({ companyId, reloadSites });
 
   useEffect(() => {
     setReportOpen(false);
@@ -136,9 +143,11 @@ export default function SiteDetailModal({
     const frame = requestAnimationFrame(() => {
       const target =
         taskSections.current[section] ||
-        (section === "report-write" && hasWorkerReport
-          ? taskSections.current.report
-          : null);
+        (
+          section === "report-write" && hasWorkerReport
+            ? taskSections.current.report
+            : null
+        );
 
       target?.scrollIntoView({ block: "start" });
       target?.focus({ preventScroll: true });
@@ -161,7 +170,10 @@ export default function SiteDetailModal({
   }, [hasSite]);
 
   function chooseMenu(id) {
-    setVisited((previous) => ({ ...previous, [id]: true }));
+    setVisited((previous) => ({
+      ...previous,
+      [id]: true,
+    }));
     setMenu(id);
 
     if (scrollBody.current) {
@@ -170,9 +182,16 @@ export default function SiteDetailModal({
   }
 
   function closeModal() {
-    if (!reportSaving) {
-      onClose?.();
+    if (
+      (estimateDirty || quoteDirty) &&
+      !window.confirm(
+        "견적서에 저장하지 않은 변경이 있거나 처리 중입니다. 닫을까요?"
+      )
+    ) {
+      return;
     }
+
+    if (!reportSaving) onClose?.();
   }
 
   async function handleAssignmentSaved() {
@@ -188,7 +207,6 @@ export default function SiteDetailModal({
 
   function closeWorkReport() {
     if (reportSaving) return;
-
     setReportOpen(false);
     clearReportMessage?.();
   }
@@ -206,7 +224,8 @@ export default function SiteDetailModal({
 
   if (!site) return null;
 
-  const status = STATUS_INFO[site.status] || STATUS_INFO.consulting;
+  const status =
+    STATUS_INFO[site.status] || STATUS_INFO.consulting;
 
   const reviewLabel =
     reviewStatus === "pending"
@@ -250,22 +269,18 @@ export default function SiteDetailModal({
           boxShadow: "0 20px 60px rgba(25, 39, 60, 0.2)",
         }}
       >
-        <header
-          style={{
-            flexShrink: 0,
-            padding: "18px 14px 14px",
-            background: "#fffefa",
-            borderBottom: "1px solid #e4eaf2",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 10,
-            }}
-          >
+        <header style={{
+          flexShrink: 0,
+          padding: "18px 14px 14px",
+          background: "#fffefa",
+          borderBottom: "1px solid #e4eaf2",
+        }}>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 10,
+          }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <small style={{ color: "#7b8798", fontSize: 12 }}>
                 필름장이 · 현장 상세
@@ -283,17 +298,15 @@ export default function SiteDetailModal({
                 {site.site_name || site.customer_name || "현장명 미정"}
               </h2>
 
-              <span
-                style={{
-                  display: "inline-block",
-                  padding: "6px 10px",
-                  borderRadius: 20,
-                  background: status.background,
-                  color: status.color,
-                  fontSize: 12,
-                  fontWeight: 800,
-                }}
-              >
+              <span style={{
+                display: "inline-block",
+                padding: "6px 10px",
+                borderRadius: 20,
+                background: status.background,
+                color: status.color,
+                fontSize: 12,
+                fontWeight: 800,
+              }}>
                 {status.label}
               </span>
             </div>
@@ -318,7 +331,7 @@ export default function SiteDetailModal({
             aria-label="현장 상세 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 5,
               marginTop: 16,
             }}
@@ -347,26 +360,22 @@ export default function SiteDetailModal({
                   cursor: "pointer",
                 }}
               >
-                <span
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: 5,
-                  }}
-                >
+                <span style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  marginBottom: 5,
+                }}>
                   <ToolIllustration kind={item.kind} size={34} />
                 </span>
 
                 {item.label}
 
                 {item.id === "report" && reviewLabel && (
-                  <small
-                    style={{
-                      display: "block",
-                      marginTop: 3,
-                      fontSize: 9,
-                    }}
-                  >
+                  <small style={{
+                    display: "block",
+                    marginTop: 3,
+                    fontSize: 9,
+                  }}>
                     {reviewLabel}
                   </small>
                 )}
@@ -405,6 +414,8 @@ export default function SiteDetailModal({
             aria-label="현장정보"
             hidden={menu !== "info"}
           >
+            <SiteOperations siteId={site.id} />
+
             <SiteBasicInfo
               key={site.id}
               site={site}
@@ -420,6 +431,19 @@ export default function SiteDetailModal({
               updateSiteStatus={updateSiteStatus}
             />
           </section>
+
+          {visited.quote && (
+            <section
+              hidden={menu !== "quote"}
+              aria-label="상담 견적서"
+            >
+              <ConsultationQuote
+                key={site.id}
+                siteId={site.id}
+                onDirtyChange={setQuoteDirty}
+              />
+            </section>
+          )}
 
           {visited.schedule && (
             <section
@@ -445,20 +469,16 @@ export default function SiteDetailModal({
               </div>
 
               {!reportOpen ? (
-                <section
-                  style={{
-                    marginTop: 16,
-                    paddingTop: 14,
-                    borderTop: "1px solid #e4eaf2",
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: "0 0 10px",
-                      fontSize: 16,
-                      color: "#243247",
-                    }}
-                  >
+                <section style={{
+                  marginTop: 16,
+                  paddingTop: 14,
+                  borderTop: "1px solid #e4eaf2",
+                }}>
+                  <h3 style={{
+                    margin: "0 0 10px",
+                    fontSize: 16,
+                    color: "#243247",
+                  }}>
                     담당 시공자 배정
                   </h3>
 
@@ -483,13 +503,11 @@ export default function SiteDetailModal({
                   </div>
                 </section>
               ) : (
-                <p
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1.7,
-                    color: "#7b8798",
-                  }}
-                >
+                <p style={{
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  color: "#7b8798",
+                }}>
                   완료보고 작성 중입니다. 보고서 작성을 마치거나
                   취소한 뒤 시공자를 배정해주세요.
                 </p>
@@ -503,6 +521,7 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
+              <SiteOperations siteId={site.id} mode="materials" />
               <SiteMaterials key={site.id} site={site} />
             </section>
           )}
@@ -522,11 +541,33 @@ export default function SiteDetailModal({
             </section>
           )}
 
+          {visited.expenses && (
+            <section
+              id="admin-site-panel-expenses"
+              aria-label="현장 경비"
+              hidden={menu !== "expenses"}
+            >
+              <SiteExpenses
+                key={site.id}
+                siteId={site.id}
+                onSaved={reloadSites}
+              />
+            </section>
+          )}
+
           <section
             id="admin-site-panel-report"
             aria-label="완료보고와 검수"
             hidden={menu !== "report"}
           >
+            {site.status === "completed" && visited.report && (
+              <CompletionEstimate
+                key={site.id}
+                siteId={site.id}
+                onDirtyChange={setEstimateDirty}
+              />
+            )}
+
             <div
               ref={(element) => {
                 taskSections.current.report = element;
@@ -548,8 +589,16 @@ export default function SiteDetailModal({
               />
             </div>
 
+            <ReportHistory
+              siteId={site.id}
+              version={reviewStatus}
+            />
+
             {site.status !== "cancelled" &&
-              hasWorkerReport === false && (
+              (
+                hasWorkerReport === false ||
+                reviewStatus === "rejected"
+              ) && (
                 <section
                   ref={(element) => {
                     taskSections.current["report-write"] = element;
@@ -565,23 +614,19 @@ export default function SiteDetailModal({
                 >
                   {!reportOpen ? (
                     <>
-                      <h3
-                        style={{
-                          margin: 0,
-                          fontSize: 16,
-                          color: "#243247",
-                        }}
-                      >
+                      <h3 style={{
+                        margin: 0,
+                        fontSize: 16,
+                        color: "#243247",
+                      }}>
                         시공 완료 보고
                       </h3>
 
-                      <p
-                        style={{
-                          fontSize: 13,
-                          lineHeight: 1.7,
-                          color: "#7b8798",
-                        }}
-                      >
+                      <p style={{
+                        fontSize: 13,
+                        lineHeight: 1.7,
+                        color: "#7b8798",
+                      }}>
                         {site.status === "completed"
                           ? "시공은 완료되었지만 보고서가 아직 없습니다. 실제 시공 내용과 완료사진을 등록해주세요."
                           : "실제 시공 내용, 사용 자재, 현장 경비와 완료사진을 등록합니다. 저장하면 현장도 시공 완료로 변경됩니다."}
@@ -598,7 +643,7 @@ export default function SiteDetailModal({
                           color: "#ffffff",
                         }}
                       >
-                        시공 완료 보고 작성
+                        완료보고 작성 · 보완
                       </button>
                     </>
                   ) : (
@@ -616,21 +661,17 @@ export default function SiteDetailModal({
 
             {site.status === "completed" &&
               hasWorkerReport === true && (
-                <details
-                  style={{
-                    marginTop: 16,
-                    borderTop: "1px solid #e4eaf2",
-                    paddingTop: 14,
-                  }}
-                >
-                  <summary
-                    style={{
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: "#50617a",
-                    }}
-                  >
+                <details style={{
+                  marginTop: 16,
+                  borderTop: "1px solid #e4eaf2",
+                  paddingTop: 14,
+                }}>
+                  <summary style={{
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#50617a",
+                  }}>
                     저장된 시공 완료 자료 보기
                   </summary>
 
@@ -646,4 +687,4 @@ export default function SiteDetailModal({
       </div>
     </div>
   );
-}
+                  }

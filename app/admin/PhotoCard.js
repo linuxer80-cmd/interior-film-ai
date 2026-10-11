@@ -99,9 +99,32 @@ export default function PhotoCard({
               <b>세부:</b> {photo.sub_category || "-"}
             </div>
 
-            <div>
-              <b>AI 설명:</b> {photo.ai_description || "-"}
-            </div>
+            <details style={{ marginTop: "8px" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {String(photo.ai_description || "")
+                  .split("\n")
+                  .find(
+                    (line) =>
+                      line.startsWith("문 형태:") ||
+                      line.startsWith("샤시 구조:")
+                  ) || "AI 분석 · 구조 확인"}
+              </summary>
+
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  marginTop: "8px",
+                }}
+              >
+                {photo.ai_description ||
+                  "분석 정보가 없습니다."}
+              </div>
+            </details>
           </div>
 
           <div
@@ -178,7 +201,7 @@ export default function PhotoCard({
             onChange={(e) =>
               setEditPhotoDescription(e.target.value)
             }
-            placeholder="AI 설명"
+            placeholder="문·샤시 구조와 실제 시공 범위를 확인하고 수정해주세요."
             rows={4}
             style={{
               ...inputStyle,
@@ -215,4 +238,4 @@ export default function PhotoCard({
       )}
     </div>
   );
-                }
+              }

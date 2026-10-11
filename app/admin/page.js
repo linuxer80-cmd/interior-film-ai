@@ -20,7 +20,6 @@ const UsageTab = dynamic(() => import("./UsageTab"));
 const ProfitTab = dynamic(() => import("./ProfitTab"));
 const LeadsTab = dynamic(() => import("./LeadsTab"));
 const SiteManagementTab = dynamic(() => import("./SiteManagementTab"));
-const AdminTodayTasks = dynamic(() => import("./AdminTodayTasks"));
 import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
@@ -379,12 +378,18 @@ export default function AdminPage() {
   function changeTab(tab) {
     const destination = new URL(window.location.href);
     destination.searchParams.set("tab", tab);
-    for (const key of ["site", "section", "lead"]) destination.searchParams.delete(key);
+
+    for (const key of ["site", "section", "lead"]) {
+      destination.searchParams.delete(key);
+    }
+
     window.history.replaceState(null, "", destination);
+
     if (tab !== "sites") {
       pendingSiteIdRef.current = null;
       closeSite();
     }
+
     activeTabRef.current =
       tab;
 
@@ -450,6 +455,7 @@ export default function AdminPage() {
     if (!siteId || sitesLoading) return;
 
     const site = sites.find((item) => String(item.id) === siteId);
+
     if (site) {
       pendingSiteIdRef.current = null;
       openSite(site);
@@ -695,6 +701,7 @@ export default function AdminPage() {
           <div className={ui.eyebrow}>관리자</div>
           <h1 className={ui.title}>{companyName}</h1>
         </div>
+
         <PlanUsageButton />
       </header>
 
@@ -718,6 +725,7 @@ export default function AdminPage() {
       )}
 
       <AdminTabs
+        companyId={companyId}
         activeTab={
           activeTab
         }
@@ -728,9 +736,8 @@ export default function AdminPage() {
           unreadCount
         }
       />
-      {activeTab === "today" && companyId && <AdminTodayTasks key={companyId} companyId={companyId} />}
-                {activeTab ===
-        "jobs" && (
+
+      {activeTab === "jobs" && (
         <JobsTab
           jobSearch={jobSearch}
           setJobSearch={setJobSearch}
@@ -819,8 +826,7 @@ export default function AdminPage() {
           현장 관리
       ===================================================== */}
 
-      {activeTab ===
-        "sites" && (
+      {activeTab === "sites" && (
         <SiteManagementTab
           companyId={
             companyId
@@ -922,8 +928,7 @@ export default function AdminPage() {
         />
       )}
 
-      {activeTab ===
-        "usage" && (
+      {activeTab === "usage" && (
         <UsageTab
           usageStats={usageStats}
           usageMessage={usageMessage}
@@ -940,8 +945,7 @@ export default function AdminPage() {
 
       {activeTab === "profit" && <ProfitTab />}
 
-      {activeTab ===
-        "leads" && (
+      {activeTab === "leads" && (
         <LeadsTab
           companyName={companyName}
           leadFilter={leadFilter}
@@ -969,17 +973,45 @@ export default function AdminPage() {
         />
       )}
 
-      <AdminTabs activeTab={activeTab} changeTab={changeTab} unreadCount={unreadCount} secondaryOnly />
+      <AdminTabs
+        activeTab={activeTab}
+        changeTab={changeTab}
+        unreadCount={unreadCount}
+        secondaryOnly
+      />
+
       {customerEstimateUrl && (
         <details className={ui.share}>
           <summary>고객 AI 견적 링크 공유</summary>
+
           <div className={ui.shareBody}>
-            <div className={ui.shareUrl}>{customerEstimateUrl}</div>
-            <div className={ui.actionRow}>
-              <button type="button" className={ui.secondary} onClick={openCustomerEstimatePage}>고객페이지 열기</button>
-              <button type="button" className={ui.secondary} onClick={copyCustomerEstimateUrl}>주소 복사</button>
+            <div className={ui.shareUrl}>
+              {customerEstimateUrl}
             </div>
-            {copyMessage && <p role="status" className={ui.help}>{copyMessage}</p>}
+
+            <div className={ui.actionRow}>
+              <button
+                type="button"
+                className={ui.secondary}
+                onClick={openCustomerEstimatePage}
+              >
+                고객페이지 열기
+              </button>
+
+              <button
+                type="button"
+                className={ui.secondary}
+                onClick={copyCustomerEstimateUrl}
+              >
+                주소 복사
+              </button>
+            </div>
+
+            {copyMessage && (
+              <p role="status" className={ui.help}>
+                {copyMessage}
+              </p>
+            )}
           </div>
         </details>
       )}
@@ -992,6 +1024,7 @@ export default function AdminPage() {
           setPreviewPhoto
         }
       />
+
       <HelpChat />
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import {
   enablePushNotifications,
@@ -17,6 +17,7 @@ export default function useLeads({
   companyId,
   companyName = "업체",
 }) {
+  const listRequest = useRef(0);
   const [leads, setLeads] = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsMessage, setLeadsMessage] = useState("");
@@ -34,13 +35,7 @@ export default function useLeads({
   const [newLeadAlert, setNewLeadAlert] = useState(null);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
 
-  /* =========================================================
-     미확인 상담 수
-  ========================================================= */
-
-  async function loadUnreadCount(
-    targetCompanyId = companyId,
-  ) {
+  async function loadUnreadCount(targetCompanyId = companyId) {
     if (!targetCompanyId) return;
 
     try {
@@ -64,26 +59,20 @@ export default function useLeads({
     }
   }
 
-  /* =========================================================
-     상담 목록
-  ========================================================= */
-
   async function loadLeads(
     page = 1,
     filter = leadFilter,
-    focusLeadId = null,
+    focusLeadId = null
   ) {
     if (!companyId) return;
 
+    const requestId = ++listRequest.current;
     setLeadsLoading(true);
     setLeadsMessage("");
 
     try {
-      const from =
-        (page - 1) * LEAD_PAGE_SIZE;
-
-      const to =
-        from + LEAD_PAGE_SIZE - 1;
+      const from = (page - 1) * LEAD_PAGE_SIZE;
+      const to = from + LEAD_PAGE_SIZE - 1;
 
       let query = supabase
         .from("customer_leads")
@@ -113,10 +102,8 @@ export default function useLeads({
           quote_note,
           quote_created_at,
           created_at
-        `,
-          {
-            count: "exact",
-          },
+          `,
+          { count: "exact" }
         )
         .eq("company_id", companyId);
 
@@ -124,496 +111,281 @@ export default function useLeads({
         query = query.eq("id", focusLeadId);
       }
 
-      if (
-        filter &&
-        filter !== "all"
-      ) {
-        query = query.eq(
-          "status",
-          filter,
-        );
+      if (filter === "unread") {
+        query = query.eq("is_read", false);
+      } else if (filter && filter !== "all") {
+        query = query.eq("status", filter);
       }
 
-      const {
-        data,
-        error,
-        count,
-      } = await query
-        .order("created_at", {
-          ascending: false,
-        })
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
         .range(from, to);
 
+      if (requestId !== listRequest.current) return;
       if (error) throw error;
+
+      const lastPage = Math.max(
+        1,
+        Math.ceil((count || 0) / LEAD_PAGE_SIZE)
+      );
+
+      if (page > lastPage) {
+        return await loadLeads(lastPage, filter, focusLeadId);
+      }
+
+      if (!focusLeadId) {
+        setOpenLeadId(null);
+      }
 
       if (focusLeadId && data?.length) {
         setOpenLeadId(focusLeadId);
       }
 
       const normalizedLeads = (data || []).map((lead) => {
-  let autoMaterial = "";
+        let autoMaterial = "";
 
-  if (lead.memo) {
-    const filmMatch = lead.memo.match(
-      /선택 필름:\s*(.+?)(?:\r?\n|$)/,
-    );
+        if (lead.memo) {
+          const filmMatch = lead.memo.match(
+            /선택 필름:\s*(.+?)(?:\r?\n|$)/
+          );
+          const fireMatch = lead.memo.match(
+            /필름 조건:\s*(.+?)(?:\r?\n|$)/
+          );
 
-    const fireMatch = lead.memo.match(
-      /필름 조건:\s*(.+?)(?:\r?\n|$)/,
-    );
+          const filmText = filmMatch?.[1]?.trim() || "";
+          const fireText = fireMatch?.[1]?.trim() || "";
 
-    const filmText =
-      filmMatch?.[1]?.trim() || "";
+          if (filmText) {
+            autoMaterial = fireText
+              ? `${filmText} · ${fireText}`
+              : filmText;
+          }
+        }
 
-    const fireText =
-      fireMatch?.[1]?.trim() || "";
+        return {
+          ...lead,
+          final_price:
+            lead.final_price || lead.estimate_average || "",
+          quote_material:
+            lead.quote_material || autoMaterial || "",
+        };
+      });
 
-    if (filmText) {
-      autoMaterial = fireText
-        ? `${filmText} · ${fireText}`
-        : filmText;
-    }
-  }
-
-  return {
-    ...lead,
-
-    final_price:
-      lead.final_price ||
-      lead.estimate_average ||
-      "",
-
-    quote_material:
-      lead.quote_material ||
-      autoMaterial ||
-      "",
-  };
-});
-
-setLeads(normalizedLeads);
-setLeadTotal(count || 0);
-setLeadPage(page);
+      setLeads(normalizedLeads);
+      setLeadTotal(count || 0);
+      setLeadPage(page);
     } catch (error) {
-      console.error(error);
+      if (requestId !== listRequest.current) return;
 
+      setLeads([]);
+      console.error(error);
       setLeadsMessage(
-        `❌ 상담 목록 오류: ${
-          error?.message ||
-          "불러오기 실패"
-        }`,
+        `❌ 상담 목록 오류: ${error?.message || "불러오기 실패"}`
       );
     } finally {
-      setLeadsLoading(false);
+      if (requestId === listRequest.current) {
+        setLeadsLoading(false);
+      }
     }
   }
 
-  /* =========================================================
-     읽음 처리
-  ========================================================= */
-
-  async function markLeadRead(
-    lead,
-  ) {
-    if (!lead?.id) return;
-
-    if (
-      lead.is_read === true
-    ) {
-      return;
-    }
+  async function markLeadRead(lead) {
+    if (!lead?.id || lead.is_read === true) return;
 
     try {
-      const { error } =
-        await supabase
-          .from("customer_leads")
-          .update({
-            is_read: true,
-          })
-          .eq("id", lead.id)
-          .eq(
-            "company_id",
-            companyId,
-          );
+      const { error } = await supabase
+        .from("customer_leads")
+        .update({ is_read: true })
+        .eq("id", lead.id)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
       setLeads((current) =>
         current.map((item) =>
           item.id === lead.id
-            ? {
-                ...item,
-                is_read: true,
-              }
-            : item,
-        ),
+            ? { ...item, is_read: true }
+            : item
+        )
       );
 
-      setUnreadCount(
-        (current) =>
-          Math.max(
-            0,
-            current - 1,
-          ),
-      );
+      setUnreadCount((current) => Math.max(0, current - 1));
     } catch (error) {
-      console.error(
-        "읽음 처리:",
-        error,
-      );
+      console.error("읽음 처리:", error);
     }
   }
 
-  /* =========================================================
-     상담 상세 열기
-  ========================================================= */
-
-  async function toggleLeadDetail(
-    lead,
-  ) {
+  async function toggleLeadDetail(lead) {
     if (!lead?.id) return;
 
-    if (
-      openLeadId ===
-      lead.id
-    ) {
+    if (openLeadId === lead.id) {
       setOpenLeadId(null);
+
+      if (leadFilter === "unread") {
+        await loadLeads(leadPage, "unread");
+      }
+
       return;
     }
 
-    setOpenLeadId(
-      lead.id,
-    );
-
-    await markLeadRead(
-      lead,
-    );
+    setOpenLeadId(lead.id);
+    await markLeadRead(lead);
   }
 
-  /* =========================================================
-     고객 사진
-  ========================================================= */
-
-  async function loadLeadPhotos(
-    lead,
-  ) {
+  async function loadLeadPhotos(lead) {
     if (!lead?.id) return;
 
-    const paths =
-      getLeadPhotoPaths(
-        lead,
-      );
+    const paths = getLeadPhotoPaths(lead);
 
-    if (
-      paths.length === 0
-    ) {
-      setLeadsMessage(
-        "⚠️ 저장된 고객 사진이 없습니다.",
-      );
-
+    if (paths.length === 0) {
+      setLeadsMessage("⚠️ 저장된 고객 사진이 없습니다.");
       return;
     }
 
     if (
-      Array.isArray(
-        leadPhotoUrls[
-          lead.id
-        ],
-      ) &&
-      leadPhotoUrls[
-        lead.id
-      ].length > 0
+      Array.isArray(leadPhotoUrls[lead.id]) &&
+      leadPhotoUrls[lead.id].length > 0
     ) {
       return;
     }
 
-    setLeadPhotoLoadingId(
-      lead.id,
-    );
+    setLeadPhotoLoadingId(lead.id);
 
     try {
       const urls = [];
 
-      for (
-        const path of paths
-      ) {
-        const cachedUrl =
-          getCachedSignedUrl(
-            path,
-          );
+      for (const path of paths) {
+        const cachedUrl = getCachedSignedUrl(path);
 
         if (cachedUrl) {
-          urls.push({
-            path,
-            url: cachedUrl,
-          });
-
+          urls.push({ path, url: cachedUrl });
           continue;
         }
 
-        const {
-          data,
-          error,
-        } =
-          await supabase.storage
-            .from(
-              "work-photos",
-            )
-            .createSignedUrl(
-              path,
-              SIGNED_URL_SECONDS,
-            );
+        const { data, error } = await supabase.storage
+          .from("work-photos")
+          .createSignedUrl(path, SIGNED_URL_SECONDS);
 
         if (error) {
-          console.error(
-            "고객 사진 Signed URL:",
-            path,
-            error,
-          );
-
+          console.error("고객 사진 Signed URL:", path, error);
           continue;
         }
 
-        if (
-          data?.signedUrl
-        ) {
+        if (data?.signedUrl) {
           setCachedSignedUrl(
             path,
             data.signedUrl,
-            SIGNED_URL_SECONDS,
+            SIGNED_URL_SECONDS
           );
 
-          urls.push({
-            path,
-            url:
-              data.signedUrl,
-          });
+          urls.push({ path, url: data.signedUrl });
         }
       }
 
-      if (
-        urls.length === 0
-      ) {
-        throw new Error(
-          "고객 사진을 불러올 수 없습니다.",
-        );
+      if (urls.length === 0) {
+        throw new Error("고객 사진을 불러올 수 없습니다.");
       }
 
-      setLeadPhotoUrls(
-        (current) => ({
-          ...current,
-          [lead.id]:
-            urls,
-        }),
-      );
+      setLeadPhotoUrls((current) => ({
+        ...current,
+        [lead.id]: urls,
+      }));
 
-      if (
-        urls.length <
-        paths.length
-      ) {
+      if (urls.length < paths.length) {
         setLeadsMessage(
-          `⚠️ 고객 사진 ${paths.length}장 중 ${urls.length}장만 불러왔습니다.`,
+          `⚠️ 고객 사진 ${paths.length}장 중 ${urls.length}장만 불러왔습니다.`
         );
       }
     } catch (error) {
-      console.error(
-        "고객 사진:",
-        error,
-      );
-
+      console.error("고객 사진:", error);
       setLeadsMessage(
-        `❌ 고객 사진 오류: ${
-          error?.message ||
-          "불러오기 실패"
-        }`,
+        `❌ 고객 사진 오류: ${error?.message || "불러오기 실패"}`
       );
     } finally {
-      setLeadPhotoLoadingId(
-        null,
-      );
+      setLeadPhotoLoadingId(null);
     }
   }
 
-  /* =========================================================
-     상담 상태 변경
-  ========================================================= */
-
-  async function updateLeadStatus(
-    leadId,
-    status,
-  ) {
-    if (
-      !leadId ||
-      !companyId
-    ) {
-      return;
-    }
+  async function updateLeadStatus(leadId, status) {
+    if (!leadId || !companyId) return;
 
     try {
-      const { error } =
-        await supabase
-          .from("customer_leads")
-          .update({
-            status,
-          })
-          .eq("id", leadId)
-          .eq(
-            "company_id",
-            companyId,
-          );
+      const { error } = await supabase
+        .from("customer_leads")
+        .update({ status })
+        .eq("id", leadId)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
       setLeads((current) =>
         current.map((lead) =>
-          lead.id === leadId
-            ? {
-                ...lead,
-                status,
-              }
-            : lead,
-        ),
+          lead.id === leadId ? { ...lead, status } : lead
+        )
       );
     } catch (error) {
       setLeadsMessage(
-        `❌ 상태 변경 오류: ${
-          error?.message ||
-          "실패"
-        }`,
+        `❌ 상태 변경 오류: ${error?.message || "실패"}`
       );
     }
   }
 
-  /* =========================================================
-     상담 메모
-  ========================================================= */
-
-  async function saveLeadMemo(
-    leadId,
-    memo,
-  ) {
-    if (
-      !leadId ||
-      !companyId
-    ) {
-      return;
-    }
+  async function saveLeadMemo(leadId, memo) {
+    if (!leadId || !companyId) return;
 
     try {
-      const { error } =
-        await supabase
-          .from("customer_leads")
-          .update({
-            admin_memo:
-              memo || null,
-          })
-          .eq("id", leadId)
-          .eq(
-            "company_id",
-            companyId,
-          );
+      const { error } = await supabase
+        .from("customer_leads")
+        .update({ admin_memo: memo || null })
+        .eq("id", leadId)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
-      setLeadsMessage(
-        "✅ 상담 메모가 저장되었습니다.",
-      );
+      setLeadsMessage("✅ 상담 메모가 저장되었습니다.");
     } catch (error) {
       setLeadsMessage(
-        `❌ 메모 저장 오류: ${
-          error?.message ||
-          "실패"
-        }`,
+        `❌ 메모 저장 오류: ${error?.message || "실패"}`
       );
     }
   }
 
-  /* =========================================================
-     상담 화면 로컬값 수정
-  ========================================================= */
-
-  function updateLeadLocal(
-    leadId,
-    field,
-    value,
-  ) {
+  function updateLeadLocal(leadId, field, value) {
     setLeads((current) =>
       current.map((lead) =>
         lead.id === leadId
-          ? {
-              ...lead,
-              [field]:
-                value,
-            }
-          : lead,
-      ),
+          ? { ...lead, [field]: value }
+          : lead
+      )
     );
   }
 
-  /* =========================================================
-     최종 견적 저장
-  ========================================================= */
-
-  async function saveFinalQuote(
-    lead,
-  ) {
-    if (!lead?.id) {
-      return;
-    }
+  async function saveFinalQuote(lead) {
+    if (!lead?.id) return;
 
     const price = Number(
-      String(
-        lead.final_price ||
-          "",
-      ).replace(
-        /,/g,
-        "",
-      ),
+      String(lead.final_price || "").replace(/,/g, "")
     );
 
-    if (
-      !Number.isFinite(
-        price,
-      ) ||
-      price <= 0
-    ) {
-      setLeadsMessage(
-        "⚠️ 최종 견적금액을 입력해주세요.",
-      );
-
+    if (!Number.isFinite(price) || price <= 0) {
+      setLeadsMessage("⚠️ 최종 견적금액을 입력해주세요.");
       return;
     }
 
     try {
-      const quoteCreatedAt =
-        new Date().toISOString();
+      const quoteCreatedAt = new Date().toISOString();
 
-      const { error } =
-        await supabase
-          .from("customer_leads")
-          .update({
-            final_price:
-              price,
-
-            quote_work_details:
-              lead.quote_work_details ||
-              null,
-
-            quote_material:
-              lead.quote_material ||
-              null,
-
-            quote_note:
-              lead.quote_note ||
-              null,
-
-            quote_created_at:
-              quoteCreatedAt,
-          })
-          .eq("id", lead.id)
-          .eq(
-            "company_id",
-            companyId,
-          );
+      const { error } = await supabase
+        .from("customer_leads")
+        .update({
+          final_price: price,
+          quote_work_details: lead.quote_work_details || null,
+          quote_material: lead.quote_material || null,
+          quote_note: lead.quote_note || null,
+          quote_created_at: quoteCreatedAt,
+        })
+        .eq("id", lead.id)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -622,213 +394,108 @@ setLeadPage(page);
           item.id === lead.id
             ? {
                 ...item,
-
-                final_price:
-                  price,
-
-                quote_created_at:
-                  quoteCreatedAt,
+                final_price: price,
+                quote_created_at: quoteCreatedAt,
               }
-            : item,
-        ),
+            : item
+        )
       );
 
-      setLeadsMessage(
-        "✅ 최종 견적이 저장되었습니다.",
-      );
+      setLeadsMessage("✅ 최종 견적이 저장되었습니다.");
     } catch (error) {
       setLeadsMessage(
-        `❌ 최종 견적 저장 오류: ${
-          error?.message ||
-          "실패"
-        }`,
+        `❌ 최종 견적 저장 오류: ${error?.message || "실패"}`
       );
     }
   }
-
-  /* =========================================================
-     Web Push 알림 활성화
-  ========================================================= */
 
   async function enableNotifications() {
     try {
       await enablePushNotifications();
-
-      setNotificationEnabled(
-        true,
-      );
-
-      alert(
-        `${companyName} 휴대폰 알림이 켜졌습니다.`,
-      );
+      setNotificationEnabled(true);
+      alert(`${companyName} 휴대폰 알림이 켜졌습니다.`);
     } catch (error) {
-      console.error(
-        "Web Push 알림 설정:",
-        error,
-      );
-
-      setNotificationEnabled(
-        false,
-      );
-
-      alert(
-        `알림 설정 오류: ${
-          error?.message ||
-          "실패"
-        }`,
-      );
+      console.error("Web Push 알림 설정:", error);
+      setNotificationEnabled(false);
+      alert(`알림 설정 오류: ${error?.message || "실패"}`);
     }
   }
 
-  /* =========================================================
-     신규 상담 실시간 처리
-
-     실제 휴대폰 알림:
-     notifications
-       → /api/send-push
-       → service worker
-       → 휴대폰
-
-     여기서는 관리자 화면의
-     신규상담 표시/진동/목록 갱신만 처리합니다.
-  ========================================================= */
-
-  function handleRealtimeLead(
-    lead,
-    isLeadsTabOpen = false,
-  ) {
+  function handleRealtimeLead(lead, isLeadsTabOpen = false) {
     if (!lead) return;
 
-    setUnreadCount(
-      (current) =>
-        current + 1,
-    );
-
+    setUnreadCount((current) => current + 1);
     setNewLeadAlert({
       id: lead.id,
-      customer_name:
-        lead.customer_name,
+      customer_name: lead.customer_name,
       phone: lead.phone,
       region: lead.region,
-      created_at:
-        lead.created_at,
+      created_at: lead.created_at,
     });
 
-    if (
-      typeof document !==
-      "undefined"
-    ) {
-      document.title =
-        `🔴 신규 상담 | ${companyName}`;
+    if (typeof document !== "undefined") {
+      document.title = `🔴 신규 상담 | ${companyName}`;
     }
 
     try {
-      navigator.vibrate?.([
-        250,
-        120,
-        250,
-      ]);
+      navigator.vibrate?.([250, 120, 250]);
     } catch {}
 
-    if (
-      isLeadsTabOpen
-    ) {
-      loadLeads(
-        1,
-        leadFilter,
-      );
+    if (isLeadsTabOpen) {
+      loadLeads(1, leadFilter);
     }
   }
-
-  /* =========================================================
-     현재 Web Push 구독 상태 반영
-  ========================================================= */
 
   async function syncNotificationPermission() {
     try {
-      const status =
-        await getPushSubscriptionStatus();
+      const status = await getPushSubscriptionStatus();
 
       setNotificationEnabled(
         Boolean(
           status?.supported &&
-          status?.permission ===
-            "granted" &&
-          status?.subscribed,
-        ),
+            status?.permission === "granted" &&
+            status?.subscribed
+        )
       );
     } catch (error) {
-      console.error(
-        "Web Push 상태 확인:",
-        error,
-      );
-
-      setNotificationEnabled(
-        false,
-      );
+      console.error("Web Push 상태 확인:", error);
+      setNotificationEnabled(false);
     }
   }
 
-  /* =========================================================
-     페이지 수
-  ========================================================= */
-
-  const totalLeadPages =
-    Math.max(
-      1,
-      Math.ceil(
-        leadTotal /
-          LEAD_PAGE_SIZE,
-      ),
-    );
-
-  /* =========================================================
-     외부 사용
-  ========================================================= */
+  const totalLeadPages = Math.max(
+    1,
+    Math.ceil(leadTotal / LEAD_PAGE_SIZE)
+  );
 
   return {
     leads,
     leadsLoading,
-
     leadsMessage,
     setLeadsMessage,
-
     leadPage,
     leadTotal,
     totalLeadPages,
-
     leadFilter,
     setLeadFilter,
-
     unreadCount,
-
     openLeadId,
-
     leadPhotoUrls,
     leadPhotoLoadingId,
-
     newLeadAlert,
     setNewLeadAlert,
-
     notificationEnabled,
-
     loadUnreadCount,
     loadLeads,
-
     markLeadRead,
     toggleLeadDetail,
-
     loadLeadPhotos,
-
     updateLeadStatus,
-
     saveLeadMemo,
     updateLeadLocal,
     saveFinalQuote,
-
     enableNotifications,
-
     handleRealtimeLead,
     syncNotificationPermission,
   };
-  }
+}

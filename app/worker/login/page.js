@@ -20,7 +20,10 @@ export default function WorkerLoginPage() {
   const [messageType, setMessageType] = useState("error");
 
   async function getMyWorker() {
-    const result = await loadMyWorkerSites({ profileOnly: true });
+    const result = await loadMyWorkerSites({
+      profileOnly: true,
+    });
+
     return result.worker;
   }
 
@@ -47,15 +50,18 @@ export default function WorkerLoginPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
       if (error) throw error;
 
       if (!data?.user) {
-        throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
+        throw new Error(
+          "로그인 사용자 정보를 확인하지 못했습니다."
+        );
       }
 
       const worker = await getMyWorker();
@@ -77,10 +83,15 @@ export default function WorkerLoginPage() {
       }
 
       setMessageType("success");
-      setMessage(`${worker.worker_name || "시공자"}님, 로그인되었습니다.`);
+      setMessage(
+        `${worker.worker_name || "시공자"}님, 로그인되었습니다.`
+      );
 
       setTimeout(() => {
-        const next = new URLSearchParams(window.location.search).get("next");
+        const next = new URLSearchParams(
+          window.location.search
+        ).get("next");
+
         router.replace(workerDestination(next));
         router.refresh();
       }, 500);
@@ -93,7 +104,8 @@ export default function WorkerLoginPage() {
       const lowerMessage = errorMessage.toLowerCase();
 
       if (lowerMessage.includes("invalid login credentials")) {
-        errorMessage = "이메일 또는 비밀번호가 올바르지 않습니다.";
+        errorMessage =
+          "이메일 또는 비밀번호가 올바르지 않습니다.";
       }
 
       if (lowerMessage.includes("email not confirmed")) {
@@ -205,7 +217,9 @@ export default function WorkerLoginPage() {
             시공자 로그인
           </h2>
 
-          <FieldLabel htmlFor="worker-email">이메일</FieldLabel>
+          <FieldLabel htmlFor="worker-email">
+            이메일
+          </FieldLabel>
 
           <input
             id="worker-email"
@@ -219,7 +233,9 @@ export default function WorkerLoginPage() {
             style={inputStyle}
           />
 
-          <FieldLabel htmlFor="worker-password">비밀번호</FieldLabel>
+          <FieldLabel htmlFor="worker-password">
+            비밀번호
+          </FieldLabel>
 
           <input
             id="worker-password"
@@ -239,9 +255,13 @@ export default function WorkerLoginPage() {
                 padding: "13px 14px",
                 borderRadius: "14px",
                 background:
-                  messageType === "success" ? "#ecfdf5" : "#fff1f2",
+                  messageType === "success"
+                    ? "#ecfdf5"
+                    : "#fff1f2",
                 color:
-                  messageType === "success" ? "#047857" : "#b91c1c",
+                  messageType === "success"
+                    ? "#047857"
+                    : "#b91c1c",
                 fontSize: "13px",
                 lineHeight: 1.7,
               }}
@@ -274,6 +294,19 @@ export default function WorkerLoginPage() {
           >
             {loading ? "로그인 중..." : "내 현장으로 가기 →"}
           </button>
+
+          <Link
+            href="/worker/forgot-password"
+            style={{
+              display: "block",
+              padding: "16px 0",
+              textAlign: "center",
+              color: "#3268bd",
+              fontWeight: 700,
+            }}
+          >
+            아이디 찾기 · 비밀번호 재설정
+          </Link>
 
           <p
             style={{

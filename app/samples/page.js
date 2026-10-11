@@ -1,2093 +1,494 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import FilmSampleImage from "../components/FilmSampleImage";
-import { supabase } from "../../lib/supabase";
-
-const PAGE_SIZE = 16;
-
-
-/*
- * 소비자 샘플 페이지 대분류
- */
-const CATEGORIES = [
-  { key: "wood", label: "우드" },
-  { key: "solid", label: "솔리드" },
-  { key: "stone", label: "스톤&마블" },
-  { key: "metal", label: "메탈" },
-  { key: "fabric", label: "패브릭" },
-  { key: "leather", label: "레더" },
-  { key: "etc", label: "기타" },
-];
-
-/*
- * 현대보닥 제품번호 → 대분류
- *
- * 긴 prefix가 반드시 위에 있어야 합니다.
- * W, S 같은 짧은 prefix는 마지막에 둡니다.
- */
-const PRODUCT_LINES = [
-  {
-    prefix: "OGW",
-    label: "옵티컬 그레인 우드",
-    category: "wood",
-  },
-  {
-    prefix: "SPW",
-    label: "스페셜우드",
-    category: "wood",
-  },
-  {
-    prefix: "LW",
-    label: "롱우드",
-    category: "wood",
-  },
-  {
-    prefix: "ZX",
-    label: "프리미엄우드",
-    category: "wood",
-  },
-
-  {
-    prefix: "PNT",
-    label: "프리미엄페인티드우드",
-    category: "solid",
-  },
-  {
-    prefix: "PTW",
-    label: "페인티드우드",
-    category: "solid",
-  },
-  {
-    prefix: "ZSW",
-    label: "슈퍼화이트우드",
-    category: "solid",
-  },
-  {
-    prefix: "CP",
-    label: "텍스쳐",
-    category: "solid",
-  },
-  {
-    prefix: "HS",
-    label: "텍스쳐",
-    category: "solid",
-  },
-  {
-    prefix: "LM",
-    label: "텍스쳐",
-    category: "solid",
-  },
-  {
-    prefix: "LS",
-    label: "텍스쳐",
-    category: "solid",
-  },
-
-  {
-    prefix: "NS",
-    label: "스톤앤마블",
-    category: "stone",
-  },
-  {
-    prefix: "PM",
-    label: "프리미엄마블",
-    category: "stone",
-  },
-  {
-    prefix: "PNC",
-    label: "프리미엄페인티드콘크리트",
-    category: "stone",
-  },
-
-  {
-    prefix: "UMI",
-    label: "고광택메탈",
-    category: "metal",
-  },
-  {
-    prefix: "APZ",
-    label: "골드",
-    category: "metal",
-  },
-  {
-    prefix: "RM",
-    label: "리얼메탈",
-    category: "metal",
-  },
-  {
-    prefix: "VM",
-    label: "벨벳메탈",
-    category: "metal",
-  },
-
-  {
-    prefix: "SF",
-    label: "소프트패브릭",
-    category: "fabric",
-  },
-  {
-    prefix: "RF",
-    label: "리얼패브릭",
-    category: "fabric",
-  },
-  {
-    prefix: "NF",
-    label: "네츄럴패브릭",
-    category: "fabric",
-  },
-
-  {
-    prefix: "SL",
-    label: "소프트레더",
-    category: "leather",
-  },
-
-  {
-    prefix: "ECF",
-    label: "이지클린필름",
-    category: "etc",
-  },
-  {
-    prefix: "EXF",
-    label: "외장용필름",
-    category: "etc",
-  },
-  {
-    prefix: "BLC",
-    label: "모노블랑",
-    category: "etc",
-  },
-  {
-    prefix: "SMT",
-    label: "슈퍼매트",
-    category: "etc",
-  },
-
-  /*
-   * 짧은 prefix는 반드시 마지막
-   */
-  {
-    prefix: "W",
-    label: "우드",
-    category: "wood",
-  },
-  {
-    prefix: "S",
-    label: "솔리드",
-    category: "solid",
-  },
-];
-
-/*
- * 중복 제거
- */
-function unique(values) {
-  return [
-    ...new Set(
-      values
-        .filter(
-          (value) =>
-            value !== null &&
-            value !== undefined
-        )
-        .map((value) =>
-          String(value).trim()
-        )
-        .filter(Boolean)
-    ),
-  ];
-}
-
-/*
- * 현대보닥 제품번호 prefix 분류
- */
-function getProductLine(productCode) {
-  const code = String(productCode || "")
-    .trim()
-    .toUpperCase();
-
-  if (!code) {
-    return null;
-  }
-
-  return (
-    PRODUCT_LINES.find((line) =>
-      code.startsWith(line.prefix)
-    ) || null
-  );
-}
-
-/*
- * 제품의 대분류 찾기
- */
-function getProductCategory(product) {
-  const storedCategory = String(
-    product?.category_key || ""
-  ).trim();
-
-  if (storedCategory) {
-    return storedCategory;
-  }
-
-  const line = getProductLine(
-    product?.product_code
-  );
-
-  return line?.category || "";
-}
-
-function getProductLineLabel(product) {
-  const storedLine = String(
-    product?.pattern_line || ""
-  ).trim();
-
-  if (storedLine) {
-    return storedLine;
-  }
-
-  const line = getProductLine(
-    product?.product_code
-  );
-
-  return line?.label || "";
-}
-
-function getCategoryLabel(categoryKey) {
-  return (
-    CATEGORIES.find(
-      (item) =>
-        item.key === categoryKey
-    )?.label || categoryKey
-  );
-}
-
-function getToneLabel(value) {
-  const labels = {
-    라이트톤: "라이트",
-    미디엄톤: "미디엄",
-    딥톤: "딥",
-    기타톤: "포인트",
-  };
-
-  return labels[value] || value;
-}
-
-function getProductDescription(product) {
-  return (
-    product?.product_name ||
-    product?.color_description ||
-    product?.wood_species ||
-    product?.color_family ||
-    product?.tone_family ||
-    ""
-  );
-}
-
-/*
- * 공통 선택 버튼
- *
- * wrap = true
- * → 제조사처럼 한 블록 안에서 여러 줄로 전체 표시
- *
- * wrap = false
- * → 기존처럼 가로 스크롤
- */
-function ChipRow({
-  items = [],
-  value,
-  onChange,
-  wrap = false,
-}) {
-  if (!items.length) {
-    return null;
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-
-        flexWrap: wrap
-          ? "wrap"
-          : "nowrap",
-
-        gap: "7px",
-
-        overflowX: wrap
-          ? "visible"
-          : "auto",
-
-        paddingBottom: "3px",
-
-        WebkitOverflowScrolling:
-          wrap
-            ? undefined
-            : "touch",
-
-        scrollbarWidth:
-          wrap
-            ? "auto"
-            : "none",
-      }}
-    >
-      {items.map((item) => {
-        const active =
-          value === item.value;
-
-        return (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() =>
-              onChange(item.value)
-            }
-            style={{
-              flex: "0 0 auto",
-
-              minHeight: "40px",
-
-              padding: "8px 14px",
-
-              borderRadius: "999px",
-
-              border: active
-                ? "2px solid #111827"
-                : "1px solid #d1d5db",
-
-              background: active
-                ? "#111827"
-                : "#ffffff",
-
-              color: active
-                ? "#ffffff"
-                : "#374151",
-
-              fontSize: "13px",
-
-              fontWeight: "800",
-
-              whiteSpace: "nowrap",
-
-              cursor: "pointer",
-            }}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function FilterSection({
-  title,
-  children,
-}) {
-  return (
-    <div
-      style={{
-        marginTop: "14px",
-      }}
-    >
-      <div
-        style={{
-          marginBottom: "7px",
-          fontSize: "12px",
-          color: "#6b7280",
-          fontWeight: "800",
-        }}
-      >
-        {title}
-      </div>
-
-      {children}
-    </div>
-  );
-}
-
-function getPageNumbers(
-  currentPage,
-  totalPages
-) {
-  if (totalPages <= 5) {
-    return Array.from(
-      { length: totalPages },
-      (_, index) => index + 1
-    );
-  }
-
-  let start = Math.max(
-    1,
-    currentPage - 2
-  );
-
-  let end = Math.min(
-    totalPages,
-    start + 4
-  );
-
-  if (end - start < 4) {
-    start = Math.max(
-      1,
-      end - 4
-    );
-  }
-
-  return Array.from(
-    {
-      length:
-        end - start + 1,
-    },
-    (_, index) =>
-      start + index
-  );
-}
+import FilmColorPicker from "../FilmColorPicker";
+import FilmSampleImage, {
+  getFilmSampleUrl,
+} from "../components/FilmSampleImage";
+import { findImageSimilarFilms } from "../../lib/filmImageSimilarity.mjs";
 
 export default function SamplesPage() {
-  /*
-   * 현재 업체
-   *
-   * 예:
-   * /samples?company=gibun
-   * /samples?company=film
-   *
-   * window.location은 useEffect 안에서만 사용하므로
-   * Next.js 빌드 시에도 안전합니다.
-   */
-  const [
-    companySlug,
-    setCompanySlug,
-  ] = useState("");
+  const [products, setProducts] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState({
+    done: 0,
+    total: 0,
+  });
+  const [home, setHome] = useState("/");
 
-  const [
-    company,
-    setCompany,
-  ] = useState(null);
+  const request = useRef(null);
+  const dialog = useRef(null);
+  const close = useRef(null);
+  const opened = Boolean(preview);
 
-  const [
-    companyLoading,
-    setCompanyLoading,
-  ] = useState(true);
-
-  const [
-    products,
-    setProducts,
-  ] = useState([]);
-
-  const [
-    brand,
-    setBrand,
-  ] = useState("");
-
-  const [
-    category,
-    setCategory,
-  ] = useState("");
-
-  const [
-    search,
-    setSearch,
-  ] = useState("");
-
-  const [
-    page,
-    setPage,
-  ] = useState(1);
-
-  const [
-    selected,
-    setSelected,
-  ] = useState(null);
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    message,
-    setMessage,
-  ] = useState("");
-
-  /*
-   * 업체 정보 불러오기
-   */
   useEffect(() => {
-    let cancelled = false;
+    const slug = new URLSearchParams(
+      window.location.search
+    ).get("company");
 
-    async function loadCompany() {
-      const params =
-        new URLSearchParams(
-          window.location.search
-        );
-
-      const slug = String(
-        params.get("company") || ""
-      )
-        .trim()
-        .toLowerCase();
-
-      if (cancelled) {
-        return;
-      }
-
-      setCompanySlug(slug);
-
-      if (!slug) {
-        setCompany(null);
-        setCompanyLoading(false);
-        return;
-      }
-
-      setCompanyLoading(true);
-
-      try {
-        const response = await fetch(
-          `/api/public-company?slug=${encodeURIComponent(
-            slug
-          )}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        const result =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !result?.success ||
-          !result?.company
-        ) {
-          throw new Error(
-            result?.error ||
-              "업체 정보를 불러오지 못했습니다."
-          );
-        }
-
-        if (!cancelled) {
-          setCompany(
-            result.company
-          );
-        }
-      } catch (error) {
-        console.error(
-          "샘플페이지 업체 정보 조회 오류:",
-          error
-        );
-
-        if (!cancelled) {
-          setCompany(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setCompanyLoading(false);
-        }
-      }
+    if (slug) {
+      setHome(`/?company=${encodeURIComponent(slug)}`);
     }
 
-    loadCompany();
-
     return () => {
-      cancelled = true;
+      request.current?.abort();
+      request.current = null;
     };
   }, []);
 
-  const companyName =
-    company?.company_name ||
-    "기분좋은공간";
+  function cancel() {
+    request.current?.abort();
+    request.current = null;
+    setBusy(false);
+  }
 
-  const estimateHref =
-    companySlug
-      ? `/estimate/${encodeURIComponent(
-          companySlug
-        )}`
-      : "/";
+  function show(product) {
+    cancel();
+    setPreview(product);
+    setResult(null);
+    setNotice("");
+    setProgress({ done: 0, total: 0 });
 
-  /*
-   * Supabase에서 제품 불러오기
-   *
-   * 가격 컬럼은 아예 조회하지 않습니다.
-   * 고객용 샘플 페이지에서 가격 노출 방지.
-   */
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadProducts() {
-      setLoading(true);
-      setMessage("");
-
-      const FETCH_SIZE = 1000;
-
-      const selectColumns = [
-        "id",
-        "brand",
-        "product_code",
-        "product_name",
-        "category_key",
-        "pattern_line",
-        "color_family",
-        "color_description",
-        "color_hex",
-        "texture",
-        "grade",
-        "wood_species",
-        "tone_family",
-        "sample_image_path",
-        "sort_order",
-      ].join(",");
-
-      let data = [];
-      let error = null;
-      let from = 0;
-
-      while (mounted) {
-        const result = await supabase
-          .from("film_products")
-          .select(selectColumns)
-          .eq("is_active", true)
-          .order("brand", {
-            ascending: true,
-          })
-          .order("sort_order", {
-            ascending: true,
-          })
-          .order("id", {
-            ascending: true,
-          })
-          .range(
-            from,
-            from + FETCH_SIZE - 1
-          );
-
-        if (result.error) {
-          error = result.error;
-          break;
-        }
-
-        const rows =
-          result.data || [];
-
-        data = [
-          ...data,
-          ...rows,
-        ];
-
-        if (
-          rows.length <
-          FETCH_SIZE
-        ) {
-          break;
-        }
-
-        from += FETCH_SIZE;
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      if (error) {
-        console.error(
-          "필름 샘플 조회 오류:",
-          error
-        );
-
-        setProducts([]);
-
-        setMessage(
-          `필름 샘플을 불러오지 못했습니다. ${
-            error.message || ""
-          }`
-        );
-      } else {
-        const rows = data || [];
-
-        setProducts(rows);
-
-        const brandList =
-          unique(
-            rows.map(
-              (item) =>
-                item.brand
-            )
-          );
-
-        if (
-          brandList.length ===
-          1
-        ) {
-          setBrand(
-            brandList[0]
-          );
-        }
-      }
-
-      setLoading(false);
+    if (dialog.current) {
+      dialog.current.scrollTop = 0;
     }
 
-    loadProducts();
+    close.current?.focus();
+  }
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  function dismiss() {
+    cancel();
+    setPreview(null);
+  }
 
-  /*
-   * 큰 이미지 팝업 열렸을 때
-   * 뒤 화면 스크롤 방지
-   */
   useEffect(() => {
-    if (!selected) {
-      return;
-    }
+    if (!opened) return;
 
-    const previousOverflow =
-      document.body.style
-        .overflow;
+    const overflow = document.body.style.overflow;
+    const focus = document.activeElement;
 
-    document.body.style.overflow =
-      "hidden";
+    document.body.style.overflow = "hidden";
+    close.current?.focus();
 
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [selected]);
+    function keydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
 
-  /*
-   * 제조사 목록
-   */
-  const brands = useMemo(() => {
-    const brandList = unique(
-      products.map(
-        (item) => item.brand
-      )
-    );
+        request.current?.abort();
+        request.current = null;
 
-    const PRIORITY_BRANDS = [
-      "현대보닥",
-      "영림 인테리어필름",
-      "LX하우시스 베니프",
-    ];
-
-    return [...brandList].sort(
-      (a, b) => {
-        const aIndex =
-          PRIORITY_BRANDS.indexOf(a);
-
-        const bIndex =
-          PRIORITY_BRANDS.indexOf(b);
-
-        const aPriority =
-          aIndex === -1
-            ? PRIORITY_BRANDS.length
-            : aIndex;
-
-        const bPriority =
-          bIndex === -1
-            ? PRIORITY_BRANDS.length
-            : bIndex;
-
-        if (
-          aPriority !==
-          bPriority
-        ) {
-          return (
-            aPriority -
-            bPriority
-          );
-        }
-
-        return a.localeCompare(
-          b,
-          "ko"
-        );
-      }
-    );
-  }, [products]);
-
-  /*
-   * 선택한 제조사에 실제 존재하는
-   * 대분류만 표시
-   */
-  const availableCategories =
-    useMemo(() => {
-      if (!brand) {
-        return [];
+        setBusy(false);
+        setPreview(null);
       }
 
-      const brandProducts =
-        products.filter(
-          (product) =>
-            product.brand ===
-            brand
-        );
+      if (event.key !== "Tab") return;
 
-      return CATEGORIES.filter(
-        (categoryItem) =>
-          brandProducts.some(
-            (product) =>
-              getProductCategory(
-                product
-              ) ===
-              categoryItem.key
-          )
+      const nodes = dialog.current?.querySelectorAll(
+        'button:not([disabled]), a[href]'
       );
-    }, [brand, products]);
 
-  /*
-   * 최종 샘플 목록
-   */
-  const filteredProducts =
-    useMemo(() => {
-      const keyword =
-        search
-          .trim()
-          .toLowerCase();
+      if (!nodes?.length) return;
 
-      if (keyword) {
-        return products.filter(
-          (product) => {
-            const text = [
-              product.brand,
-              product.product_code,
-              product.product_name,
-              product.category_key,
-              product.pattern_line,
-              product.color_family,
-              product.color_description,
-              product.texture,
-              product.grade,
-              product.wood_species,
-              product.tone_family,
-            ]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase();
-
-            return text.includes(
-              keyword
-            );
-          }
-        );
-      }
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const outside = !dialog.current.contains(
+        document.activeElement
+      );
 
       if (
-        !brand ||
-        !category
+        event.shiftKey &&
+        (document.activeElement === first || outside)
       ) {
-        return [];
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last || outside)
+      ) {
+        event.preventDefault();
+        first.focus();
       }
-
-      return products.filter(
-        (product) =>
-          product.brand ===
-            brand &&
-          getProductCategory(
-            product
-          ) === category
-      );
-    }, [
-      products,
-      brand,
-      category,
-      search,
-    ]);
-
-  const totalPages =
-    Math.max(
-      1,
-      Math.ceil(
-        filteredProducts.length /
-          PAGE_SIZE
-      )
-    );
-
-  useEffect(() => {
-    if (
-      page >
-      totalPages
-    ) {
-      setPage(
-        totalPages
-      );
-    }
-  }, [
-    page,
-    totalPages,
-  ]);
-
-  const pagedProducts =
-    useMemo(() => {
-      const start =
-        (page - 1) *
-        PAGE_SIZE;
-
-      return filteredProducts.slice(
-        start,
-        start + PAGE_SIZE
-      );
-    }, [
-      filteredProducts,
-      page,
-    ]);
-
-  const pageNumbers =
-    getPageNumbers(
-      page,
-      totalPages
-    );
-
-  function chooseBrand(
-    nextBrand
-  ) {
-    setBrand(nextBrand);
-    setCategory("");
-    setSearch("");
-    setPage(1);
-    setSelected(null);
-  }
-
-  function chooseCategory(
-    nextCategory
-  ) {
-    setCategory(
-      nextCategory
-    );
-
-    setSearch("");
-    setPage(1);
-    setSelected(null);
-  }
-
-  function movePage(
-    nextPage
-  ) {
-    if (
-      nextPage < 1 ||
-      nextPage >
-        totalPages
-    ) {
-      return;
     }
 
-    setPage(nextPage);
+    document.addEventListener("keydown", keydown);
 
-    setTimeout(() => {
-      const element =
-        document.getElementById(
-          "sample-list"
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", keydown);
+
+      if (
+        focus instanceof HTMLElement &&
+        focus.isConnected
+      ) {
+        focus.focus();
+      }
+    };
+  }, [opened]);
+
+  async function search() {
+    cancel();
+
+    const controller = new AbortController();
+    request.current = controller;
+
+    setBusy(true);
+    setResult(null);
+    setNotice("");
+    setProgress({ done: 0, total: 0 });
+
+    const current = () =>
+      request.current === controller &&
+      !controller.signal.aborted;
+
+    try {
+      const source =
+        products.find(
+          (product) => product.id === preview.id
+        ) || preview;
+
+      const found = await findImageSimilarFilms(
+        source,
+        products,
+        getFilmSampleUrl,
+        {
+          signal: controller.signal,
+          onProgress: (value) => {
+            if (current()) {
+              setProgress(value);
+            }
+          },
+        }
+      );
+
+      if (!current()) return;
+
+      setResult(found);
+
+      if (!found.matches.length) {
+        setNotice(
+          found.total
+            ? "분석된 제품 중 색상·무늬 기준을 충족하는 샘플을 찾지 못했습니다."
+            : "비교할 다른 브랜드의 분석된 샘플이 없습니다."
         );
-
-      if (element) {
-        element.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
       }
-    }, 10);
+    } catch (error) {
+      if (
+        current() &&
+        error.name !== "AbortError"
+      ) {
+        setNotice(
+          error.message || "검색에 실패했습니다."
+        );
+      }
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        controller.abort();
+        setBusy(false);
+      }
+    }
   }
-
-  function handleSearch(
-    value
-  ) {
-    setSearch(value);
-    setPage(1);
-  }
-
-  const showResults =
-    Boolean(
-      search.trim()
-    ) ||
-    Boolean(
-      brand &&
-        category
-    );
-
-  const currentCategoryLabel =
-    getCategoryLabel(
-      category
-    );
 
   return (
     <main
       style={{
-        maxWidth: "720px",
+        maxWidth: 760,
         margin: "0 auto",
-        minHeight: "100vh",
-        padding:
-          "14px 14px 70px",
-        boxSizing:
-          "border-box",
-        background:
-          "#f8fafc",
+        padding: "20px 16px",
         color: "#111827",
       }}
     >
-      {/* ===================================
-          상단 메뉴
-      =================================== */}
-
-      <nav
+      <header
         style={{
-          display: "grid",
-          gridTemplateColumns:
-            "1fr 1fr",
-          gap: "8px",
-          marginBottom: "20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        <Link
-          href={estimateHref}
-          style={{
-            padding:
-              "11px 8px",
-            border:
-              "1px solid #d1d5db",
-            borderRadius:
-              "11px",
-            background:
-              "#ffffff",
-            color:
-              "#374151",
-            textAlign:
-              "center",
-            textDecoration:
-              "none",
-            fontSize:
-              "14px",
-            fontWeight:
-              "800",
-          }}
-        >
-          AI 견적
-        </Link>
+        <h1 style={{ fontSize: 23 }}>
+          필름 샘플 보기
+        </h1>
+        <Link href={home}>홈으로</Link>
+      </header>
 
-        <div
-          style={{
-            padding:
-              "11px 8px",
-            borderRadius:
-              "11px",
-            background:
-              "#111827",
-            color:
-              "#ffffff",
-            textAlign:
-              "center",
-            fontSize:
-              "14px",
-            fontWeight:
-              "800",
-          }}
-        >
-          필름 샘플보기
-        </div>
-      </nav>
+      <FilmColorPicker
+        sampleMode
+        value={selected}
+        onProductsLoaded={setProducts}
+        onSelect={(product) => {
+          setSelected(product);
 
-      {/* ===================================
-          제목
-      =================================== */}
-
-      <div
-        style={{
-          display:
-            "inline-block",
-          padding:
-            "6px 11px",
-          borderRadius:
-            "999px",
-          background:
-            "#111827",
-          color:
-            "#ffffff",
-          fontSize:
-            "11px",
-          fontWeight:
-            "800",
+          if (product) {
+            show(product);
+          }
         }}
-      >
-        {companyLoading
-          ? "업체 정보 확인 중..."
-          : companyName}
-      </div>
-
-      <h1
-        style={{
-          margin:
-            "13px 0 5px",
-          fontSize:
-            "27px",
-          lineHeight: 1.3,
-          letterSpacing:
-            "-0.8px",
-        }}
-      >
-        인테리어필름 샘플
-      </h1>
+        onGenerate={show}
+      />
 
       <p
         style={{
-          margin: 0,
-          color:
-            "#6b7280",
-          fontSize:
-            "13px",
-          lineHeight: 1.6,
+          color: "#6b7280",
+          fontSize: 13,
+          lineHeight: 1.8,
         }}
       >
-        제조사와 대분류를
-        선택하면 등록된 필름
-        샘플을 확인할 수 있습니다.
+        제조사 → 패턴 대분류 → 패턴 → 수종·톤·컬러
+        순서로 선택하세요. 샘플을 선택하면 크게 볼 수
+        있습니다.
       </p>
 
-      {/* ===================================
-          검색 / 제조사 / 대분류
-      =================================== */}
-
-      <section
-        style={{
-          marginTop: "16px",
-          padding: "14px",
-          border:
-            "1px solid #e5e7eb",
-          borderRadius: "16px",
-          background: "#ffffff",
-        }}
-      >
-        {/* 검색 */}
+      {preview && (
         <div
-          style={{
-            position: "relative",
-          }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform:
-                "translateY(-50%)",
-              color: "#9ca3af",
-              fontSize: "16px",
-              pointerEvents: "none",
-            }}
-          >
-            ⌕
-          </span>
-
-          <input
-            type="search"
-            value={search}
-            onChange={(event) =>
-              handleSearch(
-                event.target.value
-              )
+          className="overlay"
+          onClick={(event) => {
+            if (
+              event.target === event.currentTarget
+            ) {
+              dismiss();
             }
-            placeholder="제품번호 검색 예: S115, CW111"
-            style={{
-              width: "100%",
-              boxSizing:
-                "border-box",
-              padding:
-                "12px 38px 12px 36px",
-              border:
-                "1px solid #d1d5db",
-              borderRadius:
-                "11px",
-              outline: "none",
-              fontSize: "14px",
-              color: "#111827",
-              background:
-                "#ffffff",
-            }}
-          />
-
-          {search && (
-            <button
-              type="button"
-              onClick={() =>
-                handleSearch("")
-              }
-              aria-label="검색어 지우기"
-              style={{
-                position:
-                  "absolute",
-                right: "8px",
-                top: "50%",
-                transform:
-                  "translateY(-50%)",
-                width: "28px",
-                height: "28px",
-                border: "none",
-                borderRadius:
-                  "50%",
-                background:
-                  "#f3f4f6",
-                color:
-                  "#6b7280",
-                cursor:
-                  "pointer",
-              }}
-            >
-              ×
-            </button>
-          )}
-        </div>
-
-        {/* 검색 중에는 필터 숨김 */}
-        {!search.trim() && (
-          <>
-            <FilterSection title="1. 제조사 선택">
-              <ChipRow
-                items={brands.map(
-                  (item) => ({
-                    value: item,
-                    label: item,
-                  })
-                )}
-                value={brand}
-                onChange={
-                  chooseBrand
-                }
-                wrap
-              />
-            </FilterSection>
-
-            <FilterSection title="2. 대분류 선택">
-              <ChipRow
-                items={availableCategories.map(
-                  (item) => ({
-                    value:
-                      item.key,
-                    label:
-                      item.label,
-                  })
-                )}
-                value={category}
-                onChange={
-                  chooseCategory
-                }
-              />
-            </FilterSection>
-          </>
-        )}
-      </section>
-
-      {/* ===================================
-          로딩
-      =================================== */}
-
-      {loading && (
-        <div
-          style={{
-            padding:
-              "40px 0",
-            textAlign:
-              "center",
-            color:
-              "#6b7280",
-            fontSize:
-              "13px",
           }}
         >
-          필름 샘플을 불러오는 중입니다.
-        </div>
-      )}
-
-      {/* ===================================
-          오류
-      =================================== */}
-
-      {!loading &&
-        message && (
-          <div
-            style={{
-              marginTop:
-                "15px",
-              padding: "14px",
-              borderRadius:
-                "12px",
-              background:
-                "#fef2f2",
-              color:
-                "#b91c1c",
-              fontSize:
-                "13px",
-              lineHeight: 1.5,
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-      {/* ===================================
-          선택 전 안내
-      =================================== */}
-
-      {!loading &&
-        !message &&
-        !showResults && (
-          <div
-            style={{
-              marginTop:
-                "15px",
-              padding:
-                "24px 14px",
-              border:
-                "1px solid #e5e7eb",
-              borderRadius:
-                "14px",
-              background:
-                "#ffffff",
-              color:
-                "#6b7280",
-              textAlign:
-                "center",
-              fontSize:
-                "13px",
-              lineHeight: 1.7,
-            }}
-          >
-            제조사와 대분류를 선택하면
-            <br />
-            등록된 필름 샘플이 바로 표시됩니다.
-          </div>
-        )}
-
-      {/* ===================================
-          샘플 목록
-      =================================== */}
-
-      {!loading &&
-        !message &&
-        showResults && (
           <section
-            id="sample-list"
-            style={{
-              scrollMarginTop:
-                "12px",
-            }}
+            ref={dialog}
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="preview-title"
           >
-            {/* 결과 제목 */}
-            <div
-              style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "space-between",
-                gap: "10px",
-                margin:
-                  "18px 2px 10px",
-              }}
-            >
-              <strong
-                style={{
-                  minWidth: 0,
-                  fontSize:
-                    "16px",
-                  color:
-                    "#111827",
-                  whiteSpace:
-                    "nowrap",
-                  overflow:
-                    "hidden",
-                  textOverflow:
-                    "ellipsis",
-                }}
-              >
-                {search.trim()
-                  ? `"${search.trim()}" 검색 결과`
-                  : `${brand} · ${currentCategoryLabel}`}
-              </strong>
+            <header className="dialog-head">
+              <div>
+                <small>{preview.brand}</small>
+                <h2 id="preview-title">
+                  {preview.product_code}
+                </h2>
+              </div>
 
-              <span
-                style={{
-                  flex:
-                    "0 0 auto",
-                  color:
-                    "#6b7280",
-                  fontSize:
-                    "12px",
-                  fontWeight:
-                    "700",
-                }}
+              <button
+                ref={close}
+                onClick={dismiss}
               >
-                총 {filteredProducts.length}개
-              </span>
-            </div>
-            {/* 샘플 4열 */}
-            {pagedProducts.length > 0 ? (
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "repeat(4, minmax(0, 1fr))",
-                  gap:
-                    "14px 8px",
-                }}
+                닫기
+              </button>
+            </header>
+
+            <div className="body">
+              <FilmSampleImage
+                product={preview}
+                large
+              />
+
+              <h3>{preview.product_name}</h3>
+
+              <p className="muted">
+                {[
+                  preview.pattern_line,
+                  preview.wood_species,
+                  preview.tone_family,
+                  preview.color_family,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+
+              <hr />
+
+              <h3>
+                다른 브랜드의 비슷한 필름
+              </h3>
+
+              <p className="muted">
+                같은 대분류의 다른 브랜드 샘플 중
+                분석이 완료된 전체 제품의 색상과 무늬를
+                비교합니다. 브랜드별 최대 1개씩
+                보여드립니다.
+              </p>
+
+              <button
+                disabled={busy || !products.length}
+                onClick={search}
               >
-                {pagedProducts.map(
-                  (product) => (
+                {busy
+                  ? "비교 중…"
+                  : "비슷한 필름 찾기"}
+              </button>
+
+              {busy && (
+                <button
+                  onClick={() => {
+                    cancel();
+                    setNotice(
+                      "검색을 취소했습니다."
+                    );
+                  }}
+                >
+                  검색 취소
+                </button>
+              )}
+
+              {busy && (
+                <p role="status">
+                  {progress.total
+                    ? `${progress.done} / ${progress.total}개 비교 중`
+                    : "저장된 샘플 특징 불러오는 중…"}
+                </p>
+              )}
+
+              {notice && (
+                <p
+                  role="status"
+                  className="muted"
+                >
+                  {notice}
+                </p>
+              )}
+
+              {result && (
+                <p className="muted">
+                  같은 대분류의 다른 브랜드{" "}
+                  {result.eligibleTotal}개 중{" "}
+                  {result.total}개 분석 정보 비교 ·
+                  분석 준비 중 {result.missing}개
+                </p>
+              )}
+
+              <div className="matches">
+                {result?.matches.map(
+                  ({ product }) => (
                     <button
                       key={
                         product.id ||
-                        `${product.brand}-${product.product_code}`
+                        `${product.brand}:${product.product_code}`
                       }
-                      type="button"
-                      onClick={() =>
-                        setSelected(
-                          product
-                        )
-                      }
-                      style={{
-                        minWidth:
-                          0,
-                        padding:
-                          0,
-                        border:
-                          "none",
-                        background:
-                          "transparent",
-                        textAlign:
-                          "left",
-                        cursor:
-                          "pointer",
-                      }}
+                      onClick={() => show(product)}
                     >
                       <FilmSampleImage
-                        product={
-                          product
-                        }
+                        product={product}
                       />
-
-                      <strong
-                        style={{
-                          display:
-                            "block",
-                          marginTop:
-                            "5px",
-                          color:
-                            "#111827",
-                          fontSize:
-                            "11px",
-                          lineHeight:
-                            1.2,
-                          whiteSpace:
-                            "nowrap",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
-                        }}
-                      >
-                        {
-                          product.product_code
-                        }
+                      <small>
+                        {product.brand}
+                      </small>
+                      <strong>
+                        {product.product_code}
                       </strong>
-
-                      <span
-                        style={{
-                          display:
-                            "block",
-                          marginTop:
-                            "2px",
-                          color:
-                            "#6b7280",
-                          fontSize:
-                            "9px",
-                          lineHeight:
-                            1.25,
-                          whiteSpace:
-                            "nowrap",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
-                        }}
-                      >
-                        {getProductDescription(
-                          product
-                        ) ||
-                          "필름"}
-                      </span>
                     </button>
                   )
                 )}
               </div>
-            ) : (
-              <div
-                style={{
-                  padding:
-                    "35px 0",
-                  textAlign:
-                    "center",
-                  color:
-                    "#6b7280",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                조건에 맞는 샘플이 없습니다.
-              </div>
-            )}
 
-            {/* ===================================
-                페이지 이동
-            =================================== */}
-
-            {filteredProducts.length >
-              PAGE_SIZE && (
-              <div
-                style={{
-                  display:
-                    "flex",
-                  alignItems:
-                    "center",
-                  justifyContent:
-                    "center",
-                  gap: "6px",
-                  marginTop:
-                    "22px",
-                  flexWrap:
-                    "nowrap",
-                }}
-              >
-                {/* 이전 */}
-                <button
-                  type="button"
-                  disabled={
-                    page === 1
-                  }
-                  onClick={() =>
-                    movePage(
-                      page - 1
-                    )
-                  }
-                  aria-label="이전 페이지"
-                  style={{
-                    width:
-                      "38px",
-                    height:
-                      "38px",
-                    border:
-                      "1px solid #d1d5db",
-                    borderRadius:
-                      "50%",
-                    background:
-                      "#ffffff",
-                    color:
-                      page ===
-                      1
-                        ? "#d1d5db"
-                        : "#111827",
-                    fontSize:
-                      "20px",
-                    fontWeight:
-                      "700",
-                    cursor:
-                      page ===
-                      1
-                        ? "default"
-                        : "pointer",
-                  }}
-                >
-                  ‹
-                </button>
-
-                {/* 페이지 번호 */}
-                {pageNumbers.map(
-                  (
-                    pageNumber
-                  ) => {
-                    const active =
-                      pageNumber ===
-                      page;
-
-                    return (
-                      <button
-                        key={
-                          pageNumber
-                        }
-                        type="button"
-                        onClick={() =>
-                          movePage(
-                            pageNumber
-                          )
-                        }
-                        style={{
-                          width:
-                            "38px",
-                          height:
-                            "38px",
-                          border:
-                            active
-                              ? "none"
-                              : "1px solid #d1d5db",
-                          borderRadius:
-                            "50%",
-                          background:
-                            active
-                              ? "#111827"
-                              : "#ffffff",
-                          color:
-                            active
-                              ? "#ffffff"
-                              : "#111827",
-                          fontSize:
-                            "13px",
-                          fontWeight:
-                            "800",
-                          cursor:
-                            "pointer",
-                        }}
-                      >
-                        {
-                          pageNumber
-                        }
-                      </button>
-                    );
-                  }
-                )}
-
-                {/* 다음 */}
-                <button
-                  type="button"
-                  disabled={
-                    page ===
-                    totalPages
-                  }
-                  onClick={() =>
-                    movePage(
-                      page + 1
-                    )
-                  }
-                  aria-label="다음 페이지"
-                  style={{
-                    width:
-                      "38px",
-                    height:
-                      "38px",
-                    border:
-                      "1px solid #d1d5db",
-                    borderRadius:
-                      "50%",
-                    background:
-                      "#ffffff",
-                    color:
-                      page ===
-                      totalPages
-                        ? "#d1d5db"
-                        : "#111827",
-                    fontSize:
-                      "20px",
-                    fontWeight:
-                      "700",
-                    cursor:
-                      page ===
-                      totalPages
-                        ? "default"
-                        : "pointer",
-                  }}
-                >
-                  ›
-                </button>
-              </div>
-            )}
-
-            {/* 페이지 정보 */}
-            {filteredProducts.length >
-              PAGE_SIZE && (
-              <div
-                style={{
-                  marginTop:
-                    "9px",
-                  textAlign:
-                    "center",
-                  color:
-                    "#9ca3af",
-                  fontSize:
-                    "10px",
-                }}
-              >
-                {page} /{" "}
-                {totalPages} 페이지
-              </div>
-            )}
+              <p className="muted">
+                실제 색상과 질감은 실물 샘플로
+                확인해 주세요.
+              </p>
+            </div>
           </section>
-        )}
-
-      {/* ===================================
-          큰 샘플 이미지 팝업
-      =================================== */}
-
-      {selected && (
-        <div
-          role="presentation"
-          onClick={() =>
-            setSelected(null)
-          }
-          style={{
-            position:
-              "fixed",
-            inset: 0,
-            zIndex: 9999,
-            padding:
-              "18px",
-            boxSizing:
-              "border-box",
-            background:
-              "rgba(17,24,39,0.68)",
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "center",
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="필름 샘플 크게 보기"
-            onClick={(
-              event
-            ) =>
-              event.stopPropagation()
-            }
-            style={{
-              width:
-                "100%",
-              maxWidth:
-                "520px",
-              maxHeight:
-                "92dvh",
-              overflowY:
-                "auto",
-              padding:
-                "14px",
-              boxSizing:
-                "border-box",
-              borderRadius:
-                "19px",
-              background:
-                "#ffffff",
-              boxShadow:
-                "0 20px 60px rgba(0,0,0,0.30)",
-            }}
-          >
-            {/* 팝업 헤더 */}
-            <div
-              style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "space-between",
-                marginBottom:
-                  "10px",
-              }}
-            >
-              <div
-                style={{
-                  minWidth:
-                    0,
-                }}
-              >
-                <div
-                  style={{
-                    color:
-                      "#6b7280",
-                    fontSize:
-                      "11px",
-                    fontWeight:
-                      "700",
-                  }}
-                >
-                  {
-                    selected.brand
-                  }
-                </div>
-
-                <strong
-                  style={{
-                    display:
-                      "block",
-                    marginTop:
-                      "2px",
-                    color:
-                      "#111827",
-                    fontSize:
-                      "19px",
-                  }}
-                >
-                  {
-                    selected.product_code
-                  }
-                </strong>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setSelected(
-                    null
-                  )
-                }
-                aria-label="닫기"
-                style={{
-                  flex:
-                    "0 0 auto",
-                  width:
-                    "38px",
-                  height:
-                    "38px",
-                  border:
-                    "none",
-                  borderRadius:
-                    "50%",
-                  background:
-                    "#f3f4f6",
-                  color:
-                    "#111827",
-                  fontSize:
-                    "21px",
-                  lineHeight:
-                    1,
-                  cursor:
-                    "pointer",
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* 큰 이미지 */}
-            <FilmSampleImage
-              product={
-                selected
-              }
-              large
-            />
-
-            {/* 제품번호 / 이름 */}
-            <div
-              style={{
-                marginTop:
-                  "13px",
-              }}
-            >
-              <strong
-                style={{
-                  display:
-                    "block",
-                  color:
-                    "#111827",
-                  fontSize:
-                    "22px",
-                  lineHeight:
-                    1.25,
-                }}
-              >
-                {
-                  selected.product_code
-                }
-              </strong>
-
-              {getProductDescription(
-                selected
-              ) && (
-                <div
-                  style={{
-                    marginTop:
-                      "3px",
-                    color:
-                      "#6b7280",
-                    fontSize:
-                      "15px",
-                    fontWeight:
-                      "700",
-                  }}
-                >
-                  {getProductDescription(
-                    selected
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 제품 정보 */}
-            <div
-              style={{
-                marginTop:
-                  "13px",
-                paddingTop:
-                  "12px",
-                borderTop:
-                  "1px solid #e5e7eb",
-                color:
-                  "#4b5563",
-                fontSize:
-                  "13px",
-                lineHeight:
-                  1.8,
-              }}
-            >
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "65px 1fr",
-                  gap:
-                    "2px 8px",
-                }}
-              >
-                <strong>
-                  제조사
-                </strong>
-
-                <span>
-                  {
-                    selected.brand
-                  }
-                </span>
-
-                <strong>
-                  대분류
-                </strong>
-
-                <span>
-                  {getCategoryLabel(
-                    getProductCategory(
-                      selected
-                    )
-                  )}
-                </span>
-
-                {getProductLineLabel(
-                  selected
-                ) && (
-                  <>
-                    <strong>
-                      제품군
-                    </strong>
-
-                    <span>
-                      {getProductLineLabel(
-                        selected
-                      )}
-                    </span>
-                  </>
-                )}
-
-                {selected.wood_species && (
-                  <>
-                    <strong>
-                      수종
-                    </strong>
-
-                    <span>
-                      {
-                        selected.wood_species
-                      }
-                    </span>
-                  </>
-                )}
-
-                {selected.color_family && (
-                  <>
-                    <strong>
-                      컬러
-                    </strong>
-
-                    <span>
-                      {
-                        selected.color_family
-                      }
-                    </span>
-                  </>
-                )}
-
-                {selected.tone_family && (
-                  <>
-                    <strong>
-                      톤
-                    </strong>
-
-                    <span>
-                      {getToneLabel(
-                        selected.tone_family
-                      )}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {selected.color_description && (
-                <div
-                  style={{
-                    marginTop:
-                      "8px",
-                    paddingTop:
-                      "8px",
-                    borderTop:
-                      "1px solid #f3f4f6",
-                    color:
-                      "#6b7280",
-                  }}
-                >
-                  {
-                    selected.color_description
-                  }
-                </div>
-              )}
-            </div>
-
-            {/* 닫기 */}
-            <button
-              type="button"
-              onClick={() =>
-                setSelected(
-                  null
-                )
-              }
-              style={{
-                width:
-                  "100%",
-                marginTop:
-                  "15px",
-                padding:
-                  "13px",
-                border:
-                  "none",
-                borderRadius:
-                  "11px",
-                background:
-                  "#111827",
-                color:
-                  "#ffffff",
-                fontSize:
-                  "14px",
-                fontWeight:
-                  "800",
-                cursor:
-                  "pointer",
-              }}
-            >
-              닫기
-            </button>
-          </div>
         </div>
       )}
+
+      <style jsx>{`
+        .overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 11000;
+          background: #11182788;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px;
+        }
+
+        .dialog {
+          width: 100%;
+          max-width: 560px;
+          max-height: 92dvh;
+          overflow: auto;
+          overscroll-behavior: contain;
+          background: white;
+          border-radius: 20px;
+        }
+
+        .dialog-head {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          background: white;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          border-bottom: 1px solid #eee;
+        }
+
+        h2 {
+          margin: 5px 0 0;
+          font-size: 24px;
+        }
+
+        small {
+          color: #6b7280;
+        }
+
+        .body {
+          padding: 20px;
+        }
+
+        button {
+          border: 1px solid #d1d5db;
+          border-radius: 12px;
+          background: white;
+          color: #111827;
+          padding: 12px 16px;
+          cursor: pointer;
+          margin: 4px 6px 4px 0;
+          font-weight: 700;
+        }
+
+        button:disabled {
+          opacity: 0.5;
+          cursor: default;
+        }
+
+        button:focus-visible {
+          outline: 3px solid #60a5fa;
+        }
+
+        .muted {
+          font-size: 13px;
+          color: #6b7280;
+          line-height: 1.8;
+        }
+
+        hr {
+          border: 0;
+          border-top: 1px solid #eee;
+          margin: 24px 0;
+        }
+
+        .matches {
+          display: grid;
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .matches button {
+          margin: 0;
+          padding: 8px;
+          min-width: 0;
+          text-align: left;
+        }
+
+        .matches small,
+        .matches strong {
+          display: block;
+          margin-top: 7px;
+          overflow-wrap: anywhere;
+        }
+      `}</style>
     </main>
   );
-                          }
+}

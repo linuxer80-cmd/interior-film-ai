@@ -1,0 +1,59 @@
+name: Repair package lock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-package-lock
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Synchronize lock file
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify clean installation
+        run: npm ci --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-check-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: build-check-placeholder
+
+      - name: Commit verified lock file
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lock file is already synchronized."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add package-lock.json
+          git commit -m "fix: synchronize npm lock file"
+          git push origin HEAD:main

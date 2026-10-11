@@ -1,837 +1,333 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
-
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const expired =
+  "재설정 링크가 만료되었거나 올바르지 않습니다. 재설정 메일을 다시 받아 가장 최근 링크를 열어주세요.";
+
+async function openRecovery() {
+  const url = new URL(window.location.href);
+  const hash = new URLSearchParams(url.hash.slice(1));
+
+  const access = hash.get("access_token");
+  const refresh = hash.get("refresh_token");
+  const invalid =
+    hash.has("error") ||
+    hash.has("error_code") ||
+    url.searchParams.has("error");
+  const recovery = hash.get("type") === "recovery";
+
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname
+  );
+
+  if (invalid || !recovery || !access || !refresh) {
+    throw Error(expired);
+  }
+
+  const client = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: "filmjang-password-recovery",
+      },
+    }
+  );
+
+  const session = await client.auth.setSession({
+    access_token: access,
+    refresh_token: refresh,
+  });
+
+  if (session.error || !session.data.session) {
+    throw Error(expired);
+  }
+
+  const user = await client.auth.getUser();
+
+  if (user.error || !user.data.user) {
+    throw Error(expired);
+  }
+
+  return client;
+}
 
 export default function ResetPasswordPage() {
-  const router =
-    useRouter();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [checking, setChecking] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const [
-    password,
-    setPassword,
-  ] = useState("");
-
-  const [
-    passwordConfirm,
-    setPasswordConfirm,
-  ] = useState("");
-
-  const [
-    checking,
-    setChecking,
-  ] = useState(true);
-
-  const [
-    recoveryReady,
-    setRecoveryReady,
-  ] = useState(false);
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
-
-  const [
-    success,
-    setSuccess,
-  ] = useState(false);
-
-  const [
-    message,
-    setMessage,
-  ] = useState("");
-
-  /* =========================================================
-     비밀번호 복구 세션 확인
-  ========================================================= */
+  const client = useRef(null);
+  const initialization = useRef(null);
+  const lock = useRef(false);
 
   useEffect(() => {
-    let mounted =
-      true;
+    let active = true;
 
-    let timeoutId =
-      null;
+    initialization.current ||= openRecovery();
 
-    async function checkRecoverySession() {
-      try {
-        const {
-          data,
-          error,
-        } =
-          await supabase.auth.getSession();
-
-        if (error) {
-          throw error;
+    initialization.current
+      .then(value => {
+        if (active) {
+          client.current = value;
+          setReady(true);
+          setChecking(false);
         }
-
-        if (
-          data?.session
-        ) {
-          if (
-            mounted
-          ) {
-            setRecoveryReady(
-              true
-            );
-
-            setChecking(
-              false
-            );
-          }
-
-          return;
+      })
+      .catch(error => {
+        if (active) {
+          setMessage(error.message || expired);
+          setChecking(false);
         }
-
-        /*
-         * URL의 복구 토큰 처리를 기다림
-         */
-        timeoutId =
-          setTimeout(
-            () => {
-              if (
-                mounted
-              ) {
-                setChecking(
-                  false
-                );
-
-                setMessage(
-                  "비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다. 로그인 화면에서 재설정 메일을 다시 받아주세요."
-                );
-              }
-            },
-            5000
-          );
-      } catch (error) {
-        console.error(
-          "비밀번호 복구 세션 확인:",
-          error
-        );
-
-        if (
-          mounted
-        ) {
-          setChecking(
-            false
-          );
-
-          setMessage(
-            "비밀번호 재설정 정보를 확인하지 못했습니다."
-          );
-        }
-      }
-    }
-
-    /*
-     * PASSWORD_RECOVERY 이벤트
-     */
-    const {
-      data: authListener,
-    } =
-      supabase.auth.onAuthStateChange(
-        (
-          event,
-          session
-        ) => {
-          if (
-            !mounted
-          ) {
-            return;
-          }
-
-          if (
-            event ===
-              "PASSWORD_RECOVERY" ||
-            (
-              session &&
-              (
-                event ===
-                  "SIGNED_IN" ||
-                event ===
-                  "INITIAL_SESSION"
-              )
-            )
-          ) {
-            if (
-              timeoutId
-            ) {
-              clearTimeout(
-                timeoutId
-              );
-            }
-
-            setRecoveryReady(
-              true
-            );
-
-            setChecking(
-              false
-            );
-
-            setMessage(
-              ""
-            );
-          }
-        }
-      );
-
-    checkRecoverySession();
+      });
 
     return () => {
-      mounted =
-        false;
-
-      if (
-        timeoutId
-      ) {
-        clearTimeout(
-          timeoutId
-        );
-      }
-
-      authListener
-        ?.subscription
-        ?.unsubscribe();
+      active = false;
     };
   }, []);
 
-  /* =========================================================
-     새 비밀번호 저장
-  ========================================================= */
-
-  async function handleSubmit(
-    event
-  ) {
+  async function submit(event) {
     event.preventDefault();
 
     if (
-      loading ||
-      success
+      lock.current ||
+      success ||
+      !ready ||
+      !client.current
     ) {
       return;
     }
 
+    if (password.length < 8) {
+      setMessage("새 비밀번호는 8자 이상 입력해주세요.");
+      return;
+    }
+
+    if (password !== confirm) {
+      setMessage("새 비밀번호가 서로 일치하지 않습니다.");
+      return;
+    }
+
+    lock.current = true;
+    setBusy(true);
     setMessage("");
 
-    if (
-      password.length <
-      6
-    ) {
-      setMessage(
-        "새 비밀번호는 6자 이상 입력해주세요."
-      );
-
-      return;
-    }
-
-    if (
-      password !==
-      passwordConfirm
-    ) {
-      setMessage(
-        "새 비밀번호가 서로 일치하지 않습니다."
-      );
-
-      return;
-    }
-
-    setLoading(
-      true
-    );
-
     try {
-      const {
-        error,
-      } =
-        await supabase.auth.updateUser(
-          {
-            password,
-          }
-        );
+      const { error } = await client.current.auth.updateUser({
+        password,
+      });
 
       if (error) {
-        throw error;
-      }
+        if (error.code === "same_password") {
+          throw Error(
+            "기존 비밀번호와 다른 비밀번호를 입력해주세요."
+          );
+        }
 
-      setSuccess(
-        true
-      );
+        if (error.code === "weak_password") {
+          throw Error(
+            "비밀번호 보안 조건을 충족하지 않습니다. 영문 대소문자·숫자·특수문자를 섞어 입력해주세요."
+          );
+        }
 
-      setMessage(
-        "비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해주세요."
-      );
+        if (error.status === 401 || error.status === 403) {
+          throw Error(expired);
+        }
 
-      /*
-       * 복구용 로그인 세션 종료
-       */
-      try {
-        await supabase.auth.signOut();
-      } catch (signOutError) {
-        console.error(
-          "비밀번호 변경 후 로그아웃:",
-          signOutError
+        throw Error(
+          "비밀번호를 변경하지 못했습니다. 잠시 후 다시 시도해주세요."
         );
       }
 
-      setTimeout(
-        () => {
-          router.replace(
-            "/login"
-          );
-
-          router.refresh();
-        },
-        1800
-      );
-    } catch (error) {
-      console.error(
-        "비밀번호 변경 오류:",
-        error
-      );
-
-      let errorMessage =
-        error?.message ||
-        "비밀번호를 변경하지 못했습니다.";
-
-      const lowerMessage =
-        errorMessage.toLowerCase();
-
-      if (
-        lowerMessage.includes(
-          "same password"
-        )
-      ) {
-        errorMessage =
-          "기존 비밀번호와 다른 비밀번호를 입력해주세요.";
-      }
-
-      if (
-        lowerMessage.includes(
-          "session"
-        ) ||
-        lowerMessage.includes(
-          "jwt"
-        )
-      ) {
-        errorMessage =
-          "비밀번호 재설정 링크가 만료되었습니다. 재설정 메일을 다시 받아주세요.";
-      }
-
+      setSuccess(true);
+      setReady(false);
+      setPassword("");
+      setConfirm("");
       setMessage(
-        errorMessage
+        "비밀번호가 변경되었습니다. 아래에서 새 비밀번호로 로그인해주세요."
+      );
+
+      try {
+        const result = await client.current.auth.signOut({
+          scope: "global",
+        });
+
+        if (result.error) {
+          setMessage(
+            "비밀번호가 변경되었습니다. 다른 기기의 세션 종료는 확인하지 못했습니다. 사용 중인 기기에서 로그아웃 후 다시 로그인해주세요."
+          );
+        }
+      } catch {
+        setMessage(
+          "비밀번호가 변경되었습니다. 사용 중인 기기에서 로그아웃 후 다시 로그인해주세요."
+        );
+      }
+
+      client.current = null;
+    } catch (error) {
+      setMessage(
+        error.message || "인터넷 연결을 확인해주세요."
       );
     } finally {
-      setLoading(
-        false
-      );
+      lock.current = false;
+      setBusy(false);
     }
   }
 
-  /* =========================================================
-     화면
-  ========================================================= */
+  const input = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: 14,
+    margin: "8px 0 18px",
+    fontSize: 16,
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+  };
+
+  const link = {
+    display: "block",
+    padding: 14,
+    marginTop: 12,
+    textAlign: "center",
+    borderRadius: 12,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    textDecoration: "none",
+    fontWeight: 700,
+  };
 
   return (
     <main
       style={{
-        minHeight:
-          "100vh",
-
-        background:
-          "#f8fafc",
-
-        padding:
-          "20px 14px 70px",
-
-        boxSizing:
-          "border-box",
-
-        color:
-          "#111827",
+        minHeight: "100dvh",
+        padding: "36px 18px",
+        background: "#f8f7f3",
+        color: "#243247",
       }}
     >
-      <div
+      <section
         style={{
-          width:
-            "100%",
-
-          maxWidth:
-            "520px",
-
-          margin:
-            "0 auto",
+          maxWidth: 460,
+          padding: 24,
+          margin: "0 auto",
+          border: "1px solid #e4eaf2",
+          borderRadius: 24,
+          background: "white",
         }}
       >
-        <div
-          style={{
-            marginBottom:
-              "22px",
-          }}
-        >
-          <div
-            style={{
-              display:
-                "inline-block",
+        <p>필름장이</p>
 
-              padding:
-                "6px 11px",
+        <h1>
+          {success
+            ? "비밀번호 변경 완료"
+            : "새 비밀번호 설정"}
+        </h1>
 
-              borderRadius:
-                "999px",
-
-              background:
-                "#111827",
-
-              color:
-                "#ffffff",
-
-              fontSize:
-                "11px",
-
-              fontWeight:
-                "800",
-            }}
-          >
-            인테리어필름 AI
-          </div>
-
-          <h1
-            style={{
-              margin:
-                "14px 0 6px",
-
-              fontSize:
-                "28px",
-
-              lineHeight:
-                1.3,
-
-              letterSpacing:
-                "-0.8px",
-            }}
-          >
-            새 비밀번호 설정
-          </h1>
-
-          <p
-            style={{
-              margin:
-                0,
-
-              color:
-                "#6b7280",
-
-              fontSize:
-                "14px",
-
-              lineHeight:
-                1.65,
-            }}
-          >
-            앞으로 사용할 새 비밀번호를 설정해주세요.
+        {checking && (
+          <p role="status">
+            재설정 링크를 확인하고 있습니다…
           </p>
-        </div>
+        )}
 
-        <section
-          style={{
-            padding:
-              "18px",
+        {ready && !success && (
+          <form onSubmit={submit}>
+            <p>
+              8자 이상 입력해주세요. 영문·숫자·특수문자를
+              함께 사용하는 것을 권장합니다.
+            </p>
 
-            border:
-              "1px solid #e5e7eb",
+            <label htmlFor="new-password">
+              새 비밀번호
+            </label>
+            <input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={password}
+              disabled={busy}
+              onChange={e => setPassword(e.target.value)}
+              style={input}
+            />
 
-            borderRadius:
-              "18px",
+            <label htmlFor="confirm-password">
+              새 비밀번호 확인
+            </label>
+            <input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={confirm}
+              disabled={busy}
+              onChange={e => setConfirm(e.target.value)}
+              style={input}
+            />
 
-            background:
-              "#ffffff",
-
-            boxShadow:
-              "0 4px 18px rgba(0,0,0,0.04)",
-          }}
-        >
-          {checking && (
-            <div
+            <button
+              disabled={busy}
               style={{
-                padding:
-                  "22px 12px",
-
-                textAlign:
-                  "center",
-
-                color:
-                  "#64748b",
-
-                fontSize:
-                  "13px",
-
-                fontWeight:
-                  "700",
+                width: "100%",
+                padding: 15,
+                border: 0,
+                borderRadius: 12,
+                color: "white",
+                background: busy ? "#94a3b8" : "#3478ed",
+                fontSize: 16,
+                fontWeight: 800,
               }}
             >
-              비밀번호 재설정 정보를 확인하고 있습니다...
-            </div>
-          )}
+              {busy ? "변경 중…" : "새 비밀번호 저장"}
+            </button>
+          </form>
+        )}
 
-          {!checking &&
-            recoveryReady &&
-            !success && (
-              <form
-                onSubmit={
-                  handleSubmit
-                }
-              >
-                <FieldLabel>
-                  새 비밀번호
-                </FieldLabel>
+        {message && (
+          <p
+            role={success ? "status" : "alert"}
+            style={{
+              lineHeight: 1.8,
+              color: success ? "#047857" : "#b91c1c",
+            }}
+          >
+            {message}
+          </p>
+        )}
 
-                <input
-                  type="password"
-                  value={
-                    password
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPassword(
-                      event.target.value
-                    )
-                  }
-                  autoComplete="new-password"
-                  placeholder="6자 이상 입력"
-                  disabled={
-                    loading
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+        {!checking && !ready && !success && (
+          <Link
+            href="/worker/forgot-password"
+            style={link}
+          >
+            시공자 재설정 메일 다시 받기
+          </Link>
+        )}
 
-                <FieldLabel>
-                  새 비밀번호 확인
-                </FieldLabel>
-
-                <input
-                  type="password"
-                  value={
-                    passwordConfirm
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPasswordConfirm(
-                      event.target.value
-                    )
-                  }
-                  autoComplete="new-password"
-                  placeholder="새 비밀번호 다시 입력"
-                  disabled={
-                    loading
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-
-                {message && (
-                  <div
-                    style={
-                      errorMessageStyle
-                    }
-                  >
-                    {message}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={
-                    loading
-                  }
-                  style={{
-                    width:
-                      "100%",
-
-                    marginTop:
-                      "18px",
-
-                    padding:
-                      "15px",
-
-                    border:
-                      "none",
-
-                    borderRadius:
-                      "12px",
-
-                    background:
-                      loading
-                        ? "#9ca3af"
-                        : "#111827",
-
-                    color:
-                      "#ffffff",
-
-                    fontSize:
-                      "15px",
-
-                    fontWeight:
-                      "800",
-
-                    cursor:
-                      loading
-                        ? "default"
-                        : "pointer",
-                  }}
-                >
-                  {loading
-                    ? "변경 중..."
-                    : "새 비밀번호 저장"}
-                </button>
-              </form>
-            )}
-
-          {!checking &&
-            success && (
-              <div
-                style={{
-                  textAlign:
-                    "center",
-
-                  padding:
-                    "18px 8px",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize:
-                      "42px",
-                  }}
-                >
-                  ✓
-                </div>
-
-                <div
-                  style={{
-                    marginTop:
-                      "10px",
-
-                    color:
-                      "#047857",
-
-                    fontSize:
-                      "16px",
-
-                    fontWeight:
-                      "900",
-                  }}
-                >
-                  비밀번호 변경 완료
-                </div>
-
-                <div
-                  style={{
-                    marginTop:
-                      "8px",
-
-                    color:
-                      "#475569",
-
-                    fontSize:
-                      "13px",
-
-                    lineHeight:
-                      1.6,
-                  }}
-                >
-                  {message}
-                </div>
-              </div>
-            )}
-
-          {!checking &&
-            !recoveryReady &&
-            !success && (
-              <div>
-                <div
-                  style={{
-                    padding:
-                      "14px",
-
-                    borderRadius:
-                      "10px",
-
-                    background:
-                      "#fef2f2",
-
-                    color:
-                      "#b91c1c",
-
-                    fontSize:
-                      "13px",
-
-                    lineHeight:
-                      1.6,
-                  }}
-                >
-                  {message ||
-                    "비밀번호 재설정 링크를 확인할 수 없습니다."}
-                </div>
-
-                <Link
-                  href="/login"
-                  style={{
-                    display:
-                      "block",
-
-                    marginTop:
-                      "14px",
-
-                    padding:
-                      "14px",
-
-                    borderRadius:
-                      "11px",
-
-                    background:
-                      "#111827",
-
-                    color:
-                      "#ffffff",
-
-                    textDecoration:
-                      "none",
-
-                    textAlign:
-                      "center",
-
-                    fontSize:
-                      "14px",
-
-                    fontWeight:
-                      "800",
-                  }}
-                >
-                  로그인에서 다시 요청하기
-                </Link>
-              </div>
-            )}
-        </section>
-
-        <Link
-          href="/login"
-          style={{
-            display:
-              "block",
-
-            marginTop:
-              "16px",
-
-            color:
-              "#6b7280",
-
-            textAlign:
-              "center",
-
-            textDecoration:
-              "none",
-
-            fontSize:
-              "13px",
-
-            fontWeight:
-              "700",
-          }}
-        >
-          ← 업체 로그인
-        </Link>
-      </div>
+        {!busy && (
+          <>
+            <Link href="/worker/login" style={link}>
+              시공자 로그인
+            </Link>
+            <Link href="/login" style={link}>
+              회사 관리자 로그인
+            </Link>
+          </>
+        )}
+      </section>
     </main>
   );
 }
-
-function FieldLabel({
-  children,
-}) {
-  return (
-    <label
-      style={{
-        display:
-          "block",
-
-        margin:
-          "14px 0 7px",
-
-        color:
-          "#374151",
-
-        fontSize:
-          "12px",
-
-        fontWeight:
-          "800",
-      }}
-    >
-      {children}
-    </label>
-  );
-}
-
-const inputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "13px 12px",
-
-  border:
-    "1px solid #d1d5db",
-
-  borderRadius:
-    "11px",
-
-  outline:
-    "none",
-
-  background:
-    "#ffffff",
-
-  color:
-    "#111827",
-
-  fontSize:
-    "14px",
-};
-
-const errorMessageStyle = {
-  marginTop:
-    "14px",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "10px",
-
-  background:
-    "#fef2f2",
-
-  color:
-    "#b91c1c",
-
-  fontSize:
-    "12px",
-
-  lineHeight:
-    1.6,
-};

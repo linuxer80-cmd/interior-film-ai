@@ -1,490 +1,708 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
-import {
-  formatWon,
-  formatQuantity,
-} from "./siteDetailUtils";
+import ActualMaterialEditor from "../ActualMaterialEditor";
+import { formatWon } from "./siteDetailUtils";
 
-/* =========================================================
-   예정 시공 자재
-========================================================= */
+const endpoint = "/api/admin/site-planned-materials";
 
-export default function SiteMaterials({
-  site,
-}) {
-  const [materials, setMaterials] = useState([]);
+const emptyForm = () => ({
+  id: crypto.randomUUID(),
+  brand: "",
+  product_code: "",
+  product_name: "",
+  unit: "m",
+  unit_price: "",
+  memo: "",
+});
 
-  const [loading, setLoading] =
-    useState(false);
+const box = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 16,
+  background: "#fff",
+  minWidth: 0,
+};
 
-  const [message, setMessage] =
-    useState("");
+const button = {
+  padding: "11px 14px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#1e293b",
+  fontWeight: 700,
+  cursor: "pointer",
+};
 
-  /* =======================================================
-     예정 시공 자재 불러오기
-  ======================================================= */
+const input = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: 12,
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  fontSize: 16,
+  background: "#fff",
+  color: "#111827",
+};
 
-  const loadMaterials = useCallback(
-    async () => {
-      if (!site?.id) {
-        setMaterials([]);
-        setMessage("");
-        return;
-      }
+async function api(method, siteId, body, signal) {
+  const { data, error } = await supabase.auth.getSession();
 
-      setLoading(true);
-      setMessage("");
+  if (error || !data.session?.access_token) {
+    throw new Error("다시 로그인해주세요.");
+  }
 
-      try {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("site_materials")
-          .select(
-            `
-              id,
-              brand,
-              product_code,
-              product_name,
-              quantity,
-              unit,
-              unit_price,
-              total_price,
-              memo,
-              material_type,
-              created_at
-            `,
-          )
-          .eq("site_id", site.id)
-          .eq(
-            "material_type",
-            "planned",
-          )
-          .order("created_at", {
-            ascending: true,
-          });
-
-        if (error) {
-          throw error;
-        }
-
-        setMaterials(data || []);
-      } catch (error) {
-        console.error(
-          "현장 예정 자재 로드 오류:",
-          error,
-        );
-
-        setMaterials([]);
-
-        setMessage(
-          `❌ 예정 시공 자재를 불러오지 못했습니다: ${
-            error?.message ||
-            "알 수 없는 오류"
-          }`,
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [site?.id],
+  const response = await fetch(
+    method === "GET"
+      ? `${endpoint}?siteId=${encodeURIComponent(siteId)}`
+      : endpoint,
+    {
+      method,
+      signal,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      ...(method === "GET"
+        ? {}
+        : { body: JSON.stringify({ ...body, siteId }) }),
+    }
   );
 
-  /* =======================================================
-     현장 변경 시 자재 다시 불러오기
-  ======================================================= */
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "자재 요청을 처리하지 못했습니다.");
+  }
+
+  return result;
+}
+
+export default function SiteMaterials({ site }) {
+  if (!site?.id) return null;
+
+  if (site.status === "completed") {
+    return (
+      <CompletedSiteMaterials
+        key={`actual-${site.id}`}
+        siteId={site.id}
+      />
+    );
+  }
+
+  return (
+    <PlannedSiteMaterials
+      key={`planned-${site.id}`}
+      site={site}
+    />
+  );
+}
+
+function CompletedSiteMaterials({ siteId }) {
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [hasReport, setHasReport] = useState(false);
+  const controllerRef = useRef(null);
+
+  const load = useCallback(async () => {
+    controllerRef.current?.abort();
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError || !data?.session?.access_token) {
+        throw new Error("관리자로 다시 로그인해주세요.");
+      }
+
+      const response = await fetch(
+        `/api/admin/site-work-report-review?siteId=${encodeURIComponent(siteId)}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error || "실제 사용 자재를 불러오지 못했습니다."
+        );
+      }
+
+      if (controller.signal.aborted) return;
+
+      setHasReport(Boolean(result.hasReport && result.report));
+      setMaterials(
+        Array.isArray(result.materials) ? result.materials : []
+      );
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setError(
+          cause.message || "실제 사용 자재를 불러오지 못했습니다."
+        );
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [siteId]);
 
   useEffect(() => {
-    loadMaterials();
-  }, [loadMaterials]);
+    load();
 
-  /* =======================================================
-     화면
-  ======================================================= */
+    return () => {
+      controllerRef.current?.abort();
+    };
+  }, [load]);
+
+  async function handleSaved() {
+    window.dispatchEvent(
+      new CustomEvent("site-materials-changed", {
+        detail: { siteId, materialType: "actual" },
+      })
+    );
+
+    await load();
+  }
 
   return (
     <section
+      aria-label="실제 사용 자재"
       style={{
-        marginTop: "18px",
-        paddingTop: "14px",
-        borderTop:
-          "1px solid #e5e7eb",
+        marginTop: 18,
+        paddingTop: 14,
+        borderTop: "1px solid #e2e8f0",
       }}
     >
-      {/* =========================
-          제목
-      ========================= */}
-
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent:
-            "space-between",
-          gap: "10px",
-          marginBottom: "10px",
+          flexWrap: "wrap",
+          gap: 10,
+          marginBottom: 14,
         }}
       >
-        <div
-          style={{
-            fontSize: "14px",
-            fontWeight: "900",
-            color: "#111827",
-          }}
-        >
-          📦 예정 시공 자재
-        </div>
+        <h3 style={{ margin: 0, flex: 1 }}>📦 실제 사용 자재</h3>
 
-        {!loading && (
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: "800",
-              color: "#64748b",
-            }}
-          >
-            {materials.length}건
-          </div>
-        )}
+        <button
+          type="button"
+          style={button}
+          disabled={loading}
+          onClick={load}
+        >
+          새로고침
+        </button>
       </div>
 
-      {/* =========================
-          로딩
-      ========================= */}
+      <p
+        style={{
+          ...box,
+          background: "#eff6ff",
+          color: "#1e40af",
+          fontSize: 13,
+          lineHeight: 1.7,
+        }}
+      >
+        시공 완료된 현장입니다.
+        <br />
+        여기서 사용량과 단가를 수정하면 실제 자재비가 변경됩니다.
+        저장 후 매출·수익을 다시 조회해주세요.
+      </p>
 
-      {loading && (
-        <LoadingBox />
+      {error && (
+        <p
+          role="alert"
+          style={{ ...box, color: "#b91c1c", background: "#fef2f2" }}
+        >
+          {error}
+        </p>
       )}
 
-      {/* =========================
-          오류
-      ========================= */}
-
-      {!loading && message && (
-        <MessageBox
-          message={message}
+      {loading ? (
+        <p role="status">실제 사용 자재를 불러오는 중입니다…</p>
+      ) : error ? (
+        <button type="button" style={button} onClick={load}>
+          다시 불러오기
+        </button>
+      ) : !hasReport ? (
+        <div style={{ ...box, color: "#64748b", lineHeight: 1.7 }}>
+          아직 완료보고가 없습니다.
+          <br />
+          완료보고 메뉴에서 실제 사용 자재를 포함한 보고서를 먼저 등록해주세요.
+        </div>
+      ) : (
+        <ActualMaterialEditor
+          siteId={siteId}
+          materials={materials}
+          onSaved={handleSaved}
         />
       )}
-
-      {/* =========================
-          자재 없음
-      ========================= */}
-
-      {!loading &&
-        !message &&
-        materials.length === 0 && (
-          <EmptyBox
-            text="등록된 예정 시공 자재가 없습니다."
-          />
-        )}
-
-      {/* =========================
-          자재 목록
-      ========================= */}
-
-      {!loading &&
-        !message &&
-        materials.length > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gap: "8px",
-            }}
-          >
-            {materials.map(
-              (material, index) => (
-                <MaterialCard
-                  key={material.id}
-                  material={material}
-                  index={index}
-                />
-              ),
-            )}
-          </div>
-        )}
     </section>
   );
 }
 
-/* =========================================================
-   예정 자재 카드
-========================================================= */
+function PlannedSiteMaterials({ site }) {
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [canWrite, setCanWrite] = useState(false);
+  const [message, setMessage] = useState("");
+  const [form, setForm] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-function MaterialCard({
-  material,
-  index,
-}) {
-  const title =
-    material.product_code ||
-    material.product_name ||
-    `자재 ${index + 1}`;
+  const lock = useRef(false);
+  const formRef = useRef(null);
+  const loadController = useRef(null);
+  const siteId = site?.id;
 
-  const hasUnitPrice =
-    material.unit_price !== null &&
-    material.unit_price !==
-      undefined;
+  const load = useCallback(async () => {
+    loadController.current?.abort();
 
-  const hasTotalPrice =
-    material.total_price !== null &&
-    material.total_price !==
-      undefined;
+    const controller = new AbortController();
+    loadController.current = controller;
+
+    setLoading(true);
+
+    try {
+      const result = await api(
+        "GET",
+        siteId,
+        null,
+        controller.signal
+      );
+
+      if (controller.signal.aborted) return;
+
+      setMaterials(
+        Array.isArray(result.materials) ? result.materials : []
+      );
+      setCanWrite(result.canWrite);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setCanWrite(false);
+        setMessage(error.message || "자재를 불러오지 못했습니다.");
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [siteId]);
+
+  useEffect(() => {
+    if (siteId) load();
+
+    return () => {
+      loadController.current?.abort();
+    };
+  }, [load, siteId]);
+
+  useEffect(() => {
+    if (form) {
+      formRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [form?.id]);
+
+  function openForm(material) {
+    setMessage("");
+    setEditing(Boolean(material));
+
+    setForm(
+      material
+        ? {
+            ...material,
+            unit_price: material.unit_price ?? "",
+            memo: material.memo || "",
+            brand: material.brand || "",
+            product_code: material.product_code || "",
+            product_name: material.product_name || "",
+          }
+        : emptyForm()
+    );
+  }
+
+  async function save(event) {
+    event.preventDefault();
+
+    if (lock.current || !canWrite) return;
+
+    if (!form.product_code.trim() && !form.product_name.trim()) {
+      setMessage("제품코드 또는 제품명을 입력해주세요.");
+      return;
+    }
+
+    lock.current = true;
+    setBusy(true);
+    setMessage("");
+
+    try {
+      await api(editing ? "PATCH" : "POST", siteId, form);
+
+      setForm(null);
+      setMessage("사용 필름을 저장했습니다.");
+
+      window.dispatchEvent(
+        new CustomEvent("site-materials-changed", {
+          detail: { siteId },
+        })
+      );
+
+      await load();
+    } catch (error) {
+      setMessage(
+        error.message || "저장하지 못했습니다. 입력 내용은 유지됩니다."
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function remove(material) {
+    if (
+      lock.current ||
+      !canWrite ||
+      !window.confirm(
+        `${material.product_code || material.product_name} 사용 필름을 삭제할까요?`
+      )
+    ) {
+      return;
+    }
+
+    lock.current = true;
+    setBusy(true);
+    setMessage("");
+
+    try {
+      await api("DELETE", siteId, { id: material.id });
+
+      if (form?.id === material.id) {
+        setForm(null);
+      }
+
+      setMessage("사용 필름을 삭제했습니다.");
+
+      window.dispatchEvent(
+        new CustomEvent("site-materials-changed", {
+          detail: { siteId },
+        })
+      );
+
+      await load();
+    } catch (error) {
+      setMessage(error.message || "삭제하지 못했습니다.");
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  function field(key, label, props = {}) {
+    return (
+      <label
+        style={{
+          display: "grid",
+          gap: 7,
+          fontWeight: 600,
+          minWidth: 0,
+        }}
+      >
+        {label}
+        <input
+          style={input}
+          value={form[key]}
+          onChange={(event) =>
+            setForm((value) => ({
+              ...value,
+              [key]: event.target.value,
+            }))
+          }
+          {...props}
+        />
+      </label>
+    );
+  }
 
   return (
-    <div
+    <section
+      aria-label="사용 필름"
       style={{
-        padding: "12px",
-
-        border:
-          "1px solid #e2e8f0",
-
-        borderRadius: "11px",
-
-        background: "#f8fafc",
+        marginTop: 18,
+        paddingTop: 14,
+        borderTop: "1px solid #e2e8f0",
       }}
     >
-      {/* =========================
-          제품명 / 수량
-      ========================= */}
-
       <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent:
-            "space-between",
-          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 14,
         }}
       >
-        <div
-          style={{
-            minWidth: 0,
+        <h3 style={{ margin: 0, flex: 1 }}>
+          📦 사용 필름{" "}
+          <small style={{ color: "#64748b" }}>
+            {materials.length}건
+          </small>
+        </h3>
+
+        <button
+          type="button"
+          style={button}
+          disabled={busy || loading}
+          onClick={() => {
+            setMessage("");
+            load();
           }}
         >
-          <div
+          새로고침
+        </button>
+
+        {canWrite && (
+          <button
+            type="button"
             style={{
-              fontSize: "13px",
-              fontWeight: "900",
-              color: "#111827",
-              wordBreak: "break-word",
+              ...button,
+              background: "#2563eb",
+              color: "#fff",
             }}
+            disabled={busy || loading}
+            onClick={() => openForm(null)}
           >
-            {title}
-          </div>
-
-          {(material.brand ||
-            material.product_name) && (
-            <div
-              style={{
-                marginTop: "3px",
-
-                fontSize: "11px",
-
-                color: "#64748b",
-
-                wordBreak: "break-word",
-              }}
-            >
-              {[
-                material.brand,
-                material.product_name,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            flex: "0 0 auto",
-
-            padding: "4px 7px",
-
-            borderRadius: "999px",
-
-            background: "#ffffff",
-
-            border:
-              "1px solid #e2e8f0",
-
-            fontSize: "11px",
-            fontWeight: "800",
-
-            color: "#334155",
-          }}
-        >
-          {formatQuantity(
-            material.quantity,
-            material.unit,
-          )}
-        </div>
+            ＋ 자재 추가
+          </button>
+        )}
       </div>
 
-      {/* =========================
-          단가 / 합계
-      ========================= */}
-
-      {(hasUnitPrice ||
-        hasTotalPrice) && (
-        <div
+      {message && (
+        <p
+          role="status"
           style={{
-            marginTop: "9px",
-
-            display: "grid",
-
-            gap: "4px",
-
-            fontSize: "11px",
-
-            color: "#475569",
+            ...box,
+            background: "#f8fafc",
+            overflowWrap: "anywhere",
           }}
         >
-          {hasUnitPrice && (
-            <div>
-              단가{" "}
-              <strong>
-                {formatWon(
-                  material.unit_price,
-                )}
-              </strong>
-            </div>
-          )}
-
-          {hasTotalPrice && (
-            <div>
-              합계{" "}
-              <strong>
-                {formatWon(
-                  material.total_price,
-                )}
-              </strong>
-            </div>
-          )}
-        </div>
+          {message}
+        </p>
       )}
 
-      {/* =========================
-          자재 메모
-      ========================= */}
+      {!loading && !canWrite && site?.status === "cancelled" && (
+        <p>취소된 현장은 자재 조회만 가능합니다.</p>
+      )}
 
-      {material.memo && (
+      {form && (
+        <form
+          ref={formRef}
+          onSubmit={save}
+          style={{
+            ...box,
+            background: "#eff6ff",
+            marginBottom: 16,
+          }}
+        >
+          <h4 style={{ margin: "0 0 14px" }}>
+            {editing ? "사용 필름 수정" : "사용 필름 추가"}
+          </h4>
+
+          <fieldset
+            disabled={busy || !canWrite}
+            style={{
+              border: 0,
+              padding: 0,
+              margin: 0,
+              display: "grid",
+              gap: 14,
+              minWidth: 0,
+            }}
+          >
+            {field("brand", "브랜드", {
+              placeholder: "예: 영림 인테리어필름",
+              maxLength: 100,
+            })}
+
+            {field("product_code", "제품코드", {
+              placeholder: "예: PX449",
+              maxLength: 100,
+            })}
+
+            {field("product_name", "제품명", {
+              placeholder: "예: 발렌블랑",
+              maxLength: 200,
+            })}
+
+            <small>
+              제품코드와 제품명 중 하나는 입력해주세요.
+            </small>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: 12,
+              }}
+            >
+              {field("unit", "단위", {
+                placeholder: "m / 롤 / 개",
+                maxLength: 20,
+                required: true,
+              })}
+            </div>
+
+            <details>
+              <summary>원가 단가 관리</summary>
+              <p>
+                수량은 시공자가 입력합니다. 소모량이 있는 필름은
+                보고서 제출 전 단가를 등록해주세요.
+              </p>
+              {field("unit_price", "원가 단가 (원)", {
+                type: "number",
+                inputMode: "decimal",
+                min: "0",
+                max: "100000000",
+                step: "any",
+                placeholder: "미정이면 비워두세요",
+              })}
+            </details>
+
+            <label
+              style={{
+                display: "grid",
+                gap: 7,
+                fontWeight: 600,
+              }}
+            >
+              자재 메모
+              <textarea
+                style={{ ...input, resize: "vertical" }}
+                rows={3}
+                maxLength={1000}
+                placeholder="시공 부위 또는 자재 전달사항"
+                value={form.memo}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    memo: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                style={{
+                  ...button,
+                  background: "#2563eb",
+                  color: "#fff",
+                }}
+                type="submit"
+              >
+                {busy ? "저장 중…" : "저장"}
+              </button>
+
+              <button
+                style={button}
+                type="button"
+                onClick={() => setForm(null)}
+              >
+                취소
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+
+      {loading ? (
+        <p role="status">자재를 불러오는 중입니다…</p>
+      ) : materials.length === 0 ? (
         <div
           style={{
-            marginTop: "8px",
-
-            paddingTop: "8px",
-
-            borderTop:
-              "1px solid #e2e8f0",
-
-            fontSize: "11px",
-
+            ...box,
+            textAlign: "center",
             color: "#64748b",
-
-            whiteSpace: "pre-wrap",
-
-            wordBreak: "break-word",
           }}
         >
-          {material.memo}
+          등록된 사용 필름이 없습니다.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {materials.map((material) => (
+            <article
+              key={material.id}
+              style={{ ...box, overflowWrap: "anywhere" }}
+            >
+              <strong style={{ fontSize: 18 }}>
+                {material.product_code || material.product_name}
+              </strong>
+
+              <p style={{ margin: "8px 0", color: "#64748b" }}>
+                {[material.brand, material.product_name]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+
+              <p>
+                수량은 시공자 보고서에서 입력합니다. · {material.unit}
+              </p>
+
+              {material.unit_price != null && (
+                <p>단가 {formatWon(material.unit_price)}</p>
+              )}
+
+              {material.memo && (
+                <p style={{ whiteSpace: "pre-wrap" }}>
+                  {material.memo}
+                </p>
+              )}
+
+              {canWrite && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    type="button"
+                    style={button}
+                    disabled={busy || loading}
+                    onClick={() => openForm(material)}
+                  >
+                    수정
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{ ...button, color: "#b91c1c" }}
+                    disabled={busy || loading}
+                    onClick={() => remove(material)}
+                  >
+                    삭제
+                  </button>
+                </div>
+              )}
+            </article>
+          ))}
         </div>
       )}
-    </div>
+    </section>
   );
-}
-
-/* =========================================================
-   로딩
-========================================================= */
-
-function LoadingBox() {
-  return (
-    <div
-      style={{
-        padding: "16px 12px",
-
-        border:
-          "1px dashed #cbd5e1",
-
-        borderRadius: "11px",
-
-        background: "#f8fafc",
-
-        color: "#64748b",
-
-        fontSize: "12px",
-
-        textAlign: "center",
-      }}
-    >
-      예정 시공 자재를
-      불러오는 중입니다...
-    </div>
-  );
-}
-
-/* =========================================================
-   오류 메시지
-========================================================= */
-
-function MessageBox({
-  message,
-}) {
-  return (
-    <div
-      style={{
-        padding: "11px 12px",
-
-        borderRadius: "10px",
-
-        background: "#fef2f2",
-
-        color: "#b91c1c",
-
-        fontSize: "12px",
-
-        fontWeight: "700",
-
-        whiteSpace: "pre-wrap",
-
-        wordBreak: "break-word",
-      }}
-    >
-      {message}
-    </div>
-  );
-}
-
-/* =========================================================
-   빈 데이터
-========================================================= */
-
-function EmptyBox({
-  text,
-}) {
-  return (
-    <div
-      style={{
-        padding: "16px 12px",
-
-        border:
-          "1px dashed #cbd5e1",
-
-        borderRadius: "11px",
-
-        background: "#f8fafc",
-
-        color: "#64748b",
-
-        fontSize: "12px",
-
-        textAlign: "center",
-      }}
-    >
-      {text}
-    </div>
-  );
-          }
+            }
