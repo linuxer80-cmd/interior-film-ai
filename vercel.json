@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/labor-market/maintenance",
+      "schedule": "5 15 * * *"
+    }
+  ]
+}
