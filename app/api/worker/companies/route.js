@@ -90,8 +90,7 @@ export async function GET(request) {
     if (profile.error) throw profile.error;
 
     if (
-      profile.data?.is_active === false ||
-      !workers.length
+      profile.data?.is_active === false
     ) {
       return json(
         {
@@ -101,6 +100,8 @@ export async function GET(request) {
         403
       );
     }
+
+    if (!workers.length) return json({ companies: [] });
 
     const companyIds = [
       ...new Set(
@@ -133,12 +134,6 @@ export async function GET(request) {
       company => company.is_active !== false
     );
 
-    if (!active.length) {
-      return json(
-        { error: "사용 가능한 소속 업체가 없습니다." },
-        403
-      );
-    }
 
     return json({
       companies: active.map(company => ({

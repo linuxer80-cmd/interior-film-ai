@@ -268,8 +268,7 @@ export async function GET(request) {
     if (profile.error) throw profile.error;
 
     if (
-      profile.data?.is_active === false ||
-      !linked.length
+      profile.data?.is_active === false
     ) {
       return json(
         {
@@ -278,6 +277,10 @@ export async function GET(request) {
         },
         403
       );
+    }
+
+    if (!linked.length) {
+      return json({ month, asOf: today, totals: { ...sumPay([]), overtimeAmount: 0 }, companies: [] });
     }
 
     const companies = (
@@ -301,15 +304,6 @@ export async function GET(request) {
       (company) => company.is_active !== false
     );
 
-    if (!companies.length) {
-      return json(
-        {
-          error:
-            "사용 가능한 소속 업체가 없습니다.",
-        },
-        403
-      );
-    }
 
     const groups = await Promise.all(
       companies.map((company) =>

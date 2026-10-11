@@ -1,3 +1,4 @@
+import { resolveWorkerSite } from "../../../../lib/workerSiteAccess.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -122,108 +123,7 @@ export async function GET(request) {
       );
     }
 
-    /* =====================================================
-       4. 로그인 계정에 연결된 활성 시공자 확인
-    ===================================================== */
-
-    const {
-      data: worker,
-      error: workerError,
-    } = await supabase
-      .from("workers")
-      .select(
-        `
-          id,
-          company_id,
-          name,
-          is_active
-        `
-      )
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (workerError) {
-      throw workerError;
-    }
-
-    if (!worker?.id || !worker?.company_id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "사용 가능한 시공자 계정을 찾을 수 없습니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    /* =====================================================
-       5. 해당 현장에 실제 배정됐는지 확인
-
-       worker_id + company_id + site_id를 모두 확인합니다.
-    ===================================================== */
-
-    const {
-      data: assignment,
-      error: assignmentError,
-    } = await supabase
-      .from("site_workers")
-      .select("site_id, worker_id, company_id, role")
-      .eq("site_id", siteId)
-      .eq("worker_id", worker.id)
-      .eq("company_id", worker.company_id)
-      .maybeSingle();
-
-    if (assignmentError) {
-      throw assignmentError;
-    }
-
-    if (!assignment?.site_id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "이 현장에 배정된 시공자가 아닙니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    /* =====================================================
-       6. 현장 자체도 같은 회사인지 확인
-    ===================================================== */
-
-    const {
-      data: site,
-      error: siteError,
-    } = await supabase
-      .from("sites")
-      .select("id, company_id")
-      .eq("id", siteId)
-      .eq("company_id", worker.company_id)
-      .maybeSingle();
-
-    if (siteError) {
-      throw siteError;
-    }
-
-    if (!site?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "현장 정보를 확인할 수 없습니다.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
+    const { worker } = await resolveWorkerSite(supabase, user.id, siteId);
 
     /* =====================================================
        7. 고객 요청사진 조회
@@ -378,7 +278,7 @@ export async function GET(request) {
           "고객 요청사진을 불러오지 못했습니다.",
       },
       {
-        status: 500,
+        status: error.status || 500,
       }
     );
   }

@@ -97,9 +97,21 @@ export default function CuttingWorkspace() {
 
         const storageKey =
           "film-cutting-v2:" +
-          data.worker.worker_id +
+          (data.worker.user_id || data.worker.worker_id) +
           ":" +
           (siteId || "general");
+
+        // Keep existing drafts while moving to a stable personal-account key.
+        if (!window.localStorage.getItem(storageKey)) {
+          for (const workerId of data.worker.membership_worker_ids || [data.worker.worker_id]) {
+            const legacyKey = "film-cutting-v2:" + workerId + ":" + (siteId || "general");
+            const previous = window.localStorage.getItem(legacyKey);
+            if (previous) {
+              window.localStorage.setItem(storageKey, previous);
+              break;
+            }
+          }
+        }
 
         let issued = [];
         let stockPending = false;

@@ -226,6 +226,7 @@ async function companySites(
           ? dates.map((day) => day.work_date)
           : null,
         site_id: site.id,
+        worker_id: (myDates.find(day => day.role === "leader") || myDates[0] || myLegacy.find(item => item.role === "leader") || myLegacy[0]).worker_id,
         site_status: site.status,
         worker_role: role,
         my_role: role,
@@ -424,6 +425,8 @@ export async function GET(request) {
     const first = workers[0];
 
     const worker = {
+      user_id: auth.user.id,
+      membership_worker_ids: workers.map(item => item.id),
       worker_id: first.id,
       worker_name: first.name,
       worker_phone: first.phone,
@@ -478,6 +481,14 @@ export async function GET(request) {
         404
       );
     }
+
+    const siteWorker = workers.find(item => item.company_id === site.company_id && item.id === site.worker_id);
+    Object.assign(worker, {
+      worker_id: siteWorker.id,
+      worker_name: siteWorker.name,
+      worker_phone: siteWorker.phone,
+      company_id: site.company_id,
+    });
 
     let materials = [];
     let materialsError = null;

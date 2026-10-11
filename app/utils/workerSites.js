@@ -115,6 +115,7 @@ export async function loadMyWorkerSites({
     ) {
       return {
         worker: {
+          user_id: me.profile.user_id,
           worker_id: me.profile.user_id,
           worker_name: me.profile.name,
           worker_phone:

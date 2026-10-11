@@ -195,3 +195,16 @@ test('clicking an existing notification window navigates to refresh assignments 
   await pending;
   assert.deepEqual(actions, [['navigate', target], ['focus']]);
 });
+
+test('site detail returns the matching company worker while keeping a stable personal identity', async () => {
+  const h = harness({ tables: {
+    workers: [worker('mine'), worker('second', { company_id: B })],
+    site_daily_assignments: [daily('second-day', '2026-10-22', { company_id: B, site_id: T, worker_id: 'second' })],
+  } });
+  const result = await h.get({ siteId: T });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.worker.worker_id, 'second');
+  assert.equal(result.body.worker.company_id, B);
+  assert.equal(result.body.worker.user_id, U);
+  assert.deepEqual(result.body.worker.membership_worker_ids, ['mine', 'second']);
+});
