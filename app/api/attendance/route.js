@@ -272,7 +272,7 @@ export async function GET(request) {
 
     const month =
       params.get("month") ||
-      new Date().toISOString().slice(0, 7);
+      new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
 
     if (
       !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)
@@ -298,9 +298,7 @@ export async function GET(request) {
       return await workerRecords(a, month, end);
     }
 
-    const worker = null;
-
-    let query = a.db
+    const query = a.db
       .from("attendance_records")
       .select("*")
       .eq("company_id", a.companyId)
@@ -311,7 +309,7 @@ export async function GET(request) {
       })
       .order("id");
 
-    let sites = await all(
+    const sites = await all(
       a.db
         .from("sites")
         .select(
@@ -332,25 +330,21 @@ export async function GET(request) {
           .eq("company_id", a.companyId)
           .maybeSingle(),
 
-        mode === "admin"
-          ? all(
-              a.db
-                .from("attendance_locations")
-                .select("*")
-                .eq("company_id", a.companyId)
-                .order("site_id")
-            )
-          : [],
+        all(
+          a.db
+            .from("attendance_locations")
+            .select("*")
+            .eq("company_id", a.companyId)
+            .order("site_id")
+        ),
 
-        mode === "admin"
-          ? all(
-              a.db
-                .from("workers")
-                .select("id,name")
-                .eq("company_id", a.companyId)
-                .order("id")
-            )
-          : [worker],
+        all(
+          a.db
+            .from("workers")
+            .select("id,name")
+            .eq("company_id", a.companyId)
+            .order("id")
+        ),
       ]);
 
     if (settings.error) {
@@ -395,3 +389,227 @@ async function prepareLocation(a, siteId) {
   if (!site.data?.address?.trim()) {
     return "현장정보에 주소가 없어 위치를 비교하지 못했습니다.";
   }
+
+  const worker = await a.db
+    .from("workers")
+    .select("id")
+    .eq("company_id", a.companyId)
+    .eq("user_id", a.userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (worker.error) throw worker.error;
+
+  if (!worker.data) {
+    throw Error("연결된 시공자 계정이 없습니다.");
+  }
+
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const daily = await a.db
+    .from("site_daily_assignments")
+    .select("id")
+    .eq("company_id", a.companyId)
+    .eq("site_id", siteId)
+    .eq("worker_id", worker.data.id)
+    .eq("work_date", day)
+    .limit(1);
+
+  const legacy = await a.db
+    .from("site_workers")
+    .select("id")
+    .eq("company_id", a.companyId)
+    .eq("site_id", siteId)
+    .eq("worker_id", worker.data.id)
+    .limit(1);
+
+  if (daily.error) throw daily.error;
+  if (legacy.error) throw legacy.error;
+
+  if (!daily.data.length && !legacy.data.length) {
+    throw Error(
+      "본인에게 배정된 현장만 출근할 수 있습니다."
+    );
+  }
+
+  const cached = await a.db
+    .from("attendance_locations")
+    .select("address")
+    .eq("site_id", siteId)
+    .eq("company_id", a.companyId)
+    .maybeSingle();
+
+  if (cached.error) throw cached.error;
+
+  if (cached.data?.address === site.data.address) {
+    return "";
+  }
+
+  if (!process.env.KAKAO_REST_API_KEY) {
+    return "주소 자동 비교 설정이 필요합니다. 관리자에게 문의해주세요.";
+  }
+
+  const response = await fetch(
+    `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(
+      site.data.address.trim()
+    )}`,
+    {
+      headers: {
+        Authorization:
+          `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,
+      },
+      signal: AbortSignal.timeout(8000),
+    }
+  );
+
+  if (!response.ok) {
+    throw Error("주소 검색 실패");
+  }
+
+  const result = await response.json();
+
+  if (
+    result.documents?.length !== 1 ||
+    result.meta?.total_count !== 1
+  ) {
+    return "현장 주소를 하나의 위치로 확인하지 못했습니다. 현장정보의 도로명주소를 확인해주세요.";
+  }
+
+  const point = result.documents[0];
+  const latitude = Number(point.y);
+  const longitude = Number(point.x);
+
+  if (
+    !point.y ||
+    !point.x ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180
+  ) {
+    throw Error("주소 좌표 오류");
+  }
+
+  const saved = await a.db
+    .from("attendance_locations")
+    .upsert(
+      {
+        site_id: siteId,
+        company_id: a.companyId,
+        address: site.data.address,
+        latitude,
+        longitude,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "site_id" }
+    );
+
+  if (saved.error) throw saved.error;
+
+  return "";
+}
+
+export async function POST(request) {
+  try {
+    const a = await auth(request);
+    const body = await request.json();
+
+    if (
+      ![
+        "in",
+        "out",
+        "settings",
+        "review",
+        "correct",
+      ].includes(body.action)
+    ) {
+      return json(
+        { error: "요청을 확인해주세요." },
+        400
+      );
+    }
+
+    if (["settings", "review", "correct"].includes(body.action) && !a.owner) {
+      return json({ error: "관리자 권한이 필요합니다." }, 403);
+    }
+
+    // 업체 ID는 요청 값을 신뢰하지 않고 본인의 현장·기록에서 결정합니다.
+    if (body.action === "in" || body.action === "out") {
+      const id = body.action === "in" ? body.siteId : body.id;
+
+      if (typeof id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return json({ error: "현장 또는 출퇴근 기록을 확인해주세요." }, 400);
+      }
+
+      const target = await a.db
+        .from(body.action === "in" ? "sites" : "attendance_records")
+        .select(body.action === "in" ? "id,company_id" : "id,company_id,worker_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (target.error) throw target.error;
+
+      const worker = target.data && a.workers.find(item =>
+        item.company_id === target.data.company_id &&
+        (body.action === "in" || item.id === target.data.worker_id)
+      );
+
+      if (!worker) {
+        return json({ error: "본인에게 배정된 현장만 출퇴근할 수 있습니다." }, 403);
+      }
+
+      a.companyId = worker.company_id;
+    }
+
+    let warning = "";
+
+    if (
+      body.action === "in" &&
+      body.consent === true
+    ) {
+      try {
+        warning = await prepareLocation(a, body.siteId);
+      } catch {
+        warning =
+          "주소 자동 비교에 실패했습니다. 위치 확인 대상으로 기록합니다.";
+      }
+    }
+
+    const result = await a.db.rpc(
+      body.action === "correct"
+        ? "attendance_correct"
+        : "attendance_action",
+      {
+        p_user: a.userId,
+        p_action: body.action,
+        p_body: body,
+      }
+    );
+
+    if (result.error) throw result.error;
+
+    return json({
+      ...result.data,
+      message:
+        [result.data?.message, warning]
+          .filter(Boolean)
+          .join(" ") || "저장했습니다.",
+    });
+  } catch (error) {
+    console.error(
+      "attendance POST",
+      error.code || error.message
+    );
+
+    return json(
+      { error: error.message || "출퇴근 처리 실패" },
+      400
+    );
+  }
+}
