@@ -128,6 +128,7 @@ export default function WorkerAccount() {
           email:email.trim(),
           password,
           options:{
+            data:{registration_type:'worker'},
             emailRedirectTo:`${window.location.origin}/worker/account`
           }
         });

@@ -433,6 +433,13 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
+                href="/super-admin/workers"
+                kind="people"
+                title="시공자 관리"
+                description="가입 계정 · 연결 업체 · 구직 공개 관리"
+              />
+
+              <MenuCard
                 href="/super-admin/material-orders"
                 kind="film"
                 title="자재 주문"
