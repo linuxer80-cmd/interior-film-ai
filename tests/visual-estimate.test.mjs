@@ -124,7 +124,7 @@ test('candidate photos, prices and scope come from company-owned records; foreig
   const db = database();
   const raw = Array.from({ length: 7 }, (_, n) => candidate(n + 1, { actual_cost: 1, before_path: 'https://evil.example/x', construction_scope: 'kitchen_lower' }));
   const rows = await loadVisualCandidates(db.supabase, 'mine', raw, lower, 'https://example.supabase.co');
-  assert.equal(rows.length, 4);
+  assert.equal(rows.length, 5);
   assert.equal(rows[0].actual_cost, 200000);
   assert.ok(rows.every(r => r.work_item_id !== id(6) && r.work_item_id !== id(7)));
   assert.ok(db.calls.every(c => c.filters.some(([key, value]) => key === 'company_id' && value === 'mine')));
@@ -180,4 +180,23 @@ test('multipart parsing bounds photo count/bytes, and legacy text-only requests 
   for (let i = 0; i < 2; i++) form.append('images', new File(['jpeg'], 'a.jpg', { type: 'image/jpeg' }));
   await assert.rejects(readVisualSearchRequest(request()));
   assert.deepEqual((await readVisualSearchRequest({ headers: new Headers(), json: async () => ({ text: 'kitchen' }) })).images, []);
+});
+
+
+test('legacy generic kitchen labels reach photo verification without weakening final scope checks', async () => {
+  const db = database();
+  db.tables.work_items[0].sub_category = '싱크대';
+  const candidates = await loadVisualCandidates(db.supabase, 'mine', [candidate(1)], lower, 'https://example.supabase.co');
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].visual_verified, undefined);
+  assert.equal(calculateVisualEstimate(candidates), null);
+  assert.equal(selectVisuallyVerifiedCases(candidates, result([match(1, {scope_match:'uncertain'})])).length, 0);
+  assert.equal(selectVisuallyVerifiedCases(candidates, result([match(1)])).length, 1);
+});
+
+test('a fifth candidate is compared, while duplicate records do not consume candidate slots', async () => {
+  const db = database();
+  const candidates = await loadVisualCandidates(db.supabase, 'mine', [candidate(1), candidate(1), ...[2,3,4,5].map(n=>candidate(n))], lower, 'https://example.supabase.co');
+  assert.equal(candidates.length, 5);
+  assert.ok(candidates.some(c=>c.work_item_id===id(5)));
 });
