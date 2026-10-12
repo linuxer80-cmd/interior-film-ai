@@ -29,7 +29,7 @@ alter table public.labor_applications
   add constraint labor_applications_status_check
   check (
     status in (
-      'invited','applied','accepted','rejected','withdrawn','expired'
+      'invited','applied','accepted','rejected','withdrawn','expired','unassigned'
     )
   );
 
@@ -162,7 +162,7 @@ begin
   end if;
 
   if p_action='apply' then
-    if a.status is not null and a.status not in ('invited','withdrawn') then
+    if a.status is not null and a.status not in ('invited','withdrawn','unassigned') then
       raise exception '이미 처리된 지원입니다.';
     end if;
 
@@ -412,7 +412,10 @@ begin
       select 1
       from public.site_daily_assignments d
       join public.workers w on w.id=d.worker_id
-      where w.user_id=target
+      join public.sites assigned_site on assigned_site.id=d.site_id and assigned_site.company_id=d.company_id
+      where assigned_site.status not in ('cancelled','completed')
+        and (assigned_site.work_dates is null or d.work_date=any(assigned_site.work_dates))
+        and w.user_id=target
         and d.work_date=any(j.work_dates)
         and d.site_id<>j.site_id
     ) then

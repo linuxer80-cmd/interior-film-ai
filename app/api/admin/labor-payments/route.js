@@ -1,3 +1,4 @@
+import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 import { GET as profitGET } from "../profit/route";
 
@@ -492,6 +493,7 @@ async function laborThroughToday(
   ]);
 
   if (current.error) throw current.error;
+  const contracts = await loadLaborContracts(db, companyId, workers.map(w => w.id));
 
   const people = new Map(
     workers.map(worker => [worker.id, worker]),
@@ -662,8 +664,8 @@ async function laborThroughToday(
         );
 
         const base = value(
-          rate?.daily_wage ??
-            (history.length ? null : person.daily_wage),
+          contractWage(contracts, assignment.worker_id, site.id, assignment.workDate, rate?.daily_wage ??
+            (history.length ? null : person.daily_wage)),
         );
 
         const companyRate = allowances.find(

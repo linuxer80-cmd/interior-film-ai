@@ -1,3 +1,4 @@
+import { loadLaborContracts } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 import {
   koreanDay,
@@ -110,7 +111,7 @@ async function loadCompany(
       db
         .from("sites")
         .select(
-          "id,company_id,site_name,status,schedule_start,schedule_end,schedule_date"
+          "id,company_id,site_name,status,schedule_start,schedule_end,schedule_date,work_dates"
         )
         .eq("company_id", company.id)
         .in("status", [
@@ -143,7 +144,9 @@ async function loadCompany(
     }
   }
 
+  const contracts = await loadLaborContracts(db, company.id, workerIds);
   const group = companyMonthPay({
+    contracts,
     company,
     workerIds,
     sites,

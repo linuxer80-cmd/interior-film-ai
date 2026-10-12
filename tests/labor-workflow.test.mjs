@@ -93,6 +93,7 @@ async function database(headcount = 1) {
     "labor_market.sql",
     "site_daily_assignments.sql",
     "labor_market_workflow.sql",
+    "labor_market_consistency.sql",
   ]) {
     await db.exec(
       readFileSync(
@@ -191,7 +192,7 @@ test(
 );
 
 test(
-  "application notifies owner; acceptance creates worker and site, expires other applicants atomically",
+  "application notifies owner; acceptance assigns site and explicit finish expires other applicants",
   { skip: !enabled },
   async () => {
     const db = await database();
@@ -208,6 +209,8 @@ test(
       );
 
       await action(db, ids.owner, "accept", ids.w1);
+      assert.equal((await rows(db, "labor_jobs"))[0].status, "open");
+      await action(db, ids.owner, "finish");
 
       assert.equal(
         (await rows(db, "labor_jobs"))[0].status,
@@ -271,7 +274,7 @@ test(
 );
 
 test(
-  "multiple hires keep job open until requested headcount is filled",
+  "multiple hires keep job open until explicit finish",
   { skip: !enabled },
   async () => {
     const db = await database(2);
@@ -287,6 +290,8 @@ test(
       );
 
       await action(db, ids.owner, "accept", ids.w2);
+      assert.equal((await rows(db, "labor_jobs"))[0].status, "open");
+      await action(db, ids.owner, "finish");
 
       assert.equal(
         (await rows(db, "labor_jobs"))[0].status,
@@ -586,6 +591,90 @@ test(
       );
 
       assert.equal((await rows(db, "workers")).length, 0);
+    } finally {
+      await db.close();
+    }
+  }
+);
+
+
+test("assignment replacement preserves acceptance; full removal clears consent and permits reapply", {skip: !enabled}, async () => {
+ const db = await database();
+ try {
+  await action(db, ids.w1, "apply");
+  await action(db, ids.owner, "accept", ids.w1);
+  await db.exec(`begin;
+    create temporary table saved_assignments as select * from site_daily_assignments;
+    delete from site_daily_assignments;
+    insert into site_daily_assignments select * from saved_assignments;
+    commit;`);
+  assert.equal((await rows(db,"labor_applications"))[0].status,"accepted");
+  await db.exec("delete from site_daily_assignments");
+  const app = (await rows(db,"labor_applications"))[0];
+  assert.equal(app.status,"unassigned");
+  assert.equal(app.share_phone,false);
+  await action(db, ids.w1, "apply");
+  assert.equal((await rows(db,"labor_applications"))[0].status,"applied");
+ } finally { await db.close(); }
+});
+
+test("cancelled site reconciles acceptance and repair is rerunnable", {skip: !enabled}, async () => {
+ const db = await database();
+ try {
+  await db.exec(readFileSync(new URL("../database/labor_market_consistency.sql",import.meta.url),"utf8"));
+  await action(db, ids.w1, "apply");
+  await action(db, ids.owner, "accept", ids.w1);
+  await db.query("update sites set status='cancelled' where id=$1",[ids.site]);
+  assert.equal((await rows(db,"labor_applications"))[0].status,"unassigned");
+ } finally { await db.close(); }
+});
+
+test(
+  "cancelled cross-company assignments do not block a new hire",
+  { skip: !enabled },
+  async () => {
+    const db = await database();
+
+    try {
+      await db.query(
+        "insert into companies(id) values($1)",
+        [ids.other]
+      );
+
+      await db.query(
+        `insert into sites values(
+          $1,$1,'cancelled',
+          array[(now() at time zone 'Asia/Seoul')::date+1]
+        )`,
+        [ids.other]
+      );
+
+      const worker = (
+        await db.query(
+          `insert into workers(
+            company_id,user_id,name,is_active,daily_wage
+          ) values($1,$2,'기존 시공자',true,300000)
+          returning id`,
+          [ids.other, ids.w1]
+        )
+      ).rows[0];
+
+      await db.query(
+        `insert into site_daily_assignments(
+          company_id,site_id,worker_id,work_date,role
+        ) values(
+          $1,$1,$2,
+          (now() at time zone 'Asia/Seoul')::date+1,
+          'member'
+        )`,
+        [ids.other, worker.id]
+      );
+
+      await action(db, ids.w1, "apply");
+
+      await action(db, ids.owner, "accept", ids.w1);
+      assert.equal((await rows(db,"labor_applications"))[0].status,"accepted");
+      assert.equal((await rows(db,"workers")).length,2);
     } finally {
       await db.close();
     }

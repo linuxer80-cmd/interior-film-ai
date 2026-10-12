@@ -1,3 +1,4 @@
+import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -182,6 +183,7 @@ function assignedLabor(
   rates,
   companyRates,
   currentAllowance,
+  contracts = [],
 ) {
   const dates = assignmentDays(site);
   const allowed = new Set(dates);
@@ -227,7 +229,7 @@ function assignedLabor(
     );
 
     const base = rateValue(
-      rate?.daily_wage ?? (history.length ? null : person.daily_wage),
+      contractWage(contracts, row.worker_id, site.id, row.date, rate?.daily_wage ?? (history.length ? null : person.daily_wage)),
     );
 
     const companyRate = companyRates.find(
@@ -600,6 +602,8 @@ export async function GET(request) {
 
     if (current.error) throw current.error;
 
+    const contracts = await loadLaborContracts(db, companyId, workerIds);
+
     const breakdown = {
       labor: [],
       material: [],
@@ -621,6 +625,7 @@ export async function GET(request) {
         rates,
         companyRates,
         current.data,
+        contracts,
       );
 
       const laborRows = resolveLabor(

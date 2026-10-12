@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { contractWage, loadLaborContracts } from '../lib/laborContracts.mjs';
 
 const source = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import[\s\S]*?;\s*/gm, '').replaceAll('export ', '');
 const helpers = source('../app/utils/workerCalendar.js') + '\n' + source('../app/utils/workerPay.js');
 const clean = (value) => JSON.parse(JSON.stringify(value));
-const context = vm.createContext({ Intl });
+const context = vm.createContext({ Intl, contractWage });
 vm.runInContext(helpers + '\nglobalThis.pay = { companyMonthPay, payAmount, payMonth, payDate, sumPay, koreanDay };', context);
 const { companyMonthPay, payAmount, payMonth, payDate, sumPay, koreanDay } = context.pay;
 const company = { id: 'a', company_name: '내 업체' };
@@ -90,7 +91,7 @@ function api({ tables = {}, errors = {}, invalid = false } = {}) {
     },
   };
   const FixedDate = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-30T12:00:00Z'])); } };
-  const ctx = vm.createContext({ URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
+  const ctx = vm.createContext({ contractWage, loadLaborContracts, URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     Response: { json: (body, options) => ({ body: clean(body), ...options }) },
   });

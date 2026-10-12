@@ -1,3 +1,4 @@
+import { attachAssignmentState } from '../lib/laborContracts.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -206,6 +207,7 @@ function fixture(userId = owner, manager = true) {
     .replaceAll("export ", "");
 
   const args = {
+    attachAssignmentState,
     privateAuth: async () => ({
       db,
       user: {

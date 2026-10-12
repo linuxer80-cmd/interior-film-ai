@@ -1,3 +1,4 @@
+import { attachAssignmentState } from '../../../lib/laborContracts.mjs';
 import { dispatchLaborNotifications } from '../../../lib/laborPush';
 import { privateAuth, privateJson as json, cleanPrivate, uuid } from '../../../lib/workerPrivate';
 import { publicProfileFields, dayInKorea, fail, cleanProfile, cleanJob, nextApplication, roughRegion } from '../../../lib/laborMarket.mjs';
@@ -468,6 +469,8 @@ export async function GET(request) {
         }
       }
     }
+
+    await attachAssignmentState(db, applications, [...jobs,...applicationJobs]);
 
     return json({
       manager:Boolean(companyId),
