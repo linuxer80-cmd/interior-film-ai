@@ -24,6 +24,9 @@ export default function WorkerCard({
 }) {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
 
+  const phoneNumber = String(worker?.phone || "").trim().replace(/[^0-9+]/g, "");
+  const callablePhone = /^\+?\d{7,15}$/.test(phoneNumber);
+
   const active = worker?.is_active !== false;
   const accountLinked = Boolean(worker?.user_id);
 
@@ -116,15 +119,30 @@ export default function WorkerCard({
           </div>
 
           {worker?.phone && (
-            <div
-              style={{
-                marginTop: "6px",
-                color: "#475569",
-                fontSize: "12px",
-              }}
-            >
-              📞 {worker.phone}
-            </div>
+            callablePhone ? (
+              <a
+                href={`tel:${phoneNumber}`}
+                aria-label={`${worker?.name || "시공자"}님에게 전화 걸기 ${worker.phone}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 44,
+                  marginTop: 6,
+                  color: "#285c94",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  textDecoration: "underline",
+                  textUnderlineOffset: 4,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                📞 {worker.phone}
+              </a>
+            ) : (
+              <div style={{ marginTop: 6, color: "#475569", fontSize: 12 }}>
+                📞 {worker.phone}
+              </div>
+            )
           )}
 
           <div
