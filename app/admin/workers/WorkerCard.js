@@ -20,6 +20,7 @@ export default function WorkerCard({
   onInvite,
   onLinkSelf,
   onEdit,
+  onSaveMemo,
   onActiveChange,
 }) {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -27,6 +28,17 @@ export default function WorkerCard({
   const phoneNumber = String(worker?.phone || "").trim().replace(/[^0-9+]/g, "");
   const callablePhone = /^\+?\d{7,15}$/.test(phoneNumber);
 
+  const [memoOpen, setMemoOpen] = useState(false);
+  const [memoDraft, setMemoDraft] = useState("");
+  const [memoBusy, setMemoBusy] = useState(false);
+  const [memoError, setMemoError] = useState("");
+  async function saveMemo() {
+    if (memoBusy) return;
+    setMemoBusy(true); setMemoError("");
+    try { await onSaveMemo(memoDraft); setMemoOpen(false); }
+    catch (error) { setMemoError(error.message || "메모를 저장하지 못했습니다."); }
+    finally { setMemoBusy(false); }
+  }
   const active = worker?.is_active !== false;
   const accountLinked = Boolean(worker?.user_id);
 
@@ -224,10 +236,18 @@ export default function WorkerCard({
           )}
 
           <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#f8f7f3" }}>
-            <button type="button" onClick={onEdit} style={{ border: 0, background: "transparent", color: "#285c94", padding: "6px 0", minHeight: 44, fontWeight: 700 }}>
+            <button type="button" onClick={() => { setMemoDraft(worker.memo || ""); setMemoError(""); setMemoOpen(true); }} style={{ border: 0, background: "transparent", color: "#285c94", padding: "6px 0", minHeight: 44, fontWeight: 700 }}>
               {worker?.memo ? "시공자 메모 수정 ›" : "+ 시공자 메모 입력"}
             </button>
-            {worker?.memo && <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 13, color: "#475569" }}>{worker.memo}</p>}
+            {memoOpen && <div>
+              <textarea aria-label="시공자 메모" rows={3} maxLength={1000} value={memoDraft} disabled={memoBusy}
+                onChange={e => setMemoDraft(e.target.value)} placeholder="예: 싱크대 능숙, 차량 있음"
+                style={{ width: "100%", boxSizing: "border-box", fontSize: 16, padding: 10, borderRadius: 8 }} />
+              <button type="button" disabled={memoBusy} onClick={saveMemo}>{memoBusy ? "저장 중…" : "메모 저장"}</button>
+              <button type="button" disabled={memoBusy} onClick={() => setMemoOpen(false)}>취소</button>
+              {memoError && <p role="alert">{memoError}</p>}
+            </div>}
+            {!memoOpen && worker?.memo && <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 13, color: "#475569" }}>{worker.memo}</p>}
           </div>
 
         </div>

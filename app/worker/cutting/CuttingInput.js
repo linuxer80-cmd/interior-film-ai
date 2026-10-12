@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import FilmThumbnail, {
   filmLabel,
 } from "./FilmThumbnail";
@@ -92,6 +93,8 @@ export default function CuttingInput({
   closeBulkEditor,
   applyBulkEditor,
 }) {
+  const [activeSection, setActiveSection] = useState(sections.at(-1)?.id);
+  useEffect(() => { setActiveSection(sections.at(-1)?.id); }, [sections.length]);
   const labels = [
     ...new Set(materials.map(filmLabel)),
   ];
@@ -289,7 +292,12 @@ export default function CuttingInput({
             className={styles.sectionCard}
           >
             <div className={styles.sectionHeader}>
-              <strong>부위 {sectionIndex + 1}</strong>
+              <button type="button" aria-expanded={activeSection === section.id}
+                onClick={() => setActiveSection(activeSection === section.id ? null : section.id)}
+                style={{ textAlign: "left", flex: 1, minHeight: 44 }}>
+                {section.location || `부위 ${sectionIndex + 1}`} · {section.part || "부위 입력"} · {section.colors.reduce((total, group) => total + group.sizes.reduce((sum, size) => sum + (Number(size.quantity) || 0), 0), 0)}개
+                {activeSection === section.id ? " ▴ 접기" : " ▾ 펼치기"}
+              </button>
 
               <div className={styles.sectionActions}>
                 <button
@@ -313,6 +321,7 @@ export default function CuttingInput({
               </div>
             </div>
 
+            <div hidden={activeSection !== section.id}>
             <div
               style={{
                 display: "grid",
@@ -644,6 +653,8 @@ export default function CuttingInput({
                 + 다른 필름 추가
               </button>
             </details>
+            <button type="button" onClick={() => setActiveSection(null)} style={{ width: "100%", minHeight: 44, marginTop: 12 }}>입력한 부위 접기</button>
+            </div>
           </article>
         ))}
 

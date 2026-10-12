@@ -77,6 +77,8 @@ export default function WorkReportForm({
   onCancel,
   onSubmitted,
 }) {
+  const [step, setStep] = useState(0);
+  useEffect(() => { setStep(0); }, [siteId]);
   const [form, setForm] = useState(null);
   const [context, setContext] = useState(null);
   const [workers, setWorkers] = useState([]);
@@ -427,6 +429,9 @@ export default function WorkReportForm({
   }
 
   function jump(item) {
+    setStep(item.target === "photos" ? 0 : 1);
+    requestAnimationFrame(() => {
+
     const section = root.current?.querySelector(`[data-section="${item.target}"]`);
     const target = item.id
       ? section?.querySelector(`[data-material-id="${item.id}"]`) || section
@@ -440,6 +445,7 @@ export default function WorkReportForm({
     target
       ?.querySelector("input:not(:disabled),textarea:not(:disabled),button:not(:disabled)")
       ?.focus({ preventScroll: true });
+    });
   }
 
   async function selectPhotos(event, type) {
@@ -681,8 +687,11 @@ export default function WorkReportForm({
   );
 
   return (
-    <form ref={root} onSubmit={submit} noValidate>
-      <section style={{ ...box, background: "#eff6ff" }}>
+    <form ref={root} onSubmit={e => { if (step !== 2) { e.preventDefault(); setStep(n => Math.min(2,n+1)); } else return submit(e); }} noValidate>
+      <nav aria-label="완료보고 단계" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
+      </nav>
+      <section hidden={step !== 2} style={{ ...box, background: "#eff6ff" }}>
         <h3>완료 전 확인 · {missing.length}건</h3>
 
         <p role="status">{draftMessage || "임시저장 준비 중"}</p>
@@ -722,7 +731,7 @@ export default function WorkReportForm({
       </section>
 
       <fieldset disabled={disabled} style={{ border: 0, padding: 0, minWidth: 0 }}>
-        <section style={box} data-section="content">
+        <section style={box} hidden={step !== 1} data-section="content">
           <h3>시공 내용 · {site?.site_name}</h3>
           {field("work_region", "시공 지역")}
 
@@ -747,7 +756,7 @@ export default function WorkReportForm({
           </label>
         </section>
 
-        <section style={box} data-section="photos">
+        <section style={box} hidden={step !== 0} data-section="photos">
           <h3>시공 사진</h3>
           <p>
             등록된 완료사진 {context.afterCount}장 · 새 사진은 긴 변 최대 2048px로 용량을 줄입니다.
@@ -788,7 +797,7 @@ export default function WorkReportForm({
           </div>
         </section>
 
-        <section data-section="materials" style={{ scrollMarginTop: 16 }}>
+        <section hidden={step !== 1} data-section="materials" style={{ scrollMarginTop: 16 }}>
           <SiteOperations
             siteId={siteId}
             mode="materials"
@@ -820,7 +829,7 @@ export default function WorkReportForm({
         </section>
 
         {!owner && (
-          <section style={box} data-section="labor">
+          <section style={box} hidden={step !== 1} data-section="labor">
             <h3>인건비</h3>
             <p>직접 입력하지 않으면 기존 배정·일당 기준 자동 계산을 사용합니다.</p>
 
@@ -876,7 +885,7 @@ export default function WorkReportForm({
           </section>
         )}
 
-        <section style={box} data-section="expenses">
+        <section style={box} hidden={step !== 1} data-section="expenses">
           <h3>완료보고 경비</h3>
           <p>경비 메뉴에 이미 등록한 금액은 다시 입력하지 마세요. 기존 현장 경비는 유지됩니다.</p>
 
@@ -926,7 +935,7 @@ export default function WorkReportForm({
         </section>
 
         {owner && preview && (
-          <section style={{ ...box, background: "#f0fdf4" }}>
+          <section hidden={step !== 2} style={{ ...box, background: "#f0fdf4" }}>
             <h3>관리자 정산 미리보기</h3>
             <p>계약금액: {won(preview.revenue)}</p>
             <p>인건비: {preview.laborPending ? "일당·수당 확인 필요" : won(preview.labor)}</p>
@@ -1003,7 +1012,10 @@ export default function WorkReportForm({
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
+      {step === 2 && <section style={box}><h3>입력 내용 확인</h3><p>{form.work_summary || "시공 내용을 입력해주세요."}</p><p>새 사진 {form.photos.length}장 · 추가 경비 {form.expenses.length}건</p></section>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, position: "sticky", bottom: 0, padding: "12px 0", background: "white", zIndex: 2 }}>
+        {step > 0 && <button type="button" disabled={disabled} style={button} onClick={() => setStep(n => n-1)}>이전</button>}
+        {step < 2 && <button type="button" disabled={disabled} style={{ ...button, flex: 1 }} onClick={() => setStep(n => n+1)}>다음 단계 →</button>}
         {onCancel && (
           <button type="button" style={button} disabled={disabled} onClick={() => saveDraft(true)}>
             임시저장 후 닫기
@@ -1012,6 +1024,7 @@ export default function WorkReportForm({
 
         <button
           type="submit"
+          hidden={step !== 2}
           disabled={disabled}
           style={{
             ...button,

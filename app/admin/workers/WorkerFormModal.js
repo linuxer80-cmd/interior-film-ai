@@ -224,6 +224,7 @@ export default function WorkerFormModal({
             기본 일당에 해당 금액이 자동으로 더해집니다.
           </div>
 
+          <div hidden={isEdit && Number(form.daily_wage) === Number(editingWorker.daily_wage)}>
           <div style={{ height: 16 }} />
           <FieldLabel required>기본 일당 적용 시작일</FieldLabel>
 
@@ -254,6 +255,8 @@ export default function WorkerFormModal({
             월초 날짜를 선택하세요. 같은 적용일의 금액은 수정됩니다.
           </p>
 
+          </div>
+          <details style={{ marginTop: 18 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>추가정보 · 메모 / 계좌 / 출발 주소</summary>
           <label style={{ display: "block", marginTop: 20, fontWeight: 700 }}>
             시공자 메모 (선택)
             <textarea value={form.memo || ""} maxLength={1000} rows={3}
@@ -309,6 +312,8 @@ export default function WorkerFormModal({
             출발 주소는 본인 현장의 자동차 이동시간 계산에 사용합니다.
             상세 동·호수는 입력하지 않아도 됩니다.
           </p>
+
+          </details>
 
           {localMessage && (
             <div

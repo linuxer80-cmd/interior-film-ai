@@ -271,6 +271,12 @@ async function form({
     },
   });
 
+  // Follow the new final-review step before submitting the report.
+  const review = findAll(render(), node => node.type === "button" &&
+    node.props.children?.includes("3. 최종 확인"))[0];
+  assert.ok(review, "final review step is available");
+  review.props.onClick();
+
   return {
     calls,
     render,

@@ -804,6 +804,13 @@ export default function WorkerManagement({
               inviteLoading={inviteLoadingId === worker.id}
               onInvite={undefined}
               onLinkSelf={() => linkMyself(worker)}
+              onSaveMemo={async memo => {
+                if (!worker.company_id) throw Error("업체 정보를 확인해주세요.");
+                const result = await supabase.from("workers").update({ memo: memo.trim() || null })
+                  .eq("id", worker.id).eq("company_id", worker.company_id).select("id").single();
+                if (result.error) throw result.error;
+                await loadWorkers?.();
+              }}
               onEdit={() => openEditForm(worker)}
               onActiveChange={() => handleActiveChange(worker)}
             />
