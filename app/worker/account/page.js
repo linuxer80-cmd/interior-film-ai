@@ -389,7 +389,7 @@ export default function WorkerAccount() {
                     {field('경력 (년)','experience_years','number')}
                   </div>
 
-                  {field('희망 일당 (원)','daily_wage','number')}
+                  {field('등록 일당 (원)','daily_wage','number')}
 
                   <div className='chips'>
                     {[200000,250000,300000].map(n=>
@@ -471,7 +471,7 @@ export default function WorkerAccount() {
                     <strong>{profile.name || '이름을 입력해주세요'}</strong>
                     <p>
                       {profile.region || '활동 지역 미입력'}
-                      {' '}· 희망 일당 {Number(profile.daily_wage).toLocaleString()}원
+                      {' '}· 등록 일당 {Number(profile.daily_wage).toLocaleString()}원
                       {' '}· 경력 {profile.experience_years}년
                     </p>
                     <p>{skillText}</p>
@@ -505,7 +505,7 @@ export default function WorkerAccount() {
 
                   <small>
                     저장하면 현재 연결된 활성 소속 업체의 계좌·출발 주소에도 반영됩니다.
-                    희망 일당은 기존 업체의 계약 일당을 변경하지 않습니다.
+                    등록 일당은 기존 업체의 계약 일당을 변경하지 않습니다.
                   </small>
                 </div>
 

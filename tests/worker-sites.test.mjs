@@ -179,6 +179,8 @@ test('login return paths preserve a site link and reject external or unrelated d
   vm.createContext(context); vm.runInContext(`${source}\nglobalThis.dest = workerDestination; globalThis.login = workerLoginUrl;`, context);
   assert.equal(context.dest(`/worker?site=${S}`), `/worker/site/${S}`);
   assert.equal(context.dest(`/worker/site/${S}`), `/worker/site/${S}`);
+  assert.equal(context.dest(`/worker/connect/${S}`), `/worker/connect/${S}`);
+  assert.equal(context.dest(`/worker/connect/${S}?next=https://attacker.example`), "/worker");
   assert.equal(new URLSearchParams(context.login().split('?')[1]).get('next'), `/worker/site/${S}`);
   for (const input of ['//attacker.example', 'https://attacker.example', '/admin', '/worker/../../admin', '/worker/site/bad', null]) assert.equal(context.dest(input), '/worker');
 });

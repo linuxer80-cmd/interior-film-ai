@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
 
+import WorkerRelationships from "./workers/WorkerRelationships";
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
@@ -529,7 +530,7 @@ export default function WorkerManagement({
       });
       setLocalMessage("");
 
-      await createInviteForWorker(newWorker);
+      setLocalMessage("✅ 등록되었습니다. 위의 직원·협력 시공자 연결 관리에서 관계를 선택해 초대해주세요.");
     } catch (error) {
       console.error("시공자 저장:", error);
 
@@ -623,6 +624,7 @@ export default function WorkerManagement({
 
   return (
     <>
+      <WorkerRelationships workers={workers} />
       <section>
         <div
           style={{
@@ -797,7 +799,7 @@ export default function WorkerManagement({
               key={worker.id}
               worker={worker}
               inviteLoading={inviteLoadingId === worker.id}
-              onInvite={() => handleCreateInvite(worker)}
+              onInvite={undefined}
               onLinkSelf={() => linkMyself(worker)}
               onEdit={() => openEditForm(worker)}
               onActiveChange={() => handleActiveChange(worker)}

@@ -57,6 +57,12 @@ export default function WorkerLoginPage() {
         throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
       }
 
+      const inviteTarget = workerDestination(new URLSearchParams(window.location.search).get("next"));
+      if (inviteTarget.startsWith("/worker/connect/")) {
+        router.replace(inviteTarget);
+        router.refresh();
+        return;
+      }
       let worker;
 
       try {

@@ -247,7 +247,7 @@ export default function WorkerCard({
             </button>
           )}
 
-          {!accountLinked && active && (
+          {!accountLinked && active && onInvite && (
             <button
               type="button"
               disabled={inviteLoading}

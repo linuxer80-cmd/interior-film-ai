@@ -41,3 +41,17 @@ test('assignment state distinguishes full, partial, removed and cancelled assign
   assert.equal(app.has_site_access,expected!=='unassigned');
  }
 });
+test('confirmed personal wages and dates survive later job edits, with assignment snapshots taking priority',async()=>{
+ const db=database({
+  workers:[{id:'w',user_id:'u',company_id:'c'}],
+  labor_jobs:[{id:'j',company_id:'c',site_id:'changed',work_dates:['2026-12-01'],daily_wage:200000}],
+  labor_applications:[{id:'a',job_id:'j',user_id:'u',status:'accepted',accepted_daily_wage:280000,accepted_site_id:'s',accepted_work_dates:['2026-11-19']}],
+  worker_assignment_wages:[{company_id:'c',worker_id:'w',site_id:'s',work_date:'2026-11-19',daily_wage:270000},
+   {company_id:'foreign',worker_id:'w',site_id:'s',work_date:'2026-11-20',daily_wage:999999}]
+ });
+ const contracts=await loadLaborContracts(db,'c',['w']);
+ assert.equal(contractWage(contracts,'w','s','2026-11-19',100000),270000);
+ assert.equal(contractWage(contracts,'w','changed','2026-12-01',100000),100000);
+ assert.equal(contractWage(contracts,'w','s','2026-11-20',100000),100000);
+ assert.equal(contractWage(contracts.filter(c=>!c.snapshot),'w','s','2026-11-19',100000),280000);
+});

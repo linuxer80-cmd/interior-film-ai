@@ -1,5 +1,6 @@
 "use client";
 
+import {relationshipRequest} from "../../lib/workerRelationshipClient";
 import LaborNotifications from "../components/LaborNotifications";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -80,6 +81,14 @@ export default function WorkerHomeDashboard({
   sites = [],
   onOpen,
 }) {
+  const [employeeHome, setEmployeeHome] = useState(false);
+  useEffect(() => {
+    let active = true;
+    relationshipRequest({action:'mine'}).then(data=>{
+      if(active)setEmployeeHome(data.relationships.some(r=>r.relationship_type==='employee'));
+    }).catch(()=>{});
+    return ()=>{active=false;};
+  }, []);
   const [today, setToday] = useState(
     () => koreanDay()
   );
@@ -120,6 +129,7 @@ export default function WorkerHomeDashboard({
       className="worker-polished"
       aria-label="시공자 홈"
     >
+      {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}
       <LaborNotifications />
 
       <div className="wp-hello">
@@ -250,7 +260,7 @@ export default function WorkerHomeDashboard({
         className="wp-grid"
         aria-label="시공자 주요 메뉴"
       >
-        {menus.map(menu => (
+        {menus.filter(menu=>!employeeHome || menu.id!=="jobs").map(menu => (
           <Link
             key={menu.id}
             href={

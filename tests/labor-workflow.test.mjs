@@ -704,3 +704,87 @@ test("authenticated owner saves site; private reconciliation denies foreign comp
   await db.exec(readFileSync(new URL("../database/labor_assignment_permissions_fix.sql",import.meta.url),"utf8"));
  } finally { await db.close(); }
 });
+
+async function installRelationships(db) {
+ for(const file of ['worker_relationships.sql']) {
+  await db.exec(readFileSync(new URL(`../database/${file}`,import.meta.url),'utf8'));
+ }
+}
+async function relation(db,actor,kind,body={}) {
+ return (await db.query('select public.worker_relationship_action($1,$2,$3) as result',[actor,kind,JSON.stringify(body)])).rows[0].result;
+}
+async function rated(db,target,amount=250000) {
+ return db.query("select public.labor_action_registered_wage($1,$2,'accept',$3,$4)",[ids.owner,ids.job,target,amount]);
+}
+test('relationship requires worker consent then owner confirmation; foreign owner and duplicate account denied',{skip:!enabled},async()=>{
+ const db=await database();
+ try{
+  await installRelationships(db);
+  const w=(await db.query("insert into workers(company_id,name,phone,daily_wage) values($1,'직원','010',200000) returning id",[ids.company])).rows[0];
+  const invitation=await relation(db,ids.owner,'invite',{workerId:w.id,relationshipType:'employee'});
+  await assert.rejects(relation(db,ids.owner,'approve',{code:invitation.code}),/먼저 초대를 수락/);
+  await relation(db,ids.w1,'accept',{code:invitation.code,verifiedEmail:'test@example.com'});
+  assert.equal((await db.query('select user_id from workers where id=$1',[w.id])).rows[0].user_id,null);
+  await assert.rejects(relation(db,ids.w2,'accept',{code:invitation.code}),/다른 계정/);
+  await assert.rejects(relation(db,ids.w2,'approve',{code:invitation.code}),/관리자/);
+  await relation(db,ids.owner,'approve',{code:invitation.code});
+  assert.equal((await relation(db,ids.w1,'mine')).relationships[0].relationship_type,'employee');
+  const second=(await db.query("insert into workers(company_id,name) values($1,'중복') returning id",[ids.company])).rows[0];
+  const invitation2=await relation(db,ids.owner,'invite',{workerId:second.id,relationshipType:'employee'});
+  await relation(db,ids.w1,'accept',{code:invitation2.code});
+  await assert.rejects(relation(db,ids.owner,'approve',{code:invitation2.code}),/이미 업체 명단/);
+  await relation(db,ids.owner,'end',{workerId:w.id});
+  assert.equal((await relation(db,ids.w1,'mine')).relationships.length,0);
+  assert.equal((await db.query('select user_id,is_active from workers where id=$1',[w.id])).rows[0].user_id,ids.w1);
+ }finally{await db.close();}
+});
+test('registered wage overrides lower recruitment amount; changed profile cannot reprice confirmed assignments',{skip:!enabled},async()=>{
+ const db=await database();
+ try{
+  await installRelationships(db);
+  await db.query('update labor_jobs set daily_wage=200000 where id=$1',[ids.job]);
+  await action(db,ids.w1,'apply');
+  await assert.rejects(rated(db,ids.w1,200000),/일당이 변경/);
+  await rated(db,ids.w1);
+  const application=(await rows(db,'labor_applications'))[0];
+  assert.equal(Number(application.accepted_daily_wage),250000);
+  assert.equal(Number((await rows(db,'worker_assignment_wages'))[0].daily_wage),250000);
+  await db.query('update labor_profiles set daily_wage=300000 where user_id=$1',[ids.w1]);
+  const assignment=(await rows(db,'site_daily_assignments'))[0];
+  await db.query("update site_daily_assignments set work_date=work_date where id=$1",[assignment.id]);
+  assert.equal(Number((await rows(db,'worker_assignment_wages'))[0].daily_wage),250000);
+  await db.query("insert into site_daily_assignments(company_id,site_id,worker_id,work_date,role) values($1,$2,$3,$4::date+1,'member')",[ids.company,ids.site,assignment.worker_id,assignment.work_date]);
+  assert.deepEqual((await rows(db,'worker_assignment_wages')).map(r=>Number(r.daily_wage)).sort(),[250000,300000]);
+  // Install is idempotent and does not rewrite accepted amounts.
+  await installRelationships(db);
+  assert.equal(Number((await rows(db,'labor_applications'))[0].accepted_daily_wage),250000);
+ }finally{await db.close();}
+});
+test('direct hire uses registered wage despite lower recruitment budget',{skip:!enabled},async()=>{
+ const db=await database();
+ try{
+  await installRelationships(db);
+  await db.query('update labor_jobs set daily_wage=200000 where id=$1',[ids.job]);
+  await db.query('update labor_profiles set direct_hire_consent=true,available_dates=(select work_dates from labor_jobs where id=$1) where user_id=$2',[ids.job,ids.w1]);
+  await db.query("select public.labor_action_registered_wage($1,$2,'direct_hire',$3,250000)",[ids.owner,ids.job,ids.w1]);
+  assert.equal(Number((await rows(db,'labor_applications'))[0].accepted_daily_wage),250000);
+ }finally{await db.close();}
+});
+test('expired, cancelled and bound-account invites cannot connect; anonymous RPC execution is denied',{skip:!enabled},async()=>{
+ const db=await database();
+ try{
+  await installRelationships(db);
+  const w=(await db.query("insert into workers(company_id,user_id,name) values($1,$2,'기존') returning id",[ids.company,ids.w1])).rows[0];
+  const i=await relation(db,ids.owner,'invite',{workerId:w.id,relationshipType:'employee'});
+  await assert.rejects(relation(db,ids.w2,'preview',{code:i.code}),/초대받은 계정/);
+  await db.query("update worker_relationship_invites set expires_at=now()-interval '1 minute' where id=$1",[i.code]);
+  await assert.rejects(relation(db,ids.w1,'accept',{code:i.code}),/만료/);
+  const next=await relation(db,ids.owner,'invite',{workerId:w.id,relationshipType:'freelancer'});
+  await relation(db,ids.owner,'cancel',{code:next.code});
+  await assert.rejects(relation(db,ids.w1,'accept',{code:next.code}),/종료/);
+  await db.exec('set role authenticated');
+  await assert.rejects(relation(db,ids.owner,'list'),/permission denied/);
+  await assert.rejects(db.query('select * from worker_relationship_invites'),/permission denied/);
+  await db.exec('reset role');
+ }finally{await db.close();}
+});

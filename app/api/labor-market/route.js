@@ -701,8 +701,10 @@ export async function POST(request) {
 
       if(body.recruitUserId) {
         if(!uuid(body.recruitUserId))throw fail('시공자를 확인해주세요.');
+        if(!Number.isSafeInteger(body.expectedWage)||body.expectedWage<=0)throw fail('적용할 시공자 등록 일당을 확인해주세요.');
 
-        const result=await db.rpc('create_labor_direct_job',{
+        const result=await db.rpc('create_labor_direct_job_registered_wage',{
+          p_expected_wage:body.expectedWage,
           p_actor:user.id,
           p_target:body.recruitUserId,
           p_job:{
@@ -791,7 +793,10 @@ export async function POST(request) {
       throw fail('시공자를 확인해주세요.');
     }
 
-    const result=await db.rpc('labor_action',{
+    const rated=['accept','direct_hire'].includes(body.action);
+    if(rated && (!Number.isSafeInteger(body.expectedWage)||body.expectedWage<=0)) throw fail('적용할 시공자 등록 일당을 확인해주세요.');
+    const result=await db.rpc(rated?'labor_action_registered_wage':'labor_action',{
+      ...(rated?{p_expected_wage:body.expectedWage}:{}),
       p_actor:user.id,
       p_job:job.id,
       p_action:body.action,
