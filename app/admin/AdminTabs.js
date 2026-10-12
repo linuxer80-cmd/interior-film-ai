@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import LaborNotifications from "../components/LaborNotifications";
 import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
@@ -99,6 +100,7 @@ export default function AdminTabs({
       {isHome ? (
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
+          <LaborNotifications />
 
           <div className="film-admin-hero">
             <div>
