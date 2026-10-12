@@ -51,7 +51,7 @@ export async function GET(request) {
     const [report, planned, actual, expenses, photoCount] = await Promise.all([
       read(scoped(
         "work_reports", "id,work_region,work_summary,memo,review_status,updated_at"
-      ).maybeSingle()),
+      ).order("updated_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle()),
       read(scoped("site_materials", "id,unit_price").eq("material_type", "planned")),
       read(scoped(
         "site_materials", "brand,product_code,product_name,quantity,unit,unit_price,memo"

@@ -371,29 +371,30 @@ export default function CallContentAiInput({
         "통화녹음을 글자로 변환하고 있습니다...",
       );
 
-      const formData =
-        new FormData();
-
-      formData.append(
-        "file",
-        selectedFile,
-      );
-
-      const transcribeResponse =
-        await fetch(
-          "/api/admin/transcribe-site-call",
-          {
-            method: "POST",
-
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
-
-            body:
-              formData,
-          },
+      const preparedResponse = await fetch('/api/admin/site-call-upload',{
+        method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+        body:JSON.stringify({fileName:selectedFile.name,size:selectedFile.size})
+      });
+      const prepared = await preparedResponse.json().catch(()=>null);
+      if(!preparedResponse.ok||!prepared?.token)throw new Error(prepared?.error||'녹음 업로드 준비에 실패했습니다.');
+      let transcribeResponse;
+      try {
+        setStage('통화녹음을 안전하게 업로드하고 있습니다...');
+        const uploaded = await supabase.storage.from(prepared.bucket).uploadToSignedUrl(
+          prepared.path,prepared.token,selectedFile,{contentType:selectedFile.type||'application/octet-stream'}
         );
+        if(uploaded.error)throw new Error('녹음 업로드에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.');
+        setStage('통화녹음을 글자로 변환하고 있습니다...');
+        transcribeResponse = await fetch('/api/admin/transcribe-site-call',{
+          method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+          body:JSON.stringify({path:prepared.path,fileName:selectedFile.name})
+        });
+      } finally {
+        await fetch('/api/admin/site-call-upload',{
+          method:'DELETE',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+          body:JSON.stringify({path:prepared.path})
+        }).catch(()=>{});
+      }
 
       let transcribeResult =
         null;
@@ -411,7 +412,7 @@ export default function CallContentAiInput({
       ) {
         throw new Error(
           transcribeResult?.error ||
-            "통화녹음 변환에 실패했습니다.",
+            (transcribeResponse.status===413 ? "녹음 업로드 용량 제한입니다. 앱을 새로고침한 뒤 다시 시도해주세요." : `통화녹음 변환에 실패했습니다. (오류 ${transcribeResponse.status})`),
         );
       }
 
@@ -420,7 +421,7 @@ export default function CallContentAiInput({
       ) {
         throw new Error(
           transcribeResult?.error ||
-            "통화녹음 변환에 실패했습니다.",
+            (transcribeResponse.status===413 ? "녹음 업로드 용량 제한입니다. 앱을 새로고침한 뒤 다시 시도해주세요." : `통화녹음 변환에 실패했습니다. (오류 ${transcribeResponse.status})`),
         );
       }
 

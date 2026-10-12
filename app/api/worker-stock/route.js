@@ -23,13 +23,6 @@ const take = result => {
   return result.data;
 };
 
-const normalize = value =>
-  String(value || "")
-    .replace(/\s/g, "")
-    .toUpperCase()
-    .replace(/^영림인테리어필름$/, "영림")
-    .replace(/^현대$/, "현대보닥");
-
 export async function GET(request) {
   try {
     const auth = await privateAuth(request, false);
@@ -166,6 +159,7 @@ export async function GET(request) {
         )
         .eq("site_id", siteId)
         .eq("company_id", selected.company_id)
+        .eq("material_type", "planned")
     );
 
     if (!materials.length) {
@@ -179,49 +173,25 @@ export async function GET(request) {
       });
     }
 
-    const rolls = [];
-
-    const productCodes = [
-      ...new Set(
-        materials
-          .map(material => material.product_code)
-          .filter(Boolean)
-      ),
-    ];
-
-    for (
-      let offset = 0;
-      offset < productCodes.length;
-      offset += 100
-    ) {
-      for (let start = 0; ; start += 500) {
-        const rows = take(
-          await auth.db
-            .from("film_stock_rolls")
-            .select(
-              "id,brand,product_code,remaining"
-            )
-            .eq(
-              "company_id",
-              selected.company_id
-            )
-            .eq("status", "available")
-            .gt("remaining", 0)
-            .in(
-              "product_code",
-              productCodes.slice(
-                offset,
-                offset + 100
-              )
-            )
-            .range(start, start + 499)
-        );
-
-        rolls.push(...rows);
-
-        if (rows.length < 500) break;
-      }
+    // Use the same brand, code and non-fire alias matching as actual roll issue.
+    const stock = await auth.db.rpc("film_stock", {
+      p_user: auth.user.id,
+      p_site: siteId,
+      p_action: "get",
+      p_body: {},
+    });
+    if (stock.error?.code === "42501") {
+      return json({ error: "이 현장 재고를 조회할 권한이 없습니다." }, 403);
     }
+    const inventory = take(stock);
+    if (!Array.isArray(inventory?.rolls) || inventory.rolls.some(
+      roll => !Array.isArray(roll.matching_material_ids)
+    )) {
+      throw Error("롤 재고 연결 정보를 확인해주세요.");
+    }
+    const rolls = inventory.rolls.filter(roll =>
+      roll.status === "available" && Number(roll.remaining) > 0
+    );
 
     return json({
       sites: choices,
@@ -233,10 +203,7 @@ export async function GET(request) {
 
         available_m: rolls
           .filter(roll =>
-            normalize(roll.brand) ===
-              normalize(material.brand) &&
-            normalize(roll.product_code) ===
-              normalize(material.product_code)
+            roll.matching_material_ids.includes(material.id)
           )
           .reduce(
             (sum, roll) =>

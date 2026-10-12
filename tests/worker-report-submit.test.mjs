@@ -12,7 +12,7 @@ await swc.loadBindings();
 const { code } = await swc.transform(
   fs.readFileSync(
     new URL(
-      "../app/worker/site/[siteId]/WorkerWorkReport.js",
+      "../app/components/WorkReportForm.js",
       import.meta.url
     ),
     "utf8"
@@ -67,7 +67,9 @@ async function form({
   const calls = [];
   const effects = [];
 
+  let reportClient;
   const React = {
+    useCallback: fn => fn,
     createElement(type, props, ...children) {
       const next = { ...props, children };
 
@@ -127,6 +129,8 @@ async function form({
     exports: {},
     React,
     FormData,
+    crypto,
+    window: {addEventListener(){},removeEventListener(){}},
     console: {
       error() {},
     },
@@ -140,17 +144,20 @@ async function form({
         return React;
       }
 
-      if (path.includes("ToolIllustration")) {
+      if (path.includes("reportClient")) return reportClient;
+      if (path.includes("SiteOperations") || path.includes("ToolIllustration")) {
         return () => null;
       }
 
       return {
         supabase: {
           auth: {
+            onAuthStateChange: () => ({data:{subscription:{unsubscribe(){}}}}),
             getSession: async () => ({
               data: {
                 session: {
                   access_token: "token",
+                  user: {id: "user"},
                 },
               },
             }),
@@ -160,12 +167,14 @@ async function form({
     },
 
     async fetch(url, options) {
+      if (url.includes("report-support?")) return {ok:true,json:async()=>({operations:{materials:[],locked:false},afterCount:0,missingPrices:[]})};
       if (url.includes("site-work-report?")) {
         return {
           ok: true,
           json: async () => ({
             success: true,
             laborWorkers: [],
+            canSubmit: true,
           }),
         };
       }
@@ -198,6 +207,11 @@ async function form({
     },
   });
 
+  const helperSource = fs.readFileSync(new URL('../app/utils/reportClient.js', import.meta.url), 'utf8')
+    .replace('import { supabase } from "../../lib/supabase";', 'const supabase = require("supabase").supabase;')
+    .replaceAll('export ', '');
+  vm.runInContext(helperSource + '\nglobalThis.reportHelpers = {reportRequest, uploadReportPhotos};', ctx);
+  reportClient = {...ctx.reportHelpers, draftStore:async()=>null, compressReportPhoto:async file=>file};
   vm.runInContext(code, ctx);
 
   const render = () => {
@@ -227,8 +241,7 @@ async function form({
   const summary = findAll(
     tree,
     (node) =>
-      node.type === "textarea" &&
-      node.props.placeholder?.startsWith("예: 싱크대")
+      node.type === "textarea" && node.props.rows === 4
   )[0];
 
   summary.props.onChange({
@@ -242,13 +255,14 @@ async function form({
     (node) => node.props.type === "file"
   );
 
-  files[0].props.onChange({
+  await files[0].props.onChange({
     target: {
       files: [{ name: "before.jpg" }],
     },
   });
 
-  files[1].props.onChange({
+  render();
+  await findAll(render(), node => node.props.type === "file")[1].props.onChange({
     target: {
       files: [
         { name: "after1.jpg" },

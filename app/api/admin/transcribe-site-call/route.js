@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { authenticateAdmin } from "../../../../lib/siteCallAuth";
+import { AUDIO_BUCKET, validAudioPath } from "../../../../lib/siteCallAudio.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,211 +40,6 @@ function cleanString(value) {
 /* =========================================================
    Bearer 토큰
 ========================================================= */
-
-function getBearerToken(request) {
-  const authorization =
-    request.headers.get("authorization") || "";
-
-  if (
-    !authorization.startsWith(
-      "Bearer ",
-    )
-  ) {
-    return "";
-  }
-
-  return authorization
-    .slice("Bearer ".length)
-    .trim();
-}
-
-/* =========================================================
-   관리자 인증
-
-   - access token으로 실제 로그인 사용자 확인
-   - profiles의 company_id 확인
-   - 비활성 관리자 차단
-   - 업체가 실제 존재하는지 확인
-   - 비활성 업체 차단
-========================================================= */
-
-async function authenticateAdmin(
-  request,
-) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    return {
-      error:
-        "NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.",
-      status: 500,
-    };
-  }
-
-  if (!serviceRoleKey) {
-    return {
-      error:
-        "SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.",
-      status: 500,
-    };
-  }
-
-  const accessToken =
-    getBearerToken(request);
-
-  if (!accessToken) {
-    return {
-      error:
-        "로그인 인증정보가 없습니다.",
-      status: 401,
-    };
-  }
-
-  const supabaseAdmin =
-    createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-
-  const {
-    data: userData,
-    error: userError,
-  } =
-    await supabaseAdmin.auth.getUser(
-      accessToken,
-    );
-
-  if (
-    userError ||
-    !userData?.user?.id
-  ) {
-    console.error(
-      "통화녹음 사용자 인증:",
-      userError,
-    );
-
-    return {
-      error:
-        "로그인 정보를 확인할 수 없습니다.",
-      status: 401,
-    };
-  }
-
-  const userId =
-    userData.user.id;
-
-  const {
-    data: profile,
-    error: profileError,
-  } =
-    await supabaseAdmin
-      .from("profiles")
-      .select(
-        `
-          id,
-          company_id,
-          role,
-          is_active
-        `,
-      )
-      .eq("id", userId)
-      .maybeSingle();
-
-  if (profileError) {
-    console.error(
-      "통화녹음 profile 조회:",
-      profileError,
-    );
-
-    return {
-      error:
-        "관리자 정보를 확인하지 못했습니다.",
-      status: 500,
-    };
-  }
-
-  if (!profile?.company_id) {
-    return {
-      error:
-        "연결된 업체가 없습니다.",
-      status: 403,
-    };
-  }
-
-  if (profile.is_active === false) {
-    return {
-      error:
-        "비활성화된 관리자 계정입니다.",
-      status: 403,
-    };
-  }
-
-  const companyId =
-    profile.company_id;
-
-  const {
-    data: company,
-    error: companyError,
-  } =
-    await supabaseAdmin
-      .from("companies")
-      .select(
-        `
-          id,
-          company_name,
-          is_active
-        `,
-      )
-      .eq("id", companyId)
-      .maybeSingle();
-
-  if (companyError) {
-    console.error(
-      "통화녹음 업체 조회:",
-      companyError,
-    );
-
-    return {
-      error:
-        "업체 정보를 확인하지 못했습니다.",
-      status: 500,
-    };
-  }
-
-  if (!company) {
-    return {
-      error:
-        "업체가 존재하지 않습니다.",
-      status: 404,
-    };
-  }
-
-  if (company.is_active === false) {
-    return {
-      error:
-        "비활성화된 업체입니다.",
-      status: 403,
-    };
-  }
-
-  return {
-    success: true,
-    userId,
-    companyId,
-    profile,
-    company,
-  };
-}
 
 /* =========================================================
    확장자
@@ -559,6 +355,7 @@ async function readOpenAiError(
 ========================================================= */
 
 export async function POST(request) {
+  let cleanup;
   try {
     /* -------------------------------------------------------
        1. 관리자 로그인 인증
@@ -610,26 +407,26 @@ export async function POST(request) {
        3. multipart/form-data
     ------------------------------------------------------- */
 
-    let formData;
-
-    try {
-      formData =
-        await request.formData();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "통화녹음 파일을 읽지 못했습니다.",
-        },
-        {
-          status: 400,
-        },
-      );
+    let file;
+    if (request.headers.get('content-type')?.includes('application/json')) {
+      const body = await request.json();
+      if (!validAudioPath(body.path, auth.companyId, auth.userId)) {
+        return NextResponse.json({error:'본인이 업로드한 녹음만 변환할 수 있습니다.'},{status:403});
+      }
+      cleanup = () => auth.db.storage.from(AUDIO_BUCKET).remove([body.path]);
+      const stored = await auth.db.storage.from(AUDIO_BUCKET).download(body.path);
+      if (stored.error || !stored.data) {
+        return NextResponse.json({error:'업로드한 녹음을 읽지 못했습니다. 파일을 다시 선택해주세요.'},{status:400});
+      }
+      const name = typeof body.fileName === 'string' ? body.fileName.slice(0,255) : '';
+      if (getExtension(name) !== body.path.split('.').pop()) {
+        return NextResponse.json({error:'녹음 파일 형식을 확인해주세요.'},{status:400});
+      }
+      file = new File([stored.data],name,{type:stored.data.type});
+    } else {
+      try { file = (await request.formData()).get('file'); }
+      catch { return NextResponse.json({error:'통화녹음 파일을 읽지 못했습니다.'},{status:400}); }
     }
-
-    const file =
-      formData.get("file");
 
     if (
       !file ||
@@ -887,5 +684,12 @@ export async function POST(request) {
         status: 500,
       },
     );
+  } finally {
+    if (cleanup) {
+      try {
+        const result = await cleanup();
+        if (result.error) console.error('call audio cleanup failed');
+      } catch { console.error('call audio cleanup failed'); }
+    }
   }
 }
