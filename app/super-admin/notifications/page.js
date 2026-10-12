@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { notificationDestination } from "../../../lib/superNotificationDestination.mjs";
 import { supabase } from "../../../lib/supabase";
 import ToolIllustration from "../../components/ui/ToolIllustration";
 
@@ -365,18 +366,15 @@ export default function SuperAdminNotificationsPage() {
 
   async function openNotification(item) {
     if (!item || busy) return;
-
+    const destination = notificationDestination(item);
     if (!item.is_read) {
-      const success = await markRead(item.id);
-      if (!success) return;
+      // Reading receipts must not prevent opening the referenced company.
+      await Promise.race([
+        markRead(item.id),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
     }
-
-    if (item.link) {
-      window.location.href = item.link;
-    } else if (item.company_id) {
-      window.location.href =
-        `/super-admin/company/${item.company_id}`;
-    }
+    if (destination) window.location.assign(destination);
   }
 
   async function refresh() {
@@ -680,7 +678,7 @@ function NotificationCard({
             ...(disabled ? styles.disabled : {}),
           }}
         >
-          {item.link || item.company_id ? "상세 보기 →" : "확인"}
+          {notificationDestination(item) ? "상세 보기 →" : "확인"}
         </button>
       </div>
     </article>
