@@ -29,6 +29,9 @@ async function database(headcount = 1) {
     create role service_role;
 
     create schema auth;
+    create function auth.uid() returns uuid language sql as $$
+      select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+    $$;
     create table auth.users(id uuid primary key);
 
     create table public.companies(
@@ -680,3 +683,24 @@ test(
     }
   }
 );
+
+
+test("authenticated owner saves site; private reconciliation denies foreign company and direct RPC", {skip: !enabled}, async () => {
+ const db=await database();
+ try {
+  await action(db,ids.w1,"apply");
+  await action(db,ids.owner,"accept",ids.w1);
+  await db.exec("grant usage on schema auth to authenticated; grant select,update on sites to authenticated;");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids.owner]);
+  await db.exec("set role authenticated");
+  await db.query("update sites set status='cancelled' where id=$1",[ids.site]);
+  await assert.rejects(db.query("select public.reconcile_labor_assignment($1)",[ids.site]));
+  await db.exec("reset role");
+  assert.equal((await rows(db,"labor_applications"))[0].status,"unassigned");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids.other]);
+  await db.exec("set role authenticated");
+  await assert.rejects(db.query("update sites set status='scheduled' where id=$1",[ids.site]),/Company access denied/);
+  await db.exec("reset role");
+  await db.exec(readFileSync(new URL("../database/labor_assignment_permissions_fix.sql",import.meta.url),"utf8"));
+ } finally { await db.close(); }
+});
