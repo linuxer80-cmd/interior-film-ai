@@ -10,7 +10,7 @@ const menus = [
     href: "/jobs",
     label: "구인 · 구직",
     description: "공개 구직자 찾기 · 현장 구인 등록",
-    icon: "people",
+    icon: "recruitment",
   },
   {
     id: "sites",

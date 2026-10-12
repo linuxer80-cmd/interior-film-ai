@@ -4,6 +4,7 @@ import { useState } from "react";
 
 const positions = {
   people: "0% 0%",
+  recruitment: "0% 0%",
   attendance: "50% 0%",
   home: "100% 0%",
   house: "100% 0%",
@@ -19,6 +20,7 @@ const positions = {
 };
 
 const images = {
+  recruitment: "/images/menu/recruitment.webp",
   stock: "/images/menu/film-stock.png",
   customer: "/images/menu/customer-page.png",
 };
