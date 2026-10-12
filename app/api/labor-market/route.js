@@ -1,3 +1,4 @@
+import {canReceiveRecruitment} from '../../../lib/laborNotificationPolicy.mjs';
 import { attachAssignmentState } from '../../../lib/laborContracts.mjs';
 import { dispatchLaborNotifications } from '../../../lib/laborPush';
 import { privateAuth, privateJson as json, cleanPrivate, uuid } from '../../../lib/workerPrivate';
@@ -178,8 +179,10 @@ export async function GET(request) {
     }
 
     if(params.get('mode')==='notifications') {
-      const notices=value(await db.from('labor_notifications')
-        .select('id,title,message,link,read_at,created_at')
+      const recruiting=await canReceiveRecruitment(db,user.id);
+      let noticeQuery=db.from('labor_notifications').select('id,title,message,link,read_at,created_at');
+      if(!recruiting) noticeQuery=noticeQuery.neq('title','구인 제안');
+      const notices=value(await noticeQuery
         .eq('user_id',user.id)
         .order('created_at',{ascending:false})
         .limit(50)

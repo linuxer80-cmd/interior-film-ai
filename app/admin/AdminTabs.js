@@ -80,6 +80,7 @@ const sections = {
 export default function AdminTabs({
   activeTab,
   companyId,
+  companyName,
   changeTab,
   unreadCount = 0,
   secondaryOnly = false,
@@ -111,7 +112,7 @@ export default function AdminTabs({
               <h2>
                 안녕하세요!
                 <br />
-                필름장이 관리자입니다.
+                {companyName || "업체"} 관리자입니다.
               </h2>
 
               <p>

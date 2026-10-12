@@ -81,14 +81,18 @@ export default function WorkerHomeDashboard({
   sites = [],
   onOpen,
 }) {
-  const [employeeHome, setEmployeeHome] = useState(false);
+  const [employeeHome, setEmployeeHome] = useState(null);
+  const [relationshipError, setRelationshipError] = useState("");
+  const [relationshipReload, setRelationshipReload] = useState(0);
   useEffect(() => {
     let active = true;
+    setEmployeeHome(null); setRelationshipError('');
     relationshipRequest({action:'mine'}).then(data=>{
+      if(!Array.isArray(data.relationships)) throw Error('소속 정보를 확인할 수 없습니다.');
       if(active)setEmployeeHome(data.relationships.some(r=>r.relationship_type==='employee'));
-    }).catch(()=>{});
+    }).catch(error=>{if(active)setRelationshipError(error.message || '소속 확인에 실패했습니다.');});
     return ()=>{active=false;};
-  }, []);
+  }, [relationshipReload]);
   const [today, setToday] = useState(
     () => koreanDay()
   );
@@ -130,6 +134,7 @@ export default function WorkerHomeDashboard({
       aria-label="시공자 홈"
     >
       {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}
+      {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
       <LaborNotifications />
 
       <div className="wp-hello">
@@ -260,7 +265,7 @@ export default function WorkerHomeDashboard({
         className="wp-grid"
         aria-label="시공자 주요 메뉴"
       >
-        {menus.filter(menu=>!employeeHome || menu.id!=="jobs").map(menu => (
+        {menus.filter(menu=>employeeHome===false || menu.id!=="jobs").map(menu => (
           <Link
             key={menu.id}
             href={

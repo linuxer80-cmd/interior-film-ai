@@ -39,6 +39,7 @@ export default function SuperWorkers(){
   </form>
   {error&&<p role='alert' className={styles.error}>{error}</p>}{notice&&<p role='status'>{notice}</p>}
   {loading&&<p role='status'>시공자 정보를 불러오는 중입니다…</p>}
+  {data?.directoryUpgradeRequired&&<p>목록 조회 최적화 SQL 적용 전입니다. 현재는 기존 조회 방식을 사용합니다.</p>}
   {data&&!data.relationshipsAvailable&&<p>직원·협력 관계 DB가 아직 적용되지 않아 업체 연결만 표시합니다.</p>}
   {data&&<><p>검색 결과 {data.total}건</p>{!data.items.length&&<p>조건에 맞는 시공자가 없습니다.</p>}
    {data.items.map(row=><article key={row.id} className={styles.card}>

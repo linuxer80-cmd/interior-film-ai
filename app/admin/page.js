@@ -725,6 +725,7 @@ export default function AdminPage() {
       )}
 
       <AdminTabs
+        companyName={companyName}
         companyId={companyId}
         activeTab={
           activeTab

@@ -20,10 +20,14 @@ async function all(db,table,fields,order){
 function errorResponse(e){console.error('super worker directory:',e.code||e.status||'request failed');return json({error:e.status?e.message:'시공자 정보를 불러오지 못했습니다. 잠시 후 다시 확인해주세요.'},e.status||503);}
 export async function GET(request){
  try{
-  const {db}=await auth(request);
+  const {db,user}=await auth(request);
   const params=new URL(request.url).searchParams;
   const page=Number(params.get('page')||1),kind=params.get('kind')||'account',status=params.get('status')||'all',query=params.get('q')||'',company=params.get('company')||'';
   if(!Number.isInteger(page)||page<1||page>2500||!['account','unlinked','pending'].includes(kind)||!['all','seeking','published','private','incomplete','inactive'].includes(status)||query.length>100||(company&&!uuid(company)))return json({error:'조회 조건을 확인해주세요.'},400);
+  const directoryResult=await db.rpc('super_worker_directory',{p_actor:user.id,p_kind:kind,p_query:query,p_status:status,p_company:company||null,p_page:page});
+  if(!directoryResult.error) return json(directoryResult.data);
+  if(!['PGRST202','42883'].includes(directoryResult.error.code)) throw directoryResult.error;
+  // Keep the existing screen usable until the service-only directory SQL is applied.
   const tasks=await Promise.all([
    all(db,'profiles','id,name,role,company_id,is_active','id'),
    all(db,'labor_profiles','user_id,name,daily_wage,region,skills,experience_years,introduction,published,seeking,updated_at','user_id'),
@@ -45,7 +49,7 @@ export async function GET(request){
   const filtered=filterDirectory(directory,{kind,status,query,company});
   const currentPage=Math.min(page,Math.max(1,Math.ceil(filtered.length/20)));
   const items=filtered.slice((currentPage-1)*20,currentPage*20);
-  return json({items,total:filtered.length,page:currentPage,pageSize:20,summary:{accounts:directory.accounts.length,unlinked:directory.unlinked.length,pending:directory.pending.length,seeking:directory.accounts.filter(r=>r.seeking).length},companies,relationshipsAvailable:relationships!==null});
+  return json({directoryUpgradeRequired:true,items,total:filtered.length,page:currentPage,pageSize:20,summary:{accounts:directory.accounts.length,unlinked:directory.unlinked.length,pending:directory.pending.length,seeking:directory.accounts.filter(r=>r.seeking).length},companies,relationshipsAvailable:relationships!==null});
  }catch(e){return errorResponse(e);}
 }
 export async function POST(request){
