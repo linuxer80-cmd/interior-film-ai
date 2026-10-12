@@ -361,13 +361,43 @@ export async function GET(request) {
       ),
       db
         .from("profiles")
-        .select("is_active")
+        .select("is_active,role,company_id,name")
         .eq("id", auth.user.id)
         .maybeSingle(),
     ]);
 
     if (profileResult.error) {
       throw profileResult.error;
+    }
+
+    // Owners can use the personal worker home with the same session even
+    // before a worker membership or public recruiting profile is registered.
+    // This does not create a membership or grant access to unassigned sites.
+    async function ownerHome() {
+      const profile = profileResult.data;
+      if (siteId || profile?.role !== "owner" ||
+          profile.is_active === false || !profile.company_id) return null;
+      const company = await db.from("companies").select("id,is_active")
+        .eq("id", profile.company_id).maybeSingle();
+      if (company.error) throw company.error;
+      if (company.data?.is_active !== true) return null;
+      return json({
+        worker: {
+          user_id: auth.user.id,
+          worker_id: auth.user.id,
+          worker_name: profile.name || "관리자",
+          worker_phone: "",
+          worker_is_active: true,
+          membership_worker_ids: [],
+          independent: true,
+        },
+        sites: [],
+      });
+    }
+
+    if (!linked.length) {
+      const home = await ownerHome();
+      if (home) return home;
     }
 
     if (
@@ -413,6 +443,8 @@ export async function GET(request) {
     );
 
     if (!workers.length) {
+      const home = await ownerHome();
+      if (home) return home;
       return json(
         {
           error:

@@ -208,3 +208,34 @@ test('site detail returns the matching company worker while keeping a stable per
   assert.equal(result.body.worker.user_id, U);
   assert.deepEqual(result.body.worker.membership_worker_ids, ['mine', 'second']);
 });
+
+test('active owner without worker registration uses worker home with the same identity, but cannot open unassigned sites', async () => {
+  const h = harness({tables:{workers:[], profiles:[{id:U,role:'owner',company_id:A,name:'김필름',is_active:true}]}});
+  for (const params of [{}, {profileOnly:'1'}]) {
+    const result=await h.get(params);
+    assert.equal(result.status,200);
+    assert.equal(result.body.worker.user_id,U);
+    assert.equal(result.body.worker.independent,true);
+    assert.equal(result.body.worker.worker_name,'김필름');
+    assert.deepEqual(result.body.sites,[]);
+  }
+  assert.equal((await h.get({siteId:S})).status,403);
+});
+
+test('owner home fallback denies inactive accounts and inactive or missing owned companies', async () => {
+  for(const tables of [
+    {profiles:[{id:U,role:'owner',company_id:A,is_active:false}]},
+    {companies:[{id:A,is_active:false}]},
+    {companies:[]},
+    {profiles:[{id:U,role:'worker',company_id:A,is_active:true}]},
+  ]) {
+    const h=harness({tables:{workers:[],profiles:[{id:U,role:'owner',company_id:A,is_active:true}],...tables}});
+    assert.equal((await h.get()).status,403);
+  }
+});
+
+test('owner with a membership in a disabled company can still open personal home for their active owned company', async () => {
+  const h=harness({tables:{workers:[worker('other',{company_id:B})],companies:[{id:A,is_active:true},{id:B,is_active:false}],profiles:[{id:U,role:'owner',company_id:A,is_active:true}]}});
+  assert.equal((await h.get()).status,200);
+  assert.equal((await h.get({siteId:T})).status,403);
+});

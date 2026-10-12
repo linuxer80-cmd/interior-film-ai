@@ -51,6 +51,7 @@ export default function AppRoleSwitch() {
 
         if (
           !company?.company_id ||
+          company.role !== "owner" ||
           company.is_active === false
         ) {
           setNotice({
