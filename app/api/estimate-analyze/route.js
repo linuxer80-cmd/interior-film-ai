@@ -38,7 +38,14 @@ export async function POST(request) {
     if (usageError) console.error("Estimate analysis usage record failed:", usageError.code);
     return NextResponse.json({ success: true, analysis_id: usage?.id || null, photos: result.photos });
   } catch (error) {
-    console.warn("Estimate photo analysis failed:", error.message);
+    console.warn("Estimate photo analysis failed:", {
+      code: error.analysisCode || "internal",
+      providerStatus: error.providerStatus,
+      providerCode: error.providerCode,
+    });
+    if (error.analysisCode) {
+      return NextResponse.json({ error: error.message, code: error.analysisCode }, { status: error.status || 502 });
+    }
     return NextResponse.json({ error: "사진을 함께 분석하지 못했습니다. 잠시 후 다시 시도해주세요." }, { status: 502 });
   }
 }

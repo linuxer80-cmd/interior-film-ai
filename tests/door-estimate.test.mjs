@@ -111,3 +111,18 @@ test('one bounded vision request sees all angles and does not receive prices', a
   assert.equal(requests, 1);
   assert.equal(result.photos.length, 2);
 });
+
+test('analysis distinguishes timeout, upstream quota, invalid image and malformed results without exposing provider messages', async () => {
+  const files=[new File(['x'],'a.jpg',{type:'image/jpeg'})];
+  for(const [status,body,code] of [
+    [401,{error:{message:'secret',code:'invalid_api_key'}},'configuration'],
+    [429,{error:{code:'insufficient_quota'}},'configuration'],
+    [429,{error:{code:'rate_limit_exceeded'}},'busy'],
+    [400,{error:{code:'invalid_image'}},'image'],
+    [200,{output_text:'not-json'},'result'],
+    [200,{status:'incomplete'},'result'],
+  ]) {
+    await assert.rejects(analyzeEstimatePhotos(files,'test',async()=>({ok:status===200,status,json:async()=>body})),e=>e.analysisCode===code&&!e.message.includes('secret'));
+  }
+  await assert.rejects(analyzeEstimatePhotos(files,'test',async()=>{throw Object.assign(new Error('timeout'),{name:'TimeoutError'})}),e=>e.analysisCode==='timeout'&&e.status===504);
+});
