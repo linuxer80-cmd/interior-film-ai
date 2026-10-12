@@ -18,7 +18,7 @@ const menus = [
   {
     id: "jobs",
     href: "/jobs?view=worker",
-    icon: "people",
+    icon: "recruitment",
     title: "구인 찾기 · 내 구직",
     subtitle:
       "현장 구인 확인 · 내 구직 공개",
@@ -55,7 +55,7 @@ const menus = [
   {
     id: "inventory",
     href: "/worker/inventory",
-    icon: "film",
+    icon: "stock",
     title: "현장 자재 재고",
     subtitle:
       "팀장으로 맡은 현장의 사용 필름 재고 확인",
