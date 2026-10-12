@@ -42,6 +42,7 @@ const date = (value) =>
 export default function SiteOperations({
   siteId,
   mode = "notices",
+  collapsible = false,
   onTrackingChange,
   onPendingChange,
   onCurrentData,
@@ -308,9 +309,22 @@ export default function SiteOperations({
   }, []);
 
   const materialsMode = mode === "materials";
+  const folded = collapsible && !materialsMode;
+  const Container = folded ? "details" : "section";
+  const pendingEvents = (data?.events || []).filter(event =>
+    event.receipts.some(receipt => !receipt.confirmedAt)
+  ).length;
 
   return (
-    <section style={card}>
+    <Container style={card}>
+      {folded && (
+        <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
+          수정 이력 · {data?.events?.length || 0}건
+          {pendingEvents > 0 && (
+            <span style={{ marginLeft: 8, color: "#a16207", fontSize: 13 }}>미확인 {pendingEvents}건</span>
+          )}
+        </summary>
+      )}
       <div
         style={{
           display: "flex",
@@ -957,6 +971,6 @@ export default function SiteOperations({
           ))}
         </>
       )}
-    </section>
+    </Container>
   );
                          }

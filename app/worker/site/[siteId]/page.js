@@ -445,23 +445,7 @@ export default function WorkerSiteDetailPage() {
           aria-label="현장정보"
           hidden={tab !== "info"}
         >
-          <SiteOperations
-            siteId={siteId}
-            onCurrentData={async () => {
-              const requestId = ++detailRequest.current;
-              const result = await loadMyWorkerSites({ siteId });
 
-              if (requestId !== detailRequest.current) {
-                throw new Error(
-                  "현장이 변경되었습니다. 다시 확인해주세요."
-                );
-              }
-
-              setSite(result.site);
-              setMaterials(result.materials || []);
-              setMaterialsMessage(result.materialsError || "");
-            }}
-          />
 
           {site.memo?.trim() && (
             <div
@@ -584,6 +568,25 @@ export default function WorkerSiteDetailPage() {
               </a>
             )}
           </div>
+          <SiteOperations
+            key={siteId}
+            collapsible
+            siteId={siteId}
+            onCurrentData={async () => {
+              const requestId = ++detailRequest.current;
+              const result = await loadMyWorkerSites({ siteId });
+
+              if (requestId !== detailRequest.current) {
+                throw new Error(
+                  "현장이 변경되었습니다. 다시 확인해주세요."
+                );
+              }
+
+              setSite(result.site);
+              setMaterials(result.materials || []);
+              setMaterialsMessage(result.materialsError || "");
+            }}
+          />
         </section>
 
         {visited.film && (
