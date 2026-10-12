@@ -36,6 +36,9 @@ export async function tradeApi(body) {
   return result;
 }
 
+const settlementSites = (rows) =>
+  rows.filter((site) => ["in_progress", "completed"].includes(site.status));
+
 const totals = (rows) =>
   rows
     .filter((site) => site.status !== "cancelled")
@@ -584,7 +587,7 @@ export default function TradeClients({ siteId, onScope }) {
         : site.client_id === client
   );
 
-  const visible = clientRows.filter(
+  const matchingSites = clientRows.filter(
     (site) =>
       (contact === "all" ||
         (contact === "none" && !site.contact_id) ||
@@ -601,6 +604,8 @@ export default function TradeClients({ siteId, onScope }) {
           .includes(personQuery.trim().toLowerCase()))
   );
 
+  const visible = settlementSites(matchingSites);
+
   const realClient = clients.find((item) => item.id === client);
 
   useEffect(() => {
@@ -612,7 +617,7 @@ export default function TradeClients({ siteId, onScope }) {
         )
           ? contact
           : "",
-        ids: visible.map((site) => site.id),
+        ids: matchingSites.map((site) => site.id),
         lookup: Object.fromEntries(
           sites.map((site) => [
             site.id,
@@ -845,7 +850,7 @@ export default function TradeClients({ siteId, onScope }) {
                         ? "개인 고객 전체"
                         : "전체"
                   }
-                  rows={clientRows}
+                  rows={settlementSites(clientRows)}
                 />
 
                 {narrowed && (
@@ -855,7 +860,8 @@ export default function TradeClients({ siteId, onScope }) {
                 <details>
                   <summary>금액 집계 기준</summary>
                   <small>
-                    취소 현장은 합계에서 제외합니다. 입금 미확인은
+                    시공 중·시공 완료 현장만 목록과 합계에 포함합니다.
+                    상담 중·시공 예정·취소 현장은 제외합니다. 입금 미확인은
                     0원 수금으로 확정하지 않으며, 미수금 합계에서 제외합니다.
                   </small>
                 </details>
@@ -1445,7 +1451,7 @@ export default function TradeClients({ siteId, onScope }) {
 
               <div hidden={menu !== "sites"}>
                 {!visible.length && (
-                  <p>검색 조건에 맞는 현장이 없습니다.</p>
+                  <p>검색 조건에 맞는 시공 중·시공 완료 현장이 없습니다.</p>
                 )}
 
                 {visible
