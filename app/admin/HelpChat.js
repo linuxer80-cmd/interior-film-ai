@@ -1,18 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { HELP_TOPICS } from "./helpTopics.mjs";
 import { supabase } from "../../lib/supabase";
 
-const suggestions = [
-  "출근·퇴근 기록과 퇴근 누락 정정은 어떻게 해요?",
-  "자재 반출·반입량과 실제 사용량은 어떻게 기록해요?",
-  "완료보고 저장 전에 무엇을 확인해야 해요?",
-  "인건비 지급과 미지급 금액은 어디서 확인해요?",
-  "팀장수당·오버타임 단가와 수익 제외는 어디서 설정해요?",
-  "현장 변경사항을 시공자가 확인했는지 어떻게 봐요?",
-];
-
 export default function HelpChat() {
+  const [topicId, setTopicId] = useState("start");
+  const topic = HELP_TOPICS.find(item => item.id === topicId) || HELP_TOPICS[0];
+  const sendingRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
@@ -35,7 +31,8 @@ export default function HelpChat() {
   async function send(text = question) {
     const value = text.trim();
 
-    if (!value || loading) return;
+    if (!value || sendingRef.current) return;
+    sendingRef.current = true;
 
     const history = messages.slice(-6);
 
@@ -72,6 +69,7 @@ export default function HelpChat() {
           body: JSON.stringify({
             question: value,
             history,
+            topicId,
           }),
           signal: controller.signal,
         }
@@ -104,6 +102,7 @@ export default function HelpChat() {
         ]);
       }
     } finally {
+      sendingRef.current = false;
       setLoading(false);
       abortRef.current = null;
     }
@@ -167,6 +166,17 @@ export default function HelpChat() {
             </button>
           </header>
 
+          <div style={{padding:12,borderBottom:"1px solid #e2e8f0",flexShrink:0}}>
+            <label style={{display:"block",fontSize:13,fontWeight:700}}>기능별 안내
+              <select value={topicId} onChange={e=>setTopicId(e.target.value)} style={{width:"100%",padding:10,marginTop:6,borderRadius:10}}>
+                {HELP_TOPICS.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}
+              </select>
+            </label>
+            <button type="button" disabled={loading} onClick={()=>send(topic.question)} style={{marginTop:8,padding:10,border:"1px solid #cbd5e1",borderRadius:10,background:"#eff6ff",width:"100%",textAlign:"left"}}>{topic.question}</button>
+            <nav aria-label="선택 기능 바로가기" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+              {topic.links.map(([label,href])=><Link key={href} href={href} style={{padding:"7px 10px",border:"1px solid #d6dde5",borderRadius:8,fontSize:12,color:"#163153",textDecoration:"none"}}>{label} ›</Link>)}
+            </nav>
+          </div>
           <div
             role="log"
             aria-live="polite"
@@ -189,32 +199,13 @@ export default function HelpChat() {
                     fontSize: 14,
                   }}
                 >
-                  현장 배정부터 출퇴근, 자재, 완료보고,
-                  인건비 지급까지 사용 순서를 물어보세요.
+                  직원 연결·구인구직부터 현장, 필름 재고, 재단, 정산, 고객 견적까지 물어보세요. 위에서 기능을 선택하면 안내 질문과 바로가기가 나옵니다.
                   실제 현장·지급 내역을 조회하거나 변경하는
                   기능은 아닙니다. 계정의 비밀번호나 고객
                   개인정보는 입력하지 마세요.
                 </p>
 
-                {suggestions.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => send(item)}
-                    disabled={loading}
-                    style={{
-                      textAlign: "left",
-                      padding: 10,
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 10,
-                      background: "#f8fafc",
-                      color: "#111827",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {item}
-                  </button>
-                ))}
+
               </>
             )}
 
