@@ -123,7 +123,7 @@ export async function GET(request) {
       if(!companyId)throw fail('관리자 권한이 필요합니다.',403);
 
       const rows=value(await db.from('sites')
-        .select('id,region,address,work_type,work_description,work_dates,schedule_start,schedule_end,status')
+        .select('id,site_name,region,address,work_type,work_description,work_dates,schedule_start,schedule_end,status')
         .eq('company_id',companyId)
         .order('created_at',{ascending:false})
       );
@@ -133,6 +133,8 @@ export async function GET(request) {
           .filter(s=>!['cancelled','completed'].includes(s.status))
           .map(s=>({
             id:s.id,
+            site_name:s.site_name,
+            status:s.status,
             region:s.region||roughRegion(s.address),
             work_content:[s.work_type,s.work_description]
               .filter(Boolean).join('\n'),
