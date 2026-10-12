@@ -160,51 +160,8 @@ export default function WorkerInviteSignup({
           return;
         }
 
-        /*
-         * 이미 연결된 초대를 다시 열었을 가능성도 있으므로
-         * 현재 로그인 계정이 실제 worker인지 확인
-         */
-        try {
-          const {
-            data: workerData,
-            error: workerError,
-          } = await supabase.rpc(
-            "get_my_worker"
-          );
-
-          if (!workerError) {
-            const worker =
-              Array.isArray(workerData)
-                ? workerData[0]
-                : workerData;
-
-            if (worker?.worker_id) {
-              setSuccess(true);
-
-              setMessage(
-                "✅ 이미 시공자 계정 연결이 완료되어 있습니다.\n시공자 페이지로 이동합니다."
-              );
-
-              setTimeout(() => {
-                router.replace(
-                  "/worker"
-                );
-
-                router.refresh();
-              }, 800);
-
-              return;
-            }
-          }
-        } catch (
-          workerCheckError
-        ) {
-          console.error(
-            "시공자 연결 상태 확인:",
-            workerCheckError
-          );
-        }
-
+        // 다른 업체의 worker 존재 여부는 이 초대의 연결 성공을 증명하지 않습니다.
+        // 실패한 초대는 그대로 표시하고 해당 초대로 재시도합니다.
         autoConnectStarted.current =
           false;
 

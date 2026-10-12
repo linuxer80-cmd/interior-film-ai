@@ -5,14 +5,19 @@ export const runtime = "nodejs";
 const json = (body, status = 200) =>
   Response.json(body, {
     status,
-    headers: { "Cache-Control": "private, no-store" },
+    headers: {
+      "Cache-Control": "private, no-store",
+    },
   });
 
 async function all(query) {
   const result = [];
 
   for (let i = 0; i < 20000; i += 500) {
-    const { data, error } = await query.range(i, i + 499);
+    const { data, error } = await query.range(
+      i,
+      i + 499
+    );
 
     if (error) throw error;
 
@@ -29,7 +34,9 @@ async function auth(request) {
     .get("authorization")
     ?.match(/^Bearer (.+)$/i)?.[1];
 
-  if (!token) throw Error("로그인이 필요합니다.");
+  if (!token) {
+    throw Error("로그인이 필요합니다.");
+  }
 
   const db = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -42,7 +49,8 @@ async function auth(request) {
     }
   );
 
-  const { data, error } = await db.auth.getUser(token);
+  const { data, error } =
+    await db.auth.getUser(token);
 
   if (error || !data.user) {
     throw Error("다시 로그인해주세요.");
@@ -67,71 +75,193 @@ async function auth(request) {
     profile?.role === "owner" &&
     profile.is_active === true;
 
-  let worker = null;
-
-  if (!owner) {
-    const result = await db
+  const linked = await all(
+    db
       .from("workers")
       .select("id,company_id,name")
       .eq("user_id", data.user.id)
       .eq("is_active", true)
+      .order("id")
+  );
+
+  const ids = [
+    ...new Set(
+      linked.map(worker => worker.company_id)
+    ),
+  ];
+
+  const companies = ids.length
+    ? await all(
+        db
+          .from("companies")
+          .select("id,company_name,is_active")
+          .in("id", ids)
+          .eq("is_active", true)
+          .order("id")
+      )
+    : [];
+
+  const workers = linked.filter(worker =>
+    companies.some(company =>
+      company.id === worker.company_id
+    )
+  );
+
+  let companyId = owner
+    ? profile.company_id
+    : null;
+
+  if (companyId) {
+    const company = await db
+      .from("companies")
+      .select("is_active")
+      .eq("id", companyId)
       .maybeSingle();
 
-    if (result.error) throw result.error;
+    if (company.error) throw company.error;
 
-    worker = result.data;
-  }
-
-  const companyId = owner
-    ? profile.company_id
-    : worker?.company_id;
-
-  if (!companyId) {
-    throw Error(
-      "등록된 관리자 또는 시공자 계정이 필요합니다."
-    );
-  }
-
-  const company = await db
-    .from("companies")
-    .select("is_active")
-    .eq("id", companyId)
-    .maybeSingle();
-
-  if (company.error || !company.data?.is_active) {
-    throw Error("업체 사용 상태를 확인해주세요.");
+    if (!company.data?.is_active) {
+      companyId = null;
+    }
   }
 
   return {
     db,
     userId: data.user.id,
     companyId,
-    owner,
-    worker,
+    owner: owner && Boolean(companyId),
+    workers,
+    companies,
   };
+}
+
+async function workerRecords(a, month, end) {
+  const groups = await Promise.all(
+    a.companies.map(async company => {
+      const workerIds = a.workers
+        .filter(worker =>
+          worker.company_id === company.id
+        )
+        .map(worker => worker.id);
+
+      const records = await all(
+        a.db
+          .from("attendance_records")
+          .select("*")
+          .eq("company_id", company.id)
+          .in("worker_id", workerIds)
+          .gte("work_day", `${month}-01`)
+          .lt("work_day", end)
+          .order("clock_in", {
+            ascending: false,
+          })
+          .order("id")
+      );
+
+      // 지난달 출근했지만 아직 퇴근하지 않은 기록도 표시합니다.
+      const open = await all(
+        a.db
+          .from("attendance_records")
+          .select("*")
+          .eq("company_id", company.id)
+          .in("worker_id", workerIds)
+          .is("clock_out", null)
+          .order("id")
+      );
+
+      for (const record of open) {
+        if (
+          !records.some(item =>
+            item.id === record.id
+          )
+        ) {
+          records.push(record);
+        }
+      }
+
+      const eligible = await a.db.rpc(
+        "attendance_today_sites",
+        {
+          p_user: a.userId,
+          p_company: company.id,
+        }
+      );
+
+      if (eligible.error) {
+        throw eligible.error;
+      }
+
+      const allowed = new Set(
+        (eligible.data || []).map(site => site.id)
+      );
+
+      const siteIds = [
+        ...new Set([
+          ...allowed,
+          ...records.map(record => record.site_id),
+        ]),
+      ];
+
+      const sites = siteIds.length
+        ? await all(
+            a.db
+              .from("sites")
+              .select(
+                "id,site_name,address,status,schedule_start,schedule_end,work_dates"
+              )
+              .eq("company_id", company.id)
+              .in("id", siteIds)
+              .order("id")
+          )
+        : [];
+
+      return {
+        records: records.map(record => ({
+          ...record,
+          company_name: company.company_name,
+        })),
+
+        sites: sites.map(site => ({
+          ...site,
+          company_id: company.id,
+          company_name: company.company_name,
+
+          site_name:
+            `${company.company_name || "업체"} · ` +
+            `${site.site_name || "현장"}`,
+
+          canClockIn: allowed.has(site.id),
+        })),
+      };
+    })
+  );
+
+  return json({
+    sites: groups.flatMap(group => group.sites),
+
+    records: groups
+      .flatMap(group => group.records)
+      .sort((a, b) =>
+        String(b.clock_in).localeCompare(
+          String(a.clock_in)
+        )
+      ),
+
+    settings: null,
+    locations: [],
+    workers: a.workers,
+    companies: a.companies,
+  });
 }
 
 export async function GET(request) {
   try {
     const a = await auth(request);
-    const params = new URL(request.url).searchParams;
+    const params = new URL(
+      request.url
+    ).searchParams;
+
     const mode = params.get("mode");
-
-    let worker = a.worker;
-
-    if (mode !== "admin" && a.owner) {
-      const result = await a.db
-        .from("workers")
-        .select("id,company_id,name")
-        .eq("user_id", a.userId)
-        .eq("company_id", a.companyId)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (result.error) throw result.error;
-
-      worker = result.data;
-    }
 
     if (mode === "admin" && !a.owner) {
       return json(
@@ -140,19 +270,17 @@ export async function GET(request) {
       );
     }
 
-    if (mode !== "admin" && !worker) {
-      return json(
-        { error: "시공자 계정 연결이 필요합니다." },
-        403
-      );
-    }
-
     const month =
       params.get("month") ||
-      new Date().toISOString().slice(0, 7);
+      new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
 
-    if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) {
-      return json({ error: "월을 확인해주세요." }, 400);
+    if (
+      !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)
+    ) {
+      return json(
+        { error: "월을 확인해주세요." },
+        400
+      );
     }
 
     const end = new Date(
@@ -165,20 +293,23 @@ export async function GET(request) {
       .toISOString()
       .slice(0, 10);
 
-    let query = a.db
+    // 관리자 계정이라도 시공자 화면에서는 본인의 전체 업체 기록을 조회합니다.
+    if (mode !== "admin") {
+      return await workerRecords(a, month, end);
+    }
+
+    const query = a.db
       .from("attendance_records")
       .select("*")
       .eq("company_id", a.companyId)
       .gte("work_day", `${month}-01`)
       .lt("work_day", end)
-      .order("clock_in", { ascending: false })
+      .order("clock_in", {
+        ascending: false,
+      })
       .order("id");
 
-    if (mode !== "admin") {
-      query = query.eq("worker_id", worker.id);
-    }
-
-    let sites = await all(
+    const sites = await all(
       a.db
         .from("sites")
         .select(
@@ -191,52 +322,6 @@ export async function GET(request) {
 
     const records = await all(query);
 
-    if (mode !== "admin") {
-      const [eligible, open] = await Promise.all([
-        a.db.rpc("attendance_today_sites", {
-          p_user: a.userId,
-          p_company: a.companyId,
-        }),
-        a.db
-          .from("attendance_records")
-          .select("*")
-          .eq("company_id", a.companyId)
-          .eq("worker_id", worker.id)
-          .is("clock_out", null)
-          .maybeSingle(),
-      ]);
-
-      if (eligible.error) throw eligible.error;
-      if (open.error) throw open.error;
-
-      if (
-        open.data &&
-        !records.some(
-          (record) => record.id === open.data.id
-        )
-      ) {
-        records.unshift(open.data);
-      }
-
-      const allowed = new Set(
-        (eligible.data || []).map((row) => row.id)
-      );
-
-      const history = new Set(
-        records.map((record) => record.site_id)
-      );
-
-      sites = sites
-        .filter(
-          (site) =>
-            allowed.has(site.id) || history.has(site.id)
-        )
-        .map((site) => ({
-          ...site,
-          canClockIn: allowed.has(site.id),
-        }));
-    }
-
     const [settings, locations, workers] =
       await Promise.all([
         a.db
@@ -245,28 +330,26 @@ export async function GET(request) {
           .eq("company_id", a.companyId)
           .maybeSingle(),
 
-        mode === "admin"
-          ? all(
-              a.db
-                .from("attendance_locations")
-                .select("*")
-                .eq("company_id", a.companyId)
-                .order("site_id")
-            )
-          : [],
+        all(
+          a.db
+            .from("attendance_locations")
+            .select("*")
+            .eq("company_id", a.companyId)
+            .order("site_id")
+        ),
 
-        mode === "admin"
-          ? all(
-              a.db
-                .from("workers")
-                .select("id,name")
-                .eq("company_id", a.companyId)
-                .order("id")
-            )
-          : [worker],
+        all(
+          a.db
+            .from("workers")
+            .select("id,name")
+            .eq("company_id", a.companyId)
+            .order("id")
+        ),
       ]);
 
-    if (settings.error) throw settings.error;
+    if (settings.error) {
+      throw settings.error;
+    }
 
     return json({
       sites,
@@ -282,7 +365,11 @@ export async function GET(request) {
     );
 
     return json(
-      { error: error.message || "출퇴근 내역 조회 실패" },
+      {
+        error:
+          error.message ||
+          "출퇴근 내역 조회 실패",
+      },
       400
     );
   }
@@ -445,6 +532,39 @@ export async function POST(request) {
         { error: "요청을 확인해주세요." },
         400
       );
+    }
+
+    if (["settings", "review", "correct"].includes(body.action) && !a.owner) {
+      return json({ error: "관리자 권한이 필요합니다." }, 403);
+    }
+
+    // 업체 ID는 요청 값을 신뢰하지 않고 본인의 현장·기록에서 결정합니다.
+    if (body.action === "in" || body.action === "out") {
+      const id = body.action === "in" ? body.siteId : body.id;
+
+      if (typeof id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return json({ error: "현장 또는 출퇴근 기록을 확인해주세요." }, 400);
+      }
+
+      const target = await a.db
+        .from(body.action === "in" ? "sites" : "attendance_records")
+        .select(body.action === "in" ? "id,company_id" : "id,company_id,worker_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (target.error) throw target.error;
+
+      const worker = target.data && a.workers.find(item =>
+        item.company_id === target.data.company_id &&
+        (body.action === "in" || item.id === target.data.worker_id)
+      );
+
+      if (!worker) {
+        return json({ error: "본인에게 배정된 현장만 출퇴근할 수 있습니다." }, 403);
+      }
+
+      a.companyId = worker.company_id;
     }
 
     let warning = "";

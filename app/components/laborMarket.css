@@ -1,0 +1,158 @@
+.labor-shell{--lm-ink:#243648;--lm-border:#e5e7eb;--lm-blue:#2563eb;box-sizing:border-box;max-width:760px;margin:0 auto;padding:24px 18px 100px;background:#f8f7f3;color:var(--lm-ink);min-height:100vh;font-size:16px;line-height:1.6}
+.labor-shell *{box-sizing:border-box}
+.labor-shell h1{font-size:27px;line-height:1.3;margin:10px 0 24px;letter-spacing:-.8px}
+.labor-shell h2{font-size:22px;line-height:1.4;margin:8px 0 14px;letter-spacing:-.5px}
+.labor-shell h3{font-size:18px;line-height:1.5;margin:22px 0 10px}
+.labor-shell p{margin:10px 0;overflow-wrap:anywhere}
+.labor-shell nav{display:flex;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.labor-shell a{color:#2563eb;text-underline-offset:4px}
+.labor-shell .eyebrow{display:block;color:#788395;font-size:13px;font-weight:600}
+.labor-shell .muted,.labor-shell small{color:#788395;font-size:13px;line-height:1.6}
+.labor-shell small{display:block;font-weight:400}
+.labor-shell form,.labor-shell article,.labor-shell aside{background:#fff;border:1px solid var(--lm-border);border-radius:22px;padding:22px;margin:18px 0;box-shadow:0 4px 18px #24364804}
+.labor-shell aside{background:#eef5ff;border-color:#dbeafe}
+.labor-shell fieldset{border:0;padding:0;margin:0;min-width:0}
+.labor-shell label{display:flex;flex-direction:column;gap:8px;margin:20px 0 8px;font-size:14px;font-weight:700;line-height:1.5}
+.labor-shell label>small{display:inline;margin-top:-5px}
+.labor-shell input:not([type=checkbox]):not([type=file]),.labor-shell textarea,.labor-shell select{display:block;min-width:0;width:100%;min-height:50px;border:1px solid #dce2ea;border-radius:13px;padding:12px 14px;background:#f9fafc;color:var(--lm-ink);font:inherit;font-size:16px;line-height:1.5;outline:none;appearance:none}
+.labor-shell input:focus,.labor-shell textarea:focus,.labor-shell select:focus{border-color:#739deb;box-shadow:0 0 0 3px #2563eb14;background:white}
+.labor-shell textarea{min-height:118px;resize:vertical}
+.labor-shell select{appearance:auto}
+.labor-shell button{font:inherit;font-size:14px;font-weight:650;border:1px solid #dce2ea;border-radius:12px;padding:11px 15px;min-height:44px;background:#fff;color:var(--lm-ink);cursor:pointer;margin:6px 6px 6px 0;line-height:1.4}
+.labor-shell button:disabled{opacity:.45;cursor:default}
+.labor-shell .primary{background:var(--lm-blue);border-color:var(--lm-blue);color:white;padding:14px 22px}
+.labor-shell .tabs{display:flex;gap:4px;background:#eaeef3;border-radius:14px;padding:5px;margin:0 0 22px;flex-wrap:wrap}
+.labor-shell .tabs button{flex:1;border:0;background:transparent;margin:0;padding:11px 8px;white-space:nowrap;font-size:13px}
+.labor-shell .tabs button[aria-pressed=true]{background:white;box-shadow:0 2px 6px #24364812;color:#2563eb}
+.labor-shell .chips,.labor-shell .date-options{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.labor-shell .chips button,.labor-shell .date-options button{margin:0;border-radius:12px;background:#f8fafc;font-weight:600}
+.labor-shell button[aria-pressed=true]:not(.tabs button){background:#eaf2ff;border-color:#739deb;color:#1d4ed8}
+.labor-shell .pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.labor-shell details{border:1px solid var(--lm-border);border-radius:14px;padding:14px 16px;margin:18px 0;background:#fcfcfd}
+.labor-shell summary{cursor:pointer;font-size:14px;font-weight:700;line-height:1.6}
+.labor-shell .check{display:flex;flex-direction:row;align-items:center;gap:12px;font-weight:500}
+.labor-shell input[type=checkbox]{width:22px;height:22px;margin:0;flex-shrink:0;accent-color:#2563eb}
+.labor-shell .toggle-row{padding:15px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafc}
+.labor-shell .profile-heading,.labor-shell .person{display:flex;gap:16px;align-items:center;margin:20px 0}
+.labor-shell img{border-radius:50%;object-fit:cover;flex-shrink:0}
+.labor-shell .person h3,.labor-shell .person p{margin:4px 0}
+.labor-shell .avatar-placeholder{display:grid;place-items:center;width:80px;height:80px;flex-shrink:0;background:#eaf2ff;border:1px solid #dbeafe;color:#2563eb;border-radius:50%;font-size:28px;font-weight:700}
+.labor-shell .photo-button{display:inline-flex;position:relative;margin:7px 0;padding:7px 12px;border:1px solid #dce2ea;border-radius:9px;background:white;font-size:13px;cursor:pointer}
+.labor-shell .visually-hidden{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.labor-shell .stepper{display:flex;align-items:center;gap:10px;padding:7px 12px;border:1px solid #dce2ea;border-radius:13px;background:#f9fafc;width:fit-content;max-width:100%}
+.labor-shell .stepper button{margin:0;min-width:44px;padding:8px;font-size:20px}
+.labor-shell .stepper input{width:70px!important;min-height:44px!important;text-align:center;border:0!important;background:transparent!important;padding:6px!important}
+.labor-shell .save-row{margin-top:26px;padding-top:16px;border-top:1px solid #edf0f4}
+.labor-shell .save-row button{width:100%;margin:0}
+.labor-shell .pages{display:flex;align-items:center;justify-content:center;gap:14px}
+.labor-shell .multiline{white-space:pre-wrap}
+.labor-shell .error{color:#b91c1c;background:#fff1f2;border-radius:12px;padding:14px}
+.labor-shell .highlight{border:2px solid #739deb}
+.labor-shell .site-link{display:block;margin-top:16px;padding:14px;background:#eef5ff;border-radius:12px}
+.labor-account{max-width:640px}
+@media(max-width:420px){.labor-shell{padding:20px 14px 80px}.labor-shell form,.labor-shell article,.labor-shell aside{padding:18px}.labor-shell h1{font-size:25px}.labor-shell .tabs button{font-size:12px;padding:11px 5px}.labor-shell .pair{gap:10px}}
+.labor-shell .badge{display:inline-block;padding:6px 10px;border-radius:9px;background:#eef5ff;color:#315d96;font-size:13px}
+.labor-shell .labor-overlay{position:fixed;inset:0;background:#15253880;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
+.labor-shell .labor-dialog{background:white;border-radius:22px;padding:24px;width:100%;max-width:620px;max-height:85dvh;overflow-y:auto;box-shadow:0 20px 60px #0003}
+.labor-shell .dialog-close{display:block;margin-left:auto}
+.labor-shell [hidden]{display:none!important}
+
+.labor-shell .site-choice-list{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:10px;
+  margin:20px 0 26px;
+}
+.labor-shell button.site-choice{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  width:100%;
+  margin:0;
+  padding:18px;
+  text-align:left;
+  border-radius:16px;
+  background:#fff;
+  border:1px solid #e1e6ed;
+  min-height:112px;
+  box-shadow:0 2px 8px #24364803;
+}
+.labor-shell .site-choice-copy{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  min-width:0;
+  flex:1;
+}
+.labor-shell .site-choice-title{
+  font-size:17px;
+  line-height:1.4;
+  font-weight:750;
+  color:#243648;
+  overflow-wrap:anywhere;
+}
+.labor-shell .site-choice-work{
+  font-size:14px;
+  font-weight:400;
+  line-height:1.55;
+  color:#697789;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  overflow-wrap:anywhere;
+}
+.labor-shell .site-choice-date{
+  font-size:12px;
+  line-height:1.5;
+  font-weight:500;
+  color:#46658a;
+}
+.labor-shell .site-choice-mark{
+  display:grid;
+  place-items:center;
+  flex-shrink:0;
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  background:#f0f3f7;
+  color:#8290a1;
+  font-size:24px;
+  font-weight:500;
+}
+.labor-shell button.site-choice[aria-pressed=true]{
+  background:#f1f6ff;
+  border-color:#739deb;
+  box-shadow:0 0 0 1px #739deb;
+}
+.labor-shell button.site-choice[aria-pressed=true] .site-choice-title{
+  color:#1d4ed8;
+}
+.labor-shell button.site-choice[aria-pressed=true] .site-choice-mark{
+  background:#2563eb;
+  color:#fff;
+  font-size:17px;
+}
+.labor-shell button.site-choice:focus-visible{
+  outline:3px solid #93b4f3;
+  outline-offset:3px;
+}
+
+/* Shared navigation cards for the jobs and personal-account screens. */
+.labor-shell .labor-navigation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:24px}
+.labor-shell .labor-nav-button{display:flex;align-items:center;gap:10px;min-width:0;min-height:64px;padding:12px 14px;border:1px solid var(--film-line,#e7eaf0);border-radius:16px;background:#fff;color:var(--lm-ink);font-size:14px;font-weight:700;line-height:1.4;text-decoration:none;box-shadow:0 4px 16px #24364806;overflow-wrap:anywhere}
+.labor-shell .labor-nav-icon{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border-radius:11px;background:var(--film-blue-soft,#edf5ff);color:var(--film-blue,#347fec);font-size:22px}
+.labor-shell .labor-nav-arrow{margin-left:auto;color:#8190a2;font-size:22px;font-weight:400}
+.labor-shell .labor-nav-button:focus-visible{outline:3px solid #347fec;outline-offset:3px}
+.labor-shell .labor-nav-button:active{background:#edf5ff;border-color:#a9c9f6}
+@media(hover:hover){.labor-shell .labor-nav-button:hover{background:#f5f9ff;border-color:#a9c9f6}}
+@media(max-width:360px){.labor-shell .labor-nav-button{padding:10px;gap:7px;font-size:13px}.labor-shell .labor-nav-icon{width:28px;height:28px;font-size:20px}}
+
+.labor-shell .profile-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+.labor-shell .profile-facts>div{padding:14px;background:#f5f8fc;border-radius:14px;overflow-wrap:anywhere}
+.labor-shell .profile-facts dt{font-size:13px;color:#64748b;margin-bottom:6px}
+.labor-shell .profile-facts dd{margin:0;font-weight:700}
+.labor-shell .applicant-decision{margin-top:22px;padding-top:18px;border-top:1px solid #e7eaf0}
+.labor-shell .applicant-actions{position:sticky;bottom:-24px;background:white;padding:14px 0;display:flex;flex-wrap:wrap;gap:10px}
+.labor-shell .applicant-actions .primary{flex:1;min-height:48px}

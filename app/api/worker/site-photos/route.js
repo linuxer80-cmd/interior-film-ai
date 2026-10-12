@@ -1,3 +1,4 @@
+import { resolveWorkerSite } from "../../../../lib/workerSiteAccess.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -180,134 +181,8 @@ async function verifyWorkerSiteAccess({
   const user =
     userData.user;
 
-  /* ---------------------------------------------------------
-     workers
-  --------------------------------------------------------- */
-
-  const {
-    data: worker,
-    error: workerError,
-  } =
-    await supabase
-      .from("workers")
-      .select(
-        `
-          id,
-          company_id,
-          name,
-          phone,
-          user_id,
-          is_active
-        `,
-      )
-      .eq(
-        "user_id",
-        user.id,
-      )
-      .eq(
-        "is_active",
-        true,
-      )
-      .maybeSingle();
-
-  if (workerError) {
-    throw workerError;
-  }
-
-  if (!worker) {
-    throw new Error(
-      "등록된 시공자 계정을 찾을 수 없습니다.",
-    );
-  }
-
-  /* ---------------------------------------------------------
-     현장
-  --------------------------------------------------------- */
-
-  const {
-    data: site,
-    error: siteError,
-  } =
-    await supabase
-      .from("sites")
-      .select(
-        `
-          id,
-          company_id,
-          site_name,
-          customer_name,
-          status
-        `,
-      )
-      .eq(
-        "id",
-        siteId,
-      )
-      .eq(
-        "company_id",
-        worker.company_id,
-      )
-      .maybeSingle();
-
-  if (siteError) {
-    throw siteError;
-  }
-
-  if (!site) {
-    throw new Error(
-      "현장을 찾을 수 없습니다.",
-    );
-  }
-
-  /* ---------------------------------------------------------
-     site_workers 배정 확인
-  --------------------------------------------------------- */
-
-  const {
-    data: assignment,
-    error: assignmentError,
-  } =
-    await supabase
-      .from("site_workers")
-      .select(
-        `
-          id,
-          company_id,
-          site_id,
-          worker_id,
-          role
-        `,
-      )
-      .eq(
-        "company_id",
-        worker.company_id,
-      )
-      .eq(
-        "site_id",
-        site.id,
-      )
-      .eq(
-        "worker_id",
-        worker.id,
-      )
-      .maybeSingle();
-
-  if (assignmentError) {
-    throw assignmentError;
-  }
-
-  if (!assignment) {
-    throw new Error(
-      "이 현장에 배정된 시공자가 아닙니다.",
-    );
-  }
-
-  return {
-    user,
-    worker,
-    site,
-    assignment,
-  };
+  const access = await resolveWorkerSite(supabase, user.id, siteId);
+  return { user, ...access };
 }
 
 /* =========================================================
@@ -705,6 +580,7 @@ export async function POST(
       worker,
       site,
       assignment,
+      canSubmit,
     } =
       await verifyWorkerSiteAccess({
         supabase,
@@ -741,11 +617,8 @@ export async function POST(
     if (report && report.review_status !== "rejected") {
       return NextResponse.json({ success: false, error: "검수 대기 또는 승인된 보고서에는 사진을 추가할 수 없습니다. 보완 요청 후 다시 제출해주세요." }, { status: 409 });
     }
-    if (site.status === "completed" && assignment.role !== "leader") {
-      const { data: dailyLeader, error: leaderError } = await supabase.from("site_daily_assignments")
-        .select("id").eq("company_id", worker.company_id).eq("site_id", site.id).eq("worker_id", worker.id).eq("role", "leader").limit(1);
-      if (leaderError) throw leaderError;
-      if (!dailyLeader?.length) return NextResponse.json({ success: false, error: "완료된 현장의 보고서 사진은 책임 팀장만 등록할 수 있습니다." }, { status: 403 });
+    if (site.status === "completed" && !canSubmit) {
+      return NextResponse.json({ success: false, error: "완료된 현장의 보고서 사진은 책임 팀장만 등록할 수 있습니다." }, { status: 403 });
     }
 
     /* -------------------------------------------------------
@@ -883,7 +756,7 @@ export async function POST(
       error?.message ||
       "사진 등록 중 오류가 발생했습니다.";
 
-    let status = 500;
+    let status = error.status || 500;
 
     if (
       message ===

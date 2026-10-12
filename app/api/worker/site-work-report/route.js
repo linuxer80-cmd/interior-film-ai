@@ -1,3 +1,4 @@
+import { resolveWorkerSite } from "../../../../lib/workerSiteAccess.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -81,73 +82,16 @@ async function verifyWorkerSiteAccess({
 
   const user = userData.user;
 
-  const {
-    data: assigned,
-    error: assignmentError,
-  } = await supabase.rpc(
-    "site_operation_workers",
-    { p_site: siteId }
-  );
-
-  if (assignmentError) {
+  try {
+    const access = await resolveWorkerSite(supabase, user.id, siteId);
+    return { success: true, user, ...access };
+  } catch (error) {
     return {
       success: false,
-      status: 500,
-      error: "현장 배정정보를 확인하지 못했습니다.",
+      status: error.status || 500,
+      error: error.status ? error.message : "현장 배정정보를 확인하지 못했습니다.",
     };
   }
-
-  const person = (assigned || []).find(
-    (item) => item.user_id === user.id
-  );
-
-  if (!person) {
-    return {
-      success: false,
-      status: 403,
-      error:
-        "본인에게 배정된 현장만 이용할 수 있습니다.",
-    };
-  }
-
-  const {
-    data: site,
-    error: siteError,
-  } = await supabase
-    .from("sites")
-    .select(
-      "id,company_id,site_name,customer_name,status"
-    )
-    .eq("id", siteId)
-    .maybeSingle();
-
-  if (siteError || !site) {
-    return {
-      success: false,
-      status: 404,
-      error: "현장을 찾을 수 없습니다.",
-    };
-  }
-
-  const canSubmit =
-    person.role === "leader" ||
-    !(assigned || []).some(
-      (item) => item.role === "leader"
-    );
-
-  return {
-    success: true,
-    user,
-    worker: {
-      id: person.worker_id,
-      company_id: site.company_id,
-    },
-    site,
-    assignment: {
-      role: person.role,
-    },
-    canSubmit,
-  };
 }
 
 const REPORT_LABOR = "완료보고/인건비:";
@@ -541,25 +485,6 @@ export async function POST(request) {
       site,
       assignment,
     } = access;
-
-    const {
-      data: dailyLeader,
-      error: leaderError,
-    } = await supabase
-      .from("site_daily_assignments")
-      .select("id")
-      .eq("company_id", worker.company_id)
-      .eq("site_id", siteId)
-      .eq("worker_id", worker.id)
-      .eq("role", "leader")
-      .limit(1);
-
-    if (
-      leaderError &&
-      leaderError.code !== "42P01"
-    ) {
-      throw leaderError;
-    }
 
     if (!access.canSubmit) {
       return NextResponse.json(

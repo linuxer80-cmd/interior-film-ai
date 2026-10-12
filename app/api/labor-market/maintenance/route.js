@@ -7,9 +7,13 @@ export const maxDuration = 60;
 export async function GET(request) {
   if (
     !process.env.CRON_SECRET ||
-    request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`
+    request.headers.get("authorization") !==
+      `Bearer ${process.env.CRON_SECRET}`
   ) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
 
   const db = createClient(
@@ -20,7 +24,7 @@ export async function GET(request) {
         persistSession: false,
         autoRefreshToken: false,
       },
-    },
+    }
   );
 
   const { error } = await db.rpc("expire_labor_jobs");
@@ -28,7 +32,7 @@ export async function GET(request) {
   if (error) {
     return Response.json(
       { error: "Recruitment maintenance failed" },
-      { status: 503 },
+      { status: 503 }
     );
   }
 
@@ -36,6 +40,10 @@ export async function GET(request) {
 
   return Response.json(
     { ok: true },
-    { headers: { "Cache-Control": "no-store" } },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
   );
 }

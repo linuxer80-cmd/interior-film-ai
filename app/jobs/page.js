@@ -1,828 +1,198 @@
 "use client";
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {supabase} from '../../lib/supabase';
+import LaborNotifications from '../components/LaborNotifications';
+import WorkDatePicker from '../admin/WorkDatePicker';
+import '../components/laborMarket.css';
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { supabase } from "../../lib/supabase";
-import LaborNotifications from "../components/LaborNotifications";
+const blank={site_id:'',title:'인테리어필름 시공자 구인',region:'',work_content:'',work_dates:[],daily_wage:'',headcount:1,skills:[],min_experience:'',min_age:'',max_age:'',worker_region:''};
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const money=n=>Number(n).toLocaleString('ko-KR');
+const status={applied:'지원 완료',accepted:'구인 확정',invited:'현장 제안',expired:'지원 만료',rejected:'지원 만료',withdrawn:'지원 취소',unassigned:'배정 해제'};
 
-const blankJob = {
-  site_id: "",
-  title: "인테리어필름 시공자 구인",
-  region: "",
-  work_content: "",
-  work_date: "",
-  end_date: "",
-  daily_wage: "",
-  headcount: 1,
-  skills: [],
-  min_experience: "",
-  min_age: "",
-  max_age: "",
-  worker_region: "",
-};
+function matches(j,p){
+ if(!p)return false;
+ return (!j.daily_wage||j.daily_wage>=p.daily_wage)&&(!j.min_experience||p.experience_years>=j.min_experience)
+ &&(j.min_age==null||(p.age!=null&&p.age>=j.min_age))&&(j.max_age==null||(p.age!=null&&p.age<=j.max_age))
+ &&(!j.worker_region||p.region?.includes(j.worker_region))&&(!j.skills?.length||j.skills.every(s=>p.skills?.includes(s)))
+ &&(!p.available_dates?.length||j.work_dates?.every(d=>p.available_dates.includes(d)));
+}
 
-const labels = {
-  invited: "구인 제안",
-  applied: "지원 완료",
-  accepted: "구인 확정",
-  rejected: "지원 만료",
-  expired: "지원 만료",
-  withdrawn: "지원 취소",
-};
+function Profile({p,detail=false}){
+ const days=(p.available_dates||[]).filter(d=>d>=today());
+ return <>
+  <div className='person'>{p.photo_url?<img src={p.photo_url} alt='' width={64} height={64}/>:<div className='avatar-placeholder'>{p.name?.slice(0,1)||'?'}</div>}<div><h3>{p.name||'이름 미등록'}{p.age?` · ${p.age}세`:''}</h3><p>{p.region||'활동 지역 미등록'} · {p.experience_years==null?'경력 미등록':`경력 ${p.experience_years}년`}</p></div></div>
+  {detail?<><dl className='profile-facts'>
+   <div><dt>희망 일당</dt><dd>{p.daily_wage==null?'미등록':`${money(p.daily_wage)}원`}</dd></div>
+   <div><dt>전문 분야</dt><dd>{p.skills?.length?p.skills.join(' · '):'미등록'}</dd></div>
+   <div><dt>활동 지역</dt><dd>{p.region||'미등록'}</dd></div>
+   <div><dt>경력</dt><dd>{p.experience_years==null?'미등록':`${p.experience_years}년`}</dd></div>
+  </dl><h4>자기소개</h4><p className='multiline'>{p.introduction||'등록된 자기소개가 없습니다.'}</p><h4>일할 수 있는 날짜</h4>{!days.length&&<p>공개된 가능 일정이 없습니다. 지원 현장의 날짜를 확인해주세요.</p>}</>:<><p>희망 일당 <strong>{p.daily_wage==null?'미등록':`${money(p.daily_wage)}원`}</strong></p><p>{p.skills?.join(' · ')||'전문 분야 미등록'}</p></>}
+  <div className='chips'>{days.map(d=><span className='badge' key={d}>{d}</span>)}</div>
+ </>;
+}
 
-export default function JobsPage() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [tab, setTab] = useState("");
+function ApplicantDecision({application:a,job,selected=0,busy=false,onAccept}){
+ const canAccept=a.status==='applied'&&job?.status==='open'&&selected<job.headcount;
+ const message=a.status==='applied'?(job?.status!=='open'?'모집이 종료되어 확정할 수 없습니다.':selected>=job.headcount?'필요 인원이 모두 선택되었습니다. 구인 완료를 눌러주세요.':'프로필과 지원 일정을 확인한 뒤 확정해주세요.')
+  :a.status==='accepted'?(a.assignment_status==='unassigned'?'확정 이력은 있지만 현재 배정된 날짜가 없습니다. 현장 배정을 확인해주세요.':a.assignment_status==='changed'?'확정 후 배정 일정이 변경되었습니다.':'이미 확정된 지원자입니다.')
+  :a.status==='unassigned'?'배정이 해제되었습니다. 다시 모집하려면 시공자가 재지원해야 합니다.'
+  :a.status==='invited'?'시공자가 제안을 확인하고 지원하면 확정할 수 있습니다.':'종료되거나 취소된 지원입니다. 다시 모집하려면 재지원이 필요합니다.';
+ return <section className='applicant-decision'>
+  <h4>지원 현장 · {job?.region||'지역 미등록'}</h4>
+  <p>{job?.title||'공고 정보 없음'}</p>
+  <div className='chips'>{job?.work_dates?.map(d=><span className='badge' key={d}>{d}</span>)}</div>
+  <p>공고 일당 {job?.daily_wage==null?'협의':`${money(job.daily_wage)}원`}</p>
+  <p role='status'>{message}</p>
+  <div className='applicant-actions'>
+   <button className='primary' disabled={busy||!canAccept} onClick={onAccept}>{a.status==='accepted'&&a.assignment_status!=='unassigned'?'확정 완료':'지원자 확정'}</button>
+   {['accepted','unassigned'].includes(a.status)&&job?.site_id&&<Link className='site-link' href={`/admin?tab=sites&site=${job.site_id}`}>현장 배정 확인 ›</Link>}
+  </div>
+ </section>;
+}
 
-  const [filters, setFilters] = useState({
-    region: "",
-    skill: "",
-    date: "",
-    wage: "",
-    experience: "",
-  });
-  const [search, setSearch] = useState({});
-  const [page, setPage] = useState(0);
+function Job({j,detail=false}){
+ return <><h3>{j.title}</h3><p>{j.company_name} · {j.region}</p>{detail&&<><p>관리자 {j.manager_name||'업체 관리자'}</p><p className='multiline'>{j.work_content}</p></>}<div className='chips'>{j.work_dates?.map(d=><span className='badge' key={d}>{d}</span>)}</div><p>{j.daily_wage?`일당 ${money(j.daily_wage)}원`:'일당 협의'} · 모집 {j.headcount}명</p>{detail&&<>{j.min_experience!=null&&<p>경력 {j.min_experience}년 이상</p>}{(j.min_age!=null||j.max_age!=null)&&<p>나이 {j.min_age!=null?`${j.min_age}세 이상`:''} {j.max_age!=null?`${j.max_age}세 이하`:''}</p>}{j.worker_region&&<p>활동 지역 {j.worker_region}</p>}{j.skills?.length>0&&<p>전문 분야 {j.skills.join(' · ')}</p>}</>}</>;
+}
 
-  const [job, setJob] = useState(blankJob);
-  const [jobSkillText, setJobSkillText] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [selectedJob, setSelectedJob] = useState("");
-  const [consentJob, setConsentJob] = useState("");
-  const [confirmation, setConfirmation] = useState(null);
-  const [notice, setNotice] = useState("");
-  const [highlight, setHighlight] = useState({ job: "", applicant: "" });
+function SiteOption({site,selected,onSelect,target}){
+ const region=String(site.region||'').trim();
+ const title=region&&!['null','undefined'].includes(region.toLowerCase())
+   ?region:'지역 미등록 현장';
 
-  async function api(path, body, signal) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      throw Error("시공자 또는 관리자 계정으로 로그인해주세요.");
-    }
+ const days=site.work_dates
+   .filter(d=>!target||target.available_dates?.includes(d))
+   .sort();
 
-    const response = await fetch(path, {
-      method: body ? "POST" : "GET",
-      cache: "no-store",
-      signal,
-      headers: {
-        Authorization: `Bearer ${sessionData.session.access_token}`,
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+ const dateLabel=days.length
+   ?new Intl.DateTimeFormat('ko-KR',{
+     timeZone:'Asia/Seoul',month:'long',day:'numeric'
+   }).format(new Date(`${days[0]}T00:00:00+09:00`))
+     +(days.length>1?` 외 ${days.length-1}일`:'')
+   :'시공일 미등록';
 
-    const result = await response.json();
-    if (!response.ok) throw Error(result.error || "요청에 실패했습니다.");
-    return result;
-  }
+ const work=[...new Set(
+   String(site.work_content||'')
+     .split('\n')
+     .map(t=>t.trim())
+     .filter(t=>t&&!['null','undefined'].includes(t.toLowerCase()))
+ )].join(' · ');
 
-  useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange(event => {
-      if (["SIGNED_OUT", "SIGNED_IN", "USER_UPDATED"].includes(event)) {
-        setData(null);
-        setConsentJob("");
-        setConfirmation(null);
-        setAttempt(value => value + 1);
+ return <button
+   type='button'
+   className='site-choice'
+   aria-pressed={selected}
+   onClick={onSelect}
+ >
+   <span className='site-choice-copy'>
+     <strong className='site-choice-title'>{title}</strong>
+     <span className='site-choice-work'>{work||'작업 내용 미등록'}</span>
+     <span className='site-choice-date'>시공일 · {dateLabel}</span>
+   </span>
+   <span className='site-choice-mark' aria-hidden='true'>
+     {selected?'✓':'›'}
+   </span>
+ </button>;
+}
+
+export default function JobsPage(){
+ const [data,setData]=useState(null),[tab,setTab]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
+ const [filters,setFilters]=useState({region:'',date:'',wage:'',experience:'',skill:''}),[search,setSearch]=useState({}),[page,setPage]=useState(0);
+ const [sites,setSites]=useState([]),[sitesReady,setSitesReady]=useState(false),[job,setJob]=useState(null),[allowed,setAllowed]=useState([]),[target,setTarget]=useState(null);
+ const [person,setPerson]=useState(null),[detail,setDetail]=useState(null),[consent,setConsent]=useState(false),[dates,setDates]=useState([]),[seekConsent,setSeekConsent]=useState(false),[confirm,setConfirm]=useState(null),[jobFilter,setJobFilter]=useState('');
+
+ async function api(path,body,signal){
+  const {data:s}=await supabase.auth.getSession();if(!s.session)throw Error('관리자 또는 시공자 계정으로 로그인해주세요.');
+  const worker=new URLSearchParams(window.location.search).get('view')==='worker';
+  const response=await fetch(path,{method:body?'POST':'GET',cache:'no-store',signal,headers:{Authorization:`Bearer ${s.session.access_token}`,'X-Labor-View':worker?'worker':'manager',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const result=await response.json().catch(()=>({error:'구인·구직 API가 배포되지 않았습니다. 배포 파일을 확인해주세요.'}));if(!response.ok)throw Error(result.error||'처리하지 못했습니다.');return result;
+ }
+
+ useEffect(()=>{const {data:s}=supabase.auth.onAuthStateChange(event=>{if(['SIGNED_IN','SIGNED_OUT','USER_UPDATED'].includes(event)){setData(null);setSites([]);setSitesReady(false);setPerson(null);setDetail(null);setJob(null);setTarget(null);setReload(n=>n+1);}});return()=>s.subscription.unsubscribe();},[]);
+
+ useEffect(()=>{
+  const c=new AbortController();setError('');
+  const params=new URLSearchParams(window.location.search),q={...search,page:String(page)};if(params.get('job'))q.job=params.get('job');
+  api(`/api/labor-market?${new URLSearchParams(q)}`,null,c.signal).then(r=>{
+   if(c.signal.aborted)return;setData(r);setTab(t=>{const tabs=r.manager?['candidates','mine','applications']:['jobs','matching','seeking','applications'];const requested=t||params.get('tab')||(params.get('site')?'mine':params.get('job')?'applications':'');return tabs.includes(requested)?requested:tabs[0];});setDates(r.profile?.available_dates?.filter(d=>d>=today())||[]);
+  }).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>c.abort();
+ },[reload,search,page]);
+
+ useEffect(()=>{
+  if(!data?.manager||sitesReady)return;const c=new AbortController();
+  api('/api/labor-market?mode=sites',null,c.signal).then(r=>{if(c.signal.aborted)return;setSites(r.sites);setSitesReady(true);const siteId=new URLSearchParams(window.location.search).get('site');if(siteId){const s=r.sites.find(s=>s.id===siteId);if(s)selectSite(s,null);else setError('진행할 현장과 오늘 이후의 시공일을 등록해주세요.');}}).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>c.abort();
+ },[data?.manager,sitesReady]);
+
+ useEffect(()=>{
+  if(!person&&!detail&&!confirm)return;
+  const previous=document.activeElement,overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+  const dialog=document.querySelector('.labor-dialog');dialog?.querySelector('button,input,select,a[href]')?.focus();
+  const key=e=>{if(e.key==='Escape'&&!busy){setPerson(null);setDetail(null);setConfirm(null);}if(e.key==='Tab'){const nodes=[...(dialog?.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href]')||[])];const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}};
+  document.addEventListener('keydown',key);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',key);previous?.focus?.();};
+ },[person,detail,confirm,busy]);
+
+ function selectSite(s,p=target){
+  const ds=s.work_dates.filter(d=>!p||p.available_dates?.includes(d));
+  setAllowed(ds);setJob({...blank,site_id:s.id,region:s.region,work_content:s.work_content,work_dates:ds,daily_wage:p?.daily_wage||''});setTab('mine');setDetail(null);setConsent(false);
+ }
+
+ async function act(body){
+  if(busy)return;setBusy(true);setError('');setNotice('');
+  try{await api('/api/labor-market',body);setNotice(body.recruitUserId?'현장 정보를 보내고 시공자를 배정했습니다. 구직 공고는 내려갔습니다.':body.action==='finish'?'구인 완료했습니다. 미선택 지원자에게 만료 알림을 보냈습니다.':body.action==='accept'?'시공자를 내 현장에 배정했습니다. 필요한 인원을 선택한 뒤 구인 완료를 눌러주세요.':body.action==='seeking'?'선택한 날짜의 구직 공고가 관리자들에게 공개되었습니다.':'처리했습니다.');if(body.action==='job'){setJob(null);setTarget(null);}setConfirm(null);setDetail(null);setPerson(null);setConsent(false);setReload(n=>n+1);}catch(e){setError(e.message);}finally{setBusy(false);}
+ }
+
+ const field=(label,key,type='text')=><label>{label}<input type={type} value={job?.[key]??''} min={type==='number'?0:undefined} onChange={e=>setJob(j=>({...j,[key]:e.target.value}))}/></label>;
+ const allJobs=[...(data?.jobs||[]),...(data?.applicationJobs||[])];
+ const selectedCount=id=>data?.applications.filter(a=>a.job_id===id&&a.status==='accepted'&&a.assignment_status!=='unassigned').length||0;
+ const applicationLabel=a=>a.status==='accepted'?(a.assignment_status==='unassigned'?'배정 해제':a.assignment_status==='changed'?'배정 일정 변경':'구인 확정'):status[a.status];
+ const candidateSites=target?sites.filter(s=>s.work_dates.some(d=>target.available_dates?.includes(d))):sites;
+ const jobs=data?.jobs.filter(j=>j.status==='open'&&(tab!=='matching'||matches(j,data.profile)))||[];
+
+ return <main className='labor-shell'>
+  <nav className='labor-navigation' aria-label='구인·구직 화면 이동'>
+   <Link className='labor-nav-button' href={data?.manager?'/admin':'/worker'}><span className='labor-nav-icon' aria-hidden='true'>⌂</span><span>{data?.manager?'관리자 홈':'시공자 홈'}</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+   <Link className='labor-nav-button' href='/worker/account'><span className='labor-nav-icon' aria-hidden='true'>⚙</span><span>개인설정</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+  </nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
+  {error&&<p className='error' role='alert'>{error}</p>}{notice&&<aside role='status'>{notice}</aside>}
+  {!data?<p>{error?'계정 확인을 완료하지 못했습니다.':'계정을 확인하는 중입니다.'} <Link href='/worker/account'>로그인 · 계정 확인</Link></p>:<>
+   <div className='tabs'>{(data.manager?[['candidates','구직 시공자 찾기'],['mine','내 현장 구인하기'],['applications','내 현장 지원자 보기']]:[['jobs','구인하는 현장'],['matching','내 조건에 맞는 현장'],['seeking','구직하기'],['applications','지원·알림 현황']]).map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>{setTab(id);setPage(0);setJobFilter('');setPerson(null);setDetail(null);setTarget(null);setJob(null);setConsent(false);}}>{label}</button>)}</div>
+   {(tab==='candidates'||tab==='jobs'||tab==='matching')&&<form onSubmit={e=>{e.preventDefault();setSearch(filters);setPage(0);}}><div className='pair'><label>지역<input placeholder='인천 서구' value={filters.region} onChange={e=>setFilters(f=>({...f,region:e.target.value}))}/></label><label>일할 날짜<input type='date' value={filters.date} onChange={e=>setFilters(f=>({...f,date:e.target.value}))}/></label></div>{data.manager&&<details><summary>일당·경력·전문 분야로 검색</summary>{[['wage','희망 일당 상한 (원)','number'],['experience','최소 경력 (년)','number'],['skill','전문 분야','text']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={filters[key]} onChange={e=>setFilters(f=>({...f,[key]:e.target.value}))}/></label>)}</details>}<button className='primary'>검색</button><button type='button' onClick={()=>{setSearch({});setFilters({region:'',date:'',wage:'',experience:'',skill:''});setPage(0);}}>초기화</button></form>}
+   {data.manager&&tab==='candidates'&&<><h2>구직 중인 시공자</h2><p>프로필을 확인하고 날짜가 맞는 내 현장을 보내주세요.</p>{!data.candidates.length&&<p>현재 조건에 맞는 구직 시공자가 없습니다.</p>}{data.candidates.map(p=><article key={p.user_id}><Profile p={p}/><button onClick={()=>setPerson(p)}>프로필 자세히 보기</button><button className='primary' onClick={()=>{setTarget(p);setPerson(null);setJob(null);setTab('mine');}}>구인하기</button></article>)}</>}
+   {data.manager&&tab==='mine'&&<>
+    <h2>{target?`${target.name}님에게 현장 보내기`:'내 현장 선택'}</h2><p>{target?'일할 수 있는 날짜와 일치하는 현장만 표시합니다.':'현장을 선택하면 지역·작업 내용·시공일을 자동으로 가져옵니다.'}</p>
+    {target&&<button onClick={()=>{setTarget(null);setJob(null);}}>일반 구인 공고로 돌아가기</button>}
+    {!sitesReady&&<p>내 현장을 불러오는 중…</p>}{sitesReady&&!candidateSites.length&&<p>{target?'시공자가 원하는 날짜와 맞는 현장이 없습니다.':'진행할 현장에 오늘 이후의 시공 날짜를 먼저 등록해주세요.'}</p>}
+
+    <div className='site-choice-list' aria-label='구인할 내 현장 선택'>
+      {candidateSites.map(s=>
+        <SiteOption
+          key={s.id}
+          site={s}
+          selected={job?.site_id===s.id}
+          onSelect={()=>selectSite(s)}
+          target={target}
+        />
+      )}
+    </div>
+
+    {job&&<form onSubmit={e=>{e.preventDefault();if(!job.work_dates.length){setError('시공 날짜를 선택해주세요.');return;}setConfirm({action:'job',job,recruitUserId:target?.user_id,title:target?`${target.name}님에게 현장 정보를 보내고 선택한 날짜에 배정할까요?`:'이 현장으로 구인 공고를 등록할까요?'});}}><fieldset disabled={busy}>
+     <h2>{target?'보낼 현장 정보':'구인 공고 작성'}</h2>{field('현장 지역','region')}<label>작업 내용<textarea required value={job.work_content} onChange={e=>setJob(j=>({...j,work_content:e.target.value}))}/></label><h3>구인할 시공 날짜</h3><div className='date-options'>{allowed.map(d=><button key={d} type='button' aria-pressed={job.work_dates.includes(d)} onClick={()=>setJob(j=>({...j,work_dates:j.work_dates.includes(d)?j.work_dates.filter(x=>x!==d):[...j.work_dates,d].sort()}))}>{d}</button>)}</div><p>선택 {job.work_dates.length}일</p>
+     {!target&&<label>필요 인원<div className='stepper'><button type='button' disabled={job.headcount<=1} onClick={()=>setJob(j=>({...j,headcount:Math.max(1,Number(j.headcount)-1)}))}>−</button><input aria-label='필요 인원' type='number' required min='1' max='100' value={job.headcount} onChange={e=>setJob(j=>({...j,headcount:e.target.value}))}/><span>명</span><button type='button' disabled={job.headcount>=100} onClick={()=>setJob(j=>({...j,headcount:Math.min(100,Number(j.headcount)+1)}))}>＋</button></div></label>}
+     {field('일당 (원, 공란이면 협의)','daily_wage','number')}<div className='chips'>{[200000,250000,300000].map(n=><button type='button' key={n} onClick={()=>setJob(j=>({...j,daily_wage:n}))}>{n/10000}만원</button>)}</div>
+     {!target&&<details><summary>추가 조건 · 공란은 생략</summary>{field('공고 제목','title')}<div className='pair'>{field('최소 나이','min_age','number')}{field('최대 나이','max_age','number')}</div>{field('시공자 활동 지역','worker_region')}{field('최소 경력 (년)','min_experience','number')}<label>전문 분야<input value={job.skills.join(', ')} onChange={e=>setJob(j=>({...j,skills:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}))}/></label></details>}
+     <small>공개 공고에는 상세 주소·고객 연락처·출입 정보를 입력하지 마세요.</small><button className='primary'>{target?'현장 정보 보내기':'구인하기'}</button>
+    </fieldset></form>}
+    {!target&&<><h2>내 현장 구인 공고</h2>{data.jobs.map(j=><article key={j.id}><Job j={j}/><p>{j.status==='open'?'모집 중':'구인 종료'} · 선택 {selectedCount(j.id)}/{j.headcount}명</p><button onClick={()=>{setJobFilter(j.id);setTab('applications');}}>지원자 보기</button>{j.status==='open'&&<><button className='primary' disabled={busy||selectedCount(j.id)<j.headcount} onClick={()=>setConfirm({action:'finish',jobId:j.id,title:'구인 완료하고 미선택 지원자에게 만료 알림을 보낼까요?'})}>구인 완료</button><button onClick={()=>setConfirm({action:'close',jobId:j.id,title:'필요 인원이 채워지기 전에 모집을 취소할까요?'})}>모집 취소</button></>}</article>)}</>}
+   </>}
+   {!data.manager&&(tab==='jobs'||tab==='matching')&&<><h2>{tab==='matching'?'내 프로필 조건에 맞는 현장':'구인하는 현장'}</h2>{tab==='matching'&&!data.profile&&<p><Link href='/worker/account'>내 프로필을 먼저 저장해주세요.</Link></p>}{!jobs.length&&<p>현재 조건에 맞는 구인 공고가 없습니다.</p>}{jobs.map(j=><article key={j.id}><Job j={j}/><button className='primary' onClick={()=>{setDetail(j);setConsent(false);}}>현장 자세히 보기</button></article>)}</>}
+   {!data.manager&&tab==='seeking'&&<form onSubmit={e=>{e.preventDefault();act({action:'seeking',dates,consent:seekConsent});}}><fieldset disabled={busy}><h2>일할 수 있는 날을 선택하세요</h2>{data.profile?<Profile p={data.profile}/>:<p><Link href='/worker/account'>기본 프로필을 먼저 등록해주세요.</Link></p>}<WorkDatePicker value={dates} onChange={ds=>setDates(ds.filter(d=>d>=today()))} disabled={busy}/><label className='check toggle-row'><input type='checkbox' checked={seekConsent} onChange={e=>setSeekConsent(e.target.checked)}/>공개한 날짜와 희망 일당에 맞는 현장의 배정·연락처 공유에 동의합니다.</label><small>관리자가 현장 정보를 보내면 내 현장에 배정되고 구직 공고가 내려갑니다.</small><button className='primary' disabled={!data.profile||!dates.length||!seekConsent}>구직하기</button>{data.profile?.seeking&&<button type='button' onClick={()=>act({action:'stop_seeking'})}>구직 공고 내리기</button>}</fieldset></form>}
+   {tab==='applications'&&<><h2>{data.manager?'내 현장 지원자':'내 지원·배정 현황'}</h2>{data.manager&&<label>현장별 보기<select value={jobFilter} onChange={e=>setJobFilter(e.target.value)}><option value=''>전체 현장</option>{data.jobs.map(j=><option key={j.id} value={j.id}>{j.region} · {j.title}</option>)}</select></label>}{!data.applications.filter(a=>!jobFilter||a.job_id===jobFilter).length&&<p>지원 내역이 없습니다.</p>}{data.applications.filter(a=>!jobFilter||a.job_id===jobFilter).map(a=>{const j=allJobs.find(j=>j.id===a.job_id);return <article key={a.id}><h3>{j?.region} · {applicationLabel(a)}</h3>{data.manager?<>{a.profile&&<Profile p={a.profile}/>}<button onClick={()=>setPerson({...a.profile,application:a})}>프로필 자세히 보기</button>{a.status==='applied'&&<button className='primary' disabled={busy||selectedCount(a.job_id)>=j?.headcount} onClick={()=>setConfirm({action:'accept',jobId:a.job_id,userId:a.user_id,title:`${a.profile?.name||'이 시공자'}님을 내 현장에 구인할까요?`})}>지원자 확정</button>}</>:<>{j&&<Job j={j}/>} {a.status==='invited'&&<button onClick={()=>{setDetail(j);setConsent(false);}}>제안 확인 · 지원하기</button>}{a.status==='accepted'&&a.assignment_status!=='assigned'&&<p role='status'>{a.has_site_access?'공고 날짜와 현재 배정이 다릅니다. 내 현장에서 변경된 일정을 확인해주세요.':'현재 배정된 날짜가 없습니다. 업체에 일정을 확인해주세요.'}</p>}{a.status==='applied'&&<button onClick={()=>act({action:'withdraw',jobId:a.job_id})}>지원 취소</button>}{a.status==='accepted'&&a.has_site_access&&j?.site_id&&<Link className='site-link' href={`/worker/site/${j.site_id}`}>내 현장 보기 ›</Link>}</>}</article>;})}
+    {data.manager&&data.jobs.filter(j=>j.status==='open'&&(!jobFilter||j.id===jobFilter)).map(j=><aside key={j.id}><strong>{j.region} · 선택 {selectedCount(j.id)}/{j.headcount}명</strong><button className='primary' disabled={busy||selectedCount(j.id)<j.headcount} onClick={()=>setConfirm({action:'finish',jobId:j.id,title:'구인 완료하고 공고를 내릴까요? 미선택 지원자에게 만료 알림이 갑니다.'})}>구인 완료</button></aside>)}
+   </>}
+   {(person||detail)&&<div className='labor-overlay'><section className='labor-dialog' role='dialog' aria-modal='true' aria-label={person?'시공자 공개 프로필':'구인 현장 정보'}><button className='dialog-close' onClick={()=>{setPerson(null);setDetail(null);setConsent(false);}}>닫기 ×</button>{person?<><Profile p={person} detail/>{person.application?.phone&&<p><a href={`tel:${person.application.phone}`}>전화 {person.application.phone}</a></p>}{person.application?<ApplicantDecision application={person.application} job={allJobs.find(j=>j.id===person.application.job_id)} selected={selectedCount(person.application.job_id)} busy={busy} onAccept={()=>{setConfirm({action:'accept',jobId:person.application.job_id,userId:person.application.user_id,title:`${person.name||'이 시공자'}님을 지원 현장에 확정할까요?`});setPerson(null);}}/>:<button className='primary' onClick={()=>{setTarget(person);setPerson(null);setJob(null);setTab('mine');}}>구인하기 · 현장 선택</button>}</>:<><Job j={detail} detail/>{error&&<p className='error' role='alert'>{error}</p>}{data.applications.some(a=>a.job_id===detail.id&&!['invited','withdrawn','unassigned'].includes(a.status))?<p>지원·알림 현황에서 확인해주세요.</p>:detail.status==='open'&&(!data.profile?<p><Link className='site-link' href='/worker/account'>지원하려면 기본 프로필을 먼저 저장해주세요 ›</Link></p>:<><label className='check'><input type='checkbox' checked={consent} onChange={e=>setConsent(e.target.checked)}/>이 업체에 내 프로필·연락처를 공유합니다.</label><button className='primary' disabled={busy||!consent||!data.profile} onClick={()=>act({action:'apply',jobId:detail.id,share_phone:true})}>구직하기 · 지원하기</button></>)}</>}</section></div>}
+   {confirm&&<div className='labor-overlay'><section className='labor-dialog' role='dialog' aria-modal='true' aria-label='처리 확인'><h2>확인해주세요</h2><p>{confirm.title}</p>{error&&<p className='error'>{error}</p>}<button className='primary' disabled={busy} onClick={()=>act(confirm)}>{busy?'처리 중…':'확인'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>취소</button></section></div>}
+   {(['candidates','jobs','matching'].includes(tab)||(data.manager&&!job&&!target&&['mine','applications'].includes(tab)))&&<div className='pages'><button disabled={!page} onClick={()=>{setPage(p=>p-1);setJobFilter('');}}>이전</button><span>{page+1}페이지</span><button disabled={(data.manager&&tab==='candidates'?data.candidates:data.jobs).length<30} onClick={()=>{setPage(p=>p+1);setJobFilter('');}}>다음</button></div>}
+  </>}
+ </main>;
       }
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setError("");
-
-    api(
-      `/api/labor-market?${new URLSearchParams({
-        ...search,
-        page: String(page),
-      })}`,
-      null,
-      controller.signal,
-    ).then(result => {
-      if (controller.signal.aborted) return;
-      setData(result);
-      setTab(value => value || (result.manager ? "candidates" : "jobs"));
-    }).catch(err => {
-      if (!controller.signal.aborted) {
-        setData(null);
-        setError(err.message);
-      }
-    });
-
-    return () => controller.abort();
-  }, [attempt, search, page]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-
-    setHighlight({
-      job: params.get("job") || "",
-      applicant: params.get("applicant") || "",
-    });
-
-    if (params.get("job")) {
-      setTab("applications");
-      setSearch({ job: params.get("job") });
-    }
-
-    if (!params.get("site")) return;
-
-    const controller = new AbortController();
-
-    api(
-      `/api/labor-market?mode=site&site=${encodeURIComponent(params.get("site"))}`,
-      null,
-      controller.signal,
-    ).then(result => {
-      if (controller.signal.aborted) return;
-
-      setJob({
-        ...blankJob,
-        ...result.site,
-        site_id: result.site.id,
-        work_date: result.site.work_date || "",
-        end_date: result.site.end_date || "",
-      });
-      setShowForm(true);
-      setTab("mine");
-    }).catch(err => {
-      if (!controller.signal.aborted) setError(err.message);
-    });
-
-    return () => controller.abort();
-  }, []);
-
-  async function act(body) {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    setNotice("");
-
-    try {
-      await api("/api/labor-market", body);
-
-      if (body.action === "job") {
-        setShowForm(false);
-        setTab("mine");
-        setNotice("구인 공고가 등록되었습니다.");
-      } else if (body.action === "accept") {
-        setNotice(
-          "시공자를 선택하고 현장에 배정했습니다. 모집 인원이 차면 자동 마감됩니다.",
-        );
-      } else {
-        setNotice("처리했습니다.");
-      }
-
-      setConfirmation(null);
-      setConsentJob("");
-      setAttempt(value => value + 1);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const field = (label, key, type = "text", required = false) => (
-    <label>
-      {label}
-      {!required && <small>선택</small>}
-      <input
-        required={required}
-        type={type}
-        value={job[key] ?? ""}
-        min={type === "number" ? 0 : undefined}
-        max={type === "number" ? 2000000 : undefined}
-        onChange={event =>
-          setJob(previous => ({ ...previous, [key]: event.target.value }))}
-      />
-    </label>
-  );
-
-  const myJobs = data?.jobs.filter(item => item.status === "open") || [];
-
-  const profileCard = profile => (
-    <>
-      <div className="person">
-        {profile.photo_url && (
-          <img src={profile.photo_url} alt="" width={64} height={64} />
-        )}
-        <div>
-          <h3>{profile.name}{profile.age ? ` · ${profile.age}세` : ""}</h3>
-          <p>{profile.region} · 경력 {profile.experience_years}년</p>
-        </div>
-      </div>
-      <p>희망 일당 {Number(profile.daily_wage).toLocaleString()}원</p>
-      {profile.skills?.length > 0 && <p>{profile.skills.join(" · ")}</p>}
-      {profile.introduction && (
-        <p className="multiline">{profile.introduction}</p>
-      )}
-      {profile.available_dates?.length > 0 && (
-        <p>가능한 날짜 {profile.available_dates.join(", ")}</p>
-      )}
-    </>
-  );
-
-  const jobCard = item => (
-    <>
-      <h3>{item.title}</h3>
-      <p>
-        {item.company_name} · {item.region} ·
-        {" "}{item.status === "open" ? "모집 중" : "모집 종료"}
-      </p>
-      <p className="multiline">{item.work_content}</p>
-      <p>
-        {item.work_dates?.length
-          ? item.work_dates.join(", ")
-          : `${item.work_date} ~ ${item.end_date}`}
-        {" "}· {item.headcount}명
-      </p>
-      {item.daily_wage != null && (
-        <p>일당 {Number(item.daily_wage).toLocaleString()}원</p>
-      )}
-      {item.min_age != null || item.max_age != null ? (
-        <p>
-          나이 {item.min_age != null ? `${item.min_age}세 이상` : ""}
-          {" "}{item.max_age != null ? `${item.max_age}세 이하` : ""}
-        </p>
-      ) : null}
-      {item.worker_region && <p>희망 시공자 지역 {item.worker_region}</p>}
-      {item.min_experience != null && (
-        <p>경력 {item.min_experience}년 이상</p>
-      )}
-      {item.skills?.length > 0 && (
-        <p>필요 분야 {item.skills.join(" · ")}</p>
-      )}
-    </>
-  );
-
-  return (
-    <main>
-      <nav>
-        <Link href={data?.manager ? "/admin" : "/worker"}>‹ 홈</Link>
-        {!data?.manager && <Link href="/worker/account">내 프로필</Link>}
-      </nav>
-
-      <h1>
-        {data?.manager ? "구인 관리 · 시공자 찾기" : "구인 찾기 · 내 구직"}
-      </h1>
-
-      <LaborNotifications refreshKey={attempt} />
-
-      {error && (
-        <p role="alert" className="error">
-          {error} <Link href="/worker/account">프로필 등록·로그인</Link>
-        </p>
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {!data && !error && <p>불러오는 중…</p>}
-
-      {data && (
-        <>
-          <div className="tabs">
-            {(data.manager
-              ? [
-                ["candidates", "구직 시공자 찾기"],
-                ["mine", "내 구인 공고"],
-                ["applications", "지원자 확인"],
-              ]
-              : [
-                ["jobs", "구인 공고 찾기"],
-                ["applications", "내 지원 현황"],
-              ]
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                aria-pressed={tab === id}
-                onClick={() => setTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {!data.manager && (
-            <aside>
-              <p>구직 공고는 내 프로필을 활용해 한 번에 공개할 수 있습니다.</p>
-              <Link href="/worker/account?section=seeking">
-                내 구직 공고 등록·수정 ›
-              </Link>
-            </aside>
-          )}
-
-          {data.manager && tab === "mine" && (
-            <>
-              {!showForm && (
-                <aside>
-                  <p>내 현장 정보를 활용해 구인 공고를 작성하세요.</p>
-                  <Link href="/admin?tab=sites">
-                    내 현장 선택 → 구인하기
-                  </Link>
-                </aside>
-              )}
-
-              {showForm && (
-                <form onSubmit={event => {
-                  event.preventDefault();
-                  act({
-                    action: "job",
-                    job: {
-                      ...job,
-                      skills: jobSkillText
-                        .split(",")
-                        .map(value => value.trim())
-                        .filter(Boolean),
-                    },
-                  });
-                }}>
-                  <fieldset disabled={busy}>
-                    <h2>현장에서 구인하기</h2>
-                    <p>
-                      지역과 작업 내용을 가져왔습니다.
-                      공고에 공개할 내용을 확인해주세요.
-                    </p>
-
-                    {field("공고 제목", "title", "text", true)}
-                    {field("대략적인 현장 지역", "region", "text", true)}
-
-                    <label>
-                      작업 내용
-                      <textarea
-                        required
-                        maxLength={2000}
-                        value={job.work_content}
-                        onChange={event =>
-                          setJob(previous => ({
-                            ...previous,
-                            work_content: event.target.value,
-                          }))}
-                      />
-                    </label>
-
-                    <div className="pair">
-                      {field("시작일", "work_date", "date", true)}
-                      {field("마지막 작업일", "end_date", "date", true)}
-                    </div>
-
-                    <p>선택한 기간에 속하는 현장 시공 예정일에 배정합니다.</p>
-                    {field("모집 인원", "headcount", "number", true)}
-
-                    <details open>
-                      <summary>원하는 조건 · 공란은 공고에서 생략</summary>
-                      {field("제시 일당 (원)", "daily_wage", "number")}
-
-                      <div className="pair">
-                        {field("최소 나이", "min_age", "number")}
-                        {field("최대 나이", "max_age", "number")}
-                      </div>
-
-                      {field("시공자 활동 지역", "worker_region")}
-                      {field("최소 경력 (년)", "min_experience", "number")}
-
-                      <label>
-                        전문 분야 <small>선택</small>
-                        <input
-                          placeholder="문·문틀, 싱크대"
-                          value={jobSkillText}
-                          onChange={event => setJobSkillText(event.target.value)}
-                        />
-                      </label>
-                    </details>
-
-                    <p>
-                      상세 주소·고객 연락처·출입 비밀번호는 공개 공고에
-                      입력하지 마세요. 채용 후 내 현장에서 상세 정보를 확인합니다.
-                    </p>
-
-                    <button className="primary" disabled={busy}>
-                      {busy ? "등록 중…" : "구인하기"}
-                    </button>
-                    <button type="button" onClick={() => setShowForm(false)}>
-                      작성 닫기
-                    </button>
-                  </fieldset>
-                </form>
-              )}
-            </>
-          )}
-
-          {(tab === "candidates" || tab === "jobs") && (
-            <form onSubmit={event => {
-              event.preventDefault();
-              setPage(0);
-              setSearch({ ...filters });
-            }}>
-              <label>
-                지역
-                <input
-                  placeholder="예: 인천 서구"
-                  value={filters.region}
-                  onChange={event =>
-                    setFilters(previous => ({
-                      ...previous,
-                      region: event.target.value,
-                    }))}
-                />
-              </label>
-              <label>
-                작업 날짜
-                <input
-                  type="date"
-                  value={filters.date}
-                  onChange={event =>
-                    setFilters(previous => ({
-                      ...previous,
-                      date: event.target.value,
-                    }))}
-                />
-              </label>
-
-              {data.manager && (
-                <details>
-                  <summary>일당·경력·전문 분야로 검색</summary>
-                  <label>
-                    희망 일당 상한 (원)
-                    <input
-                      type="number"
-                      value={filters.wage}
-                      onChange={event =>
-                        setFilters(previous => ({
-                          ...previous,
-                          wage: event.target.value,
-                        }))}
-                    />
-                  </label>
-                  <label>
-                    최소 경력 (년)
-                    <input
-                      type="number"
-                      value={filters.experience}
-                      onChange={event =>
-                        setFilters(previous => ({
-                          ...previous,
-                          experience: event.target.value,
-                        }))}
-                    />
-                  </label>
-                  <label>
-                    전문 분야
-                    <input
-                      value={filters.skill}
-                      onChange={event =>
-                        setFilters(previous => ({
-                          ...previous,
-                          skill: event.target.value,
-                        }))}
-                    />
-                  </label>
-                </details>
-              )}
-
-              <button className="primary">검색</button>
-              <button type="button" onClick={() => {
-                setSearch({});
-                setFilters({
-                  region: "",
-                  skill: "",
-                  date: "",
-                  wage: "",
-                  experience: "",
-                });
-                setPage(0);
-              }}>
-                초기화
-              </button>
-            </form>
-          )}
-
-          {data.manager && tab === "candidates" && (
-            <>
-              <h2>공개 구직 공고</h2>
-              {!data.candidates.length && (
-                <p>조건에 맞는 구직 공고가 없습니다.</p>
-              )}
-
-              <label>
-                제안할 우리 업체 공고
-                <select
-                  value={selectedJob}
-                  onChange={event => setSelectedJob(event.target.value)}
-                >
-                  <option value="">공고 선택</option>
-                  {myJobs.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.title} · {item.region}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {data.candidates.map(profile => (
-                <article key={profile.user_id}>
-                  {profileCard(profile)}
-                  <button
-                    disabled={
-                      busy || !myJobs.some(item => item.id === selectedJob)
-                    }
-                    onClick={() => act({
-                      action: "invite",
-                      jobId: selectedJob,
-                      userId: profile.user_id,
-                    })}
-                  >
-                    이 공고로 구인 제안
-                  </button>
-                </article>
-              ))}
-            </>
-          )}
-
-          {(tab === "mine" || tab === "jobs") && (
-            <>
-              <h2>{data.manager ? "내 업체 구인 공고" : "모집 중인 현장"}</h2>
-              {!data.jobs.length && <p>등록된 공고가 없습니다.</p>}
-
-              {data.jobs.map(item => (
-                <article key={item.id}>
-                  {jobCard(item)}
-
-                  {data.manager ? (
-                    <>
-                      {item.status === "open" && (
-                        <button
-                          disabled={busy}
-                          onClick={() => setConfirmation({
-                            action: "close",
-                            jobId: item.id,
-                            title:
-                              "모집을 종료하면 미선택 지원자에게 만료 알림을 보냅니다.",
-                          })}
-                        >
-                          모집 마감
-                        </button>
-                      )}
-                      <button onClick={() => {
-                        setHighlight({ job: item.id, applicant: "" });
-                        setTab("applications");
-                      }}>
-                        지원자 보기
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {data.applications.some(application =>
-                        application.job_id === item.id &&
-                        !["invited", "withdrawn"].includes(application.status)
-                      ) ? (
-                        <p>내 지원 현황에서 상태를 확인해주세요.</p>
-                      ) : (
-                        <>
-                          <label className="check">
-                            <input
-                              type="checkbox"
-                              checked={consentJob === item.id}
-                              onChange={event =>
-                                setConsentJob(event.target.checked ? item.id : "")}
-                            />
-                            이 업체에 내 프로필·연락처를 공유합니다.
-                          </label>
-                          <button
-                            className="primary"
-                            disabled={busy || consentJob !== item.id}
-                            onClick={() => act({
-                              action: "apply",
-                              jobId: item.id,
-                              share_phone: true,
-                            })}
-                          >
-                            지원하기
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </article>
-              ))}
-            </>
-          )}
-
-          {tab === "applications" && (
-            <>
-              <h2>{data.manager ? "지원한 시공자" : "내 지원·제안 현황"}</h2>
-
-              {highlight.job && (
-                <button onClick={() => setHighlight({ job: "", applicant: "" })}>
-                  전체 지원 보기
-                </button>
-              )}
-
-              {!data.applications.filter(application =>
-                !highlight.job || application.job_id === highlight.job
-              ).length && <p>지원 내역이 없습니다.</p>}
-
-              {data.applications
-                .filter(application =>
-                  !highlight.job || application.job_id === highlight.job)
-                .map(application => {
-                  const item = [...data.jobs, ...data.applicationJobs]
-                    .find(current => current.id === application.job_id);
-
-                  return (
-                    <article
-                      key={application.id}
-                      className={
-                        highlight.applicant === application.user_id
-                          ? "highlight"
-                          : ""
-                      }
-                    >
-                      <h3>{item?.title} · {labels[application.status]}</h3>
-
-                      {data.manager ? (
-                        <>
-                          {application.profile && profileCard(application.profile)}
-                          {application.phone && (
-                            <p>
-                              <a href={`tel:${application.phone}`}>
-                                전화 {application.phone}
-                              </a>
-                            </p>
-                          )}
-
-                          {application.status === "applied" && (
-                            <>
-                              <button
-                                className="primary"
-                                disabled={busy}
-                                onClick={() => setConfirmation({
-                                  action: "accept",
-                                  jobId: application.job_id,
-                                  userId: application.user_id,
-                                  title:
-                                    `${application.profile?.name || "이 시공자"}님을 ` +
-                                    "선택하고 현장에 배정할까요? " +
-                                    "기존 소속 시공자의 계약 일당은 유지됩니다.",
-                                })}
-                              >
-                                구인하기
-                              </button>
-                              <button
-                                disabled={busy}
-                                onClick={() => setConfirmation({
-                                  action: "reject",
-                                  jobId: application.job_id,
-                                  userId: application.user_id,
-                                  title:
-                                    "이 지원을 만료 처리하고 시공자에게 알림을 보낼까요?",
-                                })}
-                              >
-                                선택하지 않음
-                              </button>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {item && jobCard(item)}
-
-                          {application.status === "invited" && (
-                            <>
-                              <label className="check">
-                                <input
-                                  type="checkbox"
-                                  checked={consentJob === application.job_id}
-                                  onChange={event =>
-                                    setConsentJob(
-                                      event.target.checked ? application.job_id : "",
-                                    )}
-                                />
-                                프로필·연락처 공유 동의
-                              </label>
-
-                              <button
-                                disabled={
-                                  busy || consentJob !== application.job_id
-                                }
-                                onClick={() => act({
-                                  action: "apply",
-                                  jobId: application.job_id,
-                                  share_phone: true,
-                                })}
-                              >
-                                제안에 지원하기
-                              </button>
-                            </>
-                          )}
-
-                          {["invited", "applied"].includes(application.status) && (
-                            <button
-                              disabled={busy}
-                              onClick={() => act({
-                                action: "withdraw",
-                                jobId: application.job_id,
-                              })}
-                            >
-                              지원 취소
-                            </button>
-                          )}
-
-                          {application.status === "accepted" && item?.site_id && (
-                            <Link
-                              className="site-link"
-                              href={`/worker/site/${item.site_id}`}
-                            >
-                              배정된 내 현장 보기 ›
-                            </Link>
-                          )}
-                        </>
-                      )}
-                    </article>
-                  );
-                })}
-            </>
-          )}
-
-          {confirmation && (
-            <aside role="alert">
-              <p>{confirmation.title}</p>
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() => act(confirmation)}
-              >
-                확인
-              </button>
-              <button disabled={busy} onClick={() => setConfirmation(null)}>
-                취소
-              </button>
-            </aside>
-          )}
-
-          {tab !== "applications" && (
-            <div className="pages">
-              <button disabled={page === 0} onClick={() => setPage(value => value - 1)}>
-                이전
-              </button>
-              <span>{page + 1}페이지</span>
-              <button
-                disabled={
-                  (tab === "candidates" ? data.candidates : data.jobs).length < 30
-                }
-                onClick={() => setPage(value => value + 1)}
-              >
-                다음
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      <style jsx>{`
-        main {
-          max-width: 760px; margin: auto; padding: 24px 18px 80px;
-          background: #f8f7f3; color: #243648; min-height: 100vh;
-        }
-        nav, .tabs, .pages, .person {
-          display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-        }
-        .tabs button[aria-pressed=true], .primary {
-          background: #243648; color: white;
-        }
-        form, article, aside {
-          padding: 20px; background: white; border: 1px solid #e0d5c5;
-          border-radius: 20px; margin: 16px 0;
-        }
-        aside { background: #eef5ff; }
-        fieldset { border: 0; padding: 0; min-width: 0; }
-        label { display: block; font-weight: 700; margin: 16px 0; }
-        label small { margin-left: 8px; color: #748092; font-weight: 400; }
-        input, textarea, select {
-          display: block; width: 100%; box-sizing: border-box; padding: 12px;
-          border: 1px solid #cbd5e1; border-radius: 12px;
-          margin-top: 7px; font: inherit;
-        }
-        textarea { min-height: 120px; }
-        button {
-          padding: 12px 16px; margin: 8px 6px 8px 0;
-          border: 1px solid #cbd5e1; border-radius: 12px;
-          background: #eff6ff; color: #243648; font: inherit; cursor: pointer;
-        }
-        button:disabled { opacity: .45; cursor: default; }
-        .check { display: flex; gap: 10px; align-items: center; }
-        .check input { width: auto; }
-        p { line-height: 1.7; overflow-wrap: anywhere; }
-        .error { color: #b91c1c; }
-        .multiline { white-space: pre-wrap; }
-        img { border-radius: 50%; object-fit: cover; }
-        .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        summary { cursor: pointer; font-weight: 700; padding: 10px 0; }
-        .highlight { border: 2px solid #417bc3; }
-        .site-link { display: block; padding: 14px; }
-        .person h3, .person p { margin: 5px 0; }
-      `}</style>
-    </main>
-  );
-    }

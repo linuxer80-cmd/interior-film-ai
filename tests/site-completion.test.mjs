@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { resolveWorkerSite } from '../lib/workerSiteAccess.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -31,23 +32,23 @@ function api({ tables = {}, errors = {}, invalid = false, race = false, workerRo
         return { data: clean(single ? data[0] || null : data) };
       };
       const q = {
-        select(s) { fields = s.split(',').map((f) => f.trim()).filter(Boolean); return q; },
+        select(s) { fields = s.trim() === '*' ? null : s.split(',').map((f) => f.trim()).filter(Boolean); return q; },
         eq(k, v) { filters.push((r) => r[k] === v); return q; },
         update(value) { patch = clean(value); return q; },
-        order() { return q; }, limit(n) { max = n; return q; },
+        range(a, b) { max = b + 1; return q; }, order() { return q; }, limit(n) { max = n; return q; },
         maybeSingle: async () => result(true), then(resolve, reject) { return Promise.resolve(result()).then(resolve, reject); },
       };
       return q;
     },
   };
   const response = { json: (body, options = {}) => ({ body: clean(body), status: options.status || 200, ...options }) };
-  const ctx = vm.createContext({ console: { error() {} }, createClient: () => client, NextResponse: response, Response: response,
+  const ctx = vm.createContext({ resolveWorkerSite, console: { error() {} }, createClient: () => client, NextResponse: response, Response: response,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     recordSave: (value) => { saves.push(clean(value)); return { id: 'report' }; },
   });
   vm.runInContext(source(photoRoute ? '../app/api/worker/site-photos/route.js' : workerRoute ? '../app/api/worker/site-work-report/route.js' : '../app/api/admin/site-status/route.js') + '\nglobalThis.post = POST;', ctx);
   // Keep real worker authentication, assignment and report-state checks. Stub only downstream persistence.
-  if (workerRoute) vm.runInContext('submitWorkReport = async (args) => { recordSave({companyId:args.worker.company_id,siteId:args.siteId}); return {reportId:"report",materialCount:0,expenseCount:0}; };', ctx);
+  if (workerRoute) vm.runInContext('laborWorkers = async () => []; submitWorkReport = async (args) => { recordSave({companyId:args.worker.company_id,siteId:args.siteId}); return {reportId:"report",materialCount:0,expenseCount:0}; };', ctx);
   if (photoRoute) vm.runInContext('uploadPhoto = async (args) => { recordSave({companyId:args.companyId,siteId:args.siteId}); return "test/photo.jpg"; }; insertPhotoRecord = async () => ({id:"photo"});', ctx);
   const initial = workerRoute ? { siteId: S, work_summary: '시공 완료' } : { siteId: S, status: 'completed', expectedStatus: 'in_progress' };
   return { db, reads, writes, saves, post: (body = initial, token = 'Bearer valid') => ctx.post({
@@ -140,8 +141,8 @@ test('completed sites still block duplicate/approved reports, cancelled sites, m
   }
   for (const [tables, status] of [
     [{ sites: [{ id: S, company_id: 'a', status: 'cancelled' }] }, 409],
-    [{ site_workers: [{ id: 'crew', company_id: 'a', site_id: S, worker_id: 'w', role: 'member' }] }, 403],
-    [{ site_workers: [] }, 403], [{ sites: [{ id: S, company_id: 'b', status: 'completed' }] }, 404],
+    [{ site_workers: [{ id: 'crew', company_id: 'a', site_id: S, worker_id: 'w', role: 'member' }, { id: 'other', company_id: 'a', site_id: S, worker_id: 'other', role: 'leader' }] }, 403],
+    [{ site_workers: [] }, 403], [{ sites: [{ id: S, company_id: 'b', status: 'completed' }] }, 403],
   ]) {
     const h = api({ workerRoute: true, tables });
     assert.equal((await h.post()).status, status);
@@ -167,7 +168,7 @@ test('photos of submitted/approved reports stay frozen even if an owner reopens 
 });
 
 test('photo uploads enforce leader assignment on completed sites and fail closed on report lookup errors', async () => {
-  const tables = { sites: [{ id: S, company_id: 'a', status: 'completed' }], site_workers: [{ id: 'crew', company_id: 'a', site_id: S, worker_id: 'w', role: 'member' }] };
+  const tables = { sites: [{ id: S, company_id: 'a', status: 'completed' }], site_workers: [{ id: 'crew', company_id: 'a', site_id: S, worker_id: 'w', role: 'member' }, { id: 'other', company_id: 'a', site_id: S, worker_id: 'other', role: 'leader' }] };
   const member = api({ photoRoute: true, tables });
   assert.equal((await member.post()).status, 403);
   assert.deepEqual(member.saves, []);
@@ -225,4 +226,19 @@ test('completion can be reversed while the approved report label remains separat
   assert.ok(find(tree, (n) => n.type === 'strong' && n.props.children.includes('승인 완료')));
   await button(tree, '시공 중').props.onClick();
   assert.deepEqual(calls, [[S, 'in_progress', 'completed']]);
+});
+
+test('photo/report endpoints support daily-only multi-company workers and reject unassigned memberships', async () => {
+  for (const route of [{ photoRoute: true }, { workerRoute: true }]) {
+    const tables = {
+      workers: [{ id: 'first', user_id: 'u', company_id: 'b', is_active: true }, { id: 'w', user_id: 'u', company_id: 'a', is_active: true }],
+      site_workers: [], site_daily_assignments: [{ id: 'daily', company_id: 'a', site_id: S, worker_id: 'w', role: 'leader' }],
+    };
+    const h = api({ ...route, tables });
+    assert.equal((await h.post()).status, 200);
+    assert.deepEqual(h.saves, [{ companyId: 'a', siteId: S }]);
+    const denied = api({ ...route, tables: { ...tables, site_daily_assignments: [] } });
+    assert.equal((await denied.post()).status, 403);
+    assert.deepEqual(denied.saves, []);
+  }
 });

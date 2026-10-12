@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { contractWage, loadLaborContracts } from '../lib/laborContracts.mjs';
 
-const source = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import[^\n]*\n/gm, '').replaceAll('export ', '');
+const source = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import[\s\S]*?;\s*/gm, '').replaceAll('export ', '');
 const helpers = source('../app/utils/workerCalendar.js') + '\n' + source('../app/utils/workerPay.js');
 const clean = (value) => JSON.parse(JSON.stringify(value));
-const context = vm.createContext({ Intl });
+const context = vm.createContext({ Intl, contractWage });
 vm.runInContext(helpers + '\nglobalThis.pay = { companyMonthPay, payAmount, payMonth, payDate, sumPay, koreanDay };', context);
 const { companyMonthPay, payAmount, payMonth, payDate, sumPay, koreanDay } = context.pay;
 const company = { id: 'a', company_name: '내 업체' };
@@ -25,13 +26,13 @@ test('leader allowance adds to daily wage; multiple same-day sites count once; h
   assert.equal(result.entries.at(-1).totalAmount, 280000);
 });
 
-test('only completed, past/current personal days count; gaps, stale legacy roles and foreign companies never count', () => {
+test('past/current active personal days count; gaps, stale legacy roles and foreign companies never count', () => {
   const result = calc({ sites: [site(), site('scheduled', { status: 'scheduled' }), site('cancelled', { status: 'cancelled' }), site('foreign', { company_id: 'b' }), site('stale')],
     today: '2026-09-10', legacy: [row(null, 'leader'), row(null, 'leader', { site_id: 'stale' })],
     daily: [row('2026-09-01'), row('2026-09-03'), row('2026-09-20'), row('2026-08-31'), row('2026-09-05', 'leader', { site_id: 'scheduled' }),
       row('2026-09-05', 'leader', { site_id: 'cancelled' }), row('2026-09-05', 'leader', { site_id: 'foreign' }), row('2026-09-05', 'leader', { site_id: 'stale', worker_id: 'other' })] });
-  assert.equal(result.memberDays, 2); assert.equal(result.leaderDays, 0); assert.equal(result.totalAmount, 500000);
-  assert.deepEqual(result.entries.map((r) => r.date), ['2026-09-03', '2026-09-01']);
+  assert.equal(result.memberDays, 2); assert.equal(result.leaderDays, 1); assert.equal(result.totalAmount, 780000);
+  assert.deepEqual(result.entries.map((r) => r.date), ['2026-09-05', '2026-09-03', '2026-09-01']);
 });
 
 test('legacy periods use Korean inclusive dates and leap days, label inferred days and leave missing dates unresolved', () => {
@@ -82,6 +83,7 @@ function api({ tables = {}, errors = {}, invalid = false } = {}) {
       };
       const q = {
         select(s) { fields = s.split(','); return q; }, eq(k, v) { filters.push((r) => r[k] === v); return q; },
+        gte(k, v) { filters.push(r => r[k] >= v); return q; }, lte(k, v) { filters.push(r => r[k] <= v); return q; }, lt(k, v) { filters.push(r => r[k] < v); return q; },
         in(k, vs) { filters.push((r) => vs.includes(r[k])); return q; }, order() { return q; },
         range(a, b) { start = a; end = b; return q; }, maybeSingle: async () => result(true),
         then(resolve, reject) { return Promise.resolve(result()).then(resolve, reject); },
@@ -89,7 +91,7 @@ function api({ tables = {}, errors = {}, invalid = false } = {}) {
     },
   };
   const FixedDate = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-30T12:00:00Z'])); } };
-  const ctx = vm.createContext({ URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
+  const ctx = vm.createContext({ contractWage, loadLaborContracts, URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     Response: { json: (body, options) => ({ body: clean(body), ...options }) },
   });
@@ -110,12 +112,14 @@ test('monthly API authenticates a linked worker without an owner profile and nev
   assert.equal(JSON.stringify(result.body).includes('other'), false);
 });
 
-test('monthly API rejects missing/expired logins, inactive memberships and invalid/future months', async () => {
+test('monthly API allows independent workers but rejects invalid logins, disabled profiles and invalid months', async () => {
   const missing = api(); assert.equal((await missing.get({}, '')).status, 401); assert.equal(missing.reads.length, 0);
   assert.equal((await api({ invalid: true }).get()).status, 401);
-  for (const tables of [{ workers: [] }, { profiles: [{ id: 'u', is_active: false }] }, { workers: [{ id: 'w', company_id: 'a', user_id: 'u', is_active: false }] }, { companies: [{ ...company, is_active: false }] }]) {
-    assert.equal((await api({ tables }).get()).status, 403);
+  for (const tables of [{ workers: [] }, { workers: [{ id: 'w', company_id: 'a', user_id: 'u', is_active: false }] }, { companies: [{ ...company, is_active: false }] }]) {
+    const result = await api({ tables }).get();
+    assert.equal(result.status, 200); assert.deepEqual(result.body.companies, []); assert.equal(result.body.totals.totalAmount, 0);
   }
+  assert.equal((await api({ tables: { profiles: [{ id: 'u', is_active: false }] } }).get()).status, 403);
   for (const month of ['', '2026-13', '2026-10', 'oops']) assert.equal((await api().get({ month })).status, 400);
 });
 

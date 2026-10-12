@@ -1,3 +1,4 @@
+import { contractWage } from '../../lib/laborContracts.mjs';
 import { koreanDay, monthDays } from "./workerCalendar";
 
 export const MAX_DAILY_PAY = 100000000;
@@ -60,6 +61,7 @@ export function companyMonthPay({
   legacy,
   rates,
   allowanceRates = [],
+  contracts = [],
   month,
   today = koreanDay(),
 }) {
@@ -107,11 +109,11 @@ export function companyMonthPay({
       (row) => row.site_id === site.id
     );
 
-    if (actual.length) {
+    if (actual.length || Array.isArray(site.work_dates)) {
       // 날짜별 배정이 있으면 본인에게 배정된 날짜만 계산합니다.
       // 다른 시공자만 배정된 경우에도 전체 기간으로 대체하지 않습니다.
       for (const row of actual) {
-        add(site, payDate(row.work_date), row, false);
+        if (!Array.isArray(site.work_dates) || site.work_dates.includes(row.work_date)) add(site, payDate(row.work_date), row, false);
       }
 
       continue;
@@ -180,20 +182,9 @@ export function companyMonthPay({
         ? "leader"
         : "member";
 
-      const dayRates = [
-        ...new Set(
-          assignments.map((row) => row.workerId)
-        ),
-      ].map((id) => {
-        const rate = history
-          .get(id)
-          ?.find(
-            (item) => item.effective_from <= date
-          );
-
-        return {
-          base: payAmount(rate?.daily_wage),
-        };
+      const dayRates = assignments.map(row => {
+        const rate = history.get(row.workerId)?.find(item => item.effective_from <= date);
+        return { base: payAmount(contractWage(contracts, row.workerId, row.siteId, date, rate?.daily_wage)) };
       });
 
       const first = dayRates[0];

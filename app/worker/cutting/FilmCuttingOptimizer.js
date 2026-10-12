@@ -15,7 +15,6 @@ import {
 } from "./cuttingOptimizer";
 import { filmLabel } from "./FilmThumbnail";
 
-const DRAFT_KEY = "film-cutting-draft-v1";
 
 const makeId = (prefix = "id") =>
   `${prefix}-${Date.now()}-${Math.random()
@@ -217,10 +216,7 @@ export default function FilmCuttingOptimizer({
 
     try {
       const raw =
-        window.localStorage.getItem(storageKey) ||
-        (!context.site
-          ? window.localStorage.getItem(DRAFT_KEY)
-          : null);
+        window.localStorage.getItem(storageKey);
 
       const draft = raw ? JSON.parse(raw) : null;
 
