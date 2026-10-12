@@ -55,6 +55,8 @@ export default function LoginPage() {
      */
     const existingCompany = await getMyCompany();
 
+    if (existingCompany?.role === "worker") return { needsRegistration: true };
+
     if (existingCompany?.company_id) {
       if (existingCompany.is_active === false) {
         throw new Error(
@@ -98,11 +100,7 @@ export default function LoginPage() {
      * 회원가입 정보가 없는 일반 계정이라면
      * 자동으로 회사를 만들면 안 된다.
      */
-    if (!companyName || !companySlug) {
-      throw new Error(
-        "업체 가입 정보가 없습니다. 업체 회원가입 페이지에서 가입한 계정인지 확인해주세요."
-      );
-    }
+    if (!companyName) return { needsRegistration: true };
 
     /*
      * 3. 신규 업체 생성
@@ -260,6 +258,11 @@ export default function LoginPage() {
        */
       const result =
         await ensureCompany(user);
+
+      if (result?.needsRegistration) {
+        window.location.assign("/signup?existing=1");
+        return;
+      }
 
       if (!result?.companyId) {
         throw new Error(

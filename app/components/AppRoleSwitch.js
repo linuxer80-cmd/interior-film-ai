@@ -49,6 +49,11 @@ export default function AppRoleSwitch() {
           ? companyData[0]
           : companyData;
 
+        if (!company?.company_id || company.role === "worker") {
+          router.push("/signup?existing=1");
+          return;
+        }
+
         if (
           !company?.company_id ||
           company.role !== "owner" ||

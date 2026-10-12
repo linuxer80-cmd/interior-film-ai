@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
 export default function SignupPage() {
   const router = useRouter();
+  const [existingUser, setExistingUser] = useState(null);
+  const [checkingAccount, setCheckingAccount] = useState(true);
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({data,error}) => {
+      if (!active) return;
+      if (error) { setMessage("로그인 상태를 확인하지 못했습니다. 새로고침해주세요."); return; }
+      const user = data?.session?.user;
+      setExistingUser(user || null);
+      if (user) {
+        setEmail(user.email || "");
+        setOwnerName(user.user_metadata?.name || user.user_metadata?.owner_name || "");
+        setPhone(user.user_metadata?.phone || "");
+      }
+      setCheckingAccount(false);
+    }).catch(() => { if(active) setMessage("로그인 상태를 확인하지 못했습니다. 새로고침해주세요."); });
+    return () => { active = false; };
+  }, []);
 
   /* =========================================================
      입력값
@@ -110,7 +128,7 @@ export default function SignupPage() {
   async function handleSignup(event) {
     event.preventDefault();
 
-    if (loading) {
+    if (loading || checkingAccount) {
       return;
     }
 
@@ -157,14 +175,14 @@ export default function SignupPage() {
       return;
     }
 
-    if (!cleanEmail) {
+    if (!existingUser && !cleanEmail) {
       setMessage(
         "이메일을 입력해주세요."
       );
       return;
     }
 
-    if (password.length < 6) {
+    if (!existingUser && password.length < 6) {
       setMessage(
         "비밀번호는 6자 이상 입력해주세요."
       );
@@ -172,7 +190,7 @@ export default function SignupPage() {
     }
 
     if (
-      password !==
+      !existingUser && password !==
       passwordConfirm
     ) {
       setMessage(
@@ -191,6 +209,18 @@ export default function SignupPage() {
          DB create_my_company()에서 자동 생성합니다.
       ===================================================== */
 
+      let session;
+      if (existingUser) {
+        const { data: verified, error: verificationError } = await supabase.auth.getUser();
+        if (verificationError || verified?.user?.id !== existingUser.id) throw Error("로그인 계정이 변경되었습니다. 새로고침 후 다시 진행해주세요.");
+        const current = await getMyCompany();
+        if (current?.role === "owner" && current?.company_id) {
+          if (current.is_active === false) throw Error("현재 사용이 중지된 업체 계정입니다.");
+          router.push("/admin");
+          return;
+        }
+        session = { user: verified.user };
+      } else {
       const {
         data: signupData,
         error: signupError,
@@ -238,7 +268,7 @@ export default function SignupPage() {
          회원가입 직후 session이 없을 수 있습니다.
       ===================================================== */
 
-      let session =
+      session =
         signupData.session;
 
       if (!session) {
@@ -289,6 +319,8 @@ export default function SignupPage() {
         return;
       }
 
+      }
+
       /* =====================================================
          4. 회사 생성
 
@@ -334,7 +366,7 @@ export default function SignupPage() {
           await getMyCompany();
 
         if (
-          !retryCompany?.company_id
+          (!retryCompany?.company_id || retryCompany.role !== "owner")
         ) {
           throw companyError;
         }
@@ -348,7 +380,7 @@ export default function SignupPage() {
           await getMyCompany();
 
         if (
-          !retryCompany?.company_id
+          (!retryCompany?.company_id || retryCompany.role !== "owner")
         ) {
           throw new Error(
             "업체 정보를 생성하지 못했습니다."
@@ -366,7 +398,7 @@ export default function SignupPage() {
         await getMyCompany();
 
       if (
-        !company?.company_id
+        (!company?.company_id || company.role !== "owner")
       ) {
         throw new Error(
           "생성된 업체 정보를 확인하지 못했습니다."
@@ -1232,7 +1264,7 @@ export default function SignupPage() {
               placeholder="예: 좋은인테리어"
               autoComplete="organization"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1261,7 +1293,7 @@ export default function SignupPage() {
               placeholder="대표자 이름"
               autoComplete="name"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1285,7 +1317,7 @@ export default function SignupPage() {
               placeholder="010-1234-5678"
               autoComplete="tel"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1342,6 +1374,7 @@ export default function SignupPage() {
               입력할 필요가 없습니다.
             </div>
 
+            {existingUser ? <p role="status">현재 시공자 계정으로 업체를 등록합니다. 이메일과 비밀번호를 새로 만들 필요가 없습니다.</p> : <>
             {/* 이메일 */}
 
             <FieldLabel>
@@ -1365,7 +1398,7 @@ export default function SignupPage() {
               autoComplete="email"
               autoCapitalize="none"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1394,7 +1427,7 @@ export default function SignupPage() {
               placeholder="6자 이상"
               autoComplete="new-password"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1423,7 +1456,7 @@ export default function SignupPage() {
               placeholder="비밀번호를 다시 입력해주세요"
               autoComplete="new-password"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={
                 inputStyle
@@ -1476,6 +1509,8 @@ export default function SignupPage() {
                 </div>
               )}
 
+            </>}
+
             {/* 오류 */}
 
             {message && (
@@ -1512,7 +1547,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={
-                loading
+                loading || checkingAccount
               }
               style={{
                 width:
