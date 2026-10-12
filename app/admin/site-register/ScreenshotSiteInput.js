@@ -329,9 +329,7 @@ export default function ScreenshotSiteInput({
       <h3>문자·카톡 사진으로 현장 입력</h3>
 
       <p>
-        한 현장의 대화 사진을 최대 5장 선택하세요.
-        분석 성공 시 1회 사용하며, 직접 수정과 현장 저장에는
-        추가 차감이 없습니다.
+        대화 사진을 최대 5장 올려주세요. 분석 성공 시 1회 사용합니다.
       </p>
 
       {usage && (
@@ -377,6 +375,8 @@ export default function ScreenshotSiteInput({
         ))}
       </div>
 
+      <details>
+      <summary>대화 기준일 · 사진 이용 안내</summary>
       <label>
         대화 기준일 (선택)
         <input
@@ -395,6 +395,7 @@ export default function ScreenshotSiteInput({
         모르면 비워두세요. 사진은 분석을 위해 AI에 전송되며
         현장 사진첩에는 저장하지 않습니다.
       </p>
+      </details>
 
       <button
         type="button"

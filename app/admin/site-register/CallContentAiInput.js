@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -14,6 +15,7 @@ import { supabase } from "../../../lib/supabase";
 export default function CallContentAiInput({
   disabled = false,
   onApply,
+  onBusyChange,
 }) {
   const fileInputRef =
     useRef(null);
@@ -37,6 +39,11 @@ export default function CallContentAiInput({
     analyzing,
     setAnalyzing,
   ] = useState(false);
+
+  useEffect(() => {
+    onBusyChange?.(analyzing);
+    return () => onBusyChange?.(false);
+  }, [analyzing, onBusyChange]);
 
   const [
     stage,

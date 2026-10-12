@@ -63,6 +63,9 @@ export default function SiteRegisterModal({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [screenshotBusy, setScreenshotBusy] = useState(false);
+  const [inputMode, setInputMode] = useState("direct");
+  const [registrationStatus, setRegistrationStatus] = useState("consulting");
+  const [callBusy, setCallBusy] = useState(false);
   const [saved, setSaved] = useState(null);
 
   const lock = useRef(false);
@@ -88,6 +91,8 @@ export default function SiteRegisterModal({
   useEffect(() => {
     if (!open) return;
 
+    setInputMode("direct");
+    setRegistrationStatus("consulting");
     setConsultation(null);
     setForm({ ...emptyForm, work_dates: [] });
     setCustomer({ ...emptyCustomer });
@@ -98,7 +103,7 @@ export default function SiteRegisterModal({
     pendingLink.current = null;
   }, [open]);
 
-  const blocked = busy || loading || screenshotBusy;
+  const blocked = busy || loading || screenshotBusy || callBusy;
 
   function field(key, value) {
     setForm((previous) => ({
@@ -223,8 +228,8 @@ export default function SiteRegisterModal({
 
     setMessage(
       origin === "screenshot"
-        ? "상담중 현장으로 등록합니다. 견적서 초안은 현장 상세의 상담 견적서에서 확인하고 가격을 직접 입력하세요."
-        : "상담중 현장으로 등록합니다. 견적서 초안은 현장 상세에서 확인하세요."
+        ? "입력 내용을 확인하고 현장 상태를 선택해주세요. 견적서 초안은 현장 상세의 상담 견적서에서 확인하고 가격을 직접 입력하세요."
+        : "입력 내용을 확인하고 현장 상태를 선택해주세요. 견적서 초안은 현장 상세에서 확인하세요."
     );
   }
 
@@ -239,7 +244,7 @@ export default function SiteRegisterModal({
   async function submit(event) {
     event.preventDefault();
 
-    if (lock.current || loading || screenshotBusy) return;
+    if (lock.current || loading || screenshotBusy || callBusy) return;
 
     lock.current = true;
     setBusy(true);
@@ -271,6 +276,10 @@ export default function SiteRegisterModal({
         throw Error(
           "시공일은 최대 366일까지 선택할 수 있습니다."
         );
+      }
+
+      if (registrationStatus === "scheduled" && !days.length) {
+        throw Error("시공 예정으로 저장하려면 시공일을 선택해주세요.");
       }
 
       let customerName = form.customer_name;
@@ -317,11 +326,7 @@ export default function SiteRegisterModal({
               `${days.at(-1)}T23:59:00+09:00`
             ).toISOString()
           : null,
-        status: consultation
-          ? "consulting"
-          : days.length
-            ? "scheduled"
-            : "consulting",
+        status: registrationStatus,
         consultation_quote_seed: consultation
           ? {
               ...consultation,
@@ -421,7 +426,7 @@ export default function SiteRegisterModal({
       <div className="site-register-panel">
         <header>
           <h2>
-            {consultation ? "상담중 현장 등록" : "현장 등록"}
+            현장 등록
           </h2>
           <button
             type="button"
@@ -437,68 +442,48 @@ export default function SiteRegisterModal({
             disabled={blocked || !!saved}
             className="site-register-fields"
           >
-            <ScreenshotSiteInput
-              onApply={(data) =>
-                applyAnalysis(data, "screenshot")
-              }
-              disabled={busy || loading || !!saved}
-              onBusyChange={setScreenshotBusy}
-            />
-
-            <CallContentAiInput
-              onApply={applyAnalysis}
-              disabled={blocked || !!saved}
-            />
-
-            <section>
-              <h3>시공 일정</h3>
-              <p>
-                실제 시공일을 선택하세요.
-                미선택 시 상담중으로 등록합니다.
-              </p>
-              <WorkDatePicker
-                value={form.work_dates}
-                onChange={(value) =>
-                  field("work_dates", value)
-                }
-                disabled={blocked || !!saved}
-              />
-            </section>
+            <div className="input-methods" role="group" aria-label="현장 입력 방법">
+              {[["direct", "직접 입력"], ["screenshot", "문자·카톡"], ["call", "통화녹음"]].map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={inputMode === value}
+                  onClick={() => setInputMode(value)}>{label}</button>
+              ))}
+            </div>
+            <p className="intro">{inputMode === "direct" ? "아는 정보부터 입력하세요. 나머지는 나중에 추가할 수 있어요." : "AI로 입력한 내용은 저장 전에 직접 확인해주세요."}</p>
+            <div hidden={inputMode !== "screenshot"}>
+              <ScreenshotSiteInput onApply={(data) => applyAnalysis(data, "screenshot")}
+                disabled={busy || loading || callBusy || !!saved} onBusyChange={setScreenshotBusy} />
+            </div>
+            <div hidden={inputMode !== "call"}>
+              <CallContentAiInput onApply={applyAnalysis}
+                disabled={busy || loading || screenshotBusy || !!saved} onBusyChange={setCallBusy} />
+            </div>
 
             <section>
-              <h3>고객 / 현장</h3>
-
-              <CustomerChoice
-                value={customer}
-                onChange={choose}
-                disabled={blocked || !!saved}
-              />
-
+              <h3>기본정보</h3>
+              {inputs([["site_name", "현장명"], ["address", "주소"]])}
               <div className="site-register-grid">
-                {inputs([
-                  [
-                    "customer_name",
-                    customer.type === "business"
-                      ? "업체명"
-                      : "고객명",
-                  ],
-                  ["customer_phone", "전화번호", "tel"],
-                ])}
+                {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
               </div>
-
-              {inputs([
-                ["site_name", "현장명"],
-                ["address", "주소"],
-              ])}
-
+              <CustomerChoice value={customer} onChange={choose} disabled={blocked || !!saved} />
               <div className="site-register-grid">
-                {inputs([
-                  ["address_detail", "상세주소"],
-                  ["region", "지역"],
-                ])}
+                {inputs([["customer_name", customer.type === "business" ? "업체명" : "고객명"], ["customer_phone", "연락처", "tel"]])}
               </div>
             </section>
 
+            <section>
+              <h3>현장 상태 · 일정</h3>
+              <div className="status-options" role="group" aria-label="현장 상태">
+                {[["consulting", "상담 중"], ["scheduled", "시공 예정"]].map(([value, label]) => (
+                  <button key={value} type="button" aria-pressed={registrationStatus === value}
+                    onClick={() => setRegistrationStatus(value)}>{label}</button>
+                ))}
+              </div>
+              <p className="intro">{registrationStatus === "scheduled" ? "확정된 시공일을 선택하세요. 여러 날짜를 선택할 수 있어요." : "일정이 아직 정해지지 않았다면 비워두세요."}</p>
+              <WorkDatePicker value={form.work_dates} onChange={(value) => field("work_dates", value)} disabled={blocked || !!saved} />
+            </section>
+
+            <details className="additional-info">
+              <summary>추가정보 <span>시공 내용 · 자재 · 사진 · 계약</span></summary>
             <section>
               <h3>시공 내용</h3>
 
@@ -710,6 +695,7 @@ export default function SiteRegisterModal({
                 />
               </label>
             </section>
+            </details>
           </fieldset>
 
           {message && (
@@ -734,21 +720,14 @@ export default function SiteRegisterModal({
           )}
 
           <footer>
-            <button
-              type="button"
-              disabled={blocked}
-              onClick={onClose}
-            >
-              닫기
-            </button>
-
+            <div className="save-summary"><strong>{registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
             {(!saved || pendingLink.current) && (
               <button type="submit" disabled={blocked}>
                 {blocked
-                  ? "저장 중…"
+                  ? (screenshotBusy || callBusy ? "AI 분석 중…" : "저장 중…")
                   : saved
                     ? "거래처 연결 재시도"
-                    : "현장 등록"}
+                    : "현장 저장"}
               </button>
             )}
           </footer>
@@ -767,13 +746,15 @@ export default function SiteRegisterModal({
           padding: 12px;
         }
         .site-register-panel {
-          background: #f8fafc;
+          background: #f7f5ee;
           border-radius: 20px;
           width: 100%;
           max-width: 760px;
-          max-height: 94dvh;
+          height: 94dvh;
           overflow: auto;
-          padding: 18px;
+          overscroll-behavior: contain;
+          color: #253e4d;
+          padding: 0 20px;
           box-sizing: border-box;
         }
         header, footer {
@@ -784,10 +765,10 @@ export default function SiteRegisterModal({
         }
         header {
           position: sticky;
-          top: -18px;
-          background: #f8fafc;
+          top: 0;
+          background: #f7f5ee;
           z-index: 2;
-          padding: 10px 0;
+          padding: 18px 0;
         }
         h2 {
           margin: 0;
@@ -804,7 +785,7 @@ export default function SiteRegisterModal({
         section {
           background: white;
           border: 1px solid #e2e8f0;
-          border-radius: 14px;
+          border-radius: 20px;
           padding: 16px;
           margin: 16px 0;
         }
@@ -833,7 +814,7 @@ export default function SiteRegisterModal({
           padding: 12px;
           margin-top: 6px;
           border: 1px solid #cbd5e1;
-          border-radius: 9px;
+          border-radius: 12px;
           font-size: 16px;
           background: white;
           color: #111827;
@@ -857,7 +838,35 @@ export default function SiteRegisterModal({
           line-height: 1.6;
         }
         footer {
-          padding: 14px 0;
+          position: sticky;
+          bottom: 0;
+          display: grid;
+          background: #f7f5ee;
+          border-top: 1px solid #e4e2d9;
+          padding: 14px 0 max(14px, env(safe-area-inset-bottom));
+          z-index: 3;
+        }
+        .input-methods { display: flex; gap: 4px; background: #eae8e0; padding: 5px; border-radius: 16px; }
+        .input-methods button { flex: 1; border: 0; background: transparent; color: #657078; font-weight: 700; padding: 14px 4px; }
+        .input-methods button[aria-pressed="true"] { background: white; color: #253e4d; box-shadow: 0 2px 6px #253e4d10; }
+        .intro { font-size: 14px; color: #66727c; margin: 12px 0; }
+        .status-options { display: flex; gap: 10px; }
+        .status-options button { flex: 1; font-weight: 700; }
+        .status-options button[aria-pressed="true"] { background: #eaf3ff; border-color: #548ac0; color: #285c94; }
+        .additional-info { margin: 20px 0; background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 18px; }
+        summary { cursor: pointer; font-weight: 700; line-height: 1.8; }
+        summary span { display: block; font-size: 13px; color: #68757e; font-weight: 400; }
+        .save-summary { display: flex; justify-content: space-between; font-size: 14px; }
+        .save-summary span { color: #68757e; }
+        footer button { width: 100%; min-height: 54px; font-size: 18px; font-weight: 700; border-radius: 14px; }
+        .site-register-panel :global(input[type="file"]::file-selector-button) { border: 0; border-radius: 10px; background: #eaf3ff; color: #285c94; padding: 12px; margin-right: 10px; font-weight: 700; cursor: pointer; }
+        button:focus-visible, summary:focus-visible { outline: 3px solid #548ac0; outline-offset: 3px; }
+        @media (max-width: 600px) {
+          .site-register-overlay { padding: 0; }
+          .site-register-panel { height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0 16px; }
+          header { padding-top: max(16px, env(safe-area-inset-top)); }
+          h2 { font-size: 24px; }
+          section { padding: 16px; }
         }
       `}</style>
     </div>
