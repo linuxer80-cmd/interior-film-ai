@@ -234,3 +234,19 @@ main:has(.film-admin-dashboard), main:has(.worker-polished) {
 @media print {
   .film-admin-bottom, .wp-bottom, .film-admin-more { display: none; }
 }
+
+/* Compact photographic navigation, shared by admin and worker menus. */
+.film-nav-image { margin: 0 auto; box-shadow: 0 1px 4px #483b2420; }
+.film-admin-bottom small, .wp-bottom small, .worker-menu-bottom small {
+  display: block; font-size: 11px; line-height: 15px; margin-top: 4px; white-space: nowrap;
+}
+.film-admin-bottom button[aria-current="page"], .wp-bottom a[aria-current="page"],
+.film-admin-bottom button[aria-expanded="true"] { background: #eae2d6; color: #243648; font-weight: 700; }
+.film-admin-bottom .film-nav-more {
+  width: 36px; height: 36px; margin: 0 auto; display: grid; place-items: center;
+  border-radius: 12px; background: #f1e8db; color: #243648; font-size: 28px; line-height: 1;
+  box-shadow: 0 1px 4px #483b2420;
+}
+.film-admin-bottom button:focus-visible, .wp-bottom a:focus-visible, .worker-menu-bottom a:focus-visible {
+  outline: 2px solid #38536a; outline-offset: -2px;
+}

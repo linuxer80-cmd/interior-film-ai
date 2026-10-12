@@ -313,7 +313,7 @@ export default function WorkerHomeDashboard({
           href="/worker"
           aria-current="page"
         >
-          <span aria-hidden="true">⌂</span>
+          <ToolIllustration kind="home" size={36} className="film-nav-image" />
           <small>홈</small>
         </Link>
 
@@ -331,16 +331,7 @@ export default function WorkerHomeDashboard({
               key={menu.id}
               href={`/worker/menu/${menu.id}`}
             >
-              <span aria-hidden="true">
-                {
-                  {
-                    sites: "▣",
-                    film: "✂",
-                    report: "☑",
-                    pay: "₩",
-                  }[menu.id]
-                }
-              </span>
+              <ToolIllustration kind={menu.id === "sites" ? "camera" : menu.icon} size={36} className="film-nav-image" />
 
               <small>{menu.title}</small>
             </Link>

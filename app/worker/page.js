@@ -17,6 +17,7 @@ import {
 import WorkerSiteCalendar from "./WorkerSiteCalendar";
 import WorkerMonthlyPay from "./WorkerMonthlyPay";
 import WorkerHomeDashboard from "./WorkerHomeDashboard";
+import ToolIllustration from "../components/ui/ToolIllustration";
 import styles from "./WorkerSiteCalendar.module.css";
 
 export default function WorkerPage({ mode = "home" }) {
@@ -557,7 +558,8 @@ export default function WorkerPage({ mode = "home" }) {
                       : undefined
                   }
                 >
-                  {item.label}
+                  <ToolIllustration kind={{home: "home", sites: "camera", film: "film", report: "report", pay: "money"}[item.id]} size={36} className="film-nav-image" />
+                  <small>{item.label}</small>
                 </Link>
               ))}
             </nav>
@@ -668,11 +670,11 @@ export default function WorkerPage({ mode = "home" }) {
             width: min(100%, 900px);
             display: flex;
             z-index: 40;
-            background: #fffffff7;
+            background: #fffdf9f7;
             border-top: 1px solid #eee8dd;
-            padding: 12px 5px
+            padding: 8px 6px
               calc(
-                12px +
+                9px +
                 env(safe-area-inset-bottom)
               );
           }
@@ -681,16 +683,17 @@ export default function WorkerPage({ mode = "home" }) {
             flex: 1;
             text-decoration: none;
             text-align: center;
-            color: #8391a0;
+            color: #756f66;
             font-size: 12px;
-            padding: 12px 0;
+            padding: 5px 2px;
+            min-height: 59px;
             border-radius: 12px;
           }
 
           .worker-menu-bottom
             a[aria-current="page"] {
-            background: #edf6ff;
-            color: #398bdb;
+            background: #eae2d6;
+            color: #243648;
             font-weight: 700;
           }
         `}</style>

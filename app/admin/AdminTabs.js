@@ -258,10 +258,10 @@ export default function AdminTabs({
 
       <nav className="film-admin-bottom" aria-label="관리자 하단 메뉴">
         {[
-          { id: "today", label: "홈", icon: "⌂" },
-          { id: "sites", label: "현장", icon: "▣" },
-          { id: "leads", label: "상담", icon: "♧" },
-          { id: "profit", label: "매출·수익", icon: "▥" },
+          { id: "today", label: "홈", icon: "home" },
+          { id: "sites", label: "현장", icon: "camera" },
+          { id: "leads", label: "상담", icon: "chat" },
+          { id: "profit", label: "매출·수익", icon: "money" },
         ].map(item => (
           <button
             key={item.id}
@@ -269,7 +269,7 @@ export default function AdminTabs({
             aria-current={activeTab === item.id ? "page" : undefined}
             onClick={() => go(item.id)}
           >
-            <span aria-hidden="true">{item.icon}</span>
+            <ToolIllustration kind={item.icon} size={36} className="film-nav-image" />
             <small>{item.label}</small>
           </button>
         ))}
@@ -279,7 +279,7 @@ export default function AdminTabs({
           aria-expanded={moreOpen}
           onClick={() => setMoreOpen(value => !value)}
         >
-          <span aria-hidden="true">···</span>
+          <span className="film-nav-more" aria-hidden="true">▦</span>
           <small>더보기</small>
         </button>
       </nav>
