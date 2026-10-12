@@ -254,7 +254,7 @@ export default function useWorkers({
              */
             position: null,
             specialties: [],
-            memo: null,
+            memo: String(form?.memo || "").trim().slice(0, 1000) || null,
 
             is_active: true,
           })
@@ -375,6 +375,7 @@ export default function useWorkers({
         } = await supabase
           .from("workers")
           .update({
+            ...(form?.memo !== undefined ? { memo: String(form.memo || "").trim().slice(0, 1000) || null } : {}),
             phone,
 
             ...(form?.update_pay_rate === false ? {} : {

@@ -254,6 +254,15 @@ export default function WorkerFormModal({
             월초 날짜를 선택하세요. 같은 적용일의 금액은 수정됩니다.
           </p>
 
+          <label style={{ display: "block", marginTop: 20, fontWeight: 700 }}>
+            시공자 메모 (선택)
+            <textarea value={form.memo || ""} maxLength={1000} rows={3}
+              disabled={loading} onChange={event => updateField?.("memo", event.target.value)}
+              placeholder="예: 싱크대 시공 능숙, 차량 있음, 주말 작업 가능"
+              style={{ ...inputStyle, resize: "vertical", marginTop: 8 }} />
+          </label>
+          <p style={{ color: "#64748b", fontSize: 12 }}>작업 특성이나 전달사항을 기록하세요. 민감한 개인정보는 적지 마세요.</p>
+
           {[
             ["bank_name", "은행명", "예: 국민은행", 100],
             ["account_number", "계좌번호", "숫자와 하이픈으로 입력", 50],

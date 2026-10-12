@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   account_number: "",
   account_holder: "",
   departure_address: "",
+  memo: "",
   name: "",
   phone: "",
   daily_wage: "",
@@ -183,6 +184,7 @@ export default function WorkerManagement({
     setForm({
       ...EMPTY_FORM,
       pay_rate_effective_from: koreanDay(),
+      memo: worker?.memo || "",
       name: worker?.name || "",
       phone: worker?.phone || "",
       daily_wage:
@@ -398,6 +400,7 @@ export default function WorkerManagement({
     }
 
     const submitForm = {
+      memo: String(form.memo || "").trim().slice(0, 1000),
       name: cleanName,
       phone: cleanPhone,
       daily_wage: cleanDailyWage,

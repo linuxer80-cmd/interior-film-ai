@@ -136,7 +136,7 @@ export default function WorkerCard({
                   overflowWrap: "anywhere",
                 }}
               >
-                📞 {worker.phone}
+                📞 전화 걸기 · {worker.phone}
               </a>
             ) : (
               <div style={{ marginTop: 6, color: "#475569", fontSize: 12 }}>
@@ -223,19 +223,13 @@ export default function WorkerCard({
             </div>
           )}
 
-          {worker?.memo && (
-            <div
-              style={{
-                marginTop: "8px",
-                color: "#64748b",
-                fontSize: "11px",
-                lineHeight: "1.5",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {worker.memo}
-            </div>
-          )}
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#f8f7f3" }}>
+            <button type="button" onClick={onEdit} style={{ border: 0, background: "transparent", color: "#285c94", padding: "6px 0", minHeight: 44, fontWeight: 700 }}>
+              {worker?.memo ? "시공자 메모 수정 ›" : "+ 시공자 메모 입력"}
+            </button>
+            {worker?.memo && <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 13, color: "#475569" }}>{worker.memo}</p>}
+          </div>
+
         </div>
 
         <div

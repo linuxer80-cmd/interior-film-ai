@@ -61,7 +61,7 @@ export async function POST(request) {
     const { data, error } = await db.from("workers").insert({
       company_id: company.company_id, user_id: auth.user.id,
       name, phone, daily_wage: wage, pay_rate_effective_from: effectiveFrom, is_active: true,
-      position: null, specialties: [], memo: null,
+      position: null, specialties: [], memo: String(body.memo || "").trim().slice(0, 1000) || null,
     }).select("id,name").single();
     if (error) throw error;
     return NextResponse.json({ worker: data });
