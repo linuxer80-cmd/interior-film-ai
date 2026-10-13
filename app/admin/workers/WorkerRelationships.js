@@ -5,15 +5,16 @@ export default function WorkerRelationships({workers=[],onRelationshipsChange}) 
  const [data,setData]=useState(null),[workerId,setWorkerId]=useState(''),[type,setType]=useState('employee');
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[url,setUrl]=useState('');
  const selectedWorker=workers.find(w=>w.id===workerId);
+ const [draftTypes,setDraftTypes]=useState({});
  const lock=useRef(false);
- async function load(){const next=await api({action:'list'});setData(next);onRelationshipsChange?.(next.relationships||[]);return next;}
+ async function load(){const next=await api({action:'list'});setData(next);setDraftTypes({});onRelationshipsChange?.(next.relationships||[]);return next;}
  useEffect(()=>{let active=true;api({action:'list'}).then(d=>{if(active){setData(d);onRelationshipsChange?.(d.relationships||[]);}}).catch(e=>{if(active)setMessage(e.message);});return()=>{active=false;};},[]);
  async function act(body){
   if(lock.current)return;lock.current=true;setBusy(true);setMessage('');
   try{const result=await api(body);await load();
    if(result.code)setUrl(`${window.location.origin}/worker/connect/${result.code}`);
    else setUrl('');
-   setMessage(body.action==='approve'?'계정 연결을 완료했습니다. 시공자 목록을 새로고침해주세요.':body.action==='end'?'거래를 종료했습니다. 기존 기록은 유지됩니다. 목록을 새로고침해주세요.':'처리했습니다.');
+   setMessage(body.action==='set_type'?'관계 유형을 저장했습니다.':body.action==='approve'?'계정 연결을 완료했습니다. 시공자 목록을 새로고침해주세요.':body.action==='end'?'거래를 종료했습니다. 기존 기록은 유지됩니다. 목록을 새로고침해주세요.':'처리했습니다.');
   }catch(e){setMessage(e.message);}finally{lock.current=false;setBusy(false);}
  }
  return <details style={{padding:16,background:'#fff',border:'1px solid #dce2e6',borderRadius:16,marginBottom:16}}>
@@ -29,7 +30,20 @@ export default function WorkerRelationships({workers=[],onRelationshipsChange}) 
   </fieldset>
   <h4>기존 연결 시공자 관계 설정</h4>
   <p style={{fontSize:12}}>계정이 연결된 시공자만 설정할 수 있습니다. 기존 현장 배정과 확정 일당은 변경되지 않습니다.</p>
-  {workers.filter(w=>w.user_id && w.is_active!==false).map(w=>{const rel=(data.relationships||[]).find(r=>r.worker_id===w.id && !r.ended_at);return <div key={w.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'9px 0',borderBottom:'1px solid #eee'}}><div><b>{w.name}</b><div style={{fontSize:12,color:'#64748b'}}>{rel?relationshipLabel(rel.relationship_type):'관계 미설정'}</div></div><select aria-label={`${w.name} 관계 설정`} disabled={busy} value={rel?.relationship_type||''} onChange={e=>{const next=e.target.value;if(!next)return;if(window.confirm(`${w.name} 시공자를 ${relationshipLabel(next)}으로 지정할까요? 기존 확정 일당은 유지됩니다.`))act({action:'set_type',workerId:w.id,relationshipType:next});}}><option value=''>관계 미설정</option><option value='employee'>소속 직원</option><option value='freelancer'>협력 프리랜서</option></select></div>;})}
+  {workers.filter(w=>w.user_id && w.is_active!==false).map(w=>{
+   const rel=(data.relationships||[]).find(r=>r.worker_id===w.id && !r.ended_at);
+   const saved=rel?.relationship_type||'';
+   const selected=draftTypes[w.id]??saved;
+   return <div key={w.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'9px 0',borderBottom:'1px solid #eee',flexWrap:'wrap'}}>
+    <div><b>{w.name}</b><div style={{fontSize:12,color:'#64748b'}}>{rel?relationshipLabel(saved):'관계 미설정'}</div></div>
+    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+     <select aria-label={`${w.name} 관계 설정`} disabled={busy} value={selected} onChange={e=>setDraftTypes(old=>({...old,[w.id]:e.target.value}))}>
+      <option value=''>관계 미설정</option><option value='employee'>소속 직원</option><option value='freelancer'>협력 프리랜서</option>
+     </select>
+     <button type='button' disabled={busy||!selected||selected===saved} onClick={()=>act({action:'set_type',workerId:w.id,relationshipType:selected})}>저장</button>
+    </div>
+   </div>;
+  })}
   <h4>초대·계정 확인 대기</h4>
   {!data.invites.length&&<p>진행 중인 초대가 없습니다.</p>}
   {data.invites.map(i=><article key={i.id} style={{borderTop:'1px solid #eee',padding:'12px 0'}}>
