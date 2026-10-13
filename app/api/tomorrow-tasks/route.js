@@ -178,12 +178,23 @@ export async function GET(request) {
       }
     }
 
+    // Only return names of companies represented by the user's authorized sites.
+    const companyIds = [...new Set(sites.map(site => site.company_id).filter(Boolean))];
+    const companyNames = new Map();
+    if (companyIds.length) {
+      const {data: companyRows, error: companyLookupError} = await db
+        .from("companies").select("id,company_name").in("id",companyIds);
+      if (companyLookupError) throw companyLookupError;
+      for (const company of companyRows || []) companyNames.set(company.id,company.company_name);
+    }
+
     return json({
       date,
       updatedAt: new Date().toISOString(),
       sites: sites.map(site => ({
         id: site.id || site.site_id,
         name: site.site_name || "현장",
+        companyName: companyNames.get(site.company_id) || "업체명 확인 필요",
         address: [site.address, site.address_detail].filter(Boolean).join(" "),
         work: site.work_description || site.work_type || "",
         role: site.tomorrow_role || null,
