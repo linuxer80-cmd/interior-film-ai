@@ -15,6 +15,7 @@ function formatNumber(value) {
 
 export default function WorkerFormModal({
   editingWorker,
+  inline = false,
   relationshipType = null,
   selfRegistration = false,
   form,
@@ -35,20 +36,18 @@ export default function WorkerFormModal({
 
   return (
     <div
-      onClick={() => {
-        if (!loading) onClose?.();
-      }}
+      onClick={inline ? undefined : () => { if (!loading) onClose?.(); }}
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1500,
+        position: inline ? "relative" : "fixed",
+        inset: inline ? undefined : 0,
+        zIndex: inline ? "auto" : 1500,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "12px",
         boxSizing: "border-box",
-        background: "rgba(15,23,42,0.60)",
-        overflow: "hidden",
+        background: inline ? "#f8fafc" : "rgba(15,23,42,0.60)",
+        overflow: inline ? "visible" : "hidden",
       }}
     >
       <div
@@ -56,8 +55,8 @@ export default function WorkerFormModal({
         style={{
           width: "100%",
           maxWidth: "500px",
-          maxHeight: "calc(100dvh - 24px)",
-          overflowY: "auto",
+          maxHeight: inline ? "none" : "calc(100dvh - 24px)",
+          overflowY: inline ? "visible" : "auto",
           overscrollBehavior: "contain",
           boxSizing: "border-box",
           padding: "18px",
