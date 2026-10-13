@@ -20,6 +20,7 @@ const time = (value) =>
 export default function MaterialIssueStatus({
   siteId,
   refreshKey = 0,
+  active = true,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -81,6 +82,7 @@ export default function MaterialIssueStatus({
   }, [siteId]);
 
   useEffect(() => {
+    if (!active) return;
     setData(null);
     load();
 
@@ -106,7 +108,7 @@ export default function MaterialIssueStatus({
       controller.current?.abort();
       controller.current = null;
     };
-  }, [load, siteId, refreshKey]);
+  }, [load, siteId, refreshKey, active]);
 
   const people = [
     ...new Set(

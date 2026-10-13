@@ -42,6 +42,7 @@ const date = (value) =>
 export default function SiteOperations({
   siteId,
   mode = "notices",
+  active = true,
   collapsible = false,
   onTrackingChange,
   onPendingChange,
@@ -62,6 +63,9 @@ export default function SiteOperations({
   const [historyLimit, setHistoryLimit] = useState(3);
   useEffect(() => setHistoryLimit(3), [siteId]);
 
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const previousActive = useRef(active);
   const lock = useRef(false);
   const serial = useRef(0);
   const requests = useRef({});
@@ -131,7 +135,7 @@ export default function SiteOperations({
   );
 
   const refresh = useCallback(async () => {
-    if (lock.current) return;
+    if (lock.current || !activeRef.current) return;
 
     const version = ++serial.current;
 
@@ -166,6 +170,11 @@ export default function SiteOperations({
       }
     }
   }, [call]);
+
+  useEffect(() => {
+    if (active && !previousActive.current) refresh();
+    previousActive.current = active;
+  }, [active, refresh]);
 
   useEffect(() => {
     setData(null);
@@ -370,6 +379,7 @@ export default function SiteOperations({
         <MaterialIssueStatus
           siteId={siteId}
           refreshKey={data}
+          active={active}
         />
       )}
 
@@ -383,6 +393,7 @@ export default function SiteOperations({
           siteId={siteId}
           disabled={disabled}
           onTracked={handleTrackedRolls}
+          active={active}
           onChanged={refresh}
         />
       </details>

@@ -4,5 +4,8 @@
       "path": "/api/labor-market/maintenance",
       "schedule": "5 15 * * *"
     }
+  ],
+  "regions": [
+    "hnd1"
   ]
 }

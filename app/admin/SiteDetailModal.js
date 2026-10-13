@@ -446,7 +446,7 @@ export default function SiteDetailModal({
               reportOpen={reportOpen}
               updateSiteStatus={updateSiteStatus}
             />
-            <SiteOperations key={site.id} siteId={site.id} collapsible />
+            <SiteOperations key={site.id} siteId={site.id} active={menu === "info"} collapsible />
           </section>
 
           {visited.quote && (
@@ -544,7 +544,7 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteOperations siteId={site.id} mode="materials" />
+              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
               <SiteMaterials key={site.id} site={site} />
             </section>
           )}

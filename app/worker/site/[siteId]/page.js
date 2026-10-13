@@ -569,6 +569,7 @@ export default function WorkerSiteDetailPage() {
             )}
           </div>
           <SiteOperations
+            active={tab === "info"}
             key={siteId}
             collapsible
             siteId={siteId}

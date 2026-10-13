@@ -23,6 +23,7 @@ const valid = (value, max) =>
 
 export default function FilmRollInventory({
   siteId,
+  active = true,
   disabled = false,
   onTracked,
   onChanged,
@@ -39,6 +40,9 @@ export default function FilmRollInventory({
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
 
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const previousActive = useRef(active);
   const mounted = useRef(false);
   const lock = useRef(false);
   const epoch = useRef(0);
@@ -54,7 +58,7 @@ export default function FilmRollInventory({
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!siteId || lock.current) return;
+    if (!siteId || lock.current || !activeRef.current) return;
 
     const version = ++epoch.current;
     setLoading(true);
@@ -79,6 +83,11 @@ export default function FilmRollInventory({
       }
     }
   }, [siteId, accept]);
+
+  useEffect(() => {
+    if (active && !previousActive.current && !batch.current) refresh();
+    previousActive.current = active;
+  }, [active, refresh]);
 
   useEffect(() => {
     mounted.current = true;
