@@ -43,6 +43,7 @@ export default function WorkerManagement({
   const [form, setForm] = useState(EMPTY_FORM);
   const [localMessage, setLocalMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [workerFilter, setWorkerFilter] = useState("all");
 
   const [inviteWorker, setInviteWorker] = useState(null);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -133,13 +134,14 @@ export default function WorkerManagement({
     }
   }
 
-  const visibleWorkers = useMemo(() => {
-    if (showInactive) return workers;
-
-    return workers.filter(
-      worker => worker.is_active !== false,
-    );
-  }, [workers, showInactive]);
+  // Keep historical workers in the directory even when they have no login.
+  // Filters only change presentation; they never delete worker or site records.
+  const visibleWorkers = useMemo(() => workers.filter(worker => {
+    if (!showInactive && worker.is_active === false) return false;
+    if (workerFilter === "linked") return Boolean(worker.user_id);
+    if (workerFilter === "unlinked") return !worker.user_id;
+    return true;
+  }), [workers, showInactive, workerFilter]);
 
   const activeCount = useMemo(
     () => workers.filter(worker => worker.is_active !== false).length,
@@ -796,6 +798,24 @@ export default function WorkerManagement({
           </div>
         )}
 
+        <div role="group" aria-label="시공자 연결 상태 필터" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+          {[
+            ["all", "전체", workers.length],
+            ["linked", "연결 시공자", workers.filter(w => Boolean(w.user_id)).length],
+            ["unlinked", "미연결·과거 협력", workers.filter(w => !w.user_id).length],
+          ].map(([key,label,count]) => (
+            <button key={key} type="button" aria-pressed={workerFilter === key}
+              onClick={() => setWorkerFilter(key)}
+              style={{border:"1px solid #cbd5e1",borderRadius:10,padding:"9px 11px",fontWeight:700,
+                background:workerFilter === key ? "#163153" : "#fff",
+                color:workerFilter === key ? "#fff" : "#334155"}}>
+              {label} {count}
+            </button>
+          ))}
+        </div>
+        <p style={{fontSize:12,color:"#64748b",margin:"0 0 12px"}}>
+          계정이 연결되지 않은 과거 협력 시공자도 명단에 유지됩니다. 실제 과거 작업 여부는 출퇴근·현장 기록에서 확인하세요.
+        </p>
         <div style={{ display: "grid", gap: "9px" }}>
           {visibleWorkers.map(worker => (
             <WorkerCard
