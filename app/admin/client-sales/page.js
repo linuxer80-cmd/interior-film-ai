@@ -383,7 +383,7 @@ export default function ClientSalesPage() {
 
           <p>
             <Link href="/admin/clients">
-              업체 관리 · 입금 처리 →
+              거래처 관리 · 입금 처리 →
             </Link>
           </p>
         </>
