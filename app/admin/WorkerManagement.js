@@ -802,7 +802,7 @@ export default function WorkerManagement({
               key={worker.id}
               worker={worker}
               inviteLoading={inviteLoadingId === worker.id}
-              onInvite={undefined}
+              onInvite={() => createInviteForWorker(worker)}
               onLinkSelf={() => linkMyself(worker)}
               onSaveMemo={async memo => {
                 if (!worker.company_id) throw Error("업체 정보를 확인해주세요.");
