@@ -531,8 +531,8 @@ export default function AttendancePage({
             </form>
           </details>
 
-          <div style={card}>
-            <strong>현장 주소 자동 비교</strong>
+          <details style={card}>
+            <summary style={{fontWeight:700,cursor:"pointer"}}>현장 주소·GPS 확인 방식</summary>
 
             <p>
               출근할 때 현장정보에 저장된 주소로 기준 위치를
@@ -546,7 +546,8 @@ export default function AttendancePage({
             </p>
           </div>
 
-          <div style={card}>
+          <details style={card}>
+            <summary style={{fontWeight:700,cursor:"pointer"}}>추가 인건비 정산 안내</summary>
             승인된 추가 인건비{" "}
             <strong>
               {won(data.records.reduce(
@@ -564,9 +565,8 @@ export default function AttendancePage({
               인건비 지급 관리에 포함됩니다. 수익 조회는 기존 현장
               시공 시작일 기준입니다.
             </p>
-          </div>
-        </>
-      )}
+          </details>
+        </>)}
 
       {data && !admin && (
         <div style={card}>
@@ -718,12 +718,15 @@ export default function AttendancePage({
           {!records.length && <p>기록이 없습니다.</p>}
 
           {records.map(record => (
-            <article key={record.id} style={card}>
-              <strong>
-                {record.work_day}
-                {" · "}{workerName(record.worker_id)}
-                {" · "}{siteName(record.site_id)}
-              </strong>
+            <details key={record.id} style={{...card,padding:12,marginBottom:8}} open={review?.id===record.id ? true : undefined}>
+              <summary style={{cursor:"pointer",listStyle:"none",display:"grid",gap:5}}>
+                <strong>{record.work_day} · {workerName(record.worker_id)}</strong>
+                <span style={{fontSize:13,color:"#475569"}}>{siteName(record.site_id)} · 출근 {time(record.clock_in)} · 퇴근 {record.clock_out ? time(record.clock_out) : "근무 중"}</span>
+                <span style={{fontSize:12,color:record.review_status==="pending"?"#b45309":"#64748b"}}>
+                  {record.review_status==="pending"?"확인 대기 · ":record.review_status==="approved"?"승인 · ":record.review_status==="rejected"?"반려 · ":""}
+                  상세 보기 ▾
+                </span>
+              </summary>
 
               <p>{record.site_address}</p>
 
@@ -934,7 +937,7 @@ export default function AttendancePage({
                   </button>
                 </form>
               )}
-            </article>
+            </details>
           ))}
         </>
       )}
