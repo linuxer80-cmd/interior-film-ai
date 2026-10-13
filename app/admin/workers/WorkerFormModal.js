@@ -15,6 +15,7 @@ function formatNumber(value) {
 
 export default function WorkerFormModal({
   editingWorker,
+  relationshipType = null,
   selfRegistration = false,
   form,
   loading = false,
@@ -25,6 +26,7 @@ export default function WorkerFormModal({
   onClose,
 }) {
   const isEdit = Boolean(editingWorker);
+  const freelancer = isEdit && relationshipType === "freelancer";
 
   function handleWageChange(event) {
     const rawValue = event.target.value.replace(/[^\d]/g, "");
@@ -91,7 +93,7 @@ export default function WorkerFormModal({
               }}
             >
               {isEdit
-                ? "전화번호와 기본 일당을 수정할 수 있습니다."
+                ? freelancer ? "협력 프리랜서의 기본 일당은 본인만 수정할 수 있습니다." : "전화번호와 기본 일당을 수정할 수 있습니다."
                 : "이름, 전화번호와 기본 일당을 입력해주세요."}
             </div>
           </div>
@@ -173,7 +175,7 @@ export default function WorkerFormModal({
           />
 
           <div style={{ height: "16px" }} />
-          <FieldLabel required>기본 일당</FieldLabel>
+          <FieldLabel required>{freelancer ? "개인 등록 일당 (조회 전용)" : "기본 일당"}</FieldLabel>
 
           <div style={{ position: "relative" }}>
             <input
@@ -181,7 +183,7 @@ export default function WorkerFormModal({
               inputMode="numeric"
               aria-label="기본 일당"
               value={formatNumber(form?.daily_wage)}
-              disabled={loading}
+              disabled={loading || freelancer}
               onChange={handleWageChange}
               placeholder="예: 250,000"
               style={{
@@ -224,7 +226,8 @@ export default function WorkerFormModal({
             기본 일당에 해당 금액이 자동으로 더해집니다.
           </div>
 
-          <div hidden={isEdit && Number(form.daily_wage) === Number(editingWorker.daily_wage)}>
+          {freelancer && <p style={{fontSize:12,color:"#64748b"}}>프리랜서 일당은 시공자 개인설정에서 변경합니다. 현장별 합의 금액은 현장 배정에서 관리하세요.</p>}
+          <div hidden={freelancer || (isEdit && Number(form.daily_wage) === Number(editingWorker.daily_wage))}>
           <div style={{ height: 16 }} />
           <FieldLabel required>기본 일당 적용 시작일</FieldLabel>
 
