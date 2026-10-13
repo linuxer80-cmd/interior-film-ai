@@ -663,7 +663,10 @@ export default function WorkerManagement({
             <p style={{fontSize:13,color:"#64748b",margin:0}}>초대링크만 보내면 가입과 업체 연결이 진행됩니다.</p>
           </div>
         </div>
-        <DirectWorkerInvites />
+        <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
+          <summary style={{fontWeight:800,cursor:"pointer",color:"#163153"}}>＋ 시공자 초대하기</summary>
+          <div style={{marginTop:12}}><DirectWorkerInvites /></div>
+        </details>
         <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
           <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>기타 관리 · 수동 등록 / 관리자 본인 등록</summary>
           <p style={{fontSize:12,color:"#64748b"}}>일반 시공자는 위 초대링크를 이용하세요. 과거 기록 등록 등 예외적인 경우에만 사용합니다.</p>
@@ -776,9 +779,6 @@ export default function WorkerManagement({
             관계 확인 필요 {workers.filter(w => (showInactive || w.is_active !== false) && !workerRelationships.some(r => r.worker_id===w.id && !r.ended_at && r.user_id===w.user_id)).length}명 · 기존 시공자 관계를 확인해주세요.
           </p>
         )}
-        <p style={{fontSize:12,color:"#64748b",margin:"0 0 12px"}}>
-          시공자를 선택해 출퇴근과 일당을 관리하세요.
-        </p>
         <div style={{ display: "grid", gap: "9px" }}>
           {visibleWorkers.filter(worker => (String(worker.name||"")+" "+String(worker.phone||"")).toLowerCase().includes(workerSearch.trim().toLowerCase())).map(worker => (
             <WorkerCard
