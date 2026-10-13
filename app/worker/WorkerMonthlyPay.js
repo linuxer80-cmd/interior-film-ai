@@ -242,7 +242,7 @@ export default function WorkerMonthlyPay({
               className={styles.company}
               key={company.companyId}
             >
-              {data.companies.length > 1 && (
+              {(
                 <div
                   className={styles.companyHeading}
                 >
