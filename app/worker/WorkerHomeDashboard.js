@@ -83,6 +83,7 @@ export default function WorkerHomeDashboard({
   onOpen,
 }) {
   const [employeeHome, setEmployeeHome] = useState(null);
+  const [companyNames,setCompanyNames] = useState({});
   const [relationshipError, setRelationshipError] = useState("");
   const [relationshipReload, setRelationshipReload] = useState(0);
   useEffect(() => {
@@ -90,7 +91,14 @@ export default function WorkerHomeDashboard({
     setEmployeeHome(null); setRelationshipError('');
     relationshipRequest({action:'mine'}).then(data=>{
       if(!Array.isArray(data.relationships)) throw Error('소속 정보를 확인할 수 없습니다.');
-      if(active)setEmployeeHome(data.relationships.some(r=>r.relationship_type==='employee'));
+      if(active){
+        setEmployeeHome(data.relationships.some(r=>r.relationship_type==='employee'));
+        const names={};
+        for(const r of data.relationships){
+          if(r.company_id && (r.company_name || r.companyName)) names[r.company_id]=r.company_name || r.companyName;
+        }
+        setCompanyNames(names);
+      }
     }).catch(error=>{if(active)setRelationshipError(error.message || '소속 확인에 실패했습니다.');});
     return ()=>{active=false;};
   }, [relationshipReload]);
@@ -197,6 +205,7 @@ export default function WorkerHomeDashboard({
               </span>
 
               <span className="wp-site-text">
+                <span style={{fontSize:12,fontWeight:800,color:"#2563eb"}}>협력 업체 · {site.company_name || site.companyName || companyNames[site.company_id] || "업체명 확인 필요"}</span>
                 <small>
                   {site.address ||
                     site.site_address ||
