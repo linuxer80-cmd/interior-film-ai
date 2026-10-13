@@ -743,7 +743,7 @@ export default function TradeClients({ siteId, onScope }) {
       ) : (
         <>
           {!siteId && (
-            <nav className="menus" aria-label="업체 관리 메뉴">
+            <nav className="menus" aria-label="거래처 관리 메뉴">
               {[
                 ["sites", "현장·정산"],
                 ["manage", "업체·담당자"],
