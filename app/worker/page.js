@@ -25,6 +25,7 @@ export default function WorkerPage({ mode = "home" }) {
 
   const [search, setSearch] = useState("");
   const [reportCompany, setReportCompany] = useState("all");
+  const [reportFilter, setReportFilter] = useState("todo");
   const [loading, setLoading] = useState(true);
   const [worker, setWorker] = useState(null);
   const [sites, setSites] = useState([]);
@@ -195,6 +196,8 @@ export default function WorkerPage({ mode = "home" }) {
 
   const visibleSites = sites.filter(site => {
     if (mode === "report" && reportCompany !== "all" && site.company_id !== reportCompany) return false;
+    if (mode === "report" && reportFilter === "todo" && ["approved","accepted"].includes(site.report_review_status)) return false;
+    if (mode === "report" && reportFilter === "approved" && !["approved","accepted"].includes(site.report_review_status)) return false;
     if (siteStatus(site) === "cancelled") {
       return false;
     }
@@ -478,6 +481,25 @@ export default function WorkerPage({ mode = "home" }) {
                   </div>
                 )}
 
+                {mode === "report" && (
+                  <div role="group" aria-label="완료보고 상태" style={{display:"flex",gap:8,marginBottom:12}}>
+                    {[
+                      ["todo","보고·확인 필요"],
+                      ["approved","승인 완료"],
+                      ["all","전체"]
+                    ].map(([id,label])=>(
+                      <button key={id} type="button" aria-pressed={reportFilter===id}
+                        onClick={()=>setReportFilter(id)}
+                        style={{flex:1,padding:"11px 6px",borderRadius:12,
+                          border:"1px solid #cbd5e1",fontSize:13,fontWeight:700,
+                          background:reportFilter===id?"#193758":"#fff",
+                          color:reportFilter===id?"#fff":"#334155"}}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <label>
                   현장 검색
                   <input
@@ -512,6 +534,7 @@ export default function WorkerPage({ mode = "home" }) {
                           site.customer_name ||
                           "현장"}
                       </strong>
+                      {mode === "report" && <small style={{fontSize:12,color:["approved","accepted"].includes(site.report_review_status)?"#047857":"#64748b"}}>{["approved","accepted"].includes(site.report_review_status)?"승인 완료":site.report_review_status==="pending"?"관리자 확인 대기":site.report_review_status==="rejected"?"반려 · 수정 필요":"보고 작성 필요"}</small>}
                       <small>
                         {site.address ||
                           site.site_address ||
