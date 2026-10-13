@@ -12,6 +12,7 @@ import "../../components/laborMarket.css";
 export default function WorkerInventory() {
   const [data, setData] = useState(null);
   const [siteId, setSiteId] = useState("");
+  const [companyId, setCompanyId] = useState("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
@@ -44,6 +45,10 @@ export default function WorkerInventory() {
       active = false;
     };
   }, [siteId, reload]);
+
+  const choices = data?.sites || [];
+  const companies = [...new Map(choices.map(site => [site.company_id,site.company_name || "업체명 확인 필요"])).entries()];
+  const filteredSites = companyId === "all" ? choices : choices.filter(site => site.company_id === companyId);
 
   const length = value =>
     Number(
@@ -90,31 +95,37 @@ export default function WorkerInventory() {
               현장 배정을 관리자에게 확인해주세요.
             </aside>
           ) : (
-            <label>
-              담당 현장
-
-              <select
-                value={siteId}
-                onChange={event =>
-                  setSiteId(event.target.value)
-                }
-              >
-                <option value="">
-                  현장을 선택해주세요
-                </option>
-
-                {data.sites.map(site => (
-                  <option
-                    key={site.id}
-                    value={site.id}
-                  >
-                    {site.company_name}
-                    {" · "}
-                    {site.site_name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div style={{display:"grid",gap:14}}>
+              <label>
+                협력 업체
+                <select value={companyId}
+                  onChange={event=>{setCompanyId(event.target.value);setSiteId("");}}
+                  style={{display:"block",width:"100%",marginTop:8}}>
+                  <option value="all">전체 업체 ({companies.length})</option>
+                  {companies.map(([id,name])=>(
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                담당 현장
+                <select value={siteId}
+                  onChange={event=>setSiteId(event.target.value)}
+                  style={{display:"block",width:"100%",marginTop:8}}>
+                  <option value="">현장을 선택해주세요 ({filteredSites.length}개)</option>
+                  {filteredSites.map(site=>(
+                    <option key={site.id} value={site.id}>
+                      {companyId==="all" ? (site.company_name+" · ") : ""}
+                      {site.site_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!siteId && <p style={{fontSize:13,color:"#64748b",margin:0}}>
+                {companyId==="all" ? "전체 협력 업체의 담당 현장을 표시합니다." : "선택한 업체의 담당 현장만 표시합니다."}
+                재고는 현장을 선택하면 조회됩니다.
+              </p>}
+            </div>
           )}
 
           {data.selectedSite && (
