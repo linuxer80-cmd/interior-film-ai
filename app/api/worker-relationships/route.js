@@ -17,7 +17,8 @@ export async function POST(request) {
    if(error){
     if(['PGRST202','42883'].includes(error.code))return json({error:'관계 설정 DB 마이그레이션을 먼저 적용해주세요.',setupRequired:true},503);
     if(error.code==='P0001')return json({error:error.message},409);
-    console.error('시공자 관계 설정:',error.code);return json({error:'관계 설정에 실패했습니다.'},503);
+    console.error('시공자 관계 설정:',{code:error.code,message:error.message});
+    return json({error:'관계 설정에 실패했습니다. 오류 코드: '+String(error.code||'UNKNOWN'),code:error.code||'UNKNOWN'},503);
    }
    return json(data);
   }
