@@ -310,21 +310,13 @@ export default function SiteOperations({
 
   const materialsMode = mode === "materials";
   const folded = collapsible && !materialsMode;
-  const Container = folded ? "details" : "section";
+  const History = folded ? "details" : "div";
   const pendingEvents = (data?.events || []).filter(event =>
     event.receipts.some(receipt => !receipt.confirmedAt)
   ).length;
 
   return (
-    <Container style={card}>
-      {folded && (
-        <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
-          수정 이력 · {data?.events?.length || 0}건
-          {pendingEvents > 0 && (
-            <span style={{ marginLeft: 8, color: "#a16207", fontSize: 13 }}>미확인 {pendingEvents}건</span>
-          )}
-        </summary>
-      )}
+    <section style={card}>
       <div
         style={{
           display: "flex",
@@ -336,7 +328,7 @@ export default function SiteOperations({
         <h3 style={{ margin: 0, fontSize: 17 }}>
           {materialsMode
             ? "📦 반출 · 반입 · 소모량"
-            : "🔔 변경사항 확인"}
+            : "📦 현장 자재 · 변경사항"}
         </h3>
 
         <button
@@ -786,6 +778,12 @@ export default function SiteOperations({
                     {material.code || material.name}
                   </strong>
 
+                  {(data.issues || []).filter(issue => issue.materialId === material.id && !issue.voided).map(issue => (
+                    <p key={issue.id} style={{ margin: "6px 0", fontSize: 13, color: "#475569" }}>
+                      반출 {issue.quantity}{material.unit} · {date(issue.at)}
+                    </p>
+                  ))}
+
                   {material.name && (
                     <p
                       style={{
@@ -800,6 +798,16 @@ export default function SiteOperations({
               </div>
             ))}
           </div>
+
+          <History style={{ marginTop: 16 }}>
+      {folded && (
+        <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
+          수정 이력 · {data?.events?.length || 0}건
+          {pendingEvents > 0 && (
+            <span style={{ marginLeft: 8, color: "#a16207", fontSize: 13 }}>미확인 {pendingEvents}건</span>
+          )}
+        </summary>
+      )}
 
           {!data.events.length && (
             <p>확인할 변경사항이 없습니다.</p>
@@ -969,8 +977,9 @@ export default function SiteOperations({
               )}
             </div>
           ))}
+          </History>
         </>
       )}
-    </Container>
+    </section>
   );
                          }
