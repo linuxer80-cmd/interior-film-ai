@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { confirmEmailDomain } from "../../../../lib/emailDomainGuard";
 
 export default function WorkerInviteSignup({
   inviteCode,
@@ -301,6 +302,8 @@ export default function WorkerInviteSignup({
 
     const cleanEmail =
       email.trim().toLowerCase();
+
+    if (!confirmEmailDomain(cleanEmail)) return;
 
     if (!cleanEmail) {
       setMessage(
