@@ -145,11 +145,7 @@ export default function TomorrowTasks({ owner = false }) {
         </button>
       </div>
 
-      <p>
-        {owner
-          ? "내일 현장의 배정과 사용할 필름을 확인하세요."
-          : "본인이 내일 배정된 현장과 준비할 필름입니다."}
-      </p>
+      {owner && <p>내일 현장의 배정과 사용할 필름을 확인하세요.</p>}
 
       {loading ? (
         <p role="status">내일 일정을 불러오는 중…</p>
@@ -165,83 +161,36 @@ export default function TomorrowTasks({ owner = false }) {
           )}
 
           {data?.sites.slice(0, limit).map(site => (
-            <article key={site.id}>
-              <div className="heading">
-                <strong>{!owner && <span style={{display:"block",fontSize:12,color:"#2563eb",marginBottom:4}}>협력 업체 · {site.companyName || "업체명 확인 필요"}</span>}{site.name}</strong>
-
-                <a
-                  href={
-                    owner
-                      ? `/admin?tab=sites&site=${site.id}`
-                      : `/worker/site/${site.id}`
-                  }
-                >
+            <article key={site.id} className="task-site-card">
+              <div className="task-site-top">
+                <div className="task-site-main">
+                  <span className="task-company">
+                    {owner ? "담당 현장" : `협력 업체 · ${site.companyName || "업체명 확인 필요"}`}
+                  </span>
+                  <strong className="task-site-name">{site.name}</strong>
+                  {!owner && <span className="task-role">{site.role === "leader" ? "책임 팀장" : "팀원"}</span>}
+                </div>
+                <a className="task-site-open"
+                  href={owner ? `/admin?tab=sites&site=${site.id}` : `/worker/site/${site.id}`}>
                   현장 보기 ›
                 </a>
               </div>
-
-              {!owner && (
-                <p>
-                  내 역할:{" "}
-                  {site.role === "leader"
-                    ? "책임 팀장"
-                    : "팀원"}
-                </p>
-              )}
-
-              {!owner && (
-                <SavedCommuteSummary
-                  siteId={site.id}
-                  workDate={data.date}
-                  refreshKey={attempt}
-                />
-              )}
-
-              <p>주소: {site.address || "주소 등록 필요"}</p>
-              <p>작업: {site.work || "작업 내용 확인 필요"}</p>
-
-              <p>
-                시공자:{" "}
-                {site.team.length
-                  ? site.team
-                      .map(
-                        w =>
-                          `${w.name}${w.role === "leader" ? "(팀장)" : ""}`
-                      )
-                      .join(" · ")
-                  : "배정 필요"}
-              </p>
-
-              {!site.team.some(w => w.role === "leader") && (
-                <p className="notice">
-                  책임 팀장을 확인해주세요.
-                </p>
-              )}
-
-              <details>
-                <summary>
-                  준비 필름 {site.materials.length}종 확인
-                </summary>
-
+              <details className="task-extra">
+                <summary>준비사항 · 필름 {site.materials.length}종 <span aria-hidden="true">⌄</span></summary>
+                <p>주소: {site.address || "주소 등록 필요"}</p>
+                <p>작업: {site.work || "작업 내용 확인 필요"}</p>
+                <p>시공자: {site.team.length
+                  ? site.team.map(w => `${w.name}${w.role === "leader" ? "(팀장)" : ""}`).join(" · ")
+                  : "배정 필요"}</p>
+                {!site.team.some(w => w.role === "leader") && <p className="notice">책임 팀장을 확인해주세요.</p>}
+                {!owner && <SavedCommuteSummary siteId={site.id} workDate={data.date} refreshKey={attempt} />}
                 {site.materials.length ? (
-                  <ul>
-                    {site.materials.map(m => (
-                      <li key={m.id}>
-                        {[m.brand, m.code, m.name]
-                          .filter(Boolean)
-                          .join(" · ") || "제품 확인 필요"}
-
-                        {m.memo && (
-                          <small> · {m.memo}</small>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>
-                    사용 필름이 아직 등록되지 않았습니다.
-                  </p>
-                )}
+                  <ul>{site.materials.map(m => (
+                    <li key={m.id}>{[m.brand,m.code,m.name].filter(Boolean).join(" · ") || "제품 확인 필요"}
+                      {m.memo && <small> · {m.memo}</small>}
+                    </li>
+                  ))}</ul>
+                ) : <p>사용 필름이 아직 등록되지 않았습니다.</p>}
               </details>
             </article>
           ))}
@@ -303,10 +252,23 @@ export default function TomorrowTasks({ owner = false }) {
           flex-shrink: 0;
         }
 
-        article {
-          border-top: 1px solid #e6dfd4;
-          padding: 16px 0;
+        .task-site-card {
+          border: 1px solid #e5e1d9;
+          background: #fff;
+          border-radius: 18px;
+          padding: 16px;
+          margin: 12px 0;
         }
+        .task-site-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .task-site-main { display:flex; flex-direction:column; align-items:flex-start; gap:7px; min-width:0; }
+        .task-company { color:#2563eb; font-size:12px; font-weight:800; }
+        .task-site-name { font-size:19px; color:#20364c; }
+        .task-role { background:#f2ece4; border-radius:20px; padding:5px 9px; font-size:12px; color:#625747; }
+        .task-site-open { white-space:nowrap; font-weight:700; }
+        .task-extra { margin-top:12px; border-top:1px solid #eee9e1; }
+        .task-extra summary { padding:12px 0 0; color:#52677c; }
+        .task-extra p { margin:9px 0; }
+        .task-extra ul { margin:12px 0 0; }
 
         .notice {
           color: #a15c13;
