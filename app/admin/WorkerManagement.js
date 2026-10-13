@@ -160,10 +160,12 @@ export default function WorkerManagement({
   // Filters only change presentation; they never delete worker or site records.
   const visibleWorkers = useMemo(() => workers.filter(worker => {
     if (!showInactive && worker.is_active === false) return false;
-    if (workerFilter === "linked") return Boolean(worker.user_id);
-    if (workerFilter === "unlinked") return !worker.user_id;
+    const relationship = workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type;
+    if (workerFilter === "employee") return relationship === "employee";
+    if (workerFilter === "freelancer") return relationship === "freelancer";
+    if (workerFilter === "unset") return !relationship;
     return true;
-  }), [workers, showInactive, workerFilter]);
+  }), [workers, showInactive, workerFilter, workerRelationships]);
 
   const activeCount = useMemo(
     () => workers.filter(worker => worker.is_active !== false).length,
@@ -768,11 +770,12 @@ export default function WorkerManagement({
           placeholder="이름 또는 전화번호 검색"
           value={workerSearch} onChange={event=>setWorkerSearch(event.target.value)}
           style={{width:"100%",padding:"12px",border:"1px solid #cbd5e1",borderRadius:12,marginBottom:10,fontSize:14}} />
-        <div role="group" aria-label="시공자 연결 상태 필터" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        <div role="group" aria-label="시공자 관계 유형 필터" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
           {[
-            ["all", "전체", workers.length],
-            ["linked", "연결 시공자", workers.filter(w => Boolean(w.user_id)).length],
-            ["unlinked", "미연결·과거 협력", workers.filter(w => !w.user_id).length],
+            ["all", "전체", workers.filter(w => showInactive || w.is_active !== false).length],
+            ["employee", "소속 직원", workers.filter(w => workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id && r.relationship_type === "employee")).length],
+            ["freelancer", "프리랜서", workers.filter(w => workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id && r.relationship_type === "freelancer")).length],
+            ["unset", "미설정", workers.filter(w => !workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id)).length],
           ].map(([key,label,count]) => (
             <button key={key} type="button" aria-pressed={workerFilter === key}
               onClick={() => setWorkerFilter(key)}
