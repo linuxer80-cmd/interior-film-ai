@@ -18,8 +18,8 @@ export default function WorkerRelationships({workers=[],onRelationshipsChange}) 
   }catch(e){setMessage(e.message);}finally{lock.current=false;setBusy(false);}
  }
  return <details style={{padding:16,background:'#fff',border:'1px solid #dce2e6',borderRadius:16,marginBottom:16}}>
-  <summary style={{fontWeight:800,cursor:'pointer'}}>직원·협력 시공자 연결 관리</summary>
-  <p>시공자를 명단에 등록한 뒤 관계를 선택해 초대하세요. 본인이 수락하고 관리자가 요청 계정을 확인하면 연결됩니다.</p>
+  <summary style={{fontWeight:800,cursor:'pointer'}}>초대·연결 관리 (필요할 때 펼치기)</summary>
+  <p>기존 연결 시공자의 직원·프리랜서 유형은 아래 시공자 카드에서 바로 설정하세요. 이 메뉴는 초대 대기와 관계 관리용입니다.</p>
   {message&&<p role='status'>{message}</p>}
   {data&&<><fieldset disabled={busy} style={{border:0,padding:0,display:'grid',gap:10}}>
    <label>등록된 시공자<select value={workerId} onChange={e=>{setWorkerId(e.target.value);setUrl('');}} style={{width:'100%',padding:12}}><option value=''>선택해주세요</option>{workers.filter(w=>w.is_active!==false).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
@@ -28,22 +28,6 @@ export default function WorkerRelationships({workers=[],onRelationshipsChange}) 
    <button type='button' disabled={!workerId||busy} onClick={()=>{if(window.confirm(`${selectedWorker?.name||'시공자'}님을 ${relationshipLabel(type)}으로 초대할까요?`))act({action:'invite',workerId,relationshipType:type});}}>초대 링크 만들기 · 7일 유효</button>
    {url&&<label>초대 링크<input readOnly value={url} onFocus={e=>e.target.select()} style={{width:'100%',padding:12}}/><button type='button' onClick={async()=>{try{await navigator.clipboard.writeText(url);setMessage('초대 링크를 복사했습니다.');}catch{setMessage('초대 링크를 길게 눌러 복사해주세요.');}}}>링크 복사</button></label>}
   </fieldset>
-  <h4>기존 연결 시공자 관계 설정</h4>
-  <p style={{fontSize:12}}>계정이 연결된 시공자만 설정할 수 있습니다. 기존 현장 배정과 확정 일당은 변경되지 않습니다.</p>
-  {workers.filter(w=>w.user_id && w.is_active!==false).map(w=>{
-   const rel=(data.relationships||[]).find(r=>r.worker_id===w.id && !r.ended_at);
-   const saved=rel?.relationship_type||'';
-   const selected=draftTypes[w.id]??saved;
-   return <div key={w.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'9px 0',borderBottom:'1px solid #eee',flexWrap:'wrap'}}>
-    <div><b>{w.name}</b><div style={{fontSize:12,color:'#64748b'}}>{rel?relationshipLabel(saved):'관계 미설정'}</div></div>
-    <div style={{display:'flex',gap:6,alignItems:'center'}}>
-     <select aria-label={`${w.name} 관계 설정`} disabled={busy} value={selected} onChange={e=>setDraftTypes(old=>({...old,[w.id]:e.target.value}))}>
-      <option value=''>관계 미설정</option><option value='employee'>소속 직원</option><option value='freelancer'>협력 프리랜서</option>
-     </select>
-     <button type='button' disabled={busy||!selected||selected===saved} onClick={()=>act({action:'set_type',workerId:w.id,relationshipType:selected})}>저장</button>
-    </div>
-   </div>;
-  })}
   <h4>초대·계정 확인 대기</h4>
   {!data.invites.length&&<p>진행 중인 초대가 없습니다.</p>}
   {data.invites.map(i=><article key={i.id} style={{borderTop:'1px solid #eee',padding:'12px 0'}}>
