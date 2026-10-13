@@ -8,6 +8,7 @@ import '../../components/laborMarket.css';
 const blank = {
   name:'',
   age:'',
+  gender:'',
   daily_wage:250000,
   region:'',
   skills:[],
@@ -407,6 +408,15 @@ export default function WorkerAccount() {
                     {field('나이 (선택)','age','number')}
                     {field('경력 (년)','experience_years','number')}
                   </div>
+
+                  <label>성별 (선택)
+                    <select value={profile.gender || ''} onChange={event=>setProfile(p=>({...p,gender:event.target.value}))}>
+                      <option value=''>선택하지 않음</option>
+                      <option value='male'>남성</option>
+                      <option value='female'>여성</option>
+                      <option value='prefer_not_to_say'>응답하지 않음</option>
+                    </select>
+                  </label>
 
                   {field('등록 일당 (원)','daily_wage','number')}
 
