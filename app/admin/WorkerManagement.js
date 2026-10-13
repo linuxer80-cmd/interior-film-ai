@@ -651,85 +651,28 @@ export default function WorkerManagement({
 
   return (
     <>
-      <DirectWorkerInvites />
-      <WorkerRelationships workers={workers} onRelationshipsChange={setWorkerRelationships} />
-      <section>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "10px",
-            marginBottom: "14px",
-          }}
-        >
+      <section style={{marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
           <div>
-            <div
-              style={{
-                fontSize: "18px",
-                fontWeight: "900",
-                color: "#111827",
-              }}
-            >
-              시공자 관리
-            </div>
-
-            <div
-              style={{
-                marginTop: "3px",
-                color: "#64748b",
-                fontSize: "12px",
-              }}
-            >
-              시공자를 등록하고 계정과 기본 일당을 관리합니다.
-            </div>
+            <h2 style={{fontSize:21,margin:"0 0 5px",color:"#163153"}}>시공자 관리</h2>
+            <p style={{fontSize:13,color:"#64748b",margin:0}}>초대링크만 보내면 가입과 업체 연결이 진행됩니다.</p>
           </div>
-
-          <button
-            type="button"
-            onClick={openCreateForm}
-            style={{
-              flex: "0 0 auto",
-              border: "none",
-              borderRadius: "10px",
-              padding: "10px 13px",
-              background: "#111827",
-              color: "#ffffff",
-              fontSize: "13px",
-              fontWeight: "800",
-              cursor: "pointer",
-            }}
-          >
-            + 시공자 등록
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setEditingWorker(null);
-              setForm({
-                ...EMPTY_FORM,
-                pay_rate_effective_from: koreanDay(),
-              });
-              setLocalMessage("");
-              setPrivateReady(true);
-              setSelfRegistration(true);
-              setShowForm(true);
-            }}
-            style={{
-              padding: "10px 13px",
-              borderRadius: 10,
-              border: "1px solid #2563eb",
-              background: "#eff6ff",
-              color: "#1d4ed8",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            + 관리자 본인 시공자 등록
-          </button>
         </div>
-
+        <DirectWorkerInvites />
+        <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
+          <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>기타 관리 · 수동 등록 / 관리자 본인 등록 / 기존 초대</summary>
+          <p style={{fontSize:12,color:"#64748b"}}>일반 시공자는 위 초대링크를 이용하세요. 과거 기록 등록 등 예외적인 경우에만 사용합니다.</p>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <button type="button" onClick={openCreateForm}>수동 시공자 등록</button>
+            <button type="button" onClick={()=>{
+              setEditingWorker(null);setForm({...EMPTY_FORM,pay_rate_effective_from:koreanDay()});
+              setLocalMessage("");setPrivateReady(true);setSelfRegistration(true);setShowForm(true);
+            }}>관리자 본인 시공자 등록</button>
+          </div>
+          <WorkerRelationships workers={workers} onRelationshipsChange={setWorkerRelationships} />
+        </details>
+      </section>
+      <section>
         <WorkerSummary
           activeCount={activeCount}
           linkedCount={linkedCount}
@@ -837,7 +780,7 @@ export default function WorkerManagement({
           ))}
         </div>
         <p style={{fontSize:12,color:"#64748b",margin:"0 0 12px"}}>
-          계정이 연결되지 않은 과거 협력 시공자도 명단에 유지됩니다. 실제 과거 작업 여부는 출퇴근·현장 기록에서 확인하세요.
+          시공자를 선택해 출퇴근과 일당을 관리하세요.
         </p>
         <div style={{ display: "grid", gap: "9px" }}>
           {visibleWorkers.map(worker => (
