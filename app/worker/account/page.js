@@ -355,7 +355,7 @@ export default function WorkerAccount() {
                       {label}
                     </button>
                   )}
-                </div>
+                </div>}
 
                 {!pendingInvite && <p className='muted'>기본정보를 한 번 저장하면 구직 공고에 그대로 사용됩니다.</p>}
 
@@ -391,7 +391,7 @@ export default function WorkerAccount() {
 
                       <small>JPG·PNG·WebP / 2MB 이하</small>
                     </div>
-                  </div>
+                  </div>}
 
                   {!pendingInvite && !saved && <small>프로필을 먼저 저장하면 사진을 올릴 수 있습니다.</small>}
 
@@ -403,7 +403,7 @@ export default function WorkerAccount() {
                   {!pendingInvite && <div className='pair'>
                     {field('나이 (선택)','age','number')}
                     {field('경력 (년)','experience_years','number')}
-                  </div>
+                  </div>}
 
                   {!pendingInvite && <label>성별 (선택)
                     <select value={profile.gender || ''} onChange={event=>setProfile(p=>({...p,gender:event.target.value}))}>
@@ -412,7 +412,7 @@ export default function WorkerAccount() {
                       <option value='female'>여성</option>
                       <option value='prefer_not_to_say'>응답하지 않음</option>
                     </select>
-                  </label>
+                  </label>}
 
                   {field('등록 일당 (원)','daily_wage','number')}
 
@@ -427,7 +427,7 @@ export default function WorkerAccount() {
                         ...p,introduction:e.target.value
                       }))}
                     />
-                  </label>
+                  </label>}
                 </div>
 
                 {!pendingInvite && <div hidden={section!=='seeking'}>
@@ -458,7 +458,7 @@ export default function WorkerAccount() {
                   >
                     일할 날짜 선택 · 구직하기 ›
                   </Link>
-                </div>
+                </div>}
 
                 {!pendingInvite && <div hidden={section!=='private'}>
                   <h2>연락처·입금 정보</h2>
@@ -477,7 +477,7 @@ export default function WorkerAccount() {
                     저장하면 현재 연결된 활성 소속 업체의 계좌·출발 주소에도 반영됩니다.
                     등록 일당은 기존 업체의 계약 일당을 변경하지 않습니다.
                   </small>
-                </div>
+                </div>}
 
                 <div className='save-row'>
                   <button className='primary' disabled={busy}>
