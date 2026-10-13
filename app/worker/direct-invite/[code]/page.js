@@ -44,8 +44,8 @@ export default function DirectWorkerInvitePage(){
     data:{registration_type:"worker"},emailRedirectTo:redirect
    }});
    if(error)throw error;
-   if(data.session){setSession(data.session);setMessage("가입되었습니다. 개인 프로필 등록 후 초대를 수락해주세요.");}
-   else setMessage("인증 메일을 보냈습니다. 이메일 인증 후 이 초대 링크로 돌아오세요.");
+   if(data.session){setSession(data.session);setMessage("가입되었습니다. 아래 초대 내용을 확인하고 수락해주세요.");}
+   else setMessage("인증 메일을 보냈습니다. 메일에서 인증을 완료하면 초대 화면으로 돌아와 수락할 수 있습니다.");
   }catch(e){setMessage(e.message);}finally{setBusy(false);}
  }
  async function act(action){
@@ -74,10 +74,10 @@ export default function DirectWorkerInvitePage(){
   </section>:!done?<section>
    {preview?<><h2>{preview.companyName}</h2><p><strong>{preview.relationshipType==="employee"?"소속 직원":"협력 프리랜서"}</strong> 초대입니다.</p>
     <p>본인 계정으로 수락하면 해당 업체의 시공자 명단에 등록됩니다. 다른 업체 소속과 기존 근무 기록은 유지됩니다.</p>
-    <p>초대 조건에 동의한 뒤 수락하면 프로필 작성과 업체 연결이 이어집니다.</p>
-    {preview.status==="pending"?<div style={{display:"flex",gap:10}}>
-     <button disabled={busy} onClick={()=>{setConsented(true);act("accept");}} style={{padding:12}}>초대 수락</button>
-     <button disabled={busy} onClick={()=>act("decline")} style={{padding:12}}>거부</button>
+    <p>초대 수락을 누르세요. 프로필이 필요한 경우 작성 후 저장하면 연결을 이어서 완료합니다.</p>
+    {preview.status==="pending"?<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+     <button disabled={busy} onClick={()=>{setConsented(true);act("accept");}} style={{padding:"13px 18px",background:"#163153",color:"#fff",border:0,borderRadius:10,fontWeight:800,flex:2}}>{busy?"처리 중…":"초대 수락하고 연결하기"}</button>
+     <button disabled={busy} onClick={()=>act("decline")} style={{padding:12,borderRadius:10,flex:1}}>거부</button>
     </div>:<p>이미 처리된 초대입니다: {preview.status}</p>}
    </>:<p>초대 정보를 확인하는 중입니다.</p>}
   </section>:<p><Link href="/worker">시공자 홈으로 이동</Link></p>}
