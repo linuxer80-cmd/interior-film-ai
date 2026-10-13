@@ -407,10 +407,6 @@ export async function GET(request) {
         );
       }
 
-      if (params.get('skill')) {
-        query = query.contains('skills',[params.get('skill').slice(0,40)]);
-      }
-
       if (params.get('date')) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(params.get('date'))) {
           throw fail('날짜를 확인해주세요.');
