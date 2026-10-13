@@ -20,7 +20,7 @@ export default function ClientsPage() {
           fontSize: 28,
         }}
       >
-        업체 관리
+        거래처 관리
       </h1>
 
       <p
