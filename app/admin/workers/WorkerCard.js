@@ -92,15 +92,9 @@ export default function WorkerCard({
     >
       <div onClick={event=>event.stopPropagation()}
         style={{position:"relative",width:"100%",maxWidth:580,background:"#fff",borderRadius:18,padding:16,boxSizing:"border-box"}}>
-        <button type="button" onClick={onToggle} aria-label="상세 관리 닫기"
+        {compact && <button type="button" onClick={onToggle} aria-label="상세 관리 닫기"
           style={{position:"absolute",right:14,top:10,border:0,background:"#f1f5f9",
-            borderRadius:9,padding:"8px 12px",fontSize:17,cursor:"pointer"}}>×</button>
-      {compact && <button type="button" onClick={onToggle}
-        aria-expanded={true}
-        style={{display:"block",width:"100%",textAlign:"left",background:"#eff6ff",
-          border:"none",padding:"10px 12px",borderRadius:9,marginBottom:12,fontWeight:800,color:"#1d4ed8"}}>
-        {worker.name} 상세 관리 접기 ▲
-      </button>}
+            borderRadius:9,padding:"8px 12px",fontSize:17,cursor:"pointer"}}>×</button>}
       <div
         style={{
           display: "flex",
