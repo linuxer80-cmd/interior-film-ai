@@ -798,7 +798,7 @@ export default function WorkerManagement({
                 if (result.error) throw result.error;
                 await loadWorkers?.();
               }}
-              onEdit={() => openEditForm(worker)}
+              onEdit={() => { setExpandedWorkerId(null); openEditForm(worker); }}
               onActiveChange={() => handleActiveChange(worker)}
             />
           ))}
