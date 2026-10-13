@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {supabase} from '../../lib/supabase';
 import LaborNotifications from '../components/LaborNotifications';
+import HomeReturnButton from '../components/HomeReturnButton';
 import WorkDatePicker from '../admin/WorkDatePicker';
 import '../components/laborMarket.css';
 
@@ -159,7 +160,7 @@ export default function JobsPage(){
 
  return <main className='labor-shell jobs-compact'>
   <nav className='labor-navigation' aria-label='구인·구직 화면 이동'>
-   <Link className='labor-nav-button' href={data?.manager?'/admin':'/worker'}><span className='labor-nav-icon' aria-hidden='true'>⌂</span><span>{data?.manager?'관리자 홈':'시공자 홈'}</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+   <HomeReturnButton role={data?.manager?'admin':'worker'} />
    <Link className='labor-nav-button' href='/worker/account'><span className='labor-nav-icon' aria-hidden='true'>⚙</span><span>개인설정</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
   </nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
   {error&&<p className='error' role='alert'>{error}</p>}{notice&&<aside role='status'>{notice}</aside>}
