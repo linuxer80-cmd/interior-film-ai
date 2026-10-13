@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
@@ -10,7 +10,6 @@ import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
-import { relationshipRequest } from "../../lib/workerRelationshipClient";
 
 const EMPTY_FORM = {
   bank_name: "",
@@ -46,8 +45,25 @@ export default function WorkerManagement({
   const [showInactive, setShowInactive] = useState(false);
   const [workerFilter, setWorkerFilter] = useState("all");
   const [workerRelationships, setWorkerRelationships] = useState([]);
-  const [relationshipSavingId, setRelationshipSavingId] = useState(null);
-  const [relationshipErrors, setRelationshipErrors] = useState({});
+  useEffect(() => {
+    let active=true;
+    async function refreshRelationships(){
+      try{
+        const {data}=await supabase.auth.getSession();
+        if(!data?.session?.access_token)return;
+        const response=await fetch("/api/worker-relationships",{
+          method:"POST",cache:"no-store",
+          headers:{"Content-Type":"application/json",Authorization:"Bearer "+data.session.access_token},
+          body:JSON.stringify({action:"list"})
+        });
+        if(!response.ok)return;
+        const result=await response.json();
+        if(active)setWorkerRelationships(result.relationships||[]);
+      }catch(error){console.error("시공자 관계 조회",error);}
+    }
+    refreshRelationships();
+    return()=>{active=false;};
+  },[workers]);
 
   const [inviteWorker, setInviteWorker] = useState(null);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -135,23 +151,6 @@ export default function WorkerManagement({
       setLocalMessage("✅ 내 시공자 계정이 연결되었습니다.");
     } catch (error) {
       setLocalMessage(`❌ ${error.message}`);
-    }
-  }
-
-  async function saveWorkerRelationship(worker, relationshipType) {
-    if (!worker.user_id || !["employee", "freelancer"].includes(relationshipType)) return false;
-    setRelationshipSavingId(worker.id);
-    setRelationshipErrors(current => ({...current, [worker.id]: ""}));
-    try {
-      await relationshipRequest({action:"set_type",workerId:worker.id,relationshipType});
-      const refreshed=await relationshipRequest({action:"list"});
-      setWorkerRelationships(refreshed.relationships || []);
-      return true;
-    } catch (error) {
-      setRelationshipErrors(current => ({...current,[worker.id]:error?.message || "관계 저장 실패"}));
-      return false;
-    } finally {
-      setRelationshipSavingId(null);
     }
   }
 
