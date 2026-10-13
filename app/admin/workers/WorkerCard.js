@@ -16,6 +16,9 @@ const AttendancePage = dynamic(
 
 export default function WorkerCard({
   worker,
+  compact = false,
+  expanded = false,
+  onToggle,
   relationshipType = null,
   inviteLoading = false,
   onInvite,
@@ -47,6 +50,28 @@ export default function WorkerCard({
     ? worker.specialties
     : [];
 
+  if (compact && !expanded) {
+    return (
+      <button type="button" onClick={onToggle} aria-expanded={false}
+        style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
+          textAlign:"left",gap:10,padding:"13px 14px",background:"#fff",
+          border:"1px solid #e2e8f0",borderRadius:12,color:"#163153",minHeight:65}}>
+        <span style={{display:"grid",gap:5,minWidth:0}}>
+          <strong style={{fontSize:15}}>{worker.name}</strong>
+          <span style={{fontSize:12,color:"#64748b"}}>
+            {relationshipType==="employee"?"소속 직원":relationshipType==="freelancer"?"협력 프리랜서":"관계 미설정"}
+            {" · "}{accountLinked?"계정 연결":"계정 미연결"}
+            {!active?" · 근무 중지":""}
+          </span>
+        </span>
+        <span style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+          <span style={{fontSize:13,fontWeight:700}}>{Number(worker.daily_wage||0).toLocaleString("ko-KR")}원</span>
+          <span aria-hidden="true">⌄</span>
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div
       style={{
@@ -57,6 +82,12 @@ export default function WorkerCard({
         opacity: active ? 1 : 0.7,
       }}
     >
+      {compact && <button type="button" onClick={onToggle}
+        aria-expanded={true}
+        style={{display:"block",width:"100%",textAlign:"left",background:"#eff6ff",
+          border:"none",padding:"10px 12px",borderRadius:9,marginBottom:12,fontWeight:800,color:"#1d4ed8"}}>
+        {worker.name} 상세 관리 접기 ▲
+      </button>}
       <div
         style={{
           display: "flex",
