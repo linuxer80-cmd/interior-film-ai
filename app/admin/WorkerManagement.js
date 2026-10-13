@@ -44,6 +44,7 @@ export default function WorkerManagement({
   const [localMessage, setLocalMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [workerFilter, setWorkerFilter] = useState("all");
+  const [workerRelationships, setWorkerRelationships] = useState([]);
 
   const [inviteWorker, setInviteWorker] = useState(null);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -629,7 +630,7 @@ export default function WorkerManagement({
 
   return (
     <>
-      <WorkerRelationships workers={workers} />
+      <WorkerRelationships workers={workers} onRelationshipsChange={setWorkerRelationships} />
       <section>
         <div
           style={{
@@ -821,6 +822,7 @@ export default function WorkerManagement({
             <WorkerCard
               key={worker.id}
               worker={worker}
+              relationshipType={workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type || null}
               inviteLoading={inviteLoadingId === worker.id}
               onInvite={() => createInviteForWorker(worker)}
               onLinkSelf={() => linkMyself(worker)}
