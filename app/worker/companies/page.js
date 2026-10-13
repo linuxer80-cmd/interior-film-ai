@@ -1,5 +1,6 @@
 "use client";
 
+import HomeReturnButton from "../../components/HomeReturnButton";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -116,7 +117,7 @@ export default function WorkerCompaniesPage() {
   return (
     <main className="page">
       <div className="content">
-        <Link href="/worker">‹ 시공자 홈으로</Link>
+        <HomeReturnButton />
 
         <h1>내 소속 업체 · 통합 일정</h1>
         <p>
