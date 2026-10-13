@@ -485,6 +485,11 @@ export default function WorkerManagement({
       }
 
       if (editingWorker?.id) {
+        const freelancer = workerRelationships.some(r => r.worker_id === editingWorker.id && !r.ended_at && r.relationship_type === "freelancer");
+        if (freelancer && rateChanged) {
+          setLocalMessage("❌ 협력 프리랜서 일당은 시공자 본인만 수정할 수 있습니다.");
+          return;
+        }
         if (typeof updateWorker !== "function") {
           throw new Error(
             "시공자 수정 기능을 사용할 수 없습니다.",
@@ -493,7 +498,7 @@ export default function WorkerManagement({
 
         const result = await updateWorker(
           editingWorker.id,
-          submitForm,
+          {...submitForm, relationshipType: freelancer ? "freelancer" : undefined},
         );
 
         if (!result?.success) {
@@ -804,6 +809,7 @@ export default function WorkerManagement({
         <WorkerFormModal
           selfRegistration={selfRegistration}
           editingWorker={editingWorker}
+          relationshipType={workerRelationships.find(r => r.worker_id === editingWorker?.id && !r.ended_at)?.relationship_type || null}
           form={form}
           loading={workersLoading || privateBusy}
           saveDisabled={!privateReady}
