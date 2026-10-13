@@ -16,6 +16,7 @@ export default function WorkerInviteSignup({
     setPasswordConfirm,
   ] = useState("");
 
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
@@ -118,8 +119,12 @@ export default function WorkerInviteSignup({
          * 일반 초대 페이지이므로 아무것도 하지 않음
          */
         if (!session?.user) {
+          setCurrentUser(null);
           return;
         }
+        setCurrentUser(session.user);
+        // Existing sessions require explicit confirmation before accepting an invite.
+        if (!window.location.hash.includes("access_token=") && !window.location.search.includes("code=")) return;
 
         if (
           autoConnectStarted.current
@@ -195,8 +200,12 @@ export default function WorkerInviteSignup({
           }
 
           if (!session?.user) {
+            setCurrentUser(null);
             return;
           }
+          setCurrentUser(session.user);
+          // Never auto-accept an invitation merely because an existing user signs in.
+          if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
 
           if (
             autoConnectStarted.current
@@ -336,6 +345,10 @@ export default function WorkerInviteSignup({
       return;
     }
 
+    if (currentUser) {
+      setMessage("이미 로그인되어 있습니다. 위의 초대 수락 버튼을 이용하거나 로그아웃 후 신규 가입해주세요.");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -683,6 +696,26 @@ export default function WorkerInviteSignup({
               "0 8px 24px rgba(15,23,42,0.06)",
           }}
         >
+          {currentUser && (
+            <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: "#eff6ff" }}>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>로그인된 계정: {currentUser.email}</div>
+              <p style={{ fontSize: 12 }}>이 계정으로 시공자 초대를 수락하시겠습니까?</p>
+              <button type="button" disabled={loading} onClick={async () => {
+                if (loading) return;
+                setLoading(true); setMessage("");
+                try {
+                  await acceptInvite();
+                  setSuccess(true);
+                  setMessage("초대 수락 완료. 시공자 페이지로 이동합니다.");
+                  router.replace("/worker"); router.refresh();
+                } catch (error) {
+                  setSuccess(false); setMessage(error?.message || "초대 수락에 실패했습니다.");
+                } finally { setLoading(false); }
+              }} style={{ width: "100%", padding: 12, background: "#1d4ed8", color: "white", border: 0, borderRadius: 9, fontWeight: 800 }}>
+                {loading ? "연결 중..." : "현재 계정으로 초대 수락"}
+              </button>
+            </div>
+          )}
           <form
             onSubmit={
               handleSignup

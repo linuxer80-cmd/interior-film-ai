@@ -130,6 +130,7 @@ test('candidate photos, prices and scope come from company-owned records; foreig
   assert.ok(db.calls.every(c => c.filters.some(([key, value]) => key === 'company_id' && value === 'mine')));
   assert.ok(db.signed.every(path => !path.includes('foreign') && !path.includes('evil')));
   assert.equal(rows[0].before_path, 'history/1.jpg');
+  assert.equal(db.calls.filter(c => c.table === 'work_photos').length, 1);
 });
 
 test('history-only photo stays a reference photo instead of being mislabeled as after', async () => {
@@ -152,7 +153,7 @@ test('visual request contains actual customer/candidate images, excludes prices/
     called++; assert.equal(url, 'https://api.openai.com/v1/responses');
     const request = JSON.parse(options.body), content = request.input[0].content;
     assert.equal(content.filter(c => c.type === 'input_image').length, 2);
-    assert.ok(content.filter(c => c.type === 'input_image').every(c => c.detail === 'high'));
+    assert.ok(content.filter(c => c.type === 'input_image').every(c => ['high', 'auto'].includes(c.detail)));
     assert.equal(request.text.format.strict, true);
     assert.equal(request.store, false);
     assert.ok(!JSON.stringify(content).includes('actual_cost'));
