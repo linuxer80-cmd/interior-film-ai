@@ -80,8 +80,8 @@ export default function WorkerCard({
       onClick={compact ? onToggle : undefined}
       style={compact ? {
         position:"fixed",inset:0,zIndex:1300,background:"rgba(15,23,42,.65)",
-        display:"flex",alignItems:"flex-start",justifyContent:"center",
-        overflowY:"auto",padding:"24px 12px"
+        display:"flex",alignItems:"center",justifyContent:"center",
+        overflow:"hidden",padding:"12px",boxSizing:"border-box"
       } : {
         padding: "13px",
         border: "1px solid #e2e8f0",
@@ -91,7 +91,7 @@ export default function WorkerCard({
       }}
     >
       <div onClick={event=>event.stopPropagation()}
-        style={{position:"relative",width:"100%",maxWidth:580,background:"#fff",borderRadius:18,padding:16,boxSizing:"border-box"}}>
+        style={{position:"relative",width:"100%",maxWidth:580,maxHeight:"calc(100dvh - 24px)",overflowY:"auto",overscrollBehavior:"contain",background:"#fff",borderRadius:18,padding:16,boxSizing:"border-box"}}>
         {compact && <button type="button" onClick={onToggle} aria-label="상세 관리 닫기"
           style={{position:"absolute",right:14,top:10,border:0,background:"#f1f5f9",
             borderRadius:9,padding:"8px 12px",fontSize:17,cursor:"pointer"}}>×</button>}
