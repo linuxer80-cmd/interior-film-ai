@@ -338,10 +338,12 @@ export default function SiteDetailModal({
           <nav
             aria-label="현장 상세 메뉴"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              display: "flex",
+              overflowX: "auto",
+              overscrollBehaviorX: "contain",
               gap: 5,
-              marginTop: 16,
+              marginTop: 10,
+              paddingBottom: 4,
             }}
           >
             {MENUS.map(item => (
@@ -350,9 +352,13 @@ export default function SiteDetailModal({
                 type="button"
                 aria-pressed={menu === item.id}
                 aria-controls={`admin-site-panel-${item.id}`}
-                onClick={() => chooseMenu(item.id)}
+                onClick={event => {
+                  chooseMenu(item.id);
+                  event.currentTarget.scrollIntoView({block:"nearest", inline:"nearest", behavior:"smooth"});
+                }}
                 style={{
-                  minHeight: 78,
+                  minHeight: 66,
+                  flex: "0 0 78px",
                   padding: "8px 1px",
                   borderRadius: 15,
                   border:
@@ -375,7 +381,7 @@ export default function SiteDetailModal({
                     marginBottom: 5,
                   }}
                 >
-                  <ToolIllustration kind={item.kind} size={34} />
+                  <ToolIllustration kind={item.kind} size={28} />
                 </span>
 
                 {item.label}
@@ -426,8 +432,6 @@ export default function SiteDetailModal({
             aria-label="현장정보"
             hidden={menu !== "info"}
           >
-            <SiteOperations siteId={site.id} />
-
             <SiteBasicInfo
               key={site.id}
               site={site}
@@ -442,6 +446,7 @@ export default function SiteDetailModal({
               reportOpen={reportOpen}
               updateSiteStatus={updateSiteStatus}
             />
+            <SiteOperations key={site.id} siteId={site.id} collapsible />
           </section>
 
           {visited.quote && (

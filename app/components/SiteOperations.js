@@ -59,6 +59,8 @@ export default function SiteOperations({
   const [values, setValues] = useState({});
   const [review, setReview] = useState(null);
   const [trackedRolls, setTrackedRolls] = useState([]);
+  const [historyLimit, setHistoryLimit] = useState(3);
+  useEffect(() => setHistoryLimit(3), [siteId]);
 
   const lock = useRef(false);
   const serial = useRef(0);
@@ -309,11 +311,22 @@ export default function SiteOperations({
   }, []);
 
   const materialsMode = mode === "materials";
-  const folded = collapsible && !materialsMode;
-  const History = folded ? "details" : "div";
-  const pendingEvents = (data?.events || []).filter(event =>
-    event.receipts.some(receipt => !receipt.confirmedAt)
-  ).length;
+  const History = "details";
+  const groups = [];
+  const groupMap = new Map();
+  for (const event of [...(data?.events || [])].sort((a,b) => new Date(b.at)-new Date(a.at))) {
+    // Group only identical messages within the same second. Keep every original receipt.
+    const time = new Date(event.at).getTime();
+    const key = JSON.stringify([Number.isFinite(time) ? Math.floor(time/1000) : event.id, event.message]);
+    let group = groupMap.get(key);
+    if (!group) { group = {id:event.id, at:event.at, message:event.message, events:[]}; groupMap.set(key,group); groups.push(group); }
+    group.events.push(event);
+  }
+  const pendingEvents = (data?.events || []).filter(event => event.receipts.some(r => !r.confirmedAt)).length;
+  const displayedGroups = data?.owner ? groups : [...groups].sort((a,b) =>
+    Number(b.events.some(e => e.receipts.some(r => !r.confirmedAt))) - Number(a.events.some(e => e.receipts.some(r => !r.confirmedAt)))
+  );
+  const shortMessage = message => message?.startsWith("현장 날짜별 배정이 변경") ? "시공자 배정 변경" : message?.startsWith("시공 일정이 변경") ? "시공 일정 변경" : message?.startsWith("현장 메모·전달사항이 변경") ? "현장 메모 변경" : message;
 
   return (
     <section style={card}>
@@ -730,11 +743,6 @@ export default function SiteOperations({
         </>
       ) : (
         <>
-          <p style={{ color: "#64748b", fontSize: 13 }}>
-            최근 변경사항 최대 100건입니다.
-            내용을 확인한 뒤 확인 버튼을 눌러주세요.
-          </p>
-
           <div
             style={{
               ...card,
@@ -800,9 +808,9 @@ export default function SiteOperations({
           </div>
 
           <History style={{ marginTop: 16 }}>
-      {folded && (
+      {(
         <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
-          수정 이력 · {data?.events?.length || 0}건
+          변경 이력 · {groups.length}개 항목
           {pendingEvents > 0 && (
             <span style={{ marginLeft: 8, color: "#a16207", fontSize: 13 }}>미확인 {pendingEvents}건</span>
           )}
@@ -813,7 +821,17 @@ export default function SiteOperations({
             <p>확인할 변경사항이 없습니다.</p>
           )}
 
-          {data.events.map((event) => (
+          <p style={{fontSize:12,color:"#64748b"}}>최근 기록 최대 100건 기준 · 동일 시각·내용은 묶어서 표시합니다.{!data.owner && " 미확인 기록을 먼저 표시합니다."}</p>
+          {displayedGroups.slice(0, historyLimit).map(group => (
+            <details key={group.id} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}>
+              <summary style={{cursor:"pointer",lineHeight:1.6}}>
+                <small style={{color:"#64748b"}}>{date(group.at)}</small><br />
+                <strong>{shortMessage(group.message)}</strong>
+                <span style={{display:"block",fontSize:13,color:"#64748b"}}>
+                  {group.events.length > 1 ? `관련 기록 ${group.events.length}건 · 미확인 ${group.events.filter(e => e.receipts.some(r => !r.confirmedAt)).length}건` : data.owner ? `확인 ${group.events[0].receipts.filter(r => r.confirmedAt).length}/${group.events[0].receipts.length}명` : group.events[0].receipts.some(r => !r.confirmedAt) ? "확인 필요" : "확인 완료"} · 상세 보기
+                </span>
+              </summary>
+          {group.events.map((event) => (
             <div
               key={event.id}
               style={{
@@ -841,7 +859,10 @@ export default function SiteOperations({
                     {event.receipts.length}명
                   </b>
 
-                  {event.receipts.map((receipt, index) => (
+                  <details style={{marginTop:8}}>
+                    <summary style={{cursor:"pointer",fontSize:13}}>확인 현황 보기</summary>
+                    <p style={{fontSize:13,lineHeight:1.6}}>미확인: {event.receipts.filter(r => !r.confirmedAt).map(r => r.name).join(", ") || "없음"}</p>
+                  {event.receipts.filter(receipt => receipt.confirmedAt).map((receipt, index) => (
                     <p key={index}>
                       {receipt.name}:{" "}
                       {receipt.confirmedAt
@@ -849,6 +870,7 @@ export default function SiteOperations({
                         : "미확인"}
                     </p>
                   ))}
+                  </details>
                 </>
               ) : event.receipts.every(
                   (receipt) => receipt.confirmedAt
@@ -977,6 +999,9 @@ export default function SiteOperations({
               )}
             </div>
           ))}
+            </details>
+          ))}
+          {historyLimit < displayedGroups.length && <button type="button" style={{...btn,width:"100%",marginTop:12}} onClick={() => setHistoryLimit(n => n+3)}>이전 내역 더 보기 ({displayedGroups.length-historyLimit})</button>}
           </History>
         </>
       )}
