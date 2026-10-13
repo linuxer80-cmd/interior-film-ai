@@ -9,7 +9,7 @@ export const HELP_TOPICS = [
  {id:'reports',title:'완료보고·경비',question:'완료보고 제출과 검수 전에 자재·사진·경비에서 무엇을 확인하나요?',links:[['보고서·오늘 할 일','/admin/today']]},
  {id:'attendance',title:'출퇴근·연장근무',question:'출퇴근 기준 설정, 퇴근 누락 정정, 연장근무 승인 방법을 알려줘.',links:[['출퇴근 관리','/admin/attendance']]},
  {id:'profit',title:'인건비 지급·수익',question:'인건비 지급과 미지급 금액, 팀장수당, 수익 제외 설정은 어디서 확인하나요?',links:[['매출·수익','/admin?tab=profit']]},
- {id:'clients',title:'거래처·현장 정산',question:'거래처별 현장 정산과 고객 입금은 어떻게 관리하나요? 시공 예정 현장이 안 보이는 이유는 무엇인가요?',links:[['업체·현장 정산','/admin/clients']]},
+ {id:'clients',title:'거래처·현장 정산',question:'거래처별 현장 정산과 고객 입금은 어떻게 관리하나요? 시공 예정 현장이 안 보이는 이유는 무엇인가요?',links:[['거래처 관리','/admin/clients']]},
  {id:'customer',title:'고객 견적·광고 페이지',question:'우리 업체 고객 견적 페이지 주소와 공개 시공 사례는 어디서 관리하나요? 유사사례가 없으면 어떻게 하나요?',links:[['고객페이지 관리','/admin/customer-page'],['고객 상담','/admin?tab=leads']]},
  {id:'samples',title:'필름 샘플·자재 주문',question:'필름 샘플과 다른 브랜드 유사 필름을 찾고 자재 주문을 하려면 어떻게 하나요?',links:[['필름 샘플','/samples'],['자재 주문','/admin/material-order']]},
  {id:'history',title:'시공 DB·사진 등록',question:'시공 DB 등록과 현장 완료보고는 어떻게 다른가요? 과거 시공 사진은 어디에 등록하나요?',links:[['시공 DB','/admin?tab=jobs'],['시공 등록','/admin?tab=register']]},
