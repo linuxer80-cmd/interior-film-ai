@@ -49,7 +49,7 @@ export default function WorkerAccount() {
 
   useEffect(()=>{
     const invite=new URLSearchParams(window.location.search).get('invite');
-    if(invite && /^[0-9a-f-]{36}$/i.test(invite))setPendingInvite(invite);
+    if(invite && /^[0-9a-f-]{36}$/i.test(invite)){setPendingInvite(invite);setSection('profile');}
     if(new URLSearchParams(window.location.search).get('section')==='seeking') {
       setSection('seeking');
     }
@@ -287,7 +287,8 @@ export default function WorkerAccount() {
       <Link className='labor-nav-button' href='/jobs?view=worker'><span className='labor-nav-icon' aria-hidden='true'>▦</span><span>구인·구직</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
     </nav>
 
-    <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>
+    {pendingInvite && <aside role='status' style={{padding:14,border:'1px solid #bfdbfe',borderRadius:12,background:'#eff6ff',marginBottom:14}}><strong>업체 연결 마지막 단계</strong><p style={{margin:'8px 0 0'}}>이름·연락처·일당만 확인하고 아래 버튼을 누르세요. 프로필 저장 후 초대 수락과 업체 연결을 자동으로 이어서 처리합니다.</p></aside>}
+    {!pendingInvite && <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>}
     <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
 
     {!ready
@@ -339,7 +340,7 @@ export default function WorkerAccount() {
             ?<p>개인설정을 불러오는 중입니다. 오류가 있으면 새로고침해주세요.</p>
             :<form onSubmit={save}>
               <fieldset disabled={busy}>
-                <div className='tabs'>
+                {!pendingInvite && <div className='tabs'>
                   {[
                     ['profile','기본 프로필'],
                     ['seeking','구직 공고'],
@@ -356,14 +357,12 @@ export default function WorkerAccount() {
                   )}
                 </div>
 
-                <p className='muted'>
-                  기본정보를 한 번 저장하면 구직 공고에 그대로 사용됩니다.
-                </p>
+                {!pendingInvite && <p className='muted'>기본정보를 한 번 저장하면 구직 공고에 그대로 사용됩니다.</p>}
 
                 <div hidden={section!=='profile'}>
                   <h2>내 프로필</h2>
 
-                  <div className='profile-heading'>
+                  {!pendingInvite && <div className='profile-heading'>
                     {profile.photo_url
                       ?<img
                         src={profile.photo_url}
@@ -394,21 +393,19 @@ export default function WorkerAccount() {
                     </div>
                   </div>
 
-                  {!saved&&
-                    <small>프로필을 먼저 저장하면 사진을 올릴 수 있습니다.</small>
-                  }
+                  {!pendingInvite && !saved && <small>프로필을 먼저 저장하면 사진을 올릴 수 있습니다.</small>}
 
                   {field('이름','name')}
                   {field('연락처','phone','tel',true)}
 
                   <small>지원할 때 동의한 업체에만 연락처를 공유합니다.</small>
 
-                  <div className='pair'>
+                  {!pendingInvite && <div className='pair'>
                     {field('나이 (선택)','age','number')}
                     {field('경력 (년)','experience_years','number')}
                   </div>
 
-                  <label>성별 (선택)
+                  {!pendingInvite && <label>성별 (선택)
                     <select value={profile.gender || ''} onChange={event=>setProfile(p=>({...p,gender:event.target.value}))}>
                       <option value=''>선택하지 않음</option>
                       <option value='male'>남성</option>
@@ -419,9 +416,9 @@ export default function WorkerAccount() {
 
                   {field('등록 일당 (원)','daily_wage','number')}
 
-                  {field('활동 지역 (예: 인천 서구)','region')}
+                  {!pendingInvite && field('활동 지역 (예: 인천 서구)','region')}
 
-                  <label>
+                  {!pendingInvite && <label>
                     자기소개
                     <textarea
                       value={profile.introduction}
@@ -433,7 +430,7 @@ export default function WorkerAccount() {
                   </label>
                 </div>
 
-                <div hidden={section!=='seeking'}>
+                {!pendingInvite && <div hidden={section!=='seeking'}>
                   <h2>내 구직 공고</h2>
 
                   <p>
@@ -463,7 +460,7 @@ export default function WorkerAccount() {
                   </Link>
                 </div>
 
-                <div hidden={section!=='private'}>
+                {!pendingInvite && <div hidden={section!=='private'}>
                   <h2>연락처·입금 정보</h2>
 
                   <p>
@@ -486,7 +483,7 @@ export default function WorkerAccount() {
                   <button className='primary' disabled={busy}>
                     {busy
                       ?'저장 중…'
-                      :section==='seeking'
+                      :pendingInvite ? '저장하고 업체 연결 완료' : section==='seeking'
                         ?'구직 공고 저장'
                         :section==='private'
                           ?'계좌·주소 저장'
