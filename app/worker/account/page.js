@@ -44,8 +44,11 @@ export default function WorkerAccount() {
 
   const [saved,setSaved]=useState(false);
   const [section,setSection]=useState('profile');
+  const [pendingInvite,setPendingInvite]=useState('');
 
   useEffect(()=>{
+    const invite=new URLSearchParams(window.location.search).get('invite');
+    if(invite && /^[0-9a-f-]{36}$/i.test(invite))setPendingInvite(invite);
     if(new URLSearchParams(window.location.search).get('section')==='seeking') {
       setSection('seeking');
     }
@@ -189,7 +192,20 @@ export default function WorkerAccount() {
       if(!response.ok)throw Error(result.error);
 
       setSaved(true);
-      setMessage('개인설정을 저장했습니다. 구직 공고는 구직하기에서 등록해주세요.');
+      if(pendingInvite){
+        const inviteResponse=await fetch('/api/direct-worker-invites',{
+          method:'POST',cache:'no-store',
+          headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
+          body:JSON.stringify({action:'accept',code:pendingInvite})
+        });
+        const inviteResult=await inviteResponse.json();
+        if(!inviteResponse.ok)throw Error('프로필은 저장됐지만 업체 연결에 실패했습니다: '+(inviteResult.error||'다시 시도해주세요.'));
+        setPendingInvite('');
+        setMessage((inviteResult.companyName||'초대 업체')+'에 연결되었습니다. 시공자 홈에서 현장을 확인하세요.');
+        window.history.replaceState(null,'','/worker/account');
+      }else{
+        setMessage('개인설정을 저장했습니다. 구직 공고는 구직하기에서 등록해주세요.');
+      }
     }catch(e){
       setMessage(e.message);
     }finally{
@@ -539,6 +555,7 @@ export default function WorkerAccount() {
         </>
     }
 
+    {pendingInvite&&session&&<p role='status' style={{padding:12,background:'#eff6ff',borderRadius:10}}>업체 초대 수락 진행 중입니다. 프로필을 저장하면 업체 연결을 자동으로 완료합니다. 연결 오류가 발생하면 이 화면에서 다시 저장할 수 있습니다.</p>}
     {message&&<p role='status'>{message}</p>}
   </main>;
                       }
