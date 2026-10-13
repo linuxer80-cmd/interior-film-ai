@@ -781,6 +781,7 @@ export default function WorkerManagement({
         )}
         <div style={{ display: "grid", gap: "9px" }}>
           {visibleWorkers.filter(worker => (String(worker.name||"")+" "+String(worker.phone||"")).toLowerCase().includes(workerSearch.trim().toLowerCase())).map(worker => (
+            <div key={worker.id} style={{display:"grid",gap:8}}>
             <WorkerCard
               key={worker.id}
               worker={worker}
@@ -801,11 +802,18 @@ export default function WorkerManagement({
               onEdit={() => { setExpandedWorkerId(null); openEditForm(worker); }}
               onActiveChange={() => handleActiveChange(worker)}
             />
+            {showForm && editingWorker?.id===worker.id && <WorkerFormModal inline
+              editingWorker={editingWorker}
+              relationshipType={workerRelationships.find(r=>r.worker_id===worker.id && !r.ended_at)?.relationship_type||null}
+              form={form} loading={workersLoading||privateBusy} saveDisabled={!privateReady}
+              localMessage={localMessage} updateField={updateField}
+              onSubmit={handleSubmit} onClose={closeForm} />}
+            </div>
           ))}
         </div>
       </section>
 
-      {showForm && (
+      {showForm && !editingWorker && (
         <WorkerFormModal
           selfRegistration={selfRegistration}
           editingWorker={editingWorker}
