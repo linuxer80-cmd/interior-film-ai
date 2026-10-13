@@ -44,6 +44,8 @@ export default function WorkerManagement({
   const [localMessage, setLocalMessage] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [workerFilter, setWorkerFilter] = useState("all");
+  const [workerSearch, setWorkerSearch] = useState("");
+  const [expandedWorkerId, setExpandedWorkerId] = useState(null);
   const [workerRelationships, setWorkerRelationships] = useState([]);
   useEffect(() => {
     let active=true;
@@ -757,11 +759,15 @@ export default function WorkerManagement({
                 fontSize: "12px",
               }}
             >
-              시공자를 등록하면 계정 초대 링크가 자동으로 생성됩니다.
+              위에서 초대링크를 생성해 시공자에게 보내주세요.
             </div>
           </div>
         )}
 
+        <input aria-label="시공자 검색" type="search"
+          placeholder="이름 또는 전화번호 검색"
+          value={workerSearch} onChange={event=>setWorkerSearch(event.target.value)}
+          style={{width:"100%",padding:"12px",border:"1px solid #cbd5e1",borderRadius:12,marginBottom:10,fontSize:14}} />
         <div role="group" aria-label="시공자 연결 상태 필터" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
           {[
             ["all", "전체", workers.length],
@@ -781,10 +787,13 @@ export default function WorkerManagement({
           시공자를 선택해 출퇴근과 일당을 관리하세요.
         </p>
         <div style={{ display: "grid", gap: "9px" }}>
-          {visibleWorkers.map(worker => (
+          {visibleWorkers.filter(worker => (String(worker.name||"")+" "+String(worker.phone||"")).toLowerCase().includes(workerSearch.trim().toLowerCase())).map(worker => (
             <WorkerCard
               key={worker.id}
               worker={worker}
+              compact
+              expanded={expandedWorkerId===worker.id}
+              onToggle={()=>setExpandedWorkerId(current=>current===worker.id?null:worker.id)}
               relationshipType={workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type || null}
               inviteLoading={inviteLoadingId === worker.id}
               onInvite={undefined}
