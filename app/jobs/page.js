@@ -161,7 +161,6 @@ export default function JobsPage(){
  return <main className='labor-shell jobs-compact'>
   <nav className='labor-navigation' aria-label='구인·구직 화면 이동'>
    <HomeReturnButton role={data?.manager?'admin':'worker'} />
-   <Link className='labor-nav-button' href='/worker/account'><span className='labor-nav-icon' aria-hidden='true'>⚙</span><span>개인설정</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
   </nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
   {error&&<p className='error' role='alert'>{error}</p>}{notice&&<aside role='status'>{notice}</aside>}
   {!data?<p>{error?'계정 확인을 완료하지 못했습니다.':'계정을 확인하는 중입니다.'} <Link href='/worker/account'>로그인 · 계정 확인</Link></p>:<>
