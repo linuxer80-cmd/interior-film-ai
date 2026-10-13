@@ -69,6 +69,7 @@ function SiteCard({
           className={styles.siteLink}
           onClick={() => onOpen(site.site_id)}
         >
+          <span style={{display:"block",fontSize:12,fontWeight:800,color:"#2563eb",marginBottom:5}}>협력 업체 · {site.company_name || "업체명 확인 필요"}</span>
           <span className={styles.siteTop}>
             <span className={styles.siteName}>
               {site.site_name || site.customer_name || "현장"}
