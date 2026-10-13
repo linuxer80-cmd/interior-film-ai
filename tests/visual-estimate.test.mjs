@@ -200,3 +200,45 @@ test('a fifth candidate is compared, while duplicate records do not consume cand
   assert.equal(candidates.length, 5);
   assert.ok(candidates.some(c=>c.work_item_id===id(5)));
 });
+
+test('temporary provider failure retries once within the same deadline', async () => {
+  let calls = 0, firstSignal;
+  const verified = await verifyVisualCandidates({ images: ['image'], candidates: [candidate(1)], analysis: lower, apiKey: 'test', fetchImpl: async (_, options) => {
+    calls++;
+    if (calls === 1) { firstSignal = options.signal; return { ok: false, status: 503, json: async () => ({ error: { code: 'server_error' } }) }; }
+    assert.equal(options.signal, firstSignal);
+    return { ok: true, json: async () => ({ status: 'completed', output_text: JSON.stringify(result([match(1)])) }) };
+  } });
+  assert.equal(calls, 2);
+  assert.equal(verified.status, 'verified');
+});
+
+test('quota and image errors preserve diagnostic codes without retries or provider text', async () => {
+  for (const [status, code, expected] of [[429, 'insufficient_quota', 'visual_limited'], [400, 'invalid_image_url', 'visual_image_error']]) {
+    let calls = 0;
+    await assert.rejects(verifyVisualCandidates({ images: ['image'], candidates: [candidate(1)], analysis: lower, apiKey: 'test', fetchImpl: async () => {
+      calls++;
+      return { ok: false, status, json: async () => ({ error: { code, message: 'private signed URL' } }) };
+    } }), error => error.visualStatus === expected && error.visualDiagnostic.code === code && !JSON.stringify(error).includes('private signed URL'));
+    assert.equal(calls, 1);
+  }
+});
+
+test('staged comparison stops after top three when verified, expands only for no match', async () => {
+  for (const expand of [false, true]) {
+    const batches = [], signals = [];
+    const actual = await verifyVisualCandidates({ images: ['image'], candidates: [1,2,3,4,5,6,7,8].map(n => candidate(n)), analysis: lower, apiKey: 'test', fetchImpl: async (_, options) => {
+      const content = JSON.parse(options.body).input[0].content;
+      const ids = content.filter(c => c.type === 'input_text' && c.text.startsWith('{')).map(c => JSON.parse(c.text).candidate_id);
+      batches.push(ids); signals.push(options.signal);
+      const matches = ids.map((value, i) => match(Number(value.slice(-12)), { rank: i + 1, scope_match: expand && batches.length === 1 ? 'different' : 'same' }));
+      return { ok: true, json: async () => ({ output_text: JSON.stringify(result(matches)), usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 3 } } }) };
+    } });
+    assert.deepEqual(batches[0], [1,2,3].map(id));
+    assert.equal(batches.length, expand ? 2 : 1);
+    if (expand) { assert.deepEqual(batches[1], [4,5,6,7,8].map(id)); assert.equal(signals[0], signals[1]); }
+    assert.equal(actual.status, 'verified');
+    assert.equal(actual.usage.input_tokens, expand ? 20 : 10);
+    assert.equal(actual.usage.input_tokens_details.cached_tokens, expand ? 6 : 3);
+  }
+});

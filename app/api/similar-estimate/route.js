@@ -14,7 +14,7 @@ import { loadVisualCandidates, readVisualSearchRequest, verifyVisualCandidates, 
 import { calculateVisualEstimate, visualSearchMessage } from "../../utils/visualEstimate";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const EMBEDDING_MODEL =
   "text-embedding-3-small";
@@ -831,8 +831,8 @@ export async function POST(
       candidateCount = candidates.length;
       visual = await verifyVisualCandidates({ images, candidates, analysis, apiKey: process.env.OPENAI_API_KEY });
     } catch (error) {
-      console.warn("시공사례 사진 비교 실패:", error.message);
-      visual = { rows: [], status: "visual_unavailable", usage: error.visualUsage || null };
+      console.warn("시공사례 사진 비교 실패:", error.visualStatus || "visual_unavailable", error.visualDiagnostic || { message: error.message });
+      visual = { rows: [], status: error.visualStatus || "visual_unavailable", usage: error.visualUsage || null };
     }
     const filteredCases = visual.rows;
 
