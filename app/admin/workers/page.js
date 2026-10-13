@@ -1,5 +1,6 @@
 "use client";
 
+import HomeReturnButton from "../../components/HomeReturnButton";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
@@ -82,22 +83,7 @@ export default function AdminWorkersPage() {
         color: "#163153",
       }}
     >
-      <Link
-        href="/admin"
-        style={{
-          display: "inline-block",
-          padding: "12px 16px",
-          marginBottom: 18,
-          borderRadius: 12,
-          background: "white",
-          border: "1px solid #e2e8f0",
-          color: "#2563eb",
-          textDecoration: "none",
-          fontWeight: 700,
-        }}
-      >
-        ‹ 관리자 홈
-      </Link>
+      <HomeReturnButton role="admin" style={{marginBottom:18}} />
 
       <h1 style={{ fontSize: 25, margin: "0 0 20px" }}>
         시공자 관리
