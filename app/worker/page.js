@@ -24,6 +24,7 @@ export default function WorkerPage({ mode = "home" }) {
   const router = useRouter();
 
   const [search, setSearch] = useState("");
+  const [reportCompany, setReportCompany] = useState("all");
   const [loading, setLoading] = useState(true);
   const [worker, setWorker] = useState(null);
   const [sites, setSites] = useState([]);
@@ -190,7 +191,10 @@ export default function WorkerPage({ mode = "home" }) {
     }
   }
 
+  const reportCompanies = [...new Map(sites.filter(site => siteStatus(site) !== "cancelled" && site.company_id).map(site => [site.company_id, site.company_name || "업체명 확인 필요"])).entries()];
+
   const visibleSites = sites.filter(site => {
+    if (mode === "report" && reportCompany !== "all" && site.company_id !== reportCompany) return false;
     if (siteStatus(site) === "cancelled") {
       return false;
     }
@@ -198,6 +202,7 @@ export default function WorkerPage({ mode = "home" }) {
     const text = [
       site.site_name,
       site.customer_name,
+      site.company_name,
       site.address || site.site_address,
     ]
       .filter(Boolean)
@@ -460,6 +465,19 @@ export default function WorkerPage({ mode = "home" }) {
                     : "작업할 현장을 선택하세요."}
                 </p>
 
+                {mode === "report" && (
+                  <div style={{marginBottom:16}}>
+                    <label htmlFor="report-company">협력 업체 선택</label>
+                    <select id="report-company" value={reportCompany}
+                      onChange={event=>{setReportCompany(event.target.value);setSearch("");}}
+                      style={{display:"block",width:"100%",padding:"13px",marginTop:8,
+                        border:"1px solid #cbd5e1",borderRadius:12,background:"#fff",fontSize:15}}>
+                      <option value="all">전체 업체 ({reportCompanies.length})</option>
+                      {reportCompanies.map(([id,name])=><option key={id} value={id}>{name}</option>)}
+                    </select>
+                  </div>
+                )}
+
                 <label>
                   현장 검색
                   <input
@@ -488,6 +506,7 @@ export default function WorkerPage({ mode = "home" }) {
                     href={`/worker/site/${site.site_id}?section=${mode}`}
                   >
                     <span>
+                      {mode === "report" && <small style={{color:"#2563eb",fontWeight:800}}>협력 업체 · {site.company_name || "업체명 확인 필요"}</small>}
                       <strong>
                         {site.site_name ||
                           site.customer_name ||
