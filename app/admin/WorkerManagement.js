@@ -6,7 +6,6 @@ import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
 
 import DirectWorkerInvites from "./workers/DirectWorkerInvites";
-import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
@@ -163,7 +162,6 @@ export default function WorkerManagement({
     const relationship = workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type;
     if (workerFilter === "employee") return relationship === "employee";
     if (workerFilter === "freelancer") return relationship === "freelancer";
-    if (workerFilter === "unset") return !relationship;
     return true;
   }), [workers, showInactive, workerFilter, workerRelationships]);
 
@@ -675,32 +673,15 @@ export default function WorkerManagement({
         </details>
       </section>
       <section>
-        <WorkerSummary
-          activeCount={activeCount}
-          linkedCount={linkedCount}
-          inactiveCount={inactiveCount}
-        />
-
-        <button
-          type="button"
-          onClick={() => setShowInactive(current => !current)}
-          style={{
-            width: "100%",
-            marginBottom: "12px",
-            padding: "9px 10px",
-            border: "1px solid #e2e8f0",
-            borderRadius: "9px",
-            background: "#ffffff",
-            color: "#475569",
-            fontSize: "12px",
-            fontWeight: "700",
-            cursor: "pointer",
-          }}
-        >
-          {showInactive
-            ? "활성 시공자만 보기"
-            : `비활성 시공자도 보기 (${inactiveCount})`}
-        </button>
+        {inactiveCount > 0 && (
+          <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"11px 13px",marginBottom:12}}>
+            <summary style={{cursor:"pointer",fontWeight:700,color:"#475569"}}>근무 중지된 시공자 {inactiveCount}명</summary>
+            <button type="button" onClick={()=>setShowInactive(value=>!value)}
+              style={{marginTop:10,padding:"8px 12px",borderRadius:8,border:"1px solid #cbd5e1",background:"#eff6ff"}}>
+              {showInactive?"중지된 시공자 숨기기":"중지된 시공자 목록에 표시"}
+            </button>
+          </details>
+        )}
 
         {workersMessage && (
           <div
@@ -775,7 +756,6 @@ export default function WorkerManagement({
             ["all", "전체", workers.filter(w => showInactive || w.is_active !== false).length],
             ["employee", "소속 직원", workers.filter(w => workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id && r.relationship_type === "employee")).length],
             ["freelancer", "프리랜서", workers.filter(w => workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id && r.relationship_type === "freelancer")).length],
-            ["unset", "미설정", workers.filter(w => !workerRelationships.some(r => r.worker_id === w.id && !r.ended_at && r.user_id === w.user_id)).length],
           ].map(([key,label,count]) => (
             <button key={key} type="button" aria-pressed={workerFilter === key}
               onClick={() => setWorkerFilter(key)}
@@ -786,6 +766,11 @@ export default function WorkerManagement({
             </button>
           ))}
         </div>
+        {workers.some(w => (showInactive || w.is_active !== false) && !workerRelationships.some(r => r.worker_id===w.id && !r.ended_at && r.user_id===w.user_id)) && (
+          <p role="status" style={{fontSize:12,color:"#92400e",background:"#fffbeb",padding:"9px 12px",borderRadius:9,margin:"0 0 10px"}}>
+            관계 확인 필요 {workers.filter(w => (showInactive || w.is_active !== false) && !workerRelationships.some(r => r.worker_id===w.id && !r.ended_at && r.user_id===w.user_id)).length}명 · 기존 시공자 관계를 확인해주세요.
+          </p>
+        )}
         <p style={{fontSize:12,color:"#64748b",margin:"0 0 12px"}}>
           시공자를 선택해 출퇴근과 일당을 관리하세요.
         </p>
