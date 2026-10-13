@@ -4,6 +4,7 @@ import {relationshipRequest as api,relationshipLabel} from '../../../lib/workerR
 export default function WorkerRelationships({workers=[]}) {
  const [data,setData]=useState(null),[workerId,setWorkerId]=useState(''),[type,setType]=useState('employee');
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[url,setUrl]=useState('');
+ const selectedWorker=workers.find(w=>w.id===workerId);
  const lock=useRef(false);
  async function load(){setData(await api({action:'list'}));}
  useEffect(()=>{let active=true;api({action:'list'}).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setMessage(e.message);});return()=>{active=false;};},[]);
@@ -22,8 +23,8 @@ export default function WorkerRelationships({workers=[]}) {
   {data&&<><fieldset disabled={busy} style={{border:0,padding:0,display:'grid',gap:10}}>
    <label>등록된 시공자<select value={workerId} onChange={e=>{setWorkerId(e.target.value);setUrl('');}} style={{width:'100%',padding:12}}><option value=''>선택해주세요</option>{workers.filter(w=>w.is_active!==false).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
    <label>우리 업체와의 관계<select value={type} onChange={e=>{setType(e.target.value);setUrl('');}} style={{width:'100%',padding:12}}><option value='employee'>업체 소속 직원</option><option value='freelancer'>협력 시공자·프리랜서</option></select></label>
-   <small>직원은 업체 급여 기준, 협력 시공자는 연결 후 새 날짜 배정부터 본인 등록 일당을 적용합니다. 기존 배정 금액은 유지합니다.</small>
-   <button type='button' disabled={!workerId} onClick={()=>act({action:'invite',workerId,relationshipType:type})}>초대 링크 만들기 · 7일 유효</button>
+   <div role='status' style={{padding:12,background:'#f1f5f9',borderRadius:10,fontSize:13}}>{type==='employee'?`소속 직원: 업체가 설정한 일당${selectedWorker?.daily_wage!=null?` ${Number(selectedWorker.daily_wage).toLocaleString('ko-KR')}원`:''}을 기준으로 관리합니다.`:'협력 프리랜서: 시공자 본인의 프로필 등록 일당을 기본으로 사용합니다. 업체에 저장된 직원 일당을 자동으로 적용하지 않습니다.'}<p style={{margin:'6px 0 0'}}>프리랜서 일당은 새 현장 날짜를 배정할 때 확정·보존됩니다. 이후 개인 일당을 변경해도 이미 확정된 날짜의 금액은 바뀌지 않습니다.</p></div>
+   <button type='button' disabled={!workerId||busy} onClick={()=>{if(window.confirm(`${selectedWorker?.name||'시공자'}님을 ${relationshipLabel(type)}으로 초대할까요?`))act({action:'invite',workerId,relationshipType:type});}}>초대 링크 만들기 · 7일 유효</button>
    {url&&<label>초대 링크<input readOnly value={url} onFocus={e=>e.target.select()} style={{width:'100%',padding:12}}/><button type='button' onClick={async()=>{try{await navigator.clipboard.writeText(url);setMessage('초대 링크를 복사했습니다.');}catch{setMessage('초대 링크를 길게 눌러 복사해주세요.');}}}>링크 복사</button></label>}
   </fieldset>
   <h4>초대·계정 확인 대기</h4>
