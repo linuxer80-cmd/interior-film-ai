@@ -712,6 +712,7 @@ export default function AttendancePage({
             <details key={record.id} style={{...card,padding:12,marginBottom:8}} open={review?.id===record.id ? true : undefined}>
               <summary style={{cursor:"pointer",listStyle:"none",display:"grid",gap:5}}>
                 <strong>{record.work_day} · {workerName(record.worker_id)}</strong>
+                <span style={{fontSize:12,fontWeight:800,color:"#2563eb"}}>협력 업체 · {record.company_name || sites.find(site => site.id === record.site_id)?.company_name || "업체명 확인 필요"}</span>
                 <span style={{fontSize:13,color:"#475569"}}>{siteName(record.site_id)} · 출근 {time(record.clock_in)} · 퇴근 {record.clock_out ? time(record.clock_out) : "근무 중"}</span>
                 <span style={{fontSize:12,color:record.review_status==="pending"?"#b45309":"#64748b"}}>
                   {record.review_status==="pending"?"확인 대기 · ":record.review_status==="approved"?"승인 · ":record.review_status==="rejected"?"반려 · ":""}
