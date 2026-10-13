@@ -74,14 +74,8 @@ export default function WorkerCard({
 
   return (
     <div
-      role={compact ? "dialog" : undefined}
-      aria-modal={compact ? true : undefined}
-      aria-label={compact ? `${worker.name} 시공자 상세 관리` : undefined}
-      onClick={compact ? onToggle : undefined}
       style={compact ? {
-        position:"fixed",inset:0,zIndex:1300,background:"rgba(15,23,42,.65)",
-        display:"flex",alignItems:"center",justifyContent:"center",
-        overflow:"hidden",padding:"12px",boxSizing:"border-box"
+        padding:"12px",border:"1px solid #cbd5e1",borderRadius:12,background:"#fff"
       } : {
         padding: "13px",
         border: "1px solid #e2e8f0",
@@ -91,7 +85,7 @@ export default function WorkerCard({
       }}
     >
       <div onClick={event=>event.stopPropagation()}
-        style={{position:"relative",width:"100%",maxWidth:580,maxHeight:"calc(100dvh - 24px)",overflowY:"auto",overscrollBehavior:"contain",background:"#fff",borderRadius:18,padding:16,boxSizing:"border-box"}}>
+        style={{position:"relative",width:"100%",background:"#fff",borderRadius:12,padding:8,boxSizing:"border-box"}}>
         {compact && <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
           <button type="button" onClick={onToggle} aria-label="시공자 상세 관리 닫기"
             style={{display:"inline-flex",alignItems:"center",justifyContent:"center",
