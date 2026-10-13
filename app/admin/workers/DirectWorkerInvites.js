@@ -22,8 +22,23 @@ export default function DirectWorkerInvites(){
    setMessage("초대링크가 생성되었습니다. 7일 이내에 공유해주세요.");
   }catch(e){setMessage(e.message);}finally{setBusy(false);}
  }
+ const inviteText = "시공업체에서 "+(type==="employee"?"소속 직원":"협력 프리랜서")+"으로 초대했습니다. 아래 링크에서 확인하고 수락해주세요.\\n"+url;
+ async function shareKakao(){
+  if(!url)return;
+  if(navigator.share){
+   try{await navigator.share({title:"시공자 업체 초대",text:inviteText,url});return;}
+   catch(error){if(error?.name==="AbortError")return;}
+  }
+  await copy();
+  setMessage("초대 내용을 복사했습니다. 카카오톡 채팅방에 붙여넣어 보내주세요.");
+ }
+ function shareSms(){
+  if(!url)return;
+  const separator=/iPad|iPhone|iPod/i.test(navigator.userAgent)?"&":"?";
+  window.location.href="sms:"+separator+"body="+encodeURIComponent(inviteText);
+ }
  async function copy(){
-  try{await navigator.clipboard.writeText(url);setMessage("초대링크를 복사했습니다.");}
+  try{await navigator.clipboard.writeText(inviteText);setMessage("초대링크를 복사했습니다.");}
   catch{setMessage("링크를 길게 눌러 복사해주세요.");}
  }
  return <section style={{background:"#fff",padding:16,border:"1px solid #dce2e6",borderRadius:16,marginBottom:16}}>
@@ -40,7 +55,8 @@ export default function DirectWorkerInvites(){
   {url&&<div style={{display:"grid",gap:8}}>
    <input readOnly aria-label="생성된 초대링크" value={url} onFocus={e=>e.target.select()} style={{padding:10,width:"100%",boxSizing:"border-box"}}/>
    <button type="button" onClick={copy}>링크 복사</button>
-   <button type="button" onClick={async()=>{if(navigator.share)try{await navigator.share({title:"시공자 초대",url});}catch{}}}>공유하기</button>
+   <button type="button" onClick={shareKakao}>카카오톡 등으로 공유</button>
+   <button type="button" onClick={shareSms}>문자로 보내기</button>
   </div>}
  </section>;
 }
