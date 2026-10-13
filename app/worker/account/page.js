@@ -410,61 +410,7 @@ export default function WorkerAccount() {
 
                   {field('등록 일당 (원)','daily_wage','number')}
 
-                  <div className='chips'>
-                    {[200000,250000,300000].map(n=>
-                      <button
-                        key={n}
-                        type='button'
-                        aria-pressed={Number(profile.daily_wage)===n}
-                        onClick={()=>setProfile(p=>({...p,daily_wage:n}))}
-                      >
-                        {n/10000}만원
-                      </button>
-                    )}
-                  </div>
-
                   {field('활동 지역 (예: 인천 서구)','region')}
-
-                  <label>
-                    잘하는 작업
-                    <small>여러 개 선택할 수 있어요</small>
-                  </label>
-
-                  <div className='chips'>
-                    {[
-                      '문·문틀','싱크대','붙박이장','샤시','상가','전체 시공'
-                    ].map(skill=>
-                      <button
-                        type='button'
-                        key={skill}
-                        aria-pressed={
-                          skillText.split(',').map(s=>s.trim()).includes(skill)
-                        }
-                        onClick={()=>{
-                          const items=skillText.split(',')
-                            .map(s=>s.trim()).filter(Boolean);
-
-                          setSkillText(
-                            (items.includes(skill)
-                              ?items.filter(s=>s!==skill)
-                              :[...items,skill]
-                            ).join(', ')
-                          );
-                        }}
-                      >
-                        {skill}
-                      </button>
-                    )}
-                  </div>
-
-                  <details>
-                    <summary>다른 전문 분야 직접 입력</summary>
-                    <input
-                      value={skillText}
-                      maxLength={600}
-                      onChange={e=>setSkillText(e.target.value)}
-                    />
-                  </details>
 
                   <label>
                     자기소개
