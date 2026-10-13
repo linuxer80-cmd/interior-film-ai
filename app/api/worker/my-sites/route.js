@@ -510,6 +510,30 @@ export async function GET(request) {
       }
     }
 
+    if (!siteId && sites.length) {
+      // Only read reports for sites assigned to this authenticated worker.
+      const reportsBySite = new Map();
+      for (let offset = 0; offset < sites.length; offset += 100) {
+        const batch = sites.slice(offset, offset + 100);
+        const ids = batch.map(site => site.site_id);
+        const companyIds = [...new Set(batch.map(site => site.company_id))];
+        const {data: reports, error: reportError} = await db
+          .from("work_reports")
+          .select("site_id,company_id,review_status,updated_at")
+          .in("company_id", companyIds)
+          .in("site_id", ids)
+          .order("updated_at", {ascending:false});
+        if (reportError) throw reportError;
+        for (const report of reports || []) {
+          const key = report.company_id + ":" + report.site_id;
+          if (!reportsBySite.has(key)) reportsBySite.set(key, report.review_status);
+        }
+      }
+      for (const site of sites) {
+        site.report_review_status = reportsBySite.get(site.company_id + ":" + site.site_id) || null;
+      }
+    }
+
     if (!siteId) {
       return json({ worker, sites });
     }
