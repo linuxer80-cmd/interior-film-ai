@@ -38,7 +38,6 @@ export default function WorkerAccount() {
 
   const [profile,setProfile]=useState(blank);
   const [personal,setPersonal]=useState(privateBlank);
-  const [skillText,setSkillText]=useState('');
 
   const [message,setMessage]=useState('');
   const [busy,setBusy]=useState(false);
@@ -110,7 +109,6 @@ export default function WorkerAccount() {
             age:data.profile?.age??''
           });
           setPersonal({...privateBlank,...data.personal});
-          setSkillText((data.profile?.skills||[]).join(', '));
           setSaved(Boolean(data.profile));
           setLoaded(true);
         }
@@ -184,7 +182,7 @@ export default function WorkerAccount() {
           action:'profile',
           profile:{
             ...profile,
-            skills:skillText.split(',').map(s=>s.trim()).filter(Boolean)
+            skills:profile.skills || []
           },
           personal
         })
@@ -450,7 +448,6 @@ export default function WorkerAccount() {
                       {' '}· 등록 일당 {Number(profile.daily_wage).toLocaleString()}원
                       {' '}· 경력 {profile.experience_years}년
                     </p>
-                    <p>{skillText}</p>
                   </article>
 
                   <p>
