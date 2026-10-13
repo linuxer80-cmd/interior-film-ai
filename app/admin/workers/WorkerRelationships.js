@@ -1,13 +1,13 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {relationshipRequest as api,relationshipLabel} from '../../../lib/workerRelationshipClient';
-export default function WorkerRelationships({workers=[]}) {
+export default function WorkerRelationships({workers=[],onRelationshipsChange}) {
  const [data,setData]=useState(null),[workerId,setWorkerId]=useState(''),[type,setType]=useState('employee');
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[url,setUrl]=useState('');
  const selectedWorker=workers.find(w=>w.id===workerId);
  const lock=useRef(false);
- async function load(){setData(await api({action:'list'}));}
- useEffect(()=>{let active=true;api({action:'list'}).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setMessage(e.message);});return()=>{active=false;};},[]);
+ async function load(){const next=await api({action:'list'});setData(next);onRelationshipsChange?.(next.relationships||[]);return next;}
+ useEffect(()=>{let active=true;api({action:'list'}).then(d=>{if(active){setData(d);onRelationshipsChange?.(d.relationships||[]);}}).catch(e=>{if(active)setMessage(e.message);});return()=>{active=false;};},[]);
  async function act(body){
   if(lock.current)return;lock.current=true;setBusy(true);setMessage('');
   try{const result=await api(body);await load();
@@ -27,6 +27,9 @@ export default function WorkerRelationships({workers=[]}) {
    <button type='button' disabled={!workerId||busy} onClick={()=>{if(window.confirm(`${selectedWorker?.name||'시공자'}님을 ${relationshipLabel(type)}으로 초대할까요?`))act({action:'invite',workerId,relationshipType:type});}}>초대 링크 만들기 · 7일 유효</button>
    {url&&<label>초대 링크<input readOnly value={url} onFocus={e=>e.target.select()} style={{width:'100%',padding:12}}/><button type='button' onClick={async()=>{try{await navigator.clipboard.writeText(url);setMessage('초대 링크를 복사했습니다.');}catch{setMessage('초대 링크를 길게 눌러 복사해주세요.');}}}>링크 복사</button></label>}
   </fieldset>
+  <h4>기존 연결 시공자 관계 설정</h4>
+  <p style={{fontSize:12}}>계정이 연결된 시공자만 설정할 수 있습니다. 기존 현장 배정과 확정 일당은 변경되지 않습니다.</p>
+  {workers.filter(w=>w.user_id && w.is_active!==false).map(w=>{const rel=(data.relationships||[]).find(r=>r.worker_id===w.id && !r.ended_at);return <div key={w.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'9px 0',borderBottom:'1px solid #eee'}}><div><b>{w.name}</b><div style={{fontSize:12,color:'#64748b'}}>{rel?relationshipLabel(rel.relationship_type):'관계 미설정'}</div></div><select aria-label={`${w.name} 관계 설정`} disabled={busy} value={rel?.relationship_type||''} onChange={e=>{const next=e.target.value;if(!next)return;if(window.confirm(`${w.name} 시공자를 ${relationshipLabel(next)}으로 지정할까요? 기존 확정 일당은 유지됩니다.`))act({action:'set_type',workerId:w.id,relationshipType:next});}}><option value=''>관계 미설정</option><option value='employee'>소속 직원</option><option value='freelancer'>협력 프리랜서</option></select></div>;})}
   <h4>초대·계정 확인 대기</h4>
   {!data.invites.length&&<p>진행 중인 초대가 없습니다.</p>}
   {data.invites.map(i=><article key={i.id} style={{borderTop:'1px solid #eee',padding:'12px 0'}}>
