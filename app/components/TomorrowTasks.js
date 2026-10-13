@@ -167,7 +167,7 @@ export default function TomorrowTasks({ owner = false }) {
           {data?.sites.slice(0, limit).map(site => (
             <article key={site.id}>
               <div className="heading">
-                <strong>{site.name}</strong>
+                <strong>{!owner && <span style={{display:"block",fontSize:12,color:"#2563eb",marginBottom:4}}>협력 업체 · {site.companyName || "업체명 확인 필요"}</span>}{site.name}</strong>
 
                 <a
                   href={
