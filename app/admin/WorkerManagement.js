@@ -5,7 +5,6 @@ import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
 
-import WorkerRelationships from "./workers/WorkerRelationships";
 import DirectWorkerInvites from "./workers/DirectWorkerInvites";
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
@@ -660,7 +659,7 @@ export default function WorkerManagement({
         </div>
         <DirectWorkerInvites />
         <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
-          <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>기타 관리 · 수동 등록 / 관리자 본인 등록 / 기존 초대</summary>
+          <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>기타 관리 · 수동 등록 / 관리자 본인 등록</summary>
           <p style={{fontSize:12,color:"#64748b"}}>일반 시공자는 위 초대링크를 이용하세요. 과거 기록 등록 등 예외적인 경우에만 사용합니다.</p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" onClick={openCreateForm}>수동 시공자 등록</button>
@@ -669,7 +668,7 @@ export default function WorkerManagement({
               setLocalMessage("");setPrivateReady(true);setSelfRegistration(true);setShowForm(true);
             }}>관리자 본인 시공자 등록</button>
           </div>
-          <WorkerRelationships workers={workers} onRelationshipsChange={setWorkerRelationships} />
+
         </details>
       </section>
       <section>
@@ -788,11 +787,8 @@ export default function WorkerManagement({
               key={worker.id}
               worker={worker}
               relationshipType={workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type || null}
-              onSetRelationship={type => saveWorkerRelationship(worker, type)}
-              relationshipSaving={relationshipSavingId === worker.id}
-              relationshipError={relationshipErrors[worker.id] || ""}
               inviteLoading={inviteLoadingId === worker.id}
-              onInvite={() => createInviteForWorker(worker)}
+              onInvite={undefined}
               onLinkSelf={() => linkMyself(worker)}
               onSaveMemo={async memo => {
                 if (!worker.company_id) throw Error("업체 정보를 확인해주세요.");
