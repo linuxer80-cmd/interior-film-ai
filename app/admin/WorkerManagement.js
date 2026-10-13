@@ -10,6 +10,7 @@ import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
 import WorkerInviteModal from "./workers/WorkerInviteModal";
+import { relationshipRequest } from "../../lib/workerRelationshipClient";
 
 const EMPTY_FORM = {
   bank_name: "",
@@ -45,6 +46,8 @@ export default function WorkerManagement({
   const [showInactive, setShowInactive] = useState(false);
   const [workerFilter, setWorkerFilter] = useState("all");
   const [workerRelationships, setWorkerRelationships] = useState([]);
+  const [relationshipSavingId, setRelationshipSavingId] = useState(null);
+  const [relationshipErrors, setRelationshipErrors] = useState({});
 
   const [inviteWorker, setInviteWorker] = useState(null);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -132,6 +135,23 @@ export default function WorkerManagement({
       setLocalMessage("✅ 내 시공자 계정이 연결되었습니다.");
     } catch (error) {
       setLocalMessage(`❌ ${error.message}`);
+    }
+  }
+
+  async function saveWorkerRelationship(worker, relationshipType) {
+    if (!worker.user_id || !["employee", "freelancer"].includes(relationshipType)) return false;
+    setRelationshipSavingId(worker.id);
+    setRelationshipErrors(current => ({...current, [worker.id]: ""}));
+    try {
+      await relationshipRequest({action:"set_type",workerId:worker.id,relationshipType});
+      const refreshed=await relationshipRequest({action:"list"});
+      setWorkerRelationships(refreshed.relationships || []);
+      return true;
+    } catch (error) {
+      setRelationshipErrors(current => ({...current,[worker.id]:error?.message || "관계 저장 실패"}));
+      return false;
+    } finally {
+      setRelationshipSavingId(null);
     }
   }
 
@@ -823,6 +843,9 @@ export default function WorkerManagement({
               key={worker.id}
               worker={worker}
               relationshipType={workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type || null}
+              onSetRelationship={type => saveWorkerRelationship(worker, type)}
+              relationshipSaving={relationshipSavingId === worker.id}
+              relationshipError={relationshipErrors[worker.id] || ""}
               inviteLoading={inviteLoadingId === worker.id}
               onInvite={() => createInviteForWorker(worker)}
               onLinkSelf={() => linkMyself(worker)}
