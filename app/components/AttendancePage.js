@@ -544,7 +544,7 @@ export default function AttendancePage({
             <p>
               퇴근할 때는 출근 당시 현장 주소를 기준으로 비교합니다.
             </p>
-          </div>
+          </details>
 
           <details style={card}>
             <summary style={{fontWeight:700,cursor:"pointer"}}>추가 인건비 정산 안내</summary>
@@ -566,7 +566,8 @@ export default function AttendancePage({
               시공 시작일 기준입니다.
             </p>
           </details>
-        </>)}
+        </>
+      )}
 
       {data && !admin && (
         <div style={card}>
