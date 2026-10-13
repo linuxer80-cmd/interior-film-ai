@@ -15,7 +15,7 @@ const TYPES = {
 };
 
 const FIELDS =
-  "id,expense_type,amount,description,expense_date,created_by,created_at";
+  "id,expense_type,amount,description,expense_date,created_by,created_at,reimbursement_worker_id";
 
 const uuid = (value) =>
   typeof value === "string" &&
@@ -238,6 +238,7 @@ async function handle(request) {
       description: row.description.slice(PREFIX.length),
       expense_date: row.expense_date,
       mine: row.created_by === user.id,
+      reimbursementWorkerId: row.reimbursement_worker_id,
     });
 
     if (request.method === "GET") {
@@ -261,6 +262,7 @@ async function handle(request) {
         isAdmin,
         canWrite: site.status !== "cancelled",
         expenses: rows.map(publicRow),
+        workers: isAdmin ? await read(db.from("workers").select("id,name").eq("company_id",site.company_id).eq("is_active",true).order("name")) : [],
       });
     }
 
@@ -341,7 +343,19 @@ async function handle(request) {
       );
     }
 
+    let reimbursementWorkerId = null;
+    if (isAdmin && body.reimbursementWorkerId) {
+      if (!uuid(body.reimbursementWorkerId)) fail("지급 대상을 확인해주세요.",400);
+      const worker = await read(db.from("workers").select("id").eq("id",body.reimbursementWorkerId).eq("company_id",site.company_id).eq("is_active",true).maybeSingle());
+      if (!worker) fail("해당 업체의 활성 시공자를 선택해주세요.",400);
+      reimbursementWorkerId = worker.id;
+    } else if (!isAdmin) {
+      const linked = await read(db.from("workers").select("id").eq("user_id",user.id).eq("company_id",site.company_id).eq("is_active",true));
+      if (linked.length !== 1) fail("경비를 지급할 시공자 계정을 관리자에게 확인해주세요.",409);
+      reimbursementWorkerId = linked[0].id;
+    }
     const values = {
+      reimbursement_worker_id: reimbursementWorkerId,
       id: body.id,
       company_id: site.company_id,
       site_id: site.id,
@@ -368,6 +382,7 @@ async function handle(request) {
       if (
         !existing ||
         existing.created_by !== user.id ||
+        existing.reimbursement_worker_id !== values.reimbursement_worker_id ||
         existing.expense_type !== values.expense_type ||
         Number(existing.amount) !== amount ||
         existing.description !== values.description ||

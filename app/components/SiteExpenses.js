@@ -25,6 +25,7 @@ const today = () =>
   }).format(new Date());
 
 const initial = () => ({
+  reimbursementWorkerId: "",
   expense_type: "meal",
   expense_date: today(),
   amount: "",
@@ -102,6 +103,7 @@ async function api(siteId, method = "GET", body) {
 export default function SiteExpenses({ siteId, onSaved }) {
   const [form, setForm] = useState(initial);
   const [items, setItems] = useState([]);
+  const [workers, setWorkers] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canWrite, setCanWrite] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -126,6 +128,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
 
       setItems(result.expenses);
       setIsAdmin(result.isAdmin);
+      setWorkers(result.workers || []);
       setCanWrite(result.canWrite);
     } catch (err) {
       if (current === version.current) {
@@ -312,6 +315,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
             minWidth: 0,
           }}
         >
+          {isAdmin ? <label>경비를 지출한 사람<select style={input} value={form.reimbursementWorkerId} onChange={e => change("reimbursementWorkerId",e.target.value)}><option value="">업체 직접 지출 (시공자 지급 제외)</option>{workers.map(w => <option key={w.id} value={w.id}>{w.name} · 경비 지급 대상</option>)}</select></label> : <p>본인이 지출한 경비로 저장되며 사용월의 입금 예정액에 포함됩니다.</p>}
           <div
             style={{
               display: "grid",

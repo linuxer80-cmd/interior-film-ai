@@ -1,3 +1,4 @@
+import { workerReimbursements } from "../../../../lib/workerReimbursements";
 import { loadLaborContracts } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -186,6 +187,13 @@ async function loadCompany(
 
   group.totalAmount += group.overtimeAmount;
 
+  const expenses = await workerReimbursements(db, company.id, month, workerIds, today);
+  group.expenseEntries = expenses;
+  group.expenseAmount = expenses.reduce((sum, row) => sum + Number(row.amount), 0);
+  group.totalAmount += group.expenseAmount;
+  const payments = workerIds.length ? await rows(db.from("labor_payment_records").select("id,amount").eq("company_id", company.id).in("worker_id",workerIds).eq("labor_month",`${month}-01`).is("cancelled_at",null).order("id")) : [];
+  group.paidAmount = payments.reduce((sum,row) => sum + Number(row.amount),0);
+  group.remainingAmount = Math.max(0, group.totalAmount-group.paidAmount);
   return group;
 }
 
@@ -330,6 +338,9 @@ export async function GET(request) {
       asOf: today,
       totals: {
         ...sumPay(groups),
+        expenseAmount: groups.reduce((sum,g) => sum+g.expenseAmount,0),
+        paidAmount: groups.reduce((sum,g) => sum+g.paidAmount,0),
+        remainingAmount: groups.reduce((sum,g) => sum+g.remainingAmount,0),
         overtimeAmount: groups.reduce(
           (sum, group) =>
             sum + group.overtimeAmount,

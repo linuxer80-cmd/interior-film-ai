@@ -1,3 +1,4 @@
+import { workerReimbursements } from "../../../../lib/workerReimbursements";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 import { GET as profitGET } from "../profit/route";
@@ -240,13 +241,17 @@ export async function GET(request) {
         )
       : null;
 
+    const reimbursements = await workerReimbursements(auth.db, auth.companyId, month, null, cutoff);
+    const expenseRows = reimbursements.map(row => ({
+      workerId: row.reimbursement_worker_id, siteId: row.site_id,
+      siteName: `경비 · ${row.expense_date} · ${(row.description || "").replace(/^수익관리\/경비: /, "")}`,
+      amount: Number(row.amount), days: 0, expenseId: row.id, isReimbursement: true,
+    }));
     return json({
       cutoff: calculated ? cutoff : null,
       pendingDays: calculated?.pending || 0,
       accountWarning: bankResult.warning,
-      labor: calculated
-        ? calculated.labor
-        : profit.breakdown.labor,
+      labor: [...(calculated ? calculated.labor : profit.breakdown.labor), ...expenseRows],
       payments,
       workers: workers.map(worker => ({
         ...worker,

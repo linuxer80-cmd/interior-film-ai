@@ -142,6 +142,7 @@ export default function LaborPayments() {
         ...worker,
         amount: 0,
         paid: 0,
+        expenseAmount: 0,
         rows: [],
         payments: [],
       },
@@ -155,6 +156,7 @@ export default function LaborPayments() {
 
     if (person) {
       person.amount += Number(row.amount);
+      if (row.isReimbursement) person.expenseAmount += Number(row.amount);
       person.rows.push(row);
     } else {
       unassigned += Number(row.amount);
@@ -272,7 +274,8 @@ export default function LaborPayments() {
         marginBottom: 16,
       }}
     >
-      <h3>인건비 지급 관리</h3>
+      <h3>인건비·경비 지급 관리</h3>
+      <p style={{fontSize:13}}>시공자 경비는 현장 시작월과 관계없이 실제 사용월의 지급 대상액에 포함됩니다.</p>
 
       <label>
         인건비 귀속 월
@@ -360,14 +363,14 @@ export default function LaborPayments() {
             {[
               [
                 mode === "today"
-                  ? "오늘까지 인건비"
+                  ? "오늘까지 지급 대상액"
                   : month === today().slice(0, 7)
-                    ? "이달 인건비"
-                    : "선택 월 인건비",
+                    ? "이달 지급 대상액"
+                    : "선택 월 지급 대상액",
                 totals.amount,
               ],
-              ["지급 인건비", totals.paid],
-              ["미지급 인건비", totals.unpaid],
+              ["지급액", totals.paid],
+              ["미지급액 (경비 포함)", totals.unpaid],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -433,7 +436,7 @@ export default function LaborPayments() {
               </div>
 
               <p style={{ fontSize: 13 }}>
-                인건비 {won(person.amount)}
+                인건비 {won(person.amount-person.expenseAmount)} · 경비 {won(person.expenseAmount)}
                 {" "}· 지급 {won(person.paid)}
                 <br />
                 미지급 {
@@ -472,7 +475,7 @@ export default function LaborPayments() {
               </button>
 
               <details style={{ marginTop: 10 }}>
-                <summary>현장별 인건비 · 지급 내역</summary>
+                <summary>인건비·경비 · 지급 내역</summary>
 
                 {person.rows.map((row, index) => (
                   <p key={index} style={{ fontSize: 13 }}>
@@ -534,7 +537,7 @@ export default function LaborPayments() {
           }}
         >
           <strong>
-            {form.name} · {month} 인건비 지급
+            {form.name} · {month} 인건비·경비 지급
           </strong>
 
           <WorkerBankAccount

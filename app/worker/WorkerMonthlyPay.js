@@ -210,7 +210,13 @@ export default function WorkerMonthlyPay({
                 )}
               </dd>
             </div>
+            <div><dt>본인 지출 경비</dt><dd>+ {won(data.totals.expenseAmount)}</dd></div>
+            <div><dt>지급받은 금액</dt><dd>− {won(data.totals.paidAmount)}</dd></div>
+            <div><dt>입금 예정액</dt><dd>{won(data.totals.remainingAmount)}</dd></div>
           </dl>
+          <details><summary>경비 내역 · {won(data.totals.expenseAmount)}</summary>
+            {data.companies.map(company => <div key={company.companyId}><b>{company.companyName}</b>{(company.expenseEntries || []).map(row => <p key={row.id}>{row.expense_date} · {(row.description || "경비").replace(/^수익관리\/경비: /, "")} · {won(row.amount)}</p>)}</div>)}
+          </details>
 
           {data.totals.pendingDays > 0 && (
             <p
@@ -360,7 +366,7 @@ export default function WorkerMonthlyPay({
             완료 여부와 관계없이 실제 근무일이 이 달인
             승인 기록을 합산합니다. 관리자 지급 관리의
             현장 시작월 기준과는 다를 수 있습니다.
-            실제 지급 여부와는 별도입니다.
+            경비는 사용월 기준으로 합산하며, 등록된 지급액을 차감해 입금 예정액을 표시합니다.
           </p>
 
           {data.companies.length > 1 && (
