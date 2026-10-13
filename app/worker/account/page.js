@@ -1,4 +1,5 @@
 "use client";
+import HomeReturnButton from '../../components/HomeReturnButton';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
@@ -284,7 +285,7 @@ export default function WorkerAccount() {
 
   return <main className='labor-shell labor-account'>
     <nav className='labor-navigation' aria-label='개인설정 화면 이동'>
-      <Link className='labor-nav-button' href='/worker'><span className='labor-nav-icon' aria-hidden='true'>⌂</span><span>시공자 홈</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
+      <HomeReturnButton />
       <Link className='labor-nav-button' href='/jobs?view=worker'><span className='labor-nav-icon' aria-hidden='true'>▦</span><span>구인·구직</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
     </nav>
 
