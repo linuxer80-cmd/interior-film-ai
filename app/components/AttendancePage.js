@@ -367,7 +367,7 @@ export default function AttendancePage({
         color: "#183153",
       }}
     >
-      {!embedded && <HomeReturnButton role={admin?"admin":"worker"} label={admin?"시공자 관리로":"시공자 홈으로"} style={{marginBottom:12}} />}
+      {!embedded && <HomeReturnButton role={admin?"admin":"worker"} label={admin?"관리자 홈으로":"시공자 홈으로"} style={{marginBottom:12}} />}
 
       <h1 style={{ fontSize: 25 }}>
         {admin
