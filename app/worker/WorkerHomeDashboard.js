@@ -275,7 +275,7 @@ export default function WorkerHomeDashboard({
         className="wp-grid"
         aria-label="시공자 주요 메뉴"
       >
-        {menus.filter(menu=>employeeHome===false || menu.id!=="jobs").map(menu => (
+        {menus.map(menu => (
           <Link
             key={menu.id}
             href={
