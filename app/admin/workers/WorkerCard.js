@@ -16,6 +16,7 @@ const AttendancePage = dynamic(
 
 export default function WorkerCard({
   worker,
+  relationshipType = null,
   inviteLoading = false,
   onInvite,
   onLinkSelf,
@@ -206,6 +207,14 @@ export default function WorkerCard({
                 계정 미연결
               </span>
             )}
+          </div>
+
+          <div style={{marginTop:7}}>
+            <span style={{display:"inline-block",padding:"5px 8px",borderRadius:999,fontSize:11,fontWeight:800,
+              background:relationshipType==="employee"?"#dbeafe":relationshipType==="freelancer"?"#fef3c7":"#f1f5f9",
+              color:relationshipType==="employee"?"#1d4ed8":relationshipType==="freelancer"?"#92400e":"#64748b"}}>
+              {relationshipType==="employee"?"소속 직원":relationshipType==="freelancer"?"협력 프리랜서":"관계 미설정"}
+            </span>
           </div>
 
           {specialties.length > 0 && (
