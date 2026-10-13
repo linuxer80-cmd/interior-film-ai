@@ -21,7 +21,7 @@ const menus = [
   },
   {
     href: "/admin/clients",
-    label: "업체 관리",
+    label: "거래처 관리",
     description: "거래처·담당자와 현장별 정산 관리",
     icon: "report",
   },
