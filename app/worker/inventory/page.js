@@ -1,5 +1,6 @@
 "use client";
 
+import HomeReturnButton from "../../components/HomeReturnButton";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -52,9 +53,7 @@ export default function WorkerInventory() {
   return (
     <main className="labor-shell">
       <nav>
-        <Link href="/worker">
-          ‹ 시공자 홈
-        </Link>
+        <HomeReturnButton />
 
         <button
           disabled={busy}
