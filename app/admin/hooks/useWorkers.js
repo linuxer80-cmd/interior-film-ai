@@ -369,6 +369,18 @@ export default function useWorkers({
       setWorkersMessage("");
 
       try {
+        // Recheck persisted relationship instead of trusting a client-provided role.
+        const {data: relationships, error: relationshipError} = await supabase
+          .from("worker_relationships")
+          .select("relationship_type,ended_at")
+          .eq("worker_id", workerId)
+          .eq("company_id", companyId)
+          .is("ended_at", null);
+        if (relationshipError) throw relationshipError;
+        if ((relationships || []).some(r => r.relationship_type === "freelancer") && form?.update_pay_rate !== false) {
+          throw Error("협력 프리랜서 기본 일당은 관리자 화면에서 변경할 수 없습니다.");
+        }
+
         const {
           data,
           error,
