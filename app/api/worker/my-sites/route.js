@@ -496,6 +496,20 @@ export async function GET(request) {
         )
       );
 
+    // Names are fetched only for companies already authorized by worker assignment.
+    const companyIds = [...new Set(sites.map(site => site.company_id).filter(Boolean))];
+    if (companyIds.length) {
+      const { data: companies, error: companiesError } = await db
+        .from("companies")
+        .select("id,company_name")
+        .in("id", companyIds);
+      if (companiesError) throw companiesError;
+      const names = new Map((companies || []).map(company => [company.id, company.company_name]));
+      for (const site of sites) {
+        site.company_name = names.get(site.company_id) || "업체명 확인 필요";
+      }
+    }
+
     if (!siteId) {
       return json({ worker, sites });
     }
