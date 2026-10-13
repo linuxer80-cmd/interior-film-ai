@@ -41,13 +41,14 @@ export default function WorkerFormModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1250,
+        zIndex: 1500,
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         justifyContent: "center",
-        padding: "30px 12px",
+        padding: "12px",
+        boxSizing: "border-box",
         background: "rgba(15,23,42,0.60)",
-        overflowY: "auto",
+        overflow: "hidden",
       }}
     >
       <div
@@ -55,6 +56,10 @@ export default function WorkerFormModal({
         style={{
           width: "100%",
           maxWidth: "500px",
+          maxHeight: "calc(100dvh - 24px)",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          boxSizing: "border-box",
           padding: "18px",
           borderRadius: "16px",
           background: "#ffffff",
