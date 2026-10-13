@@ -17,9 +17,6 @@ const AttendancePage = dynamic(
 export default function WorkerCard({
   worker,
   relationshipType = null,
-  onSetRelationship,
-  relationshipSaving = false,
-  relationshipError = '',
   inviteLoading = false,
   onInvite,
   onLinkSelf,
@@ -28,7 +25,6 @@ export default function WorkerCard({
   onActiveChange,
 }) {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
-  const [relationshipDraft, setRelationshipDraft] = useState('');
 
   const phoneNumber = String(worker?.phone || "").trim().replace(/[^0-9+]/g, "");
   const callablePhone = /^\+?\d{7,15}$/.test(phoneNumber);
@@ -221,22 +217,6 @@ export default function WorkerCard({
             </span>
           </div>
 
-          {accountLinked && active && onSetRelationship && (
-            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-              <select aria-label="시공자 관계 유형" value={relationshipDraft || relationshipType || ''}
-                disabled={relationshipSaving} onChange={e=>setRelationshipDraft(e.target.value)}>
-                <option value="">관계 미설정</option>
-                <option value="employee">소속 직원</option>
-                <option value="freelancer">협력 프리랜서</option>
-              </select>
-              <button type="button" disabled={relationshipSaving || !relationshipDraft || relationshipDraft===relationshipType}
-                onClick={async()=>{if(!window.confirm('관계를 변경하시겠습니까? 기존 확정 일당은 유지됩니다.'))return;
-                  if(await onSetRelationship(relationshipDraft))setRelationshipDraft('');}}>
-                {relationshipSaving?'저장 중':'관계 저장'}
-              </button>
-              {relationshipError && <span role="alert" style={{color:'#b91c1c'}}>{relationshipError}</span>}
-            </div>
-          )}
           {specialties.length > 0 && (
             <div
               style={{
