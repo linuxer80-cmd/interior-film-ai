@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttendanceCorrection from "./AttendanceCorrection";
+import HomeReturnButton from "./HomeReturnButton";
 import { supabase } from "../../lib/supabase";
 
 const koreaDay = () =>
@@ -366,18 +367,7 @@ export default function AttendancePage({
         color: "#183153",
       }}
     >
-      {!embedded && (
-        <Link
-          href={admin ? "/admin/workers" : "/worker"}
-          style={{
-            ...button,
-            display: "inline-block",
-            textDecoration: "none",
-          }}
-        >
-          ‹ {admin ? "시공자 관리" : "시공자 홈"}
-        </Link>
-      )}
+      {!embedded && <HomeReturnButton role={admin?"admin":"worker"} label={admin?"시공자 관리로":"시공자 홈으로"} style={{marginBottom:12}} />}
 
       <h1 style={{ fontSize: 25 }}>
         {admin
