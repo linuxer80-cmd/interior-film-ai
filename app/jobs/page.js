@@ -103,6 +103,7 @@ export default function JobsPage(){
  const [siteQuery,setSiteQuery]=useState(''),[siteFilter,setSiteFilter]=useState('scheduled'),[sitePage,setSitePage]=useState(0);
  const [sites,setSites]=useState([]),[sitesReady,setSitesReady]=useState(false),[job,setJob]=useState(null),[allowed,setAllowed]=useState([]),[target,setTarget]=useState(null);
  const [matchingOnly,setMatchingOnly]=useState(false);
+ const [collaborationInvite,setCollaborationInvite]=useState('');
  const [person,setPerson]=useState(null),[detail,setDetail]=useState(null),[consent,setConsent]=useState(false),[dates,setDates]=useState([]),[seekConsent,setSeekConsent]=useState(false),[confirm,setConfirm]=useState(null),[jobFilter,setJobFilter]=useState('');
 
  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(timer);},[notice]);
@@ -144,7 +145,16 @@ export default function JobsPage(){
 
  async function act(body){
   if(busy)return;setBusy(true);setError('');setNotice('');
-  try{await api('/api/labor-market',body);setNotice(body.recruitUserId?'현장 정보를 보내고 시공자를 배정했습니다. 구직 공고는 내려갔습니다.':body.action==='finish'?'구인 완료했습니다. 미선택 지원자에게 만료 알림을 보냈습니다.':body.action==='accept'?'시공자를 내 현장에 배정했습니다. 필요한 인원을 선택한 뒤 구인 완료를 눌러주세요.':body.action==='seeking'?'선택한 날짜의 구직 공고가 관리자들에게 공개되었습니다.':'처리했습니다.');if(body.action==='job'){setJob(null);setTarget(null);}setConfirm(null);setDetail(null);setPerson(null);setConsent(false);setReload(n=>n+1);}catch(e){setError(e.message);}finally{setBusy(false);}
+  try{await api('/api/labor-market',body);
+   if(data?.manager && body.action==='accept'){
+     // Hiring a worker for one site does not imply consent to a permanent company relationship.
+     // Prepare an optional freelancer invitation for the manager to share.
+     try{
+       const invitation=await api('/api/direct-worker-invites',{action:'create',relationshipType:'freelancer'});
+       if(invitation.code)setCollaborationInvite(window.location.origin+'/worker/direct-invite/'+invitation.code);
+     }catch(error){console.warn('선택적 협력 초대 생성 실패:',error.message);}
+   }
+   setNotice(body.recruitUserId?'현장 정보를 보내고 시공자를 배정했습니다. 구직 공고는 내려갔습니다.':body.action==='finish'?'구인 완료했습니다. 미선택 지원자에게 만료 알림을 보냈습니다.':body.action==='accept'?'시공자를 내 현장에 배정했습니다. 필요한 인원을 선택한 뒤 구인 완료를 눌러주세요.':body.action==='seeking'?'선택한 날짜의 구직 공고가 관리자들에게 공개되었습니다.':'처리했습니다.');if(body.action==='job'){setJob(null);setTarget(null);}setConfirm(null);setDetail(null);setPerson(null);setConsent(false);setReload(n=>n+1);}catch(e){setError(e.message);}finally{setBusy(false);}
  }
 
  const field=(label,key,type='text')=><label>{label}<input type={type} value={job?.[key]??''} min={type==='number'?0:undefined} onChange={e=>setJob(j=>({...j,[key]:e.target.value}))}/></label>;
@@ -163,6 +173,13 @@ export default function JobsPage(){
    <HomeReturnButton role={data?.manager?'admin':'worker'} />
   </nav><h1>{data?.manager?'구인·구직 관리':'구인·구직'}</h1><LaborNotifications refreshKey={reload}/>
   {error&&<p className='error' role='alert'>{error}</p>}{notice&&<aside role='status'>{notice}</aside>}
+  {data?.manager && collaborationInvite && <aside role='status' style={{padding:12,border:'1px solid #cbd5e1',borderRadius:12,marginBottom:12}}>
+    <strong>현장 배정 완료 · 협력 관계 연결 (선택)</strong>
+    <p>현장 채용과 업체 소속 연결은 별개입니다. 아래 초대링크를 전달하면 시공자가 수락한 뒤 협력 프리랜서로 연결됩니다.</p>
+    <input aria-label='협력 초대링크' readOnly value={collaborationInvite} onFocus={e=>e.target.select()} style={{width:'100%',padding:10,boxSizing:'border-box'}}/>
+    <button type='button' onClick={async()=>{try{await navigator.clipboard.writeText(collaborationInvite);setNotice('협력 초대링크를 복사했습니다.');}catch{setNotice('링크를 길게 눌러 복사해주세요.');}}}>협력 초대링크 복사</button>
+    <button type='button' onClick={()=>setCollaborationInvite('')}>닫기</button>
+  </aside>
   {!data?<p>{error?'계정 확인을 완료하지 못했습니다.':'계정을 확인하는 중입니다.'} <Link href='/worker/account'>로그인 · 계정 확인</Link></p>:<>
    <div className='tabs'>{(data.manager?[['candidates','시공자 찾기'],['mine','구인하기'],['applications','지원자']]:[['jobs','일자리 찾기'],['seeking','구직 등록'],['applications','지원 현황']]).map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>{setTab(id);setPage(0);setJobFilter('');setPerson(null);setDetail(null);setTarget(null);setJob(null);setConsent(false);}}>{label}</button>)}</div>
    {(tab==='candidates'||tab==='jobs'||tab==='matching')&&<form onSubmit={e=>{e.preventDefault();setSearch(filters);setPage(0);}}><div className='pair'><label>지역<input placeholder='인천 서구' value={filters.region} onChange={e=>setFilters(f=>({...f,region:e.target.value}))}/></label><label>일할 날짜<input type='date' value={filters.date} onChange={e=>setFilters(f=>({...f,date:e.target.value}))}/></label></div>{data.manager&&<details><summary>일당·경력으로 검색</summary>{[['wage','등록 일당 상한 (원)','number'],['experience','최소 경력 (년)','number']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={filters[key]} onChange={e=>setFilters(f=>({...f,[key]:e.target.value}))}/></label>)}</details>}<button className='primary'>검색</button><button type='button' onClick={()=>{setSearch({});setFilters({region:'',date:'',wage:'',experience:'',skill:''});setPage(0);}}>초기화</button></form>}
