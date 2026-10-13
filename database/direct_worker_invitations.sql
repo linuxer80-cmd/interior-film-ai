@@ -72,15 +72,15 @@ begin
  if nullif(trim(coalesce(v_name,'')),'') is null or nullif(trim(coalesce(v_phone,'')),'') is null then
   raise exception '시공자 개인 프로필에서 이름과 연락처를 먼저 등록해주세요.';
  end if;
- if v_inv.relationship_type='freelancer' and coalesce(v_wage,0)<=0 then
-  raise exception '프리랜서는 개인 프로필에 일당을 먼저 등록해주세요.';
+ if coalesce(v_wage,0)<=0 then
+  raise exception '개인 프로필에 기본 일당을 먼저 등록해주세요. 소속 직원의 업체 일당은 관리자가 연결 후 수정할 수 있습니다.';
  end if;
  select * into v_worker from public.workers where company_id=v_inv.company_id and user_id=p_actor for update;
  if found and v_worker.is_active=false then raise exception '비활성 시공자는 업체 관리자에게 문의해주세요.'; end if;
  if not found then
   insert into public.workers(company_id,user_id,name,phone,position,is_active,daily_wage)
   values(v_inv.company_id,p_actor,v_name,v_phone,'시공자',true,
-   case when v_inv.relationship_type='freelancer' then v_wage else 0 end)
+   v_wage)
   returning * into v_worker;
  end if;
  if exists(select 1 from public.worker_relationships where worker_id=v_worker.id
