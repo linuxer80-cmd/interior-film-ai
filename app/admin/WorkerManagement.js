@@ -785,7 +785,7 @@ export default function WorkerManagement({
               key={worker.id}
               worker={worker}
               compact
-              expanded={expandedWorkerId===worker.id}
+              expanded={!showForm && expandedWorkerId===worker.id}
               onToggle={()=>setExpandedWorkerId(current=>current===worker.id?null:worker.id)}
               relationshipType={workerRelationships.find(r => r.worker_id === worker.id && !r.ended_at && r.user_id === worker.user_id)?.relationship_type || null}
               inviteLoading={inviteLoadingId === worker.id}
