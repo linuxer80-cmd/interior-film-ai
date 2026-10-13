@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
+import { confirmEmailDomain } from '../../../lib/emailDomainGuard';
 import '../../components/laborMarket.css';
 
 const blank = {
@@ -124,6 +125,7 @@ export default function WorkerAccount() {
 
     try{
       if(signup){
+        if(!confirmEmailDomain(email))return;
         const {data,error}=await supabase.auth.signUp({
           email:email.trim(),
           password,
