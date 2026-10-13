@@ -19,6 +19,25 @@ export default function WorkerLoginPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("error");
 
+  // Installed PWA may reopen at the login URL even when its session is valid.
+  useEffect(() => {
+    let active = true;
+    async function restore() {
+      try {
+        const {data,error} = await supabase.auth.getSession();
+        if (error || !data?.session || !active) return;
+        const worker = await getMyWorker();
+        if (!active || !worker?.worker_id || worker.worker_is_active === false) return;
+        const next = new URLSearchParams(window.location.search).get("next");
+        router.replace(workerDestination(next));
+      } catch {
+        // A valid login can still need profile completion; keep the form visible.
+      }
+    }
+    void restore();
+    return () => {active=false;};
+  }, [router]);
+
   async function getMyWorker() {
     const result = await loadMyWorkerSites({ profileOnly: true });
     return result.worker;
