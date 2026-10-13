@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
+import { confirmEmailDomain } from "../../lib/emailDomainGuard";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -221,6 +222,7 @@ export default function SignupPage() {
         }
         session = { user: verified.user };
       } else {
+      if (!confirmEmailDomain(cleanEmail)) return;
       const {
         data: signupData,
         error: signupError,
