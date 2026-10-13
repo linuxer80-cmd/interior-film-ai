@@ -31,7 +31,10 @@ export default function SamplesPage() {
       window.location.search
     ).get("company");
 
-    if (slug) {
+    const from = new URLSearchParams(window.location.search).get("from");
+    if (from === "admin" || from === "worker") {
+      setHome(from === "admin" ? "/admin" : "/worker");
+    } else if (slug) {
       setHome(`/?company=${encodeURIComponent(slug)}`);
     }
 

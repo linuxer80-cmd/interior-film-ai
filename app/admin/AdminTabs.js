@@ -6,6 +6,7 @@ import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
+  { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
     href: "/jobs",
     label: "구인 · 구직",
@@ -246,6 +247,7 @@ export default function AdminTabs({
           <a href="/jobs">구인 · 구직</a>
           <a href="/admin/clients">업체 관리</a>
           <a href="/admin/customer-page">고객페이지 관리</a>
+          <a href="/samples?from=admin">필름 샘플 보기</a>
 
           <button type="button" onClick={() => go("jobs")}>시공 DB</button>
           <button type="button" onClick={() => go("register")}>시공 등록</button>

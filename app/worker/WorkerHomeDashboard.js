@@ -15,6 +15,7 @@ import {
 } from "../utils/workerCalendar";
 
 const menus = [
+  { id: "samples", href: "/samples?from=worker", icon: "customer", title: "필름 샘플 보기", subtitle: "브랜드·색상별 필름 샘플 확인" },
   {
     id: "jobs",
     href: "/jobs?view=worker",
@@ -320,6 +321,7 @@ export default function WorkerHomeDashboard({
         {menus
           .filter(menu =>
             ![
+              "samples",
               "attendance",
               "inventory",
               "jobs",
