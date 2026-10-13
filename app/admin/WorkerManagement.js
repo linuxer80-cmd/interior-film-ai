@@ -6,6 +6,7 @@ import { koreanDay } from "../utils/workerCalendar";
 import { payAmount, payDate } from "../utils/workerPay";
 
 import WorkerRelationships from "./workers/WorkerRelationships";
+import DirectWorkerInvites from "./workers/DirectWorkerInvites";
 import WorkerSummary from "./workers/WorkerSummary";
 import WorkerCard from "./workers/WorkerCard";
 import WorkerFormModal from "./workers/WorkerFormModal";
@@ -650,6 +651,7 @@ export default function WorkerManagement({
 
   return (
     <>
+      <DirectWorkerInvites />
       <WorkerRelationships workers={workers} onRelationshipsChange={setWorkerRelationships} />
       <section>
         <div
