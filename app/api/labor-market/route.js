@@ -783,6 +783,26 @@ export async function POST(request) {
       throw fail('본인 업체의 공고에는 지원할 수 없습니다.',403);
     }
 
+    if(body.action==='apply') {
+      // A worker can apply to an external company without changing their
+      // employee relationship with the current employer.
+      const {data:ownWorkers,error:workerError}=await db.from('workers')
+        .select('id,company_id').eq('user_id',user.id).eq('is_active',true).limit(100);
+      if(workerError)throw workerError;
+      const linked=(ownWorkers||[]).filter(w=>w.company_id===job.company_id);
+      if(linked.length){
+        const {data:relationships,error:relationshipError}=await db.from('worker_relationships')
+          .select('worker_id,relationship_type,ended_at').eq('company_id',job.company_id)
+          .in('worker_id',linked.map(w=>w.id)).is('ended_at',null);
+        if(relationshipError)throw relationshipError;
+        if((relationships||[]).some(r=>r.relationship_type==='employee')){
+          throw fail('소속 업체 현장은 구직 지원 대신 관리자에게 배정을 요청해주세요.',409);
+        }
+      }
+      // Never create or overwrite a company relationship on application.
+      // Hiring remains subject to manager approval and existing RPC validation.
+    }
+
     if(body.action==='apply' && body.share_phone!==true) {
       throw fail('지원할 업체에 프로필·연락처 공유를 동의해주세요.');
     }
