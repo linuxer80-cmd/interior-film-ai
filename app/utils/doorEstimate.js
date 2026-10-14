@@ -249,7 +249,11 @@ export function mergeDoorViews(photos) {
       analysis.object_confidence !== "high" ||
       !analysis.object_key ||
       !analysis.object_evidence?.trim() ||
-      analysis.door_count !== 1
+      analysis.door_count !== 1 ||
+      // Only a cropped view may borrow a verified complete view; never erase
+      // low-confidence, conflicting or unidentifiable target classifications.
+      (analysis.requires_confirmation && analysis.confirmation_reason !== "incomplete_view") ||
+      (!analysis.requires_confirmation && analysis.classification_confidence === "low")
     ) {
       continue;
     }
