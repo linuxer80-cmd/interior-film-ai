@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import { workerProfileRequirements } from "../../utils/workerProfileRequirements";
 import {
   loadMyWorkerSites,
   workerDestination,
@@ -26,6 +27,8 @@ export default function WorkerLoginPage() {
       try {
         const {data,error} = await supabase.auth.getSession();
         if (error || !data?.session || !active) return;
+        const completion=await workerProfileRequirements();
+        if(active && completion.authenticated && !completion.complete){router.replace("/worker/account?required=1");return;}
         const worker = await getMyWorker();
         if (!active || !worker?.worker_id || worker.worker_is_active === false) return;
         const next = new URLSearchParams(window.location.search).get("next");
@@ -76,6 +79,11 @@ export default function WorkerLoginPage() {
         throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
       }
 
+      const completion=await workerProfileRequirements();
+      if(completion.authenticated && !completion.complete){
+        router.replace("/worker/account?required=1");
+        return;
+      }
       const inviteTarget = workerDestination(new URLSearchParams(window.location.search).get("next"));
       if (inviteTarget.startsWith("/worker/connect/")) {
         router.replace(inviteTarget);
