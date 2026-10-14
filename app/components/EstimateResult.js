@@ -565,8 +565,15 @@ export default function EstimateResult({
                           ))}
                         </div>
 
-                        {item.match_reason && <p style={{ fontSize: 13, lineHeight: 1.6, color: "#475569" }}>{item.match_reason}</p>}
-                        {!!item.differences?.length && <p style={{ fontSize: 12, lineHeight: 1.6, color: "#64748b" }}>차이점: {item.differences.join(" · ")}</p>}
+                        {(item.match_reason || item.differences?.length > 0) && (
+                          <details style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: "10px 12px" }}>
+                            <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#334155" }}>
+                              유사사례 선정 이유 보기
+                            </summary>
+                            {item.match_reason && <p style={{ fontSize: 13, lineHeight: 1.6, color: "#475569", marginBottom: 6 }}>{item.match_reason}</p>}
+                            {!!item.differences?.length && <p style={{ fontSize: 12, lineHeight: 1.6, color: "#64748b", marginBottom: 0 }}>차이점: {item.differences.join(" · ")}</p>}
+                          </details>
+                        )}
                         {/* 실제 금액 / 비교 결과 */}
 
                         <div
