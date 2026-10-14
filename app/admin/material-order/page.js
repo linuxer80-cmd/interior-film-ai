@@ -761,6 +761,7 @@ export default function MaterialOrderPage() {
 
   return (
     <main className="page">
+      <div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 카드결제 테스트 중</strong><div>현재 자재 구매 카드결제는 테스트 중입니다. 실제 주문·결제는 아직 지원되지 않습니다.</div></div>
       <header className="header">
         <button
           type="button"
