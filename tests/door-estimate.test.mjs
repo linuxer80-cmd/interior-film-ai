@@ -194,3 +194,28 @@ test('door merging cannot erase uncertain classification or absorb a shoe cabine
   assert.equal(groups[2].photos[0].analysis.target_type, 'shoe');
   assert.equal(fire({ sub_category: '신발장 문짝' }).confirmation_reason, 'conflicting_targets');
 });
+
+test('one identified doorway among furniture does not need a matching second door photo', () => {
+  const fire = (extra = {}) => analysis('entrance', {
+    target_type: 'fire_door', sub_category: '방화문',
+    object_confidence: 'low', object_evidence: '단독 사진으로 다른 문과 비교할 근거 없음', ...extra,
+  });
+  const shoe = analysis('shoe', {
+    target_type: 'shoe', category: '신발장', sub_category: '신발장 문짝', door_count: 0,
+  });
+  const groups = buildEstimatePhotoGroups(mergeDoorViews([
+    { id: 'f', analysis: fire() }, { id: 's', analysis: shoe },
+  ]));
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].requiresConfirmation, false);
+  for (const extra of [{ door_count: 0 }, { door_count: 2 }, { classification_confidence: 'low' }]) {
+    assert.equal(buildEstimatePhotoGroups(mergeDoorViews([{ id: 'f', analysis: fire(extra) }]))[0].requiresConfirmation, true);
+  }
+  const ambiguous = mergeDoorViews([
+    { id: 'f', analysis: fire() }, { id: 'unknown', analysis: { target_type: 'other', classification_confidence: 'low' } },
+  ]);
+  assert.equal(ambiguous[0].analysis.subject_requires_confirmation, true);
+  const two = mergeDoorViews([{ id: 'f', analysis: fire() }, { id: 'g', analysis: fire() }]);
+  assert.equal(two[0].subjectId, undefined);
+  assert.equal(two[1].subjectId, undefined);
+});
