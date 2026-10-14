@@ -1160,7 +1160,17 @@ export default function useEstimate({
        * ===================================================
        */
 
+      const timing = {started: performance.now()};
+      const markStage = (stage) => {
+        const now = performance.now();
+        const elapsedMs = Math.round(now - (timing.last || timing.started));
+        timing.last = now;
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[estimate-timing]", stage, elapsedMs + "ms");
+        }
+      };
       await checkEstimateStartLimits();
+      markStage("usage_precheck");
 
       /*
        * ===================================================
@@ -1179,6 +1189,7 @@ export default function useEstimate({
       );
 
       const analyzedPhotos = await analyzePhotos();
+      markStage("photo_analysis");
 
       /*
        * ===================================================
@@ -1191,6 +1202,7 @@ export default function useEstimate({
       );
 
       const baseGroups = buildEstimatePhotoGroups(analyzedPhotos);
+      markStage("grouping");
 
       /*
        * ===================================================
@@ -1232,6 +1244,7 @@ export default function useEstimate({
         `유사 시공사례 검색 중... 0/${baseGroups.length}`
       );
 
+      markStage("similar_usage_check");
       let searchedGroupCount = 0;
 
       const completedGroups =
@@ -1261,6 +1274,7 @@ export default function useEstimate({
        * 사진 저장보다 먼저 화면에 표시합니다.
        */
 
+      markStage("similar_search");
       setGroups(
         completedGroups
       );
@@ -1357,6 +1371,7 @@ export default function useEstimate({
        * ===================================================
        */
 
+      markStage("estimate_ready");
       setResultReady(true);
       setStorageStatus("사진 저장 중...");
       void loadSimilarImages(completedGroups, runId).catch((error) => console.warn("유사사진 표시 실패", error));
