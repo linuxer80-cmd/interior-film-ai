@@ -232,12 +232,13 @@ export function quantityEstimateDetails(pricing) {
 // 같은 문이라는 근거가 명확한 사진만 묶습니다.
 // 고객이 직접 나누거나 묶은 선택은 자동 병합으로 덮어쓰지 않습니다.
 export function mergeDoorViews(photos) {
+  const isDoorView = (analysis) => ["door", "fire_door", "middle_door"].includes(getGroupKey(analysis));
   const buckets = new Map();
 
   for (const photo of photos) {
     if (
       photo.subjectId ||
-      getGroupKey(photo.analysis) !== "door"
+      !isDoorView(photo.analysis)
     ) {
       continue;
     }
@@ -253,7 +254,7 @@ export function mergeDoorViews(photos) {
       continue;
     }
 
-    const key = analysis.object_key;
+    const key = `${getGroupKey(analysis)}:${analysis.object_key}`;
 
     if (!buckets.has(key)) {
       buckets.set(key, []);
@@ -280,6 +281,7 @@ export function mergeDoorViews(photos) {
         analysis: {
           ...photo.analysis,
           requires_confirmation: false,
+          confirmation_reason: null,
 
           classification_confidence:
             representative.analysis
@@ -295,7 +297,7 @@ export function mergeDoorViews(photos) {
     (photo) =>
       updates.get(photo.id) ||
       (
-        getGroupKey(photo.analysis) === "door" &&
+        isDoorView(photo.analysis) &&
         !photo.subjectId
           ? {
               ...photo,
