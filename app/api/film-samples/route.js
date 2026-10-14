@@ -10,7 +10,7 @@ const json = (body, status = 200) =>
     headers: {
       "Cache-Control":
         status === 200
-          ? "public, max-age=300"
+          ? "no-store"
           : "no-store",
     },
   });
@@ -78,18 +78,29 @@ export async function GET(request) {
       return json({ path: null });
     }
 
-    // Search both the original G/F stock code and its base catalog code.
-    // A product id can refer to a stock variant without a sample path.
-    const { data, error } = await db
+    // Case-insensitive base-code lookup: Gs156/Fs156 -> S156.
+    // Prefer the base product's registered sample; never alter material codes.
+    const { data: baseProducts, error: baseError } = await db
       .from("film_products")
       .select(fields)
       .eq("is_active", true)
-      .in("product_code", codes)
+      .ilike("product_code", lookupCode)
       .limit(100);
-    if (error) throw error;
-    const basePath = matchSample(data || [], brand, lookupCode);
-    const variantPath = matchSample(data || [], brand, code);
-    return json({ path: basePath || variantPath || null });
+    if (baseError) throw baseError;
+    const basePath = matchSample(baseProducts || [], brand, lookupCode);
+    if (basePath) return json({ path: basePath });
+
+    if (lookupCode.toUpperCase() !== code.toUpperCase()) {
+      const { data: variantProducts, error: variantError } = await db
+        .from("film_products")
+        .select(fields)
+        .eq("is_active", true)
+        .ilike("product_code", code)
+        .limit(100);
+      if (variantError) throw variantError;
+      return json({ path: matchSample(variantProducts || [], brand, code) });
+    }
+    return json({ path: null });
   } catch (error) {
     console.error(
       "film-samples",
