@@ -803,6 +803,21 @@ export async function POST(request) {
       // Hiring remains subject to manager approval and existing RPC validation.
     }
 
+    if(body.action==='apply'){
+      const {data:personal,error:personalError}=await db.from('labor_personal_details')
+        .select('phone').eq('user_id',user.id).maybeSingle();
+      if(personalError)throw personalError;
+      const {data:profile,error:profileError}=await db.from('labor_profiles')
+        .select('name,daily_wage,region').eq('user_id',user.id).maybeSingle();
+      if(profileError)throw profileError;
+      const missing=[];
+      if(!profile?.name?.trim())missing.push('이름');
+      if(!personal?.phone?.trim())missing.push('연락처');
+      if(!profile?.region?.trim())missing.push('활동 지역');
+      if(!Number.isFinite(Number(profile?.daily_wage))||Number(profile?.daily_wage)<=0)missing.push('개인 일당');
+      if(missing.length)throw fail('구직 지원 전에 개인설정 필수 항목을 입력해주세요: '+missing.join(', '),422);
+    }
+
     if(body.action==='apply' && body.share_phone!==true) {
       throw fail('지원할 업체에 프로필·연락처 공유를 동의해주세요.');
     }
