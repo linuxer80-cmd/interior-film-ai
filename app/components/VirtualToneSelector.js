@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import FilmColorPicker from "../FilmColorPicker";
+import FilmSampleImage from "./FilmSampleImage";
 
 function normalizeText(value) {
   return String(value || "")
@@ -655,46 +656,9 @@ export default function VirtualToneSelector({
                     >
                       {/* 필름 샘플 */}
 
-                      {film
-                        ?.sample_image_path ? (
-                        <img
-                          src={
-                            film.sample_image_path
-                          }
-                          alt={`${area.label} 필름`}
-                          style={{
-                            width: "43px",
-                            height:
-                              "43px",
-                            flex:
-                              "0 0 43px",
-                            objectFit:
-                              "cover",
-                            borderRadius:
-                              "8px",
-                            border:
-                              "1px solid #e5e7eb",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "43px",
-                            height:
-                              "43px",
-                            flex:
-                              "0 0 43px",
-                            borderRadius:
-                              "8px",
-                            border:
-                              "1px solid #e5e7eb",
-                            background:
-                              film
-                                ?.color_hex ||
-                              "#f3f4f6",
-                          }}
-                        />
-                      )}
+                      <div style={{ width: 43, flex: "0 0 43px" }}>
+                        <FilmSampleImage product={film} size="43px" />
+                      </div>
 
                       {/* 부위·필름 정보 */}
 
