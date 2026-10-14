@@ -75,7 +75,7 @@ async function request(
   return result;
 }
 
-export default function LaborPayments() {
+export default function LaborPayments({ excludedWorkerIds = [] }) {
   const [month, setMonth] =
     useState(() => today().slice(0, 7));
 
@@ -135,8 +135,9 @@ export default function LaborPayments() {
     };
   }, [month, mode]);
 
+  const excluded = new Set(excludedWorkerIds);
   const people = new Map(
-    (data?.workers || []).map(worker => [
+    (data?.workers || []).filter(worker => !excluded.has(worker.id)).map(worker => [
       worker.id,
       {
         ...worker,
@@ -152,6 +153,7 @@ export default function LaborPayments() {
   let unassigned = 0;
 
   for (const row of data?.labor || []) {
+    if (row.workerId && excluded.has(row.workerId)) continue;
     const person = people.get(row.workerId);
 
     if (person) {
@@ -164,6 +166,7 @@ export default function LaborPayments() {
   }
 
   for (const payment of data?.payments || []) {
+    if (excluded.has(payment.worker_id)) continue;
     const person = people.get(payment.worker_id);
 
     if (person) {
@@ -275,6 +278,7 @@ export default function LaborPayments() {
       }}
     >
       <h3>인건비·경비 지급 관리</h3>
+      {excluded.size > 0 && <p style={{fontSize:13,color:"#1d4ed8"}}>수익 계산에서 제외한 시공자 {excluded.size}명은 이 화면의 인건비 합계·지급 대상 목록에서도 제외됩니다. 기존 지급 기록은 삭제되지 않습니다.</p>}
       <p style={{fontSize:13}}>시공자 경비는 현장 시작월과 관계없이 실제 사용월의 지급 대상액에 포함됩니다.</p>
 
       <label>
