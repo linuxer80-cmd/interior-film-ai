@@ -481,11 +481,29 @@ export async function POST(request) {
         );
       }
 
-      if (error.code === "P0001" || error.code === "23505") {
+      // A PL/pgSQL business-rule exception is not necessarily a stale edit.
+      // Show its actual reason instead of incorrectly blaming a team-leader change.
+      if (error.code === "P0001") {
+        const reason = String(error.message || "").slice(0, 250);
         return reply(
           {
-            error:
-              "일정 또는 담당자가 변경되었습니다. 현장을 다시 열고 배정해주세요.",
+            error: reason || "배정 규칙을 확인해주세요.",
+            code: error.code,
+          },
+          409
+        );
+      }
+      if (error.code === "23505") {
+        console.error("날짜별 배정 고유 제약 충돌:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+        return reply(
+          {
+            error: "같은 날짜에 중복된 팀장 또는 시공자 배정이 있습니다. 팀장과 팀원 구성을 확인해주세요.",
+            code: error.code,
           },
           409
         );
