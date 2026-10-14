@@ -1167,7 +1167,8 @@ export default function BillingPage() {
           "#111827",
       }}
     >
-      {/* 상단 */}
+<div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 카드결제 테스트 중</strong><div>현재 요금제 카드결제는 테스트 중입니다. 실제 결제 및 요금제 변경은 진행하지 마세요.</div></div>
+            {/* 상단 */}
 
       <div
         style={{
