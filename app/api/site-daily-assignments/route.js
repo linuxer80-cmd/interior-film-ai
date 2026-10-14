@@ -643,7 +643,7 @@ export async function POST(request) {
             return {
               company_id:profile.company_id,recipient_type:"worker",
               recipient_user_id:w.user_id,recipient_worker_id:w.id,
-              type:"site_assignment",priority:"normal",
+              type:"site_assignment",priority:"success",
               title:"현장 "+labels[c.kind],
               message:c.row.work_date+" · "+role+" · 현장 일정을 확인해주세요.",
               link:"/worker/site/"+siteId,reference_type:"site_assignment",
