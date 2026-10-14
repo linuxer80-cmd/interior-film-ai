@@ -260,11 +260,26 @@ export default function SiteWorkerAssignment({
         };
       });
 
-      await api("POST", siteId, { siteId, days });
+      let result;
+      try {
+        result = await api("POST", siteId, { siteId, days });
+      } catch (error) {
+        // The server requires explicit confirmation for cross-company overlaps.
+        // Do not retry silently or overwrite another company's assignment.
+        if (error.message.includes("다른 업체 일정과 중복")) {
+          const confirmed = window.confirm(
+            "다른 업체에도 같은 날짜의 현장이 있습니다. 시공자에게 일정 중복을 확인했나요? 확인을 누르면 현재 업체 배정을 계속 저장합니다."
+          );
+          if (!confirmed) throw new Error("중복 일정 확인 전 저장을 취소했습니다.");
+          result = await api("POST", siteId, { siteId, days, confirmScheduleConflicts:true });
+        } else {
+          throw error;
+        }
+      }
 
       if (currentKey.current !== savedKey) return;
 
-      setMessage("✅ 날짜별 담당자가 저장되었습니다.");
+      setMessage(result?.warnings?.length ? "✅ 배정 저장 완료 · 다른 업체와 일정이 겹칩니다. 시공자에게 확인해주세요." : "✅ 날짜별 담당자가 저장되었습니다.");
 
       try {
         await callbacks.current.onSaved?.();
