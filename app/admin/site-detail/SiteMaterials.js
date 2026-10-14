@@ -367,6 +367,11 @@ function PlannedSiteMaterials({ site }) {
 
     if (lock.current || !canWrite) return;
 
+    if (!editing && !selectedCatalog) {
+      setMessage("카탈로그 검색 결과에서 제품을 선택해주세요.");
+      return;
+    }
+
     if (!form.product_code.trim() && !form.product_name.trim()) {
       setMessage("제품코드 또는 제품명을 입력해주세요.");
       return;
