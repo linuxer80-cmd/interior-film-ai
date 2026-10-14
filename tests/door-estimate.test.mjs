@@ -166,3 +166,31 @@ test('fire door views keep manual choices, distinct doors and uncertain identiti
   const partial = [{ id: 'a', analysis: fire('one', { view_completeness: 'partial' }) }];
   assert.equal(buildEstimatePhotoGroups(mergeDoorViews(partial))[0].requiresConfirmation, true);
 });
+
+test('door merging cannot erase uncertain classification or absorb a shoe cabinet', () => {
+  const fire = (extra = {}) => analysis('same', {
+    target_type: 'fire_door', sub_category: '방화문 및 문틀', ...extra,
+  });
+  for (const extra of [
+    { classification_confidence: 'low' },
+    { view_completeness: 'unclear' },
+  ]) {
+    const rows = mergeDoorViews([{ id: 'a', analysis: fire() }, { id: 'b', analysis: fire(extra) }]);
+    assert.equal(rows[1].subjectId, undefined);
+    assert.equal(rows[1].analysis.requires_confirmation, true);
+  }
+  const shoe = analysis('same', {
+    target_type: 'shoe', category: '신발장', sub_category: '신발장 문짝', door_count: 0,
+  });
+  const kitchen = analysis('kitchen', {
+    target_type: 'kitchen', category: '주방', sub_category: '싱크대 상부장과 하부장',
+    construction_scope: 'kitchen_full', door_count: 0,
+  });
+  const groups = buildEstimatePhotoGroups(mergeDoorViews([
+    { id: 'k', analysis: kitchen }, { id: 'f', analysis: fire() }, { id: 's', analysis: shoe },
+  ]));
+  assert.equal(groups.length, 3);
+  assert.deepEqual(groups.map(g => g.photoNumbers), [[1], [2], [3]]);
+  assert.equal(groups[2].photos[0].analysis.target_type, 'shoe');
+  assert.equal(fire({ sub_category: '신발장 문짝' }).confirmation_reason, 'conflicting_targets');
+});
