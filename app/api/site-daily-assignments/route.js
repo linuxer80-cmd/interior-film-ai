@@ -508,10 +508,12 @@ export async function POST(request) {
         }
       }
     }
-    if(problems.length){
+    const blocking = problems.filter(p=>p.reason!=="프리랜서 개인 일당 미등록");
+    const pendingWages = problems.filter(p=>p.reason==="프리랜서 개인 일당 미등록");
+    if(blocking.length){
       return reply({
-        error:"새 배정 시공자의 일당을 확인해주세요: "+problems.map(p=>p.workerName+"("+p.workDate+")").join(", "),
-        problems
+        error:"업체 등록 일당을 확인해주세요: "+blocking.map(p=>p.workerName+"("+p.workDate+")").join(", "),
+        problems:blocking
       },422);
     }
 
@@ -562,7 +564,7 @@ export async function POST(request) {
       throw error;
     }
 
-    return reply({ success: true });
+    return reply({ success: true, pendingWages, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
   } catch (error) {
     console.error("날짜별 배정 저장 오류:", error);
 
