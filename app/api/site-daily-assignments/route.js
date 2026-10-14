@@ -508,11 +508,11 @@ export async function POST(request) {
         }
       }
     }
-    const blocking = problems.filter(p=>p.reason!=="프리랜서 개인 일당 미등록");
-    const pendingWages = problems.filter(p=>p.reason==="프리랜서 개인 일당 미등록");
+    const blocking = problems;
+    const pendingWages = [];
     if(blocking.length){
       return reply({
-        error:"업체 등록 일당을 확인해주세요: "+blocking.map(p=>p.workerName+"("+p.workDate+")").join(", "),
+        error:"새 현장 배정 전 필수 프로필을 완성해주세요: "+blocking.map(p=>p.workerName+"("+p.workDate+" · "+p.reason+")").join(", "),
         problems:blocking
       },422);
     }
