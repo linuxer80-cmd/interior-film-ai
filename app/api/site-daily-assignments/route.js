@@ -465,6 +465,56 @@ export async function POST(request) {
       }
     }
 
+    // Validate only genuinely new assignments. Existing assignments retain
+    // their historical wage even if an old freelancer profile is incomplete.
+    const current = await readAssignments(db, profile.company_id, siteId);
+    const existing = new Set(current.map(row => row.work_date + ":" + row.worker_id));
+    const newRows = rows.filter(row => !existing.has(row.work_date + ":" + row.worker_id));
+    const problems = [];
+    if (newRows.length) {
+      const newWorkerIds = [...new Set(newRows.map(row => row.worker_id))];
+      const directory = [];
+      for (let offset=0;offset<newWorkerIds.length;offset+=100) {
+        const {data,error}=await db.from("workers")
+          .select("id,name,user_id,daily_wage").eq("company_id",profile.company_id)
+          .in("id",newWorkerIds.slice(offset,offset+100));
+        if(error)throw error;
+        directory.push(...(data||[]));
+      }
+      const byId = new Map(directory.map(w=>[w.id,w]));
+      const {data:relationships,error:relationshipError}=await db.from("worker_relationships")
+        .select("worker_id,relationship_type").eq("company_id",profile.company_id)
+        .is("ended_at",null).in("worker_id",newWorkerIds);
+      if(relationshipError)throw relationshipError;
+      const relation = new Map((relationships||[]).map(r=>[r.worker_id,r.relationship_type]));
+      const freelancerUsers=[...new Set(directory.filter(w=>relation.get(w.id)==="freelancer"&&w.user_id).map(w=>w.user_id))];
+      const wages = new Map();
+      for(let offset=0;offset<freelancerUsers.length;offset+=100){
+        const {data,error}=await db.from("labor_profiles").select("user_id,daily_wage")
+          .in("user_id",freelancerUsers.slice(offset,offset+100));
+        if(error)throw error;
+        for(const item of data||[])wages.set(item.user_id,Number(item.daily_wage));
+      }
+      for(const row of newRows){
+        const worker=byId.get(row.worker_id);
+        if(!worker)continue;
+        const type=relation.get(worker.id);
+        const wage=type==="freelancer"?wages.get(worker.user_id):Number(worker.daily_wage);
+        if(!Number.isFinite(wage)||wage<=0){
+          problems.push({
+            workDate:row.work_date,workerId:worker.id,workerName:worker.name,
+            reason:type==="freelancer"?"프리랜서 개인 일당 미등록":"업체 등록 일당 미등록"
+          });
+        }
+      }
+    }
+    if(problems.length){
+      return reply({
+        error:"새 배정 시공자의 일당을 확인해주세요: "+problems.map(p=>p.workerName+"("+p.workDate+")").join(", "),
+        problems
+      },422);
+    }
+
     const { error } = await db.rpc("replace_site_daily_assignments", {
       p_company_id: profile.company_id,
       p_site_id: siteId,
