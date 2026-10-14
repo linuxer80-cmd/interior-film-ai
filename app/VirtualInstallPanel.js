@@ -371,13 +371,78 @@ function makeFilmPayload(area, film) {
   };
 }
 
-function downloadImage(url) {
+async function downloadImage(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("이미지를 내려받지 못했습니다. 다시 시도해주세요.");
+  const blob = await response.blob();
+  if (!blob.size || !blob.type.startsWith("image/")) {
+    throw new Error("저장할 이미지가 올바르지 않습니다.");
+  }
+  const extension = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" })[blob.type] || "png";
+  const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url;
-  link.download = `virtual-install-${Date.now()}.webp`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  try {
+    link.href = objectUrl;
+    link.download = `virtual-install-${Date.now()}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    // Allow mobile browsers to consume the download before releasing its URL.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  }
+}
+
+function SaveResultButton({ imageUrl }) {
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const locked = useRef(false);
+
+  async function save() {
+    if (locked.current) return;
+    locked.current = true;
+    setStatus("saving");
+    setError("");
+    try {
+      await downloadImage(imageUrl);
+      setStatus("requested");
+    } catch (failure) {
+      locked.current = false;
+      setStatus("error");
+      setError(failure.message || "이미지 저장에 실패했습니다. 다시 시도해주세요.");
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={save}
+        disabled={status === "saving" || status === "requested"}
+        style={{ width: "100%", marginTop: 16, padding: 15,
+          border: "1px solid #dce6ee", borderRadius: 14,
+          background: status === "requested" ? "#ecfdf5" : "#fff",
+          color: "#173456", fontSize: 16, fontWeight: 700,
+          cursor: status === "saving" || status === "requested" ? "default" : "pointer" }}>
+        {status === "saving" ? "저장 준비 중…" :
+          status === "requested" ? "✓ 다운로드 요청 완료" : "결과 이미지 저장"}
+      </button>
+      <p role="status" aria-live="polite"
+        style={{ margin: "8px 0", fontSize: 13, lineHeight: 1.6,
+          color: status === "error" ? "#b91c1c" : "#166534" }}>
+        {status === "saving" ? "이미지를 준비하고 있습니다. 잠시 기다려주세요." :
+          status === "requested" ? "다운로드를 요청했습니다. 휴대폰의 다운로드 알림 또는 내 파일 > 다운로드에서 확인해주세요." :
+          error}
+      </p>
+      {status === "requested" && (
+        <button type="button" onClick={() => {
+          locked.current = false;
+          setStatus("idle");
+        }} style={{ padding: "8px 12px", border: "1px solid #dce6ee",
+          borderRadius: 8, background: "#fff", color: "#475569" }}>
+          파일이 없나요? 다시 저장하기
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function VirtualInstallPanel({
@@ -846,13 +911,7 @@ export default function VirtualInstallPanel({
             해당 결과를 사용하지 마세요.
           </p>
 
-          <button
-            type="button"
-            className="virtual-save"
-            onClick={() => downloadImage(result.imageUrl)}
-          >
-            결과 이미지 저장
-          </button>
+          <SaveResultButton key={result.imageUrl} imageUrl={result.imageUrl} />
 
           {onRequestDetail && (
             <button
