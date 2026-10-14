@@ -26,7 +26,6 @@ export async function GET(req){
   if(!String(profile?.name||"").trim())missing.push("이름");
   if(!String(personal?.phone||"").trim())missing.push("연락처");
   if(freelancer && !(Number(profile?.daily_wage)>0))missing.push("개인 일당");
-  if(!freelancer && (workers||[]).some(w=>!(Number(w.daily_wage)>0)))missing.push("업체 등록 일당");
   return Response.json({complete:missing.length===0,missing},{headers:{"Cache-Control":"no-store"}});
  }catch(e){console.error("worker profile check",e);return Response.json({error:"필수 프로필 확인에 실패했습니다."},{status:503});}
 }
