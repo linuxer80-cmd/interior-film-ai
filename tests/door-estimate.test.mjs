@@ -106,7 +106,7 @@ test('one bounded vision request sees all angles and does not receive prices', a
     assert.equal(body.input[0].content.filter((part) => part.type === 'input_image').length, 2);
     assert.equal(body.text.format.type, 'json_schema');
     assert.ok(!JSON.stringify(body).includes('actual_cost'));
-    return { ok: true, json: async () => ({ output_text: JSON.stringify({ photos: [0, 1].map((index) => ({ index, ...analysis('one-door') })) }) }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ photos: Object.fromEntries([0, 1].map((index) => [`photo_${index}`, { index, ...analysis('one-door') }])) }) }) };
   });
   assert.equal(requests, 1);
   assert.equal(result.photos.length, 2);
@@ -125,4 +125,44 @@ test('analysis distinguishes timeout, upstream quota, invalid image and malforme
     await assert.rejects(analyzeEstimatePhotos(files,'test',async()=>({ok:status===200,status,json:async()=>body})),e=>e.analysisCode===code&&!e.message.includes('secret'));
   }
   await assert.rejects(analyzeEstimatePhotos(files,'test',async()=>{throw Object.assign(new Error('timeout'),{name:'TimeoutError'})}),e=>e.analysisCode==='timeout'&&e.status===504);
+});
+
+test('kitchen and two verified views of one fire door form two subjects', () => {
+  const fire = (extra = {}) => analysis('entrance-a', {
+    target_type: 'fire_door', sub_category: '방화문 및 문틀', ...extra,
+  });
+  const kitchen = { id: 'k', analysis: normalizeAnalysisClassification({
+    target_type: 'kitchen', category: '주방', sub_category: '싱크대 상부장과 하부장',
+    construction_scope: 'kitchen_full', classification_confidence: 'high', view_completeness: 'full',
+  }) };
+  const items = [kitchen, { id: 'front', analysis: fire() },
+    { id: 'frame', analysis: fire({ view_completeness: 'partial' }) }];
+  const groups = buildEstimatePhotoGroups(mergeDoorViews(items));
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[1].photoNumbers, [2, 3]);
+  assert.equal(groups[1].requiresConfirmation, false);
+  assert.equal(groups[1].photos[1].analysis.view_completeness, 'partial');
+  const priced = groups.map(g => ({ ...g, estimate: { min: 100, max: 100, average: 100 } }));
+  const total = calculateQuantityEstimate(priced, 5);
+  assert.equal(total.door.detectedCount, 0);
+  assert.equal(total.total.average, 200);
+});
+
+test('fire door views keep manual choices, distinct doors and uncertain identities separate', () => {
+  const fire = (key, extra = {}) => analysis(key, {
+    target_type: 'fire_door', sub_category: '방화문 및 문틀', ...extra,
+  });
+  const items = [{ id: 'a', analysis: fire('one') }, { id: 'b', analysis: fire('two') },
+    { id: 'c', analysis: fire('one', { object_confidence: 'low' }) }];
+  const groups = buildEstimatePhotoGroups(mergeDoorViews(items));
+  assert.equal(groups.length, 3);
+  assert.equal(groups[2].requiresConfirmation, true);
+  const separated = [{ id: 'a', analysis: fire('one') },
+    { id: 'b', subjectId: 'b', analysis: fire('one') }];
+  assert.equal(buildEstimatePhotoGroups(mergeDoorViews(separated)).length, 2);
+  const mixed = [{ id: 'a', analysis: fire('one') }, { id: 'b', analysis: analysis('one') }];
+  const merged = mergeDoorViews(mixed);
+  assert.notEqual(merged[0].subjectId, merged[1].subjectId);
+  const partial = [{ id: 'a', analysis: fire('one', { view_completeness: 'partial' }) }];
+  assert.equal(buildEstimatePhotoGroups(mergeDoorViews(partial))[0].requiresConfirmation, true);
 });
