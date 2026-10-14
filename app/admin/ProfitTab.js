@@ -826,7 +826,7 @@ export default function ProfitTab() {
             </div>
           </div>
 
-          {view === "payments" && <LaborPayments />}
+          {view === "payments" && <LaborPayments excludedWorkerIds={excludedWorkerIds} />}
 
           <div hidden={view !== "cost"}>
             <Breakdown
