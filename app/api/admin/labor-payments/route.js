@@ -703,18 +703,24 @@ async function laborThroughToday(
             site.site_name || site.customer_name || "현장",
           amount: 0,
           days: 0,
+          leaderDays: 0,
+          memberDays: 0,
+          pendingDays: 0,
         };
 
         row.days++;
+        if (assignment.role === "leader") row.leaderDays++;
+        else row.memberDays++;
 
         if (base == null || leader == null) {
           pending++;
+          row.pendingDays++;
         } else {
           row.amount += base + leader;
         }
 
         row.description =
-          `오늘까지 배정 ${row.days}일 · 일당·팀장수당 기준`;
+          `오늘까지 배정 ${row.days}일 (팀장 ${row.leaderDays}일 · 팀원 ${row.memberDays}일) · 미확정 ${row.pendingDays}일`;
 
         grouped.set(assignment.worker_id, row);
       }
