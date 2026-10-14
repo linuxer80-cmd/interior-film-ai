@@ -267,6 +267,9 @@ function PlannedSiteMaterials({ site }) {
   const [form, setForm] = useState(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [catalog, setCatalog] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [selectedCatalog, setSelectedCatalog] = useState("");
 
   const lock = useRef(false);
   const formRef = useRef(null);
@@ -341,6 +344,23 @@ function PlannedSiteMaterials({ site }) {
         : emptyForm()
     );
   }
+
+  useEffect(() => {
+    const query=String(form?.product_code||"").trim();
+    if(query.length<2){setCatalog([]);return;}
+    const controller=new AbortController();
+    const timer=setTimeout(async()=>{
+      setCatalogLoading(true);
+      try{
+        const response=await fetch("/api/film-catalog-search?q="+encodeURIComponent(query),{signal:controller.signal,cache:"no-store"});
+        const result=await response.json();
+        if(!response.ok)throw Error(result.error||"제품 검색 실패");
+        setCatalog(result.products||[]);
+      }catch(error){if(error.name!=="AbortError")setCatalog([]);}
+      finally{if(!controller.signal.aborted)setCatalogLoading(false);}
+    },250);
+    return ()=>{clearTimeout(timer);controller.abort();};
+  },[form?.product_code]);
 
   async function save(event) {
     event.preventDefault();
@@ -539,15 +559,23 @@ function PlannedSiteMaterials({ site }) {
               minWidth: 0,
             }}
           >
-            {field("brand", "브랜드", {
-              placeholder: "예: 영림 인테리어필름",
-              maxLength: 100,
-            })}
-
-            {field("product_code", "제품코드", {
-              placeholder: "예: PX449",
-              maxLength: 100,
-            })}
+            <label style={{fontWeight:700}}>제품번호로 카탈로그 검색
+              <input style={input} value={form.product_code} placeholder="예: S156, Gs156, PX449"
+                onChange={event=>{setSelectedCatalog("");setForm(prev=>({...prev,product_code:event.target.value,brand:"",product_name:""}));}} />
+            </label>
+            {catalogLoading&&<small>제품 검색 중...</small>}
+            {catalog.length>0&&<div style={{display:"grid",gap:8,maxHeight:260,overflowY:"auto"}}>
+              {catalog.map(product=><button key={product.id} type="button"
+                onClick={()=>{const prefix=/^[GF][A-Z]/i.test(form.product_code)?form.product_code[0].toUpperCase():"";
+                  setForm(prev=>({...prev,brand:product.brand,product_code:prefix+product.product_code,product_name:product.product_name||""}));
+                  setSelectedCatalog(product.id);setCatalog([]);}}
+                style={{...button,display:"flex",alignItems:"center",gap:10,textAlign:"left",background:selectedCatalog===product.id?"#dbeafe":"#fff"}}>
+                {product.sample_image_path&&<img src={product.sample_image_path} alt="" width="48" height="48" style={{objectFit:"cover",borderRadius:8}}/>}
+                <span>{product.brand} · {product.product_code}<small style={{display:"block"}}>{product.product_name||""}</small></span>
+              </button>)}
+            </div>}
+            {form.brand&&<p style={{margin:0,fontWeight:700}}>선택 제품: {form.brand} · {form.product_code} {form.product_name}</p>}
+            <small>목록에서 제품을 선택하면 브랜드와 제품명이 자동 입력됩니다. G는 비방염, F는 방염 코드로 유지합니다.</small>
 
             {field("product_name", "제품명", {
               placeholder: "예: 발렌블랑",
