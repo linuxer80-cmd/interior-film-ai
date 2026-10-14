@@ -52,8 +52,8 @@
 .labor-account{max-width:640px}
 @media(max-width:420px){.labor-shell{padding:20px 14px 80px}.labor-shell form,.labor-shell article,.labor-shell aside{padding:18px}.labor-shell h1{font-size:25px}.labor-shell .tabs button{font-size:12px;padding:11px 5px}.labor-shell .pair{gap:10px}}
 .labor-shell .badge{display:inline-block;padding:6px 10px;border-radius:9px;background:#eef5ff;color:#315d96;font-size:13px}
-.labor-shell .labor-shell .labor-overlay{position:fixed;inset:0;background:#15253880;z-index:10000;display:grid;place-items:center;padding:16px;overflow:hidden;box-sizing:border-box}
-.labor-shell .labor-dialog{background:white;border-radius:22px;padding:24px;width:min(100%,620px);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;box-shadow:0 20px 60px #0003;box-sizing:border-box;margin:0}
+.labor-shell .labor-overlay{position:fixed;inset:0;background:#15253880;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box}
+.labor-shell .labor-dialog{background:white;border-radius:22px;padding:24px;width:min(100%,620px);max-height:calc(100dvh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;box-shadow:0 20px 60px #0003;box-sizing:border-box;margin:auto}
 @media(max-width:600px){.labor-shell .labor-overlay{padding:12px}.labor-shell .labor-dialog{padding:18px;max-height:calc(100dvh - 24px);border-radius:16px}}
 .labor-shell .dialog-close{display:block;margin-left:auto}
 .labor-shell [hidden]{display:none!important}
