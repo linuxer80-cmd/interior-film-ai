@@ -84,7 +84,7 @@ export default function FilmThumbnail({
     material?.product_code ||
     material?.code ||
     "";
-  const path = material?.sample_image_path || "";
+  const path = material?.sample_image_path || material?.image_path || "";
   const label = filmLabel(material);
 
   const key = new URLSearchParams({
@@ -111,7 +111,8 @@ export default function FilmThumbnail({
     id || (brand && code)
   );
 
-  const needsLookup = !hasOriginal && canLookup;
+  // Look up the catalog even when an old direct path exists: it may be stale.
+  const needsLookup = canLookup && resolved?.key !== key && !error;
 
   useEffect(() => {
     if (!needsLookup) return;
@@ -136,13 +137,8 @@ export default function FilmThumbnail({
 
   const paths = [
     ...new Set([
+      ...sampleUrls(resolved?.key === key ? resolved.value : "", base),
       ...original,
-      ...sampleUrls(
-        resolved?.key === key
-          ? resolved.value
-          : "",
-        base
-      ),
     ]),
   ];
 
@@ -150,10 +146,7 @@ export default function FilmThumbnail({
     (value) => !failed.includes(value)
   );
 
-  const loading =
-    needsLookup &&
-    resolved?.key !== key &&
-    !error;
+  const loading = !url && needsLookup;
 
   const style = {
     width: size,
