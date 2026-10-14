@@ -29,6 +29,9 @@ export async function GET(request) {
     const id = params.get("id") || "";
     const brand = (params.get("brand") || "").trim();
     const code = (params.get("code") || "").trim();
+    // G = non-fire-rated, F = fire-rated. Both share the base film sample.
+    // Preserve the full code in site/material records; normalize only lookup.
+    const lookupCode = /^[GF]S\d+$/i.test(code) ? code.slice(1) : code;
 
     if (
       (id && !uuid(id)) ||
@@ -75,7 +78,7 @@ export async function GET(request) {
     }
 
     // %, _ 문자를 검색 와일드카드로 처리하지 않습니다.
-    const literal = code.replace(
+    const literal = lookupCode.replace(
       /[\\%_]/g,
       (char) => "\\" + char
     );
@@ -95,7 +98,7 @@ export async function GET(request) {
     }
 
     return json({
-      path: matchSample(data, brand, code),
+      path: matchSample(data, brand, lookupCode),
     });
   } catch (error) {
     console.error(
