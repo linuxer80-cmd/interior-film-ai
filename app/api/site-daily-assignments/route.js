@@ -517,6 +517,52 @@ export async function POST(request) {
       },422);
     }
 
+    // Cross-company schedule conflicts are advisory: a worker may have
+    // legitimate multiple-company relationships, so do not silently override
+    // or cancel another company's assignment.
+    const warnings = [];
+    const lookupUsers = [...new Set(rows.map(row=>row.worker_id))];
+    const identity = new Map();
+    for(let offset=0;offset<lookupUsers.length;offset+=100){
+      const {data,error}=await db.from("workers").select("id,user_id,name")
+        .eq("company_id",profile.company_id).in("id",lookupUsers.slice(offset,offset+100));
+      if(error)throw error;
+      for(const worker of data||[])if(worker.user_id)identity.set(worker.id,worker);
+    }
+    const userIds=[...new Set([...identity.values()].map(w=>w.user_id))];
+    const relatedWorkers=[];
+    for(let offset=0;offset<userIds.length;offset+=100){
+      const {data,error}=await db.from("workers").select("id,user_id,company_id")
+        .eq("is_active",true).in("user_id",userIds.slice(offset,offset+100));
+      if(error)throw error;
+      relatedWorkers.push(...(data||[]));
+    }
+    const otherWorkers=relatedWorkers.filter(w=>w.company_id!==profile.company_id);
+    const otherById=new Map(otherWorkers.map(w=>[w.id,w]));
+    const requestedDates=[...new Set(rows.map(row=>row.work_date))];
+    const otherAssignments=[];
+    for(let offset=0;offset<otherWorkers.length;offset+=100){
+      const batch=otherWorkers.slice(offset,offset+100);
+      if(!batch.length)continue;
+      const {data,error}=await db.from("site_daily_assignments")
+        .select("site_id,company_id,worker_id,work_date")
+        .in("worker_id",batch.map(w=>w.id)).in("work_date",requestedDates);
+      if(error)throw error;
+      otherAssignments.push(...(data||[]));
+    }
+    for(const row of rows){
+      const person=identity.get(row.worker_id);
+      if(!person)continue;
+      const conflict=otherAssignments.find(a=>a.work_date===row.work_date &&
+        otherById.get(a.worker_id)?.user_id===person.user_id);
+      if(conflict)warnings.push({workerName:person.name,workDate:row.work_date,
+        reason:"다른 업체에도 같은 날짜에 배정되어 있습니다."});
+    }
+    if(warnings.length && body.confirmScheduleConflicts!==true){
+      return reply({error:"다른 업체 일정과 중복됩니다. 시공자에게 확인 후 다시 저장해주세요.",
+        conflictConfirmationRequired:true,warnings},409);
+    }
+
     const { error } = await db.rpc("replace_site_daily_assignments", {
       p_company_id: profile.company_id,
       p_site_id: siteId,
@@ -564,7 +610,7 @@ export async function POST(request) {
       throw error;
     }
 
-    return reply({ success: true, pendingWages, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
+    return reply({ success: true, warnings, pendingWages, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
   } catch (error) {
     console.error("날짜별 배정 저장 오류:", error);
 
