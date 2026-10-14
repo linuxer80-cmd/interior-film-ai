@@ -792,10 +792,12 @@ export async function POST(
      * =====================================================
      */
 
+    const startedAt = Date.now();
     const embedding =
       await createEmbedding(
         text
       );
+    const embeddingMs = Date.now() - startedAt;
 
     /*
      * =====================================================
@@ -823,6 +825,7 @@ export async function POST(
      * =====================================================
      */
 
+    const retrievalMs = Date.now() - startedAt - embeddingMs;
     let visual = { rows: [], status: "no_candidates", usage: null };
     let candidateCount = 0;
     try {
@@ -834,6 +837,8 @@ export async function POST(
       console.warn("시공사례 사진 비교 실패:", error.visualStatus || "visual_unavailable", error.visualDiagnostic || { message: error.message });
       visual = { rows: [], status: error.visualStatus || "visual_unavailable", usage: error.visualUsage || null };
     }
+    const visualMs = Date.now() - startedAt - embeddingMs - retrievalMs;
+    console.info("[similar-estimate-timing]", JSON.stringify({ embeddingMs, retrievalMs, visualMs, candidateCount, status: visual.status }));
     const filteredCases = visual.rows;
 
     /*
