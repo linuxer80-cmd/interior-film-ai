@@ -610,7 +610,59 @@ export async function POST(request) {
       throw error;
     }
 
-    return reply({ success: true, warnings, pendingWages, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
+    // Notify only after the database transaction has committed successfully.
+    // Compare the previous and new daily roles, not the site-wide representative role.
+    let notificationWarning = null;
+    try {
+      const oldMap = new Map(current.map(a=>[a.work_date+":"+a.worker_id,a]));
+      const nextMap = new Map(rows.map(a=>[a.work_date+":"+a.worker_id,a]));
+      const changes=[];
+      for(const [k,old] of oldMap){
+        const next=nextMap.get(k);
+        if(!next)changes.push({row:old,kind:"removed"});
+        else if(next.role!==old.role)changes.push({row:next,kind:"role_changed"});
+      }
+      for(const [k,next] of nextMap){
+        if(!oldMap.has(k))changes.push({row:next,kind:"added"});
+      }
+      if(changes.length){
+        const changedIds=[...new Set(changes.map(c=>c.row.worker_id))];
+        const directory=[];
+        for(let offset=0;offset<changedIds.length;offset+=100){
+          const {data,error}=await db.from("workers").select("id,user_id,name")
+            .eq("company_id",profile.company_id).in("id",changedIds.slice(offset,offset+100));
+          if(error)throw error;
+          directory.push(...(data||[]));
+        }
+        const workerMap=new Map(directory.map(w=>[w.id,w]));
+        const notifications=changes.filter(c=>workerMap.get(c.row.worker_id)?.user_id)
+          .map(c=>{
+            const w=workerMap.get(c.row.worker_id);
+            const labels={added:"신규 배정",removed:"배정 해제",role_changed:"담당 역할 변경"};
+            const role=c.row.role==="leader"?"팀장":"팀원";
+            return {
+              company_id:profile.company_id,recipient_type:"worker",
+              recipient_user_id:w.user_id,recipient_worker_id:w.id,
+              type:"site_assignment",priority:"normal",
+              title:"현장 "+labels[c.kind],
+              message:c.row.work_date+" · "+role+" · 현장 일정을 확인해주세요.",
+              link:"/worker/site/"+siteId,reference_type:"site_assignment",
+              reference_id:siteId,
+              dedupe_key:["assignment",siteId,c.row.work_date,w.id,c.kind,Date.now()].join(":"),
+              is_read:false,push_sent:false
+            };
+          });
+        if(notifications.length){
+          const {error}=await db.from("notifications").insert(notifications);
+          if(error)throw error;
+        }
+      }
+    }catch(error){
+      notificationWarning="배정은 저장됐지만 변경 알림 기록에 실패했습니다.";
+      console.error("배정 변경 알림 기록 오류",error);
+    }
+
+    return reply({ success: true, warnings, pendingWages, notificationWarning, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
   } catch (error) {
     console.error("날짜별 배정 저장 오류:", error);
 
