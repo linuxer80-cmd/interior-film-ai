@@ -797,6 +797,8 @@ export async function GET(request) {
           (sum, row) => sum + row.pending,
           0,
         ),
+        profitIsEstimated: automated.some(row => row.pending > 0),
+        profitWarning: automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
         missingContract: revenueInfo.missingContract,
         revenueSource: revenueInfo.revenueSource,
       };
