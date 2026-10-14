@@ -233,6 +233,15 @@ export function quantityEstimateDetails(pricing) {
 // 고객이 직접 나누거나 묶은 선택은 자동 병합으로 덮어쓰지 않습니다.
 export function mergeDoorViews(photos) {
   const isDoorView = (analysis) => ["door", "fire_door", "middle_door"].includes(getGroupKey(analysis));
+  // Identity comparison is unnecessary when this batch contains exactly one
+  // doorway photo and every other photo is confidently a non-door target.
+  const doorPhotos = photos.filter((photo) => isDoorView(photo.analysis));
+  const isolatedDoor = doorPhotos.length === 1 && photos.every((photo) =>
+    isDoorView(photo.analysis) ||
+    (photo.analysis && getGroupKey(photo.analysis) !== "other" &&
+      !photo.analysis.requires_confirmation &&
+      ["high", "medium"].includes(photo.analysis.classification_confidence))
+  ) ? doorPhotos[0] : null;
   const buckets = new Map();
 
   for (const photo of photos) {
@@ -246,7 +255,7 @@ export function mergeDoorViews(photos) {
     const analysis = photo.analysis;
 
     if (
-      analysis.object_confidence !== "high" ||
+      (analysis.object_confidence !== "high" && photo !== isolatedDoor) ||
       !analysis.object_key ||
       !analysis.object_evidence?.trim() ||
       analysis.door_count !== 1 ||
