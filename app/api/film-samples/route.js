@@ -32,6 +32,7 @@ export async function GET(request) {
     // G = non-fire-rated, F = fire-rated. Both share the base film sample.
     // Preserve the full code in site/material records; normalize only lookup.
     const lookupCode = /^[GF]S\d+$/i.test(code) ? code.slice(1) : code;
+    const codes = [...new Set([lookupCode, code].filter(Boolean))];
 
     if (
       (id && !uuid(id)) ||
@@ -77,29 +78,18 @@ export async function GET(request) {
       return json({ path: null });
     }
 
-    // %, _ 문자를 검색 와일드카드로 처리하지 않습니다.
-    const literal = lookupCode.replace(
-      /[\\%_]/g,
-      (char) => "\\" + char
-    );
-
+    // Search both the original G/F stock code and its base catalog code.
+    // A product id can refer to a stock variant without a sample path.
     const { data, error } = await db
       .from("film_products")
       .select(fields)
       .eq("is_active", true)
-      .ilike("product_code", literal)
-      .order("id")
-      .limit(101);
-
+      .in("product_code", codes)
+      .limit(100);
     if (error) throw error;
-
-    if (data.length > 100) {
-      return json({ path: null });
-    }
-
-    return json({
-      path: matchSample(data, brand, lookupCode),
-    });
+    const basePath = matchSample(data || [], brand, lookupCode);
+    const variantPath = matchSample(data || [], brand, code);
+    return json({ path: basePath || variantPath || null });
   } catch (error) {
     console.error(
       "film-samples",
