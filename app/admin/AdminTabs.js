@@ -245,7 +245,7 @@ export default function AdminTabs({
           </div>
 
           <a href="/jobs">구인 · 구직</a>
-          <a href="/admin/clients">업체 관리</a>
+          <a href="/admin/clients">거래처 관리</a>
           <a href="/admin/customer-page">고객페이지 관리</a>
           <a href="/samples?from=admin">필름 샘플 보기</a>
 
