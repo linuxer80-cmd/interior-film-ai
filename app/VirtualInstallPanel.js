@@ -588,8 +588,7 @@ export default function VirtualInstallPanel({
     setResult(null);
     setMessage("선택한 원본 사진을 가상시공하고 있습니다.");
 
-    const multi =
-      supportsMultiTone && colorMode === "multi";
+    const multi = supportsMultiTone && useSplitTone;
 
     const form = new FormData();
 
@@ -617,7 +616,7 @@ export default function VirtualInstallPanel({
           makeFilmPayload(
             area,
             multi
-              ? localAreaFilms[area.key] || product
+              ? areaFilms[({ kitchen_upper: "upper", kitchen_lower: "lower", fridge_cabinet: "fridge", tall_cabinet: "tall", pantry_cabinet: "pantry", island_cabinet: "island" })[area.key] || area.key] || product
               : product
           )
         )
@@ -769,8 +768,8 @@ export default function VirtualInstallPanel({
                   {excludedAreas.includes(area.key)
                     ? "시공 제외"
                     : getFilmTitle(
-                        colorMode === "multi"
-                          ? localAreaFilms[area.key] || product
+                        useSplitTone
+                          ? areaFilms[({ kitchen_upper: "upper", kitchen_lower: "lower", fridge_cabinet: "fridge", tall_cabinet: "tall", pantry_cabinet: "pantry", island_cabinet: "island" })[area.key] || area.key] || product
                           : product
                       )}
                 </span>
@@ -788,46 +787,11 @@ export default function VirtualInstallPanel({
           )}
 
           {supportsMultiTone && (
-            <div className="virtual-modes">
-              <button
-                type="button"
-                className={
-                  colorMode === "single" ? "active" : ""
-                }
-                onClick={() => selectColorMode("single")}
-              >
-                컬러 통일
-              </button>
-
-              <button
-                type="button"
-                className={
-                  colorMode === "multi" ? "active" : ""
-                }
-                onClick={() => selectColorMode("multi")}
-              >
-                여러 톤 사용
-              </button>
-            </div>
+            <p className="virtual-sub">
+              부위별 컬러는 위의 ‘시공 방식 선택’에서 설정합니다.
+              여기서는 시공할 부위만 확인해주세요.
+            </p>
           )}
-
-          {supportsMultiTone &&
-            colorMode === "multi" &&
-            includedAreas.map((area) => (
-              <div
-                key={area.key}
-                className="virtual-area-picker"
-              >
-                <strong>{area.label}</strong>
-
-                <FilmColorPicker
-                  value={localAreaFilms[area.key] || product}
-                  onSelect={(film) =>
-                    selectAreaFilm(area.key, film)
-                  }
-                />
-              </div>
-            ))}
 
           <button
             type="button"
