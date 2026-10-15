@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem } from "../../lib/completionEstimate.mjs";
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -118,7 +118,7 @@ export default function CompletionEstimate({
       if (signal.aborted) return;
 
       const source = result.saved || result.automatic;
-      const items = summarizeMeals(source.items);
+      const items = normalizeLaborNames(summarizeMeals(source.items));
       setDraft({ ...source, items });
       setAutomatic(result.automatic);
       setWarning(result.warning || "");
@@ -272,7 +272,7 @@ export default function CompletionEstimate({
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
         현장 필름명과 사용량을 자동으로 가져옵니다. 사용량은 반출량에서 반입량을 뺀 값입니다. 미확정 수량은 직접 입력해주세요. 자재 금액은 등록된 원가를 참고한 초안이므로 청구할 금액으로
         수정한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
-        변경하지 않습니다.
+        변경하지 않습니다. 인건비 단가는 업체에 청구할 금액으로 수정할 수 있으며 실제 지급 일당과 별도로 저장됩니다.
       </p>
 
       {warning && (
@@ -557,7 +557,7 @@ export default function CompletionEstimate({
                         ...draft.items,
                         {
                           category,
-                          name: category === "meal" ? "식대 합계" : "",
+                          name: category === "meal" ? "식대 합계" : category === "labor" ? "인건비" : "",
                           quantity: 1,
                           unit: category === "film" ? "m" : category === "labor" ? "공수" : "식",
                           amount: 0,
