@@ -118,7 +118,7 @@ function dateBounds(dates) {
       : null,
     schedule_end: dates.length
       ? new Date(
-          `${dates[dates.length - 1]}T23:59:00+09:00`
+          `${dates[dates.length - 1]}T17:00:00+09:00`
         ).toISOString()
       : null,
   };

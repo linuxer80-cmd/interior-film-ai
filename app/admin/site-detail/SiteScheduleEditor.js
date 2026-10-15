@@ -174,7 +174,7 @@ export default function SiteScheduleEditor({
           `${dates[0]}T00:00:00+09:00`
         ).toISOString(),
         scheduleEnd: new Date(
-          `${dates[dates.length - 1]}T23:59:00+09:00`
+          `${dates[dates.length - 1]}T17:00:00+09:00`
         ).toISOString(),
       });
 

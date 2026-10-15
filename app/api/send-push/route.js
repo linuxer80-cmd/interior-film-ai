@@ -4,6 +4,22 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
+// Legacy database reminders used schedule_end + one hour (often 00:59).
+// Recognize their observed titles as well as the new report reminder type.
+function isCompletionReminder(notification) {
+  return notification?.type === REPORT_REMINDER_TYPE ||
+    /시공\s*완료\s*(처리|확인)이?가?\s*필요합니다/.test(notification?.title || "");
+}
+
+function completionReminderSkip(notification, now = new Date()) {
+  if (!isCompletionReminder(notification)) return null;
+  if (!reminderWindow(now)) return "outside_report_window";
+  // Final-day leader selection is owned by the new report cron.
+  if (notification.type !== REPORT_REMINDER_TYPE && notification.recipient_type === "worker")
+    return "replaced_by_report_reminder";
+  return null;
+}
+
 /* =========================================================
    공통 JSON 응답
 ========================================================= */
@@ -956,6 +972,8 @@ async function sendPushToSubscriptions({
           },
         },
         payload,
+        // Do not queue completion alerts for offline devices to receive overnight.
+        isCompletionReminder(JSON.parse(payload)) ? { TTL: 0 } : undefined,
       );
 
       sent += 1;
@@ -1148,6 +1166,8 @@ export async function POST(
 
     // Re-check at delivery time: a queued notice must not go to a replaced leader,
     // or to a site whose dates/report changed after the cron ran.
+    const completionSkip = completionReminderSkip(notification);
+    if (completionSkip) return json({success:true,sent:0,skipped:completionSkip});
     if (notification?.type === REPORT_REMINDER_TYPE) {
       const now = new Date();
       const date = koreaDay(now);

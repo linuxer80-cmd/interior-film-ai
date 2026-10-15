@@ -319,7 +319,7 @@ export default function SiteRegisterModal({
           : null,
         schedule_end: days.length
           ? new Date(
-              `${days.at(-1)}T23:59:00+09:00`
+              `${days.at(-1)}T17:00:00+09:00`
             ).toISOString()
           : null,
         status: registrationStatus,

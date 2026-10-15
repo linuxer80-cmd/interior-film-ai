@@ -128,3 +128,22 @@ test('webhook drops a report reminder after leader reassignment or report submis
  const response=await POST(new Request('https://film.example/api/send-push',{method:'POST',headers:{'x-push-secret':'secret'},body:JSON.stringify({record:notice})}));
  assert.equal((await response.json()).skipped,'report_or_assignment_changed');
 });
+
+test('completion reminders only allow 18:00–18:59 KST, including legacy warning titles', async()=>{
+ const source=readFileSync(new URL('../app/api/send-push/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
+ const {skip,send}=new Function('REPORT_REMINDER_TYPE','reminderWindow','webpush',source+';return {skip:completionReminderSkip,send:sendPushToSubscriptions};')(
+  'work_report_reminder',reminderWindow,{sendNotification:async(...args)=>{assert.deepEqual(args[2],{TTL:0});}}
+ );
+ for(const title of ['⚠️ 시공 완료 처리가 필요합니다.','⚠️ 시공 완료 확인이 필요합니다.']){
+  const notice={title,recipient_type:'company_admin'};
+  for(const time of ['2026-10-15T16:00:00Z','2026-10-15T08:59:59Z','2026-10-15T10:00:00Z','2026-10-15T14:59:59Z'])
+   assert.equal(skip(notice,new Date(time)),'outside_report_window');
+  assert.equal(skip(notice,new Date('2026-10-15T09:00:00Z')),null);
+  assert.equal(skip(notice,new Date('2026-10-15T09:59:59Z')),null);
+  assert.equal(skip({...notice,recipient_type:'worker'},new Date('2026-10-15T09:00:00Z')),'replaced_by_report_reminder');
+  const sent=await send({supabase:{},subscriptions:[{endpoint:'test',p256dh:'test',auth:'test'}],payload:JSON.stringify(notice)});
+  assert.equal(sent.sent,1);
+ }
+ assert.equal(skip({title:'새로운 시공자 지원'},new Date('2026-10-15T16:00:00Z')),null);
+ assert.equal(reminderWindow(new Date('2026-10-15T10:00:00Z')),false);
+});
