@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-export default function LaborNotifications({ refreshKey = 0 }) {
+export default function LaborNotifications({ refreshKey = 0, view = "manager" }) {
   const [notices, setNotices] = useState([]);
   const [open, setOpen] = useState(false);
 
@@ -28,6 +28,7 @@ export default function LaborNotifications({ refreshKey = 0 }) {
             cache: "no-store",
             headers: {
               Authorization: `Bearer ${data.session.access_token}`,
+              "x-labor-view": view,
             },
           }
         );
@@ -58,7 +59,7 @@ export default function LaborNotifications({ refreshKey = 0 }) {
       clearInterval(timer);
       data.subscription.unsubscribe();
     };
-  }, [refreshKey]);
+  }, [refreshKey, view]);
 
   async function read(id) {
     const { data } = await supabase.auth.getSession();
@@ -69,6 +70,7 @@ export default function LaborNotifications({ refreshKey = 0 }) {
       keepalive: true,
       headers: {
         Authorization: `Bearer ${data.session.access_token}`,
+              "x-labor-view": view,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -131,3 +133,4 @@ export default function LaborNotifications({ refreshKey = 0 }) {
     </section>
   );
 }
+

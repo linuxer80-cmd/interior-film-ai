@@ -1,4 +1,4 @@
-import {canReceiveRecruitment} from '../../../lib/laborNotificationPolicy.mjs';
+import {canReceiveRecruitment,scopeLaborNotifications} from '../../../lib/laborNotificationPolicy.mjs';
 import { attachAssignmentState } from '../../../lib/laborContracts.mjs';
 import { dispatchLaborNotifications } from '../../../lib/laborPush';
 import { privateAuth, privateJson as json, cleanPrivate, uuid } from '../../../lib/workerPrivate';
@@ -180,9 +180,16 @@ export async function GET(request) {
       });
     }
 
+    if(params.get('mode')==='avatar') {
+      const profile=value(await db.from('labor_profiles')
+        .select('photo_path').eq('user_id',user.id).maybeSingle());
+      const photo=profile ? (await photos(db,[profile]))[0] : null;
+      return json({photo_url:photo?.photo_url || ''});
+    }
+
     if(params.get('mode')==='notifications') {
       const recruiting=await canReceiveRecruitment(db,user.id);
-      let noticeQuery=db.from('labor_notifications').select('id,title,message,link,read_at,created_at');
+      let noticeQuery=scopeLaborNotifications(db.from('labor_notifications').select('id,title,message,link,read_at,created_at'),!companyId);
       if(!recruiting) noticeQuery=noticeQuery.neq('title','구인 제안');
       const notices=value(await noticeQuery
         .eq('user_id',user.id)
@@ -561,8 +568,8 @@ export async function POST(request) {
     if(body.action==='read_notification') {
       if(!uuid(body.id))throw fail('알림을 확인해주세요.');
 
-      value(await db.from('labor_notifications')
-        .update({read_at:new Date().toISOString()})
+      value(await scopeLaborNotifications(db.from('labor_notifications')
+        .update({read_at:new Date().toISOString()}),!companyId)
         .eq('id',body.id)
         .eq('user_id',user.id)
       );
@@ -857,3 +864,4 @@ export async function POST(request) {
     return errorResponse(error);
   }
 }
+

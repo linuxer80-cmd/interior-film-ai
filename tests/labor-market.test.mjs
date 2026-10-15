@@ -1,3 +1,4 @@
+import { scopeLaborNotifications } from '../lib/laborNotificationPolicy.mjs';
 import { attachAssignmentState } from '../lib/laborContracts.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -114,6 +115,15 @@ function fixture(userId = owner, manager = true) {
           filters.push((row) => row[key] === value);
           return query;
         },
+        neq(key, value) {
+          filters.push((row) => row[key] !== value);
+          return query;
+        },
+        not(key, operator, value) {
+          assert.equal(operator, 'like');
+          filters.push((row) => !String(row[key] || '').startsWith(value.slice(0, -1)));
+          return query;
+        },
         gte(key, value) {
           filters.push((row) => row[key] >= value);
           return query;
@@ -208,6 +218,7 @@ function fixture(userId = owner, manager = true) {
 
   const args = {
     attachAssignmentState,
+    scopeLaborNotifications,
     privateAuth: async () => ({
       db,
       user: {

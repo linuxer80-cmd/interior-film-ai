@@ -144,7 +144,7 @@ export default function WorkerHomeDashboard({
     >
       {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}
       {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
-      <LaborNotifications />
+      <LaborNotifications view="worker" />
 
       <div className="wp-hello">
         <span>
@@ -353,3 +353,4 @@ export default function WorkerHomeDashboard({
     </section>
   );
 }
+

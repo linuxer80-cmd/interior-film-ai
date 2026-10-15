@@ -17,6 +17,7 @@ import {
 } from "../utils/pushSubscription";
 import WorkerSiteCalendar from "./WorkerSiteCalendar";
 import WorkerMonthlyPay from "./WorkerMonthlyPay";
+import WorkerAvatar from "../components/WorkerAvatar";
 import WorkerHomeDashboard from "./WorkerHomeDashboard";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import styles from "./WorkerSiteCalendar.module.css";
@@ -308,12 +309,7 @@ export default function WorkerPage({ mode = "home" }) {
           aria-label="시공자 정보 및 알림"
         >
           <div className={styles.identity}>
-            <span
-              className={styles.avatar}
-              aria-hidden="true"
-            >
-              👷
-            </span>
+            <WorkerAvatar className={styles.avatar} refreshKey={worker} />
 
             <div>
               <p className={styles.workerName}>
@@ -750,3 +746,4 @@ export default function WorkerPage({ mode = "home" }) {
     </main>
   );
                   }
+
