@@ -283,16 +283,18 @@ async function getSimilarCases({
   embedding,
   matchThreshold,
   matchCount,
+  targetKey,
 }) {
   const {
     data,
     error,
   } =
     await supabase.rpc(
-      "get_public_similar_cases",
+      "get_estimate_case_candidates",
       {
         query_embedding:
           embedding,
+        target_key: targetKey,
 
         company_slug:
           companySlug,
@@ -430,7 +432,7 @@ async function insertUsageEvent({
   visualStatus,
   visualUsage,
   candidateCount,
-  analysisId, photoIndices, pricingCases, estimate,
+  analysisId, photoIndices, pricingCases, estimate, diagnostics,
 }) {
   const {
     data,
@@ -464,6 +466,7 @@ async function insertUsageEvent({
           photo_indices: Array.isArray(photoIndices) ? photoIndices.filter((index) => Number.isInteger(index) && index >= 0 && index < 10).slice(0, 10) : [],
           matched_cases: pricingCases.map((row) => ({ work_item_id: row.work_item_id, actual_cost: Number(row.actual_cost), visual_rank: row.visual_rank, match_reason: row.match_reason })),
           estimate,
+          visual_diagnostics: diagnostics || [],
           retrieval_model: EMBEDDING_MODEL,
           visual_model: candidateCount ? VISUAL_MODEL : null,
           visual_status: visualStatus,
@@ -817,6 +820,7 @@ export async function POST(
         matchThreshold,
 
         matchCount,
+        targetKey: groupKey,
       });
 
     /*
@@ -905,7 +909,7 @@ export async function POST(
 
         topSimilarity,
         visualStatus: visual.status, visualUsage: visual.usage, candidateCount,
-        analysisId: body?.analysis_id, photoIndices: body?.photo_indices, pricingCases: filteredCases, estimate,
+        analysisId: body?.analysis_id, photoIndices: body?.photo_indices, pricingCases: filteredCases, estimate, diagnostics: visual.diagnostics,
       });
 
     /*
