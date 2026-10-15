@@ -57,8 +57,9 @@ const menus = [
   },
   {
     href: "/admin/material-order",
-    label: "자재 주문",
-    description: "현장에 필요한 필름 주문",
+    label: "자재 주문 · 테스트 중",
+    disabled: true,
+    description: "주문 기능을 점검하고 있습니다",
     icon: "box",
   },
   {
@@ -154,7 +155,9 @@ export default function AdminTabs({
                 </>
               );
 
-              return menu.href ? (
+              return menu.disabled ? (
+                <button key={menu.href} type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>{content}</button>
+              ) : menu.href ? (
                 <a key={menu.href} href={menu.href}>
                   {content}
                 </a>
@@ -253,7 +256,7 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("register")}>시공 등록</button>
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
-          <a href="/admin/material-order">자재 주문</a>
+          <button type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>자재 주문 · 테스트 중</button>
           <a href="/admin/billing">요금제 · 결제</a>
           <a href="/support?from=admin">고객지원</a>
         </nav>

@@ -552,7 +552,15 @@ export async function GET(request) {
  *   ]
  * }
  */
-export async function POST(request) {
+export async function POST() {
+  return NextResponse.json(
+    { ok: false, code: "MATERIAL_ORDER_UNAVAILABLE", error: "자재 주문은 테스트 중입니다. 현재 주문과 결제는 이용할 수 없습니다." },
+    { status: 503 },
+  );
+}
+
+// 주문 기능 점검 완료 전에는 호출하지 않습니다.
+async function createMaterialOrder(request) {
   let createdOrder = null;
 
   try {

@@ -96,6 +96,17 @@ function calculateAmounts(product, quantityM) {
 }
 
 export default function MaterialOrderPage() {
+  return (
+    <main style={{ maxWidth: 600, margin: "40px auto", padding: 24, lineHeight: 1.7 }}>
+      <h1>자재 주문 · 테스트 중</h1>
+      <p>주문 기능을 점검하고 있습니다. 현재 자재 주문과 결제는 이용할 수 없습니다.</p>
+      <a href="/admin">관리자 홈으로 돌아가기</a>
+    </main>
+  );
+}
+
+// 주문 기능 점검 완료 후 다시 연결합니다.
+function MaterialOrderForm() {
   const router = useRouter();
 
   const [authorized, setAuthorized] =
