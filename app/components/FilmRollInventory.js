@@ -27,9 +27,11 @@ export default function FilmRollInventory({
   disabled = false,
   onTracked,
   onChanged,
+  selectionRequest,
 }) {
   const [data, setData] = useState(null);
   const [materialId, setMaterialId] = useState("");
+  const [search, setSearch] = useState("");
   const [tab, setTab] = useState("issue");
   const [checked, setChecked] = useState([]);
   const [remaining, setRemaining] = useState({});
@@ -51,6 +53,18 @@ export default function FilmRollInventory({
   const batch = useRef(null);
   const callbacks = useRef({ onTracked, onChanged });
   callbacks.current = { onTracked, onChanged };
+
+  useEffect(() => {
+    if (!selectionRequest?.materialId) return;
+    if (lock.current || batch.current) {
+      setError("진행 중인 반출을 완료하거나 재시도한 후 제품을 선택해주세요.");
+      return;
+    }
+    setMaterialId(selectionRequest.materialId);
+    setTab("issue");
+    setChecked([]);
+    setSearch("");
+  }, [selectionRequest]);
 
   const accept = useCallback(result => {
     setData(result);
@@ -198,6 +212,10 @@ export default function FilmRollInventory({
   );
 
   const picked = stock.filter(r => checked.includes(r.id));
+  const query = search.trim().toLowerCase();
+  const matchesSearch = (...values) => !query || values.filter(value => value != null).join(" ").toLowerCase().includes(query);
+  const visibleMaterials = materials.filter(m => matchesSearch(m.brand, m.code, m.name));
+  const visibleStock = stock.filter(r => matchesSearch(material?.brand, material?.code, material?.name, r.supplier, r.location, r.remaining));
 
   const trips = (data?.trips || []).filter(
     t => t.site_id === siteId && t.returned == null
@@ -311,7 +329,13 @@ export default function FilmRollInventory({
               </p>
 
               <div className="materials">
-                {materials.map(m => {
+                <label style={{ display: "block", width: "100%" }}>
+                  창고 재고 검색
+                  <input type="search" value={search} placeholder="필름 번호 · 대리점 · 보관 위치 · 길이"
+                    onChange={event => setSearch(event.target.value)}
+                    style={{ width: "100%", boxSizing: "border-box", padding: 12, fontSize: 16 }} />
+                </label>
+                {visibleMaterials.map(m => {
                   const available = (data.rolls || []).filter(
                     r =>
                       r.status === "available" &&
@@ -357,7 +381,7 @@ export default function FilmRollInventory({
                   </p>
 
                   <div className="rolls">
-                    {stock.map(r => (
+                    {visibleStock.map(r => (
                       <label className="roll" key={r.id}>
                         <input
                           type="checkbox"
@@ -378,6 +402,8 @@ export default function FilmRollInventory({
                       </label>
                     ))}
                   </div>
+
+                  {!!stock.length && !visibleStock.length && <p>검색 조건에 맞는 재고가 없습니다. 검색어를 지우거나 바꿔주세요.</p>}
 
                   {!stock.length && (
                     <p>
@@ -690,3 +716,4 @@ export default function FilmRollInventory({
     </section>
   );
 }
+

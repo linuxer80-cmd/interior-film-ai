@@ -60,6 +60,8 @@ export default function SiteOperations({
   const [values, setValues] = useState({});
   const [review, setReview] = useState(null);
   const [trackedRolls, setTrackedRolls] = useState([]);
+  const inventoryDetails = useRef(null);
+  const [stockSelection, setStockSelection] = useState(null);
   const [historyLimit, setHistoryLimit] = useState(3);
   useEffect(() => setHistoryLimit(3), [siteId]);
 
@@ -383,7 +385,7 @@ export default function SiteOperations({
         />
       )}
 
-      <details style={{ margin: "16px 0" }}>
+      <details ref={inventoryDetails} style={{ margin: "16px 0" }}>
         <summary style={{ ...btn, listStyle: "none" }}>
           📦 롤 반출 · 자재 반납 완료
         </summary>
@@ -395,6 +397,7 @@ export default function SiteOperations({
           onTracked={handleTrackedRolls}
           active={active}
           onChanged={refresh}
+          selectionRequest={stockSelection}
         />
       </details>
 
@@ -530,6 +533,23 @@ export default function SiteOperations({
                   !data.locked &&
                   data.canReturn && (
                     <div style={{ marginTop: 12 }}>
+                      {data.owner && (
+                        <div style={{ marginBottom: 16 }}>
+                          <button type="button" style={btn} disabled={disabled || busy}
+                            onClick={() => {
+                              setStockSelection({ materialId: material.id });
+                              if (inventoryDetails.current) {
+                                inventoryDetails.current.open = true;
+                                inventoryDetails.current.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }
+                            }}>
+                            창고 재고에서 선택
+                          </button>
+                          <p style={{ fontSize: 13, color: "#64748b" }}>
+                            가져간 롤을 선택하면 반출량이 자동 합산됩니다. 반출 완료를 누르면 창고 재고와 현장 물량에 함께 반영됩니다.
+                          </p>
+                        </div>
+                      )}
                       <p>
                         일 시작 전에는 총 반출량만 먼저 저장하세요.
                         작업이 끝나면 남은 총 반입량을 입력하세요.
@@ -1018,3 +1038,4 @@ export default function SiteOperations({
     </section>
   );
                          }
+
