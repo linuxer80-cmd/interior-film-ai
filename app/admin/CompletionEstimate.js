@@ -97,6 +97,8 @@ export default function CompletionEstimate({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
+  const [defaults, setDefaults] = useState({note:"",bank_account:""});
+  const [defaultsSaving, setDefaultsSaving] = useState(false);
 
   const [pdfUrl, setPdfUrl] = useState("");
   const [pdfName, setPdfName] = useState("");
@@ -120,6 +122,7 @@ export default function CompletionEstimate({
       const source = result.saved || result.automatic;
       const items = normalizeLaborNames(summarizeMeals(source.items));
       setDraft({ ...source, items });
+      setDefaults(result.defaults || {note:"",bank_account:""});
       setAutomatic(result.automatic);
       setWarning(result.warning || "");
       setDirty(Boolean(result.saved) && JSON.stringify(items) !== JSON.stringify(source.items));
@@ -169,11 +172,25 @@ export default function CompletionEstimate({
     });
   }
 
+  async function saveDefaults() {
+    if(defaultsSaving || busy) return;
+    setDefaultsSaving(true); setError(""); setMessage("");
+    try {
+      const result = await request(siteId, {action:"saveDefaults",note:defaults.note,bank_account:defaults.bank_account}, controller.current.signal);
+      if(controller.current.signal.aborted) return;
+      setDefaults(result.defaults);
+      change({...draft, header:{...draft.header,bank_account:result.defaults.bank_account},
+        note:draft.useDefaultNote ? result.defaults.note : draft.note});
+      setMessage("업체 기본 비고와 계좌번호를 저장했습니다. 다음 새 견적서부터 자동 적용됩니다.");
+    } catch(err) { if(err.name !== "AbortError") setError(err.message); }
+    finally {setDefaultsSaving(false);}
+  }
+
   async function save(event) {
     event.preventDefault();
     event.stopPropagation();
 
-    if (lock.current || !draft || busy) return;
+    if (lock.current || !draft || busy || defaultsSaving) return;
 
     for (const [index, row] of draft.items.entries()) {
       if (!includedCompletionItem(row)) continue;
@@ -231,6 +248,7 @@ export default function CompletionEstimate({
           header: draft.header || {},
           vat: draft.vat || "none",
           note: draft.note,
+          useDefaultNote: draft.useDefaultNote === true,
           version: draft.version,
         },
         controller.current.signal,
@@ -384,7 +402,7 @@ export default function CompletionEstimate({
             <summary style={{ cursor: "pointer", padding: "10px 0", fontWeight: 700 }}>업체·현장 정보 확인 / 수정</summary>
             <p>{draft.header?.customer_name || "거래처 미입력"} · {draft.header?.site_name || "현장명 미입력"}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-              {Object.entries(headerFields).filter(([key]) => key !== 'person_days').map(([key, label]) => <label key={key}>{label}
+              {Object.entries(headerFields).filter(([key]) => key !== 'person_days' && key !== 'bank_account').map(([key, label]) => <label key={key}>{label}
                 <input style={input} maxLength={500} value={draft.header?.[key] ?? ""}
                   onChange={event => change({ ...draft, header: { ...draft.header, [key]: event.target.value } })} />
               </label>)}
@@ -591,12 +609,37 @@ export default function CompletionEstimate({
               </select>
             </label>
             <p>공급가액 {won(completionTotals(draft.items, draft.vat).supply)} · 부가세 {won(completionTotals(draft.items, draft.vat).tax)}</p>
+            <label>입금 계좌 (은행 · 계좌번호 · 예금주)
+              <input style={input} maxLength={500} value={draft.header?.bank_account || ""}
+                onChange={event => change({...draft,header:{...draft.header,bank_account:event.target.value}})} />
+            </label>
+            <details style={{marginTop:16}}>
+              <summary>업체 기본 비고·계좌 설정</summary>
+              <label>기본 계좌번호
+                <input style={input} maxLength={500} value={defaults.bank_account}
+                  onChange={event=>setDefaults({...defaults,bank_account:event.target.value})} />
+              </label>
+              <label>고정 비고
+                <textarea style={input} rows={4} maxLength={3000} value={defaults.note}
+                  onChange={event=>setDefaults({...defaults,note:event.target.value})} />
+              </label>
+              <button type="button" style={button} disabled={defaultsSaving} onClick={saveDefaults}>
+                {defaultsSaving ? "저장 중…" : "업체 기본값 저장"}
+              </button>
+            </details>
+            <p><label>
+              <input type="checkbox" checked={draft.useDefaultNote === true}
+                onChange={event => change({...draft,useDefaultNote:event.target.checked,
+                  note:event.target.checked ? defaults.note : draft.note})} />
+              업체 고정 비고 사용
+            </label></p>
             <label>
               비고
               <textarea
                 style={input}
                 rows={3}
                 maxLength={3000}
+                readOnly={draft.useDefaultNote === true}
                 value={draft.note}
                 onChange={(event) =>
                   change({ ...draft, note: event.target.value })

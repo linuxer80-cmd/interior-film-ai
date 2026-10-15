@@ -150,6 +150,7 @@ function toSaved(row) {
   return {
     header: row.document.header,
     vat: row.document.vat || "none",
+    useDefaultNote: row.document.useDefaultNote === true,
     items: row.document.items,
     note: row.document.note,
     version: row.revision,
@@ -178,6 +179,14 @@ function handleError(error) {
   );
 }
 
+
+async function readDefaults(db, companyId) {
+  const result = await db.from("company_estimate_defaults").select("bank_account,note")
+    .eq("company_id",companyId).maybeSingle();
+  if (result.error) return { bank_account:"", note:"", unavailable:true };
+  return { bank_account:result.data?.bank_account || "", note:result.data?.note || "" };
+}
+
 export async function GET(request) {
   try {
     const siteId = new URL(
@@ -190,6 +199,7 @@ export async function GET(request) {
       site, company, userId,
     } = await authorize(request, siteId);
 
+    const defaults = await readDefaults(db, companyId);
     const saved = await db
       .from("site_completion_estimates")
       .select("document,revision,updated_at")
@@ -226,7 +236,7 @@ export async function GET(request) {
     if (!response.ok) {
       if (saved.data) {
         return json({
-          site,
+          site, defaults,
           saved: savedDocument,
           automatic: null,
           warning:
@@ -260,11 +270,14 @@ export async function GET(request) {
       p_body: { siteId, action: "get" },
     });
     if (operations.error || !Array.isArray(operations.data?.materials)) {
-      if (savedDocument) return json({ site, saved: savedDocument, automatic: null,
+      if (savedDocument) return json({ site, defaults, saved: savedDocument, automatic: null,
         warning: "현장 필름 물량을 불러오지 못했습니다. 저장된 견적서를 표시합니다. 다시 불러오기를 눌러주세요." });
       throw fail("현장 필름 물량을 불러오지 못했습니다. 다시 시도해주세요.", 502);
     }
     const automatic = completionSeed(site, company, breakdown, operations.data.materials);
+    automatic.note = defaults.note;
+    automatic.header.bank_account = defaults.bank_account;
+    automatic.useDefaultNote = true;
 
     const pending =
       profit.sites.find(
@@ -273,10 +286,11 @@ export async function GET(request) {
 
     return json({
       site,
-      automatic,
+      automatic, defaults,
       saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
 
       warning: [
+        defaults.unavailable ? '업체 기본 비고·계좌 설정을 불러오지 못했습니다.' : '',
         pending ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.` : "",
         automatic.items.some(row => row.quantityPending) ? "사용량이 미확정인 필름은 수량을 비워두었습니다. 예상 수량을 입력하거나 현장 반입량을 확인해주세요." : "",
         automatic.items.some(row => row.pricePending) ? "매입단가가 없는 필름은 금액을 확인해주세요." : "",
@@ -314,6 +328,18 @@ export async function POST(request) {
       companyId,
       userId,
     } = await authorize(request, body.siteId);
+
+    if (body.action === "saveDefaults") {
+      if(typeof body.note !== "string" || body.note.length > 3000 ||
+         typeof body.bank_account !== "string" || body.bank_account.length > 500)
+        throw fail("고정 비고·계좌번호를 확인해주세요.",400);
+      const {error} = await db.from("company_estimate_defaults").upsert({
+        company_id:companyId,note:body.note.trim(),bank_account:body.bank_account.trim(),
+        updated_at:new Date().toISOString()
+      },{onConflict:"company_id"});
+      if(error) throw fail("업체 기본 설정 저장에 실패했습니다. 설정 테이블 연결을 확인해주세요.",503);
+      return json({defaults:{note:body.note.trim(),bank_account:body.bank_account.trim()}});
+    }
 
     if (
       !Number.isSafeInteger(body.version) ||
@@ -372,6 +398,7 @@ export async function POST(request) {
     const value = {
       document: {
         header, vat,
+        useDefaultNote: body.useDefaultNote === true,
         items,
         note: body.note.trim(),
       },
