@@ -10,6 +10,8 @@ const MAX_SAMPLE_SIZE = 10 * 1024 * 1024;
 const MAX_AREA_FILMS = 8;
 
 const TARGET_LABELS = {
+  elevator_interior: "엘리베이터 내부 벽면",
+  elevator_door: "엘리베이터 출입문·문틀",
   artwall: "아트월·벽면",
   kitchen: "싱크대·주방가구",
   door: "문·문틀",
@@ -29,6 +31,8 @@ const MULTI_TONE_TARGET_TYPES = new Set([
 ]);
 
 const ALLOWED_AREAS = {
+  elevator_interior: new Set(["elevator_wall"]),
+  elevator_door: new Set(["elevator_door"]),
   artwall: new Set(["artwall_surface"]),
   kitchen: new Set([
     "kitchen_all",
@@ -51,6 +55,8 @@ const ALLOWED_AREAS = {
 };
 
 const AREA_LABELS = {
+  elevator_wall: "엘리베이터 내부 벽면",
+  elevator_door: "엘리베이터 출입문·문틀",
   artwall_surface: "아트월·벽면",
   kitchen_all: "싱크대·주방가구",
   kitchen_upper: "상부장",
@@ -335,6 +341,8 @@ function getAreaFilms(form) {
 
 function getDefaultArea(targetType) {
   const keys = {
+    elevator_interior: "elevator_wall",
+    elevator_door: "elevator_door",
     artwall: "artwall_surface",
     kitchen: "kitchen_all",
     door: "door_all",
@@ -354,6 +362,14 @@ function getDefaultArea(targetType) {
 
 function getTargetPrompt(targetType) {
   const prompts = {
+    elevator_interior: [
+      "Edit only the EXISTING opaque interior elevator cabin wall panel surfaces. Apply the selected film to visible left, right and rear wall panels only. Preserve elevator doors, door frames and lobby walls unchanged.",
+      "Preserve control buttons, floor displays, emergency intercom, speakers, handrails, mirrors, glass, signs, notices, safety labels, lighting, ceiling, floor, door tracks, sensors and all hardware exactly. Preserve panel divisions, seams, openings, camera perspective and cabin dimensions. Do not cover controls or labels, remove objects, invent panels or alter door opening state.",
+    ],
+    elevator_door: [
+      "Edit only the EXISTING elevator sliding door leaf surfaces and their surrounding entrance frame. Preserve the exact number of door leaves, center opening gap, seams and door dimensions. Do not turn elevator sliding doors into hinged room doors. Leave cabin walls and lobby walls unchanged.",
+      "Preserve control buttons, floor displays, emergency intercom, speakers, handrails, mirrors, glass, signs, notices, safety labels, lighting, ceiling, floor, door tracks, sensors and all hardware exactly. Preserve panel divisions, seams, openings, camera perspective and cabin dimensions. Do not cover controls or labels, remove objects, invent panels or alter door opening state.",
+    ],
     artwall: [
       "Edit only the EXISTING feature wall / art wall surface in IMAGE 1.",
       "Apply the selected interior film finish to this existing wall surface only.",
@@ -418,6 +434,8 @@ function getTargetPrompt(targetType) {
 
 function getAreaInstruction(key, label) {
   const instructions = {
+    elevator_wall: "Apply film only to existing opaque elevator cabin wall panels. Exclude doors, mirrors, glass, handrails, control panels, signs, floor and ceiling. If absent, do nothing.",
+    elevator_door: "Apply film only to existing elevator sliding door leaves and entrance frame. Preserve door gaps, tracks, sensors, controls, displays, notices and hardware. Exclude surrounding walls. If absent, do nothing.",
     artwall_surface:
       "Apply the assigned film only to the existing art wall surface. Preserve seams, joints, outlets, cables and boundaries. Never add a door, frame, handle or opening.",
     kitchen_all:
