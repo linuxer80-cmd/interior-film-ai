@@ -428,6 +428,19 @@ export default function SiteDetailModal({
           }}
         >
           <section
+            id="admin-site-panel-photos"
+            aria-label="현장 요청사진"
+            hidden={menu !== "info" && menu !== "photos"}
+          >
+            <SiteRequestPhotos
+              key={site.id}
+              site={site}
+              addSiteRequestPhotos={addSiteRequestPhotos}
+              deleteSiteRequestPhoto={deleteSiteRequestPhoto}
+            />
+          </section>
+
+          <section
             id="admin-site-panel-info"
             aria-label="현장정보"
             hidden={menu !== "info"}
@@ -546,21 +559,6 @@ export default function SiteDetailModal({
             >
               <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
               <SiteMaterials key={site.id} site={site} />
-            </section>
-          )}
-
-          {visited.photos && (
-            <section
-              id="admin-site-panel-photos"
-              aria-label="고객 요청사진"
-              hidden={menu !== "photos"}
-            >
-              <SiteRequestPhotos
-                key={site.id}
-                site={site}
-                addSiteRequestPhotos={addSiteRequestPhotos}
-                deleteSiteRequestPhoto={deleteSiteRequestPhoto}
-              />
             </section>
           )}
 
