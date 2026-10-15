@@ -301,6 +301,7 @@ function resolveLabor(site, automated, expenses, people) {
 
       reports.push({
         workerId: detail?.workerId || null,
+        days: Number.isFinite(Number(detail?.days)) && Number(detail.days) > 0 ? Number(detail.days) : null,
         name: detail?.name || "시공자 미분류",
         description: detail
           ? `완료보고 ${detail.days}일 × 일당 ${money(
@@ -353,6 +354,7 @@ function resolveLabor(site, automated, expenses, people) {
         .filter((row) => !covered.has(row.workerId))
         .map((row) => ({
           workerId: row.workerId,
+          days: row.days,
           name: row.name,
           amount: row.amount,
           description:
@@ -652,6 +654,7 @@ export async function GET(request) {
 
         laborRows.push({
           workerId: detail.workerId,
+          hours: money(detail.minutes) / 60,
           name: detail.name || "시공자",
           amount: money(entry.amount),
           description: `출퇴근 승인 연장 ${detail.minutes}분`,
@@ -954,3 +957,4 @@ export async function DELETE(request) {
     );
   }
 }
+

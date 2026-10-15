@@ -581,7 +581,7 @@ export default function SiteDetailModal({
             aria-label="완료보고와 검수"
             hidden={menu !== "report"}
           >
-            {site.status === "completed" && visited.report && (
+            {(site.status === "completed" || ["pending", "approved"].includes(reviewStatus)) && visited.report && (
               <CompletionEstimate
                 key={site.id}
                 siteId={site.id}
@@ -712,3 +712,4 @@ export default function SiteDetailModal({
     </div>
   );
                 } 
+

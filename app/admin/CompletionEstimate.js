@@ -3,12 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-const labels = {
-  film: "사용 필름",
-  labor: "인건비",
-  expense: "경비",
-  supplies: "부자재·추가자재",
-};
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -103,6 +98,9 @@ export default function CompletionEstimate({
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
 
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [pdfName, setPdfName] = useState("");
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
   const lock = useRef(false);
   const controller = useRef(null);
 
@@ -154,6 +152,7 @@ export default function CompletionEstimate({
   }, [dirty]);
 
   function change(next) {
+    setPdfUrl("");
     setDraft(next);
     setDirty(true);
     setMessage("");
@@ -163,7 +162,7 @@ export default function CompletionEstimate({
     change({
       ...draft,
       items: draft.items.map((item, i) =>
-        i === index ? { ...item, [key]: value } : item,
+        i === index ? editCompletionItem(item, key, value) : item,
       ),
     });
   }
@@ -208,6 +207,7 @@ export default function CompletionEstimate({
       }
     }
 
+    const makePdf = event.nativeEvent?.submitter?.value === "pdf";
     lock.current = true;
     setBusy(true);
     setError("");
@@ -220,10 +220,13 @@ export default function CompletionEstimate({
         amount: Number(row.amount),
       }));
 
+      const pdf = makePdf ? await (await import("../../lib/completionEstimatePdf.mjs")).completionPdf({ ...draft, items }) : null;
       const result = await request(
         siteId,
         {
           items,
+          header: draft.header || {},
+          vat: draft.vat || "none",
           note: draft.note,
           version: draft.version,
         },
@@ -235,6 +238,14 @@ export default function CompletionEstimate({
       setDraft(result.saved);
       setDirty(false);
       setMessage("견적서를 저장했습니다.");
+      if (pdf) {
+        const url = URL.createObjectURL(pdf);
+        const filename = `${draft.header?.site_name || "현장"}_정산견적서_v${result.saved.version}.pdf`.replace(/[\\/:*?"<>|]/g, "_");
+        setPdfUrl(url); setPdfName(filename);
+        const link = document.createElement("a"); link.href = url; link.download = filename;
+        document.body.appendChild(link); link.click(); link.remove();
+        setMessage("견적서를 저장하고 PDF를 만들었습니다. 다운로드가 시작되지 않으면 아래 링크를 눌러주세요.");
+      }
     } catch (err) {
       if (err.name !== "AbortError") setError(err.message);
     } finally {
@@ -253,7 +264,7 @@ export default function CompletionEstimate({
         borderRadius: 16,
       }}
     >
-      <h3 style={{ margin: "0 0 8px" }}>시공 완료 견적서</h3>
+      <h3 style={{ margin: "0 0 8px" }}>시공 정산 견적서</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
         실제 사용내역으로 초안을 자동 작성합니다. 항목과 금액을
@@ -342,6 +353,15 @@ export default function CompletionEstimate({
               불러온 실제 비용으로 다시 작성
             </button>
 
+            <h4>업체·현장 정보</h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+              {Object.entries(headerFields).map(([key, label]) => <label key={key}>{label}
+                <input style={input} maxLength={500} value={draft.header?.[key] ?? ""}
+                  onChange={event => change({ ...draft, header: { ...draft.header, [key]: event.target.value } })} />
+              </label>)}
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b" }}>공수는 인원 × 작업일수입니다. 보고서에 없는 값은 확인 후 입력해주세요.</p>
+
             {Object.entries(labels).map(([category, label]) => (
               <section key={category} style={{ marginTop: 20 }}>
                 <h4 style={{ margin: "0 0 8px" }}>{label}</h4>
@@ -412,7 +432,13 @@ export default function CompletionEstimate({
                       </div>
 
                       <label>
-                        항목 합계금액 (원)
+                        단가 (원 · 입력 시 수량 × 단가 자동 계산)
+                        <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""}
+                          placeholder="기존 합계금액을 유지하려면 비워두세요"
+                          onChange={event => edit(index, "unit_price", event.target.value === "" ? null : event.target.value)} />
+                      </label>
+                      <label>
+                        항목 합계금액 (원 · 직접 수정 가능)
                         <input
                           style={{ ...input, marginTop: 6 }}
                           type="number"
@@ -511,20 +537,19 @@ export default function CompletionEstimate({
 
             <p style={{ fontWeight: 900, fontSize: 20 }}>
               견적 합계{" "}
-              {won(
-                draft.items.reduce(
-                  (sum, row) => sum + Number(row.amount || 0),
-                  0,
-                ),
-              )}
+              {won(completionTotals(draft.items, draft.vat).total)}
             </p>
 
             <p style={{ fontSize: 12, color: "#64748b" }}>
-              각 금액은 해당 항목의 합계입니다. 수량을 바꿀 때
-              금액도 함께 확인해주세요. 부가세는 자동 가산하지
-              않습니다.
+              합계금액을 직접 수정하면 해당 항목의 단가 자동 계산이 해제됩니다.
             </p>
 
+            <label>부가세
+              <select style={input} value={draft.vat || "none"} onChange={event => change({ ...draft, vat: event.target.value })}>
+                <option value="none">가산 없음</option><option value="separate">별도 10%</option><option value="included">금액에 포함</option>
+              </select>
+            </label>
+            <p>공급가액 {won(completionTotals(draft.items, draft.vat).supply)} · 부가세 {won(completionTotals(draft.items, draft.vat).tax)}</p>
             <label>
               비고
               <textarea
@@ -578,9 +603,14 @@ export default function CompletionEstimate({
             >
               {busy ? "저장 중…" : "견적서 저장"}
             </button>
+            <button type="submit" value="pdf" disabled={busy} style={{ ...button, width: "100%", marginTop: 10, background: "#183d34", color: "white" }}>
+              {busy ? "처리 중…" : "보고서 만들기 · 저장 및 PDF 다운로드"}
+            </button>
+            {pdfUrl && <p><a href={pdfUrl} download={pdfName}>PDF 다시 다운로드</a></p>}
           </fieldset>
         </form>
       )}
     </section>
   );
 }
+

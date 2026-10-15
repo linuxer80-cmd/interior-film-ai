@@ -1,3 +1,4 @@
+import { completionSeed, normalizeHeader } from "../../../../lib/completionEstimate.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { GET as getProfit } from "../profit/route";
 
@@ -23,7 +24,7 @@ const categories = new Set([
   "film",
   "labor",
   "expense",
-  "supplies",
+  "supplies", "meal", "overhead",
 ]);
 
 async function authorize(request, siteId) {
@@ -81,7 +82,7 @@ async function authorize(request, siteId) {
 
   const company = await db
     .from("companies")
-    .select("is_active")
+    .select("is_active,company_name,representative_name,phone")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -96,7 +97,7 @@ async function authorize(request, siteId) {
   const site = await db
     .from("sites")
     .select(
-      "id,site_name,customer_name,address,status",
+      "id,site_name,customer_name,address,address_detail,status,work_dates,schedule_date",
     )
     .eq("company_id", companyId)
     .eq("id", siteId)
@@ -110,11 +111,12 @@ async function authorize(request, siteId) {
     throw fail("현장을 찾을 수 없습니다.", 404);
   }
 
+  if (site.data.status === "cancelled") throw fail("취소된 현장에서는 작성할 수 없습니다.", 409);
+
   if (site.data.status !== "completed") {
-    throw fail(
-      "시공 완료 현장에서 작성할 수 있습니다.",
-      409,
-    );
+    const report = await db.from("work_reports").select("id").eq("company_id", companyId).eq("site_id", siteId).in("review_status", ["pending", "approved"]).limit(1);
+    if (report.error) throw report.error;
+    if (!report.data?.length) throw fail("완료보고서를 제출한 현장 또는 시공 완료 현장에서 작성할 수 있습니다.", 409);
   }
 
   return {
@@ -122,6 +124,7 @@ async function authorize(request, siteId) {
     companyId,
     userId: auth.user.id,
     site: site.data,
+    company: company.data,
   };
 }
 
@@ -150,6 +153,8 @@ function toSaved(row) {
   }
 
   return {
+    header: row.document.header,
+    vat: row.document.vat || "none",
     items: row.document.items,
     note: row.document.note,
     version: row.revision,
@@ -187,7 +192,7 @@ export async function GET(request) {
     const {
       db,
       companyId,
-      site,
+      site, company,
     } = await authorize(request, siteId);
 
     const saved = await db
@@ -253,43 +258,7 @@ export async function GET(request) {
 
     const breakdown = profit.breakdown;
 
-    const items = [
-      ...breakdown.material.map((row) => ({
-        category:
-          row.quantity == null
-            ? "supplies"
-            : "film",
-
-        name: [
-          row.quantity == null
-            ? ""
-            : row.brand,
-          row.product,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-
-        quantity: row.quantity ?? 1,
-        unit: row.unit || "식",
-        amount: Math.round(row.amount),
-      })),
-
-      ...breakdown.labor.map((row) => ({
-        category: "labor",
-        name: `${row.name} · ${row.description}`,
-        quantity: 1,
-        unit: "식",
-        amount: Math.round(row.amount),
-      })),
-
-      ...breakdown.expense.map((row) => ({
-        category: "expense",
-        name: `${row.category} · ${row.description}`,
-        quantity: 1,
-        unit: "식",
-        amount: Math.round(row.amount),
-      })),
-    ];
+    const automatic = completionSeed(site, company, breakdown);
 
     const pending =
       profit.sites.find(
@@ -298,13 +267,8 @@ export async function GET(request) {
 
     return json({
       site,
-      saved: savedDocument,
-
-      automatic: {
-        items,
-        note: "",
-        version: 0,
-      },
+      automatic,
+      saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
 
       warning: pending
         ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.`
@@ -358,6 +322,10 @@ export async function POST(request) {
       );
     }
 
+    let header;
+    try { header = normalizeHeader(body.header); } catch (error) { throw fail(error.message, 400); }
+    const vat = body.vat || "none";
+    if (!["none", "included", "separate"].includes(vat)) throw fail("부가세 구분을 확인해주세요.", 400);
     const items = body.items.map((item) => {
       if (
         !item ||
@@ -381,7 +349,10 @@ export async function POST(request) {
         );
       }
 
+      const unitPrice = item.unit_price == null || item.unit_price === "" ? null : Number(item.unit_price);
+      if (unitPrice !== null && (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000000 || Math.round(unitPrice * item.quantity) !== item.amount)) throw fail("수량 × 단가와 금액을 확인해주세요.", 400);
       return {
+        unit_price: unitPrice,
         category: item.category,
         name: item.name.trim(),
         quantity: item.quantity,
@@ -392,6 +363,7 @@ export async function POST(request) {
 
     const value = {
       document: {
+        header, vat,
         items,
         note: body.note.trim(),
       },
@@ -451,3 +423,4 @@ export async function POST(request) {
     return handleError(error);
   }
         }
+
