@@ -67,7 +67,7 @@ const menus = [
     href: "/admin/customer-page",
     label: "고객페이지 관리",
     description: "공개 시공 사례와 업체 정보",
-    icon: "camera",
+    icon: "website",
   },
 ];
 
