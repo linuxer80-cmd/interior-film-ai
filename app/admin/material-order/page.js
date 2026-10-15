@@ -26,7 +26,7 @@ function emptyAddress() {
     address_line1: "",
     address_line2: "",
     delivery_note: "",
-    is_default: true,
+    is_default: false,
   };
 }
 
@@ -128,6 +128,7 @@ function MaterialOrderForm() {
     useState(1);
 
   const [cart, setCart] = useState([]);
+  const [quantities, setQuantities] = useState({});
 
   const [addresses, setAddresses] =
     useState([]);
@@ -406,32 +407,22 @@ function MaterialOrderForm() {
     [addresses, selectedAddressId],
   );
 
+  function quantityError(product, value) {
+    const quantity = Number(value);
+    const minimum = Number(product.minimum_order_m || 1);
+    const unit = Number(product.order_unit_m || 1);
+    if (!Number.isFinite(quantity) || quantity < minimum) return `최소 ${minimum}m를 입력해주세요.`;
+    const steps = (quantity - minimum) / unit;
+    if (Math.abs(steps - Math.round(steps)) > 0.000001) return `${unit}m 단위로 입력해주세요.`;
+    return "";
+  }
+
   function addCart(product) {
-    const exists = cart.some(
-      (item) => item.product.id === product.id,
-    );
-
-    if (exists) {
-      showMessage(
-        "이미 장바구니에 담긴 제품입니다.",
-        "error",
-      );
-      return;
-    }
-
-    setCart((current) => [
-      ...current,
-      {
-        product,
-        quantityM: Number(
-          product.minimum_order_m || 1,
-        ),
-      },
-    ]);
-
-    showMessage(
-      `${product.product_code} 제품을 담았습니다.`,
-    );
+    const value = quantities[product.id] ?? String(product.minimum_order_m || 1);
+    const error = quantityError(product, value);
+    if (error) { showMessage(error, "error"); return; }
+    setCart(current => [...current.filter(item => item.product.id !== product.id), { product, quantityM: Number(value) }]);
+    showMessage(`${product.product_code} · ${value}m를 담았습니다.`);
   }
 
   function removeCart(productId) {
@@ -466,7 +457,6 @@ function MaterialOrderForm() {
     if (savingAddress) return;
 
     const payload = {
-      ...addressForm,
       address_name:
         addressForm.address_name.trim() ||
         "배송지",
@@ -475,13 +465,14 @@ function MaterialOrderForm() {
       recipient_phone:
         addressForm.recipient_phone.trim(),
       postal_code:
-        addressForm.postal_code.trim(),
+        (addressForm.postal_code || "").trim(),
       address_line1:
         addressForm.address_line1.trim(),
       address_line2:
-        addressForm.address_line2.trim(),
+        (addressForm.address_line2 || "").trim(),
       delivery_note:
-        addressForm.delivery_note.trim(),
+        (addressForm.delivery_note || "").trim(),
+      is_default: addressForm.is_default,
     };
 
     if (!payload.recipient_name) {
@@ -900,15 +891,26 @@ function MaterialOrderForm() {
                         : "VAT 별도"}
                     </small>
 
+                    <label className="product-quantity">
+                      주문 길이 (m)
+                      <input type="number" inputMode="decimal"
+                        aria-label={`${product.product_code} 주문 길이`}
+                        min={product.minimum_order_m || 1} step={product.order_unit_m || 1}
+                        value={quantities[product.id] ?? String(product.minimum_order_m || 1)}
+                        onChange={event => setQuantities(current => ({ ...current, [product.id]: event.target.value }))} />
+                      <small>최소 {product.minimum_order_m || 1}m · {product.order_unit_m || 1}m 단위</small>
+                      {quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1) &&
+                        <small role="status" style={{ color: "#b91c1c" }}>{quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1)}</small>}
+                    </label>
                     <button
                       type="button"
-                      disabled={added}
+                      disabled={!!quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1)}
                       onClick={() =>
                         addCart(product)
                       }
                     >
                       {added
-                        ? "담김"
+                        ? "수량 변경하여 담기"
                         : "장바구니 담기"}
                     </button>
                   </div>
@@ -1073,7 +1075,7 @@ function MaterialOrderForm() {
 
       <section className="panel">
         <div className="title-row">
-          <h2>3. 배송지</h2>
+          <h2>3. 받을 주소 선택</h2>
 
           <button
             type="button"
@@ -1087,10 +1089,15 @@ function MaterialOrderForm() {
           >
             {showAddressForm
               ? "입력 닫기"
-              : "새 배송지"}
+              : "현장·다른 주소 추가"}
           </button>
         </div>
 
+        <p>기본 배송지 또는 현장 주소를 선택해주세요. 다른 주소를 추가해도 기본 배송지는 바뀌지 않습니다.</p>
+        {selectedAddress && !showAddressForm && <button type="button" className="outline" onClick={() => {
+          setAddressForm({ ...emptyAddress(), ...selectedAddress, address_name: `${selectedAddress.address_name || "배송지"} (변경)`, is_default: false });
+          setShowAddressForm(true); setAddressStatus("");
+        }}>선택 주소 변경해서 받기</button>}
         {loadingAddresses ? (
           <div className="empty">
             배송지를 불러오는 중입니다.
@@ -1151,7 +1158,7 @@ function MaterialOrderForm() {
                   event.target.value,
                 )
               }
-              placeholder="배송지 이름"
+              placeholder="배송지 이름 (예: 철산대림 현장)"
             />
 
             <div className="two">
@@ -1282,6 +1289,9 @@ function MaterialOrderForm() {
       </section>
 
       <section className="payment">
+        <h2>4. 주문 내용 확인</h2>
+        <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
+        {selectedAddress ? <p><strong>{selectedAddress.recipient_name}</strong> · {selectedAddress.recipient_phone}<br />{selectedAddress.address_line1} {selectedAddress.address_line2 || ""}</p> : <p>배송지를 선택해주세요.</p>}
         <div>
           <span>등록카드 결제금액</span>
           <strong>
@@ -1292,17 +1302,11 @@ function MaterialOrderForm() {
         <button
           type="button"
           disabled={
-            ordering ||
-            cart.length === 0 ||
-            !selectedAddressId
+            true
           }
           onClick={submitOrder}
         >
-          {ordering
-            ? "결제 처리 중..."
-            : `${formatWon(
-                cartTotals.total,
-              )} 결제하고 주문하기`}
+          테스트 중 · 주문 준비 중
         </button>
       </section>
 
@@ -1725,8 +1729,8 @@ function MaterialOrderForm() {
         }
 
         .payment {
-          position: sticky;
-          bottom: 8px;
+          position: static;
+          margin-top: 20px;
           z-index: 20;
           padding: 16px;
           border: 1px solid #ddd6fe;
@@ -1741,6 +1745,9 @@ function MaterialOrderForm() {
             rgba(17, 24, 39, 0.16);
         }
 
+        .product-quantity { display: grid; gap: 8px; margin-top: 16px; font-weight: 700; }
+        .product-quantity input { width: 100%; min-width: 0; min-height: 48px; padding: 10px; font-size: 18px; border: 1px solid #cbd5e1; border-radius: 10px; }
+        .product-quantity small { font-size: 12px; font-weight: 400; }
         .payment strong {
           color: #6d28d9;
           font-size: 21px;
@@ -1768,3 +1775,4 @@ function MaterialOrderForm() {
     </main>
   );
                 }
+
