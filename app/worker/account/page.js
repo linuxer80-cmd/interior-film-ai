@@ -1,5 +1,6 @@
 "use client";
 import HomeReturnButton from '../../components/HomeReturnButton';
+import WorkerConnectionPanel from '../../components/WorkerDirectoryClient';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
@@ -296,6 +297,7 @@ export default function WorkerAccount() {
     {!pendingInvite && <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>}
     <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
     {session && <p><Link href='/account/kakao'>카카오 계정 연결 · 연결 상태 확인</Link></p>}
+    {session && !pendingInvite && <WorkerConnectionPanel key={session.user.id} />}
 
     {!ready
       ?<p>계정을 확인하는 중…</p>
@@ -516,3 +518,4 @@ export default function WorkerAccount() {
     {message&&<p role='status'>{message}</p>}
   </main>;
                       }
+

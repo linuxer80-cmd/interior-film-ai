@@ -2,6 +2,7 @@
 
 import {relationshipRequest} from "../../lib/workerRelationshipClient";
 import LaborNotifications from "../components/LaborNotifications";
+import WorkerConnectionPanel from "../components/WorkerDirectoryClient";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import TomorrowTasks from "../components/TomorrowTasks";
@@ -145,6 +146,7 @@ export default function WorkerHomeDashboard({
       {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}
       {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
       <LaborNotifications view="worker" />
+      <WorkerConnectionPanel compact />
 
       <div className="wp-hello">
         <span>
@@ -353,4 +355,5 @@ export default function WorkerHomeDashboard({
     </section>
   );
 }
+
 

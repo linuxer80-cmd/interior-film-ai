@@ -660,6 +660,7 @@ export default function WorkerManagement({
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
           <div>
             <h2 style={{fontSize:21,margin:"0 0 5px",color:"#163153"}}>시공자 관리</h2>
+            <a href="/admin/worker-directory" style={{display:"inline-block",padding:"12px 0",fontWeight:800,color:"#2563eb"}}>공개 시공자 검색 · 업체 연결 요청 →</a>
             <p style={{fontSize:13,color:"#64748b",margin:0}}>초대링크만 보내면 가입과 업체 연결이 진행됩니다.</p>
           </div>
         </div>
@@ -842,3 +843,4 @@ export default function WorkerManagement({
     </>
   );
                 }
+
