@@ -264,10 +264,10 @@ export default function CompletionEstimate({
         borderRadius: 16,
       }}
     >
-      <h3 style={{ margin: "0 0 8px" }}>시공 정산 견적서</h3>
+      <h3 style={{ margin: "0 0 8px" }}>업체 견적서 · 물량·인건비·경비</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        실제 사용내역으로 초안을 자동 작성합니다. 항목과 금액을
+        현장에 등록된 자재·인건비·경비로 초안을 작성합니다. 시공 전에는 예상 물량과 공수를 입력하고, 시공 후에는 보고 내역을 불러오세요. 항목과 금액을
         확인한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
         변경하지 않습니다.
       </p>
@@ -511,7 +511,7 @@ export default function CompletionEstimate({
                           category,
                           name: "",
                           quantity: 1,
-                          unit: "식",
+                          unit: category === "film" ? "m" : category === "labor" ? "공수" : "식",
                           amount: 0,
                         },
                       ],

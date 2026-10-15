@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import {
   quoteTotals,
   validateQuote,
 } from "../../lib/consultationQuote";
+import CompletionEstimate from "./CompletionEstimate";
 import { quoteHtml } from "../../lib/consultationQuotePrint";
 
 const headings = {
@@ -63,7 +64,7 @@ async function request(siteId, body, signal) {
   return result;
 }
 
-export default function ConsultationQuote({
+function LegacyConsultationQuote({
   siteId,
   onDirtyChange,
 }) {
@@ -404,4 +405,24 @@ export default function ConsultationQuote({
       `}</style>
     </section>
   );
+}
+
+export default function ConsultationQuote({ siteId, onDirtyChange }) {
+  const [legacy, setLegacy] = useState(false);
+  const pending = useRef(false);
+  useEffect(() => { setLegacy(false); pending.current = false; }, [siteId]);
+  const status = useCallback((value) => { pending.current = value; onDirtyChange?.(value); }, [onDirtyChange]);
+  function toggle() {
+    if (pending.current && !window.confirm("처리 중이거나 저장하지 않은 내용이 있을 수 있습니다. 견적서 화면을 전환할까요?")) return;
+    pending.current = false;
+    onDirtyChange?.(false);
+    setLegacy(value => !value);
+  }
+  return <section>
+    <button type="button" onClick={toggle} style={{ padding: 12, marginTop: 12 }}>
+      {legacy ? "물량·인건비·경비 견적서로 돌아가기" : "이전 부위별 견적서 열기"}
+    </button>
+    {legacy ? <LegacyConsultationQuote key={siteId} siteId={siteId} onDirtyChange={status} />
+      : <CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={status} />}
+  </section>;
 }

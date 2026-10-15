@@ -113,11 +113,6 @@ async function authorize(request, siteId) {
 
   if (site.data.status === "cancelled") throw fail("취소된 현장에서는 작성할 수 없습니다.", 409);
 
-  if (site.data.status !== "completed") {
-    const report = await db.from("work_reports").select("id").eq("company_id", companyId).eq("site_id", siteId).in("review_status", ["pending", "approved"]).limit(1);
-    if (report.error) throw report.error;
-    if (!report.data?.length) throw fail("완료보고서를 제출한 현장 또는 시공 완료 현장에서 작성할 수 있습니다.", 409);
-  }
 
   return {
     db,
