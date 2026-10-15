@@ -353,6 +353,19 @@ export default function CompletionEstimate({
               현장 물량·비용으로 다시 작성
             </button>
 
+            <button type="button" style={{ ...button, marginTop: 10 }} disabled={!automatic}
+              onClick={() => {
+                if (!window.confirm("인건비만 최신 현장 비용으로 다시 집계할까요? 직접 수정한 인건비는 대체됩니다.")) return;
+                change({ ...draft, items: [
+                  ...draft.items.filter(row => row.category !== "labor"),
+                  ...automatic.items.filter(row => row.category === "labor").map(row => ({ ...row })),
+                ], header: { ...draft.header, crew_count: automatic.header.crew_count, person_days: automatic.header.person_days } });
+              }}>인건비만 일당별로 다시 작성</button>
+            <p style={{ fontSize: 13, color: "#64748b" }}>
+              투입 인원 {draft.header?.crew_count || "미확인"}명 · 총 {draft.header?.person_days || "미확인"}공수.
+              1명이 3일 일하면 1명·3공수입니다. 단가가 바뀐 사람은 해당 단가별 인원에 각각 포함됩니다.
+            </p>
+
             <details style={{ marginTop: 16 }}>
             <summary style={{ cursor: "pointer", padding: "10px 0", fontWeight: 700 }}>업체·현장 정보 확인 / 수정</summary>
             <p>{draft.header?.customer_name || "거래처 미입력"} · {draft.header?.site_name || "현장명 미입력"}</p>

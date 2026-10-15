@@ -261,6 +261,7 @@ function assignedLabor(
       base: 0,
       allowance: 0,
       pending: 0,
+      rateDays: [],
       amount: 0,
     };
 
@@ -270,6 +271,7 @@ function assignedLabor(
     if (base == null || allowance == null) {
       group.pending += 1;
     } else {
+      group.rateDays.push({ rate: base, days: 1, allowance });
       group.base += base;
       group.allowance += allowance;
       group.amount += base + allowance;
@@ -302,6 +304,8 @@ function resolveLabor(site, automated, expenses, people) {
       reports.push({
         workerId: detail?.workerId || null,
         days: Number.isFinite(Number(detail?.days)) && Number(detail.days) > 0 ? Number(detail.days) : null,
+        rateDays: detail && Number(detail.days) > 0 && rateValue(detail.dailyWage) !== null && rateValue(detail.allowance) !== null
+          ? [{rate:Number(detail.dailyWage),days:Number(detail.days),allowance:Number(detail.allowance)/Number(detail.days)}] : null,
         name: detail?.name || "시공자 미분류",
         description: detail
           ? `완료보고 ${detail.days}일 × 일당 ${money(
@@ -355,6 +359,7 @@ function resolveLabor(site, automated, expenses, people) {
         .map((row) => ({
           workerId: row.workerId,
           days: row.days,
+          rateDays: row.rateDays,
           name: row.name,
           amount: row.amount,
           description:
