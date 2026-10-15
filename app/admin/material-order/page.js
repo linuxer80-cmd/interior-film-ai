@@ -9,6 +9,8 @@ import {
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 
+import { orderFlameLabel } from "../../../lib/materialOrderVariants.mjs";
+
 const PAGE_SIZE = 40;
 
 function formatWon(value) {
@@ -145,6 +147,14 @@ function MaterialOrderForm() {
   const [quantities, setQuantities] = useState({});
   const [screen, setScreen] = useState("products");
   const [detail, setDetail] = useState(null);
+  const [variantSource, setVariantSource] = useState(null);
+  const [variants, setVariants] = useState([]);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [variantError, setVariantError] = useState("");
+  function openProduct(product) {
+    setVariants([]); setVariantError(""); setVariantLoading(true);
+    setVariantSource(product.id); setDetail(product);
+  }
   const [sites, setSites] = useState([]);
   const [siteError, setSiteError] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("saved");
@@ -301,6 +311,22 @@ function MaterialOrderForm() {
     },
     [accessToken, getToken],
   );
+
+  useEffect(() => {
+    if (!variantSource || !detail) return;
+    let active=true;
+    apiFetch("/api/admin/material-products?variantOf="+encodeURIComponent(variantSource))
+      .then(result=>{
+        if(!active) return;
+        const rows=result.products || [];
+        setVariants(rows);
+        if(!rows.length) setVariantError("현재 주문 가능한 판매 옵션이 없습니다.");
+        else setDetail(current=>rows.find(row=>row.id===current?.id) || rows[0]);
+      })
+      .catch(error=>{if(active) setVariantError(error.message);})
+      .finally(()=>{if(active) setVariantLoading(false);});
+    return ()=>{active=false;};
+  }, [variantSource, Boolean(detail), apiFetch]);
 
   const loadProducts = useCallback(
     async (requestedPage = 1) => {
@@ -941,7 +967,7 @@ function MaterialOrderForm() {
                         : "VAT 별도"}
                     </small>
 
-                    <button type="button" onClick={() => setDetail(product)}>옵션·길이 선택</button>
+                    <button type="button" onClick={() => openProduct(product)}>옵션·길이 선택</button>
                   </div>
                 </article>
               );
@@ -1004,7 +1030,7 @@ function MaterialOrderForm() {
                       <strong>
                         {item.product.brand} {item.product.product_code}
                       </strong>
-                      <p>{item.product.flame_type || "옵션 미등록"}</p>
+                      <p>{orderFlameLabel(item.product.flame_type)}</p>
                       <p>
                         {formatWon(
                           item.product
@@ -1357,16 +1383,16 @@ function MaterialOrderForm() {
         <h2>{detail.brand} {detail.product_code}</h2><p>{detail.product_name}</p>
         <strong className="price">{formatWon(detail.dealer_price_per_m)}/m</strong>
         <p>{detail.price_vat_included ? "부가세 포함" : "부가세 별도"}</p>
-        <label>방염 옵션<select value={detail.id} onChange={event => { const variant = products.find(item => String(item.id) === event.target.value); if (variant) setDetail(variant); }}>
-          {products.filter(item => item.brand === detail.brand && item.product_code === detail.product_code).map(item => <option key={item.id} value={item.id}>{item.flame_type || "등록 옵션 확인 필요"}</option>)}
+        <label>방염 옵션<select disabled={variantLoading || !!variantError || !variants.length} value={detail.id} onChange={event => { const variant = variants.find(item => String(item.id) === event.target.value); if (variant) setDetail(variant); }}>
+          {(variants.length ? variants : [detail]).map(item => <option key={item.id} value={item.id}>{orderFlameLabel(item.flame_type)} · {item.product_code}</option>)}
         </select></label>
-        <p className="help">판매 등록된 옵션만 선택할 수 있습니다.</p>
+        {variantLoading ? <p role="status">방염·비방염 판매 옵션 확인 중...</p> : variantError ? <p role="alert">{variantError}</p> : <p className="help">{variants.length===1 ? "현재 판매 등록된 옵션은 위 옵션 한 가지입니다." : "판매 등록된 방염·비방염 옵션을 선택해주세요."}</p>}
         <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[detail.id] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [detail.id]: event.target.value }))} /></label>
         <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
         <p>최소 {detail.minimum_order_m || 1}m · {detail.order_unit_m || 1}m 단위</p>
         <p role="status">{quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)}</p>
         <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
-        <button className="primary" type="button" disabled={!!quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
+        <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
       </section>}
       {screen === "orders" && <section className="panel"><h2>주문내역</h2>{ordersLoading ? <p>불러오는 중...</p> : ordersError ? <p role="alert">{ordersError}</p> : !orders.length ? <p>주문내역이 없습니다.</p> : orders.map(order => <article className="cart" key={order.id}><strong>{order.order_number}</strong><p>{({ paid: "결제 완료", payment_pending: "결제 대기", payment_failed: "결제 실패", shipped: "출고 완료", delivered: "배송 완료", canceled: "취소" })[order.status] || order.status}</p><p>{formatWon(order.total_amount)} · {order.total_quantity_m}m</p><p>{order.address_line1} {order.address_line2}</p></article>)}</section>}
       <style jsx>{`
@@ -1845,4 +1871,5 @@ function MaterialOrderForm() {
     </main>
   );
                 }
+
 

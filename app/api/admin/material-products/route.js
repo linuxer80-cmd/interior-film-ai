@@ -1,3 +1,4 @@
+import { loadOrderVariants } from "../../../../lib/materialOrderVariants.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -161,6 +162,15 @@ export async function GET(request) {
 
     const { searchParams } =
       new URL(request.url);
+
+    const variantOf=searchParams.get("variantOf");
+    if(variantOf !== null) {
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variantOf)) {
+        return NextResponse.json({ok:false,error:"상품을 확인해주세요."},{status:400});
+      }
+      const variants=await loadOrderVariants(auth.supabase,variantOf);
+      return NextResponse.json({ok:true,products:variants},{headers:{"Cache-Control":"private, no-store"}});
+    }
 
     const brand = (
       searchParams.get("brand") || ""
@@ -363,3 +373,4 @@ export async function GET(request) {
     );
   }
 }
+
