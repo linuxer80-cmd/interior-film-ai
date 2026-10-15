@@ -9,6 +9,7 @@ const features = {
   "/api/virtual-install": "virtual_remodel",
   "/api/worker/cutting-notes": "cutting_ocr",
   "/api/dealer-receipts": "receipt_ocr",
+  "/api/dealer-price-ocr": "receipt_ocr",
   "/api/admin/site-screenshot": "consultation_ocr",
   "/api/admin/transcribe-site-call": "voice_transcription",
   "/api/admin/parse-site-call": "consultation_parse",
@@ -205,3 +206,4 @@ export async function proxy(request) {
 export const config = {
   matcher: "/api/:path*",
 };
+

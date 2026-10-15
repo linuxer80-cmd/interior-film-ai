@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
 import FilmThumbnail from "../worker/cutting/FilmThumbnail";
+import DealerPriceImport from "./DealerPriceImport";
 import { filmCodeInfo, inferFilmBrand, matchesFilmSearch, receiptSearchCode, receiptMatchesProduct } from "../../lib/hyundaiFilmCode";
 
 const money = n =>
@@ -940,6 +941,7 @@ export default function FilmDealerInventory() {
 
               {dealerId && (
                 <>
+                  {tab === "dealers" && <DealerPriceImport key={dealerId} dealerId={dealerId} onSaved={refresh} />}
                   {(!selected || editingProduct) && (
                     <div className="search-box">
                       <label>
@@ -1972,5 +1974,6 @@ export default function FilmDealerInventory() {
     </section>
   );
                   }
+
 
 

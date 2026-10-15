@@ -262,7 +262,7 @@ export default function AiQuotaPanel() {
                           }}
                         >
                           <span>
-                            {feature.label}
+                            {feature.feature === "receipt_ocr" ? "영수증·단가표 읽기" : feature.label}
                           </span>
 
                           <strong>
@@ -314,3 +314,4 @@ export default function AiQuotaPanel() {
     </section>
   );
 }
+

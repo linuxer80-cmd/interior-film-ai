@@ -1,6 +1,8 @@
 import { completionSeed, normalizeHeader } from "../../../../lib/completionEstimate.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { GET as getProfit } from "../profit/route";
+import { sellingMaterialPrices } from "../../../../lib/dealerPriceImport.mjs";
+import { allPriceRows } from "../../../../lib/dealerPriceServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,7 +99,7 @@ async function authorize(request, siteId) {
   const site = await db
     .from("sites")
     .select(
-      "id,site_name,customer_name,address,address_detail,status,work_dates,schedule_date",
+      "id,site_name,customer_name,customer_type,address,address_detail,status,work_dates,schedule_date",
     )
     .eq("company_id", companyId)
     .eq("id", siteId)
@@ -274,7 +276,33 @@ export async function GET(request) {
         warning: "현장 필름 물량을 불러오지 못했습니다. 저장된 견적서를 표시합니다. 다시 불러오기를 눌러주세요." });
       throw fail("현장 필름 물량을 불러오지 못했습니다. 다시 시도해주세요.", 502);
     }
-    const automatic = completionSeed(site, company, breakdown, operations.data.materials);
+    let estimateMaterials = operations.data.materials;
+    let sellingWarning = "";
+    let sellingApplied = false;
+    if (["business","personal"].includes(site.customer_type)) {
+      const priceColumn = site.customer_type === "business" ? "interior_price" : "consumer_price";
+      const priceLabel = site.customer_type === "business" ? "인테리어" : "소비자";
+      try {
+        const [metadata, products, prices] = await Promise.all([
+          allPriceRows(() => db.from("site_materials").select("*").eq("company_id",companyId).eq("site_id",siteId).eq("material_type","planned").order("id")),
+          allPriceRows(() => db.from("film_products").select("id,brand,product_code,legacy_non_fire_code").order("id")),
+          allPriceRows(() => db.from("company_film_selling_prices").select("product_id,price_type,interior_price,consumer_price").eq("company_id",companyId).order("product_id").order("price_type")),
+        ]);
+        if (prices.some(p=>p[priceColumn]!=null)) {
+          estimateMaterials = sellingMaterialPrices(estimateMaterials,metadata,products,prices,priceColumn);
+          sellingApplied = true;
+          sellingWarning = `등록한 ${priceLabel} 단가(VAT 제외 환산)를 적용합니다. 방염 구분·판매가 미확정 항목은 직접 확인해주세요.`;
+        }
+      } catch {
+        sellingWarning = "판매 단가를 불러오지 못했습니다. 현재 자동값은 기존 매입단가 기준이므로 판매 단가를 확인해주세요.";
+      }
+    }
+    const automatic = completionSeed(site, company, breakdown, estimateMaterials);
+    if (sellingApplied) {
+      // Never leak historical purchase-cost fallback rows into a customer quote.
+      const filmRows = completionSeed(site, company, {...breakdown,material:[]},estimateMaterials).items.filter(x=>x.category==='film');
+      automatic.items = [...filmRows,...automatic.items.filter(x=>x.category!=='film')];
+    }
     automatic.note = defaults.note;
     automatic.header.bank_account = defaults.bank_account;
     automatic.useDefaultNote = true;
@@ -290,10 +318,11 @@ export async function GET(request) {
       saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
 
       warning: [
+        sellingWarning,
         defaults.unavailable ? '업체 기본 비고·계좌 설정을 불러오지 못했습니다.' : '',
         pending ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.` : "",
         automatic.items.some(row => row.quantityPending) ? "사용량이 미확정인 필름은 수량을 비워두었습니다. 예상 수량을 입력하거나 현장 반입량을 확인해주세요." : "",
-        automatic.items.some(row => row.pricePending) ? "매입단가가 없는 필름은 금액을 확인해주세요." : "",
+        automatic.items.some(row => row.pricePending) ? "단가가 없는 필름은 금액을 확인해주세요." : "",
       ].filter(Boolean).join(" "),
     });
   } catch (error) {
@@ -458,5 +487,6 @@ export async function POST(request) {
     return handleError(error);
   }
         }
+
 
 
