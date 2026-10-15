@@ -66,8 +66,9 @@ export default function SupportCenter({ from, version }) {
         <details>
           <summary>약관 및 정책</summary>
           <div className={styles.body}>
-            <div className={styles.policy}>이용약관 <small>등록 준비 중</small></div>
-            <div className={styles.policy}>개인정보처리방침 <small>등록 준비 중</small></div>
+            <Link className={styles.row} href={`/support/legal/terms?from=${from}`}>이용약관 <small>검토용 초안 ›</small></Link>
+            <Link className={styles.row} href={`/support/legal/privacy?from=${from}`}>개인정보처리방침 <small>검토용 초안 ›</small></Link>
+            <Link className={styles.row} href={`/support/legal/sharing?from=${from}`}>공통 사례 활용 선택 동의 <small>검토용 초안 ›</small></Link>
             <Link className={styles.row} href="/admin/billing">정기결제·취소·환불 안내 <span aria-hidden="true">›</span></Link>
             <p className={styles.note}>결제 안내는 업체 관리자 로그인이 필요합니다. 정책 관련 문의는 카카오 채널로 보내주세요.</p>
           </div>
