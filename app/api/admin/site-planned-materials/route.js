@@ -1,3 +1,4 @@
+import { plannedDealerPrice } from "../../../../lib/plannedDealerPrice.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -253,6 +254,11 @@ async function handle(request) {
       }
     }
 
+    if (values && values.unit_price == null) {
+      values.unit_price = await plannedDealerPrice(db, profile.company_id, values);
+      if (request.method === "POST") values.total_price = values.unit_price == null ? null : 0;
+    }
+
     let query;
 
     if (request.method === "POST") {
@@ -277,7 +283,7 @@ async function handle(request) {
         .eq("material_type", "planned");
     }
 
-    const { data, error } = await query.select("id").maybeSingle();
+    const { data, error } = await query.select("id,unit_price").maybeSingle();
 
     if (error?.code === "23505") {
       return json(
@@ -299,7 +305,7 @@ async function handle(request) {
       );
     }
 
-    return json({ success: true });
+    return json({ success: true, missingPrice: request.method !== "DELETE" && data.unit_price == null });
   } catch (error) {
     console.error("관리자 예정 자재 저장 실패:", error);
 

@@ -363,10 +363,10 @@ function PlannedSiteMaterials({ site }) {
     setMessage("");
 
     try {
-      await api(editing ? "PATCH" : "POST", siteId, form);
+      const saved = await api(editing ? "PATCH" : "POST", siteId, form);
 
       setForm(null);
-      setMessage("사용 필름을 저장했습니다.");
+      setMessage(saved.missingPrice ? "필름은 저장했습니다. 매입단가가 없거나 여러 가격이 있어 원가 단가 관리에서 확인해주세요." : "사용 필름과 원가 단가를 저장했습니다.");
 
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
@@ -575,8 +575,8 @@ function PlannedSiteMaterials({ site }) {
             <details>
               <summary>원가 단가 관리</summary>
               <p>
-                수량은 시공자가 입력합니다. 소모량이 있는 필름은
-                보고서 제출 전 단가를 등록해주세요.
+                필름을 저장할 때 대리점 매입단가를 자동 적용합니다. 기존 입력 단가는 유지합니다.
+                매입단가는 시공자 화면에 표시하지 않습니다.
               </p>
               {field("unit_price", "원가 단가 (원)", {
                 type: "number",
@@ -584,7 +584,7 @@ function PlannedSiteMaterials({ site }) {
                 min: "0",
                 max: "100000000",
                 step: "any",
-                placeholder: "미정이면 비워두세요",
+                placeholder: "비워두면 대리점 매입단가 자동 적용",
               })}
             </details>
 
