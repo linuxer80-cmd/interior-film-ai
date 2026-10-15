@@ -256,22 +256,16 @@ export default function AdminTabs({
       {moreOpen && (
         <nav className="film-admin-more" aria-label="추가 관리 메뉴">
           <div className="film-admin-more-title">
-            <strong>관리 메뉴</strong>
+            <strong>더보기</strong>
             <button type="button" onClick={() => setMoreOpen(false)}>
               닫기
             </button>
           </div>
 
-          <a href="/jobs">구인 · 구직</a>
-          <a href="/admin/clients">거래처 관리</a>
-          <a href="/admin/customer-page">고객페이지 관리</a>
-          <a href="/samples?from=admin">필름 샘플 보기</a>
 
           <button type="button" onClick={() => go("jobs")}>시공 DB</button>
-          <button type="button" onClick={() => go("register")}>시공 등록</button>
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
-          {orderPreview ? <a href="/admin/material-order">자재 주문 · 테스트</a> : <button type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>자재 주문 · 테스트 중</button>}
           <a href="/admin/billing">요금제 · 결제</a>
           <a href="/support?from=admin">고객지원</a>
         </nav>
