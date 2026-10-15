@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-import { completionLabels as labels, headerFields, completionTotals, editCompletionItem } from "../../lib/completionEstimate.mjs";
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -117,10 +117,12 @@ export default function CompletionEstimate({
       const result = await request(siteId, null, signal);
       if (signal.aborted) return;
 
-      setDraft(result.saved || result.automatic);
+      const source = result.saved || result.automatic;
+      const items = summarizeMeals(source.items);
+      setDraft({ ...source, items });
       setAutomatic(result.automatic);
       setWarning(result.warning || "");
-      setDirty(false);
+      setDirty(Boolean(result.saved) && JSON.stringify(items) !== JSON.stringify(source.items));
     } catch (err) {
       if (!signal.aborted) setError(err.message);
     } finally {
@@ -389,7 +391,14 @@ export default function CompletionEstimate({
                   return <div key={category}>
 
                 {draft.items.map((row, index) =>
-                  row.category !== category ? null : (
+                  row.category !== category ? null : category === "meal" ? (
+                    <div key={index} style={{marginBottom:12}}>
+                      <label>식대 합계 (원)
+                        <input style={input} type="number" min="0" max="1000000000" step="1"
+                          value={row.amount} onChange={event => edit(index, "amount", event.target.value)} />
+                      </label>
+                    </div>
+                  ) : (
                     <div
                       key={index}
                       style={{
@@ -527,7 +536,7 @@ export default function CompletionEstimate({
                 <button
                   type="button"
                   style={button}
-                  disabled={draft.items.length >= 300}
+                  disabled={draft.items.length >= 300 || (category === "meal" && draft.items.some(row => row.category === "meal"))}
                   onClick={() =>
                     change({
                       ...draft,
@@ -535,7 +544,7 @@ export default function CompletionEstimate({
                         ...draft.items,
                         {
                           category,
-                          name: "",
+                          name: category === "meal" ? "식대 합계" : "",
                           quantity: 1,
                           unit: category === "film" ? "m" : category === "labor" ? "공수" : "식",
                           amount: 0,
