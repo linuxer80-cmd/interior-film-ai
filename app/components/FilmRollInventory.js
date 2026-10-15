@@ -373,7 +373,6 @@ export default function FilmRollInventory({
                         />
                         <span>
                           <b>{r.remaining}m</b>
-                          <small>{r.label}</small>
                           <small>{r.supplier} · {r.location}</small>
                         </span>
                       </label>
@@ -455,11 +454,10 @@ export default function FilmRollInventory({
                     <strong>
                       {t.brand} / {t.product_code} · 반출 {t.issued}m
                     </strong>
-                    <small>{t.label}</small>
 
                     <div className="return-row">
                       <input
-                        aria-label={`${t.label} 남은 길이`}
+                        aria-label={`${t.brand} ${t.product_code} 반출 ${t.issued}m 남은 길이`}
                         type="number"
                         inputMode="decimal"
                         min="0"
@@ -521,7 +519,7 @@ export default function FilmRollInventory({
             {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
             {data.trips.filter(t => t.returned != null).map(t => (
               <article key={t.id}>
-                <strong>{t.brand} {t.product_code} · {t.label}</strong>
+                <strong>{t.brand} / {t.product_code}</strong>
                 <p>반출 {t.issued}m → 반납 {t.returned}m · 사용 {metres(Number(t.issued) - Number(t.returned))}m</p>
                 {editingReturn?.id === t.id ? (
                   <div>
@@ -559,7 +557,7 @@ export default function FilmRollInventory({
             </summary>
             {data.trips.map(t => (
               <p key={t.id}>
-                {t.product_code} · {t.label}
+                {t.brand} / {t.product_code}
                 <br />
                 반출 {t.issued}m → 반입{" "}
                 {t.returned == null
