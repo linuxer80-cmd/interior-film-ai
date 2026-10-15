@@ -289,6 +289,7 @@ function SearchChoice({
   selectedId,
   onSelect,
   disabled,
+  showAll = false,
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -302,7 +303,7 @@ function SearchChoice({
           .toLocaleLowerCase("ko-KR")
           .includes(keyword)
       )
-    : [];
+    : showAll ? rows : [];
 
   const current = Math.min(
     page,
@@ -343,7 +344,12 @@ function SearchChoice({
           </label>
 
           {!keyword && (
-            <small>검색어를 입력하면 일치하는 항목만 표시합니다.</small>
+            <small>{showAll
+              ? `현장 ${rows.length}개 · 아래 목록에서 선택하세요.`
+              : "검색어를 입력하면 일치하는 항목만 표시합니다."}</small>
+          )}
+          {(showAll || keyword) && matches.length === 0 && (
+            <small>{keyword ? "검색 결과가 없습니다." : "등록된 현장이 없습니다."}</small>
           )}
 
           {keyword && <small>검색 결과 {matches.length}개</small>}
@@ -1070,6 +1076,7 @@ export default function TradeClients({ siteId, onScope }) {
 
             {!siteId ? (
               <SearchChoice
+                showAll
                 label="1. 현장 찾기"
                 placeholder="현장명 또는 고객명 검색"
                 rows={sites.map((site) => ({
