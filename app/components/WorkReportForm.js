@@ -125,7 +125,7 @@ export default function WorkReportForm({
     return queue.current
       .then(() => {
         if (mounted.current) {
-          setDraftMessage("이 기기에 임시저장됨 · " + new Date().toLocaleTimeString("ko-KR"));
+          setDraftMessage("이 기기에 자동 저장됨 ✓ · " + new Date().toLocaleTimeString("ko-KR"));
         }
         return true;
       })
@@ -692,19 +692,16 @@ export default function WorkReportForm({
         {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
       </nav>
       <section hidden={step !== 2} style={{ ...box, background: "#eff6ff" }}>
-        <h3>완료 전 확인 · {missing.length}건</h3>
+        <h3>{missing.length ? `확인할 항목 ${missing.length}건` : "제출 준비 완료 ✓"}</h3>
 
         <p role="status">{draftMessage || "임시저장 준비 중"}</p>
-        <button type="button" style={button} disabled={disabled} onClick={() => saveDraft()}>
-          {draftSaving ? "임시저장 중…" : "지금 임시저장"}
-        </button>
-        <p style={{ fontSize: 12 }}>
-          입력 내용은 자동으로 임시저장됩니다. 임시저장은 완료보고 제출이 아니며 다른 기기로
-          동기화되지 않습니다.
-        </p>
-        <small>
-          사진과 작성 내용은 현재 기기·브라우저에 저장됩니다. 브라우저 데이터 삭제 시 사라집니다.
-        </small>
+        <details>
+          <summary>임시저장 도움말</summary>
+          <p style={{ fontSize: 12 }}>현재 기기·브라우저에 저장됩니다. 다른 기기에는 동기화되지 않으며, 브라우저 데이터를 삭제하면 사라집니다. 완료보고는 아래 제출 버튼을 눌러야 전달됩니다.</p>
+          <button type="button" style={button} disabled={disabled} onClick={() => saveDraft()}>
+            {draftSaving ? "저장 중…" : "지금 임시저장"}
+          </button>
+        </details>
 
         {missing.map((item, i) => (
           <div key={i}>
@@ -718,7 +715,6 @@ export default function WorkReportForm({
           </div>
         ))}
 
-        {!missing.length && <p>필수 입력 확인 완료</p>}
 
         <button
           type="button"

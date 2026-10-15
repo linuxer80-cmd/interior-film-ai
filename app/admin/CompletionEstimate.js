@@ -353,18 +353,27 @@ export default function CompletionEstimate({
               불러온 실제 비용으로 다시 작성
             </button>
 
-            <h4>업체·현장 정보</h4>
+            <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: "pointer", padding: "10px 0", fontWeight: 700 }}>업체·현장 정보 확인 / 수정</summary>
+            <p>{draft.header?.customer_name || "거래처 미입력"} · {draft.header?.site_name || "현장명 미입력"}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
               {Object.entries(headerFields).map(([key, label]) => <label key={key}>{label}
                 <input style={input} maxLength={500} value={draft.header?.[key] ?? ""}
                   onChange={event => change({ ...draft, header: { ...draft.header, [key]: event.target.value } })} />
               </label>)}
             </div>
-            <p style={{ fontSize: 12, color: "#64748b" }}>공수는 인원 × 작업일수입니다. 보고서에 없는 값은 확인 후 입력해주세요.</p>
+            </details>
 
-            {Object.entries(labels).map(([category, label]) => (
-              <section key={category} style={{ marginTop: 20 }}>
-                <h4 style={{ margin: "0 0 8px" }}>{label}</h4>
+            {[
+              { title: "필름 물량", categories: ["film"] },
+              { title: "인건비", categories: ["labor"] },
+              { title: "경비", categories: ["meal", "supplies", "overhead", "expense"] },
+            ].map(group => (
+              <section key={group.title} style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+                <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4>
+                {group.categories.map(category => {
+                  const label = labels[category];
+                  return <div key={category}>
 
                 {draft.items.map((row, index) =>
                   row.category !== category ? null : (
@@ -432,13 +441,13 @@ export default function CompletionEstimate({
                       </div>
 
                       <label>
-                        단가 (원 · 입력 시 수량 × 단가 자동 계산)
+                        단가 (원)
                         <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""}
                           placeholder="기존 합계금액을 유지하려면 비워두세요"
                           onChange={event => edit(index, "unit_price", event.target.value === "" ? null : event.target.value)} />
                       </label>
                       <label>
-                        항목 합계금액 (원 · 직접 수정 가능)
+                        금액 (원)
                         <input
                           style={{ ...input, marginTop: 6 }}
                           type="number"
@@ -453,6 +462,8 @@ export default function CompletionEstimate({
                         />
                       </label>
 
+                      <details style={{ marginTop: 8 }}>
+                        <summary style={{ cursor: "pointer", padding: "8px 0" }}>항목 설정</summary>
                       <label>
                         분류
                         <select
@@ -494,6 +505,7 @@ export default function CompletionEstimate({
                       >
                         항목 삭제
                       </button>
+                      </details>
                     </div>
                   ),
                 )}
@@ -521,16 +533,10 @@ export default function CompletionEstimate({
                   + {label} 추가
                 </button>
 
+                  </div>;
+                })}
                 <p style={{ textAlign: "right", fontWeight: 700 }}>
-                  {label} 합계{" "}
-                  {won(
-                    draft.items
-                      .filter((row) => row.category === category)
-                      .reduce(
-                        (sum, row) => sum + Number(row.amount || 0),
-                        0,
-                      ),
-                  )}
+                  {group.title} 합계 {won(draft.items.filter(row => group.categories.includes(row.category)).reduce((sum, row) => sum + Number(row.amount || 0), 0))}
                 </p>
               </section>
             ))}

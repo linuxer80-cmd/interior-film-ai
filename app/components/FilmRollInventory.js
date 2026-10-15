@@ -436,11 +436,7 @@ export default function FilmRollInventory({
                 />
               </label>
 
-              <p>
-                반출했던 롤마다 남은 길이를 입력하세요.
-                실제로 창고에 반납한 뒤 완료 버튼을 누르세요.
-                0m는 전량 사용 처리합니다.
-              </p>
+              <p>남은 길이를 입력하고 반납하세요. 전량 사용했으면 0m를 입력하세요.</p>
 
               {!trips.length && (
                 <p>이 현장에 반출 중인 롤이 없습니다.</p>
@@ -514,15 +510,15 @@ export default function FilmRollInventory({
           )}
 
           <section aria-label="반납 완료 내역">
-            <h3>반납 완료 · 수정하기</h3>
-            <p>잘못 입력한 남은 길이를 수정하면 창고 재고와 현장 사용량에 함께 반영됩니다.</p>
+            <h3>반납 완료</h3>
             {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
             {data.trips.filter(t => t.returned != null).map(t => (
-              <article key={t.id}>
+              <article key={t.id} className="returned-roll">
                 <strong>{t.brand} / {t.product_code}</strong>
-                <p>반출 {t.issued}m → 반납 {t.returned}m · 사용 {metres(Number(t.issued) - Number(t.returned))}m</p>
+                <span>사용 {metres(Number(t.issued) - Number(t.returned))}m</span>
                 {editingReturn?.id === t.id ? (
-                  <div>
+                  <div className="return-editor">
+                    <p>반출 {t.issued}m · 반납 {t.returned}m</p>
                     <label>
                       수정할 반납 길이 (m)
                       <input type="number" inputMode="decimal" min="0" max={t.issued} step="any"
@@ -543,7 +539,7 @@ export default function FilmRollInventory({
                 ) : (
                   <button type="button" disabled={busy || pending || disabled || loading || data.locked || !canReturnRoll}
                     onClick={() => { setEditingReturn({...t}); setCorrected(String(t.returned)); setError(""); }}>
-                    반납 수량 수정하기
+                    수정
                   </button>
                 )}
               </article>
@@ -569,12 +565,15 @@ export default function FilmRollInventory({
             ))}
           </details>
 
+          <details>
+            <summary>자재 반출·반납 도움말</summary>
           <small>
             반출 즉시 보관 재고에서 제외됩니다.
             반납 완료한 길이만 창고 재고로 복귀합니다.
             시공 완료만으로 자동 반납되지 않습니다.
             모든 롤을 반납하면 현장 사용량이 확정됩니다.
           </small>
+          </details>
         </>
       )}
 
@@ -668,6 +667,12 @@ export default function FilmRollInventory({
           border-bottom: 1px solid #e5e7eb;
         }
         article strong { font-size: 14px; }
+        .returned-roll { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .returned-roll strong { flex: 1; min-width: 120px; }
+        .returned-roll > span { font-size: 13px; white-space: nowrap; }
+        .returned-roll > button { min-height: 44px; }
+        .return-editor { flex-basis: 100%; }
+        .return-editor p { margin: 4px 0; }
         summary {
           padding: 14px 0;
           cursor: pointer;

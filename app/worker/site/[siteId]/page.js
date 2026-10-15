@@ -1,6 +1,5 @@
 "use client";
 
-import ToolIllustration from "../../../components/ui/ToolIllustration";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useParams,
@@ -323,7 +322,7 @@ export default function WorkerSiteDetailPage() {
           style={{
             maxWidth: 720,
             margin: "0 auto",
-            padding: "12px 16px",
+            padding: "8px 12px",
           }}
         >
           <div
@@ -337,7 +336,7 @@ export default function WorkerSiteDetailPage() {
               type="button"
               aria-label="내 현장으로 돌아가기"
               onClick={() => router.push("/worker")}
-              style={{ ...action, fontSize: 22 }}
+              style={{ ...action, fontSize: 20, minWidth: 44, minHeight: 44, padding: 8 }}
             >
               ←
             </button>
@@ -380,7 +379,7 @@ export default function WorkerSiteDetailPage() {
               display: "grid",
               gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
               gap: 5,
-              marginTop: 12,
+              marginTop: 8,
             }}
           >
             {menus.map((menu) => (
@@ -395,9 +394,9 @@ export default function WorkerSiteDetailPage() {
                     tab === menu.id
                       ? "1px solid #81b4f7"
                       : "1px solid #e2e8f0",
-                  borderRadius: 15,
-                  minHeight: 76,
-                  padding: "9px 2px",
+                  borderRadius: 10,
+                  minHeight: 44,
+                  padding: "8px 2px",
                   background: tab === menu.id ? "#edf5ff" : "#fff",
                   color: tab === menu.id ? "#1d4ed8" : "#475569",
                   fontSize: 12,
@@ -405,15 +404,6 @@ export default function WorkerSiteDetailPage() {
                   cursor: "pointer",
                 }}
               >
-                <span
-                  style={{
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  <ToolIllustration kind={menu.kind} size={36} />
-                </span>
-
                 {menu.label}
 
                 {menu.id === "report" && reportLabel && (

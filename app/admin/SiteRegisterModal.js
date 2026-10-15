@@ -462,13 +462,6 @@ export default function SiteRegisterModal({
             <section>
               <h3>기본정보</h3>
               {inputs([["site_name", "현장명"], ["address", "주소"]])}
-              <div className="site-register-grid">
-                {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
-              </div>
-              <CustomerChoice value={customer} onChange={choose} disabled={blocked || !!saved} />
-              <div className="site-register-grid">
-                {inputs([["customer_name", customer.type === "business" ? "업체명" : "고객명"], ["customer_phone", "연락처", "tel"]])}
-              </div>
             </section>
 
             <section>
@@ -484,7 +477,16 @@ export default function SiteRegisterModal({
             </section>
 
             <details className="additional-info">
-              <summary>추가정보 <span>시공 내용 · 자재 · 사진 · 계약</span></summary>
+              <summary>추가정보 <span>고객 · 시공 내용 · 자재 · 사진 · 계약</span></summary>
+              <section><h3>고객 · 상세주소</h3>
+              <div className="site-register-grid">
+                {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
+              </div>
+              <CustomerChoice value={customer} onChange={choose} disabled={blocked || !!saved} />
+              <div className="site-register-grid">
+                {inputs([["customer_name", customer.type === "business" ? "업체명" : "고객명"], ["customer_phone", "연락처", "tel"]])}
+              </div>
+              </section>
             <section>
               <h3>시공 내용</h3>
 

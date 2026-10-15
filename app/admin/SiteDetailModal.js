@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ToolIllustration from "../components/ui/ToolIllustration";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
@@ -259,7 +258,7 @@ export default function SiteDetailModal({
         <header
           style={{
             flexShrink: 0,
-            padding: "18px 14px 14px",
+            padding: "10px 14px",
             background: "#fffefa",
             borderBottom: "1px solid #e4eaf2",
           }}
@@ -280,7 +279,7 @@ export default function SiteDetailModal({
               <h2
                 id="admin-site-detail-title"
                 style={{
-                  margin: "5px 0 10px",
+                  margin: "3px 0 6px",
                   fontSize: 21,
                   color: "#243247",
                   overflowWrap: "anywhere",
@@ -293,15 +292,15 @@ export default function SiteDetailModal({
                 href={`/jobs?site=${encodeURIComponent(site.id)}`}
                 style={{
                   display: "inline-block",
-                  padding: "10px 14px",
-                  marginBottom: 10,
+                  padding: "6px 10px",
+                  marginBottom: 4,
                   borderRadius: 12,
                   background: "#eff6ff",
                   color: "#24549a",
                   fontWeight: 800,
                 }}
               >
-                이 현장에서 구인하기
+                구인하기
               </a>
 
               <span
@@ -357,9 +356,9 @@ export default function SiteDetailModal({
                   event.currentTarget.scrollIntoView({block:"nearest", inline:"nearest", behavior:"smooth"});
                 }}
                 style={{
-                  minHeight: 66,
-                  flex: "0 0 78px",
-                  padding: "8px 1px",
+                  minHeight: 44,
+                  flex: "0 0 auto",
+                  padding: "10px 12px",
                   borderRadius: 15,
                   border:
                     menu === item.id
@@ -369,21 +368,11 @@ export default function SiteDetailModal({
                     menu === item.id ? "#eaf3ff" : "#ffffff",
                   color:
                     menu === item.id ? "#3268bd" : "#50617a",
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: 800,
                   cursor: "pointer",
                 }}
               >
-                <span
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: 5,
-                  }}
-                >
-                  <ToolIllustration kind={item.kind} size={28} />
-                </span>
-
                 {item.label}
 
                 {item.id === "report" && reviewLabel && (
