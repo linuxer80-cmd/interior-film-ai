@@ -1,0 +1,21 @@
+.page { max-width: 680px; margin: 0 auto; min-height: 100dvh; padding: 20px 18px 60px; box-sizing: border-box; color: #20332b; background: #faf9f5; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.header h1 { margin: 0; font-size: 24px; }
+.header a { display: grid; place-items: center; width: 44px; height: 44px; font-size: 32px; text-decoration: none; color: inherit; }
+.contact { display: flex; justify-content: space-between; align-items: center; padding: 19px; border-radius: 14px; background: #fee500; color: #242018; text-decoration: none; font-size: 17px; font-weight: 800; min-height: 24px; }
+.note { font-size: 13px; color: #627068; line-height: 1.7; }
+.list { margin-top: 24px; background: white; border: 1px solid #e2e5df; border-radius: 16px; overflow: hidden; }
+.list > details + details { border-top: 1px solid #e6e8e3; }
+.list summary { padding: 20px 16px; list-style: none; cursor: pointer; font-weight: 700; display: flex; gap: 10px; justify-content: space-between; align-items: center; min-height: 24px; }
+.list summary::-webkit-details-marker { display: none; }
+.list summary::after { content: "›"; font-size: 22px; color: #748078; }
+.list details[open] > summary::after { transform: rotate(90deg); }
+.body { padding: 0 16px 18px; line-height: 1.8; font-size: 14px; overflow-wrap: anywhere; }
+.body summary { padding: 12px 0; font-size: 14px; }
+.body p { margin: 8px 0 16px; }
+.body a { color: #245e48; font-weight: 700; }
+.body h2 { font-size: 15px; }
+.body ul { padding-left: 20px; }
+.policy, .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; text-decoration: none; border-bottom: 1px solid #edf0ea; }
+.policy small { color: #6a746e; font-size: 12px; }
+.page a:focus-visible, .page summary:focus-visible { outline: 3px solid #357c60; outline-offset: 3px; }

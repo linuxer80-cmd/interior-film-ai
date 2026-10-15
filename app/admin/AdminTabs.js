@@ -255,6 +255,7 @@ export default function AdminTabs({
 
           <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
+          <a href="/support?from=admin">고객지원</a>
         </nav>
       )}
 

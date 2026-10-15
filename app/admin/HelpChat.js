@@ -5,7 +5,7 @@ import Link from "next/link";
 import { HELP_TOPICS } from "./helpTopics.mjs";
 import { supabase } from "../../lib/supabase";
 
-export default function HelpChat() {
+export default function HelpChat({ embedded = false }) {
   const [topicId, setTopicId] = useState("start");
   const topic = HELP_TOPICS.find(item => item.id === topicId) || HELP_TOPICS[0];
   const sendingRef = useRef(false);
@@ -111,20 +111,19 @@ export default function HelpChat() {
   return (
     <div
       style={{
-        position: "fixed",
-        right: 16,
-        bottom:
-          "calc(112px + env(safe-area-inset-bottom, 0px))",
+        position: embedded ? "relative" : "fixed",
+        right: embedded ? undefined : 16,
+        bottom: embedded ? undefined : "calc(112px + env(safe-area-inset-bottom, 0px))",
         zIndex: 1000,
         fontFamily: "inherit",
       }}
     >
-      {open && (
+      {(embedded || open) && (
         <section
           aria-label="앱 기능 안내 챗봇"
           style={{
             width:
-              "min(390px, calc(100vw - 32px))",
+              embedded ? "100%" : "min(390px, calc(100vw - 32px))",
             height:
               "min(560px, calc(100dvh - 210px - env(safe-area-inset-bottom, 0px)))",
             background: "#fff",
@@ -150,7 +149,7 @@ export default function HelpChat() {
           >
             <strong>앱 사용 안내</strong>
 
-            <button
+            {!embedded && <button
               type="button"
               aria-label="챗봇 닫기"
               onClick={() => setOpen(false)}
@@ -163,7 +162,7 @@ export default function HelpChat() {
               }}
             >
               ×
-            </button>
+            </button>}
           </header>
 
           <div style={{padding:12,borderBottom:"1px solid #e2e8f0",flexShrink:0}}>
@@ -305,7 +304,7 @@ export default function HelpChat() {
         </section>
       )}
 
-      <button
+      {!embedded && <button
         type="button"
         onClick={() =>
           setOpen((value) => !value)
@@ -331,7 +330,7 @@ export default function HelpChat() {
         {open
           ? "✕ 안내 닫기"
           : "💬 앱 사용 안내"}
-      </button>
+      </button>}
     </div>
   );
 }

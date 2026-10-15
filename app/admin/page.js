@@ -12,7 +12,6 @@ import { supabase } from "../../lib/supabase";
 
 import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
-import HelpChat from "./HelpChat";
 import NewLeadAlert from "./NewLeadAlert";
 import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
@@ -1026,7 +1025,7 @@ export default function AdminPage() {
         }
       />
 
-      <HelpChat />
+
     </main>
   );
             }

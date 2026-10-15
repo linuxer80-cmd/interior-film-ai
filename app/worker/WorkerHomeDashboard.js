@@ -335,6 +335,7 @@ export default function WorkerHomeDashboard({
               "inventory",
               "jobs",
               "account",
+              "pay",
             ].includes(menu.id)
           )
           .map(menu => (
@@ -347,6 +348,7 @@ export default function WorkerHomeDashboard({
               <small>{menu.title}</small>
             </Link>
           ))}
+        <Link href="/worker/more"><span aria-hidden="true" style={{ fontSize: 30 }}>▦</span><small>더보기</small></Link>
       </nav>
     </section>
   );
