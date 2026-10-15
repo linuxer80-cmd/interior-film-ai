@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { quoteSeed } from "../../lib/consultationQuote";
+import MaterialFilmPicker from "../components/MaterialFilmPicker";
 import WorkDatePicker from "./WorkDatePicker";
 import { koreanDay } from "../utils/workerCalendar";
 import CallContentAiInput from "./site-register/CallContentAiInput";
@@ -536,9 +537,12 @@ export default function SiteRegisterModal({
                     삭제
                   </button>
 
+                  <MaterialFilmPicker value={item} disabled={blocked || !!saved}
+                    onChange={(patch) => setMaterials((previous) => previous.map((row) =>
+                      row.local_id === item.local_id ? { ...row, ...patch } : row))} />
+
                   {[
                     ["brand", "브랜드"],
-                    ["product_code", "제품코드"],
                     ["product_name", "제품명 / 색상"],
                     ["unit_price", "원가 단가 (선택)"],
                     ["memo", "자재 메모"],
@@ -560,6 +564,7 @@ export default function SiteRegisterModal({
                                 ? {
                                     ...row,
                                     [key]: event.target.value,
+                                    ...(key === "brand" ? { film_product_id: null } : {}),
                                   }
                                 : row
                             )
@@ -872,3 +877,4 @@ export default function SiteRegisterModal({
     </div>
   );
                     }
+
