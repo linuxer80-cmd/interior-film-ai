@@ -40,6 +40,20 @@ export default function KakaoAccount() {
         :"카카오 연결을 시작하지 못했습니다. 로그인 상태를 확인하고 다시 시도해주세요.");
     }finally{lock.current=false;setBusy(false);}
   }
+  async function switchAccount(){
+    if(lock.current)return;
+    lock.current=true;setBusy(true);setError("");
+    try{
+      const {error:failure}=await supabase.auth.signOut({scope:"local"});
+      if(failure)throw failure;
+      sessionStorage.removeItem(pendingKey);
+      window.location.replace("/login?role=owner");
+    }catch{
+      setError("계정 전환에 실패했습니다. 다시 시도해주세요.");
+      lock.current=false;setBusy(false);
+    }
+  }
+  const emailIdentity=user?.identities?.some(i=>i.provider==="email");
   const linked=user?.identities?.some(i=>i.provider==="kakao");
   return <main style={{maxWidth:480,margin:"40px auto",padding:24}}>
     <h1>카카오 계정 연결</h1>
@@ -47,11 +61,16 @@ export default function KakaoAccount() {
       <p>기존 이메일 계정으로 로그인한 후 이 화면에서 연결해주세요. <Link href="/login">로그인하기</Link></p>:
       <>
         <p>현재 계정: {user.email||"이메일 없는 계정"}</p>
-        <p>카카오 이메일이 달라도 연결할 수 있습니다. 연결 후에는 기존 업체와 이용 내역을 카카오 로그인으로 이용할 수 있습니다.</p>
-        {linked?<p role="status">카카오 연결 완료 · 다음부터 카카오로 로그인할 수 있습니다.</p>:
+        <p>연결할 기존 계정의 이메일이 맞는지 먼저 확인해주세요. 카카오 이메일과 달라도 연결할 수 있습니다.</p>
+        {linked?<div role="status">
+          <p>현재 계정은 카카오로 로그인할 수 있습니다.</p>
+          {!emailIdentity && <p>카카오로 가입한 계정입니다. 이 표시는 다른 이메일로 가입한 기존 업체 계정과의 연결 완료를 뜻하지 않습니다.</p>}
+          <p>기존 가입 이메일이 위 이메일과 다르면 기존 계정으로 전환해주세요. 이미 가입된 카카오는 별도 계정 확인이 필요할 수 있습니다.</p>
+        </div>:
           <button type="button" onClick={connect} disabled={busy} style={{width:"100%",padding:16,border:0,borderRadius:12,background:"#FEE500",color:"#191919",fontWeight:800}}>
             {busy?"카카오 인증으로 이동 중…":"다음부터 카카오로 로그인하기"}
           </button>}
+        <button type="button" disabled={busy} onClick={switchAccount} style={{marginTop:20,padding:14}}>기존 이메일 계정으로 전환</button>
       </>}
     {error&&<p role="alert">{error}</p>}
     <p><Link href="/admin">관리자 홈</Link> · <Link href="/worker/account">시공자 개인설정</Link></p>
