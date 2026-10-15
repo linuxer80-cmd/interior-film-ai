@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals } from "../../lib/completionEstimate.mjs";
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -176,6 +176,7 @@ export default function CompletionEstimate({
     if (lock.current || !draft || busy) return;
 
     for (const [index, row] of draft.items.entries()) {
+      if (!includedCompletionItem(row)) continue;
       const prefix = `${index + 1}번 항목 (${row.name || "이름 없음"})`;
       let problem = "";
 
@@ -216,7 +217,7 @@ export default function CompletionEstimate({
     setMessage("");
 
     try {
-      const items = draft.items.map((row) => ({
+      const items = draft.items.filter(includedCompletionItem).map((row) => ({
         ...row,
         quantity: Number(row.quantity),
         amount: Number(row.amount),
@@ -559,7 +560,7 @@ export default function CompletionEstimate({
                   </div>;
                 })}
                 <p style={{ textAlign: "right", fontWeight: 700 }}>
-                  {group.title} 합계 {won(draft.items.filter(row => group.categories.includes(row.category)).reduce((sum, row) => sum + Number(row.amount || 0), 0))}
+                  {group.title} 합계 {won(draft.items.filter(row => group.categories.includes(row.category) && includedCompletionItem(row)).reduce((sum, row) => sum + Number(row.amount || 0), 0))}
                 </p>
               </section>
             ))}
@@ -570,7 +571,7 @@ export default function CompletionEstimate({
             </p>
 
             <p style={{ fontSize: 12, color: "#64748b" }}>
-              합계금액을 직접 수정하면 해당 항목의 단가 자동 계산이 해제됩니다.
+              항목명·수량·금액 중 하나를 빈칸으로 두면 저장 및 PDF에서 해당 항목이 제외됩니다. 단가만 비우면 입력한 합계금액은 유지됩니다.
             </p>
 
             <label>부가세
