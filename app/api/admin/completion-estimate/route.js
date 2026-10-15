@@ -187,7 +187,7 @@ export async function GET(request) {
     const {
       db,
       companyId,
-      site, company,
+      site, company, userId,
     } = await authorize(request, siteId);
 
     const saved = await db
@@ -253,7 +253,18 @@ export async function GET(request) {
 
     const breakdown = profit.breakdown;
 
-    const automatic = completionSeed(site, company, breakdown);
+    const operations = await db.rpc("site_operations", {
+      p_user: userId,
+      p_site: siteId,
+      p_action: "get",
+      p_body: { siteId, action: "get" },
+    });
+    if (operations.error || !Array.isArray(operations.data?.materials)) {
+      if (savedDocument) return json({ site, saved: savedDocument, automatic: null,
+        warning: "현장 필름 물량을 불러오지 못했습니다. 저장된 견적서를 표시합니다. 다시 불러오기를 눌러주세요." });
+      throw fail("현장 필름 물량을 불러오지 못했습니다. 다시 시도해주세요.", 502);
+    }
+    const automatic = completionSeed(site, company, breakdown, operations.data.materials);
 
     const pending =
       profit.sites.find(
@@ -265,9 +276,11 @@ export async function GET(request) {
       automatic,
       saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
 
-      warning: pending
-        ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.`
-        : "",
+      warning: [
+        pending ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.` : "",
+        automatic.items.some(row => row.quantityPending) ? "사용량이 미확정인 필름은 수량을 비워두었습니다. 예상 수량을 입력하거나 현장 반입량을 확인해주세요." : "",
+        automatic.items.some(row => row.pricePending) ? "매입단가가 없는 필름은 금액을 확인해주세요." : "",
+      ].filter(Boolean).join(" "),
     });
   } catch (error) {
     return handleError(error);
@@ -418,4 +431,5 @@ export async function POST(request) {
     return handleError(error);
   }
         }
+
 

@@ -267,8 +267,8 @@ export default function CompletionEstimate({
       <h3 style={{ margin: "0 0 8px" }}>업체 견적서 · 물량·인건비·경비</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        현장에 등록된 자재·인건비·경비로 초안을 작성합니다. 시공 전에는 예상 물량과 공수를 입력하고, 시공 후에는 보고 내역을 불러오세요. 항목과 금액을
-        확인한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
+        현장 필름명과 사용량을 자동으로 가져옵니다. 사용량은 반출량에서 반입량을 뺀 값입니다. 미확정 수량은 직접 입력해주세요. 자재 금액은 등록된 원가를 참고한 초안이므로 청구할 금액으로
+        수정한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
         변경하지 않습니다.
       </p>
 
@@ -311,7 +311,7 @@ export default function CompletionEstimate({
           load(controller.current.signal);
         }}
       >
-        저장본·최신 비용 다시 불러오기
+        저장본·최신 현장 내역 불러오기
       </button>
 
       {draft && (
@@ -338,7 +338,7 @@ export default function CompletionEstimate({
               onClick={() => {
                 if (
                   window.confirm(
-                    "수정한 항목을 불러온 실제 비용으로 바꿀까요? 저장 전에는 기존 저장본이 유지됩니다.",
+                    "수정한 항목을 불러온 현장 물량·인건비·경비로 바꿀까요? 저장 전에는 기존 저장본이 유지됩니다.",
                   )
                 ) {
                   change({
@@ -350,7 +350,7 @@ export default function CompletionEstimate({
                 }
               }}
             >
-              불러온 실제 비용으로 다시 작성
+              현장 물량·비용으로 다시 작성
             </button>
 
             <details style={{ marginTop: 16 }}>
@@ -417,6 +417,7 @@ export default function CompletionEstimate({
                             max="1000000"
                             step="any"
                             value={row.quantity}
+                            placeholder="사용량 확인 필요"
                             onChange={(event) =>
                               edit(
                                 index,
@@ -619,4 +620,5 @@ export default function CompletionEstimate({
     </section>
   );
 }
+
 

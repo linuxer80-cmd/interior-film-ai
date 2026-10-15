@@ -694,6 +694,8 @@ export async function GET(request) {
           siteId: site.id,
           siteName,
           brand: item.brand?.trim() || "브랜드 미입력",
+          productCode: item.product_code,
+          productName: item.product_name,
           product:
             [item.product_code, item.product_name]
               .filter(Boolean)
@@ -959,4 +961,5 @@ export async function DELETE(request) {
     );
   }
 }
+
 
