@@ -1,4 +1,4 @@
-import { getGroupKey } from "./categoryUtils.js";
+import { getGroupKey, getConstructionScope } from "./categoryUtils.js";
 
 export function isDoorPricingGroup(group) {
   const label = `${group?.category || ""} ${
@@ -232,6 +232,7 @@ export function quantityEstimateDetails(pricing) {
 // 같은 문이라는 근거가 명확한 사진만 묶습니다.
 // 고객이 직접 나누거나 묶은 선택은 자동 병합으로 덮어쓰지 않습니다.
 export function mergeDoorViews(photos) {
+  photos = mergeKitchenViews(photos);
   const isDoorView = (analysis) => ["door", "fire_door", "middle_door"].includes(getGroupKey(analysis));
   // Identity comparison is unnecessary when this batch contains exactly one
   // doorway photo and every other photo is confidently a non-door target.
@@ -323,3 +324,28 @@ export function mergeDoorViews(photos) {
       )
   );
 }
+
+// Match physical identity AND scope. Similar cabinet colours alone never merge jobs.
+export function mergeKitchenViews(photos) {
+  const buckets = new Map();
+  for (const photo of photos) {
+    const a = photo.analysis || {};
+    const scope = getConstructionScope(a);
+    if (photo.subjectId || getGroupKey(a) !== "kitchen" ||
+        scope === "unknown" || a.requires_confirmation ||
+        a.classification_confidence === "low" || a.object_confidence !== "high" ||
+        !a.object_key?.trim() || !a.object_evidence?.trim()) continue;
+    const key = scope + ":" + a.object_key.trim();
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(photo);
+  }
+  const updates = new Map();
+  for (const group of buckets.values()) {
+    if (group.length < 2) continue;
+    for (const photo of group) updates.set(photo.id, {
+      ...photo, subjectId: group[0].id, subjectSource: "ai",
+    });
+  }
+  return photos.map(photo => updates.get(photo.id) || photo);
+}
+
