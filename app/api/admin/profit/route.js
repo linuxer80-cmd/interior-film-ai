@@ -465,7 +465,9 @@ export async function GET(request) {
     }
 
     const sites = await allRows(
-      siteQuery.order("schedule_start").order("id"),
+      siteQuery
+        .order("schedule_start", { ascending: false, nullsFirst: false })
+        .order("id"),
     );
 
     const materials = [];
