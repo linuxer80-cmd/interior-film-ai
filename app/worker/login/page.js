@@ -1,4 +1,5 @@
 "use client";
+import KakaoLoginButton from "../../components/KakaoLoginButton";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -316,7 +317,8 @@ export default function WorkerLoginPage() {
             <br />
             소속 회사 관리자에게 문의해주세요.
           </p>
-        </form>
+        <KakaoLoginButton role="worker" disabled={loading} />
+          </form>
 
         <Link href="/worker/account" style={{
           display: "block",
