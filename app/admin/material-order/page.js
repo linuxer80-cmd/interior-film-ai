@@ -143,6 +143,34 @@ function MaterialOrderForm() {
 
   const [cart, setCart] = useState([]);
   const [quantities, setQuantities] = useState({});
+  const [screen, setScreen] = useState("products");
+  const [detail, setDetail] = useState(null);
+  const [sites, setSites] = useState([]);
+  const [siteError, setSiteError] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState("saved");
+  const [orders, setOrders] = useState([]);
+  const [ordersError, setOrdersError] = useState("");
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  function navigate(next) { setScreen(next); setDetail(null); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  async function loadSiteAddresses() {
+    setDeliveryMode("site"); setSelectedAddressId(""); setShowAddressForm(true); setAddressForm(emptyAddress());
+    try {
+      const { data: rows, error: companyError } = await supabase.rpc("get_my_company");
+      if (companyError) throw companyError;
+      const company = Array.isArray(rows) ? rows[0] : rows;
+      if (!company?.company_id) throw Error("업체를 확인해주세요.");
+      const { data, error } = await supabase.from("sites").select("id,site_name,address").eq("company_id", company.company_id).order("schedule_start", { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      setSites(data || []); setSiteError("");
+    } catch { setSiteError("현장을 불러오지 못했습니다. 새 주소로 직접 입력해주세요."); }
+  }
+  async function showOrders() {
+    navigate("orders"); setOrdersLoading(true); setOrdersError("");
+    try { const result = await apiFetch("/api/admin/material-orders"); setOrders(result.orders || []); }
+    catch (error) { setOrdersError(error.message); }
+    finally { setOrdersLoading(false); }
+  }
 
   const [addresses, setAddresses] =
     useState([]);
@@ -437,6 +465,7 @@ function MaterialOrderForm() {
     if (error) { showMessage(error, "error"); return; }
     setCart(current => [...current.filter(item => item.product.id !== product.id), { product, quantityM: Number(value) }]);
     showMessage(`${product.product_code} · ${value}m를 담았습니다.`);
+    setDetail(null);
   }
 
   function removeCart(productId) {
@@ -749,7 +778,7 @@ function MaterialOrderForm() {
             align-items: center;
             justify-content: center;
             padding: 24px;
-            background: #f7f8fb;
+            background: #f8f6f2;
           }
 
           .login-card {
@@ -793,12 +822,18 @@ function MaterialOrderForm() {
           <span className="badge">
             자재 주문
           </span>
-          <h1>인테리어필름 주문</h1>
+          <h1>필름장이 자재몰</h1>
           <p>
-            판매 가능한 필름을 주문합니다.
+            필름을 고르고, 원하는 현장으로.
           </p>
         </div>
+        <button className="outline" type="button" onClick={() => navigate("cart")}>장바구니 {cart.length}</button>
       </header>
+      <nav className="shop-nav" aria-label="자재몰 메뉴">
+        <button type="button" aria-current={screen === "products" ? "page" : undefined} onClick={() => navigate("products")}>상품</button>
+        <button type="button" aria-current={screen === "cart" ? "page" : undefined} onClick={() => navigate("cart")}>장바구니 ({cart.length})</button>
+        <button type="button" aria-current={screen === "orders" ? "page" : undefined} onClick={showOrders}>주문내역</button>
+      </nav>
 
       {message ? (
         <div
@@ -808,8 +843,8 @@ function MaterialOrderForm() {
         </div>
       ) : null}
 
-      <section className="panel">
-        <h2>1. 필름 선택</h2>
+      <section className="panel" hidden={screen !== "products" || !!detail}>
+        <h2>필름 선택</h2>
 
         <input
           className="search"
@@ -882,6 +917,7 @@ function MaterialOrderForm() {
                   </div>
 
                   <div className="product-info">
+                    <small>{product.brand}</small>
                     <strong>
                       {product.product_code}
                     </strong>
@@ -905,28 +941,7 @@ function MaterialOrderForm() {
                         : "VAT 별도"}
                     </small>
 
-                    <label className="product-quantity">
-                      주문 길이 (m)
-                      <input type="number" inputMode="decimal"
-                        aria-label={`${product.product_code} 주문 길이`}
-                        min={product.minimum_order_m || 1} step={product.order_unit_m || 1}
-                        value={quantities[product.id] ?? String(product.minimum_order_m || 1)}
-                        onChange={event => setQuantities(current => ({ ...current, [product.id]: event.target.value }))} />
-                      <small>최소 {product.minimum_order_m || 1}m · {product.order_unit_m || 1}m 단위</small>
-                      {quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1) &&
-                        <small role="status" style={{ color: "#b91c1c" }}>{quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1)}</small>}
-                    </label>
-                    <button
-                      type="button"
-                      disabled={!!quantityError(product, quantities[product.id] ?? product.minimum_order_m ?? 1)}
-                      onClick={() =>
-                        addCart(product)
-                      }
-                    >
-                      {added
-                        ? "수량 변경하여 담기"
-                        : "장바구니 담기"}
-                    </button>
+                    <button type="button" onClick={() => setDetail(product)}>옵션·길이 선택</button>
                   </div>
                 </article>
               );
@@ -961,9 +976,9 @@ function MaterialOrderForm() {
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" hidden={screen !== "cart"}>
         <div className="title-row">
-          <h2>2. 주문 수량</h2>
+          <h2>장바구니</h2>
           <strong>{cart.length}개</strong>
         </div>
 
@@ -987,8 +1002,9 @@ function MaterialOrderForm() {
                   <div className="cart-head">
                     <div>
                       <strong>
-                        {item.product.product_code}
+                        {item.product.brand} {item.product.product_code}
                       </strong>
+                      <p>{item.product.flame_type || "옵션 미등록"}</p>
                       <p>
                         {formatWon(
                           item.product
@@ -1044,6 +1060,7 @@ function MaterialOrderForm() {
                     </label>
                   </div>
 
+                  {quantityError(item.product, item.quantityM) && <p role="alert" style={{ color: "#b91c1c" }}>{quantityError(item.product, item.quantityM)}</p>}
                   <div className="item-total">
                     <span>결제금액</span>
                     <strong>
@@ -1087,9 +1104,10 @@ function MaterialOrderForm() {
         </div>
       </section>
 
-      <section className="panel">
+      {screen === "cart" && <div className="shop-action"><button type="button" className="primary" disabled={!cart.length || cart.some(item => quantityError(item.product, item.quantityM))} onClick={() => navigate("checkout")}>배송지 선택 →</button></div>}
+      <section className="panel" hidden={screen !== "checkout"}>
         <div className="title-row">
-          <h2>3. 받을 주소 선택</h2>
+          <h2>받을 주소 선택</h2>
 
           <button
             type="button"
@@ -1107,6 +1125,15 @@ function MaterialOrderForm() {
           </button>
         </div>
 
+        <div className="delivery-tabs">
+          <button type="button" aria-pressed={deliveryMode === "saved"} onClick={() => { setDeliveryMode("saved"); setShowAddressForm(false); }}>기본·저장 배송지</button>
+          <button type="button" aria-pressed={deliveryMode === "site"} onClick={loadSiteAddresses}>현장으로 받기</button>
+          <button type="button" aria-pressed={deliveryMode === "new"} onClick={() => { setDeliveryMode("new"); setSelectedAddressId(""); setAddressForm(emptyAddress()); setShowAddressForm(true); }}>새 주소</button>
+        </div>
+        {deliveryMode === "site" && <label className="site-select">현장 선택<select defaultValue="" onChange={event => {
+          const site = sites.find(item => item.id === event.target.value);
+          if (site) setAddressForm({ ...emptyAddress(), address_name: site.site_name || "현장", address_line1: site.address || "" });
+        }}><option value="">현장을 선택해주세요</option>{sites.map(site => <option key={site.id} value={site.id}>{site.site_name}</option>)}</select>{siteError && <p role="alert">{siteError}</p>}</label>}
         <p>기본 배송지 또는 현장 주소를 선택해주세요. 다른 주소를 추가해도 기본 배송지는 바뀌지 않습니다.</p>
         {selectedAddress && !showAddressForm && <button type="button" className="outline" onClick={() => {
           setAddressForm({ ...emptyAddress(), ...selectedAddress, address_name: `${selectedAddress.address_name || "배송지"} (변경)`, is_default: false });
@@ -1302,7 +1329,7 @@ function MaterialOrderForm() {
         </label>
       </section>
 
-      <section className="payment">
+      <section className="payment" hidden={screen !== "checkout"}>
         <h2>4. 주문 내용 확인</h2>
         <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
         {selectedAddress ? <p><strong>{selectedAddress.recipient_name}</strong> · {selectedAddress.recipient_phone}<br />{selectedAddress.address_line1} {selectedAddress.address_line2 || ""}</p> : <p>배송지를 선택해주세요.</p>}
@@ -1324,7 +1351,36 @@ function MaterialOrderForm() {
         </button>
       </section>
 
+      {detail && <section className="panel detail">
+        <button type="button" className="outline" onClick={() => setDetail(null)}>‹ 상품 목록</button>
+        {getImageUrl(detail) && <img className="detail-image" src={getImageUrl(detail)} alt={`${detail.brand || ""} ${detail.product_code}`} />}
+        <h2>{detail.brand} {detail.product_code}</h2><p>{detail.product_name}</p>
+        <strong className="price">{formatWon(detail.dealer_price_per_m)}/m</strong>
+        <p>{detail.price_vat_included ? "부가세 포함" : "부가세 별도"}</p>
+        <label>방염 옵션<select value={detail.id} onChange={event => { const variant = products.find(item => String(item.id) === event.target.value); if (variant) setDetail(variant); }}>
+          {products.filter(item => item.brand === detail.brand && item.product_code === detail.product_code).map(item => <option key={item.id} value={item.id}>{item.flame_type || "등록 옵션 확인 필요"}</option>)}
+        </select></label>
+        <p className="help">판매 등록된 옵션만 선택할 수 있습니다.</p>
+        <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[detail.id] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [detail.id]: event.target.value }))} /></label>
+        <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
+        <p>최소 {detail.minimum_order_m || 1}m · {detail.order_unit_m || 1}m 단위</p>
+        <p role="status">{quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)}</p>
+        <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
+        <button className="primary" type="button" disabled={!!quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
+      </section>}
+      {screen === "orders" && <section className="panel"><h2>주문내역</h2>{ordersLoading ? <p>불러오는 중...</p> : ordersError ? <p role="alert">{ordersError}</p> : !orders.length ? <p>주문내역이 없습니다.</p> : orders.map(order => <article className="cart" key={order.id}><strong>{order.order_number}</strong><p>{({ paid: "결제 완료", payment_pending: "결제 대기", payment_failed: "결제 실패", shipped: "출고 완료", delivered: "배송 완료", canceled: "취소" })[order.status] || order.status}</p><p>{formatWon(order.total_amount)} · {order.total_quantity_m}m</p><p>{order.address_line1} {order.address_line2}</p></article>)}</section>}
       <style jsx>{`
+        [hidden] { display: none !important; }
+        .shop-nav, .shop-action { max-width: 760px; margin: 0 auto 18px; display: flex; gap: 8px; }
+        .shop-nav button, .delivery-tabs button { flex: 1; padding: 14px 8px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; color: #243648; font-weight: 700; }
+        .shop-nav [aria-current="page"], .delivery-tabs [aria-pressed="true"] { border-color: #f36a20; color: #d84e0a; background: #fff6ef; }
+        .delivery-tabs { display: flex; gap: 8px; margin: 16px 0; }
+        .primary { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #f36a20; color: white; font-size: 17px; font-weight: 800; margin-top: 16px; }
+        select { width: 100%; padding: 14px; border: 1px solid #d1d5db; border-radius: 10px; background: white; font-size: 16px; margin: 8px 0; }
+        .detail-image { width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; margin: 18px 0; background: #f4f1eb; }
+        .length-buttons { display: flex; gap: 8px; margin-top: 8px; }
+        .length-buttons button { flex: 1; padding: 10px; background: #fff6ef; border: 1px solid #efc9ae; border-radius: 10px; font-size: 20px; }
+        .help { color: #6b7280; font-size: 13px; }
         * {
           box-sizing: border-box;
         }
@@ -1332,7 +1388,7 @@ function MaterialOrderForm() {
         .page {
           min-height: 100vh;
           padding: 18px 15px 100px;
-          background: #f7f8fb;
+          background: #f8f6f2;
           color: #111827;
         }
 
@@ -1442,8 +1498,8 @@ function MaterialOrderForm() {
         }
 
         .brands .active {
-          border-color: #6d28d9;
-          background: #6d28d9;
+          border-color: #e95e17;
+          background: #e95e17;
           color: white;
         }
 
@@ -1501,7 +1557,7 @@ function MaterialOrderForm() {
         }
 
         .price {
-          color: #6d28d9;
+          color: #e95e17;
           font-weight: 900;
         }
 
@@ -1553,15 +1609,15 @@ function MaterialOrderForm() {
         }
 
         .title-row strong {
-          color: #6d28d9;
+          color: #e95e17;
         }
 
         .outline {
           padding: 8px 11px;
-          border: 1px solid #6d28d9;
+          border: 1px solid #e95e17;
           border-radius: 10px;
           background: white;
-          color: #6d28d9;
+          color: #e95e17;
           font-weight: 900;
         }
 
@@ -1646,7 +1702,7 @@ function MaterialOrderForm() {
         }
 
         .final strong {
-          color: #6d28d9;
+          color: #e95e17;
           font-size: 20px;
         }
 
@@ -1660,14 +1716,14 @@ function MaterialOrderForm() {
         }
 
         .address.selected {
-          border-color: #6d28d9;
+          border-color: #e95e17;
           background: #faf7ff;
         }
 
         .address input {
           width: 20px;
           height: 20px;
-          accent-color: #6d28d9;
+          accent-color: #e95e17;
         }
 
         .address p {
@@ -1763,7 +1819,7 @@ function MaterialOrderForm() {
         .product-quantity input { width: 100%; min-width: 0; min-height: 48px; padding: 10px; font-size: 18px; border: 1px solid #cbd5e1; border-radius: 10px; }
         .product-quantity small { font-size: 12px; font-weight: 400; }
         .payment strong {
-          color: #6d28d9;
+          color: #e95e17;
           font-size: 21px;
         }
 
