@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import FilmColorPicker from "./FilmColorPicker";
 
 const TARGET_TYPES = [
+  { key: "elevator_interior", label: "엘리베이터 내부 벽면" },
+  { key: "elevator_door", label: "엘리베이터 출입문·문틀" },
   { key: "artwall", label: "아트월·벽면" },
   { key: "kitchen", label: "싱크대·주방가구" },
   { key: "door", label: "문·문틀" },
@@ -14,6 +16,8 @@ const TARGET_TYPES = [
 ];
 
 const AREA_DEFINITIONS = {
+  elevator_interior: [{ key: "elevator_wall", label: "엘리베이터 내부 벽면", words: ["엘리베이터", "승강기", "elevator", "lift"] }],
+  elevator_door: [{ key: "elevator_door", label: "엘리베이터 출입문·문틀", words: ["엘리베이터", "승강기", "elevator", "lift"] }],
   artwall: [
     {
       key: "artwall_surface",
@@ -237,6 +241,9 @@ function getMatchedAnalysis(image, groups) {
 }
 
 function detectType(text) {
+  if (includesAny(text, ["엘리베이터", "승강기", "elevator"])) {
+    return includesAny(text, ["내부", "벽면", "손잡이", "cabin", "interior"]) ? "elevator_interior" : "elevator_door";
+  }
   if (
     includesAny(text, [
       "아트월",
