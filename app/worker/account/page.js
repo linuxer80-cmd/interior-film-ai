@@ -295,6 +295,7 @@ export default function WorkerAccount() {
     {pendingInvite && <aside role='status' style={{padding:14,border:'1px solid #bfdbfe',borderRadius:12,background:'#eff6ff',marginBottom:14}}><strong>업체 연결 마지막 단계</strong><p style={{margin:'8px 0 0'}}>이름·연락처·일당만 확인하고 아래 버튼을 누르세요. 프로필 저장 후 초대 수락과 업체 연결을 자동으로 이어서 처리합니다.</p></aside>}
     {!pendingInvite && <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>}
     <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
+    {session && <p><Link href='/account/kakao'>카카오 계정 연결 · 연결 상태 확인</Link></p>}
 
     {!ready
       ?<p>계정을 확인하는 중…</p>
