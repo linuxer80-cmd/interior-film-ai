@@ -1,4 +1,5 @@
 "use client";
+import KakaoLoginButton from "../components/KakaoLoginButton";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -266,6 +267,7 @@ export default function AdminLayout({ children }) {
             >
               {loginLoading ? "로그인 중..." : "관리자 로그인"}
             </button>
+          <KakaoLoginButton disabled={loginLoading} />
           </form>
         </div>
       </main>
