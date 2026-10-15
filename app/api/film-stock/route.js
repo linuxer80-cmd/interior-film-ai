@@ -103,7 +103,7 @@ async function handle(request) {
       !body ||
       JSON.stringify(body).length > 12000 ||
       ![
-        "get", "receive", "issue", "return", "supplier_return",
+        "get", "receive", "issue", "return", "correct_return", "supplier_return",
       ].includes(body.action) ||
       (body.siteId && !uuid(body.siteId))
     ) {
@@ -127,7 +127,7 @@ async function handle(request) {
     }
 
     if (
-      ["issue", "return"].includes(body.action) &&
+      ["issue", "return", "correct_return"].includes(body.action) &&
       (
         !uuid(body.siteId) ||
         (body.action === "issue" && !uuid(body.materialId))
@@ -138,6 +138,15 @@ async function handle(request) {
         400
       );
     }
+
+    if (body.action === "correct_return" && (
+      !uuid(body.tripId) ||
+      ![body.remaining, body.expectedReturned].every(value =>
+        ["string", "number"].includes(typeof value) &&
+        String(value).trim() !== "" && Number.isFinite(Number(value)) &&
+        Number(value) >= 0
+      )
+    )) return json({ error: "반납 기록과 수정 수량을 확인해주세요." }, 400);
 
     const result = await db.rpc("film_stock", {
       p_user: data.user.id,

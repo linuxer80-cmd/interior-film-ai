@@ -39,6 +39,8 @@ export default function FilmRollInventory({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [editingReturn, setEditingReturn] = useState(null);
+  const [corrected, setCorrected] = useState("");
 
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -164,6 +166,8 @@ export default function FilmRollInventory({
       }
 
       batch.current = null;
+      setEditingReturn(null);
+      setCorrected("");
       setPending(false);
       setMessage(
         `${work.jobs.length}롤 저장 완료. 창고 재고와 현장 사용량에 반영했습니다.`
@@ -510,6 +514,44 @@ export default function FilmRollInventory({
               })}
             </>
           )}
+
+          <section aria-label="반납 완료 내역">
+            <h3>반납 완료 · 수정하기</h3>
+            <p>잘못 입력한 남은 길이를 수정하면 창고 재고와 현장 사용량에 함께 반영됩니다.</p>
+            {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
+            {data.trips.filter(t => t.returned != null).map(t => (
+              <article key={t.id}>
+                <strong>{t.brand} {t.product_code} · {t.label}</strong>
+                <p>반출 {t.issued}m → 반납 {t.returned}m · 사용 {metres(Number(t.issued) - Number(t.returned))}m</p>
+                {editingReturn?.id === t.id ? (
+                  <div>
+                    <label>
+                      수정할 반납 길이 (m)
+                      <input type="number" inputMode="decimal" min="0" max={t.issued} step="any"
+                        value={corrected} disabled={busy || pending || disabled}
+                        onChange={e => setCorrected(e.target.value)} />
+                    </label>
+                    <button type="button" disabled={busy || pending || disabled || loading ||
+                      data.locked || !canReturnRoll || !valid(corrected,t.issued)}
+                      onClick={() => {
+                        if (confirm(`반납량을 ${editingReturn.returned}m에서 ${corrected}m로 수정할까요?`)) run([{
+                          action:"correct_return",siteId,rollId:t.roll_id,tripId:t.id,
+                          revision:editingReturn.revision,expectedReturned:editingReturn.returned,
+                          remaining:corrected,requestId:crypto.randomUUID(),
+                        }]);
+                      }}>수정 저장</button>
+                    <button type="button" disabled={busy || pending} onClick={() => setEditingReturn(null)}>취소</button>
+                  </div>
+                ) : (
+                  <button type="button" disabled={busy || pending || disabled || loading || data.locked || !canReturnRoll}
+                    onClick={() => { setEditingReturn({...t}); setCorrected(String(t.returned)); setError(""); }}>
+                    반납 수량 수정하기
+                  </button>
+                )}
+              </article>
+            ))}
+            {!data.trips.some(t => t.returned != null) && <p>반납 완료한 롤이 없습니다.</p>}
+          </section>
 
           <details>
             <summary>
