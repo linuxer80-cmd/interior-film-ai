@@ -18,7 +18,7 @@ export function workerDestination(value) {
 
   if (
     new RegExp(
-      `^/worker/site/${uuid}$`,
+      `^/worker/site/${uuid}(?:\\?section=(?:info|film|photos|expenses|report))?$`,
       "i"
     ).test(value || "")
   ) {
@@ -141,3 +141,4 @@ export async function loadMyWorkerSites({
 
   return result;
 }
+

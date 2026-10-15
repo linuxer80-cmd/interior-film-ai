@@ -1,3 +1,4 @@
+import { REPORT_REMINDER_TYPE, koreaDay, reminderWindow, currentReportReminder, reportReminderNotice } from "../../../lib/workReportReminders.mjs";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 
@@ -1145,6 +1146,26 @@ export async function POST(
         body,
       );
 
+    // Re-check at delivery time: a queued notice must not go to a replaced leader,
+    // or to a site whose dates/report changed after the cron ran.
+    if (notification?.type === REPORT_REMINDER_TYPE) {
+      const now = new Date();
+      const date = koreaDay(now);
+      if (!reminderWindow(now)) return json({success:true,sent:0,skipped:"outside_report_window"});
+      const {site,leaders} = await currentReportReminder(supabase, notification.reference_id, date);
+      const leader = leaders.find(worker =>
+        worker.id === notification.recipient_worker_id &&
+        worker.user_id === notification.recipient_user_id &&
+        worker.company_id === notification.company_id
+      );
+      if (!site || !leader) return json({success:true,sent:0,skipped:"report_or_assignment_changed"});
+      const expected = reportReminderNotice(site,leader,date);
+      if (notification.dedupe_key !== expected.dedupe_key)
+        return json({success:true,sent:0,skipped:"stale_reminder"});
+      // Keep the report tab even if an old webhook payload had a generic link.
+      notification = {...notification,link:expected.link};
+    }
+
     const recipientType =
       cleanText(
         notification?.recipient_type,
@@ -1363,3 +1384,4 @@ export async function POST(
     );
   }
            }
+
