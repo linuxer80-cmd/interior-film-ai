@@ -65,7 +65,7 @@ export default function SiteRegisterModal({
   const [busy, setBusy] = useState(false);
   const [screenshotBusy, setScreenshotBusy] = useState(false);
   const [inputMode, setInputMode] = useState("direct");
-  const [registrationStatus, setRegistrationStatus] = useState("consulting");
+  const registrationStatus = consultation ? "consulting" : "scheduled";
   const [callBusy, setCallBusy] = useState(false);
   const [saved, setSaved] = useState(null);
 
@@ -93,7 +93,6 @@ export default function SiteRegisterModal({
     if (!open) return;
 
     setInputMode("direct");
-    setRegistrationStatus("consulting");
     setConsultation(null);
     setForm({ ...emptyForm, work_dates: [] });
     setCustomer({ ...emptyCustomer });
@@ -279,10 +278,6 @@ export default function SiteRegisterModal({
         );
       }
 
-      if (registrationStatus === "scheduled" && !days.length) {
-        throw Error("시공 예정으로 저장하려면 시공일을 선택해주세요.");
-      }
-
       let customerName = form.customer_name;
       let customerPhone = form.customer_phone;
 
@@ -466,13 +461,8 @@ export default function SiteRegisterModal({
 
             <section>
               <h3>현장 상태 · 일정</h3>
-              <div className="status-options" role="group" aria-label="현장 상태">
-                {[["consulting", "상담 중"], ["scheduled", "시공 예정"]].map(([value, label]) => (
-                  <button key={value} type="button" aria-pressed={registrationStatus === value}
-                    onClick={() => setRegistrationStatus(value)}>{label}</button>
-                ))}
-              </div>
-              <p className="intro">{registrationStatus === "scheduled" ? "확정된 시공일을 선택하세요. 여러 날짜를 선택할 수 있어요." : "일정이 아직 정해지지 않았다면 비워두세요."}</p>
+              <p><strong>{registrationStatus === "scheduled" ? "시공예정으로 저장" : "상담중으로 저장"}</strong></p>
+              <p className="intro">{registrationStatus === "scheduled" ? "시공일이 되면 자동으로 시공중으로 바뀝니다. 일정은 나중에 정해도 됩니다." : "음성·문자·카톡으로 등록한 현장입니다. 시공 일정 확정은 현장 상세에서 진행하세요."}</p>
               <WorkDatePicker value={form.work_dates} onChange={(value) => field("work_dates", value)} disabled={blocked || !!saved} />
             </section>
 
@@ -879,4 +869,5 @@ export default function SiteRegisterModal({
     </div>
   );
                     }
+
 

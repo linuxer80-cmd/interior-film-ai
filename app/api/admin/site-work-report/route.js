@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { syncAfterReport } from "../../../../lib/siteLifecycle.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -253,9 +254,11 @@ export async function POST(request) {
       throw result.error;
     }
 
+    const statusWarning = await syncAfterReport(db, profile.company_id, body.siteId);
     return json({
       success: true,
       ...result.data,
+      statusWarning,
     });
   } catch (error) {
     console.error(
@@ -272,3 +275,4 @@ export async function POST(request) {
     );
   }
 }
+

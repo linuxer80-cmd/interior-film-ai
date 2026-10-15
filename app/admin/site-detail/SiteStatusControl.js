@@ -170,7 +170,7 @@ export default function SiteStatusControl({
         <div>
           {site.status === "completed"
             ? "현장은 시공 완료 상태입니다. 보고서 작성과 검수는 이후에도 진행할 수 있습니다."
-            : "관리자가 보고서 없이 시공 완료로 변경할 수 있습니다. 보고서 작성·검수 상태는 별도로 관리합니다."}
+            : "첫 시공일이 되면 시공중, 완료보고를 제출하면 시공완료로 자동 변경됩니다. 검수 상태는 별도로 관리하며, 위에서 직접 변경할 수도 있습니다."}
         </div>
 
         {site.status === "completed" && (
@@ -182,7 +182,7 @@ export default function SiteStatusControl({
 
         {site.status === "consulting" && (
           <div>
-            시작 날짜와 종료 날짜를 저장하면 시공 예정으로
+            시공 날짜를 확정해 저장하면 시공 예정으로
             변경됩니다.
           </div>
         )}
@@ -199,3 +199,4 @@ export default function SiteStatusControl({
     </section>
   );
 }
+

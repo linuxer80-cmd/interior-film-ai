@@ -1,6 +1,7 @@
 import { resolveWorkerSite } from "../../../../lib/workerSiteAccess.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { syncAfterReport } from "../../../../lib/siteLifecycle.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -595,16 +596,18 @@ export async function POST(request) {
       ],
     });
 
+    const statusWarning = await syncAfterReport(supabase, worker.company_id, siteId);
     return NextResponse.json({
       success: true,
       reportId: report.reportId,
+      statusWarning,
       review_status: "pending",
       ai_registered: false,
       role: assignment.role,
       materialCount: report.materialCount,
       expenseCount: report.expenseCount,
       message:
-        "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
+        statusWarning || "완료보고가 저장되었습니다. 관리자 검수를 기다려주세요.",
     });
   } catch (error) {
     console.error(
@@ -634,3 +637,4 @@ export async function POST(request) {
     );
   }
 }
+

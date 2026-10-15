@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { syncSiteLifecycle } from "../../../../lib/siteLifecycle.mjs";
 import { dispatchLaborNotifications } from "../../../../lib/laborPush";
 
 export const runtime = "nodejs";
@@ -27,6 +28,13 @@ export async function GET(request) {
     }
   );
 
+  let lifecycleError = false;
+  try {
+    await syncSiteLifecycle(db);
+  } catch (error) {
+    lifecycleError = true;
+    console.error("site lifecycle maintenance", error?.code || error?.message);
+  }
   const { error } = await db.rpc("expire_labor_jobs");
 
   if (error) {
@@ -39,11 +47,13 @@ export async function GET(request) {
   await dispatchLaborNotifications(db);
 
   return Response.json(
-    { ok: true },
+    { ok: !lifecycleError, ...(lifecycleError ? { error: "Site status maintenance failed" } : {}) },
     {
+      status: lifecycleError ? 503 : 200,
       headers: {
         "Cache-Control": "no-store",
       },
     }
   );
 }
+

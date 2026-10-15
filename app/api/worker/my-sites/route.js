@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { nextSiteStatus } from "../../../../lib/siteLifecycle.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -222,12 +223,13 @@ async function companySites(
 
       result.push({
         ...site,
+        status: nextSiteStatus(site),
         work_dates: explicit
           ? dates.map((day) => day.work_date)
           : null,
         site_id: site.id,
         worker_id: (myDates.find(day => day.role === "leader") || myDates[0] || myLegacy.find(item => item.role === "leader") || myLegacy[0]).worker_id,
-        site_status: site.status,
+        site_status: nextSiteStatus(site),
         worker_role: role,
         my_role: role,
         ...(dates.length
@@ -708,3 +710,4 @@ export async function GET(request) {
     );
   }
 }
+

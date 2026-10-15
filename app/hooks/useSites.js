@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
 import { saveConsultation } from "../../lib/saveConsultationClient";
 
 function makeSafeFileName(fileName = "photo.jpg") {
@@ -137,6 +138,19 @@ export default function useSites({ companyId }) {
       setSitesMessage("");
 
       try {
+        try {
+          const { data: auth } = await supabase.auth.getSession();
+          if (auth?.session) {
+            const response = await fetch("/api/admin/site-status/sync", {
+              method: "POST", headers: { Authorization: `Bearer ${auth.session.access_token}` },
+              signal: AbortSignal.timeout(10000),
+            });
+            if (!response.ok) throw Error("상태 자동 변경 지연");
+          }
+        } catch {
+          setSitesMessage("현장 상태 자동 변경이 지연되고 있습니다. 새로고침하면 재시도합니다.");
+        }
+
         const { data, error } = await supabase
           .from("sites")
           .select(`
@@ -524,9 +538,7 @@ export default function useSites({ companyId }) {
           deposit_amount: toNumberOrNull(form.deposit_amount),
           source: form.source || "phone",
 
-          status:
-            form.status ||
-            (form.schedule_start ? "scheduled" : "consulting"),
+          status: initialSiteStatus(form),
 
           memo: form.memo?.trim() || null,
 
@@ -544,17 +556,6 @@ export default function useSites({ companyId }) {
           Object.assign(insertData, dateBounds(dates), {
             work_dates: dates,
           });
-
-          if (
-            !form.status ||
-            ["consulting", "scheduled"].includes(form.status)
-          ) {
-            insertData.status = form.consultation_quote_seed
-              ? "consulting"
-              : dates.length
-                ? "scheduled"
-                : "consulting";
-          }
         }
 
         const materials = Array.isArray(form.materials)
@@ -1063,3 +1064,4 @@ export default function useSites({ companyId }) {
     clearSitesMessage,
   };
             }
+

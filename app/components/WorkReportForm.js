@@ -563,6 +563,11 @@ export default function WorkReportForm({
 
       setProgress("완료보고 저장 완료");
 
+      if (success.statusWarning) {
+        setMessage(success.statusWarning);
+        return;
+      }
+
       if (!owner) {
         try {
           await onSubmitted?.(success);
@@ -1073,3 +1078,4 @@ function Photo({ entry, onRemove }) {
     </div>
   );
 }
+
