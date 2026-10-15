@@ -1,4 +1,5 @@
 "use client";
+import KakaoLoginButton from "../components/KakaoLoginButton";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -914,6 +915,7 @@ export default function LoginPage() {
                 업체 회원가입
               </Link>
             </div>
+          <KakaoLoginButton disabled={loading} />
           </form>
         )}
 
