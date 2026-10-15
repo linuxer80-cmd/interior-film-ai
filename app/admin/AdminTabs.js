@@ -6,7 +6,6 @@ import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
-  { href: "/admin/alimtalk", label: "카카오 알림톡", description: "알림톡 사용 설정 · 발송 내역", icon: "chat" },
   { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
     href: "/jobs",
@@ -256,7 +255,6 @@ export default function AdminTabs({
 
           <a href="/admin/material-order">자재 주문</a>
           <a href="/admin/billing">요금제 · 결제</a>
-          <a href="/admin/alimtalk">카카오 알림톡</a>
         </nav>
       )}
 
@@ -290,4 +288,3 @@ export default function AdminTabs({
     </section>
   );
                 }
-
