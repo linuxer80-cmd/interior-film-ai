@@ -6,7 +6,6 @@ import Link from "next/link";
 export default function StartPage() {
   const installPrompt = useRef(null);
 
-  const [role, setRole] = useState("");
   const [showInstall, setShowInstall] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [message, setMessage] = useState("");
@@ -133,61 +132,15 @@ export default function StartPage() {
         <p className="intro">어떤 역할로 이용하시나요?</p>
 
         <div className="cards">
-          <button
-            type="button"
-            className="card admin"
-            onClick={() =>
-              setRole(role === "admin" ? "" : "admin")
-            }
-            aria-expanded={role === "admin"}
-            aria-controls="admin-guide"
-          >
+          <Link className="card admin" href="/login?role=owner">
             <strong>관리자로 시작하기 →</strong>
             <span>현장 · 견적 · 일정 · 자재 · 정산 관리</span>
-          </button>
-
-          {role === "admin" && (
-            <section id="admin-guide" className="guide">
-              <h2>회원가입이 필요한 서비스입니다</h2>
-              <p>
-                기존 회원은 로그인하시고, 처음 이용하시는
-                분은 업체 회원가입을 진행해주세요.
-              </p>
-              <Link href="/login">관리자 로그인</Link>
-              <Link href="/signup" className="light">
-                업체 회원가입
-              </Link>
-            </section>
-          )}
-
-          <button
-            type="button"
-            className="card worker"
-            onClick={() =>
-              setRole(role === "worker" ? "" : "worker")
-            }
-            aria-expanded={role === "worker"}
-            aria-controls="worker-guide"
-          >
+          </Link>
+          <Link className="card worker" href="/login?role=worker">
             <strong>시공자로 시작하기 →</strong>
-            <span>
-              내 현장 · 시공 일정 · 완료보고 · 근무금액
-            </span>
-          </button>
-
-          {role === "worker" && (
-            <section id="worker-guide" className="guide">
-              <h2>등록된 시공자 계정으로 이용해주세요</h2>
-              <p>
-                소속 업체 관리자가 등록한 계정으로
-                로그인해주세요. 계정이 없다면 업체
-                관리자에게 등록을 요청해주세요.
-              </p>
-              <Link href="/worker/login?next=%2Fworker">
-                시공자 로그인
-              </Link>
-            </section>
-          )}
+            <span>내 현장 · 시공 일정 · 완료보고 · 근무금액</span>
+          </Link>
+          <p>이메일 또는 카카오로 로그인할 수 있습니다.</p>
         </div>
 
         {showInstall && (
@@ -273,38 +226,40 @@ export default function StartPage() {
           font: inherit;
           cursor: pointer;
         }
-        .card {
+        :global(.card) {
           width: 100%;
           padding: 24px;
           border-radius: 22px;
+          text-decoration: none;
+          display: block;
           text-align: left;
           box-sizing: border-box;
         }
-        .card strong {
+        :global(.card) strong {
           display: block;
           font-size: 21px;
         }
-        .card span {
+        :global(.card) span {
           display: block;
           margin-top: 8px;
           font-size: 14px;
           line-height: 1.7;
         }
-        .admin {
+        :global(.admin) {
           border: 1px solid #182620;
           background: #182620;
           color: #fff;
           box-shadow: 0 8px 24px rgba(24,38,32,0.12);
         }
-        .admin span {
+        :global(.admin) span {
           color: #d6dfd7;
         }
-        .worker {
+        :global(.worker) {
           border: 1px solid #dce1d8;
           background: #fff;
           color: #182620;
         }
-        .worker span {
+        :global(.worker) span {
           color: #687267;
         }
         .guide {
