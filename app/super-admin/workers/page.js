@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {supabase} from '../../../lib/supabase';
+import OperationsMonitor from '../OperationsMonitor';
 import styles from './workers.module.css';
 const date=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'기록 없음';
 const kindName={employee:'업체 직원',freelancer:'협력·프리랜서',unspecified:'관계 미지정'};
@@ -14,6 +15,7 @@ export default function SuperWorkers(){
  const [data,setData]=useState(null),[query,setQuery]=useState(''),[filters,setFilters]=useState({q:'',status:'all',company:'',kind:'account',page:1});
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[reload,setReload]=useState(0);
  const lock=useRef(false);
+ useEffect(()=>{const p=new URLSearchParams(window.location.search);const kind=['account','unlinked','pending'].includes(p.get('kind'))?p.get('kind'):'account';const company=p.get('company')||'',q=(p.get('q')||'').slice(0,100);if(company||q||kind!=='account'){setQuery(q);setFilters(f=>({...f,kind,company:/^[\da-f]{8}-[\da-f-]{27}$/i.test(company)?company:'',q,page:1}));}},[]);
  useEffect(()=>{const controller=new AbortController();let active=true;setLoading(true);setError('');setData(null);
  request(`/api/super-admin/workers?${new URLSearchParams(filters)}`,null,controller.signal).then(r=>{if(active)setData(r);}).catch(e=>{if(active&&e.name!=='AbortError')setError(e.message);}).finally(()=>{if(active)setLoading(false);});
  return()=>{active=false;controller.abort();};},[filters,reload]);
@@ -45,6 +47,7 @@ export default function SuperWorkers(){
    {data.items.map(row=><article key={row.id} className={styles.card}>
     <h2>{row.name}</h2><p>{row.kind==='unlinked'?'로그인 계정 미연결':row.email||'이메일 없음'} · {row.active?'활성':'비활성'}</p>
     <p>연락처 {row.phones.join(' · ')||'미등록'}</p>
+    {row.kind==='account'&&<p>최근 로그인 {date(row.lastSignIn)}{row.lastSignIn&&Date.parse(row.lastSignIn)<Date.now()-30*86400000?' · 30일 이상 로그인 기록 없음':''}</p>}
     <p>{row.kind==='unlinked'?'명단 등록':'가입'} {date(row.createdAt)}{row.kind!=='unlinked'&&<> · 이메일 {row.emailConfirmed?'인증 완료':'미인증'}</>}</p>
     {row.kind==='account'&&<><p>등록 일당 {row.dailyWage==null?'미등록':`${Number(row.dailyWage).toLocaleString('ko-KR')}원`} · {row.seeking?'구직 중':row.published?'프로필 공개':'비공개'}</p><p>{row.region||'지역 미등록'} · 경력 {row.experience??'미등록'}{row.experience!=null?'년':''}</p></>}
     <details><summary>프로필·업체 연결 상세</summary>
@@ -53,9 +56,11 @@ export default function SuperWorkers(){
      {row.memberships.length?row.memberships.map(m=><p key={m.workerId}><Link href={`/super-admin/company/${m.companyId}`}>{m.companyName}</Link> · {kindName[m.relationship]} · {m.active?'연결 명단 활성':'명단 비활성'}{!m.companyActive?' · 업체 중지':''}</p>):<p>연결된 업체가 없습니다.</p>}
      <small>계정/명단 ID: {row.id}</small>
     </details>
+    {['account','unlinked'].includes(row.kind)&&<OperationsMonitor type={row.kind} id={row.id} lazy/>}
     {row.kind==='account'&&(row.published||row.seeking)&&<button disabled={busy||loading} onClick={()=>unpublish(row)}>구직·프로필 공개 내리기</button>}
    </article>)}
    <nav className={styles.tabs} aria-label='페이지'><button disabled={loading||busy||data.page<=1} onClick={()=>setFilters(f=>({...f,page:data.page-1}))}>이전</button><span>{data.page} / {Math.max(1,Math.ceil(data.total/data.pageSize))}</span><button disabled={loading||busy||data.page*data.pageSize>=data.total} onClick={()=>setFilters(f=>({...f,page:data.page+1}))}>다음</button></nav>
   </>}
  </main>;
 }
+

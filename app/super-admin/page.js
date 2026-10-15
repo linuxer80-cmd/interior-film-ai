@@ -20,6 +20,10 @@ export default function SuperAdminPage() {
   const [userEmail, setUserEmail] = useState("");
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
+  const [companyStatus, setCompanyStatus] = useState("all");
+  const [companyPlan, setCompanyPlan] = useState("");
+  const [companySort, setCompanySort] = useState("newest");
+  const [companyPage, setCompanyPage] = useState(1);
   const [message, setMessage] = useState("");
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [pushSupported, setPushSupported] = useState(false);
@@ -312,9 +316,11 @@ export default function SuperAdminPage() {
 
   const filteredCompanies = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return companies;
-
     return companies.filter((company) => {
+      if (companyStatus === "active" && company.is_active !== true) return false;
+      if (companyStatus === "inactive" && company.is_active === true) return false;
+      if (companyStatus === "new" && !(Date.parse(company.created_at) >= Date.now() - 30 * 86400000)) return false;
+      if (companyPlan && (company.subscription_plan || "basic") !== companyPlan) return false;
       const text = [
         company.company_name,
         company.slug,
@@ -328,8 +334,13 @@ export default function SuperAdminPage() {
         .toLowerCase();
 
       return text.includes(keyword);
-    });
-  }, [companies, search]);
+    }).sort((a, b) => companySort === "name"
+      ? String(a.company_name || "").localeCompare(String(b.company_name || ""), "ko")
+      : String(b.created_at || "").localeCompare(String(a.created_at || "")) || a.id.localeCompare(b.id));
+  }, [companies, search, companyStatus, companyPlan, companySort]);
+
+  useEffect(() => { setCompanyPage(1); }, [search, companyStatus, companyPlan, companySort]);
+  const displayPage = Math.min(companyPage, Math.max(1, Math.ceil(filteredCompanies.length / 20)));
 
   const totalCount = companies.length;
   const activeCount = companies.filter(
@@ -424,6 +435,7 @@ export default function SuperAdminPage() {
               <h2 id="operation-menu-title">운영 관리</h2>
             </div>
 
+            <p className={ui.help}>최근 30일 가입 {companies.filter(c=>Date.parse(c.created_at)>=Date.now()-30*86400000).length}개 · 업체별 운영 현황은 업체 관리에서 확인하세요.</p>
             <div className={ui.tasks}>
               <MenuCard
                 href="#companies"
@@ -436,7 +448,7 @@ export default function SuperAdminPage() {
                 href="/super-admin/workers"
                 kind="people"
                 title="시공자 관리"
-                description="가입 계정 · 연결 업체 · 구직 공개 관리"
+                description="최근 로그인 · 업체 연결 · 배정·보고 모니터링"
               />
 
               <MenuCard
@@ -568,11 +580,21 @@ export default function SuperAdminPage() {
             </div>
           )}
 
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+            <label>운영 상태 <select value={companyStatus} onChange={e => setCompanyStatus(e.target.value)} style={{...styles.searchInput,width:"auto",margin:0}}>
+              <option value="all">전체</option><option value="active">운영 중</option><option value="inactive">중지</option><option value="new">최근 30일 가입</option>
+            </select></label>
+            <label>요금제 <select value={companyPlan} onChange={e => setCompanyPlan(e.target.value)} style={{...styles.searchInput,width:"auto",margin:0}}>
+              <option value="">전체 요금제</option>{[...new Set(companies.map(c=>c.subscription_plan||"basic"))].sort().map(plan=><option key={plan} value={plan}>{plan}</option>)}
+            </select></label>
+            <label>정렬 <select value={companySort} onChange={e=>setCompanySort(e.target.value)} style={{...styles.searchInput,width:"auto",margin:0}}><option value="newest">최근 가입순</option><option value="name">업체명순</option></select></label>
+          </div>
+          <p className={ui.help}>검색 결과 {filteredCompanies.length}개 · 업체를 펼치고 ‘운영 모니터링’에서 현장·배정·보고 상태를 확인하세요.</p>
           <div style={styles.companyList}>
             {filteredCompanies.length === 0 ? (
               <div style={styles.empty}>검색 결과가 없습니다.</div>
             ) : (
-              filteredCompanies.map((company) => (
+              filteredCompanies.slice((displayPage-1)*20,displayPage*20).map((company) => (
                 <CompanyCard
                   key={company.id}
                   company={company}
@@ -583,6 +605,11 @@ export default function SuperAdminPage() {
               ))
             )}
           </div>
+          <nav aria-label="업체 목록 페이지" style={{display:"flex",gap:12,justifyContent:"center",alignItems:"center",marginTop:16}}>
+            <button className={ui.secondary} disabled={displayPage<=1} onClick={()=>setCompanyPage(displayPage-1)}>이전</button>
+            <span>{displayPage} / {Math.max(1,Math.ceil(filteredCompanies.length/20))}</span>
+            <button className={ui.secondary} disabled={displayPage*20>=filteredCompanies.length} onClick={()=>setCompanyPage(displayPage+1)}>다음</button>
+          </nav>
         </section>
       )}
 
@@ -721,6 +748,7 @@ function CompanyCard({ company, changing, onToggle, onManage }) {
           <button type="button" onClick={onManage}>
             회사 관리
           </button>
+          <a href={`/super-admin/company/${company.id}#monitor`}>운영 모니터링</a>
           <a href={`/super-admin/company/${company.id}#photos`}>
             업체 사진 보기
           </a>
@@ -1011,3 +1039,4 @@ const styles = {
     cursor: "pointer",
   },
 };
+

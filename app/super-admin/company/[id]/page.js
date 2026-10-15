@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
+import OperationsMonitor from "../../OperationsMonitor";
 import CompanyPhotoGallery from "../../CompanyPhotoGallery";
 import ToolIllustration from "../../../components/ui/ToolIllustration";
 
@@ -30,6 +31,7 @@ const LIMIT_FIELDS = [
 
 const MENUS = [
   ["summary", "요약"],
+  ["monitor", "운영 현황"],
   ["usage", "사용량"],
   ["info", "회사정보"],
   ["accounts", "계정"],
@@ -203,8 +205,8 @@ export default function SuperAdminCompanyDetailPage() {
       setError("");
       setMessage("");
 
-      const nextMenu =
-        window.location.hash === "#photos" ? "photos" : "summary";
+      const requestedMenu = window.location.hash.slice(1);
+      const nextMenu = MENUS.some(([id])=>id===requestedMenu) ? requestedMenu : "summary";
 
       setMenu(nextMenu);
       setPhotosVisited(nextMenu === "photos");
@@ -233,9 +235,10 @@ export default function SuperAdminCompanyDetailPage() {
 
   useEffect(() => {
     function handleHashChange() {
-      if (window.location.hash === "#photos") {
-        setMenu("photos");
-        setPhotosVisited(true);
+      const next = window.location.hash.slice(1);
+      if (MENUS.some(([id])=>id===next)) {
+        setMenu(next);
+        if (next === "photos") setPhotosVisited(true);
       }
     }
 
@@ -252,7 +255,7 @@ export default function SuperAdminCompanyDetailPage() {
     if (id === "photos") setPhotosVisited(true);
 
     const url = new URL(window.location.href);
-    url.hash = id === "photos" ? "photos" : "";
+    url.hash = id === "summary" ? "" : id;
     window.history.replaceState(null, "", url);
   }
 
@@ -478,9 +481,12 @@ export default function SuperAdminCompanyDetailPage() {
               </div>
             )}
 
+            <button type="button" onClick={()=>chooseMenu("monitor")} style={{...styles.button,marginTop:16,width:"100%"}}>현장·배정·보고 운영 현황 보기</button>
             <p style={styles.idText}>회사 ID: {company.id}</p>
           </section>
         )}
+
+        {menu === "monitor" && <OperationsMonitor type="company" id={companyId} />}
 
         {menu === "usage" && (
           <section style={styles.card}>
@@ -781,7 +787,7 @@ const styles = {
   },
   menus: {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 5,
     marginBottom: 18,
   },
@@ -993,3 +999,4 @@ const styles = {
     fontSize: 20,
   },
 };
+
