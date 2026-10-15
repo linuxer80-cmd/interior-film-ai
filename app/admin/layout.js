@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useEffect, useState } from "react";
@@ -124,7 +123,6 @@ export default function AdminLayout({ children }) {
         </button>
       </div>
 
-      <p style={{margin:"10px 14px"}}><Link href="/account/kakao">카카오 계정 연결 · 연결 상태 확인</Link></p>
       {children}
     </>
   );
