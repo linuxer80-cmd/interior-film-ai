@@ -189,7 +189,11 @@ export async function GET(request) {
 
     if(params.get('mode')==='notifications') {
       const recruiting=await canReceiveRecruitment(db,user.id);
-      let noticeQuery=scopeLaborNotifications(db.from('labor_notifications').select('id,title,message,link,read_at,created_at'),!companyId);
+      const fields='id,title,message,link,read_at,created_at';
+      let noticeQuery=scopeLaborNotifications(db.from('labor_notifications')
+        .select(companyId ? fields+',labor_jobs!inner(company_id)' : fields),!companyId);
+      // Scope before LIMIT: unrelated notices must not crowd out company notices.
+      if(companyId) noticeQuery=noticeQuery.eq('labor_jobs.company_id',companyId);
       if(!recruiting) noticeQuery=noticeQuery.neq('title','구인 제안');
       const notices=value(await noticeQuery
         .eq('user_id',user.id)
@@ -197,7 +201,7 @@ export async function GET(request) {
         .limit(50)
       );
 
-      return json({notifications:notices});
+      return json({notifications:notices.map(({labor_jobs,...notice})=>notice)});
     }
 
     if (params.get('mode') === 'me') {
@@ -567,6 +571,16 @@ export async function POST(request) {
 
     if(body.action==='read_notification') {
       if(!uuid(body.id))throw fail('알림을 확인해주세요.');
+
+      if(companyId) {
+        const notice=value(await db.from('labor_notifications')
+          .select('id,labor_jobs!inner(company_id)')
+          .eq('id',body.id)
+          .eq('user_id',user.id)
+          .eq('labor_jobs.company_id',companyId)
+          .maybeSingle());
+        if(!notice) throw fail('본인 업체의 알림만 확인할 수 있습니다.',403);
+      }
 
       value(await scopeLaborNotifications(db.from('labor_notifications')
         .update({read_at:new Date().toISOString()}),!companyId)
