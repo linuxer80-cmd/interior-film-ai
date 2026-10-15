@@ -768,8 +768,7 @@ export default function SiteOperations({
                 color: "#64748b",
               }}
             >
-              현재 등록된 제품 사진입니다.
-              아래 변경 이력의 과거 사진은 아닙니다.
+              전체 반출량에서 반입량을 뺀 사용량입니다.
             </p>
 
             {!data.materials.length && (
@@ -797,11 +796,11 @@ export default function SiteOperations({
                     {material.code || material.name}
                   </strong>
 
-                  {(data.issues || []).filter(issue => issue.materialId === material.id && !issue.voided).map(issue => (
-                    <p key={issue.id} style={{ margin: "6px 0", fontSize: 13, color: "#475569" }}>
-                      반출 {issue.quantity}{material.unit} · {date(issue.at)}
-                    </p>
-                  ))}
+                  <p style={{ margin: "6px 0", fontSize: 14, fontWeight: 700, color: "#475569" }}>
+                    {material.used == null
+                      ? "사용량 · 반입 확인 필요"
+                      : `사용량 ${Number(material.used).toLocaleString("ko-KR", { maximumFractionDigits: 3 })}${material.unit}`}
+                  </p>
 
                   {material.name && (
                     <p
