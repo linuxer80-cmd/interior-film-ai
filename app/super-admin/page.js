@@ -446,6 +446,7 @@ export default function SuperAdminPage() {
                 description="주문 확인 · 출고 관리"
               />
 
+              <MenuCard href="/super-admin/alimtalk" kind="chat" title="카카오 알림톡" description="연결 상태 · 업체 발송 건수 관리" />
               <MenuCard
                 href="/super-admin/notifications"
                 kind="report"
@@ -1011,3 +1012,4 @@ const styles = {
     cursor: "pointer",
   },
 };
+

@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { dispatchNotificationAlimtalk } from "../../../lib/alimtalkService";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 
@@ -1145,6 +1147,12 @@ export async function POST(
         body,
       );
 
+    // Independent from device subscriptions and push delivery. Disabled by default.
+    after(async () => {
+      try { await dispatchNotificationAlimtalk(supabase, notification?.id); }
+      catch { console.error("alimtalk dispatch failed", { notificationId: notification?.id }); }
+    });
+
     const recipientType =
       cleanText(
         notification?.recipient_type,
@@ -1363,3 +1371,4 @@ export async function POST(
     );
   }
            }
+
