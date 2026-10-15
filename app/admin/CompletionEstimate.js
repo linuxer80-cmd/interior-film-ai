@@ -369,6 +369,18 @@ export default function CompletionEstimate({
               1명이 3일 일하면 1명·3공수입니다. 단가가 바뀐 사람은 해당 단가별 인원에 각각 포함됩니다.
             </p>
 
+            <button type="button" style={{ ...button, marginTop: 10 }} disabled={!automatic}
+              onClick={() => {
+                if (!window.confirm("필름 물량과 단가만 최신 현장 내역으로 바꿀까요? 직접 수정한 필름 항목은 대체됩니다.")) return;
+                change({ ...draft, items: [
+                  ...automatic.items.filter(row => row.category === "film").map(row => ({ ...row })),
+                  ...draft.items.filter(row => row.category !== "film"),
+                ] });
+              }}>필름 수량·단가 다시 불러오기</button>
+            <p style={{fontSize:13,color:"#64748b"}}>
+              필름 수량은 반출량에서 반입량을 뺀 사용량입니다. 반입량을 아직 입력하지 않았다면 현장 자재에서 반입량을 확인한 뒤 최신 현장 내역을 불러와주세요.
+            </p>
+
             <details style={{ marginTop: 16 }}>
             <summary style={{ cursor: "pointer", padding: "10px 0", fontWeight: 700 }}>업체·현장 정보 확인 / 수정</summary>
             <p>{draft.header?.customer_name || "거래처 미입력"} · {draft.header?.site_name || "현장명 미입력"}</p>
