@@ -402,11 +402,26 @@ async function getUsedQuantity({
  * =========================================================
  */
 
+// Scope this context to one HTTP request: no stale quotas or plans across requests.
+export function createUsageCheckContext() { return { plans: new Map() }; }
+export function loadUsagePlan(supabase, planCode, context = createUsageCheckContext()) {
+  const key = String(planCode || "").trim().toLowerCase();
+  if (!context.plans.has(key)) {
+    context.plans.set(key, supabase.from("subscription_plans")
+      .select(`plan_code, plan_name, is_active, ${[...new Set(Object.values(USAGE_LIMITS).map(item => item.limitField))].join(",")}`)
+      .eq("plan_code", key).maybeSingle());
+    // Supabase query builders are thenables, not cached promises.
+    context.plans.set(key, Promise.resolve(context.plans.get(key)));
+  }
+  return context.plans.get(key);
+}
+
 export async function checkUsageLimit({
   company,
   eventType,
   requestedQuantity = 1,
   supabase: providedSupabase = null,
+  context = createUsageCheckContext(),
 }) {
   try {
     if (!company?.id) {
@@ -454,21 +469,7 @@ export async function checkUsageLimit({
     const {
       data: plan,
       error: planError,
-    } = await supabase
-      .from(
-        "subscription_plans"
-      )
-      .select(`
-        plan_code,
-        plan_name,
-        is_active,
-        ${config.limitField}
-      `)
-      .eq(
-        "plan_code",
-        planCode
-      )
-      .maybeSingle();
+    } = await loadUsagePlan(supabase, planCode, context);
 
     if (planError) {
       console.error(
@@ -788,3 +789,4 @@ export function makeUsageLimitError(
       result?.remaining ?? null,
   };
     }
+

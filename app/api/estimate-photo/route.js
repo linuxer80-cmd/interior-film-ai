@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import {
   checkUsageLimit,
+  createUsageCheckContext,
+  loadUsagePlan,
   makeUsageLimitError,
 } from "../../utils/serverUsageLimit";
 
@@ -350,6 +352,7 @@ async function getCurrentMonthUploadedStorageMb({
 async function getStorageLimit({
   supabase,
   company,
+  context,
 }) {
   try {
     const planCode =
@@ -372,23 +375,7 @@ async function getStorageLimit({
     const {
       data: plan,
       error,
-    } = await supabase
-      .from(
-        "subscription_plans"
-      )
-      .select(
-        `
-          plan_code,
-          plan_name,
-          storage_mb_limit,
-          is_active
-        `
-      )
-      .eq(
-        "plan_code",
-        planCode
-      )
-      .maybeSingle();
+    } = await loadUsagePlan(supabase, planCode, context);
 
     if (error) {
       console.error(
@@ -795,17 +782,16 @@ export async function POST(request) {
      * =====================================================
      */
 
-    const uploadLimitCheck =
-      await checkUsageLimit({
+    const context = createUsageCheckContext();
+    const [uploadLimitCheck, storagePlan] = await Promise.all([checkUsageLimit({
         company,
 
         eventType:
           "image_upload",
 
         requestedQuantity: 1,
-
-        supabase,
-      });
+        supabase, context,
+      }), getStorageLimit({ supabase, company, context })]);
 
     if (!uploadLimitCheck.ok) {
       const errorPayload =
@@ -846,11 +832,7 @@ export async function POST(request) {
       fileSizeBytes /
       (1024 * 1024);
 
-    const storagePlan =
-      await getStorageLimit({
-        supabase,
-        company,
-      });
+
 
     if (!storagePlan.ok) {
       return NextResponse.json(
@@ -1333,3 +1315,4 @@ export async function POST(request) {
     );
   }
             }
+

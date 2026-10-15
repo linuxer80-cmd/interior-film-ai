@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   resolveUsageCompany,
+  getUsageAdminSupabase,
+  createUsageCheckContext,
   checkUsageLimit,
   makeUsageLimitError,
 } from "../../utils/serverUsageLimit";
@@ -53,6 +55,24 @@ export async function POST(request) {
       )
         .trim()
         .toLowerCase();
+
+    if (body.checks !== undefined) {
+      if (!/^[a-z0-9-]+$/.test(companySlug) || !Array.isArray(body.checks) || !body.checks.length || body.checks.length > 7 ||
+          new Set(body.checks.map(item => item?.event_type)).size !== body.checks.length ||
+          body.checks.some(item => !ALLOWED_EVENT_TYPES.has(item?.event_type) || item.event_type === "storage_mb" || !Number.isFinite(Number(item.requested_quantity)) || Number(item.requested_quantity) <= 0)) {
+        return NextResponse.json({ success: false, error: "사용량 확인 요청이 올바르지 않습니다." }, { status: 400 });
+      }
+      const resolved = await resolveUsageCompany(companySlug);
+      if (!resolved?.company) return NextResponse.json({ success: false, error: resolved.error || "업체 확인 실패" }, { status: resolved.status || 404 });
+      const supabase = getUsageAdminSupabase();
+      const context = createUsageCheckContext();
+      const checks = await Promise.all(body.checks.map(item => checkUsageLimit({
+        company: resolved.company, eventType: item.event_type, requestedQuantity: Number(item.requested_quantity), supabase, context,
+      })));
+      const failed = checks.find(item => !item.ok);
+      if (failed) return NextResponse.json(makeUsageLimitError(failed), { status: failed.status || 503 });
+      return NextResponse.json({ success: true, allowed: true, checks });
+    }
 
     const eventType =
       String(
@@ -407,3 +427,4 @@ export async function POST(request) {
     );
   }
             }
+

@@ -8,7 +8,7 @@ import * as search from '../lib/visualCaseSearch.js';
 
 const WORK = '00000000-0000-0000-0000-000000000001';
 function harness(options = {}) {
-  const calls = [], logs = [];
+  const calls = [], logs = [], deferred = [], updates = [];
   const tables = {
     companies: [{ id: 'mine', slug: 'test', subscription_plan: 'basic', is_active: true }],
     work_items: [{ id: WORK, company_id: 'mine', category: '싱크대', sub_category: '하부장', actual_cost: 400000 }],
@@ -21,13 +21,14 @@ function harness(options = {}) {
         select() { return q; }, eq(key, value) { rows = rows.filter(r => r[key] === value); return q; },
         in(key, values) { rows = rows.filter(r => values.includes(r[key])); return q; },
         order() { return q; }, limit(n) { rows = rows.slice(0, n); return q; },
-        insert(value) { logs.push(value); rows = [{ id: 'usage' }]; return q; },
+        insert(value) { logs.push(value); rows = [{ id: 'usage', metadata: value.metadata }]; return q; },
+        update(value) { updates.push(value); return q; },
         single: async () => ({ data: rows[0], error: null }), maybeSingle: async () => ({ data: rows[0], error: null }),
         then(done, fail) { return Promise.resolve({ data: rows, error: null }).then(done, fail); },
       }; return q;
     },
     rpc: async () => ({ data: [{ work_item_id: WORK, category: '싱크대', sub_category: '하부장', actual_cost: 1, similarity: .99 }] }),
-    storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://example.supabase.co/signed' } }) }) },
+    storage: { from: () => ({ createSignedUrls: async paths => ({ data: paths.map(path => ({ path, signedUrl: "https://example.supabase.co/signed" })) }), createSignedUrl: async () => ({ data: { signedUrl: 'https://example.supabase.co/signed' } }) }) },
   };
   const fetchImpl = async (url, request) => {
     calls.push(url);
@@ -40,8 +41,8 @@ function harness(options = {}) {
   const source = fs.readFileSync(new URL('../app/api/similar-estimate/route.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm, '').replaceAll('export ', '');
   const context = {
-    ...categories, ...visual, ...search, AbortSignal, console: { error() {}, warn() {} },
-    verifyVisualCandidates: (args) => search.verifyVisualCandidates({ ...args, fetchImpl }),
+    ...categories, ...visual, ...search, AbortSignal, console: { error() {}, warn() {}, info() {} }, cachedEmbedding: ({ load }) => load(), after: fn => deferred.push(fn),
+    verifyVisualCandidates: async (args) => { const value = await search.verifyVisualCandidates({ ...args, fetchImpl }); return options.completion ? { ...value, usageCompletion: options.completion } : value; },
     createClient: () => client, fetch: fetchImpl,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', OPENAI_API_KEY: 'test' } },
     checkUsageLimit: async () => options.limitReached ? { ok: false, status: 429 } : { ok: true, used: 0, limit: 20 },
@@ -55,7 +56,7 @@ function harness(options = {}) {
     const form = new FormData(); form.append('metadata', JSON.stringify(metadata)); form.append('images', new File(['jpeg'], 'a.jpg', { type: 'image/jpeg' }));
     return context.post(new Request('https://example.test', { method: 'POST', body: form }));
   }
-  return { calls, logs, post };
+  return { calls, logs, post, deferred, updates };
 }
 
 test('complete endpoint prices only visually verified company-owned work and records vision usage', async () => {
@@ -90,4 +91,23 @@ test('legacy requests never receive an image match without photos; quota blocks 
   const limited = harness({ limitReached: true });
   assert.equal((await limited.post()).status, 429);
   assert.equal(limited.calls.length, 0);
+});
+
+
+
+test('early response records one quota event then completes usage without changing prices', async () => {
+  let resolve;
+  const completion = new Promise(done => { resolve = done; });
+  const h = harness({ completion });
+  const response = await h.post();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.estimate.average, 400000);
+  assert.equal(h.logs.length, 1);
+  assert.equal(h.logs[0].quantity, 1);
+  assert.equal(h.deferred.length, 1);
+  resolve({ usage: { input_tokens: 246 }, diagnostics: [] });
+  await h.deferred[0]();
+  assert.equal(h.logs.length, 1);
+  assert.equal(h.updates[0].metadata.visual_usage.input_tokens, 246);
+  assert.equal(h.updates[0].metadata.estimate.average, 400000);
 });

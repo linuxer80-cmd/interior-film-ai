@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { cachedEmbedding } from "../../../lib/embeddingCache";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import {
@@ -506,7 +507,7 @@ async function insertUsageEvent({
               : null,
         },
       })
-      .select("id")
+      .select("id, metadata")
       .single();
 
   if (error) {
@@ -797,9 +798,7 @@ export async function POST(
 
     const startedAt = Date.now();
     const embedding =
-      await createEmbedding(
-        text
-      );
+      await cachedEmbedding({ companyId: company.id, model: EMBEDDING_MODEL, text, load: () => createEmbedding(text) });
     const embeddingMs = Date.now() - startedAt;
 
     /*
@@ -834,9 +833,11 @@ export async function POST(
     let candidateCount = 0;
     try {
       const analysis = { category, sub_category: subCategory, construction_scope: body?.construction_scope };
+      const hydrationStarted = Date.now();
       const candidates = await loadVisualCandidates(supabase, company.id, rawCases, analysis, process.env.NEXT_PUBLIC_SUPABASE_URL);
       candidateCount = candidates.length;
-      visual = await verifyVisualCandidates({ images, candidates, analysis, apiKey: process.env.OPENAI_API_KEY });
+      console.info("[candidate-photo-timing]", JSON.stringify({ elapsedMs: Date.now() - hydrationStarted, candidateCount }));
+      visual = await verifyVisualCandidates({ images, candidates, analysis, apiKey: process.env.OPENAI_API_KEY, deferRemainder: true });
     } catch (error) {
       console.warn("시공사례 사진 비교 실패:", error.visualStatus || "visual_unavailable", error.visualDiagnostic || { message: error.message });
       visual = { rows: [], status: error.visualStatus || "visual_unavailable", usage: error.visualUsage || null };
@@ -910,7 +911,22 @@ export async function POST(
         topSimilarity,
         visualStatus: visual.status, visualUsage: visual.usage, candidateCount,
         analysisId: body?.analysis_id, photoIndices: body?.photo_indices, pricingCases: filteredCases, estimate, diagnostics: visual.diagnostics,
+      }).catch(async error => {
+        if (visual.usageCompletion) await visual.usageCompletion;
+        throw error;
       });
+
+    if (visual.usageCompletion) {
+      after(async () => {
+        try {
+          const complete = await visual.usageCompletion;
+          const { error } = await supabase.from("usage_events").update({
+            metadata: { ...usageEvent.metadata, visual_usage: complete.usage, visual_diagnostics: complete.diagnostics },
+          }).eq("id", usageEvent.id).eq("company_id", company.id);
+          if (error) console.error("Deferred visual usage update failed", error.code);
+        } catch (error) { console.error("Deferred visual usage completion failed", error?.code || "internal"); }
+      });
+    }
 
     /*
      * =====================================================
@@ -1023,3 +1039,4 @@ export async function POST(
     );
   }
         }
+

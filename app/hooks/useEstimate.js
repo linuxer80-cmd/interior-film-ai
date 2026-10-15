@@ -338,24 +338,16 @@ export default function useEstimate({
     );
 
     const missingUploads = images.filter((image) => !uploadedPathsRef.current.has(`${normalizedCompanySlug}:${image.id}`)).length;
-    await Promise.all([
-      checkUsageBeforeAction({
-        eventType:
-          "auto_estimate",
-
-        quantity: 1,
-      }),
-
-      checkUsageBeforeAction({
-        eventType:
-          "ai_photo_analysis",
-
-        quantity:
-          images.length,
-      }),
-
-      ...(missingUploads ? [checkUsageBeforeAction({ eventType: "image_upload", quantity: missingUploads })] : []),
-    ]);
+    const response = await fetch("/api/usage-limit", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_slug: normalizedCompanySlug, checks: [
+        { event_type: "auto_estimate", requested_quantity: 1 },
+        { event_type: "ai_photo_analysis", requested_quantity: images.length },
+        ...(missingUploads ? [{ event_type: "image_upload", requested_quantity: missingUploads }] : []),
+      ] }),
+    });
+    const result = await readJsonSafely(response);
+    if (!response.ok || !result?.success || result.allowed !== true) throw new Error(result?.error || "요금제 사용량 한도를 확인해주세요.");
   }
 
   /*
@@ -1151,6 +1143,7 @@ export default function useEstimate({
     estimatePhotoPathsRef.current =
       [];
 
+    let estimateFinished = false;
     try {
       /*
        * ===================================================
@@ -1165,9 +1158,7 @@ export default function useEstimate({
         const now = performance.now();
         const elapsedMs = Math.round(now - (timing.last || timing.started));
         timing.last = now;
-        if (process.env.NODE_ENV !== "production") {
-          console.info("[estimate-timing]", stage, elapsedMs + "ms");
-        }
+        console.info("[estimate-timing]", stage, elapsedMs + "ms");
       };
       await checkEstimateStartLimits();
       markStage("usage_precheck");
@@ -1247,6 +1238,7 @@ export default function useEstimate({
       markStage("similar_usage_check");
       let searchedGroupCount = 0;
 
+      const completedByKey = new Map();
       const completedGroups =
         await mapWithConcurrency(
           baseGroups,
@@ -1259,6 +1251,8 @@ export default function useEstimate({
                 group
               );
 
+            completedByKey.set(group.key, completed);
+            if (runRef.current === runId) setGroups(baseGroups.flatMap(item => completedByKey.has(item.key) ? [completedByKey.get(item.key)] : []));
             searchedGroupCount += 1;
 
             setMessage(
@@ -1371,6 +1365,7 @@ export default function useEstimate({
        * ===================================================
        */
 
+      estimateFinished = true;
       markStage("estimate_ready");
       setResultReady(true);
       setStorageStatus("사진 저장 중...");
@@ -1432,6 +1427,7 @@ export default function useEstimate({
         );
       }
     } catch (error) {
+      if (!estimateFinished) { runRef.current += 1; setGroups([]); setTotalEstimate(null); setResultReady(false); }
       console.error(
         "자동견적 실행 오류:",
         error
@@ -1495,3 +1491,4 @@ export default function useEstimate({
     readJsonSafely,
   };
         }
+

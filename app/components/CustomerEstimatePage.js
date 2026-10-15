@@ -873,6 +873,17 @@ export default function CustomerEstimatePage({
           </section>
         )}
 
+        {screen === SCREEN.ANALYZING && groups.length > 0 && (
+          <section aria-label="완료된 부위별 견적" style={{ padding: 20 }}>
+            <h2>먼저 확인된 견적</h2>
+            <p>나머지 부위를 확인하고 있습니다. 전체 합계는 모두 완료된 뒤 표시됩니다.</p>
+            {groups.map(group => <div key={group.key} style={{ padding: 16, marginBottom: 10, borderRadius: 14, background: "#fff" }}>
+              <strong>{group.subCategory || group.category}</strong>
+              <p>{group.estimate ? `${Number(group.estimate.average).toLocaleString("ko-KR")}원` : "금액 확인 필요"}</p>
+            </div>)}
+          </section>
+        )}
+
         {screen === SCREEN.RESULT && (
           <section className={styles.contentScreen}>
             <div className={styles.screenHeader}>
@@ -1237,3 +1248,4 @@ export default function CustomerEstimatePage({
     </main>
   );
                   }
+

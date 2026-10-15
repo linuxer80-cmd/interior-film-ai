@@ -115,7 +115,7 @@ function database() {
         then(done, fail) { calls.push({ table, filters }); return Promise.resolve({ data: rows, error: null }).then(done, fail); },
       }; return q;
     },
-    storage: { from: () => ({ createSignedUrl: async path => { signed.push(path); return { data: { signedUrl: `https://example.supabase.co/signed/${path}` } }; } }) },
+    storage: { from: () => ({ createSignedUrls: async paths => { signed.push(...paths); return { data: paths.map(path => ({ path, signedUrl: `https://example.supabase.co/signed/${path}` })) }; }, createSignedUrl: async path => { signed.push(path); return { data: { signedUrl: `https://example.supabase.co/signed/${path}` } }; } }) },
   };
   return { supabase, tables, calls, signed };
 }
@@ -225,7 +225,7 @@ test('quota and image errors preserve diagnostic codes without retries or provid
   }
 });
 
-test('staged comparison stops after top three when verified, expands only for no match', async () => {
+test('parallel comparison preserves first-five priority and complete usage', async () => {
   for (const expand of [false, true]) {
     const batches = [], signals = [];
     const actual = await verifyVisualCandidates({ images: ['image'], candidates: [1,2,3,4,5,6,7,8].map(n => candidate(n)), analysis: lower, apiKey: 'test', fetchImpl: async (_, options) => {
@@ -235,11 +235,54 @@ test('staged comparison stops after top three when verified, expands only for no
       const matches = ids.map((value, i) => match(Number(value.slice(-12)), { rank: i + 1, scope_match: expand && batches.length === 1 ? 'different' : 'same' }));
       return { ok: true, json: async () => ({ output_text: JSON.stringify(result(matches)), usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 3 } } }) };
     } });
-    assert.deepEqual(batches[0], [1,2,3].map(id));
-    assert.equal(batches.length, expand ? 2 : 1);
-    if (expand) { assert.deepEqual(batches[1], [4,5,6,7,8].map(id)); assert.equal(signals[0], signals[1]); }
+    assert.deepEqual(batches[0], [1,2,3,4,5].map(id));
+    assert.equal(batches.length, 2);
+    assert.deepEqual(batches[1], [6,7,8].map(id)); assert.equal(signals[0], signals[1]);
     assert.equal(actual.status, 'verified');
-    assert.equal(actual.usage.input_tokens, expand ? 20 : 10);
-    assert.equal(actual.usage.input_tokens_details.cached_tokens, expand ? 6 : 3);
+    assert.equal(actual.usage.input_tokens, 20);
+    assert.equal(actual.usage.input_tokens_details.cached_tokens, 6);
   }
+});
+
+
+test('early first-batch result does not wait for slower second batch and retains combined usage', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const task = verifyVisualCandidates({ images: ['image'], candidates: [1,2,3,4,5,6,7,8].map(n => candidate(n)), analysis: lower, apiKey: 'test', deferRemainder: true,
+    fetchImpl: async (_, options) => {
+      const ids = JSON.parse(options.body).input[0].content.filter(c => c.type === 'input_text' && c.text.startsWith('{')).map(c => JSON.parse(c.text).candidate_id);
+      if (ids[0] === id(6)) await gate;
+      return { ok: true, json: async () => ({ output_text: JSON.stringify(result(ids.map((value, i) => match(Number(value.slice(-12)), { rank: i + 1 })))), usage: { input_tokens: 10 } }) };
+    } });
+  try {
+    const actual = await Promise.race([task, new Promise((_, reject) => setTimeout(() => reject(Error('blocked on second batch')), 500))]);
+    assert.equal(actual.status, 'verified');
+    assert.ok(actual.rows.every(row => Number(row.work_item_id.slice(-12)) <= 5));
+    assert.ok(actual.usageCompletion);
+    release();
+    assert.equal((await actual.usageCompletion).usage.input_tokens, 20);
+  } finally { release(); }
+});
+
+test('early mode still waits for fallback when first batch has no verified match', async () => {
+  const actual = await verifyVisualCandidates({ images: ['image'], candidates: [1,2,3,4,5,6,7,8].map(n => candidate(n)), analysis: lower, apiKey: 'test', deferRemainder: true,
+    fetchImpl: async (_, options) => {
+      const ids = JSON.parse(options.body).input[0].content.filter(c => c.type === 'input_text' && c.text.startsWith('{')).map(c => JSON.parse(c.text).candidate_id);
+      return { ok: true, json: async () => ({ output_text: JSON.stringify(result(ids.map((value, i) => match(Number(value.slice(-12)), { rank: i+1, scope_match: ids[0] === id(1) ? 'different' : 'same' })))), usage: { input_tokens: 10 } }) };
+    } });
+  assert.equal(actual.status, 'verified');
+  assert.ok(actual.rows.every(row => Number(row.work_item_id.slice(-12)) >= 6));
+  assert.equal(actual.usage.input_tokens, 20);
+  assert.equal(actual.usageCompletion, undefined);
+});
+
+test('batch signing partial failure retries only failed paths without changing candidate order', async () => {
+  const db = database(); const retried = [];
+  db.supabase.storage.from = () => ({
+    createSignedUrls: async paths => ({ data: paths.map((path, i) => i === 0 ? { path, error: 'temporary' } : { path, signedUrl: 'signed/' + path }) }),
+    createSignedUrl: async path => { retried.push(path); return { data: { signedUrl: 'signed/' + path } }; },
+  });
+  const loaded = await loadVisualCandidates(db.supabase, 'mine', [1,2].map(n => candidate(n)), lower, 'https://example.supabase.co');
+  assert.deepEqual(loaded.map(item => item.work_item_id), [id(1), id(2)]);
+  assert.deepEqual(retried, ['history/1.jpg']);
 });
