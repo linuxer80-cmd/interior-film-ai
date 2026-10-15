@@ -65,7 +65,7 @@ const emptyDealer = {
 export default function FilmDealerInventory() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("stock");
-  const [priceType, setPriceType] = useState("non_fire");
+  const [priceType, setPriceType] = useState("");
   const [dealerId, setDealerId] = useState("");
   const [dealer, setDealer] = useState(emptyDealer);
   const [selected, setSelected] = useState(null);
@@ -230,7 +230,7 @@ export default function FilmDealerInventory() {
       setQuery("");
       setResults([]);
       setSearched(false);
-      setPriceType("non_fire");
+      setPriceType("");
       setPrice("");
       setLengths([""]);
       setLocation("창고");
@@ -295,7 +295,7 @@ export default function FilmDealerInventory() {
           );
 
           setPriceType(
-            types[draft.priceType] ? draft.priceType : "non_fire"
+            types[draft.priceType] ? draft.priceType : ""
           );
 
           const dealerExists = result.dealers.some(
@@ -412,6 +412,25 @@ export default function FilmDealerInventory() {
     p => p.product_id === selected?.id
   );
 
+  const priceTypeControl = (
+    <label>
+      3. 방염·비방염
+      <select value={priceType} onChange={e => {
+        const next = e.target.value;
+        setPriceType(next);
+        setPrice(String((data?.prices || []).find(p =>
+          p.dealer_id === dealerId && p.product_id === selected?.id && p.price_type === next
+        )?.unit_price ?? ""));
+        focusIndex.current = null;
+      }}>
+        <option value="">방염 구분 선택</option>
+        <option value="non_fire">비방염</option>
+        <option value="fire">방염</option>
+        {priceType === "unspecified" && <option value="unspecified">기존 단가 · 구분 미지정</option>}
+      </select>
+    </label>
+  );
+
   const purchases = new Map(
     (data?.purchases || []).map(p => [p.roll_id, p])
   );
@@ -511,6 +530,8 @@ export default function FilmDealerInventory() {
     setRegistering(false);
     searchEpoch.current++;
     setDealerId(value);
+    setPriceType("");
+    setEditingSource(false);
     setSelected(null);
     setQuery("");
     setResults([]);
@@ -518,12 +539,12 @@ export default function FilmDealerInventory() {
     setPrice("");
   }
 
-  function chooseProduct(p) {
+  function chooseProduct(p, registeredType = "") {
     const queryInfo = filmCodeInfo("", query);
     const productInfo = filmCodeInfo(p.brand, p.product_code);
-    const nextType = queryInfo.priceType !== "unknown" && receiptMatchesProduct({ brand: queryInfo.brand, code: query }, p)
+    const nextType = registeredType || (queryInfo.priceType !== "unknown" && receiptMatchesProduct({ brand: queryInfo.brand, code: query }, p)
       ? queryInfo.priceType
-      : productInfo.priceType !== "unknown" ? productInfo.priceType : priceType;
+      : productInfo.priceType !== "unknown" ? productInfo.priceType : "");
     setPriceType(nextType);
     setRegistering(false);
     searchEpoch.current++;
@@ -531,7 +552,7 @@ export default function FilmDealerInventory() {
     setSearched(false);
     setEditingProduct(false);
     setEditingSource(false);
-    focusIndex.current = 0;
+    focusIndex.current = null;
     setSelected(p);
     setPrice(
       String(
@@ -610,7 +631,7 @@ export default function FilmDealerInventory() {
         action === "register_product" &&
         result.registeredProduct
       ) {
-        chooseProduct(result.registeredProduct);
+        chooseProduct(result.registeredProduct, priceType);
         setNewProduct(emptyProduct);
 
         setPrice(
@@ -880,7 +901,7 @@ export default function FilmDealerInventory() {
                 <div className="source-summary">
                   <strong>
                     {data.dealers.find(d => d.id === dealerId)?.name}
-                    {" · "}{types[priceType]}
+
                   </strong>
                   <button onClick={() => setEditingSource(true)}>
                     변경
@@ -889,7 +910,7 @@ export default function FilmDealerInventory() {
               ) : (
                 <div className="source-fields">
                   <label>
-                    대리점
+                    1. 대리점
                     <select
                       value={dealerId}
                       onChange={e => chooseDealer(e.target.value)}
@@ -903,27 +924,7 @@ export default function FilmDealerInventory() {
                     </select>
                   </label>
 
-                  <label>
-                    방염 구분
-                    <select
-                      value={priceType}
-                      onChange={e => {
-                        setRegistering(false);
-                        searchEpoch.current++;
-                        setPriceType(e.target.value);
-                        setSelected(null);
-                        setPrice("");
-                        setResults([]);
-                        setSearched(false);
-                      }}
-                    >
-                      {Object.entries(types).map(([key, title]) => (
-                        <option key={key} value={key}>
-                          {title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+
 
                   {editingSource && (
                     <button onClick={() => setEditingSource(false)}>
@@ -942,7 +943,7 @@ export default function FilmDealerInventory() {
                   {(!selected || editingProduct) && (
                     <div className="search-box">
                       <label>
-                        제품번호 또는 제품명
+                        2. 필름 넘버 또는 제품명
                         <input
                           value={query}
                           maxLength={80}
@@ -964,7 +965,7 @@ export default function FilmDealerInventory() {
                             {(() => {
                               const candidates = new Map();
 
-                              prices.filter(p => matchesFilmSearch(p, query)).forEach(p => {
+                              (data.prices || []).filter(p => p.dealer_id === dealerId && matchesFilmSearch(p, query)).forEach(p => {
                                 candidates.set(p.product_id, {
                                   ...p,
                                   id: p.product_id,
@@ -1002,15 +1003,7 @@ export default function FilmDealerInventory() {
                                         </strong>
                                         <small>
                                           {p.product_name}
-                                          {prices.find(
-                                            x => x.product_id === p.id
-                                          )
-                                            ? ` · ${money(
-                                                prices.find(
-                                                  x => x.product_id === p.id
-                                                ).unit_price
-                                              )}원/m`
-                                            : " · 공급가 미등록"}
+                                          {" · 제품 선택 후 방염 구분·단가 확인"}
                                         </small>
                                       </span>
                                     </button>
@@ -1089,6 +1082,7 @@ export default function FilmDealerInventory() {
                             </label>
                           ))}
 
+                          {priceTypeControl}
                           <label>
                             1m당 입고 단가 (원)
                             <input
@@ -1115,6 +1109,7 @@ export default function FilmDealerInventory() {
 
                           <button
                             disabled={
+                              !priceType ||
                               !newProduct.brand.trim() ||
                               !newProduct.productCode.trim() ||
                               !valid(newProduct.unitPrice, 10000000)
@@ -1182,6 +1177,8 @@ export default function FilmDealerInventory() {
                         </button>
                       </div>
 
+                      {priceTypeControl}
+
                       {tab === "dealers" ? (
                         <>
                           <label>
@@ -1195,7 +1192,7 @@ export default function FilmDealerInventory() {
                             />
                           </label>
                           <button
-                            disabled={!valid(price, 10000000)}
+                            disabled={!priceType || !valid(price, 10000000)}
                             onClick={() =>
                               save("price", {
                                 dealerId,
@@ -1209,8 +1206,11 @@ export default function FilmDealerInventory() {
                             제품·공급가 저장
                           </button>
                         </>
+                      ) : !priceType ? (
+                        <p>방염 또는 비방염을 선택하면 단가와 롤 길이 입력란이 표시됩니다.</p>
                       ) : savedPrice ? (
                         <>
+                          <h3>4. 롤 길이 입력</h3>
                           {lengths.map((value, index) => (
                             <div className="roll-row" key={index}>
                               <label htmlFor={`roll-length-${index}`}>
