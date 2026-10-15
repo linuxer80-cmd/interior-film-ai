@@ -1,3 +1,4 @@
+import { withFilmFireTypes } from "../../../lib/filmFireTypes";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -40,19 +41,19 @@ function workerStock(value) {
 
     materials: rows("materials", [
       "id", "brand", "code", "name", "unit",
-      "issued", "returned", "returnUpdatedAt", "used",
+      "issued", "returned", "returnUpdatedAt", "used", "price_type",
     ]),
 
     rolls: rows("rolls", [
       "id", "label", "brand", "product_code",
       "location", "remaining", "status", "revision",
-      "site_name", "created_at", "matching_material_ids",
+      "site_name", "created_at", "matching_material_ids", "price_type",
     ]),
 
     trips: rows("trips", [
       "id", "roll_id", "site_id", "material_id",
       "issued", "returned", "issued_at", "returned_at",
-      "label", "brand", "product_code", "revision",
+      "label", "brand", "product_code", "revision", "price_type",
     ]),
 
     events: [],
@@ -177,11 +178,8 @@ async function handle(request) {
       throw result.error;
     }
 
-    return json(
-      result.data?.owner === true
-        ? result.data
-        : workerStock(result.data)
-    );
+    const stock = await withFilmFireTypes(db, body.siteId, result.data);
+    return json(stock?.owner === true ? stock : workerStock(stock));
   } catch (error) {
     console.error("film-stock", error.code || error.message);
 
@@ -194,3 +192,4 @@ async function handle(request) {
 
 export const GET = handle;
 export const POST = handle;
+

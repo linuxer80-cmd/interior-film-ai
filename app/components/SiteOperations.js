@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import FilmFireBadge from "./FilmFireBadge";
 import FilmRollInventory from "./FilmRollInventory";
 import MaterialIssueStatus from "./MaterialIssueStatus";
 import FilmThumbnail from "../worker/cutting/FilmThumbnail";
@@ -495,6 +496,7 @@ export default function SiteOperations({
                   <strong>
                     {material.brand}{" "}
                     {material.code || material.name}
+                    <FilmFireBadge type={material.price_type} />
                   </strong>
                 </div>
 
@@ -814,6 +816,7 @@ export default function SiteOperations({
                   <strong>
                     {material.brand}{" "}
                     {material.code || material.name}
+                    <FilmFireBadge type={material.price_type} />
                   </strong>
 
                   <p style={{ margin: "6px 0", fontSize: 14, fontWeight: 700, color: "#475569" }}>
@@ -1002,6 +1005,7 @@ export default function SiteOperations({
                             >
                               {row.brand}{" "}
                               {row.code || row.name} · {row.unit}
+                              <FilmFireBadge type={row.price_type} />
                               <br />
                               {row.memo || ""}
                             </p>
@@ -1038,4 +1042,5 @@ export default function SiteOperations({
     </section>
   );
                          }
+
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import FilmFireBadge, { filmFireLabel } from "./FilmFireBadge";
 import { reportRequest } from "../utils/reportClient";
 
 const same = (a, b) =>
@@ -354,7 +355,7 @@ export default function FilmRollInventory({
                         setChecked([]);
                       }}
                     >
-                      <strong>{m.brand} / {m.code || m.name}</strong>
+                      <strong>{m.brand} / {m.code || m.name}<FilmFireBadge type={m.price_type} /></strong>
                       {m.name && <small>{m.name}</small>}
                       <small>
                         {available.length
@@ -396,7 +397,9 @@ export default function FilmRollInventory({
                           }
                         />
                         <span>
-                          <b>{r.remaining}m</b>
+                          <b>{r.brand} {r.product_code} · {r.remaining}m</b>
+                          <FilmFireBadge type={r.price_type} />
+                          <small>{r.label}</small>
                           <small>{r.supplier} · {r.location}</small>
                         </span>
                       </label>
@@ -428,7 +431,7 @@ export default function FilmRollInventory({
                       onClick={() => {
                         if (
                           confirm(
-                            `${material.brand} ${material.code} ${picked.length}롤, 총 ${sum(picked)}m를 반출할까요?`
+                            `${material.brand} ${material.code} ${picked.length}롤, 총 ${sum(picked)}m를 반출할까요?\n${picked.map(r => `${r.product_code} · ${filmFireLabel(r.price_type)} · ${r.remaining}m`).join("\n")}`
                           )
                         ) {
                           run(
@@ -475,6 +478,7 @@ export default function FilmRollInventory({
                   <article key={t.id}>
                     <strong>
                       {t.brand} / {t.product_code} · 반출 {t.issued}m
+                      <FilmFireBadge type={t.price_type} />
                     </strong>
 
                     <div className="return-row">
@@ -540,7 +544,7 @@ export default function FilmRollInventory({
             {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
             {data.trips.filter(t => t.returned != null).map(t => (
               <article key={t.id} className="returned-roll">
-                <strong>{t.brand} / {t.product_code}</strong>
+                <strong>{t.brand} / {t.product_code}<FilmFireBadge type={t.price_type} /></strong>
                 <span>사용 {metres(Number(t.issued) - Number(t.returned))}m</span>
                 {editingReturn?.id === t.id ? (
                   <div className="return-editor">
@@ -579,7 +583,7 @@ export default function FilmRollInventory({
             </summary>
             {data.trips.map(t => (
               <p key={t.id}>
-                {t.brand} / {t.product_code}
+                {t.brand} / {t.product_code}<FilmFireBadge type={t.price_type} />
                 <br />
                 반출 {t.issued}m → 반입{" "}
                 {t.returned == null
@@ -716,4 +720,5 @@ export default function FilmRollInventory({
     </section>
   );
 }
+
 

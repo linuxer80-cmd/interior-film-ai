@@ -1,3 +1,4 @@
+import { withFilmFireTypes } from "../../../lib/filmFireTypes";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -190,7 +191,7 @@ async function handle(request) {
       throw result.error;
     }
 
-    return json(result.data);
+    return json(await withFilmFireTypes(db, body.siteId, result.data));
   } catch (error) {
     console.error("현장 자재·확인 처리 실패", error);
 
@@ -205,3 +206,4 @@ async function handle(request) {
 
 export const GET = handle;
 export const POST = handle;
+
