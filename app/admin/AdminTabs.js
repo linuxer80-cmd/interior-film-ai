@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
@@ -88,6 +89,20 @@ export default function AdminTabs({
   secondaryOnly = false,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [orderPreview, setOrderPreview] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setOrderPreview(false);
+    if (!companyId || secondaryOnly) return;
+    supabase.auth.getSession().then(async ({ data }) => {
+      const token = data?.session?.access_token;
+      if (!token) return false;
+      const response = await fetch("/api/admin/material-order-access", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const result = await response.json();
+      return response.ok && result.allowed === true && result.companyId === companyId;
+    }).then(value => { if (!cancelled) setOrderPreview(!!value); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [companyId, secondaryOnly]);
   if (secondaryOnly) return null;
 
   const isHome = activeTab === "today";
@@ -155,7 +170,7 @@ export default function AdminTabs({
                 </>
               );
 
-              return menu.disabled ? (
+              return menu.disabled && !orderPreview ? (
                 <button key={menu.href} type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>{content}</button>
               ) : menu.href ? (
                 <a key={menu.href} href={menu.href}>
@@ -256,7 +271,7 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("register")}>시공 등록</button>
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
-          <button type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>자재 주문 · 테스트 중</button>
+          {orderPreview ? <a href="/admin/material-order">자재 주문 · 테스트</a> : <button type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>자재 주문 · 테스트 중</button>}
           <a href="/admin/billing">요금제 · 결제</a>
           <a href="/support?from=admin">고객지원</a>
         </nav>
@@ -292,3 +307,4 @@ export default function AdminTabs({
     </section>
   );
                 }
+

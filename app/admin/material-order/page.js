@@ -96,6 +96,20 @@ function calculateAmounts(product, quantityM) {
 }
 
 export default function MaterialOrderPage() {
+  const [allowed, setAllowed] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(async ({ data }) => {
+      const token = data?.session?.access_token;
+      if (!token) return false;
+      const response = await fetch("/api/admin/material-order-access", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const result = await response.json();
+      return response.ok && result.allowed === true;
+    }).then(value => { if (!cancelled) setAllowed(!!value); }).catch(() => { if (!cancelled) setAllowed(false); });
+    return () => { cancelled = true; };
+  }, []);
+  if (allowed === null) return <main style={{ padding: 24 }}>테스트 권한 확인 중...</main>;
+  if (allowed) return <MaterialOrderForm />;
   return (
     <main style={{ maxWidth: 600, margin: "40px auto", padding: 24, lineHeight: 1.7 }}>
       <h1>자재 주문 · 테스트 중</h1>
