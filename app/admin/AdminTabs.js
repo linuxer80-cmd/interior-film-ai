@@ -266,6 +266,7 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("jobs")}>시공 DB</button>
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
+          <a href="/account/kakao">카카오 계정 연결 · 연결 상태 확인</a>
           <a href="/admin/billing">요금제 · 결제</a>
           <a href="/support?from=admin">고객지원</a>
         </nav>
