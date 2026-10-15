@@ -15,6 +15,14 @@ export function normalizeCategory(value) {
     .trim()
     .toLowerCase();
 
+  // Elevator labels must precede generic door/frame and wall aliases.
+  if (["elevator_interior", "elevator_door"].includes(text)) return text;
+  if (/엘리베이터|승강기|elevator/.test(text)) {
+    if (/내부|벽면|벽체|캐빈|cabin|interior/.test(text)) return "elevator_interior";
+    if (/출입문|문틀|도어|door/.test(text)) return "elevator_door";
+    return "elevator";
+  }
+
   // A cabinet door is furniture even when another field says "door/frame".
   // Check these before the broad door/doorframe aliases below.
   if (text.includes("붙박이장") || text.includes("옷장") || text.includes("wardrobe") || text.includes("closet")) {
@@ -284,6 +292,8 @@ export function getCategoryLabel(key) {
     molding: "몰딩 · 걸레받이",
 
     wall: "아트월 · 벽체",
+    elevator_interior: "엘리베이터 내부 벽면",
+    elevator_door: "엘리베이터 출입문·문틀",
 
     other: "기타",
   };
@@ -307,6 +317,8 @@ const TARGET_LABELS = {
   window: ["샷시 및 창틀", "샷시 및 창틀"],
   molding: ["몰딩", "몰딩"],
   wall: ["벽면", "벽면"],
+  elevator_interior: ["엘리베이터", "엘리베이터 내부 벽면"],
+  elevator_door: ["엘리베이터", "엘리베이터 출입문·문틀"],
   other: ["기타", "분류 확인 필요"],
 };
 const SCOPES = {
@@ -354,6 +366,7 @@ export const ESTIMATE_TARGET_OPTIONS = [
   ["kitchen_upper", "싱크대 상부장"], ["kitchen_full", "싱크대 상부장 + 하부장"],
   ["vanity", "화장대 · 서랍장"], ["window", "샷시 · 창틀"],
   ["molding", "몰딩"], ["wall", "벽면"],
+  ["elevator_interior", "엘리베이터 내부 벽면"], ["elevator_door", "엘리베이터 출입문·문틀"],
 ];
 
 export function applyEstimateTarget(analysis, choice) {

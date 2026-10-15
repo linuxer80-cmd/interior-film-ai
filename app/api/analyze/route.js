@@ -366,7 +366,7 @@ ${FILM_TARGET_RULES}
 배경 물체나 "붙박이장 아님" 같은 부정 표현을 주 대상에 넣지 않는다.
 대상이 여러 개라 결정할 수 없거나 사진이 불명확하면 confidence를 low로 둔다.
 category, sub_category는 주 대상 이름만 적고 설명 문장을 넣지 않는다.
-target_type은 door, middle_door, fire_door, kitchen, closet, shoe, vanity, window, molding, wall, other 중 하나다.
+target_type은 door, middle_door, fire_door, kitchen, closet, shoe, vanity, window, molding, wall, elevator_interior, elevator_door, other 중 하나다.
 construction_scope는 kitchen_lower, kitchen_upper, kitchen_full, kitchen_fridge, unknown, whole 중 하나다.
 kitchen_full은 상부장과 하부장 둘 다 확인될 때만, 비주방은 whole, 범위 불명확한 주방은 unknown이다.
 classification_confidence는 high, medium, low 중 하나이며 확실하지 않으면 high로 단정하지 않는다.
