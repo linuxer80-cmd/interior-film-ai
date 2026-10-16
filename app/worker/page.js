@@ -18,6 +18,7 @@ import {
 import WorkerSiteCalendar from "./WorkerSiteCalendar";
 import WorkerMonthlyPay from "./WorkerMonthlyPay";
 import WorkerAvatar from "../components/WorkerAvatar";
+import LaborNotifications from "../components/LaborNotifications";
 import WorkerHomeDashboard from "./WorkerHomeDashboard";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import styles from "./WorkerSiteCalendar.module.css";
@@ -287,26 +288,26 @@ export default function WorkerPage({ mode = "home" }) {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <div>
-            <p className={styles.eyebrow}>
-              시공자 전용
-            </p>
+            {mode !== "home" && <p className={styles.eyebrow}>시공자 전용</p>}
             <h1 className={styles.pageTitle}>
               필름장이
             </h1>
           </div>
 
-          <button
-            type="button"
-            className={styles.logout}
-            onClick={handleLogout}
-          >
-            로그아웃
-          </button>
+          {mode === "home" ? <details className="wh-notifications">
+            <summary aria-label="알림 및 수신 설정"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>알림</span></summary>
+            <div className="wh-notification-panel">
+              <strong>알림</strong>
+              <LaborNotifications view="worker" />
+              {notificationEnabled ? <p>현장 알림이 켜져 있습니다.</p> : <button type="button" onClick={handleEnableNotifications} disabled={notificationLoading}>{notificationLoading ? "설정 중…" : "현장 알림 켜기"}</button>}
+              {notificationMessage && <p role="status">{notificationMessage}</p>}
+            </div>
+          </details> : <button type="button" className={styles.logout} onClick={handleLogout}>로그아웃</button>}
         </div>
       </header>
 
       <div className={styles.content}>
-        <section
+        {mode !== "home" && <section
           className={styles.profile}
           aria-label="시공자 정보 및 알림"
         >
@@ -355,7 +356,7 @@ export default function WorkerPage({ mode = "home" }) {
               {notificationMessage}
             </p>
           )}
-        </section>
+        </section>}
 
         {mode === "home" ? (
           <>

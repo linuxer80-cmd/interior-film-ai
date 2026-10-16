@@ -1,7 +1,8 @@
 "use client";
 
 import {relationshipRequest} from "../../lib/workerRelationshipClient";
-import LaborNotifications from "../components/LaborNotifications";
+import WorkerAvatar from "../components/WorkerAvatar";
+import "./worker-home.css";
 import WorkerConnectionPanel from "../components/WorkerDirectoryClient";
 import AchievementBadges from "../components/AchievementBadges";
 import { useEffect, useState } from "react";
@@ -133,50 +134,13 @@ export default function WorkerHomeDashboard({
 
   return (
     <section
-      className="worker-polished"
+      className="worker-polished worker-home-clean"
       aria-label="시공자 홈"
     >
-      {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}
-      {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
-      <LaborNotifications view="worker" />
-      <WorkerConnectionPanel compact />
-      <AchievementBadges scope="worker" compact />
-
-      <div className="wp-hello">
-        <span>
-          {worker?.worker_name || "시공자"}님,
-          반갑습니다
-        </span>
-
-        <span className="wp-date">
-          {dateLabel}
-        </span>
+      <div className="wh-greeting">
+        <WorkerAvatar className="wh-avatar" refreshKey={worker} />
+        <div><h2>{worker?.worker_name || "시공자"}님, 안녕하세요</h2><p>{dateLabel}</p></div>
       </div>
-
-      <div className="wp-hero">
-        <div>
-          <h2>
-            오늘도
-            <br />
-            안전한 시공!
-          </h2>
-
-          <p>
-            좋은 공간을 만드는
-            <br />
-            당신의 손을 응원합니다.
-          </p>
-
-          <span className="wp-hero-tag">
-            나의 시공 파트너, 필름장이
-          </span>
-        </div>
-
-        <div className="wp-hero-art">
-          <ToolIllustration size={185} />
-        </div>
-      </div>
-
       <div className="wp-section-title">
         <h3>오늘의 현장</h3>
 
@@ -188,18 +152,10 @@ export default function WorkerHomeDashboard({
       <div className="wp-today">
         {entries.length ? (
           entries.map(({ site, role }) => (
-            <button
-              type="button"
-              className="wp-site"
+            <article
+              className="wh-site-card"
               key={site.site_id}
-              onClick={() =>
-                onOpen(site.site_id)
-              }
             >
-              <span className="wp-site-art">
-                <ToolIllustration size={69} />
-              </span>
-
               <span className="wp-site-text">
                 <span style={{fontSize:12,fontWeight:800,color:"#2563eb"}}>협력 업체 · {site.company_name || site.companyName || companyNames[site.company_id] || "업체명 확인 필요"}</span>
                 <small>
@@ -226,13 +182,11 @@ export default function WorkerHomeDashboard({
                 />
               </span>
 
-              <span
-                className="wp-site-arrow"
-                aria-hidden="true"
-              >
-                ›
-              </span>
-            </button>
+              <div className="wh-site-actions">
+                <button type="button" onClick={()=>onOpen(site.site_id)}>현장 보기 <span aria-hidden="true">›</span></button>
+                <Link href="/worker/attendance">출근하기 <span aria-hidden="true">›</span></Link>
+              </div>
+            </article>
           ))
         ) : (
           <div className="wp-empty">
@@ -252,13 +206,23 @@ export default function WorkerHomeDashboard({
         )}
       </div>
 
+      <nav className="wh-shortcuts" aria-label="자주 쓰는 메뉴">
+        <Link href="/worker/menu/sites"><span aria-hidden="true">▦</span>내 일정</Link>
+        <Link href="/worker/attendance"><span aria-hidden="true">◷</span>출퇴근</Link>
+        <Link href="/worker/menu/report"><span aria-hidden="true">▤</span>작업 보고</Link>
+      </nav>
+      <AchievementBadges scope="worker" compact />
+      <Link className="wh-invite" href="/achievements?scope=worker&tab=invite"><span aria-hidden="true">🎁</span> 친구 초대하고 AI 혜택 받기 <span aria-hidden="true">›</span></Link>
+      <WorkerConnectionPanel compact />
+      {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
       <TomorrowTasks />
+      <div className="wp-section-title"><h3>전체 메뉴</h3></div>
 
       <nav
         className="wp-grid"
         aria-label="시공자 주요 메뉴"
       >
-        {menus.map(menu => (
+        {menus.filter(menu => !["sites","film","report","attendance"].includes(menu.id) && !(menu.id === "jobs" && employeeHome !== false)).map(menu => (
           <Link
             key={menu.id}
             href={
