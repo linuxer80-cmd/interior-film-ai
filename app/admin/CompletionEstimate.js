@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import { supabase } from "../../lib/supabase";
 
 import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames, withManualCompletionItems } from "../../lib/completionEstimate.mjs";
@@ -290,9 +289,7 @@ export default function CompletionEstimate({
       <h3 style={{ margin: "0 0 8px" }}>업체 견적서 · 물량·인건비·경비</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        공사보고서가 아직 없어도 관리자가 필름 물량·인건비·경비를 직접 채울 수 있습니다. 현장 필름명과 사용량을 자동으로 가져옵니다. 사용량은 반출량에서 반입량을 뺀 값입니다. 미확정 수량은 직접 입력해주세요. 필름 단가는 등록한 인테리어업자 판매단가를 적용합니다. 판매단가가 없거나 확인되지 않으면 단가를 비워둡니다. 청구할 금액으로
-        수정한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
-        변경하지 않습니다. 인건비 단가는 업체에 청구할 금액으로 수정할 수 있으며 실제 지급 일당과 별도로 저장됩니다.
+        자동으로 채워진 수량과 청구 단가를 확인하고 저장하세요. 필름은 인테리어업자 판매단가 기준입니다.
       </p>
 
       {warning && (
@@ -315,6 +312,7 @@ export default function CompletionEstimate({
 
       {busy && <p role="status">처리 중…</p>}
 
+      <details style={{marginBottom:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>저장본 다시 불러오기</summary>
       <button
         type="button"
         style={button}
@@ -335,15 +333,15 @@ export default function CompletionEstimate({
         }}
       >
         저장본·최신 현장 내역 불러오기
-      </button>
+      </button></details>
 
       {draft && (
-        <GuidedForm key={siteId} validateNative={false} titles={["현장·견적 정보", "필름 물량", "인건비", "경비", "부가세·계좌"]} busy={busy || defaultsSaving} onSubmit={save} review={<p>견적 합계 <strong>{won(completionTotals(draft.items, draft.vat).total)}</strong></p>}>
+        <form key={siteId} noValidate onSubmit={save}>
           <fieldset
-            disabled={busy}
+            disabled={busy || defaultsSaving}
             style={{ border: 0, padding: 0, margin: 0 }}
           >
-            <InputStep index={0}><p>확인되는 항목만 채우세요. 빈 항목은 견적서에서 제외되며, 공사보고서 완료 여부는 바뀌지 않습니다.</p><p style={{ fontSize: 12, color: "#64748b" }}>
+            <div><p style={{ fontSize: 12, color: "#64748b" }}>
               {draft.version
                 ? `저장본 ${draft.version} · ${new Date(
                     draft.updated_at,
@@ -354,6 +352,7 @@ export default function CompletionEstimate({
               {dirty && " · 수정사항 저장 필요"}
             </p>
 
+            <details style={{marginBottom:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>자동 입력 다시 적용</summary>
             <button
               type="button"
               style={button}
@@ -400,6 +399,7 @@ export default function CompletionEstimate({
               기존 저장 견적서는 위 버튼으로 인테리어업자 판매단가를 적용한 뒤 저장해주세요. 필름 수량은 반출량에서 반입량을 뺀 사용량입니다. 반입량을 아직 입력하지 않았다면 현장 자재에서 반입량을 확인한 뒤 최신 현장 내역을 불러와주세요.
             </p>
 
+            </details>
             <details style={{ marginTop: 16 }}>
             <summary style={{ cursor: "pointer", padding: "10px 0", fontWeight: 700 }}>업체·현장 정보 확인 / 수정</summary>
             <p>{draft.header?.customer_name || "거래처 미입력"} · {draft.header?.site_name || "현장명 미입력"}</p>
@@ -411,13 +411,13 @@ export default function CompletionEstimate({
             </div>
             </details>
 
-            </InputStep>{[
+            </div>{[
               { title: "필름 물량", categories: ["film"] },
               { title: "인건비", categories: ["labor"] },
               { title: "경비", categories: ["meal", "supplies", "overhead", "expense"] },
             ].map((group, groupIndex) => (
-              <InputStep key={group.title} index={groupIndex+1}><section style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
-                <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4><p style={{fontSize:13,color:"#64748b"}}>자동 입력이 없거나 빠진 내용은 직접 입력하세요. 필요 없는 항목은 비워두세요.</p>
+              <section key={group.title} style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+                <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4>
                 {group.categories.map(category => {
                   const label = labels[category];
                   return <div key={category}>
@@ -440,19 +440,8 @@ export default function CompletionEstimate({
                         marginBottom: 8,
                       }}
                     >
-                      <label>
-                        항목명
-                        <input
-                          style={input}
-                          required
-                          maxLength={500}
-                          value={row.name}
-                          onChange={(event) =>
-                            edit(index, "name", event.target.value)
-                          }
-                        />
-                      </label>
-
+                      <input aria-label="항목명" style={{...input,fontWeight:700,border:0,padding:"6px 0"}} maxLength={500} value={row.name} placeholder="항목명을 입력하세요" onChange={event=>edit(index,"name",event.target.value)} />
+                      {["film","labor"].includes(category) ? <>
                       <div
                         style={{
                           display: "grid",
@@ -462,7 +451,7 @@ export default function CompletionEstimate({
                         }}
                       >
                         <label>
-                          수량
+                          수량 ({row.unit || "개"})
                           <input
                             style={input}
                             type="number"
@@ -482,25 +471,14 @@ export default function CompletionEstimate({
                           />
                         </label>
 
-                        <label>
-                          단위
-                          <input
-                            style={input}
-                            maxLength={20}
-                            value={row.unit}
-                            onChange={(event) =>
-                              edit(index, "unit", event.target.value)
-                            }
-                          />
+                        <label>단가 (원)
+                          <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""} placeholder="청구 단가" onChange={event=>edit(index,"unit_price",event.target.value === "" ? null : event.target.value)} />
                         </label>
                       </div>
-
-                      <label>
-                        단가 (원)
-                        <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""}
-                          placeholder="단가를 입력하면 금액 자동 계산"
-                          onChange={event => edit(index, "unit_price", event.target.value === "" ? null : event.target.value)} />
-                      </label>
+                      <p style={{margin:"8px 0",textAlign:"right"}}>금액 <strong>{won(row.amount)}</strong></p>
+                      </> : <label>청구 금액 (원)<input style={input} type="number" min="0" max="1000000000" step="1" value={row.amount} onChange={event=>edit(index,"amount",event.target.value)} /></label>}
+                      <details style={{marginTop:8}}><summary style={{cursor:"pointer",padding:"8px 0"}}>금액·단위 수정 / 삭제</summary>
+                      <label>단위<input style={input} maxLength={20} value={row.unit} onChange={event=>edit(index,"unit",event.target.value)} /></label>
                       <label>
                         금액 (원)
                         <input
@@ -517,8 +495,7 @@ export default function CompletionEstimate({
                         />
                       </label>
 
-                      <details style={{ marginTop: 8 }}>
-                        <summary style={{ cursor: "pointer", padding: "8px 0" }}>항목 설정</summary>
+
                       <label>
                         분류
                         <select
@@ -593,9 +570,9 @@ export default function CompletionEstimate({
                 <p style={{ textAlign: "right", fontWeight: 700 }}>
                   {group.title} 합계 {won(draft.items.filter(row => group.categories.includes(row.category) && includedCompletionItem(row)).reduce((sum, row) => sum + Number(row.amount || 0), 0))}
                 </p>
-              </section></InputStep>
+              </section>
             ))}
-            <InputStep index={4}>
+            <div>
 
             <p style={{ fontWeight: 900, fontSize: 20 }}>
               견적 합계{" "}
@@ -612,6 +589,7 @@ export default function CompletionEstimate({
               </select>
             </label>
             <p>공급가액 {won(completionTotals(draft.items, draft.vat).supply)} · 부가세 {won(completionTotals(draft.items, draft.vat).tax)}</p>
+            <details style={{marginTop:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>계좌·비고 설정</summary>
             <label>입금 계좌 (은행 · 계좌번호 · 예금주)
               <input style={input} maxLength={500} value={draft.header?.bank_account || ""}
                 onChange={event => change({...draft,header:{...draft.header,bank_account:event.target.value}})} />
@@ -650,7 +628,7 @@ export default function CompletionEstimate({
               />
             </label>
 
-            </InputStep><div
+            </details></div><div
               aria-live="polite"
               style={{ marginTop: 12 }}
             >
@@ -677,7 +655,7 @@ export default function CompletionEstimate({
               )}
             </div>
 
-            <InputFinal><button
+            <div style={{position:"sticky",bottom:0,background:"#fff",padding:"12px 0",borderTop:"1px solid #e2e8f0",zIndex:2}}><strong>합계 {won(completionTotals(draft.items, draft.vat).total)}</strong><button
               type="submit"
               disabled={busy}
               style={{
@@ -691,11 +669,11 @@ export default function CompletionEstimate({
               {busy ? "저장 중…" : "견적서 저장"}
             </button>
             <button type="submit" value="pdf" disabled={busy} style={{ ...button, width: "100%", marginTop: 10, background: "#183d34", color: "white" }}>
-              {busy ? "처리 중…" : "보고서 만들기 · 저장 및 PDF 다운로드"}
+              {busy ? "처리 중…" : "저장하고 PDF 받기"}
             </button>
-            </InputFinal>{pdfUrl && <p><a href={pdfUrl} download={pdfName} data-ui-link="action">PDF 다시 다운로드</a></p>}
+            </div>{pdfUrl && <p><a href={pdfUrl} download={pdfName} data-ui-link="action">PDF 다시 다운로드</a></p>}
           </fieldset>
-        </GuidedForm>
+        </form>
       )}
     </section>
   );
