@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { receiptRollDefaults } from "../../lib/receiptRollDefaults.mjs";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
 import {
@@ -382,9 +383,7 @@ export default function DealerReceiptImport({
             code: source.code || "",
             priceType: source.priceType || "unknown",
             issues: source.issues || [],
-            lengthM: source.lengthM ?? "",
-            rollCount: source.rollCount ?? "",
-            totalM: source.totalM ?? "",
+            ...receiptRollDefaults(source),
             credit: source.amount ?? "",
             product: null,
             products: [],
@@ -1140,6 +1139,7 @@ export default function DealerReceiptImport({
 
                 {row.action === "receive" && (
                   <>
+                    {row.quantityNote && <p className="notice">{row.quantityNote}</p>}
                     <label>
                       한 롤 길이 (m)
                       <input
