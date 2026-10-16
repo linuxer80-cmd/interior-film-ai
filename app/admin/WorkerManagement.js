@@ -656,20 +656,20 @@ export default function WorkerManagement({
 
   return (
     <>
-      <section style={{marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
-          <div>
-            <h2 style={{fontSize:21,margin:"0 0 5px",color:"#163153"}}>시공자 관리</h2>
-            <a href="/admin/worker-directory" style={{display:"inline-block",padding:"12px 0",fontWeight:800,color:"#2563eb"}}>공개 시공자 검색 · 업체 연결 요청 →</a>
-            <p style={{fontSize:13,color:"#64748b",margin:0}}>초대링크만 보내면 가입과 업체 연결이 진행됩니다.</p>
-          </div>
+      <section style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+          <h2 style={{fontSize:17,margin:0,color:"#163153"}}>시공자 명단</h2>
+          <a href="/admin/worker-directory" style={{padding:"10px 0",fontSize:14,fontWeight:700,color:"#2563eb"}}>공개 시공자 찾기 →</a>
         </div>
+        <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12}}>
+          <summary style={{fontWeight:700,cursor:"pointer",color:"#163153"}}>＋ 시공자 추가</summary>
+          <p style={{fontSize:12,color:"#64748b"}}>초대 링크로 가입과 업체 연결을 진행하세요.</p>
         <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
-          <summary style={{fontWeight:800,cursor:"pointer",color:"#163153"}}>＋ 시공자 초대하기</summary>
+          <summary style={{fontWeight:800,cursor:"pointer",color:"#163153"}}>초대 링크 만들기</summary>
           <div style={{marginTop:12}}><DirectWorkerInvites /></div>
         </details>
         <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12,marginBottom:12}}>
-          <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>기타 관리 · 수동 등록 / 관리자 본인 등록</summary>
+          <summary style={{fontWeight:700,cursor:"pointer",color:"#475569"}}>직접 등록 · 관리자 본인 등록</summary>
           <p style={{fontSize:12,color:"#64748b"}}>일반 시공자는 위 초대링크를 이용하세요. 과거 기록 등록 등 예외적인 경우에만 사용합니다.</p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" onClick={openCreateForm}>수동 시공자 등록</button>
@@ -679,6 +679,7 @@ export default function WorkerManagement({
             }}>관리자 본인 시공자 등록</button>
           </div>
 
+        </details>
         </details>
       </section>
       <section>
@@ -759,7 +760,7 @@ export default function WorkerManagement({
         <input aria-label="시공자 검색" type="search"
           placeholder="이름 또는 전화번호 검색"
           value={workerSearch} onChange={event=>setWorkerSearch(event.target.value)}
-          style={{width:"100%",padding:"12px",border:"1px solid #cbd5e1",borderRadius:12,marginBottom:10,fontSize:14}} />
+          style={{boxSizing:"border-box",width:"100%",minHeight:44,padding:"12px",border:"1px solid #cbd5e1",borderRadius:12,marginBottom:10,fontSize:14}} />
         <div role="group" aria-label="시공자 관계 유형 필터" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
           {[
             ["all", "전체", workers.filter(w => showInactive || w.is_active !== false).length],
@@ -843,4 +844,5 @@ export default function WorkerManagement({
     </>
   );
                 }
+
 

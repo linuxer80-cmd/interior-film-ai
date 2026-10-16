@@ -122,10 +122,7 @@ function PaymentHistory({ allSites, scope }) {
   return (
     <section>
       <h4>현장별 입금 내역 · {sites.length}현장</h4>
-      <p>
-        현장에서 처리한 전액입금·개별입금도 표시합니다.
-        누적 입금액에는 기존 입금액과 일괄 배분액이 포함될 수 있습니다.
-      </p>
+      <details><summary>입금 집계 안내</summary><p>전액·개별 입금을 함께 표시합니다. 누적 입금액에는 기존 입금액과 일괄 배분액이 포함될 수 있습니다.</p></details>
 
       {!sites.length && (
         <p>선택한 거래처에 등록된 현장이 없습니다.</p>
@@ -139,30 +136,16 @@ function PaymentHistory({ allSites, scope }) {
             padding: "12px 0",
           }}
         >
-          <b>{site.site_name}</b>
-          <p>
-            {site.client_name || "개인 고객"} ·{" "}
-            {site.contact_name || "담당자 미지정"}
-            <br />
-            누적 입금 {site.confirmed ? won(site.paid) : "미확인"} ·
-            미수금{" "}
-            {site.outstanding == null
-              ? "확인 필요"
-              : won(site.outstanding)}
-          </p>
-
-          <button
-            type="button"
+          <button type="button" className="history-row"
             aria-expanded={selected === site.id}
-            onClick={() =>
-              setSelected(selected === site.id ? "" : site.id)
-            }
-          >
-            상세 내역 {selected === site.id ? "닫기" : "보기"}
+            onClick={() => setSelected(selected === site.id ? "" : site.id)}>
+            <span><b>{siteTitle(site)}</b><small>{site.client_name || "개인 고객"}</small></span>
+            <span className="history-amount"><small>누적 입금</small><b>{site.confirmed ? won(site.paid) : "미확인"}</b><small>{selected === site.id ? "내역 닫기 ⌃" : "내역 보기 ⌄"}</small></span>
           </button>
 
           {selected === site.id && (
             <div aria-live="polite">
+              <p>{site.contact_name || "담당자 미지정"} · 미수금 {site.outstanding == null ? "확인 필요" : won(site.outstanding)}</p>
               {error ? (
                 <p role="alert">
                   {error}{" "}
@@ -272,6 +255,13 @@ function PaymentHistory({ allSites, scope }) {
           margin: 4px;
           cursor: pointer;
         }
+        .history-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; margin:0; padding:0; border:0; text-align:left; background:transparent; }
+        .history-row span { min-width:0; overflow-wrap:anywhere; }
+        .history-row b { font-size:14px; }
+        .history-row small { display:block; color:#64748b; font-size:12px; margin-top:3px; }
+        .history-amount { text-align:right; flex-shrink:0; }
+        summary { cursor:pointer; color:#64748b; font-size:12px; padding:6px 0; }
+        h4 { font-size:15px; margin:16px 0 6px; }
         button:disabled { opacity: .5; }
         p { font-size: 13px; line-height: 1.6; }
         [role="alert"] { color: #b91c1c; }
@@ -348,11 +338,11 @@ function SearchChoice({
 
           {!keyword && (
             <small>{showAll
-              ? `현장 ${rows.length}개 · 아래 목록에서 선택하세요.`
+              ? `총 ${rows.length}개 · 아래 목록에서 선택하세요.`
               : "검색어를 입력하면 일치하는 항목만 표시합니다."}</small>
           )}
           {(showAll || keyword) && matches.length === 0 && (
-            <small>{keyword ? "검색 결과가 없습니다." : "등록된 현장이 없습니다."}</small>
+            <small>{keyword ? "검색 결과가 없습니다." : "등록된 항목이 없습니다."}</small>
           )}
 
           {keyword && <small>검색 결과 {matches.length}개</small>}
@@ -446,6 +436,18 @@ function SearchChoice({
       `}</style>
     </div>
   );
+}
+
+function ClientFilter({ clients, value, onChange, disabled }) {
+  const panel = useRef(null);
+  const rows = [{id:"all", title:"전체 거래처"}, {id:"personal", title:"개인 고객"}, ...clients.map(item => ({id:item.id, title:item.name}))];
+  return <details ref={panel} style={{margin:"8px 0"}}>
+    <summary style={{padding:"12px",border:"1px solid #cbd5e1",borderRadius:8,cursor:"pointer",fontSize:14}}>
+      거래처 · {rows.find(row => row.id === value)?.title || "거래처 선택"}
+    </summary>
+    <SearchChoice label="거래처 검색" placeholder="거래처 이름 입력" rows={rows} selectedId="" showAll disabled={disabled}
+      onSelect={id => { onChange(id); if (panel.current) { panel.current.open = false; panel.current.querySelector("summary")?.focus(); } }} />
+  </details>;
 }
 
 export default function TradeClients({ siteId, onScope }) {
@@ -784,26 +786,9 @@ export default function TradeClients({ siteId, onScope }) {
                   />
                 </label>
 
-                <label>
-                  거래처
-                  <select
-                    disabled={blocked}
-                    value={client}
-                    onChange={(event) => {
-                      setClient(event.target.value);
-                      setContact("all");
-                      setPersonQuery("");
-                    }}
-                  >
-                    <option value="all">전체</option>
-                    <option value="personal">개인 고객</option>
-                    {clients.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <ClientFilter clients={clients} value={client} disabled={blocked} onChange={(id) => {
+                  setClient(id); setContact("all"); setPersonQuery("");
+                }} />
               </div>
 
               <details hidden={menu !== "sites"}>
@@ -1667,3 +1652,4 @@ export default function TradeClients({ siteId, onScope }) {
     </section>
   );
             }
+

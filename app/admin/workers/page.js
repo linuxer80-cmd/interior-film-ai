@@ -128,8 +128,8 @@ export default function AdminWorkersPage() {
           href="/admin/attendance"
           style={{
             display: "block",
-            padding: "14px 16px",
-            marginBottom: 16,
+            padding: "10px 12px",
+            marginBottom: 12,
             borderRadius: 14,
             border: "1px solid #bfdbfe",
             background: "#eff6ff",
@@ -138,7 +138,7 @@ export default function AdminWorkersPage() {
             fontWeight: 800,
           }}
         >
-          오늘 출퇴근 현황 · 전체 내역 ›
+          오늘 출퇴근 확인 →
         </Link>
       )}
 
@@ -151,3 +151,4 @@ export default function AdminWorkersPage() {
     </main>
   );
       }
+
