@@ -1,4 +1,5 @@
 "use client";
+import moreStyles from "./AdminMore.module.css";
 import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 
 import { useEffect, useState } from "react";
@@ -236,22 +237,22 @@ export default function AdminTabs({
       )}
 
       {moreOpen && (
-        <nav className="film-admin-more" aria-label="추가 관리 메뉴">
-          <div className="film-admin-more-title">
+        <nav className={`film-admin-more ${moreStyles.panel}`} aria-label="추가 관리 메뉴">
+          <div className={moreStyles.title}>
             <strong>더보기</strong>
-            <button type="button" onClick={closeMore}>
+            <button type="button" className={moreStyles.close} onClick={closeMore}>
               닫기
             </button>
           </div>
 
 
-          <button type="button" onClick={() => go("jobs")}>시공 DB</button>
-          <button type="button" onClick={() => go("usage")}>로그 분석</button>
+          <button type="button" className={moreStyles.item} onClick={() => go("jobs")}>시공 DB</button>
+          <button type="button" className={moreStyles.item} onClick={() => go("usage")}>로그 분석</button>
 
-          <a href="/account/kakao" data-ui-link="action">카카오 계정 연결 · 연결 상태 확인</a>
-          <a href="/achievements?scope=owner" data-ui-link="action">우리 업체 업적 · 배지 보관함</a>
-          <a href="/admin/billing" data-ui-link="action">요금제 · 결제</a>
-          <a href="/support?from=admin" data-ui-link="action">고객지원</a>
+          <a href="/account/kakao" className={moreStyles.item}>카카오 계정 연결 · 연결 상태 확인</a>
+          <a href="/achievements?scope=owner" className={moreStyles.item}>우리 업체 업적 · 배지 보관함</a>
+          <a href="/admin/billing" className={moreStyles.item}>요금제 · 결제</a>
+          <a href="/support?from=admin" className={moreStyles.item}>고객지원</a>
         </nav>
       )}
 

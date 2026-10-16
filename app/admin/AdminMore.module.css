@@ -1,0 +1,15 @@
+.panel { font-family: inherit; line-height: 1.45; box-sizing: border-box; }
+.panel .title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+.panel .title strong { font-size: 18px; color: #243648; }
+.panel .item, .panel .close {
+  display: flex; align-items: center; justify-content: flex-start;
+  box-sizing: border-box; width: 100%; min-height: 48px;
+  margin: 0; padding: 12px 14px; border: 1px solid #e6e0d5;
+  border-radius: 12px; background: #f3eee5; color: #28445c;
+  font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.45;
+  text-align: left; text-decoration: none; box-shadow: none; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.panel .close { width: auto; flex-shrink: 0; justify-content: center; }
+.panel .item:hover, .panel .close:hover { background: #eae2d6; }
+.panel .item:focus-visible, .panel .close:focus-visible { outline: 2px solid #38536a; outline-offset: 2px; }
