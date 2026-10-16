@@ -1,3 +1,4 @@
+import { reserveBadgeAllowance } from "../../../lib/aiQuota";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -131,6 +132,10 @@ async function reserveUsage(company) {
     throw new Error("사용량 예약 결과가 없습니다.");
   }
 
+  if (!data.ok && String(company.subscription_plan).toLowerCase()==="trial") {
+    const reward = await reserveBadgeAllowance(company.id,"virtual_remodel",1);
+    if(reward?.ok) return {...data,ok:true,reservationId:null,used:0,limit:1+Number(reward.remaining||0),remaining:1+Number(reward.remaining||0),unlimited:false,reward:true};
+  }
   return data;
 }
 
@@ -140,6 +145,8 @@ async function finishUsage(
   success,
   metadata = {}
 ) {
+  // Reward reservations are already recorded by reserve_ai_with_badges.
+  if (!reservationId) return;
   const db = getAdminSupabase();
 
   if (!db) {
@@ -1015,3 +1022,4 @@ export async function POST(request) {
     }
   }
     }
+

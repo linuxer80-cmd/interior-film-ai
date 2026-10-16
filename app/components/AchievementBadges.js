@@ -3,6 +3,8 @@ import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import {badgeProgress,nextBadge,badgeUnit} from '../../lib/achievements.mjs';
 import './achievementBadges.css';
+import ReferralPanel from './ReferralPanel';
+import {rewardText,rewardLabels} from '../../lib/badgeRewards.mjs';
 
 export function BadgeArt({badge,locked=false,size=100}){
  const [broken,setBroken]=useState(false);
@@ -54,20 +56,26 @@ function BadgeCollection({scope,compact,api}){
   <a className='achievement-home' href={`/achievements?scope=${scope}`}>
    {(featured||next||earned[0])&&<BadgeArt badge={featured||next||earned[0]} locked={!featured&&Boolean(next)} size={82}/>}
    <span><strong>{scope==='owner'?'우리 업체 업적':'내 업적'} · 배지 {earned.length}개</strong><small>{next?`${next.title}까지 ${Math.max(0,next.target-next.progress).toLocaleString()}${badgeUnit(next.metric)} 남았어요`:'새로운 성취를 배지 보관함에서 확인하세요'}</small>{next&&<progress aria-label={`${next.title} 진행률`} value={badgeProgress(next)} max='100'/>}</span><span aria-hidden='true'>›</span>
-  </a>{celebration}{error&&<p role='alert'>{error}</p>}
+  </a><a href={`/achievements?scope=${scope}`} style={{display:'block',padding:12,color:'#2563eb'}}>친구 초대 · AI 보상 받기 →</a>{celebration}{error&&<p role='alert'>{error}</p>}
  </section>;
  return <section className='achievement-shell'>
   <div className='achievement-panel achievement-summary'><span className='achievement-kicker'>현장의 기록이 나의 성취로</span><h1>{scope==='owner'?'우리 업체 업적':'내 업적'}</h1><p>획득한 배지 <b>{earned.length}개</b> · 도전 중 {data.badges.filter(b=>b.active&&!b.earned_at).length}개</p><p>앱 활동 기록에 따른 배지이며 시공 실력이나 자격을 인증하지 않습니다.</p>{featured&&<div className='achievement-featured'><BadgeArt badge={featured} size={90}/><span>대표 배지<br/><strong>{featured.title}</strong></span><button disabled={busy} onClick={()=>act({action:'feature',badge_id:null})}>해제</button></div>}
   <button disabled={busy} onClick={()=>setReload(v=>v+1)}>진행 상황 새로고침</button></div>
+  <ReferralPanel scope={scope} onChanged={()=>setReload(v=>v+1)}/>
+  <div className='achievement-panel'><h2>배지로 받은 AI 횟수</h2><p>트라이얼 기본 횟수 소진 후 사용합니다. 배지당 최초 한 번 적립되며 월마다 초기화되지 않습니다. 기존 이용 권한과 체험 기간은 그대로 적용됩니다.</p>
+   {data.reward_error?<p role='alert'>{data.reward_error}</p>:<ul>{Object.entries((data.reward_credits||[]).reduce((all,c)=>({...all,[c.feature]:(all[c.feature]||0)+c.granted-c.used}),{})).map(([key,n])=><li key={key}>{rewardLabels[key]||key} · 남은 {n}회</li>)}</ul>}
+   {scope==='worker'&&<small>본인 보상은 연결된 트라이얼 업체의 허용된 AI 기능을 본인이 사용할 때 적용됩니다.</small>}
+  </div>
   <p className='achievement-help'>{scope==='worker'?'선택한 대표 배지는 공개에 동의한 시공자 검색·구직 프로필과 지원한 업체의 지원자 화면에 표시됩니다.':'선택한 업체 대표 배지는 시공자가 보는 구인 공고와 지원 현황에 표시됩니다.'} 대표 배지를 해제하면 해당 선택의 공개 표시도 사라집니다.</p>
   {scope==='worker'&&<div className='achievement-panel'><h2>누적 현장 출근 거리 · 왕복 기준</h2><p><strong>{Number(data.badges.find(b=>b.metric==='commute_km')?.progress||0).toLocaleString()}km</strong></p><p>출발지에서 현장까지 편도 도로거리 × 2로 계산합니다. 실제 이동 추적 거리가 아닙니다. 출근 위치 확인 또는 관리자 승인 후 같은 현장은 하루 한 번 인정됩니다.</p><p>거리 기록은 기능 설치 후 출근부터 시작합니다. 출근 당시 주소를 보관하여 주소 변경 후에도 이전 거리를 유지합니다. 출발지 주소와 정확한 누적거리는 공개 프로필에 표시하지 않습니다.</p><a href='/worker/account'>출발지 주소 등록 · 수정</a><p>새 경로는 기존 지도 조회 한도 안에서 계산하며, 같은 출발지·현장 경로는 저장된 거리를 재사용합니다. 계산 실패 시 30분 후 재시도하며 한 기록은 최대 5회 시도합니다.</p><button disabled={busy} onClick={calculateDistance}>{busy?'처리 중…':'미계산 출근 거리 계산'}</button>{distanceMessage&&<p role='status'>{distanceMessage}</p>}</div>}
   {scope==='worker'&&<p className='achievement-help'>재단·주변 검색 배지는 설정 후 사용일부터 쌓이며, 기능별로 한국시간 하루 한 번 인정됩니다. 재단 계산 완료 또는 음식점·필름가게 검색 결과 확인 시 기록됩니다. 저장된 검색 결과도 인정되며, 검색 실패·빈 결과는 제외합니다.</p>}
   {celebration}{error&&<p role='alert'>{error}</p>}
   <div className='achievement-filters' aria-label='배지 필터'>{[['all','전체'],['earned','획득'],['pending','도전 중']].map(([id,label])=><button key={id} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div>
   <div className='achievement-grid'>{data.badges.filter(b=>filter==='all'||(filter==='earned'?b.earned_at:b.active&&!b.earned_at)).map(b=><article key={b.id} className={`achievement-panel achievement-badge tier-${b.tier} ${b.earned_at?'earned':''}`}>
-   <BadgeArt badge={b} locked={!b.earned_at} size={160}/><h2>{b.title}</h2><p>{b.description}</p>
+   <BadgeArt badge={b} locked={!b.earned_at} size={160}/><h2>{b.title}</h2><p>{b.description}</p><p style={{color:"#1d4ed8",fontWeight:700}}>AI 보상 · {rewardText(b.reward)||"보상 설정 확인 중"}</p>{b.reward_granted&&<small>보상 적립 완료</small>}
    {b.earned_at?<><strong className='achievement-earned'>획득 완료{!b.active?' · 보관 배지':''}</strong><small>획득일 {new Date(b.earned_at).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})}</small><button disabled={busy||data.featured===b.id} onClick={()=>act({action:'feature',badge_id:b.id})}>{data.featured===b.id?'대표 배지':'대표 배지로 선택'}</button></>:<><span>{Number(b.progress).toLocaleString()} / {b.target.toLocaleString()} {badgeUnit(b.metric)}</span><progress aria-label={`${b.title} 진행률`} max='100' value={badgeProgress(b)}/><small>아직 획득하지 않았어요</small></>}
   </article>)}</div>
   <p className='achievement-help'>기존 기록도 조건에 맞으면 인정됩니다. 획득일은 앱이 달성을 처음 확인한 날짜입니다. 같은 현장을 여러 번 저장해도 중복 집계하지 않습니다. 획득한 배지는 이후 기록이 바뀌어도 보관됩니다.</p>
  </section>;
 }
+

@@ -1,3 +1,4 @@
+import { reserveBadgeAllowance } from "../../lib/aiQuota";
 import { createClient } from "@supabase/supabase-js";
 
 /*
@@ -623,6 +624,12 @@ export async function checkUsageLimit({
       used + requested >
       limit
     ) {
+      if (isTrial && ["ai_photo_analysis","similar_image_search"].includes(eventType)) {
+        const reward = await reserveBadgeAllowance(company.id, eventType, requested);
+        if (reward?.ok) return {ok:true,unlimited:false,eventType,planCode:plan.plan_code,planName:plan.plan_name,
+          usagePeriod:"lifetime",used,limit:used+requested+Number(reward.remaining||0),requested,
+          remaining:requested+Number(reward.remaining||0),reward:true};
+      }
       const periodLabel =
         isTrial
           ? "체험기간 누적"
@@ -789,4 +796,5 @@ export function makeUsageLimitError(
       result?.remaining ?? null,
   };
     }
+
 

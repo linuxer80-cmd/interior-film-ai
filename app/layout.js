@@ -1,4 +1,5 @@
 import "./globals.css";
+import ReferralClaim from "./components/ReferralClaim";
 import PhotoTheme from "./components/ui/PhotoTheme";
 import AppRoleSwitch from "./components/AppRoleSwitch";
 
@@ -31,9 +32,11 @@ export default function RootLayout({ children }) {
       <body>
         <PhotoTheme>
           <AppRoleSwitch />
+          <ReferralClaim />
           {children}
         </PhotoTheme>
       </body>
     </html>
   );
 }
+
