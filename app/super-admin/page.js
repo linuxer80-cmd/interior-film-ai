@@ -513,6 +513,13 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
+                href="/super-admin/achievements"
+                kind="report"
+                title="업적 배지 관리"
+                description="배지 이미지 · 달성 조건 · 새 업적 추가"
+              />
+
+              <MenuCard
                 href="#settings"
                 kind="report"
                 title="알림 설정"
@@ -1039,4 +1046,5 @@ const styles = {
     cursor: "pointer",
   },
 };
+
 

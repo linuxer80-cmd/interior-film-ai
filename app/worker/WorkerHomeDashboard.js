@@ -3,6 +3,7 @@
 import {relationshipRequest} from "../../lib/workerRelationshipClient";
 import LaborNotifications from "../components/LaborNotifications";
 import WorkerConnectionPanel from "../components/WorkerDirectoryClient";
+import AchievementBadges from "../components/AchievementBadges";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import TomorrowTasks from "../components/TomorrowTasks";
@@ -147,6 +148,7 @@ export default function WorkerHomeDashboard({
       {employeeHome===null && <p role="status">{relationshipError || '업체 소속을 확인하고 있습니다…'}{relationshipError && <button type="button" onClick={()=>setRelationshipReload(v=>v+1)}>다시 확인</button>}</p>}
       <LaborNotifications view="worker" />
       <WorkerConnectionPanel compact />
+      <AchievementBadges scope="worker" compact />
 
       <div className="wp-hello">
         <span>
@@ -355,5 +357,6 @@ export default function WorkerHomeDashboard({
     </section>
   );
 }
+
 
 

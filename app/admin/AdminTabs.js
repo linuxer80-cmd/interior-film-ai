@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
+import AchievementBadges from "../components/AchievementBadges";
 import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
@@ -119,6 +120,7 @@ export default function AdminTabs({
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
           <LaborNotifications />
+          <AchievementBadges key={companyId} scope="owner" compact />
 
           <div className="film-admin-hero">
             <div>
@@ -267,6 +269,7 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
           <a href="/account/kakao">카카오 계정 연결 · 연결 상태 확인</a>
+          <a href="/achievements?scope=owner">우리 업체 업적 · 배지 보관함</a>
           <a href="/admin/billing">요금제 · 결제</a>
           <a href="/support?from=admin">고객지원</a>
         </nav>
@@ -302,4 +305,5 @@ export default function AdminTabs({
     </section>
   );
                 }
+
 

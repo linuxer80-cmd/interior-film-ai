@@ -1,5 +1,6 @@
 import { privateAuth, privateJson, uuid } from '../../../lib/workerPrivate';
 import { publicDirectoryProfile } from '../../../lib/workerDirectory.mjs';
+import { directoryBadges } from '../../../lib/publicAchievementBadge';
 
 async function run(request, action, body) {
   const auth = await privateAuth(request, false);
@@ -20,7 +21,7 @@ async function run(request, action, body) {
       }
       return {...publicDirectoryProfile(row),photo_url};
     }));
-    return privateJson({profiles,hasMore:rows.length>30});
+    return privateJson({profiles:await directoryBadges(auth.db,profiles),hasMore:rows.length>30});
   }
   return privateJson(data);
 }
@@ -49,3 +50,4 @@ export async function POST(request) {
     return await run(request,action,body);
   } catch {return privateJson({error:'요청 처리 중 오류가 발생했습니다.'},500);}
 }
+

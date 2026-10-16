@@ -13,8 +13,8 @@ test('API authenticates, binds actor and strips private data from search',async(
  let auth={error:'로그인 필요',status:401},calls=[];
  const source=(await readFile(new URL('../app/api/worker-directory/route.js',import.meta.url),'utf8'))
   .replace(/import .*?from .*?;\n/g,'');
- const make=new Function('privateAuth','privateJson','uuid','publicDirectoryProfile',source.replace('export async function GET','async function GET').replace('export async function POST','async function POST')+';return {GET,POST};');
- const api=make(async()=>auth,(data,status=200)=>Response.json(data,{status}),s=>typeof s==='string'&&/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(s),publicDirectoryProfile);
+ const make=new Function('privateAuth','privateJson','uuid','publicDirectoryProfile','directoryBadges',source.replace('export async function GET','async function GET').replace('export async function POST','async function POST')+';return {GET,POST};');
+ const api=make(async()=>auth,(data,status=200)=>Response.json(data,{status}),s=>typeof s==='string'&&/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(s),publicDirectoryProfile,async(_db,profiles)=>profiles);
  const get=()=>new Request('https://example.test/api/worker-directory?mode=search');
  const post=body=>new Request('https://example.test/api/worker-directory',{method:'POST',body:JSON.stringify(body)});
  assert.equal((await api.GET(get())).status,401);

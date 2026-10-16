@@ -2,6 +2,7 @@ import Link from "next/link";
 import styles from "../../support/support.module.css";
 export const metadata = { title: "더보기 | 필름장이" };
 const menus = [
+  ["/achievements?scope=worker", "내 업적 · 배지 보관함"],
   ["/support?from=worker", "고객지원"],
   ["/worker/account", "개인설정"],
   ["/worker/companies", "소속 업체"],
@@ -18,3 +19,4 @@ export default function WorkerMorePage() {
     </nav>
   </main>;
 }
+
