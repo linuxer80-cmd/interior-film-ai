@@ -1,7 +1,8 @@
 "use client";
 import HomeReturnButton from '../../components/HomeReturnButton';
 import WorkerConnectionPanel from '../../components/WorkerDirectoryClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {prepareProfilePhoto} from '../../../lib/profilePhoto.mjs';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
 import { confirmEmailDomain } from '../../../lib/emailDomainGuard';
@@ -44,6 +45,11 @@ export default function WorkerAccount() {
   const [busy,setBusy]=useState(false);
   const [loaded,setLoaded]=useState(false);
 
+  const [photoMessage,setPhotoMessage]=useState('');
+  const [photoBusy,setPhotoBusy]=useState(false);
+  const actor=useRef(null);actor.current=session?.user?.id||null;
+  const photoVersion=useRef(0);
+
   const [saved,setSaved]=useState(false);
   const [section,setSection]=useState('profile');
   const [pendingInvite,setPendingInvite]=useState('');
@@ -85,6 +91,7 @@ export default function WorkerAccount() {
     }
 
     const controller=new AbortController();
+    const version=photoVersion.current;
     setLoaded(false);
     setMessage('');
 
@@ -103,12 +110,13 @@ export default function WorkerAccount() {
         if(!response.ok) throw Error(data.error);
 
         if(!controller.signal.aborted){
-          setProfile({
+          setProfile(current=>({
             ...blank,
             ...data.defaults,
             ...data.profile,
-            age:data.profile?.age??''
-          });
+            age:data.profile?.age??'',
+            photo_url:version===photoVersion.current?data.profile?.photo_url:current.photo_url
+          }));
           setPersonal({...privateBlank,...data.personal});
           setSaved(Boolean(data.profile));
           setLoaded(true);
@@ -219,50 +227,41 @@ export default function WorkerAccount() {
   }
 
   async function photo(e){
-    const file=e.target.files?.[0];
+    const input=e.target;
+    const file=input.files?.[0];
+    input.value='';
     if(!file||busy)return;
-    setBusy(true);
+    const expected=actor.current;
+    setBusy(true);setPhotoBusy(true);
+    setPhotoMessage('사진 크기를 조정하는 중…');
     setMessage('');
-
+    photoVersion.current++;
     try{
-      if(file.size>2097152)throw Error('사진은 2MB 이하로 올려주세요.');
-
+      const prepared=await prepareProfilePhoto(file);
       const {data}=await supabase.auth.getSession();
-      if(!data.session)throw Error('다시 로그인해주세요.');
-
+      if(!expected||data.session?.user?.id!==expected||actor.current!==expected)throw Error('계정이 변경되었습니다. 다시 로그인해주세요.');
       const form=new FormData();
-      form.append('photo',file);
-
+      form.append('photo',prepared);
+      setPhotoMessage('프로필 사진을 저장하는 중…');
       const response=await fetch('/api/labor-market',{
         method:'POST',
-        headers:{
-          'X-Labor-View':'worker',
-          Authorization:`Bearer ${data.session.access_token}`
-        },
+        headers:{'X-Labor-View':'worker',Authorization:`Bearer ${data.session.access_token}`},
         body:form
       });
-
-      const result=await response.json();
-      if(!response.ok)throw Error(result.error);
-
-      const me=await fetch('/api/labor-market?mode=me',{
-        headers:{
-          'X-Labor-View':'worker',
-          Authorization:`Bearer ${data.session.access_token}`
-        },
-        cache:'no-store'
-      });
-
-      const info=await me.json();
-      if(!me.ok)throw Error(info.error);
-
-      setProfile(p=>({...p,photo_url:info.profile?.photo_url}));
-      setMessage('프로필 사진을 등록했습니다.');
+      const result=await response.json().catch(()=>({error:'사진 업로드 응답을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.'}));
+      if(!response.ok)throw Error(result.error||'사진을 저장하지 못했습니다.');
+      if(actor.current!==expected)return;
+      photoVersion.current++;
+      if(result.photo_url){
+        setProfile(p=>({...p,photo_url:result.photo_url}));
+        setPhotoMessage('프로필 사진을 변경했습니다. 별도로 프로필 저장을 누르지 않아도 됩니다.');
+      }else{
+        setPhotoMessage('사진은 저장했지만 미리보기를 불러오지 못했습니다. 새로고침해서 확인해주세요.');
+      }
     }catch(e){
-      setMessage(e.message);
+      if(actor.current===expected)setPhotoMessage(e.message||'사진을 변경하지 못했습니다. 다시 시도해주세요.');
     }finally{
-      setBusy(false);
-      e.target.value='';
+      setBusy(false);setPhotoBusy(false);
     }
   }
 
@@ -387,17 +386,18 @@ export default function WorkerAccount() {
                       <strong>{profile.name||'프로필 사진'}</strong>
 
                       <label className='photo-button'>
-                        사진 변경
+                        {photoBusy?'사진 처리 중…':'사진 변경'}
                         <input
                           className='visually-hidden'
                           type='file'
-                          accept='image/jpeg,image/png,image/webp'
+                          accept='image/*'
                           disabled={!saved}
                           onChange={photo}
                         />
                       </label>
 
-                      <small>JPG·PNG·WebP / 2MB 이하</small>
+                      <small>원본 20MB 이하 · 업로드 전 자동으로 크기를 줄입니다.</small>
+                      {photoMessage&&<p role='status' style={{margin:'8px 0',fontWeight:700}}>{photoMessage}</p>}
                     </div>
                   </div>}
 
@@ -518,4 +518,3 @@ export default function WorkerAccount() {
     {message&&<p role='status'>{message}</p>}
   </main>;
                       }
-

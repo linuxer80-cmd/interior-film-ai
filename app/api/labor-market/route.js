@@ -576,11 +576,26 @@ export async function POST(request) {
         throw updated.error;
       }
 
+      // The DB update has succeeded. Cleanup must not turn it into a failed upload.
       if(existing.photo_path) {
-        await db.storage.from('labor-avatars').remove([existing.photo_path]);
+        try {
+          await db.storage.from('labor-avatars').remove([existing.photo_path]);
+        } catch {
+          console.warn('프로필 이전 사진 정리 지연');
+        }
       }
 
-      return json({ok:true});
+      // Return the saved image directly; an unrelated profile read must not
+      // hide a successful upload or overwrite unsaved form edits.
+      let photoUrl=null;
+      try {
+        const signed=await db.storage.from('labor-avatars').createSignedUrl(path,300);
+        photoUrl=signed.data?.signedUrl||null;
+        if(signed.error)console.warn('프로필 사진 미리보기 생성 실패',signed.error.statusCode||'storage');
+      } catch {
+        console.warn('프로필 사진 미리보기 생성 지연');
+      }
+      return json({ok:true,photo_url:photoUrl});
     }
 
     const body=await request.json();
@@ -894,5 +909,3 @@ export async function POST(request) {
     return errorResponse(error);
   }
 }
-
-
