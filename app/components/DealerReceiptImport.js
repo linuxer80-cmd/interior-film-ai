@@ -178,6 +178,7 @@ export default function DealerReceiptImport({
   const [batch, setBatch] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [activeRowId, setActiveRowId] = useState("");
 
   const gate = useRef(false);
   const storageKey = useRef("");
@@ -426,6 +427,7 @@ export default function DealerReceiptImport({
 
   async function searchProduct(row) {
     if (gate.current) return;
+    setActiveRowId(row.id);
 
     gate.current = true;
     setBusy(true);
@@ -584,7 +586,9 @@ export default function DealerReceiptImport({
       return;
     }
 
+    setActiveRowId(row.id);
     setError("");
+    setMessage("");
 
     try {
       if (!dealerId) {
@@ -654,7 +658,7 @@ export default function DealerReceiptImport({
           count > 50
         ) {
           throw new Error(
-            "방염 구분·한 롤 길이·롤 수를 확인해주세요."
+            "방염 구분, 한 롤 길이(m), 롤 수(1~50)를 입력해주세요. 영수증 총 길이만으로는 롤별 재고를 저장할 수 없습니다."
           );
         }
 
@@ -1192,6 +1196,22 @@ export default function DealerReceiptImport({
                     }
                   />
                 </label>
+
+                {row.action === "receive" && positive(row.totalM) && (
+                  <div className="notice">
+                    <p>총 {row.totalM}m가 한 롤이면 아래 버튼을 누르세요. 여러 롤이면 위에 한 롤 길이와 롤 수를 직접 입력해주세요.</p>
+                    <button type="button" onClick={() => {
+                      update(row.id, {lengthM: String(row.totalM), rollCount: "1"});
+                      setActiveRowId(row.id);
+                      setError("");
+                      setMessage("한 롤로 입력했습니다. 실제 물량을 확인하고 저장해주세요.");
+                    }}>{row.totalM}m · 1롤로 입력</button>
+                  </div>
+                )}
+
+                {activeRowId === row.id && error && <p role="alert" className="error">{error}</p>}
+                {activeRowId === row.id && message && <p role="status">{message}</p>}
+                {batch?.rowId === row.id && <p role="status">저장 확인 {batch.index} / {batch.jobs.length}건. 오류가 있으면 화면 위의 ‘남은 저장 결과 확인 · 다시 시도’를 눌러주세요.</p>}
 
                 {row.action ===
                   "supplier_return" && (
