@@ -35,7 +35,7 @@ self.addEventListener("push", (event) => {
       : {};
   } catch {
     data = {
-      title: "기분좋은공간",
+      title: "필름장이",
       body: event.data
         ? event.data.text()
         : "신규 상담이 들어왔습니다.",
@@ -44,30 +44,32 @@ self.addEventListener("push", (event) => {
 
   const title =
     data.title ||
-    "🔴 기분좋은공간 신규 상담";
+    "필름장이 · 새 알림";
 
   const options = {
     body:
       data.body ||
-      "새로운 고객 상담이 들어왔습니다.",
+      "새로운 알림이 도착했습니다.",
 
     icon:
-      "/icon-192.png",
+      "/app-icon/192",
 
     badge:
-      "/icon-192.png",
+      "/notification-badge",
 
     tag:
       data.tag ||
-      "new-customer-lead",
+      `notification-${Date.now()}`,
 
-    renotify:
-      true,
+    renotify: false,
+    actions: [{ action: "open", title: data.actionLabel || "내용 확인" }],
+    timestamp: Date.now(),
 
     data: {
       url:
-        data.url ||
-        "/admin",
+        data.url || data.link ||
+        "/start",
+      recipientType: data.recipientType,
     },
   };
 
@@ -95,9 +97,13 @@ self.addEventListener(
   (event) => {
     event.notification.close();
 
-    const rawUrl =
+    let rawUrl =
       event.notification?.data?.url ||
-      "/admin";
+      "/start";
+
+    // Previously delivered registration notices may still contain a generic destination.
+    if (/신규\s*시공자\s*등록/.test(event.notification.title || "") &&
+      ["/super-admin", "/super-admin/notifications"].includes(rawUrl)) rawUrl = "/super-admin/workers";
 
     /*
      * 현재 사이트 기준 절대 URL로 변환

@@ -1,3 +1,4 @@
+import { notificationDestination } from "../../../lib/superNotificationDestination.mjs";
 import { REPORT_REMINDER_TYPE, koreaDay, reminderWindow, currentReportReminder, reportReminderNotice } from "../../../lib/workReportReminders.mjs";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
@@ -164,7 +165,8 @@ function isSafeInternalLink(value) {
   return (
     typeof value === "string" &&
     value.startsWith("/") &&
-    !value.startsWith("//")
+    !value.startsWith("//") &&
+    !/[\\\s]/.test(value)
   );
 }
 
@@ -181,6 +183,8 @@ function isSafeInternalLink(value) {
 function buildNotificationUrl(
   notification,
 ) {
+  if (notification?.recipient_type === "super_admin") return notificationDestination(notification);
+
   const recipientType =
     cleanText(
       notification?.recipient_type,
@@ -888,6 +892,10 @@ function buildPayload(
       null,
 
     type,
+    recipientType: notification.recipient_type,
+    referenceType: notification.reference_type,
+    referenceId: notification.reference_id,
+    actionLabel: url === "/super-admin/workers" ? "시공자 관리" : "내용 확인",
 
     priority:
       cleanText(
