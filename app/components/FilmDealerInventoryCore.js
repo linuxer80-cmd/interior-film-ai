@@ -90,6 +90,7 @@ export default function FilmDealerInventory() {
 
   const [location, setLocation] = useState("창고");
   const [memo, setMemo] = useState("");
+  const [showDispatched, setShowDispatched] = useState(false);
   const [filter, setFilter] = useState("available");
   const [stockQuery, setStockQuery] = useState("");
   const [stockBrand, setStockBrand] = useState("");
@@ -439,6 +440,7 @@ export default function FilmDealerInventory() {
   );
 
   const allRolls = data?.stock?.rolls || [];
+  const dispatched = allRolls.filter(r => r.status === "on_site");
   const stored = allRolls.filter(r => r.status === "available");
 
   const inventoryValue = stored.reduce(
@@ -1310,16 +1312,28 @@ export default function FilmDealerInventory() {
                     </strong>
                     <span>{stored.length}롤 보관 중</span>
                   </div>
-                  <div>
+                  <button type="button" className="stock-dispatched-toggle"
+                    aria-expanded={showDispatched} aria-controls="dispatched-stock-list"
+                    onClick={() => setShowDispatched(value => !value)}>
                     <small>현장 반출 중</small>
-                    <strong>
-                      {allRolls.filter(
-                        r => r.status === "on_site"
-                      ).length}롤
-                    </strong>
-                    <span>반납 시 잔량 확정</span>
-                  </div>
+                    <strong>{dispatched.length}롤</strong>
+                    <span>{showDispatched ? "반출 현장 접기 ▴" : "반출 현장 보기 ›"}</span>
+                  </button>
                 </div>
+
+                {showDispatched && (
+                  <section id="dispatched-stock-list" className="dispatched-stock-list" aria-label="반출 중인 현장 재고">
+                    <h3>반출 중인 현장 · {dispatched.length}롤</h3>
+                    <p>반납 시 실제 잔량이 확정됩니다.</p>
+                    {dispatched.length ? dispatched.map(roll => (
+                      <div className="dispatched-stock-item" key={roll.id}>
+                        <strong>{roll.site_name || "현장명 확인 필요"}</strong>
+                        <span>{roll.brand} · {roll.product_code}</span>
+                        <small>롤 번호: {roll.label || "미등록"} · 반출 기록 {number(roll.remaining)}m</small>
+                      </div>
+                    )) : <p>현재 현장에 반출 중인 재고가 없습니다.</p>}
+                  </section>
+                )}
 
                 <details>
                   <summary>
@@ -1668,11 +1682,20 @@ export default function FilmDealerInventory() {
           grid-template-columns: 1fr 1fr;
           gap: 12px;
         }
-        .stock-stats > div {
+        .stock-stats > div,
+        .stock-stats > .stock-dispatched-toggle {
           padding: 14px;
           background: #f1f5f9;
           border-radius: 12px;
         }
+        .stock-dispatched-toggle { width: 100%; border: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+        .stock-dispatched-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+        .stock-dispatched-toggle[aria-expanded="true"] { box-shadow: inset 0 0 0 2px #94a3b8; }
+        .dispatched-stock-list { margin-top: 16px; }
+        .dispatched-stock-list h3 { font-size: 17px; }
+        .dispatched-stock-list > p { font-size: 13px; color: #64748b; }
+        .dispatched-stock-item { display: grid; gap: 7px; padding: 14px 0; border-top: 1px solid #e2e8f0; overflow-wrap: anywhere; }
+        .dispatched-stock-item span { font-size: 14px; }
         .stock-stats strong {
           display: block;
           font-size: 25px;
