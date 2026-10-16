@@ -448,7 +448,47 @@ export default function WorkerAccount() {
             </GuidedForm>
           }
 
-          <p><Link href='/jobs?view=worker&tab=seeking'>일할 날짜 선택 · 구직 공고 관리 ›</Link></p>
+          <Link
+            href='/jobs?view=worker&tab=seeking'
+            className='work-date-link'
+            aria-label='일할 날짜 등록하기 · 구직 등록 화면으로 이동'
+          >
+            <span className='work-date-icon' aria-hidden='true'>
+              <svg width='26' height='26' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round'>
+                <rect x='3' y='5' width='18' height='16' rx='3'/>
+                <path d='M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2'/>
+              </svg>
+            </span>
+            <span className='work-date-copy'>
+              <strong>일할 날짜 등록하기</strong>
+              <span>일할 수 있는 날짜를 선택하고<br/>구직 공고를 관리하세요.</span>
+              <span className='work-date-action'>날짜 선택하기 <span aria-hidden='true'>→</span></span>
+            </span>
+          </Link>
+          <style jsx>{`
+            :global(.work-date-link) {
+              display: flex; align-items: flex-start; gap: 14px;
+              margin: 20px 0 16px; padding: 18px;
+              border: 1px solid #bfdbfe; border-radius: 16px;
+              background: #eff6ff; color: #163153;
+              text-decoration: none; box-sizing: border-box;
+            }
+            :global(.work-date-link:hover) { background: #e0edff; }
+            :global(.work-date-link:focus-visible) {
+              outline: 3px solid #2563eb; outline-offset: 3px;
+            }
+            .work-date-icon {
+              display: flex; align-items: center; justify-content: center;
+              flex-shrink: 0; width: 44px; height: 44px;
+              border-radius: 12px; background: white; color: #2563eb;
+            }
+            .work-date-copy { display: grid; gap: 7px; min-width: 0; }
+            .work-date-copy strong { font-size: 17px; line-height: 1.4; }
+            .work-date-copy > span { font-size: 13px; line-height: 1.6; color: #475569; }
+            .work-date-copy .work-date-action {
+              margin-top: 3px; color: #1d4ed8; font-size: 14px; font-weight: 700;
+            }
+          `}</style>
           <button disabled={busy} onClick={async()=>{
             await supabase.auth.signOut();
             setProfile(blank);
