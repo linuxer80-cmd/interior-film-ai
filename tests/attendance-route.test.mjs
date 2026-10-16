@@ -153,3 +153,41 @@ test('database rejection is not reported as a saved attendance record', async ()
   assert.match((await res.json()).error, /배정/);
 });
 
+
+function mappedFixture() {
+  const f = fixture();
+  f.rows.site_workers.push({ id: uid(20), company_id: companyA, site_id: siteA, worker_id: workerA });
+  f.rows.attendance_locations.push(
+    {site_id: siteA, company_id: companyA, address: '인천', latitude: 37.4, longitude: 126.7},
+    {site_id: siteB, company_id: companyB, address: '부천', latitude: 37.5, longitude: 126.8}
+  );
+  return f;
+}
+
+test('automatic clock-in chooses matching second site across companies', async () => {
+  const f = mappedFixture();
+  const res = await f.post({action: 'in', consent: true, gps: {latitude: 37.5, longitude: 126.8, accuracy: 10}});
+  assert.equal(res.status, 200);
+  assert.equal(f.calls.at(-1).args.p_body.siteId, siteB);
+});
+
+test('automatic clock-in rejects unmatched or missing GPS without saving', async () => {
+  for (const gps of [null, {latitude: 35, longitude: 127, accuracy: 10}, {latitude: 37.5, longitude: 126.8, accuracy: 200}]) {
+    const f = mappedFixture();
+    assert.equal((await f.post({action: 'in', consent: true, gps})).status, 400);
+    assert.ok(!f.calls.some(call => call.name === 'attendance_action'));
+  }
+});
+
+test('automatic selection picks nearest when both sites match', async () => {
+  const f = mappedFixture();
+  Object.assign(f.rows.attendance_locations[0], {latitude: 37.5005, longitude: 126.8});
+  assert.equal((await f.post({action: 'in', consent: true, gps: {latitude: 37.5, longitude: 126.8, accuracy: 10}})).status, 200);
+  assert.equal(f.calls.at(-1).args.p_body.siteId, siteB);
+});
+
+test('single assignment automatically resolves without requiring GPS', async () => {
+  const f = fixture({inactive: true});
+  assert.equal((await f.post({action: 'in', consent: true, reason: 'GPS 오류'})).status, 200);
+  assert.equal(f.calls.at(-1).args.p_body.siteId, siteA);
+});

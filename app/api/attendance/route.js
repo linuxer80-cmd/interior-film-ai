@@ -517,6 +517,46 @@ async function prepareLocation(a, siteId) {
   return "";
 }
 
+// Candidate sites come only from the existing authorized, Korea-date assignment RPC.
+async function automaticAttendanceSite(a, body) {
+  const candidates = [];
+  for (const companyId of new Set(a.workers.map(worker => worker.company_id))) {
+    const result = await a.db.rpc("attendance_today_sites", { p_user: a.userId, p_company: companyId });
+    if (result.error) throw result.error;
+    for (const site of result.data || []) candidates.push({ ...site, company_id: companyId });
+  }
+  if (!candidates.length) throw Error("오늘 출근 가능한 배정 현장이 없습니다.");
+  if (candidates.length === 1) return candidates[0].id;
+  const gps = body.gps;
+  if (!Number.isFinite(gps?.latitude) || !Number.isFinite(gps?.longitude) ||
+      Math.abs(gps.latitude) > 90 || Math.abs(gps.longitude) > 180 ||
+      !Number.isFinite(gps.accuracy) || gps.accuracy < 0 || gps.accuracy > 100) {
+    throw Error("여러 배정 현장 중 현재 현장을 확인하려면 위치 권한이 필요합니다. GPS를 확인하거나 관리자에게 기록을 요청해주세요.");
+  }
+  const matches = await Promise.all(candidates.map(async site => {
+    const scoped = { ...a, companyId: site.company_id };
+    try {
+      if (await prepareLocation(scoped, site.id)) return null;
+      const location = await a.db.from("attendance_locations").select("latitude,longitude")
+        .eq("site_id", site.id).eq("company_id", site.company_id).maybeSingle();
+      const settings = await a.db.from("attendance_settings").select("radius_m")
+        .eq("company_id", site.company_id).maybeSingle();
+      if (location.error || settings.error || location.data?.latitude == null || location.data?.longitude == null) return null;
+      const lat = Number(location.data.latitude), lon = Number(location.data.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+      const rad = value => value * Math.PI / 180;
+      const h = Math.sin(rad(lat - gps.latitude) / 2) ** 2 +
+        Math.cos(rad(lat)) * Math.cos(rad(gps.latitude)) * Math.sin(rad(lon - gps.longitude) / 2) ** 2;
+      const distance = 6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
+      const radius = Number(settings.data?.radius_m ?? 200);
+      return distance + gps.accuracy <= radius ? { id: site.id, distance } : null;
+    } catch { return null; }
+  }));
+  const nearest = matches.filter(Boolean).sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id))[0];
+  if (!nearest) throw Error("현재 위치와 일치하는 배정 현장을 찾지 못했습니다. GPS와 현장 주소를 확인하거나 관리자에게 문의해주세요.");
+  return nearest.id;
+}
+
 export async function POST(request) {
   try {
     const a = await auth(request);
@@ -539,6 +579,11 @@ export async function POST(request) {
 
     if (["settings", "review", "correct"].includes(body.action) && !a.owner) {
       return json({ error: "관리자 권한이 필요합니다." }, 403);
+    }
+
+    if (body.action === "in" && !body.siteId) {
+      if (body.consent !== true) return json({ error: "위치 기록 안내를 확인해주세요." }, 400);
+      body.siteId = await automaticAttendanceSite(a, body);
     }
 
     // 업체 ID는 요청 값을 신뢰하지 않고 본인의 현장·기록에서 결정합니다.

@@ -219,7 +219,6 @@ export default function AttendancePage({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [siteId, setSiteId] = useState("");
   const [currentGps, setCurrentGps] = useState(null);
   const [consent, setConsent] = useState(false);
   const [reason, setReason] = useState("");
@@ -329,8 +328,7 @@ export default function AttendancePage({
   const eligibleSites = sites.filter(
     site => site.canClockIn
   );
-  const automaticSiteId = eligibleSites.length === 1 ? eligibleSites[0].id : siteId;
-  const selected = eligibleSites.find(site => site.id === automaticSiteId);
+  const selected = eligibleSites.length === 1 ? eligibleSites[0] : null;
 
   const active = (data?.records || []).find(
     record => !record.clock_out
@@ -348,8 +346,8 @@ export default function AttendancePage({
       throw Error("위치 기록 안내를 확인해주세요.");
     }
 
-    if (action === "in" && !selected) {
-      throw Error(eligibleSites.length ? "오늘 현장이 여러 곳입니다. 기록할 현장을 확인해주세요." : "오늘 출근 가능한 배정 현장이 없습니다. 관리자에게 일정을 확인해주세요.");
+    if (action === "in" && !eligibleSites.length) {
+      throw Error("오늘 출근 가능한 배정 현장이 없습니다. 관리자에게 일정을 확인해주세요.");
     }
 
     const gps = withoutGps ? null : await locate();
@@ -357,7 +355,7 @@ export default function AttendancePage({
 
     await post({
       action,
-      siteId: selected?.id || active?.site_id,
+      siteId: action === "out" ? active?.site_id : undefined,
       id: active?.id,
       gps,
       reason,
@@ -365,9 +363,6 @@ export default function AttendancePage({
     });
   }
 
-  function selectSite(id) {
-    setSiteId(id);
-  }
 
   return (
     <Container
@@ -584,26 +579,7 @@ export default function AttendancePage({
               {" · "}출근 {time(active.clock_in)}
             </p>
           ) : eligibleSites.length > 1 ? (
-            <label>오늘 배정된 현장이 여러 곳입니다.
-            <select
-              aria-label="출근할 현장 확인"
-              style={field}
-              disabled={busy}
-              value={siteId}
-              onChange={event =>
-                selectSite(event.target.value)
-              }
-            >
-              <option value="">
-                오늘 배정된 현장 선택
-              </option>
-
-              {eligibleSites.map(site => (
-                <option key={site.id} value={site.id}>
-                  {site.site_name || site.address}
-                </option>
-              ))}
-            </select></label>
+            <p>오늘 배정된 현장 {eligibleSites.length}곳 중 현재 위치에 맞는 현장으로 자동 기록됩니다.</p>
           ) : selected ? (
             <p><strong>{selected.site_name || "오늘 현장"}</strong><br /><small>오늘 배정된 현장으로 자동 기록됩니다.</small></p>
           ) : null}
