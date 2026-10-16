@@ -14,7 +14,7 @@ export default function ReferralClaim() {
     const response=await fetch('/api/referrals',{method:'POST',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'claim',scope:'worker',token})});
     const result=await response.json();
     if(!live)return;
-    if(response.ok){localStorage.removeItem('film-referral');setMessage('초대 가입이 인정되었습니다. 초대한 분에게 가입 실적이 반영됩니다.');}
+    if(response.ok){localStorage.removeItem('film-referral');setMessage('초대 확인이 완료되었습니다. 신규 가입한 경우 가입 실적도 함께 반영됩니다.');}
     else {setMessage(result.error||'초대 등록을 다시 확인해주세요.');if(response.status===400)localStorage.removeItem('film-referral');}
    }catch{if(live)setMessage('초대 등록을 확인하지 못했습니다. 다시 확인해주세요.');}
    finally{working=false;}

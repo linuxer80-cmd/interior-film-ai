@@ -28,7 +28,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),path=require('path')
  assert.equal((await rpc(owner,'create',{scope:'owner'})).token,invite.token);
  assert.equal((await rpc(owner,'get',{scope:'owner'})).metrics.owner_referral_shared,0);
  await rpc(owner,'shared',{scope:'owner',token:invite.token});await rpc(owner,'shared',{scope:'owner',token:invite.token});
- assert.equal((await rpc(owner,'get',{scope:'owner'})).metrics.owner_referral_shared,1);
+ assert.equal((await rpc(owner,'get',{scope:'owner'})).metrics.owner_referral_shared,0);
  await assert.rejects(()=>rpc(owner,'claim',{scope:'worker',token:invite.token}));
  await rpc(friend,'claim',{scope:'worker',token:invite.token});await rpc(friend,'claim',{scope:'worker',token:invite.token});
  await assert.rejects(()=>rpc(other,'claim',{scope:'worker',token:invite.token}));
@@ -37,6 +37,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),path=require('path')
  await assert.rejects(()=>rpc(other,'claim',{scope:'worker',token:second.token}));
  await db.query('update auth.users set email_confirmed_at=null where id=$1',[other]);
  await assert.rejects(()=>rpc(other,'create',{scope:'worker'}));
+ assert.equal((await rpc(owner,'get',{scope:'owner'})).metrics.owner_referral_shared,1);
  console.log('PASS one-time link, idempotence, self referral and duplicate recipient rejection');
  await db.query("select achievement_action($1,'get','{\"scope\":\"owner\"}')",[owner]);
  const credits=(await db.query('select * from badge_ai_credits')).rows;
@@ -56,5 +57,20 @@ const fs=require('fs'),assert=require('node:assert/strict'),path=require('path')
  // Backfill remains idempotent after spend.
  await db.exec(sql);assert.equal((await db.query('select sum(granted)::int as n from badge_ai_credits')).rows[0].n,13);
  assert.equal((await db.query('select sum(used)::int as n from badge_ai_credits')).rows[0].n,8);
- console.log('PASS rerun retains consumed credits');await db.close();
+ console.log('PASS rerun retains consumed credits');
+ await db.exec(fs.readFileSync(path.join(__dirname,'../database/referral_confirmation_fix.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.join(__dirname,'../database/referral_confirmation_fix.sql'),'utf8'));
+ await db.query("update auth.users set email_confirmed_at=now(),created_at=now()-interval '10 days' where id=$1",[other]);
+ const third=await rpc(owner,'create',{scope:'owner'});
+ await rpc(other,'claim',{scope:'worker',token:third.token});
+ const stats=await rpc(owner,'get',{scope:'owner'});
+ assert.equal(stats.confirmation_version,2);
+ assert.equal(stats.metrics.owner_referral_shared,2);
+ assert.equal(stats.metrics.owner_referral_joined,1);
+ assert.equal(stats.links.find(x=>x.token===third.token).confirmed,true);
+ const fourth=await rpc(owner,'create',{scope:'owner'});
+ await assert.rejects(()=>rpc(other,'claim',{scope:'worker',token:fourth.token}));
+ assert.equal((await rpc(owner,'get',{scope:'owner'})).metrics.owner_referral_shared,2);
+ console.log('PASS existing member confirmation, distinct signup counts, repeat-recipient rejection, migration rerun');
+ await db.close();
 })().catch(e=>{console.error(e);process.exit(1)});

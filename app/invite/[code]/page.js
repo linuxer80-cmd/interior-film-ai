@@ -18,9 +18,9 @@ export default function InviteLanding({params}) {
    <button onClick={()=>start('/signup')}><span><strong>업체 관리자로 시작</strong><small>현장 · 자재 · 시공자 관리</small></span><span aria-hidden='true'>→</span></button>
    <button onClick={()=>start('/worker/account')}><span><strong>시공자로 시작</strong><small>내 일정 · 구직 · 스마트 재단</small></span><span aria-hidden='true'>→</span></button>
   </div>
-  <button className='login' onClick={()=>start('/login')}>가입·인증을 마쳤다면 로그인 →</button>
+  <button className='login' onClick={()=>start('/login')}>이미 회원이라면 로그인·초대 확인 →</button>
   {error&&<p role='alert'>{error}</p>}
-  <details><summary>초대 가입 안내</summary><p>신규 가입과 이메일 인증을 완료하면 초대한 분의 친구 가입 배지에 반영됩니다. 업체 소속으로 자동 연결되지는 않습니다.</p><p>한 명만 사용하는 30일 유효 링크입니다. 인증 후 같은 브라우저에서 로그인해주세요. 다른 기기에서는 이 링크를 다시 열어주세요.</p></details>
+  <details><summary>초대 가입 안내</summary><p>로그인·이메일 인증 후 초대를 확인하면 초대한 분의 초대 배지에 반영됩니다. 신규 가입자는 친구 가입 배지에도 반영됩니다. 같은 계정은 한 번만 인정됩니다. 업체 소속으로 자동 연결되지는 않습니다.</p><p>한 명만 사용하는 30일 유효 링크입니다. 인증 후 같은 브라우저에서 로그인해주세요. 다른 기기에서는 이 링크를 다시 열어주세요.</p></details>
  </section>
  <style jsx>{`
   .invite-welcome {max-width:480px;margin:0 auto;padding:28px 18px 60px;color:#203c48;box-sizing:border-box;}

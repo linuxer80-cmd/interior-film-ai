@@ -82,7 +82,7 @@ begin
 end $$;
 create or replace function public.referral_metrics(p_subject text,p_scope text)
 returns jsonb language sql security invoker set search_path='' as $$
- select jsonb_build_object(p_scope||'_referral_shared',count(*) filter(where shared_at is not null),p_scope||'_referral_joined',count(*) filter(where joined_at is not null))
+ select jsonb_build_object(p_scope||'_referral_shared',count(*) filter(where recipient is not null),p_scope||'_referral_joined',count(*) filter(where joined_at is not null))
  from public.app_referrals where subject_key=p_subject;
 $$;
 -- Extend installed metric checks without dropping support for any existing metric.
@@ -107,7 +107,7 @@ end $patch$;
 insert into public.achievement_definitions(id,title,description,audience,metric,target,art_key,tier,sort_order)
 select scope||'_invite_'||kind||'_'||goal,
  case when kind='shared' then '초대의 손길 ' else '함께하는 친구 ' end||goal||'명',
- case when kind='shared' then '서로 다른 일회용 링크 공유·복사 완료 ' else '일회용 링크로 신규 가입·이메일 인증 완료 ' end||goal||'명',
+ case when kind='shared' then '서로 다른 계정의 로그인·이메일 인증 후 초대 확인 ' else '일회용 링크로 신규 가입·이메일 인증 완료 ' end||goal||'명',
  scope,scope||'_referral_'||kind,goal,case when kind='shared' then 3 else 6 end,
  case when goal>=10 then 'gold' when goal>=3 then 'silver' else 'bronze' end,500+goal+case when kind='joined' then 100 else 0 end
 from unnest(array['owner','worker']) scope cross join unnest(array['shared','joined']) kind cross join unnest(array[1,3,5,10,20,50]) goal
@@ -121,7 +121,7 @@ begin
  perform pg_advisory_xact_lock(hashtextextended('referral-user:'||p_actor::text,0));
  if p_action='create' then
   -- Reuse an unshared link after a retry. Link generation itself earns nothing.
-  select * into r from public.app_referrals where inviter=p_actor and subject_key=subject and shared_at is null and expires_at>now() order by created_at desc limit 1;
+  select * into r from public.app_referrals where inviter=p_actor and subject_key=subject and shared_at is null and recipient is null and expires_at>now() order by created_at desc limit 1;
   if r.id is null then
    if (select count(*) from public.app_referrals where inviter=p_actor and created_at>=now()-interval '1 day')>=20 then raise exception '초대 링크는 하루 20개까지 만들 수 있습니다.' using errcode='22023'; end if;
    insert into public.app_referrals(inviter,subject_key) values(p_actor,subject) returning * into r;
@@ -133,16 +133,16 @@ begin
  elsif p_action='claim' then
   select * into r from public.app_referrals where token=p_body->>'token' for update;
   if r.id is null then raise exception '유효하지 않은 초대 링크입니다.' using errcode='22023'; end if;
-  if r.recipient=p_actor then return jsonb_build_object('ok',true,'message','이미 초대 가입이 인정되었습니다.'); end if;
+  if r.recipient=p_actor then return jsonb_build_object('ok',true,'message','이미 초대 확인이 인정되었습니다.'); end if;
   select created_at into joined from auth.users where id=p_actor;
-  if r.inviter=p_actor or r.recipient is not null or r.expires_at<=now() or joined<r.created_at then
-   raise exception '사용되었거나 만료된 링크 또는 기존 계정입니다. 신규 가입자만 인정됩니다.' using errcode='22023';
+  if r.inviter=p_actor or r.recipient is not null or r.expires_at<=now() then
+   raise exception '본인 초대이거나 이미 사용되었거나 만료된 링크입니다.' using errcode='22023';
   end if;
-  if exists(select 1 from public.app_referrals where recipient=p_actor) then raise exception '이미 다른 초대 링크로 가입이 인정되었습니다.' using errcode='22023'; end if;
-  update public.app_referrals set recipient=p_actor,joined_at=now(),shared_at=coalesce(shared_at,now()) where id=r.id;
+  if exists(select 1 from public.app_referrals where recipient=p_actor) then raise exception '이미 초대가 인정된 계정입니다. 같은 계정은 한 번만 인정됩니다.' using errcode='22023'; end if;
+  update public.app_referrals set recipient=p_actor,joined_at=case when joined>=r.created_at then now() else null end,shared_at=coalesce(shared_at,now()) where id=r.id;
  elsif p_action<>'get' then raise exception '지원하지 않는 초대 요청입니다.' using errcode='22023'; end if;
- return jsonb_build_object('ok',true,'metrics',public.referral_metrics(subject,coalesce(p_body->>'scope','worker')),
- 'links',coalesce((select jsonb_agg(to_jsonb(x)) from (select token,created_at,expires_at,shared_at,joined_at from public.app_referrals where inviter=p_actor and subject_key=subject order by created_at desc limit 10)x),'[]'::jsonb));
+ return jsonb_build_object('ok',true,'confirmation_version',2,'metrics',public.referral_metrics(subject,coalesce(p_body->>'scope','worker')),
+ 'links',coalesce((select jsonb_agg(to_jsonb(x)) from (select token,created_at,expires_at,shared_at,joined_at,(recipient is not null) as confirmed from public.app_referrals where inviter=p_actor and subject_key=subject order by created_at desc limit 10)x),'[]'::jsonb));
 end $$;
 
 -- Called only after achievement_action has authorized its scope.
