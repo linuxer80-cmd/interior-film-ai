@@ -1,7 +1,7 @@
 import { completionSeed, normalizeHeader } from "../../../../lib/completionEstimate.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { GET as getProfit } from "../profit/route";
-import { sellingMaterialPrices } from "../../../../lib/dealerPriceImport.mjs";
+import { sellingMaterialPrices, mergeCatalogSellingPrices } from "../../../../lib/dealerPriceImport.mjs";
 import { allPriceRows } from "../../../../lib/dealerPriceServer";
 
 export const runtime = "nodejs";
@@ -267,12 +267,17 @@ export async function GET(request) {
       const priceColumn = "interior_price";
       const priceLabel = "인테리어업자";
       try {
-        const [metadata, products, prices] = await Promise.all([
+        const optionalPrices = promise => promise.catch(error => {
+          if (["42P01", "PGRST205"].includes(error?.code)) return [];
+          throw error;
+        });
+        const [metadata, products, prices, catalog] = await Promise.all([
           allPriceRows(() => db.from("site_materials").select("*").eq("company_id",companyId).eq("site_id",siteId).eq("material_type","planned").order("id")),
           allPriceRows(() => db.from("film_products").select("id,brand,product_code,legacy_non_fire_code").order("id")),
-          allPriceRows(() => db.from("company_film_selling_prices").select("product_id,price_type,interior_price,consumer_price").eq("company_id",companyId).order("product_id").order("price_type")),
+          optionalPrices(allPriceRows(() => db.from("company_film_selling_prices").select("product_id,price_type,interior_price,consumer_price").eq("company_id",companyId).order("product_id").order("price_type"))),
+          optionalPrices(allPriceRows(() => db.from("film_catalog_prices").select("product_id,price_type,interior_price,vat_included").order("product_id").order("price_type"))),
         ]);
-        estimateMaterials = sellingMaterialPrices(estimateMaterials,metadata,products,prices,priceColumn);
+        estimateMaterials = sellingMaterialPrices(estimateMaterials,metadata,products,mergeCatalogSellingPrices(prices,catalog),priceColumn);
         sellingWarning = `등록한 ${priceLabel} 판매단가(VAT 제외)를 적용합니다. 판매단가가 없거나 방염 구분이 불명확한 항목은 단가를 비워두므로 직접 확인해주세요.`;
       } catch {
         sellingWarning = "인테리어업자 판매단가를 불러오지 못해 필름 단가를 비워두었습니다. 판매단가를 확인해 입력해주세요.";
