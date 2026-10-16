@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { siteDirectionsLinks } from "../utils/siteDirections";
 import WorkerCommute from "./WorkerCommute";
+import SiteNearbyPlaces from "./SiteNearbyPlaces";
 import styles from "./WorkerSiteCalendar.module.css";
 
 export default function SiteDirections({
@@ -71,6 +72,8 @@ export default function SiteDirections({
           </a>
         </div>
       )}
+
+      <SiteNearbyPlaces key={`${site?.site_id}:${address}`} siteId={site?.site_id} address={address}/>
 
       <WorkerCommute
         siteId={site?.site_id}
