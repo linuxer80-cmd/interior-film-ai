@@ -117,6 +117,16 @@ function locate() {
   });
 }
 
+function AttendanceLocationMap({gps, site}) {
+  const valid=Number.isFinite(gps?.latitude)&&Number.isFinite(gps?.longitude)&&Math.abs(gps.latitude)<=90&&Math.abs(gps.longitude)<=180;
+  const point=valid?`${gps.latitude},${gps.longitude}`:String(site?.address||'').trim();
+  return <div style={{margin:'16px 0',border:'1px solid #dce4df',borderRadius:16,overflow:'hidden',background:'#f5f7f4'}}>
+    <div style={{padding:'12px 14px',fontSize:14,fontWeight:700}}>{valid?'버튼을 누른 시점의 내 위치':'배정 현장 위치'}</div>
+    {point ? <iframe key={point} title={valid?'출퇴근 기록 위치 지도':'오늘 배정 현장 지도'} loading="lazy" referrerPolicy="no-referrer" src={`https://www.google.com/maps?q=${encodeURIComponent(point)}&z=16&output=embed`} style={{display:'block',width:'100%',height:240,border:0}} /> : <p style={{padding:'0 14px 14px',fontSize:14}}>출퇴근 버튼을 눌러 위치를 확인하면 지도가 표시됩니다.</p>}
+    {valid&&<p style={{padding:'0 14px',fontSize:13,color:'#64746b'}}>GPS 오차 ±{Math.round(gps.accuracy||0)}m · 실시간 추적하지 않습니다.</p>}
+  </div>;
+}
+
 function Gps({ gps, distance, verified }) {
   const [showMap, setShowMap] = useState(false);
 
@@ -210,6 +220,7 @@ export default function AttendancePage({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [siteId, setSiteId] = useState("");
+  const [currentGps, setCurrentGps] = useState(null);
   const [consent, setConsent] = useState(false);
   const [reason, setReason] = useState("");
   const [settings, setSettings] = useState({
@@ -318,7 +329,8 @@ export default function AttendancePage({
   const eligibleSites = sites.filter(
     site => site.canClockIn
   );
-  const selected = sites.find(site => site.id === siteId);
+  const automaticSiteId = eligibleSites.length === 1 ? eligibleSites[0].id : siteId;
+  const selected = eligibleSites.find(site => site.id === automaticSiteId);
 
   const active = (data?.records || []).find(
     record => !record.clock_out
@@ -336,15 +348,16 @@ export default function AttendancePage({
       throw Error("위치 기록 안내를 확인해주세요.");
     }
 
-    if (action === "in" && !siteId) {
-      throw Error("현장을 선택해주세요.");
+    if (action === "in" && !selected) {
+      throw Error(eligibleSites.length ? "오늘 현장이 여러 곳입니다. 기록할 현장을 확인해주세요." : "오늘 출근 가능한 배정 현장이 없습니다. 관리자에게 일정을 확인해주세요.");
     }
 
     const gps = withoutGps ? null : await locate();
+    setCurrentGps(gps);
 
     await post({
       action,
-      siteId,
+      siteId: selected?.id || active?.site_id,
       id: active?.id,
       gps,
       reason,
@@ -570,8 +583,10 @@ export default function AttendancePage({
               {siteName(active.site_id)}
               {" · "}출근 {time(active.clock_in)}
             </p>
-          ) : (
+          ) : eligibleSites.length > 1 ? (
+            <label>오늘 배정된 현장이 여러 곳입니다.
             <select
+              aria-label="출근할 현장 확인"
               style={field}
               disabled={busy}
               value={siteId}
@@ -588,12 +603,13 @@ export default function AttendancePage({
                   {site.site_name || site.address}
                 </option>
               ))}
-            </select>
-          )}
+            </select></label>
+          ) : selected ? (
+            <p><strong>{selected.site_name || "오늘 현장"}</strong><br /><small>오늘 배정된 현장으로 자동 기록됩니다.</small></p>
+          ) : null}
 
-          {selected && !active && (
-            <p>{selected.address}</p>
-          )}
+          {selected && !active && <p>{selected.address}</p>}
+          <AttendanceLocationMap gps={currentGps} site={active ? sites.find(site => site.id === active.site_id) : selected} />
 
           {!active && !eligibleSites.length && (
             <p>
@@ -604,6 +620,8 @@ export default function AttendancePage({
 
           <p>
             버튼을 누를 때만 위치와 서버 시간을 기록합니다.
+            지도에는 현장 주소 또는 버튼을 눌러 확인한 위치가 표시됩니다.
+            지도 표시를 위해 해당 위치가 Google 지도에 전달됩니다.
             기록은 본인과 소속 관리자가 확인하며 근무·연장비용
             확인에 사용합니다. 계속 위치를 추적하지 않습니다.
           </p>
@@ -628,7 +646,7 @@ export default function AttendancePage({
               background: "#2563eb",
               color: "white",
             }}
-            disabled={busy || loading || !consent}
+            disabled={busy || loading || !consent || (!active && !eligibleSites.length)}
             onClick={() =>
               run(() => punch(active ? "out" : "in"))
             }
