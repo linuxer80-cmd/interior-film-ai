@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { guardAdminSiteHistory } from "../../lib/adminSiteHistory.mjs";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
@@ -171,17 +172,28 @@ export default function SiteDetailModal({
     if (scrollBody.current) scrollBody.current.scrollTop = 0;
   }
 
-  function closeModal() {
-    if (
-      (estimateDirty || quoteDirty) &&
-      !window.confirm(
-        "견적서에 저장하지 않은 변경이 있거나 처리 중입니다. 닫을까요?",
-      )
-    ) {
-      return;
-    }
+  const historyGuard = useRef(null);
+  const closeState = useRef(null);
+  closeState.current = { estimateDirty, quoteDirty, reportSaving, onClose };
 
-    if (!reportSaving) onClose?.();
+  useEffect(() => {
+    if (!site?.id) return;
+    const guard = guardAdminSiteHistory(window, {
+      canClose: () => {
+        const current = closeState.current;
+        if (current.reportSaving) return false;
+        return !(current.estimateDirty || current.quoteDirty) || window.confirm(
+          "견적서에 저장하지 않은 변경이 있거나 처리 중입니다. 닫을까요?",
+        );
+      },
+      onClose: () => closeState.current.onClose?.(),
+    });
+    historyGuard.current = guard;
+    return () => { guard.dispose(); historyGuard.current = null; };
+  }, [site?.id]);
+
+  function closeModal() {
+    historyGuard.current?.close();
   }
 
   async function handleAssignmentSaved() {
