@@ -199,3 +199,13 @@ export function nextWorkDay(sites, from) {
 
   return next;
 }
+
+// 완료보고 목록은 본인의 마지막 배정일이 지난 현장만 표시합니다.
+export function isPastWorkerSchedule(site, today = koreanDay()) {
+  if (!today || siteStatus(site) === "cancelled") return false;
+  const personal = personalDays(site);
+  const lastDay = personal !== null
+    ? [...personal.keys()].sort().at(-1)
+    : legacyRange(site)?.end;
+  return Boolean(lastDay && lastDay < today);
+}

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { siteStatus } from "../utils/workerCalendar";
+import { siteStatus, koreanDay, isPastWorkerSchedule } from "../utils/workerCalendar";
 import { supabase } from "../../lib/supabase";
 import { workerProfileRequirements } from "../utils/workerProfileRequirements";
 import {
@@ -200,9 +200,11 @@ export default function WorkerPage({ mode = "home" }) {
     }
   }
 
-  const reportCompanies = [...new Map(sites.filter(site => siteStatus(site) !== "cancelled" && site.company_id).map(site => [site.company_id, site.company_name || "업체명 확인 필요"])).entries()];
+  const today = koreanDay();
+  const reportSites = sites.filter(site => isPastWorkerSchedule(site, today));
+  const reportCompanies = [...new Map(reportSites.filter(site => siteStatus(site) !== "cancelled" && site.company_id).map(site => [site.company_id, site.company_name || "업체명 확인 필요"])).entries()];
 
-  const visibleSites = sites.filter(site => {
+  const visibleSites = (mode === "report" ? reportSites : sites).filter(site => {
     if (mode === "report" && reportCompany !== "all" && site.company_id !== reportCompany) return false;
     if (mode === "report" && reportFilter === "todo" && ["approved","accepted"].includes(site.report_review_status)) return false;
     if (mode === "report" && reportFilter === "approved" && !["approved","accepted"].includes(site.report_review_status)) return false;
@@ -468,7 +470,9 @@ export default function WorkerPage({ mode = "home" }) {
                 <p>
                   {mode === "film"
                     ? "현장 필름으로 재단하려면 아래 현장을 선택하세요."
-                    : "작업할 현장을 선택하세요."}
+                    : mode === "report"
+                      ? "마지막 배정일이 지난 현장입니다. 오늘 작업한 현장은 내일부터 표시됩니다."
+                      : "작업할 현장을 선택하세요."}
                 </p>
 
                 {mode === "report" && (
@@ -550,7 +554,7 @@ export default function WorkerPage({ mode = "home" }) {
 
                 {!visibleSites.length && (
                   <p>
-                    표시할 현장이 없습니다.
+                    {mode === "report" ? "현재 조건에 맞는 지난 시공 현장이 없습니다." : "표시할 현장이 없습니다."}
                   </p>
                 )}
 
