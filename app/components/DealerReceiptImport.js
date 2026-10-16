@@ -180,7 +180,9 @@ export default function DealerReceiptImport({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [activeRowId, setActiveRowId] = useState("");
+  const [editingRows, setEditingRows] = useState(false);
 
+  const summaryRef = useRef(null);
   const gate = useRef(false);
   const storageKey = useRef("");
   const batchRef = useRef(null);
@@ -375,8 +377,7 @@ export default function DealerReceiptImport({
 
       if (!alive.current) return;
 
-      setRows(
-        result.rows.map(source =>
+      let parsedRows = result.rows.map(source =>
           applyCodeType({
             ...source,
             id: crypto.randomUUID(),
@@ -390,8 +391,31 @@ export default function DealerReceiptImport({
             rollIds: [],
             done: false,
           })
-        )
-      );
+        );
+      // Resolve exact products before asking the user to confirm the receipt.
+      const matches = new Map();
+      for (const row of parsedRows) {
+        if (row.action !== "receive" || !row.code.trim()) continue;
+        const key = receiptSearchCode(row.code);
+        try {
+          if (!matches.has(key)) {
+            const found = await reportRequest("/api/film-dealers", {action:"search", query:key});
+            matches.set(key, found.products || []);
+          }
+          let products = matches.get(key);
+          if (key !== normalizeFilmCode(row.code) && !products.some(p=>receiptMatchesProduct(row,p))) {
+            const found = await reportRequest("/api/film-dealers", {action:"search",query:row.code.trim()});
+            products = [...new Map([...products,...(found.products||[])].map(p=>[p.id,p])).values()];
+          }
+          row.products = products.filter(p=>receiptMatchesProduct(row,p));
+          if (row.products.length === 1) Object.assign(row, applyCodeType({...row,product:row.products[0]},row.products[0].brand));
+        } catch {
+          row.issues = [...row.issues, "등록 제품 자동 연결 실패 · 수정하기에서 연결해주세요."];
+        }
+      }
+      if (!alive.current) return;
+      setRows(parsedRows);
+      setEditingRows(false);
 
       const dealers = (
         data?.dealers || []
@@ -553,14 +577,14 @@ export default function DealerReceiptImport({
 
       setRows(current =>
         current.map(row =>
-          row.id === value.rowId
+          (value.rowIds || [value.rowId]).includes(row.id)
             ? { ...row, done: true }
             : row
         )
       );
 
       setMessage(
-        "선택한 품목의 물량을 저장했습니다."
+        "확인한 영수증 물량을 모두 저장했습니다."
       );
       onSaved?.();
     } catch (e) {
@@ -576,20 +600,7 @@ export default function DealerReceiptImport({
     }
   }
 
-  function saveRow(row) {
-    if (
-      gate.current ||
-      batchRef.current ||
-      row.done
-    ) {
-      return;
-    }
-
-    setActiveRowId(row.id);
-    setError("");
-    setMessage("");
-
-    try {
+  function buildRowJobs(row) {
       if (!dealerId) {
         throw new Error(
           "대리점을 선택해주세요."
@@ -821,26 +832,29 @@ export default function DealerReceiptImport({
         );
       }
 
-      if (
-        !confirm(
-          row.action === "receive"
-            ? `${row.code} ${jobs.length}롤을 입고할까요?`
-            : `${row.code} ${jobs.length}롤의 남은 물량 전체를 반납할까요?`
-        )
-      ) {
-        return;
-      }
+      return jobs;
+  }
 
-      const value = {
-        rowId: row.id,
-        index: 0,
-        jobs,
-      };
-
+  function saveAllRows() {
+    if (gate.current || batchRef.current) return;
+    setError("");
+    setMessage("");
+    setActiveRowId("");
+    const pending = rows.filter(row=>!row.done);
+    if (!pending.length) return;
+    try {
+      // Validate every row before any inventory write.
+      const jobs = pending.flatMap(row=>{
+        try { return buildRowJobs(row); }
+        catch (error) { throw new Error((row.code || "제품번호 미확인") + ": " + error.message); }
+      });
+      const returned = jobs.filter(job=>job.action==="supplier_return").map(job=>job.rollId);
+      if (new Set(returned).size !== returned.length) throw new Error("같은 보관 롤이 여러 반납 품목에 선택되어 있습니다. 수정하기에서 확인해주세요.");
+      const value = {rowIds:pending.map(row=>row.id), index:0, jobs};
       persist(value);
       runBatch(value);
-    } catch (e) {
-      setError(e.message);
+    } catch (error) {
+      setError(error.message);
     }
   }
 
@@ -856,7 +870,7 @@ export default function DealerReceiptImport({
       <h2>📷 대리점 영수증으로 물량 입력</h2>
 
       <p>
-        영수증을 읽고 품목별로 입고·반납을
+        영수증 전체 물량을 확인한 뒤 한 번에 입고·반납을
         저장합니다. 현대 GS115는 S115 비방염,
         FS115는 S115 방염으로 연결합니다.
       </p>
@@ -963,7 +977,42 @@ export default function DealerReceiptImport({
           </label>
         )}
 
-        {rows.map(row => {
+        {rows.length > 0 && (
+          <div className="confirmation" ref={summaryRef} style={{scrollMarginTop:100}}>
+            <h3>영수증 전체 물량 확인</h3>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+                <thead><tr><th>필름 종류</th><th>한 롤</th><th>롤 수</th><th>총 길이</th></tr></thead>
+                <tbody>{rows.map(row=><tr key={row.id}>
+                  <td style={{padding:"12px 4px",borderBottom:"1px solid #dbe2ea"}}>
+                    <strong>{row.product?.brand || row.brand} {row.code}</strong><br/>
+                    {typeNames[row.priceType]} · {row.action==="receive"?"입고":row.action==="supplier_return"?"반납":"거래 확인 필요"}
+                    {row.done&&" · 저장 완료"}
+                    {row.action==="receive"&&!row.product&&<p className="error">등록 제품 연결 필요</p>}
+                    {row.quantityNote&&<p>{row.quantityNote}</p>}
+                  </td>
+                  <td>{row.lengthM!==""?row.lengthM+"m":"확인 필요"}</td>
+                  <td>{row.rollCount!==""?row.rollCount+"롤":"확인 필요"}</td>
+                  <td>{row.totalM!==""?row.totalM+"m":positive(row.lengthM)&&positive(row.rollCount)?Number(row.lengthM)*Number(row.rollCount)+"m":"확인 필요"}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <p>입고 공급가는 영수증 금액이 아닌, 선택한 거래처에 등록된 필름 코드별·방염 구분별 공급가로 저장합니다.</p>
+            <h3>입고 물량이 맞습니까?</h3>
+            <p>반납 품목이 있으면 선택한 보관 롤도 함께 반납 처리합니다.</p>
+            {error&&<p className="error" role="alert">{error}</p>}
+            {message&&<p role="status">{message}</p>}
+            <button type="button" disabled={rows.every(row=>row.done)} onClick={saveAllRows}>
+              {rows.every(row=>row.done)?"전체 저장 완료":"예, 전체 물량 저장"}
+            </button>{" "}
+            <button type="button" onClick={()=>{setEditingRows(v=>!v);setError("");}}>
+              {editingRows?"수정 마치고 확인하기":"아니오, 수정하기"}
+            </button>
+            {editingRows&&<p>아래에서 수정한 뒤 ‘예, 전체 물량 저장’을 눌러주세요.</p>}
+          </div>
+        )}
+
+        {editingRows && rows.map(row => {
           const brand =
             row.product?.brand || row.brand;
 
@@ -1313,18 +1362,8 @@ export default function DealerReceiptImport({
                   </>
                 )}
 
-                <button
-                  type="button"
-                  disabled={
-                    row.action === "unknown" ||
-                    row.done ||
-                    resolved.conflict
-                  }
-                  onClick={() => saveRow(row)}
-                >
-                  {row.done
-                    ? "저장 완료"
-                    : "확인한 물량 저장"}
+                <button type="button" onClick={()=>{setEditingRows(false);setError("");summaryRef.current?.scrollIntoView({behavior:"smooth",block:"start"});}}>
+                  수정 완료 · 전체 물량 확인
                 </button>
               </fieldset>
             </article>
