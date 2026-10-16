@@ -27,14 +27,6 @@ const menus = [
       "현장 구인 확인 · 내 구직 공개",
   },
   {
-    id: "account",
-    href: "/worker/account",
-    icon: "people",
-    title: "개인설정",
-    subtitle:
-      "프로필·일당·계좌·활동 지역 설정",
-  },
-  {
     id: "attendance",
     href: "/worker/attendance",
     icon: "attendance",
@@ -259,19 +251,6 @@ export default function WorkerHomeDashboard({
           </div>
         )}
       </div>
-
-      <Link
-        href="/worker/companies"
-        className="wp-photo-link"
-      >
-        <span>
-          여러 업체의 현장을 한 번에 확인하세요
-        </span>
-
-        <strong>
-          소속 업체 · 통합 일정 ›
-        </strong>
-      </Link>
 
       <TomorrowTasks />
 

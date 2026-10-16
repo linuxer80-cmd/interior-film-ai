@@ -20,7 +20,7 @@ const positions = {
 };
 
 const images = {
-  website: "/images/menu/website.svg",
+  website: "/images/menu/website-photo.png",
   recruitment: "/images/menu/recruitment.webp",
   stock: "/images/menu/film-stock.png",
   customer: "/images/menu/customer-page.png",
