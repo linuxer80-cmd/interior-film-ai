@@ -124,28 +124,6 @@ export default function AdminTabs({
           <LaborNotifications />
           <AchievementBadges key={companyId} scope="owner" compact />
 
-          <div className="film-admin-hero">
-            <div>
-              <span className="film-admin-kicker">
-                오늘도 좋은 공간을 만듭니다
-              </span>
-
-              <h2>
-                안녕하세요!
-                <br />
-                {companyName || "업체"} 관리자입니다.
-              </h2>
-
-              <p>
-                현장부터 완료보고까지
-                <br />
-                오늘의 업무를 편하게 확인하세요.
-              </p>
-            </div>
-
-            <ToolIllustration kind="home" size={176} />
-          </div>
-
           <h3 className="film-admin-menu-heading">
             무엇을 도와드릴까요?
           </h3>
