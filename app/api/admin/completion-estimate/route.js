@@ -259,23 +259,23 @@ export async function GET(request) {
       partialWarnings.push("현장 필름 물량을 불러오지 못했습니다. 필름명·사용 미터·단가를 직접 확인해 입력해주세요.");
     }
     let sellingWarning = "";
-    let sellingApplied = false;
-    if (["business","personal"].includes(site.customer_type)) {
-      const priceColumn = site.customer_type === "business" ? "interior_price" : "consumer_price";
-      const priceLabel = site.customer_type === "business" ? "인테리어" : "소비자";
+    // This document quotes the interior contractor, regardless of legacy customer_type.
+    // Clear purchase prices before any lookup so missing/failed selling prices stay blank.
+    const sellingApplied = true;
+    estimateMaterials = estimateMaterials.map(row => ({ ...row, unitPrice: null }));
+    {
+      const priceColumn = "interior_price";
+      const priceLabel = "인테리어업자";
       try {
         const [metadata, products, prices] = await Promise.all([
           allPriceRows(() => db.from("site_materials").select("*").eq("company_id",companyId).eq("site_id",siteId).eq("material_type","planned").order("id")),
           allPriceRows(() => db.from("film_products").select("id,brand,product_code,legacy_non_fire_code").order("id")),
           allPriceRows(() => db.from("company_film_selling_prices").select("product_id,price_type,interior_price,consumer_price").eq("company_id",companyId).order("product_id").order("price_type")),
         ]);
-        if (prices.some(p=>p[priceColumn]!=null)) {
-          estimateMaterials = sellingMaterialPrices(estimateMaterials,metadata,products,prices,priceColumn);
-          sellingApplied = true;
-          sellingWarning = `등록한 ${priceLabel} 단가(VAT 제외 환산)를 적용합니다. 방염 구분·판매가 미확정 항목은 직접 확인해주세요.`;
-        }
+        estimateMaterials = sellingMaterialPrices(estimateMaterials,metadata,products,prices,priceColumn);
+        sellingWarning = `등록한 ${priceLabel} 판매단가(VAT 제외)를 적용합니다. 판매단가가 없거나 방염 구분이 불명확한 항목은 단가를 비워두므로 직접 확인해주세요.`;
       } catch {
-        sellingWarning = "판매 단가를 불러오지 못했습니다. 현재 자동값은 기존 매입단가 기준이므로 판매 단가를 확인해주세요.";
+        sellingWarning = "인테리어업자 판매단가를 불러오지 못해 필름 단가를 비워두었습니다. 판매단가를 확인해 입력해주세요.";
       }
     }
     const automatic = completionSeed(site, company, breakdown, estimateMaterials);
