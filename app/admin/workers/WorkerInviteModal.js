@@ -1,4 +1,5 @@
 "use client";
+import useAdminOverlayBack from "../../../lib/useAdminOverlayBack";
 
 export default function WorkerInviteModal({
   worker,
@@ -9,11 +10,12 @@ export default function WorkerInviteModal({
   onShare,
   onClose,
 }) {
+  const closeWindow = useAdminOverlayBack(true, onClose, () => !loading, 1300);
   return (
     <div
       onClick={() => {
         if (!loading) {
-          onClose?.();
+          closeWindow();
         }
       }}
       style={{
@@ -80,7 +82,7 @@ export default function WorkerInviteModal({
           <button
             type="button"
             disabled={loading}
-            onClick={onClose}
+            onClick={closeWindow}
             style={{
               border: "none",
               background: "transparent",
@@ -261,7 +263,7 @@ export default function WorkerInviteModal({
         <button
           type="button"
           disabled={loading}
-          onClick={onClose}
+          onClick={closeWindow}
           style={{
             width: "100%",
             marginTop: "14px",

@@ -1,14 +1,17 @@
+"use client";
+import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 export default function PhotoPreviewModal({
   previewPhoto,
   setPreviewPhoto,
 }) {
+  const closePreview = useAdminOverlayBack(!!previewPhoto, () => setPreviewPhoto(null), () => true, 10000);
   if (!previewPhoto) {
     return null;
   }
 
   return (
     <div
-      onClick={() => setPreviewPhoto(null)}
+      onClick={closePreview}
       style={{
         position: "fixed",
         inset: 0,
@@ -22,7 +25,7 @@ export default function PhotoPreviewModal({
     >
       <button
         type="button"
-        onClick={() => setPreviewPhoto(null)}
+        onClick={closePreview}
         style={{
           position: "absolute",
           top: "18px",

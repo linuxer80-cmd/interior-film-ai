@@ -1,4 +1,5 @@
 "use client";
+import useAdminOverlayBack from "../../../lib/useAdminOverlayBack";
 
 import { useEffect, useState } from "react";
 import SitePaymentQuick, {
@@ -16,6 +17,7 @@ export default function ReceivablesPage() {
   const [page, setPage] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState("");
+  const closePayment = useAdminOverlayBack(!!selected, () => setSelected(""), () => window.confirm("입금 처리 중이면 완료 후 닫아주세요. 닫을까요?"), 1500);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("siteId");
@@ -160,11 +162,7 @@ export default function ReceivablesPage() {
             aria-modal="true"
             aria-label="현장 입금 처리"
           >
-            <button onClick={() => {
-              if (confirm(
-                "입금 처리 중이면 완료 후 닫아주세요. 닫을까요?"
-              )) setSelected("");
-            }}>
+            <button onClick={closePayment}>
               닫기
             </button>
             <SitePaymentQuick

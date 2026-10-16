@@ -1,4 +1,5 @@
 "use client";
+import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 
 import {
   useEffect,
@@ -129,6 +130,7 @@ export default function SiteRegisterModal({
   }
 
   const blocked = busy || loading || screenshotBusy || callBusy;
+  const closeRegistration = useAdminOverlayBack(open, onClose, () => !blocked && (!!saved || window.confirm("현장 등록창을 닫을까요? 저장하지 않은 입력은 사라집니다.")), 1500);
 
   function field(key, value) {
     setForm((previous) => ({
@@ -453,7 +455,7 @@ export default function SiteRegisterModal({
           <button
             type="button"
             disabled={blocked}
-            onClick={onClose}
+            onClick={closeRegistration}
           >
             닫기
           </button>

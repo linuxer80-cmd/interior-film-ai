@@ -1,4 +1,5 @@
 "use client";
+import useAdminOverlayBack from "../../../lib/useAdminOverlayBack";
 
 import GuidedForm, {InputStep, InputFinal} from "../../components/GuidedForm";
 import { koreanDay } from "../../utils/workerCalendar";
@@ -27,6 +28,7 @@ export default function WorkerFormModal({
   onSubmit,
   onClose,
 }) {
+  const closeWindow = useAdminOverlayBack(!inline, onClose, () => !loading && window.confirm("시공자 입력창을 닫을까요? 저장하지 않은 입력은 사라집니다."), 1500);
   const isEdit = Boolean(editingWorker);
   const freelancer = isEdit && relationshipType === "freelancer";
 
@@ -37,7 +39,7 @@ export default function WorkerFormModal({
 
   return (
     <div
-      onClick={inline ? undefined : () => { if (!loading) onClose?.(); }}
+      onClick={inline ? undefined : closeWindow}
       style={{
         position: inline ? "relative" : "fixed",
         inset: inline ? undefined : 0,
@@ -106,7 +108,7 @@ export default function WorkerFormModal({
           <button
             type="button"
             disabled={loading}
-            onClick={onClose}
+            onClick={closeWindow}
             style={{
               border: "none",
               background: "transparent",
@@ -350,7 +352,7 @@ export default function WorkerFormModal({
             <button
               type="button"
               disabled={loading}
-              onClick={onClose}
+              onClick={closeWindow}
               style={{
                 padding: "12px",
                 border: "1px solid #cbd5e1",

@@ -1,4 +1,5 @@
 "use client";
+import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -91,6 +92,7 @@ export default function AdminTabs({
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [orderPreview, setOrderPreview] = useState(false);
+  const closeMore = useAdminOverlayBack(moreOpen, () => setMoreOpen(false), () => true, 900);
   useEffect(() => {
     let cancelled = false;
     setOrderPreview(false);
@@ -259,7 +261,7 @@ export default function AdminTabs({
         <nav className="film-admin-more" aria-label="추가 관리 메뉴">
           <div className="film-admin-more-title">
             <strong>더보기</strong>
-            <button type="button" onClick={() => setMoreOpen(false)}>
+            <button type="button" onClick={closeMore}>
               닫기
             </button>
           </div>
@@ -296,7 +298,7 @@ export default function AdminTabs({
         <button
           type="button"
           aria-expanded={moreOpen}
-          onClick={() => setMoreOpen(value => !value)}
+          onClick={() => moreOpen ? closeMore() : setMoreOpen(true)}
         >
           <span className="film-nav-more" aria-hidden="true">▦</span>
           <small>더보기</small>

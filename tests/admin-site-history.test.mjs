@@ -13,3 +13,28 @@ test('native Back closes site and stays on admin rather than previous worker pag
 test('cancelled Back retains modal and supports a later confirmed close',()=>{
  const win=browser();let allow=false,closed=0;const guard=guardAdminSiteHistory(win,{canClose:()=>allow,onClose:()=>closed++});win.history.back();assert.equal(closed,0);assert.equal(new URL(win.location.href).pathname,'/admin');allow=true;guard.close();assert.equal(closed,1);guard.dispose();
 });
+
+import {registerAdminOverlay} from '../lib/adminOverlayHistory.mjs';
+test('Back closes photo above site, then site, preserving administrator URL',()=>{
+ const win=browser();const closed=[];
+ const site=registerAdminOverlay(win,{priority:1001,onClose:()=>closed.push('site')});
+ const photo=registerAdminOverlay(win,{priority:10000,onClose:()=>closed.push('photo')});
+ win.history.back();assert.deepEqual(closed,['photo']);photo.dispose();
+ assert.equal(new URL(win.location.href).pathname,'/admin');
+ win.history.back();assert.deepEqual(closed,['photo','site']);site.dispose();
+ assert.equal(new URL(win.location.href).pathname,'/admin');
+});
+test('busy top popup blocks Back without closing underlying site',()=>{
+ const win=browser();const closed=[];let busy=true;
+ const site=registerAdminOverlay(win,{onClose:()=>closed.push('site')});
+ const invite=registerAdminOverlay(win,{priority:1300,canClose:()=>!busy,onClose:()=>closed.push('invite')});
+ win.history.back();assert.deepEqual(closed,[]);
+ busy=false;invite.close();assert.deepEqual(closed,['invite']);invite.dispose();
+ win.history.back();assert.deepEqual(closed,['invite','site']);site.dispose();
+});
+test('highest visible overlay wins even when a lower layer registers later',()=>{
+ const win=browser();const closed=[];
+ const photo=registerAdminOverlay(win,{priority:10000,onClose:()=>closed.push('photo')});
+ const more=registerAdminOverlay(win,{priority:900,onClose:()=>closed.push('more')});
+ win.history.back();assert.deepEqual(closed,['photo']);photo.dispose();more.dispose();
+});
