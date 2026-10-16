@@ -215,7 +215,11 @@ export default function FilmRollInventory({
   const picked = stock.filter(r => checked.includes(r.id));
   const query = search.trim().toLowerCase();
   const matchesSearch = (...values) => !query || values.filter(value => value != null).join(" ").toLowerCase().includes(query);
-  const visibleMaterials = materials.filter(m => matchesSearch(m.brand, m.code, m.name));
+  const visibleMaterials = materials.filter(m =>
+    matchesSearch(m.brand, m.code, m.name) ||
+    (data?.rolls || []).some(r => r.status === "available" && Number(r.remaining) > 0 &&
+      matchesMaterial(r, m) && matchesSearch(r.supplier, r.location, r.remaining))
+  );
   const visibleStock = stock.filter(r => matchesSearch(material?.brand, material?.code, material?.name, r.supplier, r.location, r.remaining));
 
   const trips = (data?.trips || []).filter(
@@ -345,14 +349,19 @@ export default function FilmRollInventory({
                   );
 
                   return (
+                    <div className={`material-group${selectedId === m.id ? " selected" : ""}`} key={m.id}>
                     <button
+                      className="material-button"
                       type="button"
-                      key={m.id}
+                      aria-expanded={selectedId === m.id}
+                      aria-controls={selectedId === m.id ? `stock-${m.id}` : undefined}
                       disabled={busy || pending || loading}
                       aria-pressed={selectedId === m.id}
                       onClick={() => {
-                        setMaterialId(m.id);
-                        setChecked([]);
+                        if (selectedId !== m.id) {
+                          setMaterialId(m.id);
+                          setChecked([]);
+                        }
                       }}
                     >
                       <strong>{m.brand} / {m.code || m.name}<FilmFireBadge type={m.price_type} /></strong>
@@ -362,17 +371,10 @@ export default function FilmRollInventory({
                           ? `창고 ${available.length}롤 · ${sum(available)}m`
                           : "창고 재고 없음"}
                       </small>
+                      <span className="material-action">{selectedId === m.id ? "아래에서 롤 선택 ↓" : "롤 선택하기 ›"}</span>
                     </button>
-                  );
-                })}
-              </div>
-
-              {!materials.length && (
-                <p>관리자가 현장에 사용할 필름을 먼저 등록해주세요.</p>
-              )}
-
-              {material && (
-                <>
+              {selectedId === m.id && material && (
+                <div className="material-stock" id={`stock-${m.id}`}>
                   <p>
                     <b>보관 재고 {stock.length}롤 · {sum(stock)}m</b>
                   </p>
@@ -383,7 +385,7 @@ export default function FilmRollInventory({
 
                   <div className="rolls">
                     {visibleStock.map(r => (
-                      <label className="roll" key={r.id}>
+                      <label className={`roll${checked.includes(r.id) ? " checked" : ""}`} key={r.id}>
                         <input
                           type="checkbox"
                           disabled={blocked}
@@ -450,8 +452,19 @@ export default function FilmRollInventory({
                       반출 완료
                     </button>
                   </div>
-                </>
+                </div>
               )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!!materials.length && !visibleMaterials.length && <p>검색 조건에 맞는 자재가 없습니다.</p>}
+              {!materials.length && (
+                <p>관리자가 현장에 사용할 필름을 먼저 등록해주세요.</p>
+              )}
+
+
             </>
           ) : (
             <>
@@ -539,8 +552,8 @@ export default function FilmRollInventory({
             </>
           )}
 
-          <section aria-label="반납 완료 내역">
-            <h3>반납 완료</h3>
+          <details>
+            <summary>반납 완료 내역 ({data.trips.filter(t => t.returned != null).length}롤)</summary>
             {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
             {data.trips.filter(t => t.returned != null).map(t => (
               <article key={t.id} className="returned-roll">
@@ -575,7 +588,7 @@ export default function FilmRollInventory({
               </article>
             ))}
             {!data.trips.some(t => t.returned != null) && <p>반납 완료한 롤이 없습니다.</p>}
-          </section>
+          </details>
 
           <details>
             <summary>
@@ -610,11 +623,20 @@ export default function FilmRollInventory({
       <style jsx>{`
         .materials {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          grid-template-columns: minmax(0, 1fr);
           gap: 8px;
           margin: 12px 0;
         }
-        .materials button { text-align: left; }
+        .material-group { border: 1px solid #dce3e7; border-radius: 12px; overflow: hidden; }
+        .material-group.selected { border-color: #73968f; background: #f6faf8; }
+        .material-button { width: 100%; text-align: left; border: 0; border-radius: 0; padding: 14px; }
+        .material-button strong { display: block; }
+        .material-action { display: block; font-size: 12px; margin-top: 6px; }
+        .material-stock { padding: 0 12px 4px; }
+        .roll.checked { background: #e1f0e9; border-radius: 8px; }
+        .roll { cursor: pointer; }
+        .total { flex-wrap: wrap; }
+        .total button { min-height: 44px; }
         .materials small { color: inherit; }
         .stock {
           padding: 14px;
@@ -681,8 +703,6 @@ export default function FilmRollInventory({
           line-height: 1.6;
         }
         .total {
-          position: sticky;
-          bottom: 8px;
           padding: 12px 8px;
           margin: 10px 0;
           background: #f0ece4;
@@ -720,5 +740,6 @@ export default function FilmRollInventory({
     </section>
   );
 }
+
 
 
