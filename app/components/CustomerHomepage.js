@@ -1,3 +1,4 @@
+import CustomerChat from "./CustomerChat";
 import CustomerEstimatePage from "./CustomerEstimatePage";
 import CompanyHomepageContent from "./CompanyHomepageContent";
 import { loadCustomerHomepage } from "../../lib/loadCustomerHomepage";
@@ -15,6 +16,7 @@ export default async function CustomerHomepage({ slug }) {
   }
 
   return (
+    <>
     <CustomerEstimatePage
       companySlug={slug}
       initialCompany={homepage?.company || null}
@@ -24,5 +26,7 @@ export default async function CustomerHomepage({ slug }) {
         <CompanyHomepageContent homepage={homepage} />
       }
     />
+    {homepage?.company && <CustomerChat slug={slug} companyName={homepage.company.company_name} />}
+    </>
   );
 }
