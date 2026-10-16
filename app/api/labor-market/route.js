@@ -1,3 +1,4 @@
+import {directoryBadges,companyJobBadges} from '../../../lib/publicAchievementBadge';
 import {canReceiveRecruitment,scopeLaborNotifications} from '../../../lib/laborNotificationPolicy.mjs';
 import { attachAssignmentState } from '../../../lib/laborContracts.mjs';
 import { dispatchLaborNotifications } from '../../../lib/laborPush';
@@ -482,6 +483,21 @@ export async function GET(request) {
       }
     }
 
+    // Batch only the people and jobs already authorized by the filters above.
+    const visibleProfiles=[...candidates,...applications.map(a=>a.profile).filter(Boolean),...(ownProfile?[ownProfile]:[])];
+    const [badgedProfiles,badgedJobs]=await Promise.all([
+      directoryBadges(db,visibleProfiles),
+      companyJobBadges(db,[...jobs,...applicationJobs])
+    ]);
+    const profileBadges=new Map(badgedProfiles.map(p=>[p.user_id,p.featured_badge]));
+    candidates=candidates.map(p=>({...p,featured_badge:profileBadges.get(p.user_id)||null}));
+    for(const a of applications){
+      if(a.profile)a.profile={...a.profile,featured_badge:profileBadges.get(a.profile.user_id)||null};
+    }
+    if(ownProfile)ownProfile.featured_badge=profileBadges.get(ownProfile.user_id)||null;
+    const jobBadges=new Map(badgedJobs.map(j=>[j.id,j.company_badge]));
+    for(const j of [...jobs,...applicationJobs])j.company_badge=jobBadges.get(j.id)||null;
+
     await attachAssignmentState(db, applications, [...jobs,...applicationJobs]);
 
     return json({
@@ -878,4 +894,5 @@ export async function POST(request) {
     return errorResponse(error);
   }
 }
+
 

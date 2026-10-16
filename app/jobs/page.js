@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {supabase} from '../../lib/supabase';
+import PublicAchievementBadge from '../components/PublicAchievementBadge';
 import LaborNotifications from '../components/LaborNotifications';
 import HomeReturnButton from '../components/HomeReturnButton';
 import WorkDatePicker from '../admin/WorkDatePicker';
@@ -24,6 +25,7 @@ function Profile({p,detail=false}){
  const days=(p.available_dates||[]).filter(d=>d>=today());
  return <>
   <div className='person'>{p.photo_url?<img src={p.photo_url} alt='' width={64} height={64}/>:<div className='avatar-placeholder'>{p.name?.slice(0,1)||'?'}</div>}<div><h3>{p.name||'이름 미등록'}{p.age?` · ${p.age}세`:''}</h3><p>{p.region||'활동 지역 미등록'} · {p.experience_years==null?'경력 미등록':`경력 ${p.experience_years}년`}</p></div></div>
+  <PublicAchievementBadge badge={p.featured_badge}/>
   {detail?<><dl className='profile-facts'>
    <div><dt>등록 일당</dt><dd>{p.daily_wage==null?'미등록':`${money(p.daily_wage)}원`}</dd></div>
    
@@ -54,7 +56,7 @@ function ApplicantDecision({application:a,job,selected=0,busy=false,onAccept}){
 }
 
 function Job({j,detail=false}){
- return <><h3>{j.title}</h3><p>{j.company_name} · {j.region}</p>{detail&&<><p>관리자 {j.manager_name||'업체 관리자'}</p><p className='multiline'>{j.work_content}</p></>}<div className='chips'>{j.work_dates?.map(d=><span className='badge' key={d}>{d}</span>)}</div><p>{j.daily_wage?`모집 기준 일당 ${money(j.daily_wage)}원`:'모집 기준 일당 미지정'} · 모집 {j.headcount}명</p><small>실제 일당은 채용 시 시공자가 등록한 금액으로 적용됩니다.</small>{detail&&<>{j.min_experience!=null&&<p>경력 {j.min_experience}년 이상</p>}{(j.min_age!=null||j.max_age!=null)&&<p>나이 {j.min_age!=null?`${j.min_age}세 이상`:''} {j.max_age!=null?`${j.max_age}세 이하`:''}</p>}{j.worker_region&&<p>활동 지역 {j.worker_region}</p>}</>}</>;
+ return <><h3>{j.title}</h3><p>{j.company_name} · {j.region}</p><PublicAchievementBadge badge={j.company_badge} company/>{detail&&<><p>관리자 {j.manager_name||'업체 관리자'}</p><p className='multiline'>{j.work_content}</p></>}<div className='chips'>{j.work_dates?.map(d=><span className='badge' key={d}>{d}</span>)}</div><p>{j.daily_wage?`모집 기준 일당 ${money(j.daily_wage)}원`:'모집 기준 일당 미지정'} · 모집 {j.headcount}명</p><small>실제 일당은 채용 시 시공자가 등록한 금액으로 적용됩니다.</small>{detail&&<>{j.min_experience!=null&&<p>경력 {j.min_experience}년 이상</p>}{(j.min_age!=null||j.max_age!=null)&&<p>나이 {j.min_age!=null?`${j.min_age}세 이상`:''} {j.max_age!=null?`${j.max_age}세 이하`:''}</p>}{j.worker_region&&<p>활동 지역 {j.worker_region}</p>}</>}</>;
 }
 
 function SiteOption({site,selected,onSelect,target}){
@@ -220,7 +222,7 @@ export default function JobsPage(){
        <div style={{padding:'10px 0',display:'grid',gap:10}}>
          <p style={{margin:0}}>모집 {j.headcount}명 · 확정 {selectedCount(j.id)}명 · 남은 인원 {Math.max(0,j.headcount-selectedCount(j.id))}명</p>
          {data.applications.filter(a=>a.job_id===j.id).length===0?<p>아직 지원자가 없습니다.</p>:data.applications.filter(a=>a.job_id===j.id).map(a=><div key={a.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:12}}>
-           <strong>{a.profile?.name||'지원자'} · {applicationLabel(a)}</strong>
+           <strong>{a.profile?.name||'지원자'} · {applicationLabel(a)}</strong><PublicAchievementBadge badge={a.profile?.featured_badge}/>
            {a.accepted_daily_wage!=null&&<p>확정 일당 {money(a.accepted_daily_wage)}원</p>}
            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
              {a.profile&&<button type='button' onClick={()=>setPerson({...a.profile,application:a})}>프로필 보기</button>}
@@ -236,3 +238,4 @@ export default function JobsPage(){
   </>}
  </main>;
       }
+

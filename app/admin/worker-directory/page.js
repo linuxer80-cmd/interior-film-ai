@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {useDirectory,directoryCard as card,directoryButton as button,directoryInput as input,connectionLabel} from '../../components/WorkerDirectoryClient';
 import {pendingConnection} from '../../../lib/workerDirectory.mjs';
-import {BadgeArt} from '../../components/AchievementBadges';
+import PublicAchievementBadge from '../../components/PublicAchievementBadge';
 
 export default function WorkerDirectoryPage(){
   const {user,ready,api}=useDirectory();
@@ -37,7 +37,7 @@ function Candidate({row,busy,act}) {
   return <article style={card}>
     <div style={{display:'flex',gap:16,alignItems:'center'}}>{row.photo_url&&!imageError?<img src={row.photo_url} alt={`${row.name} 프로필`} width={72} height={72} style={{borderRadius:'50%',objectFit:'cover'}} onError={()=>setImageError(true)}/>:<span aria-hidden='true' style={{fontSize:40}}>👷</span>}<div><h2>{row.name}</h2><p>{row.region||'지역 미등록'} · 경력 {row.experience_years??0}년</p></div></div>
     <p>{(row.skills||[]).join(' · ')||'전문 분야 미등록'}</p><p>희망 일당 {Number(row.daily_wage||0).toLocaleString('ko-KR')}원</p>{row.introduction&&<p style={{whiteSpace:'pre-wrap'}}>{row.introduction}</p>}
-    {row.featured_badge&&<div style={{display:'flex',alignItems:'center',gap:10,margin:'12px 0'}}><BadgeArt badge={row.featured_badge} size={60}/><span>앱 활동 배지 · {row.featured_badge.title}<small style={{display:'block'}}>본인이 선택한 배지 · 시공 자격 인증 아님</small></span></div>}
+    <PublicAchievementBadge badge={row.featured_badge}/>
     {row.connected?<strong>이미 연결된 시공자</strong>:row.request_status==='pending'?<strong>연결 요청 수락 대기 중</strong>:<form onSubmit={e=>{e.preventDefault();act({action:'request',target:row.user_id,relationshipType:type,message});}}>
       <label>연결 유형<select style={input} value={type} onChange={e=>setType(e.target.value)}><option value='freelancer'>프리랜서</option><option value='employee'>직원</option></select></label>
       <label>요청 메시지 (선택)<textarea style={input} maxLength={300} rows={2} value={message} onChange={e=>setMessage(e.target.value)} placeholder='업체 소개와 함께 연결을 요청하세요.'/></label>
@@ -45,4 +45,5 @@ function Candidate({row,busy,act}) {
     </form>}
   </article>;
 }
+
 
