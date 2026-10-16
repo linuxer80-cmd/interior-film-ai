@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import { supabase } from "../../lib/supabase";
 
 import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames } from "../../lib/completionEstimate.mjs";
@@ -336,12 +337,12 @@ export default function CompletionEstimate({
       </button>
 
       {draft && (
-        <form onSubmit={save} noValidate>
+        <GuidedForm key={siteId} validateNative={false} titles={["현장·견적 정보", "필름 물량", "인건비", "경비", "부가세·계좌"]} busy={busy || defaultsSaving} onSubmit={save} review={<p>견적 합계 <strong>{won(completionTotals(draft.items, draft.vat).total)}</strong></p>}>
           <fieldset
             disabled={busy}
             style={{ border: 0, padding: 0, margin: 0 }}
           >
-            <p style={{ fontSize: 12, color: "#64748b" }}>
+            <InputStep index={0}><p style={{ fontSize: 12, color: "#64748b" }}>
               {draft.version
                 ? `저장본 ${draft.version} · ${new Date(
                     draft.updated_at,
@@ -409,12 +410,12 @@ export default function CompletionEstimate({
             </div>
             </details>
 
-            {[
+            </InputStep>{[
               { title: "필름 물량", categories: ["film"] },
               { title: "인건비", categories: ["labor"] },
               { title: "경비", categories: ["meal", "supplies", "overhead", "expense"] },
-            ].map(group => (
-              <section key={group.title} style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+            ].map((group, groupIndex) => (
+              <InputStep key={group.title} index={groupIndex+1}><section style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
                 <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4>
                 {group.categories.map(category => {
                   const label = labels[category];
@@ -591,8 +592,9 @@ export default function CompletionEstimate({
                 <p style={{ textAlign: "right", fontWeight: 700 }}>
                   {group.title} 합계 {won(draft.items.filter(row => group.categories.includes(row.category) && includedCompletionItem(row)).reduce((sum, row) => sum + Number(row.amount || 0), 0))}
                 </p>
-              </section>
+              </section></InputStep>
             ))}
+            <InputStep index={4}>
 
             <p style={{ fontWeight: 900, fontSize: 20 }}>
               견적 합계{" "}
@@ -647,7 +649,7 @@ export default function CompletionEstimate({
               />
             </label>
 
-            <div
+            </InputStep><div
               aria-live="polite"
               style={{ marginTop: 12 }}
             >
@@ -674,7 +676,7 @@ export default function CompletionEstimate({
               )}
             </div>
 
-            <button
+            <InputFinal><button
               type="submit"
               disabled={busy}
               style={{
@@ -690,13 +692,14 @@ export default function CompletionEstimate({
             <button type="submit" value="pdf" disabled={busy} style={{ ...button, width: "100%", marginTop: 10, background: "#183d34", color: "white" }}>
               {busy ? "처리 중…" : "보고서 만들기 · 저장 및 PDF 다운로드"}
             </button>
-            {pdfUrl && <p><a href={pdfUrl} download={pdfName}>PDF 다시 다운로드</a></p>}
+            </InputFinal>{pdfUrl && <p><a href={pdfUrl} download={pdfName}>PDF 다시 다운로드</a></p>}
           </fieldset>
-        </form>
+        </GuidedForm>
       )}
     </section>
   );
 }
+
 
 
 

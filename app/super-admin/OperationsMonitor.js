@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 import styles from './OperationsMonitor.module.css';
@@ -8,6 +8,7 @@ const reportNames={pending:'검수 대기',approved:'승인',rejected:'반려'};
 const date=value=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',dateStyle:'short',timeStyle:'short'}):'기록 없음';
 function Pager({page,total,onChange}){const last=Math.max(1,Math.ceil(total/10));return <nav className={styles.pages} aria-label='모니터링 목록 페이지'><button type='button' disabled={page<=1} onClick={()=>onChange(page-1)}>이전</button><span>{page} / {last}</span><button type='button' disabled={page>=last} onClick={()=>onChange(page+1)}>다음</button></nav>;}
 export default function OperationsMonitor({type,id,lazy=false}){
+ const listRef=useRef(null);
  const [opened,setOpened]=useState(!lazy),[days,setDays]=useState(30),[reload,setReload]=useState(0);
  const [data,setData]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const [tab,setTab]=useState('sites'),[filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[page,setPage]=useState(1);
@@ -34,7 +35,7 @@ export default function OperationsMonitor({type,id,lazy=false}){
   });
  },[data,tab,filter,search]);
  const current=Math.min(page,Math.max(1,Math.ceil(rows.length/10)));
- function select(nextTab,nextFilter='all'){setTab(nextTab);setFilter(nextFilter);setPage(1);}
+ function select(nextTab,nextFilter='all'){setTab(nextTab);setFilter(nextFilter);setSearch('');setPage(1);requestAnimationFrame(()=>{listRef.current?.scrollIntoView({behavior:'smooth',block:'start'});listRef.current?.focus({preventScroll:true});});}
  if(!opened)return <button type='button' onClick={()=>setOpened(true)}>활동·배정 현황 보기</button>;
  const s=data?.summary||{};
  return <section className={styles.panel} aria-label={company?'업체 운영 모니터링':'시공자 활동 모니터링'} aria-busy={loading}>
@@ -54,6 +55,7 @@ export default function OperationsMonitor({type,id,lazy=false}){
    {company&&<p className={styles.muted}>시공자 명단 {s.workers||0}건 · 활성 명단 {s.activeWorkers||0}건 · 로그인 계정 미연결 {s.unlinkedWorkers||0}건 · 최근 {days}일 수정된 현장 {s.recentlyUpdated||0}건</p>}
    <p className={styles.muted}>팀장 미지정은 확인 항목이며 오류로 단정하지 않습니다. 로그인·접속 기록과 현장 수정 기록은 다릅니다.</p>
    {!!data.conflicts.length&&<div className={styles.alert}><strong>같은 날짜에 여러 현장 배정 {data.conflicts.length}건</strong><p>시간대가 다를 수 있으므로 배정 내용을 확인해주세요.</p>{data.conflicts.slice(0,20).map((r,i)=><p key={r.date+':'+i}>{r.date} · {r.name} · {r.sites.map(s=>`${s.companyName} / ${s.name}`).join(', ')}</p>)}{data.conflicts.length>20&&<p>앞의 20건 표시 · 전체 {data.conflicts.length}건</p>}</div>}
+   <div ref={listRef} tabIndex={-1} style={{scrollMarginTop:100}}><h3 aria-live='polite'>{tab==='sites'?'현장·보고 목록':'예정 배정 목록'} · {rows.length}건</h3></div>
    <div className={styles.controls}><button type='button' aria-pressed={tab==='sites'} onClick={()=>select('sites')}>현장·보고 상태</button><button type='button' aria-pressed={tab==='schedule'} onClick={()=>select('schedule')}>앞으로 14일 배정</button></div>
    <div className={styles.controls}>
     <label className={styles.search}>검색<input type='search' value={search} maxLength={100} placeholder='현장명·업체명·배정자' onChange={e=>{setSearch(e.target.value);setPage(1);}}/></label>
@@ -72,3 +74,4 @@ export default function OperationsMonitor({type,id,lazy=false}){
   </>}
  </section>;
 }
+

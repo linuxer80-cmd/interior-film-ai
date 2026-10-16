@@ -1,5 +1,6 @@
 "use client";
 
+import GuidedForm, {InputStep, InputFinal} from "../../components/GuidedForm";
 import { koreanDay } from "../../utils/workerCalendar";
 
 function formatNumber(value) {
@@ -118,8 +119,8 @@ export default function WorkerFormModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} style={{ marginTop: "20px" }}>
-          <FieldLabel required>이름</FieldLabel>
+        <GuidedForm key={editingWorker?.id || "new"} review={<p>{editingWorker?.name || form.name} · {formatNumber(form.daily_wage)}원</p>} titles={["이름·연락처", "기본 일당", "입금 계좌", "출발 주소·메모"]} busy={loading || saveDisabled} validateStep={index => index === 0 && (!(form.name || editingWorker?.name)?.trim() || !form.phone?.trim()) ? "이름과 전화번호를 입력해주세요." : index === 1 && !freelancer && (!form.daily_wage || Number(form.daily_wage) < 0) ? "기본 일당을 확인해주세요." : ""} onSubmit={onSubmit} style={{ marginTop: "20px" }}>
+          <InputStep index={0}><FieldLabel required>이름</FieldLabel>
 
           {isEdit ? (
             <div
@@ -179,7 +180,7 @@ export default function WorkerFormModal({
           />
 
           <div style={{ height: "16px" }} />
-          <FieldLabel required>{freelancer ? "개인 등록 일당 (조회 전용)" : "기본 일당"}</FieldLabel>
+          </InputStep><InputStep index={1}><FieldLabel required>{freelancer ? "개인 등록 일당 (조회 전용)" : "기본 일당"}</FieldLabel>
 
           <div style={{ position: "relative" }}>
             <input
@@ -241,8 +242,8 @@ export default function WorkerFormModal({
             value={form?.pay_rate_effective_from || ""}
             min={editingWorker?.pay_rate_effective_from || "2000-01-01"}
             max={koreanDay()}
-            required
-            disabled={loading}
+            required={!freelancer && (!isEdit || Number(form.daily_wage) !== Number(editingWorker.daily_wage))}
+            disabled={loading || freelancer || (isEdit && Number(form.daily_wage) === Number(editingWorker.daily_wage))}
             onChange={event =>
               updateField?.("pay_rate_effective_from", event.target.value)
             }
@@ -263,7 +264,7 @@ export default function WorkerFormModal({
           </p>
 
           </div>
-          <details style={{ marginTop: 18 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>추가정보 · 메모 / 계좌 / 출발 주소</summary>
+          </InputStep><InputStep index={3}><p>선택사항입니다. 나중에 입력해도 됩니다.</p><label>출발 주소<input value={form.departure_address || ""} maxLength={300} disabled={loading} onChange={event=>updateField?.("departure_address",event.target.value)} placeholder="도로명·건물번호까지 입력" style={inputStyle}/></label>
           <label style={{ display: "block", marginTop: 20, fontWeight: 700 }}>
             시공자 메모 (선택)
             <textarea value={form.memo || ""} maxLength={1000} rows={3}
@@ -273,16 +274,10 @@ export default function WorkerFormModal({
           </label>
           <p style={{ color: "#64748b", fontSize: 12 }}>작업 특성이나 전달사항을 기록하세요. 민감한 개인정보는 적지 마세요.</p>
 
-          {[
+          </InputStep><InputStep index={2}><p>계좌는 나중에 입력해도 됩니다.</p>{[
             ["bank_name", "은행명", "예: 국민은행", 100],
             ["account_number", "계좌번호", "숫자와 하이픈으로 입력", 50],
             ["account_holder", "예금주", "통장에 표시된 예금주", 100],
-            [
-              "departure_address",
-              "출발 주소",
-              "도로명·건물번호까지 입력 (예: 인천 서구 …)",
-              300,
-            ],
           ].map(([key, label, placeholder, maxLength]) => (
             <label
               key={key}
@@ -320,7 +315,7 @@ export default function WorkerFormModal({
             상세 동·호수는 입력하지 않아도 됩니다.
           </p>
 
-          </details>
+          </InputStep>
 
           {localMessage && (
             <div
@@ -344,7 +339,7 @@ export default function WorkerFormModal({
             </div>
           )}
 
-          <div
+          <InputFinal><div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
@@ -391,7 +386,8 @@ export default function WorkerFormModal({
                   : "시공자 등록"}
             </button>
           </div>
-        </form>
+          </InputFinal>
+        </GuidedForm>
       </div>
     </div>
   );
@@ -429,3 +425,4 @@ const inputStyle = {
   fontSize: "14px",
   outline: "none",
 };
+

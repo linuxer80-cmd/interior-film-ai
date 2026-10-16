@@ -1,4 +1,5 @@
 "use client";
+import GuidedForm, {InputStep, InputFinal} from "../../components/GuidedForm";
 import HomeReturnButton from '../../components/HomeReturnButton';
 import WorkerConnectionPanel from '../../components/WorkerDirectoryClient';
 import { useEffect, useRef, useState } from 'react';
@@ -345,30 +346,25 @@ export default function WorkerAccount() {
         :<>
           {!loaded
             ?<p>개인설정을 불러오는 중입니다. 오류가 있으면 새로고침해주세요.</p>
-            :<form onSubmit={save}>
+            :<GuidedForm key={section} initialStep={section==='private'?3:0} titles={["이름·연락처","경력·일당·지역","사진·소개","입금 계좌","출발 주소"]} busy={busy} validateStep={index=>index===0&&(!profile.name?.trim()||!personal.phone?.trim())?"이름과 연락처를 입력해주세요.":""} onSubmit={save}>
               <fieldset disabled={busy}>
-                {!pendingInvite && <div className='tabs'>
-                  {[
-                    ['profile','기본 프로필'],
-                    ['seeking','구직 공고'],
-                    ['private','계좌·주소']
-                  ].map(([id,label])=>
-                    <button
-                      key={id}
-                      type='button'
-                      aria-pressed={section===id}
-                      onClick={()=>setSection(id)}
-                    >
-                      {label}
-                    </button>
-                  )}
-                </div>}
-
                 {!pendingInvite && <p className='muted'>기본정보를 한 번 저장하면 구직 공고에 그대로 사용됩니다.</p>}
 
-                <div hidden={section!=='profile'}>
+                <InputStep index={0}>
                   <h2>내 프로필</h2>
 
+                  {field('이름','name')}
+                  {field('연락처','phone','tel',true)}
+
+                  <small>지원할 때 동의한 업체에만 연락처를 공유합니다.</small>
+
+                  </InputStep><InputStep index={1}>
+                  {!pendingInvite && field('경력 (년)','experience_years','number')}
+                  {field('등록 일당 (원)','daily_wage','number')}
+
+                  {!pendingInvite && field('활동 지역 (예: 인천 서구)','region')}
+
+                  </InputStep><InputStep index={2}>
                   {!pendingInvite && <div className='profile-heading'>
                     {profile.photo_url
                       ?<img
@@ -403,14 +399,8 @@ export default function WorkerAccount() {
 
                   {!pendingInvite && !saved && <small>프로필을 먼저 저장하면 사진을 올릴 수 있습니다.</small>}
 
-                  {field('이름','name')}
-                  {field('연락처','phone','tel',true)}
-
-                  <small>지원할 때 동의한 업체에만 연락처를 공유합니다.</small>
-
                   {!pendingInvite && <div className='pair'>
                     {field('나이 (선택)','age','number')}
-                    {field('경력 (년)','experience_years','number')}
                   </div>}
 
                   {!pendingInvite && <label>성별 (선택)
@@ -422,10 +412,6 @@ export default function WorkerAccount() {
                     </select>
                   </label>}
 
-                  {field('등록 일당 (원)','daily_wage','number')}
-
-                  {!pendingInvite && field('활동 지역 (예: 인천 서구)','region')}
-
                   {!pendingInvite && <label>
                     자기소개
                     <textarea
@@ -436,73 +422,33 @@ export default function WorkerAccount() {
                       }))}
                     />
                   </label>}
-                </div>
-
-                {!pendingInvite && <div hidden={section!=='seeking'}>
-                  <h2>내 구직 공고</h2>
-
-                  <p>
-                    저장한 프로필이 구직 공고가 됩니다.
-                    새로 작성할 필요 없이 공개 여부와 가능한 날짜만 선택하세요.
-                  </p>
-
-                  <article>
-                    <strong>{profile.name || '이름을 입력해주세요'}</strong>
-                    <p>
-                      {profile.region || '활동 지역 미입력'}
-                      {' '}· 등록 일당 {Number(profile.daily_wage).toLocaleString()}원
-                      {' '}· 경력 {profile.experience_years}년
-                    </p>
-                  </article>
-
-                  <p>
-                    구직하기에서 일할 수 있는 날짜를 선택하고
-                    현장 배정 동의를 하면 관리자에게 공개됩니다.
-                  </p>
-
-                  <Link
-                    className='site-link'
-                    href='/jobs?view=worker&tab=seeking'
-                  >
-                    일할 날짜 선택 · 구직하기 ›
-                  </Link>
-                </div>}
-
-                {!pendingInvite && <div hidden={section!=='private'}>
-                  <h2>연락처·입금 정보</h2>
-
-                  <p>
-                    전화번호는 지원한 업체에 동의 후 공유됩니다.
-                    계좌와 상세 주소는 구인·구직에 공개되지 않습니다.
-                  </p>
-
+                </InputStep><InputStep index={3}>
+                  <p>계좌는 구인·구직에 공개되지 않습니다. 나중에 입력해도 됩니다.</p>
                   {field('은행명','bank_name','text',true)}
                   {field('계좌번호','account_number','text',true)}
                   {field('예금주','account_holder','text',true)}
+                  </InputStep><InputStep index={4}><p>내 현장까지 이동시간을 계산할 출발 주소입니다. 나중에 입력해도 됩니다.</p>
                   {field('출발 상세 주소 (길찾기용)','departure_address','text',true)}
 
                   <small>
                     저장하면 현재 연결된 활성 소속 업체의 계좌·출발 주소에도 반영됩니다.
                     등록 일당은 기존 업체의 계약 일당을 변경하지 않습니다.
                   </small>
-                </div>}
+                </InputStep>
 
-                <div className='save-row'>
+                <InputFinal><div className='save-row'>
                   <button className='primary' disabled={busy}>
                     {busy
                       ?'저장 중…'
-                      :pendingInvite ? '저장하고 업체 연결 완료' : section==='seeking'
-                        ?'구직 공고 저장'
-                        :section==='private'
-                          ?'계좌·주소 저장'
-                          :'프로필 저장'
+                      :pendingInvite ? '저장하고 업체 연결 완료' : '확인 완료 · 개인설정 저장'
                     }
                   </button>
-                </div>
+                </div></InputFinal>
               </fieldset>
-            </form>
+            </GuidedForm>
           }
 
+          <p><Link href='/jobs?view=worker&tab=seeking'>일할 날짜 선택 · 구직 공고 관리 ›</Link></p>
           <button disabled={busy} onClick={async()=>{
             await supabase.auth.signOut();
             setProfile(blank);
@@ -518,3 +464,4 @@ export default function WorkerAccount() {
     {message&&<p role='status'>{message}</p>}
   </main>;
                       }
+

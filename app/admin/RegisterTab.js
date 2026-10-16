@@ -1,3 +1,4 @@
+import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import ui from "./AdminUi.module.css";
 
 import {
@@ -41,6 +42,7 @@ export default function RegisterTab({
           <h3 className={ui.singleTitle}>시공 1건 등록</h3>
         </div>
 
+        <GuidedForm titles={["시공 전후 사진", "시공 내용", "금액·메모"]} busy={loading} onSubmit={event=>{event.preventDefault();handleSave();}}><InputStep index={0}>
         <label style={labelStyle}>
           시공 전 사진
         </label>
@@ -91,7 +93,7 @@ export default function RegisterTab({
           선택 {afterImages.length}장
         </div>
 
-        <label style={labelStyle}>
+        </InputStep><InputStep index={1}><label style={labelStyle}>
           시공 부위
         </label>
 
@@ -108,6 +110,23 @@ export default function RegisterTab({
         />
 
         <label style={labelStyle}>
+          사용 자재
+        </label>
+
+        <input
+          value={material}
+          onChange={(event) =>
+            setMaterial(event.target.value)
+          }
+          placeholder="예: 현대 L&C GS245"
+          style={{
+            ...inputStyle,
+            marginBottom: "12px",
+          }}
+        />
+
+        </InputStep><InputStep index={2}>
+        <label style={labelStyle}>
           실제 시공금액
         </label>
 
@@ -118,22 +137,6 @@ export default function RegisterTab({
           }
           inputMode="numeric"
           placeholder="예: 180000"
-          style={{
-            ...inputStyle,
-            marginBottom: "12px",
-          }}
-        />
-
-        <label style={labelStyle}>
-          사용 자재
-        </label>
-
-        <input
-          value={material}
-          onChange={(event) =>
-            setMaterial(event.target.value)
-          }
-          placeholder="예: 현대 L&C GS245"
           style={{
             ...inputStyle,
             marginBottom: "12px",
@@ -158,16 +161,15 @@ export default function RegisterTab({
           }}
         />
 
-        <button
-          type="button"
+        </InputStep><InputFinal><button
+          type="submit"
           disabled={loading}
-          onClick={handleSave}
           style={primaryButtonStyle}
         >
           {loading
             ? "AI 분석 + 저장 중..."
-            : "시공사례 저장"}
-        </button>
+            : "확인 완료 · 시공사례 저장"}
+        </button></InputFinal></GuidedForm>
       </section>
 
       {message && (
@@ -255,3 +257,4 @@ const countStyle = {
   color: "#6b7280",
   marginBottom: "14px",
 };
+

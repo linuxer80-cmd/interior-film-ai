@@ -1,5 +1,6 @@
 "use client";
 
+import GuidedForm, {InputStep, InputFinal} from "./GuidedForm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
@@ -83,6 +84,7 @@ export default function FilmDealerInventory() {
   const focusIndex = useRef(null);
 
   const [lengths, setLengths] = useState([""]);
+  const [receiveReview, setReceiveReview] = useState(false);
   const [receiptPending, setReceiptPending] = useState(false);
   const receipt = useRef(null);
 
@@ -682,20 +684,15 @@ export default function FilmDealerInventory() {
       value => valid(value, 1000000) && Number(value) > 0
     );
 
+  useEffect(() => { setReceiveReview(false); }, [dealerId, selected?.id, priceType, lengths, location, memo, savedPrice?.revision]);
+
   async function receiveRolls() {
     if (gate.current) return;
 
     if (!receipt.current) {
       if (!savedPrice || !selected || !lengthsValid) return;
 
-      if (
-        !confirm(
-          `${types[priceType]} ${lengths.length}롤, ` +
-          `총 ${number(totalLength)}m를 입고할까요?`
-        )
-      ) {
-        return;
-      }
+      if (!receiveReview) return;
 
       receipt.current = {
         index: 0,
@@ -753,6 +750,7 @@ export default function FilmDealerInventory() {
 
       setReceiptPending(false);
       setLengths([""]);
+      setReceiveReview(false);
       setMemo("");
       setMessage(
         `${batch.jobs.length}롤 입고가 완료되었습니다. 다음 롤을 입력할 수 있습니다.`
@@ -1050,7 +1048,7 @@ export default function FilmDealerInventory() {
                       </button>
 
                       {registering && (
-                        <div className="selected">
+                        <GuidedForm className="selected" titles={["새 필름 정보", "방염 구분·공급가"]} busy={busy || receiptPending} validateStep={index=>index===0&&(!newProduct.brand.trim()||!newProduct.productCode.trim())?"브랜드와 제품번호를 입력해주세요.":index===1&&(!priceType||!valid(newProduct.unitPrice,10000000))?"방염 구분과 공급가를 확인해주세요.":""} onSubmit={event=>{event.preventDefault();save("register_product",{...newProduct,dealerId,priceType});}}>
                           <h3>새 제품·대리점 공급가</h3>
                           <p>
                             {data.dealers.find(
@@ -1064,7 +1062,7 @@ export default function FilmDealerInventory() {
                             않습니다.
                           </p>
 
-                          {[
+                          <InputStep index={0}>{[
                             ["brand", "브랜드", 100],
                             ["productCode", "제품번호", 80],
                             ["productName", "제품명 / 색상 (선택)", 200],
@@ -1084,7 +1082,7 @@ export default function FilmDealerInventory() {
                             </label>
                           ))}
 
-                          {priceTypeControl}
+                          </InputStep><InputStep index={1}>{priceTypeControl}
                           <label>
                             1m당 입고 단가 (원)
                             <input
@@ -1103,34 +1101,28 @@ export default function FilmDealerInventory() {
                             />
                           </label>
 
-                          {error && (
+                          </InputStep>{error && (
                             <p role="alert" className="error">
                               {error}
                             </p>
                           )}
 
-                          <button
+                          <InputFinal><button type="submit"
                             disabled={
                               !priceType ||
                               !newProduct.brand.trim() ||
                               !newProduct.productCode.trim() ||
                               !valid(newProduct.unitPrice, 10000000)
                             }
-                            onClick={() =>
-                              save("register_product", {
-                                ...newProduct,
-                                dealerId,
-                                priceType,
-                              })
-                            }
+
                           >
                             {busy ? "저장 중…" : "등록하고 선택"}
-                          </button>
+                          </button></InputFinal>
 
-                          <button onClick={() => setRegistering(false)}>
+                          <button type="button" onClick={() => setRegistering(false)}>
                             등록 취소
                           </button>
-                        </div>
+                        </GuidedForm>
                       )}
 
                       {selected && (
@@ -1637,7 +1629,8 @@ export default function FilmDealerInventory() {
         savedPrice &&
         !editingProduct &&
         !receiptPending && (
-          <div className="save-bar">
+          <div className={receiveReview ? "receive-review" : "save-bar"}>
+            {receiveReview && <><h3>입고 물량이 맞습니까?</h3><p>{data.dealers.find(d=>d.id===dealerId)?.name} · {selected.brand} {selected.product_code} · {types[priceType]}</p><p>{lengths.map((length,index)=>`${index+1}번 롤 ${number(length)}m`).join(" / ")}</p><p>보관 위치: {location || "미입력"} · 메모: {memo || "없음"}</p></>}
             <div>
               <strong>
                 총 {lengths.length}롤 · {number(totalLength)}m
@@ -1647,12 +1640,13 @@ export default function FilmDealerInventory() {
                   totalLength * Number(savedPrice.unit_price)
                 )}원
               </small>
-            </div>
+              {receiveReview && <button type="button" disabled={busy} onClick={()=>setReceiveReview(false)}>아니오 · 수정</button>}
+          </div>
             <button
               disabled={busy || !lengthsValid}
-              onClick={receiveRolls}
+              onClick={()=>receiveReview?receiveRolls():setReceiveReview(true)}
             >
-              {busy ? "저장 중…" : "입고 저장"}
+              {busy ? "저장 중…" : receiveReview ? "예 · 입고 저장" : "입고 내용 확인"}
             </button>
           </div>
         )}
@@ -1668,6 +1662,7 @@ export default function FilmDealerInventory() {
       )}
 
       <style jsx>{`
+        .receive-review { padding: 18px; margin: 16px 0; border: 1px solid #bfdbfe; border-radius: 16px; background: #eff6ff; overflow-wrap: anywhere; }
         .stock-stats {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -1974,6 +1969,7 @@ export default function FilmDealerInventory() {
     </section>
   );
                   }
+
 
 
 
