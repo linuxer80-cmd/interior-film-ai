@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import { supabase } from "../../lib/supabase";
 
-import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames } from "../../lib/completionEstimate.mjs";
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames, withManualCompletionItems } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -121,12 +121,13 @@ export default function CompletionEstimate({
       if (signal.aborted) return;
 
       const source = result.saved || result.automatic;
-      const items = normalizeLaborNames(summarizeMeals(source.items));
+      const normalized = normalizeLaborNames(summarizeMeals(source.items));
+      const items = withManualCompletionItems(normalized);
       setDraft({ ...source, items });
       setDefaults(result.defaults || {note:"",bank_account:""});
       setAutomatic(result.automatic);
       setWarning(result.warning || "");
-      setDirty(Boolean(result.saved) && JSON.stringify(items) !== JSON.stringify(source.items));
+      setDirty(Boolean(result.saved) && JSON.stringify(normalized) !== JSON.stringify(source.items));
     } catch (err) {
       if (!signal.aborted) setError(err.message);
     } finally {
@@ -289,7 +290,7 @@ export default function CompletionEstimate({
       <h3 style={{ margin: "0 0 8px" }}>업체 견적서 · 물량·인건비·경비</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        현장 필름명과 사용량을 자동으로 가져옵니다. 사용량은 반출량에서 반입량을 뺀 값입니다. 미확정 수량은 직접 입력해주세요. 업체 거래처는 등록한 인테리어 단가를 적용하며, 판매 기준가가 아직 없으면 기존 원가를 참고한 초안입니다. 청구할 금액으로
+        공사보고서가 아직 없어도 관리자가 필름 물량·인건비·경비를 직접 채울 수 있습니다. 현장 필름명과 사용량을 자동으로 가져옵니다. 사용량은 반출량에서 반입량을 뺀 값입니다. 미확정 수량은 직접 입력해주세요. 업체 거래처는 등록한 인테리어 단가를 적용하며, 판매 기준가가 아직 없으면 기존 원가를 참고한 초안입니다. 청구할 금액으로
         수정한 후 저장하세요. 견적서 수정은 실제 지출·계약금액을
         변경하지 않습니다. 인건비 단가는 업체에 청구할 금액으로 수정할 수 있으며 실제 지급 일당과 별도로 저장됩니다.
       </p>
@@ -342,7 +343,7 @@ export default function CompletionEstimate({
             disabled={busy}
             style={{ border: 0, padding: 0, margin: 0 }}
           >
-            <InputStep index={0}><p style={{ fontSize: 12, color: "#64748b" }}>
+            <InputStep index={0}><p>확인되는 항목만 채우세요. 빈 항목은 견적서에서 제외되며, 공사보고서 완료 여부는 바뀌지 않습니다.</p><p style={{ fontSize: 12, color: "#64748b" }}>
               {draft.version
                 ? `저장본 ${draft.version} · ${new Date(
                     draft.updated_at,
@@ -416,7 +417,7 @@ export default function CompletionEstimate({
               { title: "경비", categories: ["meal", "supplies", "overhead", "expense"] },
             ].map((group, groupIndex) => (
               <InputStep key={group.title} index={groupIndex+1}><section style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
-                <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4>
+                <h4 style={{ margin: "0 0 8px" }}>{group.title}</h4><p style={{fontSize:13,color:"#64748b"}}>자동 입력이 없거나 빠진 내용은 직접 입력하세요. 필요 없는 항목은 비워두세요.</p>
                 {group.categories.map(category => {
                   const label = labels[category];
                   return <div key={category}>
@@ -426,7 +427,7 @@ export default function CompletionEstimate({
                     <div key={index} style={{marginBottom:12}}>
                       <label>식대 합계 (원)
                         <input style={input} type="number" min="0" max="1000000000" step="1"
-                          value={row.amount} onChange={event => edit(index, "amount", event.target.value)} />
+                          placeholder="미입력 · 필요하면 직접 입력" value={row.amount} onChange={event => edit(index, "amount", event.target.value)} />
                       </label>
                     </div>
                   ) : (
@@ -497,7 +498,7 @@ export default function CompletionEstimate({
                       <label>
                         단가 (원)
                         <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""}
-                          placeholder="기존 합계금액을 유지하려면 비워두세요"
+                          placeholder="단가를 입력하면 금액 자동 계산"
                           onChange={event => edit(index, "unit_price", event.target.value === "" ? null : event.target.value)} />
                       </label>
                       <label>
@@ -699,6 +700,7 @@ export default function CompletionEstimate({
     </section>
   );
 }
+
 
 
 

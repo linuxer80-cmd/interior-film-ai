@@ -99,7 +99,7 @@ async function authorize(request, siteId) {
   const site = await db
     .from("sites")
     .select(
-      "id,site_name,customer_name,customer_type,address,address_detail,status,work_dates,schedule_date",
+      "id,site_name,customer_name,customer_type,address,address_detail,status,work_dates,schedule_start",
     )
     .eq("company_id", companyId)
     .eq("id", siteId)
@@ -171,6 +171,8 @@ function handleError(error) {
     "PGRST205",
   ].includes(error.code)
     ? "완료 견적서 테이블을 찾을 수 없습니다. DB 연결을 확인해주세요."
+    : ["42703", "PGRST204"].includes(error.code)
+      ? "견적서 조회에 필요한 DB 항목을 확인하지 못했습니다. 관리자에게 오류 코드를 전달해주세요: " + error.code
     : error.status
       ? error.message
       : "완료 견적서를 처리하지 못했습니다. 다시 시도해주세요.";
@@ -227,56 +229,35 @@ export async function GET(request) {
 
     url.searchParams.set("siteId", siteId);
 
-    const response = await getProfit(
-      new Request(url, {
-        headers: request.headers,
-      }),
-    );
-
-    const profit = await response.json();
-
-    if (!response.ok) {
-      if (saved.data) {
-        return json({
-          site, defaults,
-          saved: savedDocument,
-          automatic: null,
-          warning:
-            "최신 실제 비용을 불러오지 못했습니다. 저장된 견적서를 표시합니다.",
-        });
+    const partialWarnings = [];
+    let profit = { sites: [], breakdown: { labor: [], material: [], expense: [] } };
+    try {
+      const response = await getProfit(new Request(url, { headers: request.headers }));
+      const result = await response.json();
+      if ([401, 403, 404].includes(response.status)) throw fail(result.error || "현장 접근 권한을 확인해주세요.", response.status);
+      if (!response.ok || !result.sites?.some(row => row.id === siteId) || !result.breakdown) {
+        throw fail("자동 비용 집계 불가", 502);
       }
-
-      throw fail(
-        profit.error || "실제 비용 조회 실패",
-        response.status,
-      );
+      profit = result;
+    } catch (error) {
+      if ([401, 403, 404].includes(error.status)) throw error;
+      console.error("completion estimate cost source", error.code || error.message);
+      partialWarnings.push("인건비·경비 자동 집계를 불러오지 못했습니다. 관리자가 누락된 항목을 직접 입력해주세요.");
     }
-
-    if (
-      !profit.sites?.some(
-        (row) => row.id === siteId,
-      )
-    ) {
-      throw fail(
-        "현장을 찾을 수 없습니다.",
-        404,
-      );
-    }
-
     const breakdown = profit.breakdown;
-
-    const operations = await db.rpc("site_operations", {
-      p_user: userId,
-      p_site: siteId,
-      p_action: "get",
-      p_body: { siteId, action: "get" },
-    });
-    if (operations.error || !Array.isArray(operations.data?.materials)) {
-      if (savedDocument) return json({ site, defaults, saved: savedDocument, automatic: null,
-        warning: "현장 필름 물량을 불러오지 못했습니다. 저장된 견적서를 표시합니다. 다시 불러오기를 눌러주세요." });
-      throw fail("현장 필름 물량을 불러오지 못했습니다. 다시 시도해주세요.", 502);
+    let estimateMaterials = [];
+    try {
+      const operations = await db.rpc("site_operations", {
+        p_user: userId, p_site: siteId, p_action: "get", p_body: { siteId, action: "get" },
+      });
+      if (operations.error?.code === "42501") throw fail("현장 자재 조회 권한을 확인해주세요.", 403);
+      if (operations.error || !Array.isArray(operations.data?.materials)) throw operations.error || Error("자재 응답 누락");
+      estimateMaterials = operations.data.materials;
+    } catch (error) {
+      if (error.status === 403) throw error;
+      console.error("completion estimate material source", error.code || error.message);
+      partialWarnings.push("현장 필름 물량을 불러오지 못했습니다. 필름명·사용 미터·단가를 직접 확인해 입력해주세요.");
     }
-    let estimateMaterials = operations.data.materials;
     let sellingWarning = "";
     let sellingApplied = false;
     if (["business","personal"].includes(site.customer_type)) {
@@ -318,6 +299,7 @@ export async function GET(request) {
       saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
 
       warning: [
+        ...partialWarnings,
         sellingWarning,
         defaults.unavailable ? '업체 기본 비고·계좌 설정을 불러오지 못했습니다.' : '',
         pending ? `일당이 확인되지 않은 배정 ${pending}건이 있습니다. 인건비를 확인해주세요.` : "",
@@ -487,6 +469,7 @@ export async function POST(request) {
     return handleError(error);
   }
         }
+
 
 
 
