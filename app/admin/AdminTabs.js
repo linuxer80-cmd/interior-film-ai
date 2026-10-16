@@ -217,7 +217,7 @@ export default function AdminTabs({
             background: "#fffdfa",
             color: "#243648",
             fontWeight: 800,
-          }}>
+          }} data-ui-link="action">
             업체별 매출 · 입금 · 미수금 →
           </a>
 
@@ -268,10 +268,10 @@ export default function AdminTabs({
           <button type="button" onClick={() => go("jobs")}>시공 DB</button>
           <button type="button" onClick={() => go("usage")}>로그 분석</button>
 
-          <a href="/account/kakao">카카오 계정 연결 · 연결 상태 확인</a>
-          <a href="/achievements?scope=owner">우리 업체 업적 · 배지 보관함</a>
-          <a href="/admin/billing">요금제 · 결제</a>
-          <a href="/support?from=admin">고객지원</a>
+          <a href="/account/kakao" data-ui-link="action">카카오 계정 연결 · 연결 상태 확인</a>
+          <a href="/achievements?scope=owner" data-ui-link="action">우리 업체 업적 · 배지 보관함</a>
+          <a href="/admin/billing" data-ui-link="action">요금제 · 결제</a>
+          <a href="/support?from=admin" data-ui-link="action">고객지원</a>
         </nav>
       )}
 

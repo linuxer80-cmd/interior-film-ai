@@ -137,7 +137,7 @@ export default function AdminWorkersPage() {
             textDecoration: "none",
             fontWeight: 800,
           }}
-        >
+         data-ui-link="action">
           오늘 출퇴근 확인 →
         </Link>
       )}

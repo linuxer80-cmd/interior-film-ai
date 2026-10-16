@@ -58,7 +58,7 @@ export default function KakaoAccount() {
   return <main style={{maxWidth:480,margin:"40px auto",padding:24}}>
     <h1>카카오 계정 연결</h1>
     {!ready?<p role="status">계정을 확인하고 있습니다…</p>:!user?
-      <p>기존 이메일 계정으로 로그인한 후 이 화면에서 연결해주세요. <Link href="/login">로그인하기</Link></p>:
+      <p>기존 이메일 계정으로 로그인한 후 이 화면에서 연결해주세요. <Link href="/login" data-ui-link="action">로그인하기</Link></p>:
       <>
         <p>현재 계정: {user.email||"이메일 없는 계정"}</p>
         <p>연결할 기존 계정의 이메일이 맞는지 먼저 확인해주세요. 카카오 이메일과 달라도 연결할 수 있습니다.</p>
@@ -73,6 +73,6 @@ export default function KakaoAccount() {
         <button type="button" disabled={busy} onClick={switchAccount} style={{marginTop:20,padding:14}}>기존 이메일 계정으로 전환</button>
       </>}
     {error&&<p role="alert">{error}</p>}
-    <p><Link href="/admin">관리자 홈</Link> · <Link href="/worker/account">시공자 개인설정</Link></p>
+    <p><Link href="/admin" data-ui-link="action">관리자 홈</Link> · <Link href="/worker/account" data-ui-link="action">시공자 개인설정</Link></p>
   </main>;
 }

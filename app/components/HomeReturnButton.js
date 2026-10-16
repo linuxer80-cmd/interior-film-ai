@@ -16,7 +16,7 @@ export default function HomeReturnButton({role="worker",label,style={}}) {
         boxShadow:"0 1px 2px rgba(15,23,42,.04)",
         textDecoration:"none",color:"#163153",fontSize:15,fontWeight:800,
         boxSizing:"border-box",...style
-      }}>
+      }} data-ui-link="action">
       <span aria-hidden="true">⌂</span>
       {label || (admin?"관리자 홈으로":"시공자 홈으로")}
       <span aria-hidden="true">→</span>

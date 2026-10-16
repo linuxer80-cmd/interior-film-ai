@@ -144,7 +144,7 @@ export default function AdminHomeSummary({ companyId }) {
     >
       <header>
         <h2>오늘 할 일</h2>
-        <a href="/admin/today">전체 보기 ›</a>
+        <a href="/admin/today" data-ui-link="action">전체 보기 ›</a>
       </header>
 
       {loading ? (

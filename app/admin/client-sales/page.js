@@ -168,7 +168,7 @@ export default function ClientSalesPage() {
 
   return (
     <main>
-      <Link href="/admin?tab=profit">← 매출·수익</Link>
+      <Link href="/admin?tab=profit" data-ui-link="action">← 매출·수익</Link>
       <h1>업체별 매출</h1>
 
       <p>
@@ -308,7 +308,7 @@ export default function ClientSalesPage() {
                       href={`/admin?tab=sites&site=${encodeURIComponent(
                         site.id
                       )}`}
-                    >
+                     data-ui-link="action">
                       현장 보기 →
                     </Link>
                   </section>
@@ -382,7 +382,7 @@ export default function ClientSalesPage() {
           </div>
 
           <p>
-            <Link href="/admin/clients">
+            <Link href="/admin/clients" data-ui-link="action">
               거래처 관리 · 입금 처리 →
             </Link>
           </p>

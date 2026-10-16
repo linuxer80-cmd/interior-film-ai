@@ -385,7 +385,7 @@ export default function WorkerPage({ mode = "home" }) {
         ) : (
           <>
             <div className="worker-menu-heading">
-              <Link href="/worker">
+              <Link href="/worker" data-ui-link="action">
                 ‹ 홈으로
               </Link>
               <h2>{titles[mode]}</h2>
@@ -461,7 +461,7 @@ export default function WorkerPage({ mode = "home" }) {
                         textDecoration: "none",
                         fontWeight: 800,
                       }}
-                    >
+                     data-ui-link="action">
                       재단앱 사용 →
                     </Link>
                   </div>

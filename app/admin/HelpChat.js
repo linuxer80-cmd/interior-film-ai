@@ -173,7 +173,7 @@ export default function HelpChat({ embedded = false }) {
             </label>
             <button type="button" disabled={loading} onClick={()=>send(topic.question)} style={{marginTop:8,padding:10,border:"1px solid #cbd5e1",borderRadius:10,background:"#eff6ff",width:"100%",textAlign:"left"}}>{topic.question}</button>
             <nav aria-label="선택 기능 바로가기" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-              {topic.links.map(([label,href])=><Link key={href} href={href} style={{padding:"7px 10px",border:"1px solid #d6dde5",borderRadius:8,fontSize:12,color:"#163153",textDecoration:"none"}}>{label} ›</Link>)}
+              {topic.links.map(([label,href])=><Link key={href} href={href} style={{padding:"7px 10px",border:"1px solid #d6dde5",borderRadius:8,fontSize:12,color:"#163153",textDecoration:"none"}} data-ui-link="action">{label} ›</Link>)}
             </nav>
           </div>
           <div

@@ -1662,7 +1662,7 @@ export default function SignupPage() {
                   fontWeight:
                     "800",
                 }}
-              >
+               data-ui-link="action">
                 관리자 로그인
               </Link>
             </div>
@@ -1698,7 +1698,7 @@ export default function SignupPage() {
               fontWeight:
                 "700",
             }}
-          >
+           data-ui-link="action">
             ← AI 견적으로 돌아가기
           </Link>
         )}

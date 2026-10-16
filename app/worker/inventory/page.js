@@ -202,7 +202,7 @@ export default function WorkerInventory() {
       <Link
         className="site-link"
         href="/worker/menu/sites"
-      >
+       data-ui-link="action">
         내 현장 보기 ›
       </Link>
     </main>

@@ -27,7 +27,7 @@ export default function ReferralPanel({scope='worker',onChanged}) {
   finally{lock.current=false;setBusy(false);}
  }
  if(!ready)return <p>로그인 확인 중…</p>;
- if(!user)return <p><a href='/login'>로그인</a> 후 초대 링크를 만들 수 있습니다.</p>;
+ if(!user)return <p><a href='/login' data-ui-link="inline">로그인</a> 후 초대 링크를 만들 수 있습니다.</p>;
  const links=data?.links||[];
  const date=value=>new Date(value).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric'});
  const linkRow=(r,i)=><div className='invite-row' key={r.token}>

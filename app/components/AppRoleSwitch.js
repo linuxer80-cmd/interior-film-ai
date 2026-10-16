@@ -134,7 +134,7 @@ export default function AppRoleSwitch() {
                   ? "/login"
                   : "/worker/login?next=%2Fworker"
               }
-            >
+             data-ui-link="action">
               {notice.target === "admin"
                 ? "관리자 로그인"
                 : "시공자 로그인"}

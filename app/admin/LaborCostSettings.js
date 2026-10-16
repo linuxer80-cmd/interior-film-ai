@@ -284,7 +284,7 @@ function OvertimeSettings() {
       )}
 
       <p style={{ marginBottom: 0, fontSize: 13 }}>
-        <Link href="/admin/attendance">
+        <Link href="/admin/attendance" data-ui-link="action">
           출퇴근 기록·연장근무 승인 →
         </Link>
       </p>

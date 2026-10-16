@@ -364,7 +364,7 @@ export default function WorkerForgotPasswordPage() {
             textAlign: "center",
             color: "#3268bd",
           }}
-        >
+         data-ui-link="action">
           ← 시공자 로그인
         </Link>
       </section>

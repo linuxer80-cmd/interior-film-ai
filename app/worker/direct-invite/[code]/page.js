@@ -70,7 +70,7 @@ export default function DirectWorkerInvitePage(){
     <input type="password" minLength={6} required placeholder="비밀번호 (6자 이상)" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:12}}/>
     <button type="submit" disabled={busy} style={{padding:12}}>신규 회원가입</button>
    </form>
-   <p><Link href={`/worker/login?next=${encodeURIComponent("/worker/direct-invite/"+code)}`}>이미 가입했다면 로그인</Link></p>
+   <p><Link href={`/worker/login?next=${encodeURIComponent("/worker/direct-invite/"+code)}`} data-ui-link="action">이미 가입했다면 로그인</Link></p>
   </section>:!done?<section>
    {preview?<><h2>{preview.companyName}</h2><p><strong>{preview.relationshipType==="employee"?"소속 직원":"협력 프리랜서"}</strong> 초대입니다.</p>
     <p>본인 계정으로 수락하면 해당 업체의 시공자 명단에 등록됩니다. 다른 업체 소속과 기존 근무 기록은 유지됩니다.</p>
@@ -80,6 +80,6 @@ export default function DirectWorkerInvitePage(){
      <button disabled={busy} onClick={()=>act("decline")} style={{padding:12,borderRadius:10,flex:1}}>거부</button>
     </div>:<p>이미 처리된 초대입니다: {preview.status}</p>}
    </>:<p>초대 정보를 확인하는 중입니다.</p>}
-  </section>:<p><Link href="/worker">시공자 홈으로 이동</Link></p>}
+  </section>:<p><Link href="/worker" data-ui-link="action">시공자 홈으로 이동</Link></p>}
  </main>;
 }

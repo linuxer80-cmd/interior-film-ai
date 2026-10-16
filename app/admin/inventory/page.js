@@ -12,7 +12,7 @@ export default function InventoryPage() {
         padding: 18,
       }}
     >
-      <Link href="/admin">← 관리자 홈</Link>
+      <Link href="/admin" data-ui-link="action">← 관리자 홈</Link>
       <FilmDealerInventory />
     </main>
   );

@@ -47,7 +47,7 @@ export default function CuttingError({ error, reset }) {
       </button>
 
       <p>
-        <a href="/worker">시공자 홈으로 돌아가기</a>
+        <a href="/worker" data-ui-link="action">시공자 홈으로 돌아가기</a>
       </p>
     </main>
   );

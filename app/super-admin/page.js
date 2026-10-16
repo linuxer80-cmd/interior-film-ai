@@ -423,7 +423,7 @@ export default function SuperAdminPage() {
           href="#home"
           className={ui.secondary}
           style={{ marginBottom: 20 }}
-        >
+         data-ui-link="action">
           ‹ 슈퍼관리자 홈
         </a>
       )}
@@ -755,8 +755,8 @@ function CompanyCard({ company, changing, onToggle, onManage }) {
           <button type="button" onClick={onManage}>
             회사 관리
           </button>
-          <a href={`/super-admin/company/${company.id}#monitor`}>운영 모니터링</a>
-          <a href={`/super-admin/company/${company.id}#photos`}>
+          <a href={`/super-admin/company/${company.id}#monitor`} data-ui-link="action">운영 모니터링</a>
+          <a href={`/super-admin/company/${company.id}#photos`} data-ui-link="action">
             업체 사진 보기
           </a>
         </div>

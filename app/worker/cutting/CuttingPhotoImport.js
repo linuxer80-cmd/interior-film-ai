@@ -804,7 +804,7 @@ export default function CuttingPhotoImport({
               }
               target="_blank"
               rel="noreferrer"
-            >
+             data-ui-link="action">
               사진 {row.page} 원본 보기
             </a>
 

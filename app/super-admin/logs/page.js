@@ -243,7 +243,7 @@ export default function SuperAdminLogsPage() {
             href="/super-admin"
             aria-label="슈퍼관리자로 돌아가기"
             style={styles.back}
-          >
+           data-ui-link="icon">
             ←
           </Link>
 

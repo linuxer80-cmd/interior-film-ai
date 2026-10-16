@@ -59,7 +59,7 @@ function BadgeCollection({scope,compact,api}){
   <a className='achievement-home' href={`/achievements?scope=${scope}`}>
    {(featured||next||earned[0])&&<BadgeArt badge={featured||next||earned[0]} locked={!featured&&Boolean(next)} size={82}/>}
    <span><strong>{scope==='owner'?'우리 업체 업적':'내 업적'} · 배지 {earned.length}개</strong><small>{next?`${next.title}까지 ${Math.max(0,next.target-next.progress).toLocaleString()}${badgeUnit(next.metric)} 남았어요`:'새로운 성취를 배지 보관함에서 확인하세요'}</small>{next&&<progress aria-label={`${next.title} 진행률`} value={badgeProgress(next)} max='100'/>}</span><span aria-hidden='true'>›</span>
-  </a><a href={`/achievements?scope=${scope}&tab=invite`} style={{display:'block',padding:12,color:'#2563eb'}}>친구 초대 · AI 보상 받기 →</a>{celebration}{error&&<p role='alert'>{error}</p>}
+  </a><a href={`/achievements?scope=${scope}&tab=invite`} style={{display:'block',padding:12,color:'#2563eb'}} data-ui-link="action">친구 초대 · AI 보상 받기 →</a>{celebration}{error&&<p role='alert'>{error}</p>}
  </section>;
  const filtered=data.badges.filter(b=>filter==='all'||(filter==='earned'?b.earned_at:b.active&&!b.earned_at));
  const current=Math.min(page,Math.max(0,Math.ceil(filtered.length/4)-1));
@@ -80,7 +80,7 @@ function BadgeCollection({scope,compact,api}){
   </div>
   <div hidden={view!=='badges'}>
   <details className='achievement-guide'><summary>대표 배지·활동 집계 안내</summary><p className='achievement-help'>앱 활동 기록에 따른 배지이며 시공 실력이나 자격을 인증하지 않습니다.</p><p className='achievement-help'>{scope==='worker'?'선택한 대표 배지는 공개에 동의한 시공자 검색·구직 프로필과 지원한 업체의 지원자 화면에 표시됩니다.':'선택한 업체 대표 배지는 시공자가 보는 구인 공고와 지원 현황에 표시됩니다.'} 대표 배지를 해제하면 해당 선택의 공개 표시도 사라집니다.</p>
-  {scope==='worker'&&<div><h2>누적 현장 출근 거리 · 왕복 기준</h2><p><strong>{Number(data.badges.find(b=>b.metric==='commute_km')?.progress||0).toLocaleString()}km</strong></p><p>출발지에서 현장까지 편도 도로거리 × 2로 계산합니다. 실제 이동 추적 거리가 아닙니다. 출근 위치 확인 또는 관리자 승인 후 같은 현장은 하루 한 번 인정됩니다.</p><p>거리 기록은 기능 설치 후 출근부터 시작합니다. 출근 당시 주소를 보관하여 주소 변경 후에도 이전 거리를 유지합니다. 출발지 주소와 정확한 누적거리는 공개 프로필에 표시하지 않습니다.</p><a href='/worker/account'>출발지 주소 등록 · 수정</a><p>새 경로는 기존 지도 조회 한도 안에서 계산하며, 같은 출발지·현장 경로는 저장된 거리를 재사용합니다. 계산 실패 시 30분 후 재시도하며 한 기록은 최대 5회 시도합니다.</p><button disabled={busy} onClick={calculateDistance}>{busy?'처리 중…':'미계산 출근 거리 계산'}</button>{distanceMessage&&<p role='status'>{distanceMessage}</p>}</div>}
+  {scope==='worker'&&<div><h2>누적 현장 출근 거리 · 왕복 기준</h2><p><strong>{Number(data.badges.find(b=>b.metric==='commute_km')?.progress||0).toLocaleString()}km</strong></p><p>출발지에서 현장까지 편도 도로거리 × 2로 계산합니다. 실제 이동 추적 거리가 아닙니다. 출근 위치 확인 또는 관리자 승인 후 같은 현장은 하루 한 번 인정됩니다.</p><p>거리 기록은 기능 설치 후 출근부터 시작합니다. 출근 당시 주소를 보관하여 주소 변경 후에도 이전 거리를 유지합니다. 출발지 주소와 정확한 누적거리는 공개 프로필에 표시하지 않습니다.</p><a href='/worker/account' data-ui-link="action">출발지 주소 등록 · 수정</a><p>새 경로는 기존 지도 조회 한도 안에서 계산하며, 같은 출발지·현장 경로는 저장된 거리를 재사용합니다. 계산 실패 시 30분 후 재시도하며 한 기록은 최대 5회 시도합니다.</p><button disabled={busy} onClick={calculateDistance}>{busy?'처리 중…':'미계산 출근 거리 계산'}</button>{distanceMessage&&<p role='status'>{distanceMessage}</p>}</div>}
   {scope==='worker'&&<p className='achievement-help'>재단·주변 검색 배지는 설정 후 사용일부터 쌓이며, 기능별로 한국시간 하루 한 번 인정됩니다. 재단 계산 완료 또는 음식점·필름가게 검색 결과 확인 시 기록됩니다. 저장된 검색 결과도 인정되며, 검색 실패·빈 결과는 제외합니다.</p>}
   </details>
   {celebration}

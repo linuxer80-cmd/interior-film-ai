@@ -81,7 +81,7 @@ export default function AdminTodayPage() {
           textDecoration: "none",
           fontWeight: 700,
         }}
-      >
+       data-ui-link="action">
         ‹ 관리자 홈
       </Link>
 

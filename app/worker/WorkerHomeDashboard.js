@@ -188,7 +188,7 @@ export default function WorkerHomeDashboard({
       <div className="wp-section-title">
         <h3>오늘의 현장</h3>
 
-        <Link href="/worker/menu/sites">
+        <Link href="/worker/menu/sites" data-ui-link="action">
           전체 일정 ›
         </Link>
       </div>
@@ -253,7 +253,7 @@ export default function WorkerHomeDashboard({
               확인하세요.
             </p>
 
-            <Link href="/worker/menu/sites">
+            <Link href="/worker/menu/sites" data-ui-link="action">
               내 일정 확인 →
             </Link>
           </div>

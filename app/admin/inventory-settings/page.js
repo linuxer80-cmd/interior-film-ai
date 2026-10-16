@@ -84,8 +84,8 @@ export default function InventorySettings() {
   return (
     <main className="labor-shell">
       <nav>
-        <Link href="/admin">관리자 홈</Link>
-        <Link href="/admin/inventory">자재 재고</Link>
+        <Link href="/admin" data-ui-link="action">관리자 홈</Link>
+        <Link href="/admin/inventory" data-ui-link="action">자재 재고</Link>
       </nav>
 
       <h1>재고관리 사용 설정</h1>

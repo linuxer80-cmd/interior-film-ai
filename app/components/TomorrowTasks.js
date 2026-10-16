@@ -171,7 +171,7 @@ export default function TomorrowTasks({ owner = false }) {
                   {!owner && <span className="task-role">{site.role === "leader" ? "책임 팀장" : "팀원"}</span>}
                 </div>
                 <a className="task-site-open"
-                  href={owner ? `/admin?tab=sites&site=${site.id}` : `/worker/site/${site.id}`}>
+                  href={owner ? `/admin?tab=sites&site=${site.id}` : `/worker/site/${site.id}`} data-ui-link="action">
                   현장 보기 ›
                 </a>
               </div>

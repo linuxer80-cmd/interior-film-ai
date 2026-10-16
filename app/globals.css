@@ -250,3 +250,66 @@ main:has(.film-admin-dashboard), main:has(.worker-polished) {
 .film-admin-bottom button:focus-visible, .wp-bottom a:focus-visible, .worker-menu-bottom a:focus-visible {
   outline: 2px solid #38536a; outline-offset: -2px;
 }
+
+/* Explicitly marked text actions share a single style across all pages.
+   Card navigation, photo links and bottom navigation are not marked. */
+a[data-ui-link="action"],
+a[data-ui-link="icon"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-height: 48px !important;
+  max-width: 100%;
+  padding: 10px 14px !important;
+  margin: 4px 6px 4px 0 !important;
+  border: 1px solid #d4dedf !important;
+  border-radius: 12px !important;
+  background: #fffdf9 !important;
+  color: #243f52 !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1.45 !important;
+  text-decoration: none !important;
+  text-align: center !important;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+a[data-ui-link="icon"] {
+  width: 48px !important;
+  min-width: 48px;
+  padding: 8px !important;
+  font-size: 23px !important;
+  flex-shrink: 0;
+}
+a[data-ui-link="inline"] {
+  color: #285c65 !important;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+a[data-ui-link]:focus-visible {
+  outline: 3px solid #297d92 !important;
+  outline-offset: 3px !important;
+}
+@media (hover: hover) {
+  a[data-ui-link="action"]:hover,
+  a[data-ui-link="icon"]:hover {
+    background: #edf4f1 !important;
+    border-color: #91aaa5 !important;
+  }
+}
+a[data-ui-link="action"]:active,
+a[data-ui-link="icon"]:active { background: #e3ece8 !important; }
+@media print {
+  a[data-ui-link] {
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: inherit !important;
+  }
+}

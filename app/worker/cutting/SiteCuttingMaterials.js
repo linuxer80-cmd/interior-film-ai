@@ -66,7 +66,7 @@ export default function SiteCuttingMaterials({
           fontWeight: 800,
           fontSize: 16,
         }}
-      >
+       data-ui-link="action">
         재단앱 열기 →
       </Link>
 

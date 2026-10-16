@@ -774,7 +774,7 @@ export default function FilmCuttingOptimizer({
               ? `/worker/site/${context.site.site_id}?section=film`
               : "/worker"
           }
-        >
+         data-ui-link="action">
           ← 내 현장으로
         </a>
 

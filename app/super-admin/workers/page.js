@@ -26,7 +26,7 @@ export default function SuperWorkers(){
   try{await request('/api/super-admin/workers',{action:'unpublish',userId:row.id,revision:row.profileRevision});setNotice('구직·프로필 공개를 해제했습니다.');setReload(v=>v+1);}catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}
  }
  return <main className={styles.page}>
-  <Link href='/super-admin'>← 슈퍼관리자 홈</Link>
+  <Link href='/super-admin' data-ui-link="action">← 슈퍼관리자 홈</Link>
   <header><h1>시공자 관리</h1><button disabled={loading||busy} onClick={()=>setReload(v=>v+1)}>새로고침</button></header>
   <p>가입 계정과 업체별 연결 정보를 확인합니다. 여러 업체에 등록된 시공자는 계정 하나로 묶어 표시합니다.</p>
   {data&&<div className={styles.summary}>시공자 계정 {data.summary.accounts}명 · 구직 중 {data.summary.seeking}명 · 미연결 명단 {data.summary.unlinked}건 · 미분류 가입 {data.summary.pending}명</div>}
@@ -53,7 +53,7 @@ export default function SuperWorkers(){
     <details><summary>프로필·업체 연결 상세</summary>
      <p>{row.skills?.join(' · ')||'전문 분야 미등록'}</p><p className={styles.text}>{row.introduction||'자기소개 미등록'}</p>
      <p>최근 로그인 {date(row.lastSignIn)}</p>
-     {row.memberships.length?row.memberships.map(m=><p key={m.workerId}><Link href={`/super-admin/company/${m.companyId}`}>{m.companyName}</Link> · {kindName[m.relationship]} · {m.active?'연결 명단 활성':'명단 비활성'}{!m.companyActive?' · 업체 중지':''}</p>):<p>연결된 업체가 없습니다.</p>}
+     {row.memberships.length?row.memberships.map(m=><p key={m.workerId}><Link href={`/super-admin/company/${m.companyId}`} data-ui-link="inline">{m.companyName}</Link> · {kindName[m.relationship]} · {m.active?'연결 명단 활성':'명단 비활성'}{!m.companyActive?' · 업체 중지':''}</p>):<p>연결된 업체가 없습니다.</p>}
      <small>계정/명단 ID: {row.id}</small>
     </details>
     {['account','unlinked'].includes(row.kind)&&<OperationsMonitor type={row.kind} id={row.id} lazy/>}

@@ -267,7 +267,7 @@ export default function FilmIndexPage() {
         padding: 24,
       }}
     >
-      <Link href="/super-admin">
+      <Link href="/super-admin" data-ui-link="action">
         슈퍼관리자로 돌아가기
       </Link>
 
@@ -343,7 +343,7 @@ export default function FilmIndexPage() {
       )}
 
       <p>
-        <Link href="/samples">
+        <Link href="/samples" data-ui-link="action">
           샘플 검색 확인하기
         </Link>
       </p>

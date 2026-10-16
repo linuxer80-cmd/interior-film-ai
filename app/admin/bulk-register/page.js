@@ -17,7 +17,7 @@ export default function BulkRegisterPage() {
 
   return (
     <main className={ui.page}>
-      <a className={ui.back} href="/admin?tab=register">← 시공 등록으로 돌아가기</a>
+      <a className={ui.back} href="/admin?tab=register" data-ui-link="action">← 시공 등록으로 돌아가기</a>
       {checking ? <p>관리자 정보를 확인하고 있습니다...</p> : !companyId ? (
         <p role="alert">{adminError || "관리자 정보를 확인할 수 없습니다."}</p>
       ) : (

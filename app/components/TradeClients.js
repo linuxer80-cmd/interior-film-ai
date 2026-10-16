@@ -1475,7 +1475,7 @@ export default function TradeClients({ siteId, onScope }) {
                           : won(site.outstanding)}
                       </p>
 
-                      <a href={`/admin?tab=sites&site=${site.id}`}>
+                      <a href={`/admin?tab=sites&site=${site.id}`} data-ui-link="action">
                         현장 상세
                       </a>{" "}
 

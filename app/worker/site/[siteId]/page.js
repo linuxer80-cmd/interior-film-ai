@@ -262,7 +262,7 @@ export default function WorkerSiteDetailPage() {
           padding: 20,
         }}
       >
-        <a href="/worker" style={{ color: "#2563eb" }}>
+        <a href="/worker" style={{ color: "#2563eb" }} data-ui-link="action">
           ← 내 현장으로
         </a>
 
@@ -553,7 +553,7 @@ export default function WorkerSiteDetailPage() {
                   textAlign: "center",
                   marginTop: 14,
                 }}
-              >
+               data-ui-link="action">
                 📞 고객 전화 · {site.customer_phone}
               </a>
             )}

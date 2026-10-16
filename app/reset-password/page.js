@@ -312,17 +312,17 @@ export default function ResetPasswordPage() {
           <Link
             href="/worker/forgot-password"
             style={link}
-          >
+           data-ui-link="action">
             시공자 재설정 메일 다시 받기
           </Link>
         )}
 
         {!busy && (
           <>
-            <Link href="/worker/login" style={link}>
+            <Link href="/worker/login" style={link} data-ui-link="action">
               시공자 로그인
             </Link>
-            <Link href="/login" style={link}>
+            <Link href="/login" style={link} data-ui-link="action">
               회사 관리자 로그인
             </Link>
           </>

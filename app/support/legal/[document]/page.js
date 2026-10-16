@@ -13,7 +13,7 @@ export default async function LegalDraftPage({ params, searchParams }) {
   const from = query?.from === "worker" ? "worker" : "admin";
   return <main className={styles.page}>
     <header className={styles.header}>
-      <Link href={`/support?from=${from}`} aria-label="고객지원으로 돌아가기">‹</Link><h1>{doc.title}</h1>
+      <Link href={`/support?from=${from}`} aria-label="고객지원으로 돌아가기" data-ui-link="icon">‹</Link><h1>{doc.title}</h1>
     </header>
     <aside style={{ padding: 16, border: "1px solid #d6b36e", background: "#fff6df", borderRadius: 12, lineHeight: 1.8 }}>
       <strong>검토용 초안 · 아직 시행되지 않았습니다</strong>
@@ -34,6 +34,6 @@ export default async function LegalDraftPage({ params, searchParams }) {
       </label>
       <p>동의 저장·철회·자료 검토 기능을 마련한 뒤 활성화합니다.</p>
     </fieldset>}
-    <p>문의: <a href="mailto:linuxer80@gmail.com">linuxer80@gmail.com</a></p>
+    <p>문의: <a href="mailto:linuxer80@gmail.com" data-ui-link="inline">linuxer80@gmail.com</a></p>
   </main>;
 }

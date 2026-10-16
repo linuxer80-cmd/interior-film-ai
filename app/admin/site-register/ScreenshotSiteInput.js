@@ -417,7 +417,7 @@ export default function ScreenshotSiteInput({
       )}
 
       {code === "LIMIT" && (
-        <a href="/admin/billing">요금제 확인하기 →</a>
+        <a href="/admin/billing" data-ui-link="action">요금제 확인하기 →</a>
       )}
 
       {message && <p role="status">{message}</p>}

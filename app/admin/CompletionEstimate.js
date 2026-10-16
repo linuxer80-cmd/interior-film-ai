@@ -693,7 +693,7 @@ export default function CompletionEstimate({
             <button type="submit" value="pdf" disabled={busy} style={{ ...button, width: "100%", marginTop: 10, background: "#183d34", color: "white" }}>
               {busy ? "처리 중…" : "보고서 만들기 · 저장 및 PDF 다운로드"}
             </button>
-            </InputFinal>{pdfUrl && <p><a href={pdfUrl} download={pdfName}>PDF 다시 다운로드</a></p>}
+            </InputFinal>{pdfUrl && <p><a href={pdfUrl} download={pdfName} data-ui-link="action">PDF 다시 다운로드</a></p>}
           </fieldset>
         </GuidedForm>
       )}

@@ -53,7 +53,7 @@ export default function ReceivablesPage() {
 
   return (
     <main>
-      <a href="/admin?tab=profit">‹ 매출·수익</a>
+      <a href="/admin?tab=profit" data-ui-link="action">‹ 매출·수익</a>
       <h1>미수금 관리</h1>
       <p>
         시공 완료 현장의 입금을 관리합니다.
@@ -126,7 +126,7 @@ export default function ReceivablesPage() {
               <button onClick={() => setSelected(site.id)}>
                 입금 금액 입력 · 전액입금
               </button>
-              <a href={`/admin?tab=sites&site=${site.id}`}>
+              <a href={`/admin?tab=sites&site=${site.id}`} data-ui-link="action">
                 {" "}현장 보기 ›
               </a>
             </article>

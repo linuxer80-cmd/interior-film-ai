@@ -216,7 +216,7 @@ export default function SamplesPage() {
         <h1 style={{ fontSize: 23 }}>
           필름 샘플 보기
         </h1>
-        <Link href={home}>홈으로</Link>
+        <Link href={home} data-ui-link="action">홈으로</Link>
       </header>
 
       <FilmColorPicker

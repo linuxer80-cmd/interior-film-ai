@@ -13,7 +13,7 @@ const menus = [
 ];
 export default function WorkerMorePage() {
   return <main className={styles.page}>
-    <header className={styles.header}><Link href="/worker" aria-label="시공자 홈으로 돌아가기">‹</Link><h1>더보기</h1></header>
+    <header className={styles.header}><Link href="/worker" aria-label="시공자 홈으로 돌아가기" data-ui-link="icon">‹</Link><h1>더보기</h1></header>
     <nav className={styles.list} aria-label="시공자 추가 메뉴" style={{ padding: "0 16px" }}>
       {menus.map(([href,label]) => <Link className={styles.row} key={href} href={href}>{label}<span aria-hidden="true">›</span></Link>)}
     </nav>

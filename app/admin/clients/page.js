@@ -12,7 +12,7 @@ export default function ClientsPage() {
         padding: "20px 16px 40px",
       }}
     >
-      <Link href="/admin">← 관리자 홈</Link>
+      <Link href="/admin" data-ui-link="action">← 관리자 홈</Link>
 
       <h1
         style={{

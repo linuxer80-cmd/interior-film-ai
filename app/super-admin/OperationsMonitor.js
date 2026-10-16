@@ -64,13 +64,13 @@ export default function OperationsMonitor({type,id,lazy=false}){
    <p className={styles.muted}>조건에 맞는 {tab==='sites'?'현장':'일정'} {rows.length}건</p>
    {rows.slice((current-1)*10,current*10).map(row=><article className={styles.row} key={tab==='sites'?row.companyId+':'+row.id:row.key}>
     <h3>{tab==='sites'?row.name:row.siteName}</h3>
-    {!company&&<Link href={`/super-admin/company/${row.companyId}#monitor`}>{row.companyName}</Link>}
+    {!company&&<Link href={`/super-admin/company/${row.companyId}#monitor`} data-ui-link="inline">{row.companyName}</Link>}
     {tab==='sites'?<><div><span className={styles.badge}>{statusNames[row.status]||row.status||'상태 미지정'}</span><span className={styles.badge}>보고: {reportNames[row.reportStatus]||row.reportStatus||'기록 없음'}</span>{row.overdue&&<span className={styles.badge}>예정일 경과</span>}</div><p className={styles.muted}>현장 수정 {date(row.updatedAt)} · 보고 수정 {date(row.reportUpdatedAt)}</p></>:<><p><strong>{row.date}</strong>{row.legacy&&<span className={styles.badge}>기존 기간 배정</span>}</p><p>{row.people.length?row.people.map(p=>`${p.name} (${p.role==='leader'?'팀장':'팀원'})`).join(' · '):'배정된 활성 시공자가 없습니다.'}</p></>}
    </article>)}
    {!rows.length&&<p className={styles.empty}>조건에 맞는 기록이 없습니다.</p>}
    <Pager page={current} total={rows.length} onChange={setPage}/>
-   <details><summary>{company?'업체 시공자 연결 명단':'연결된 업체·명단'} ({data.memberships.length})</summary><div className={styles.roster}>{data.memberships.map(w=><div className={styles.row} key={w.id}><strong>{w.name||'이름 미등록'}</strong><p className={styles.muted}>{data.companies.find(c=>c.id===w.company_id)?.company_name||'업체 확인 필요'} · {w.is_active===false?'명단 비활성':'명단 활성'} · {w.user_id?'계정 연결':'계정 미연결'}</p><Link href={`/super-admin/workers?kind=${w.user_id?"account":"unlinked"}&company=${encodeURIComponent(w.company_id)}&q=${encodeURIComponent(w.name||'')}`}>시공자 관리</Link></div>)}</div>{!data.memberships.length&&<p>연결된 업체 명단이 없습니다.</p>}</details>
-   {company&&<div className={styles.links}><Link href={`/super-admin/company/${id}#usage`}>AI 사용량·한도</Link><Link href={`/super-admin/company/${id}#accounts`}>계정·최근 로그인</Link><Link href={`/super-admin/company/${id}#photos`}>등록 사진</Link></div>}
+   <details><summary>{company?'업체 시공자 연결 명단':'연결된 업체·명단'} ({data.memberships.length})</summary><div className={styles.roster}>{data.memberships.map(w=><div className={styles.row} key={w.id}><strong>{w.name||'이름 미등록'}</strong><p className={styles.muted}>{data.companies.find(c=>c.id===w.company_id)?.company_name||'업체 확인 필요'} · {w.is_active===false?'명단 비활성':'명단 활성'} · {w.user_id?'계정 연결':'계정 미연결'}</p><Link href={`/super-admin/workers?kind=${w.user_id?"account":"unlinked"}&company=${encodeURIComponent(w.company_id)}&q=${encodeURIComponent(w.name||'')}`} data-ui-link="action">시공자 관리</Link></div>)}</div>{!data.memberships.length&&<p>연결된 업체 명단이 없습니다.</p>}</details>
+   {company&&<div className={styles.links}><Link href={`/super-admin/company/${id}#usage`} data-ui-link="action">AI 사용량·한도</Link><Link href={`/super-admin/company/${id}#accounts`} data-ui-link="action">계정·최근 로그인</Link><Link href={`/super-admin/company/${id}#photos`} data-ui-link="action">등록 사진</Link></div>}
   </>}
  </section>;
 }

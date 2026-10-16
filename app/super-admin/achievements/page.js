@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {BadgeArt,useAchievementApi} from '../../components/AchievementBadges';
 import {achievementMetrics,cleanBadge} from '../../../lib/achievements.mjs';
 const blank={id:'',title:'',description:'',audience:'owner',metric:'approved_sites',target:10,art_key:1,image_path:'',image_url:null,tier:'gold',sort_order:50,active:true,revision:0};
-export default function AchievementManagerPage(){const {user,ready,api}=useAchievementApi();return <main className='achievement-shell' style={{maxWidth:850,margin:'auto',padding:'24px 18px 100px'}}><a href='/super-admin'>‹ 슈퍼관리자 홈</a><h1>업적 배지 관리</h1>{!ready?<p>로그인 확인 중…</p>:user?<Manager key={user} api={api}/>:<p>슈퍼관리자 계정으로 로그인해주세요.</p>}</main>;}
+export default function AchievementManagerPage(){const {user,ready,api}=useAchievementApi();return <main className='achievement-shell' style={{maxWidth:850,margin:'auto',padding:'24px 18px 100px'}}><a href='/super-admin' data-ui-link="action">‹ 슈퍼관리자 홈</a><h1>업적 배지 관리</h1>{!ready?<p>로그인 확인 중…</p>:user?<Manager key={user} api={api}/>:<p>슈퍼관리자 계정으로 로그인해주세요.</p>}</main>;}
 function Manager({api}){
  const [badges,setBadges]=useState([]),[draft,setDraft]=useState({...blank}),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[authorized,setAuthorized]=useState(false),[reload,setReload]=useState(0);
  const live=useRef(true),apiRef=useRef(api);apiRef.current=api;

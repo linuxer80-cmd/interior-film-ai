@@ -148,7 +148,7 @@ function Gps({ gps, distance, verified }) {
             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(point)}`}
             target="_blank"
             rel="noopener noreferrer"
-          >
+           data-ui-link="action">
             구글지도 열기
           </a>
 

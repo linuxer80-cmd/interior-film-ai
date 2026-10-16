@@ -67,7 +67,7 @@ export default function SiteDirections({
             href={links.web}
             target="_blank"
             rel="noopener noreferrer"
-          >
+           data-ui-link="action">
             앱이 열리지 않으면 웹 지도로 보기 ↗
           </a>
         </div>

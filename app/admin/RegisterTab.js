@@ -35,7 +35,7 @@ export default function RegisterTab({
       <section style={sectionStyle}>
         <div className={ui.sectionHeading}>
           <h2>시공 등록</h2>
-          <a className={ui.secondary} href="/admin/bulk-register">시공 데이터 대량 등록</a>
+          <a className={ui.secondary} href="/admin/bulk-register" data-ui-link="action">시공 데이터 대량 등록</a>
         </div>
         <p className={ui.help}>여러 현장 사진을 한꺼번에 올리려면 대량 등록에서 자동 분류 후 가격을 입력하세요.</p>
         <div className={ui.singleForm}>

@@ -300,7 +300,7 @@ export default function WorkerLogin() {
             textAlign: "center",
             color: "#3268bd",
             fontWeight: 700,
-          }}>
+          }} data-ui-link="action">
             아이디 찾기 · 비밀번호 재설정
           </Link>
 
@@ -325,7 +325,7 @@ export default function WorkerLogin() {
           marginTop: 18,
           textAlign: "center",
           fontWeight: 800,
-        }}>
+        }} data-ui-link="action">
           시공자 회원가입 · 개인설정
         </Link>
 
@@ -341,7 +341,7 @@ export default function WorkerLogin() {
           textDecoration: "none",
           fontSize: "14px",
           fontWeight: 800,
-        }}>
+        }} data-ui-link="action">
           회사 관리자 로그인
         </Link>
 
@@ -354,7 +354,7 @@ export default function WorkerLogin() {
           textDecoration: "none",
           fontSize: "13px",
           fontWeight: 700,
-        }}>
+        }} data-ui-link="action">
           ← 처음으로 돌아가기
         </Link>
       </div>

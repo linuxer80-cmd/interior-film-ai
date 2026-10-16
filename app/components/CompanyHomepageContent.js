@@ -238,7 +238,7 @@ export default function CompanyHomepageContent({ homepage }) {
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-            >
+             data-ui-link="action">
               {label} ↗
             </a>
           ))}

@@ -183,7 +183,7 @@ export default function WorkerCard({
                   textUnderlineOffset: 4,
                   overflowWrap: "anywhere",
                 }}
-              >
+               data-ui-link="action">
                 📞 전화 걸기 · {worker.phone}
               </a>
             ) : (

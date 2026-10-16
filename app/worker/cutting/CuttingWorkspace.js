@@ -332,7 +332,7 @@ export default function CuttingWorkspace() {
     return (
       <main style={{ padding: 24 }}>
         <p role="alert">{error}</p>
-        <a href="/worker">
+        <a href="/worker" data-ui-link="action">
           내 현장으로 돌아가기
         </a>
         <button
@@ -374,7 +374,7 @@ export default function CuttingWorkspace() {
         </p>
         <a
           href={`/worker/site/${context.site.site_id}?section=film`}
-        >
+         data-ui-link="action">
           ← 현장으로 돌아가기
         </a>
       </main>

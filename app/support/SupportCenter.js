@@ -28,7 +28,7 @@ export default function SupportCenter({ from, version }) {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <Link href={worker ? "/worker/more" : "/admin"} aria-label={worker ? "더보기로 돌아가기" : "관리자 홈으로 돌아가기"}>‹</Link>
+        <Link href={worker ? "/worker/more" : "/admin"} aria-label={worker ? "더보기로 돌아가기" : "관리자 홈으로 돌아가기"} data-ui-link="icon">‹</Link>
         <h1>고객지원</h1>
       </header>
       <a className={styles.contact} href={chatUrl} target="_blank" rel="noopener noreferrer">
@@ -53,14 +53,14 @@ export default function SupportCenter({ from, version }) {
           <div className={styles.body}>
             <p>문제가 생긴 화면, 발생 시간, 어떤 버튼을 눌렀는지 함께 알려주시면 확인에 도움이 됩니다.</p>
             <p>화면 캡처에 있는 고객 전화번호·주소 등은 가려주세요. 비밀번호는 보내지 마세요.</p>
-            <a href={chatUrl} target="_blank" rel="noopener noreferrer">카카오 채널에서 문의하기 ↗</a>
+            <a href={chatUrl} target="_blank" rel="noopener noreferrer" data-ui-link="action">카카오 채널에서 문의하기 ↗</a>
           </div>
         </details>
         <details>
           <summary>요금제·결제 안내</summary>
           <div className={styles.body}>
             <p>이용 중인 요금제, 다음 결제일, 결제 내역과 환불 신청은 업체 관리자 계정에서 확인할 수 있습니다.</p>
-            {worker ? <p>소속 업체 요금제는 해당 업체 관리자에게 문의해주세요.</p> : <Link href="/admin/billing">내 요금제·결제 내역 확인 ›</Link>}
+            {worker ? <p>소속 업체 요금제는 해당 업체 관리자에게 문의해주세요.</p> : <Link href="/admin/billing" data-ui-link="action">내 요금제·결제 내역 확인 ›</Link>}
           </div>
         </details>
         <details>

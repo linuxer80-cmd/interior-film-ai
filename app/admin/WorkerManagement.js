@@ -659,7 +659,7 @@ export default function WorkerManagement({
       <section style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
           <h2 style={{fontSize:17,margin:0,color:"#163153"}}>시공자 명단</h2>
-          <a href="/admin/worker-directory" style={{padding:"10px 0",fontSize:14,fontWeight:700,color:"#2563eb"}}>공개 시공자 찾기 →</a>
+          <a href="/admin/worker-directory" style={{padding:"10px 0",fontSize:14,fontWeight:700,color:"#2563eb"}} data-ui-link="action">공개 시공자 찾기 →</a>
         </div>
         <details style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:12}}>
           <summary style={{fontWeight:700,cursor:"pointer",color:"#163153"}}>＋ 시공자 추가</summary>

@@ -78,13 +78,13 @@ export default function KakaoCallback() {
   return <main style={{ maxWidth: 480, margin: "80px auto", padding: 24 }}>
     <h1>카카오 로그인</h1>
     <p role={error ? "alert" : "status"}>{error || (linked ? "카카오 연결이 완료되었습니다. 다음부터 카카오로 로그인하면 기존 계정으로 접속합니다." : needsCompany ? "이 카카오 계정에 연결된 업체가 없습니다. 기존 이메일 계정과 카카오 계정은 다를 수 있습니다." : "계정 정보를 확인하고 있습니다…")}</p>
-    {linked && <p><Link href="/admin">관리자 홈</Link> · <Link href="/worker">시공자 홈</Link></p>}
+    {linked && <p><Link href="/admin" data-ui-link="action">관리자 홈</Link> · <Link href="/worker" data-ui-link="action">시공자 홈</Link></p>}
     {needsCompany && <section>
       <p>이미 가입하셨나요? 기존 이메일과 비밀번호로 로그인해주세요. 업체를 다시 만들 필요는 없습니다.</p>
       <button type="button" onClick={useExistingAccount} disabled={switching} style={{ width: "100%", padding: 16, marginBottom: 20 }}>{switching ? "계정 전환 중…" : "기존 이메일 계정으로 로그인"}</button>
       <p>처음 이용하시는 분만 새 업체를 등록해주세요.</p>
-      <Link href="/signup">처음 이용합니다 · 새 업체 등록</Link>
+      <Link href="/signup" data-ui-link="action">처음 이용합니다 · 새 업체 등록</Link>
     </section>}
-    {error && <><Link href="/account/kakao">카카오 연결 상태 확인 · 다시 시도</Link><br /><Link href="/login">업체 로그인</Link><br /><Link href="/worker/login">시공자 로그인</Link></>}
+    {error && <><Link href="/account/kakao" data-ui-link="action">카카오 연결 상태 확인 · 다시 시도</Link><br /><Link href="/login" data-ui-link="action">업체 로그인</Link><br /><Link href="/worker/login" data-ui-link="action">시공자 로그인</Link></>}
   </main>;
 }

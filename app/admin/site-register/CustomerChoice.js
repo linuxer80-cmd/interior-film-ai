@@ -165,7 +165,7 @@ export default function CustomerChoice({
                 href="/admin/clients"
                 target="_blank"
                 rel="noreferrer"
-              >
+               data-ui-link="action">
                 업체·담당자 등록 ↗
               </a>{" "}
               <button

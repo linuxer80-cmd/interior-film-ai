@@ -299,7 +299,7 @@ export default function SiteDetailModal({
                   color: "#24549a",
                   fontWeight: 800,
                 }}
-              >
+               data-ui-link="action">
                 구인하기
               </a>
 

@@ -239,7 +239,7 @@ export default function FilmRollInventory({
     );
 
   if (!siteId) {
-    return <a href="/admin/inventory">필름 재고 관리 열기</a>;
+    return <a href="/admin/inventory" data-ui-link="action">필름 재고 관리 열기</a>;
   }
 
   return (

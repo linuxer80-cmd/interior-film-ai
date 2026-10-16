@@ -6,7 +6,7 @@ import PublicAchievementBadge from '../../components/PublicAchievementBadge';
 
 export default function WorkerDirectoryPage(){
   const {user,ready,api}=useDirectory();
-  return <main style={{maxWidth:900,margin:'auto',padding:20}}><a href='/admin'>← 관리자 홈</a><h1>공개 시공자 검색</h1><p>프로필 공개에 동의한 시공자를 찾아 업체 연결을 요청하세요. 시공자가 수락해야 연결됩니다.</p>{!ready?<p>불러오는 중…</p>:!user?<p>관리자 계정으로 로그인해주세요.</p>:<Directory key={user} api={api}/>}</main>;
+  return <main style={{maxWidth:900,margin:'auto',padding:20}}><a href='/admin' data-ui-link="action">← 관리자 홈</a><h1>공개 시공자 검색</h1><p>프로필 공개에 동의한 시공자를 찾아 업체 연결을 요청하세요. 시공자가 수락해야 연결됩니다.</p>{!ready?<p>불러오는 중…</p>:!user?<p>관리자 계정으로 로그인해주세요.</p>:<Directory key={user} api={api}/>}</main>;
 }
 function Directory({api}) {
   const [filters,setFilters]=useState({query:'',region:'',skill:'',experience:'0'}),[applied,setApplied]=useState({query:'',region:'',skill:'',experience:'0'});
