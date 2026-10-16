@@ -27,6 +27,14 @@ test('name search finds a non-seeking public worker',async()=>{
 test('explicit work date still limits results to matching availability',async()=>{
  assert.deepEqual((await fixture()('?date=2026-10-20')).map(p=>p.user_id),['two']);
 });
-test('worker view cannot browse the manager directory',async()=>{
+test('worker view does not fetch the directory until requested',async()=>{
  assert.deepEqual(await fixture(false)(''),[]);
+});
+
+test('worker directory shows only public profiles including non-seeking workers',async()=>{
+ assert.deepEqual((await fixture(false)('?directory=1')).map(p=>p.user_id),['one','two','four']);
+});
+test('worker directory supports name and date filters',async()=>{
+ assert.deepEqual((await fixture(false)('?directory=1&name='+encodeURIComponent('황인원'))).map(p=>p.user_id),['one']);
+ assert.deepEqual((await fixture(false)('?directory=1&date=2026-10-20')).map(p=>p.user_id),['two']);
 });

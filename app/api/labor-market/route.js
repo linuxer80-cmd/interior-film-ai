@@ -404,7 +404,7 @@ export async function GET(request) {
 
     let candidates = [];
 
-    if (companyId) {
+    if (companyId || params.get('directory') === '1') {
       let query = db.from('labor_profiles')
         .select(publicProfileFields)
         .eq('published',true)
@@ -448,6 +448,9 @@ export async function GET(request) {
 
       candidates = await photos(db,value(await query));
 
+    }
+
+    if (companyId) {
       const ids = [...new Set(applications.map(a=>a.user_id))];
 
       if(ids.length) {
