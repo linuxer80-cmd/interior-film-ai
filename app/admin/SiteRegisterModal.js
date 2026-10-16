@@ -15,6 +15,8 @@ import CustomerChoice from "./site-register/CustomerChoice";
 import ScreenshotSiteInput from "./site-register/ScreenshotSiteInput";
 import { tradeApi } from "../components/TradeClients";
 
+const registrationSteps = ["현장·주소", "시공 날짜", "고객 정보", "작업 내용", "시공 자재", "현장 사진", "계약 금액", "최종 확인"];
+
 const emptyForm = {
   work_dates: [],
   customer_name: "",
@@ -117,7 +119,13 @@ export default function SiteRegisterModal({
       return;
     }
     setMessage("");
-    setStep(current => Math.min(2, current + 1));
+    if (step === 2 && customer.type === "business" && !customer.clientId) {
+      setMessage("거래처를 선택해주세요."); return;
+    }
+    if (step === 6 && [form.contract_amount, form.deposit_amount].some(value => value !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0))) {
+      setMessage("금액은 0 이상의 숫자로 입력해주세요."); return;
+    }
+    setStep(current => Math.min(7, current + 1));
   }
 
   const blocked = busy || loading || screenshotBusy || callBusy;
@@ -260,7 +268,7 @@ export default function SiteRegisterModal({
 
   async function submit(event) {
     event.preventDefault();
-    if (step < 2 && !saved) { nextStep(); return; }
+    if (step < 7 && !saved) { nextStep(); return; }
 
     if (lock.current || loading || screenshotBusy || callBusy) return;
 
@@ -451,13 +459,14 @@ export default function SiteRegisterModal({
           </button>
         </header>
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <fieldset
             disabled={blocked || !!saved}
             className="site-register-fields"
           >
             <nav className="registration-steps" aria-label="현장 등록 단계">
-              {["현장명·주소","시공 날짜","상세정보"].map((label,index)=><span key={label} aria-current={step===index?"step":undefined}>{index+1}. {label}</span>)}
+              <strong aria-live="polite">{step + 1} / {registrationSteps.length} · {registrationSteps[step]}</strong>
+              <progress aria-label="등록 진행 단계" value={step + 1} max={registrationSteps.length} />
             </nav>
             <div hidden={step !== 0}>
             <div className="input-methods" role="group" aria-label="현장 입력 방법">
@@ -491,9 +500,8 @@ export default function SiteRegisterModal({
             </section>
 
             </div>
-            <div hidden={step !== 2} className="additional-info">
-              <h3>3. 상세정보</h3>
-              <p className="intro">필요한 정보만 입력한 뒤 저장하세요. 나머지는 현장 상세에서 추가할 수 있습니다.</p>
+            <div hidden={step !== 2}>
+              <p className="intro">고객 정보는 선택 사항입니다. 나중에 입력해도 됩니다.</p>
               <section><h3>고객 · 상세주소</h3>
               <div className="site-register-grid">
                 {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
@@ -503,8 +511,10 @@ export default function SiteRegisterModal({
                 {inputs([["customer_name", customer.type === "business" ? "업체명" : "고객명"], ["customer_phone", "연락처", "tel"]])}
               </div>
               </section>
+            </div>
+            <div hidden={step !== 3}>
             <section>
-              <h3>시공 내용</h3>
+              <h3>작업 내용</h3>
 
               {inputs([["work_type", "시공 종류"]])}
 
@@ -521,7 +531,21 @@ export default function SiteRegisterModal({
             </section>
 
             <section>
-              <h3>시공 자재</h3>
+              <label>
+                메모
+                <textarea
+                  rows={3}
+                  value={form.memo}
+                  onChange={(event) =>
+                    field("memo", event.target.value)
+                  }
+                />
+              </label>
+            </section>
+            </div>
+            <div hidden={step !== 4}>
+            <section>
+              <h3>시공 자재 (선택)</h3>
 
               <button
                 type="button"
@@ -619,8 +643,10 @@ export default function SiteRegisterModal({
               ))}
             </section>
 
+            </div>
+            <div hidden={step !== 5}>
             <section>
-              <h3>시공 요청사진</h3>
+              <h3>현장 사진 (선택)</h3>
 
               <input
                 type="file"
@@ -673,8 +699,10 @@ export default function SiteRegisterModal({
               </div>
             </section>
 
+            </div>
+            <div hidden={step !== 6}>
             <section>
-              <h3>계약 정보</h3>
+              <h3>계약 금액 (선택)</h3>
 
               <div className="site-register-grid">
                 {inputs([
@@ -706,18 +734,26 @@ export default function SiteRegisterModal({
               </label>
             </section>
 
-            <section>
-              <label>
-                메모
-                <textarea
-                  rows={3}
-                  value={form.memo}
-                  onChange={(event) =>
-                    field("memo", event.target.value)
-                  }
-                />
-              </label>
-            </section>
+
+            </div>
+            <div hidden={step !== 7}>
+              <section>
+                <h3>입력한 내용이 맞습니까?</h3>
+                <p className="intro">아래 내용을 확인한 뒤 현장을 저장하세요.</p>
+                {[
+                  ["현장·주소", [form.site_name, form.address, form.address_detail, form.region].filter(Boolean).join(" · "), 0],
+                  ["시공 날짜", form.work_dates.length ? form.work_dates.join(", ") : "일정 미정", 1],
+                  ["고객", [form.customer_name, form.customer_phone].filter(Boolean).join(" · ") || "미입력", 2],
+                  ["작업 내용", [form.work_type, form.work_description, form.memo].filter(Boolean).join("\n") || "미입력", 3],
+                  ["시공 자재", materials.filter(m=>m.product_code.trim()||m.product_name.trim()).map(m=>[m.brand,m.product_code,m.product_name].filter(Boolean).join(" ")).join("\n") || "미입력", 4],
+                  ["현장 사진", photos.length + "장", 5],
+                  ["계약 금액", "계약금액 " + (form.contract_amount === "" ? "미정" : Number(form.contract_amount).toLocaleString("ko-KR")+"원") + " / 선금 " + (form.deposit_amount === "" ? "미정" : Number(form.deposit_amount).toLocaleString("ko-KR")+"원"), 6],
+                ].map(([label,value,index])=><div className="review-row" key={label}>
+                  <div><strong>{label}</strong><p>{value}</p></div>
+                  <button type="button" onClick={()=>{setMessage("");setStep(index);}}>수정</button>
+                </div>)}
+                <p>저장 상태: <strong>{registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong></p>
+              </section>
             </div>
           </fieldset>
 
@@ -745,6 +781,7 @@ export default function SiteRegisterModal({
           <footer>
             <div className="save-summary"><strong>{registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
             {step > 0 && !saved && <button type="button" disabled={blocked} onClick={()=>{setMessage("");setStep(current=>current-1);}}>이전</button>}
+            {step >= 2 && step <= 6 && <p className="intro">선택 항목입니다. 비워두고 다음으로 넘어가도 됩니다.</p>}
             {step === 1 && !form.work_dates.length && <p className="intro">아직 날짜가 정해지지 않았다면 ‘일정 미정으로 다음’을 누르세요.</p>}
             {(!saved || pendingLink.current) && (
               <button type="submit" disabled={blocked}>
@@ -752,7 +789,7 @@ export default function SiteRegisterModal({
                   ? (screenshotBusy || callBusy ? "AI 분석 중…" : "저장 중…")
                   : saved
                     ? "거래처 연결 재시도"
-                    : step === 0 ? "다음 · 시공 날짜" : step === 1 ? (form.work_dates.length ? "날짜 입력 완료 · 다음" : "일정 미정으로 다음") : "현장 저장"}
+                    : step === 7 ? "확인 완료 · 현장 저장" : step === 1 && !form.work_dates.length ? "일정 미정으로 다음" : "다음 · " + registrationSteps[step + 1]}
               </button>
             )}
           </footer>
@@ -871,7 +908,11 @@ export default function SiteRegisterModal({
           padding: 14px 0 max(14px, env(safe-area-inset-bottom));
           z-index: 3;
         }
-        .registration-steps { display: flex; gap: 6px; margin: 6px 0 16px; font-size: 13px; }
+        .registration-steps { display: grid; gap: 8px; margin: 6px 0 16px; font-size: 15px; }
+        .registration-steps progress { width: 100%; height: 8px; accent-color: #2563eb; }
+        .review-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+        .review-row p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .review-row button { flex-shrink: 0; }
         .registration-steps span { flex: 1; padding: 10px 4px; text-align: center; border-radius: 9px; background: #eae8e0; color: #657078; }
         .registration-steps span[aria-current="step"] { background: #dbeafe; color: #1d4ed8; font-weight: 800; }
         .site-register-fields > div[hidden] { display: none; }
