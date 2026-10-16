@@ -60,12 +60,15 @@ function Summary({ title, rows }) {
 
   return (
     <div className="trade-summary">
-      <b>{title} · {total.count}현장</b>
-      <p>
-        계약 {won(total.contract)} · 입금 {won(total.paid)}
-        <br />
-        확인된 미수금 {won(total.due)} · 금액 확인 필요 {total.unknown}건
-      </p>
+      <small>{title} · {total.count}현장</small>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginTop:6}}>
+        <b>미수금 {won(total.due)}</b>
+        {total.unknown > 0 && <small style={{color:"#b45309"}}>금액 미확인 {total.unknown}건</small>}
+      </div>
+      <details>
+        <summary style={{padding:"8px 0 0",fontSize:12,cursor:"pointer"}}>계약·입금 합계 보기</summary>
+        <p style={{margin:"6px 0 0"}}>계약 {won(total.contract)} · 입금 {won(total.paid)}<br/>미수금은 금액이 확인된 현장 기준입니다.</p>
+      </details>
     </div>
   );
 }
@@ -1464,12 +1467,16 @@ export default function TradeClients({ siteId, onScope }) {
                 {visible
                   .slice(sitePage * 5, sitePage * 5 + 5)
                   .map((site) => (
-                    <article key={site.id}>
-                      <b>{site.site_name}</b>
-                      <small>
-                        {site.client_name || "개인 고객"} ·{" "}
-                        {site.contact_name || "담당자 미지정"} · {site.status}
-                      </small>
+                    <details key={site.id} className="settlement-row">
+                      <summary className="settlement-heading">
+                        <span className="settlement-name"><b>{site.site_name || site.customer_name || "이름 없는 현장"}</b><small>{site.client_name || "개인 고객"}</small></span>
+                        <span className="settlement-amount" data-paid={site.confirmed && Number(site.outstanding) === 0}>
+                          {site.outstanding == null ? "금액 확인 필요" : site.confirmed && Number(site.outstanding) === 0 ? "입금 완료" : <><small>미수금</small>{won(site.outstanding)}</>}
+                          <small className="settlement-hint">상세·입금 처리 ⌄</small>
+                        </span>
+                      </summary>
+                      <div className="settlement-detail">
+                      <small>{site.contact_name || "담당자 미지정"} · {site.status === "completed" ? "시공 완료" : "시공 중"}</small>
 
                       <p>
                         계약{" "}
@@ -1526,7 +1533,8 @@ export default function TradeClients({ siteId, onScope }) {
                           onChanged={load}
                         />
                       )}
-                    </article>
+                      </div>
+                    </details>
                   ))}
               </div>
 
@@ -1555,6 +1563,18 @@ export default function TradeClients({ siteId, onScope }) {
 
       <style jsx>{`
         [hidden] { display: none !important; }
+        .settlement-row { border-top: 1px solid #e5e7eb; }
+        .settlement-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; list-style: none; }
+        .settlement-heading::-webkit-details-marker { display: none; }
+        .settlement-name { flex: 1; min-width: 0; }
+        .settlement-name b { font-size: 14px; line-height: 1.4; display: block; }
+        .settlement-name small { margin-top: 3px; font-weight: 400; }
+        .settlement-amount { text-align: right; flex-shrink: 0; font-size: 14px; color: #b45309; }
+        .settlement-amount[data-paid="true"] { color: #15803d; }
+        .settlement-amount small { font-weight: 400; font-size: 11px; }
+        .settlement-hint { margin-top: 4px; }
+        .settlement-detail { padding: 0 0 12px; }
+        .settlement-row[open] .settlement-hint { color: #2563eb; }
         .menus {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
