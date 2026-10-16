@@ -47,6 +47,14 @@ export default function WorkDatePicker({
     () => (dates[0] || todayDate()).slice(0, 7)
   );
 
+  const [inputDate, setInputDate] = useState("");
+  function addInputDate() {
+    if (disabled || !validDate(inputDate)) return;
+    onChange?.([...new Set([...dates, inputDate])].sort());
+    setMonth(inputDate.slice(0, 7));
+    setInputDate("");
+  }
+
   const [year, number] = month.split("-").map(Number);
 
   const leading = new Date(
@@ -105,6 +113,20 @@ export default function WorkDatePicker({
         background: "#fff",
       }}
     >
+      <label style={{ display: "block", color: "#334155", fontWeight: 700, fontSize: 14 }}>
+        시공 날짜 입력
+        <input
+          type="date"
+          value={inputDate}
+          disabled={disabled}
+          onChange={event => setInputDate(event.target.value)}
+          style={{ display: "block", width: "100%", minWidth: 0, boxSizing: "border-box", minHeight: 48, marginTop: 8, padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", color: "#111827", fontSize: 16 }}
+        />
+      </label>
+      <button type="button" disabled={disabled || !validDate(inputDate)} onClick={addInputDate}
+        style={{ ...buttonStyle, width: "100%", margin: "8px 0 16px", color: "#1d4ed8", background: "#eff6ff" }}>
+        선택한 날짜 추가
+      </button>
       <div
         style={{
           display: "flex",

@@ -434,6 +434,14 @@ export default function SiteDetailModal({
             aria-label="현장정보"
             hidden={menu !== "info"}
           >
+            <SiteScheduleEditor
+              key={'info-schedule-'+site.id}
+              site={site}
+              reportOpen={reportOpen}
+              updateSiteSchedule={updateSiteSchedule}
+              reloadSites={reloadSites}
+            />
+
             <SiteBasicInfo
               key={site.id}
               site={site}
