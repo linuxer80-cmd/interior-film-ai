@@ -1,0 +1,71 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+const owner='10000000-0000-0000-0000-000000000001',worker='10000000-0000-0000-0000-000000000002',other='10000000-0000-0000-0000-000000000003',admin='10000000-0000-0000-0000-000000000004';
+const co='20000000-0000-0000-0000-000000000001',otherCo='20000000-0000-0000-0000-000000000002';
+test('activity badges deduplicate Korean days and preserve other achievement metrics',async()=>{
+const db=new PGlite();try{
+ await db.exec(`
+ create role anon;create role authenticated;create role service_role bypassrls;
+ create schema auth;create schema storage;
+ create table auth.users(id uuid primary key,email_confirmed_at timestamptz);
+ create table public.companies(id uuid primary key,is_active boolean);
+ create table public.profiles(id uuid primary key,company_id uuid,role text,is_active boolean);
+ create table public.super_admins(user_id uuid primary key,is_active boolean);
+ create table public.sites(id uuid primary key,company_id uuid,status text);
+ create table public.work_reports(id uuid primary key,site_id uuid,company_id uuid,created_by uuid,review_status text);
+ create table public.workers(id uuid primary key,user_id uuid,company_id uuid,is_active boolean);
+ create table public.worker_relationships(worker_id uuid,user_id uuid,company_id uuid,ended_at timestamptz);
+ create table public.film_stock_trips(id uuid primary key,site_id uuid,company_id uuid,returned_by uuid,returned numeric);
+ create table public.labor_profiles(user_id uuid primary key,name text,photo_path text,region text,daily_wage integer);
+ create table public.labor_personal_details(user_id uuid primary key,phone text);
+ create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+ create table storage.objects(bucket_id text,name text);
+ insert into auth.users values('${owner}',now()),('${worker}',now()),('${other}',now()),('${admin}',now());
+ insert into companies values('${co}',true),('${otherCo}',true);
+ insert into profiles values('${owner}','${co}','owner',true),('${other}','${otherCo}','owner',true);
+ insert into super_admins values('${admin}',true);
+ insert into labor_profiles values('${worker}','시공자','avatar.webp','인천',250000);
+ insert into labor_personal_details values('${worker}','01000000000');
+ insert into sites select ('30000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'${co}','completed' from generate_series(1,10) n;
+ insert into work_reports select gen_random_uuid(),id,company_id,'${worker}','approved' from sites;
+ insert into film_stock_trips select gen_random_uuid(),id,company_id,'${worker}',5 from sites;
+ -- A duplicate report must not count as another completed site.
+ insert into work_reports select gen_random_uuid(),id,company_id,'${worker}','approved' from sites limit 1;
+ `);
+ await db.exec(await readFile(new URL('../database/achievement_badges.sql',import.meta.url),'utf8'));
+
+await db.exec(`alter table labor_personal_details add column departure_address text;
+create table worker_private_details(worker_id uuid,company_id uuid,departure_address text);
+create table attendance_records(id uuid primary key,worker_id uuid,company_id uuid,site_id uuid,work_day date,clock_in timestamptz,in_verified boolean,review_status text,site_address text);
+insert into workers values('50000000-0000-0000-0000-000000000001','${worker}','${co}',true);
+update labor_personal_details set departure_address='old origin';`);
+const migration=await readFile(new URL('../database/worker_commute_badges.sql',import.meta.url),'utf8');
+await db.exec(migration);await db.exec(migration);
+
+const activity=await readFile(new URL('../database/worker_activity_badges.sql',import.meta.url),'utf8');
+await db.exec(activity);await db.exec(activity);
+const record=feature=>db.query('select record_worker_activity_day($1,$2)',[worker,feature]);
+await record('cutting');await record('cutting');await record('nearby_food');await record('nearby_film');
+let counts=(await db.query('select achievement_worker_activity_metrics($1) v',[worker])).rows[0].v;
+assert.deepEqual(counts,{cutting_days:1,nearby_food_days:1,nearby_film_days:1});
+assert.equal((await db.query("select bool_and(activity_day=(now() at time zone 'Asia/Seoul')::date) correct from worker_activity_days")).rows[0].correct,true);
+assert.equal((await db.query('select achievement_worker_activity_metrics($1) v',[other])).rows[0].v.cutting_days,0);
+await assert.rejects(record('arbitrary_feature'));
+let result=(await db.query(`select achievement_action($1,'get','{"scope":"worker"}') v`,[worker])).rows[0].v;
+assert.ok(result.badges.find(b=>b.id==='worker_cutting_1').earned_at);
+assert.ok(result.badges.find(b=>b.id==='worker_food_1').earned_at);
+assert.ok(result.badges.find(b=>b.id==='worker_filmshop_1').earned_at);
+assert.ok(result.badges.find(b=>b.id==='worker_departure').earned_at);
+assert.equal(result.badges.find(b=>b.id==='worker_cutting_5').earned_at,null);
+await db.query("insert into worker_activity_days(user_id,feature,activity_day) select $1,'cutting',(now() at time zone 'Asia/Seoul')::date-n from generate_series(1,4) n",[worker]);
+result=(await db.query(`select achievement_action($1,'get','{"scope":"worker"}') v`,[worker])).rows[0].v;
+assert.ok(result.badges.find(b=>b.id==='worker_cutting_5').earned_at);
+await db.exec('set role authenticated');
+await assert.rejects(record('cutting'));
+await assert.rejects(db.query('select * from worker_activity_days'));
+await db.exec('reset role');
+await db.query('update workers set is_active=false where user_id=$1',[worker]);
+await assert.rejects(record('cutting'));
+}finally{await db.close();}});

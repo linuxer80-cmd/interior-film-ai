@@ -1,3 +1,4 @@
+import {recordWorkerActivity} from '../../../../lib/workerActivity.mjs';
 import {GET as mySitesGET} from '../my-sites/route';
 import {privateAuth,privateJson as json,uuid} from '../../../../lib/workerPrivate';
 import {findNearbyPlaces,nearbyKinds} from '../../../../lib/nearbyPlaces.mjs';
@@ -28,7 +29,11 @@ export async function GET(request){
   if(!key)return json({error:'카카오 지도 검색 설정이 필요합니다.'},503);
   const id=createHash('sha256').update(JSON.stringify([site.company_id,siteId,address,kind,radius])).digest('hex');
   const saved=cache.get(id);
-  if(saved&&saved.expires>Date.now())return json({...saved.result,cached:true});
+  async function complete(result,cached=false){
+   if(result.places?.length)await recordWorkerActivity(auth.db,auth.user.id,kind==='food'?'nearby_food':'nearby_film');
+   return json({...result,cached});
+  }
+  if(saved&&saved.expires>Date.now())return complete(saved.result,true);
   if(!pending.has(id)){
    if(pending.size>=30)return json({error:'지도 검색이 몰리고 있습니다. 잠시 후 다시 시도해주세요.'},429);
    const task=(async()=>{
@@ -46,7 +51,7 @@ export async function GET(request){
    }).finally(()=>pending.delete(id));
    pending.set(id,task);
   }
-  return json(await pending.get(id));
+  return complete(await pending.get(id));
  }catch(error){
   return json({error:error.name==='TimeoutError'?'지도 검색이 지연됩니다. 다시 시도해주세요.':error.message||'주변 장소를 찾지 못했습니다.'},error.status||502);
  }

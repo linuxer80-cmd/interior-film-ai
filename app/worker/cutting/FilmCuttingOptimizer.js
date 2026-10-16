@@ -14,6 +14,7 @@ import {
   optimizeCutting,
 } from "./cuttingOptimizer";
 import { filmLabel } from "./FilmThumbnail";
+import {supabase} from "../../../lib/supabase";
 
 
 const makeId = (prefix = "id") =>
@@ -717,6 +718,18 @@ export default function FilmCuttingOptimizer({
           setErrors(response.errors || []);
           setResult(response.result || null);
           setShowResult(Boolean(response.result));
+          if(response.success&&response.result?.success&&response.result.summary?.usedRollCount>0){
+            // Record one successful usage day; repeated calculations are deduped in SQL.
+            void (async()=>{
+              const {data}=await supabase.auth.getSession();
+              if(!data.session||data.session.user.id!==context.worker?.user_id)return;
+              await fetch('/api/achievements/activity',{
+                method:'POST',headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},
+                body:JSON.stringify({feature:'cutting',siteId:context.site?.site_id,
+                  usedRollCount:response.result.summary.usedRollCount,totalBatchCount:response.result.summary.totalBatchCount})
+              });
+            })().catch(()=>{ /* The local cutting result remains usable offline. */ });
+          }
         }
       } catch (cause) {
         if (mounted.current) {
