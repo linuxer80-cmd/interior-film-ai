@@ -1,6 +1,9 @@
+import { after } from 'next/server';
+import {syncBadgeCommute} from '../../../lib/workerBadgeCommute.mjs';
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -594,6 +597,23 @@ export async function POST(request) {
 
     if (result.error) throw result.error;
 
+    if (['in','review','correct'].includes(body.action)) {
+      // The attendance save succeeds even if optional badge calculation is unavailable.
+      after(async () => {
+        try {
+          let actor=a.userId;
+          if(body.action!=='in') {
+            const record=await a.db.from('attendance_records').select('worker_id').eq('id',body.id).eq('company_id',a.companyId).maybeSingle();
+            if(record.error||!record.data)return;
+            const worker=await a.db.from('workers').select('user_id').eq('id',record.data.worker_id).eq('company_id',a.companyId).maybeSingle();
+            if(worker.error||!worker.data?.user_id)return;
+            actor=worker.data.user_id;
+          }
+          await syncBadgeCommute(a.db,actor);
+        } catch { console.warn('Optional badge distance calculation deferred'); }
+      });
+    }
+
     return json({
       ...result.data,
       message:
@@ -613,3 +633,4 @@ export async function POST(request) {
     );
   }
 }
+

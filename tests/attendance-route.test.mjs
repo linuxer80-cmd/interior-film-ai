@@ -9,6 +9,7 @@ const workerA = uid(4), workerB = uid(5), siteA = uid(6), siteB = uid(7);
 const recordA = uid(8), recordB = uid(9);
 const source = readFileSync(new URL('../app/api/attendance/route.js', import.meta.url), 'utf8')
   .replace('import { createClient } from "@supabase/supabase-js";', '')
+  .replace(/^import .* from ['"].*['"];\n/gm, '')
   .replaceAll('export ', '');
 
 function fixture({ owner = false, inactive = false, rpcError = null } = {}) {
@@ -68,7 +69,7 @@ function fixture({ owner = false, inactive = false, rpcError = null } = {}) {
       return { data: { success: true }, error: rpcError };
     },
   };
-  const context = vm.createContext({ createClient: () => db, Response, URL, Intl, Date, Set, console: { error() {} }, process: { env: {} }, AbortSignal });
+  const context = vm.createContext({ createClient: () => db, after: () => {}, syncBadgeCommute: async () => {}, Response, URL, Intl, Date, Set, console: { error() {} }, process: { env: {} }, AbortSignal });
   vm.runInContext(`${source}\nglobalThis.handlers = {GET, POST};`, context);
   const get = (mode = 'worker', month = '2026-10') => context.handlers.GET(new Request(`https://test/api/attendance?mode=${mode}&month=${month}`, { headers: { authorization: 'Bearer test' } }));
   const post = body => context.handlers.POST(new Request('https://test/api/attendance', { method: 'POST', headers: { authorization: 'Bearer test', 'content-type': 'application/json' }, body: JSON.stringify(body) }));
@@ -151,3 +152,4 @@ test('database rejection is not reported as a saved attendance record', async ()
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /배정/);
 });
+
