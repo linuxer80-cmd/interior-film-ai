@@ -406,9 +406,10 @@ export async function GET(request) {
 
     if (companyId || params.get('directory') === '1') {
       let query = db.from('labor_profiles')
-        .select(publicProfileFields)
-        .eq('published',true)
+        .select(publicProfileFields+',worker_directory_consent!inner(visible)')
+        .eq('worker_directory_consent.visible',true)
         .order('updated_at',{ascending:false})
+        .order('user_id',{ascending:true})
         .range(page*30,page*30+29);
 
       if (params.get('name')?.trim()) {
@@ -446,7 +447,7 @@ export async function GET(request) {
         query=query.gte('experience_years',n);
       }
 
-      candidates = await photos(db,value(await query));
+      candidates = await photos(db,value(await query).map(({worker_directory_consent,...profile})=>profile));
 
     }
 
