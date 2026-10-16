@@ -161,3 +161,11 @@
     flex-direction: column;
   }
 }
+
+
+.page [hidden] { display: none !important; }
+.tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; padding: 5px; margin-top: 18px; background: #eae8e1; border-radius: 14px; scroll-margin-top: 90px; }
+.tabs button { min-height: 48px; border: 0; border-radius: 10px; background: transparent; color: #526371; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.tabs button[aria-pressed=true] { background: #243f52; color: white; }
+.tabs button:disabled { opacity: .5; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; }

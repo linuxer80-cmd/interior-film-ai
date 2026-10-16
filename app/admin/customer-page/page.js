@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import useAdminCompany from "../hooks/useAdminCompany";
 
@@ -8,6 +8,8 @@ import {
   SHOWCASE_BUCKET,
   safeHttpUrl,
 } from "../../../lib/showcaseValidation.mjs";
+
+import GuidedForm, { InputStep, InputFinal } from "../../components/GuidedForm";
 
 import styles from "./page.module.css";
 
@@ -66,6 +68,14 @@ export default function CustomerPageAdmin() {
     adminError,
   } = useAdminCompany();
 
+  const [view, setView] = useState("profile");
+  const [caseVersion, setCaseVersion] = useState(0);
+  const [casePage, setCasePage] = useState(0);
+  const menu = useRef(null);
+  function openView(next) {
+    setView(next);
+    requestAnimationFrame(() => { menu.current?.scrollIntoView({block:"start",behavior:"smooth"}); menu.current?.focus({preventScroll:true}); });
+  }
   const [profile, setProfile] = useState(emptyProfile);
   const [cases, setCases] = useState([]);
   const [draft, setDraft] = useState(emptyCase);
@@ -386,6 +396,8 @@ export default function CustomerPageAdmin() {
       );
 
       setDraft(emptyCase);
+      setCaseVersion(value => value + 1);
+      openView("list");
 
       setMessage(
         data.is_published && savedPublished
@@ -424,8 +436,20 @@ export default function CustomerPageAdmin() {
         {adminError || message}
       </p>
 
-      <form
-        onSubmit={saveProfile}
+      <nav ref={menu} tabIndex={-1} className={styles.tabs} aria-label="고객페이지 관리 메뉴">
+        {[["profile","업체 정보"],["case","사례 등록"],["list",`등록 사례 ${cases.length}`]].map(([id,label]) =>
+          <button type="button" key={id} disabled={busy} aria-pressed={view===id} onClick={()=>openView(id)}>{label}</button>
+        )}
+      </nav>
+      <div hidden={view!=="profile"}>
+      <GuidedForm
+        titles={["사업자 정보","상담 연락처·지역","블로그·플레이스","업체 소개·서비스","공개 설정"]}
+        onSubmit={saveProfile} busy={!ready || busy}
+        validateStep={index => {
+          if(index===0 && profile.is_published && !profile.business_name.trim()) return "공개하려면 상호를 입력해주세요.";
+          if(index===2 && ["blog_url","place_url"].some(key=>profile[key]&&!safeHttpUrl(profile[key]))) return "링크는 http 또는 https 주소로 입력해주세요.";
+          if(index===3 && profile.is_published && (!profile.introduction.trim() || !profile.services.length)) return "공개하려면 업체 소개와 시공 서비스를 입력해주세요.";
+        }}
         className={styles.panel}
       >
         <h2>업체 소개·사업자 정보</h2>
@@ -436,7 +460,9 @@ export default function CustomerPageAdmin() {
         </p>
 
         <fieldset disabled={!ready || busy}>
-          {fields.map(([key, label, max]) => (
+          {[["business_name","representative_name","business_number","business_address"],["public_phone","public_email","regions"],["blog_url","place_url"]].map((group,index) => (
+          <InputStep key={index} index={index}>
+          {fields.filter(([key])=>group.includes(key)).map(([key, label, max]) => (
             <label key={key}>
               {label}
 
@@ -456,6 +482,9 @@ export default function CustomerPageAdmin() {
             </label>
           ))}
 
+          </InputStep>
+          ))}
+          <InputStep index={3}>
           <label>
             업체 소개
 
@@ -500,6 +529,8 @@ export default function CustomerPageAdmin() {
             </label>
           ))}
 
+          </InputStep>
+          <InputStep index={4}>
           <label className={styles.check}>
             <input
               type="checkbox"
@@ -515,11 +546,23 @@ export default function CustomerPageAdmin() {
             업체 소개와 공개 시공 사례를 고객페이지에 표시
           </label>
 
-          <button type="submit">업체 정보 저장</button>
+          </InputStep>
+          <InputFinal><button type="submit">확인 · 업체 정보 저장</button></InputFinal>
         </fieldset>
-      </form>
+      </GuidedForm>
+      </div>
 
-      <form onSubmit={saveCase} className={styles.panel}>
+      <div hidden={view!=="case"}>
+      <GuidedForm key={caseVersion} onSubmit={saveCase} className={styles.panel}
+        titles={["사례 제목·지역","필름·작업 내용","시공 전 사진","완료 사진","공개 설정"]}
+        busy={!ready || busy}
+        validateStep={index => {
+          if(index===0&&!draft.title.trim()) return "사례 제목을 입력해주세요.";
+          if(index===1&&!draft.description.trim()) return "실제 작업 내용을 입력해주세요.";
+          if(index===3&&!draft.after_paths.length) return "완료 사진을 한 장 이상 등록해주세요.";
+        }}
+        review={<p>시공 전 사진 {draft.before_paths.length}장 · 완료 사진 {draft.after_paths.length}장</p>}
+      >
         <h2>
           {draft.id ? "시공 사례 수정" : "새 시공 사례 등록"}
         </h2>
@@ -531,6 +574,7 @@ export default function CustomerPageAdmin() {
         </p>
 
         <fieldset disabled={!ready || busy}>
+          <InputStep index={0}>
           <label>
             사례 제목
 
@@ -580,6 +624,8 @@ export default function CustomerPageAdmin() {
             />
           </label>
 
+          </InputStep>
+          <InputStep index={1}>
           <label>
             사용 필름 브랜드·제품번호
 
@@ -612,6 +658,7 @@ export default function CustomerPageAdmin() {
             />
           </label>
 
+          </InputStep>
           {[
             ["before_paths", "시공 전 사진 (선택)"],
             [
@@ -619,7 +666,8 @@ export default function CustomerPageAdmin() {
               "완료 사진 (첫 사진이 대표 사진)",
             ],
           ].map(([key, label]) => (
-            <div className={styles.upload} key={key}>
+            <InputStep index={key==="before_paths"?2:3} key={key}>
+            <div className={styles.upload}>
               <label>
                 {label}
 
@@ -687,8 +735,10 @@ export default function CustomerPageAdmin() {
                 ))}
               </div>
             </div>
+            </InputStep>
           ))}
 
+          <InputStep index={4}>
           <label>
             노출 순서 (작은 숫자부터)
 
@@ -721,21 +771,25 @@ export default function CustomerPageAdmin() {
             이 사례를 고객페이지에 공개
           </label>
 
-          <button type="submit">사례 저장</button>
+          </InputStep>
+          <InputFinal>
+          <button type="submit">확인 · 사례 저장</button>
 
           <button
             type="button"
-            onClick={() => setDraft(emptyCase)}
+            onClick={() => { if(confirm("입력한 내용을 비우고 새 사례를 작성할까요?")) { setDraft(emptyCase); setCaseVersion(value=>value+1); } }}
           >
             새 사례 작성
           </button>
+          </InputFinal>
         </fieldset>
-      </form>
+      </GuidedForm>
+      </div>
 
-      <section className={styles.panel}>
+      <section hidden={view!=="list"} className={styles.panel}>
         <h2>등록한 사례 {cases.length}개</h2>
 
-        {cases.map((item) => (
+        {cases.slice(casePage*5,casePage*5+5).map((item) => (
           <div className={styles.item} key={item.id}>
             <div>
               <strong>{item.title}</strong>
@@ -754,10 +808,9 @@ export default function CustomerPageAdmin() {
               disabled={busy || !ready}
               onClick={() => {
                 setDraft(item);
-
-                setMessage(
-                  "위 사례 수정 영역에서 내용을 수정하고 저장해주세요."
-                );
+                setCaseVersion(value=>value+1);
+                setMessage("");
+                openView("case");
               }}
             >
               수정·공개 설정
@@ -765,6 +818,11 @@ export default function CustomerPageAdmin() {
           </div>
         ))}
 
+        {cases.length>5 && <div className={styles.pagination}>
+          <button type="button" disabled={busy||casePage===0} onClick={()=>{setCasePage(value=>value-1);openView("list");}}>이전</button>
+          <span>{casePage+1} / {Math.ceil(cases.length/5)}</span>
+          <button type="button" disabled={busy||(casePage+1)*5>=cases.length} onClick={()=>{setCasePage(value=>value+1);openView("list");}}>다음</button>
+        </div>}
         {ready && !cases.length && (
           <p>
             완료 사진과 설명을 등록하면
@@ -775,3 +833,4 @@ export default function CustomerPageAdmin() {
     </main>
   );
   }
+
