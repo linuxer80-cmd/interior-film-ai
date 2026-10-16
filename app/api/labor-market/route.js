@@ -407,10 +407,14 @@ export async function GET(request) {
     if (companyId) {
       let query = db.from('labor_profiles')
         .select(publicProfileFields)
-        .eq('seeking',true)
         .eq('published',true)
         .order('updated_at',{ascending:false})
         .range(page*30,page*30+29);
+
+      if (params.get('name')?.trim()) {
+        query = query.ilike('name',
+          `%${params.get('name').trim().slice(0,100).replace(/[%_\\]/g,'')}%`);
+      }
 
       if (params.get('region')) {
         query = query.ilike(
@@ -443,9 +447,6 @@ export async function GET(request) {
       }
 
       candidates = await photos(db,value(await query));
-      candidates=candidates.filter(p=>
-        p.available_dates?.some(d=>d>=dayInKorea())
-      );
 
       const ids = [...new Set(applications.map(a=>a.user_id))];
 
