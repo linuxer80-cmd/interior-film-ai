@@ -68,6 +68,8 @@ export default function SiteRegisterModal({
   const registrationStatus = consultation ? "consulting" : "scheduled";
   const [callBusy, setCallBusy] = useState(false);
   const [saved, setSaved] = useState(null);
+  const [step, setStep] = useState(0);
+  const panelRef = useRef(null);
 
   const lock = useRef(false);
   const pendingLink = useRef(null);
@@ -92,6 +94,7 @@ export default function SiteRegisterModal({
   useEffect(() => {
     if (!open) return;
 
+    setStep(0);
     setInputMode("direct");
     setConsultation(null);
     setForm({ ...emptyForm, work_dates: [] });
@@ -102,6 +105,20 @@ export default function SiteRegisterModal({
     setSaved(null);
     pendingLink.current = null;
   }, [open]);
+
+  useEffect(() => {
+    panelRef.current?.scrollTo({top:0, behavior:"instant"});
+  }, [step]);
+
+  function nextStep() {
+    if (blocked) return;
+    if (step === 0 && (!form.site_name.trim() || !form.address.trim())) {
+      setMessage("현장명과 주소를 입력해주세요.");
+      return;
+    }
+    setMessage("");
+    setStep(current => Math.min(2, current + 1));
+  }
 
   const blocked = busy || loading || screenshotBusy || callBusy;
 
@@ -243,6 +260,7 @@ export default function SiteRegisterModal({
 
   async function submit(event) {
     event.preventDefault();
+    if (step < 2 && !saved) { nextStep(); return; }
 
     if (lock.current || loading || screenshotBusy || callBusy) return;
 
@@ -419,7 +437,7 @@ export default function SiteRegisterModal({
       aria-modal="true"
       aria-label="현장 등록"
     >
-      <div className="site-register-panel">
+      <div className="site-register-panel" ref={panelRef}>
         <header>
           <h2>
             현장 등록
@@ -438,6 +456,10 @@ export default function SiteRegisterModal({
             disabled={blocked || !!saved}
             className="site-register-fields"
           >
+            <nav className="registration-steps" aria-label="현장 등록 단계">
+              {["현장명·주소","시공 날짜","상세정보"].map((label,index)=><span key={label} aria-current={step===index?"step":undefined}>{index+1}. {label}</span>)}
+            </nav>
+            <div hidden={step !== 0}>
             <div className="input-methods" role="group" aria-label="현장 입력 방법">
               {[["direct", "직접 입력"], ["screenshot", "문자·카톡"], ["call", "통화녹음"]].map(([value, label]) => (
                 <button key={value} type="button" aria-pressed={inputMode === value}
@@ -455,19 +477,23 @@ export default function SiteRegisterModal({
             </div>
 
             <section>
-              <h3>기본정보</h3>
+              <h3>1. 현장명과 주소</h3>
               {inputs([["site_name", "현장명"], ["address", "주소"]])}
             </section>
 
+            </div>
+            <div hidden={step !== 1}>
             <section>
-              <h3>현장 상태 · 일정</h3>
+              <h3>2. 시공 날짜</h3>
               <p><strong>{registrationStatus === "scheduled" ? "시공예정으로 저장" : "상담중으로 저장"}</strong></p>
               <p className="intro">{registrationStatus === "scheduled" ? "시공일이 되면 자동으로 시공중으로 바뀝니다. 일정은 나중에 정해도 됩니다." : "음성·문자·카톡으로 등록한 현장입니다. 시공 일정 확정은 현장 상세에서 진행하세요."}</p>
               <WorkDatePicker value={form.work_dates} onChange={(value) => field("work_dates", value)} disabled={blocked || !!saved} />
             </section>
 
-            <details className="additional-info">
-              <summary>추가정보 <span>고객 · 시공 내용 · 자재 · 사진 · 계약</span></summary>
+            </div>
+            <div hidden={step !== 2} className="additional-info">
+              <h3>3. 상세정보</h3>
+              <p className="intro">필요한 정보만 입력한 뒤 저장하세요. 나머지는 현장 상세에서 추가할 수 있습니다.</p>
               <section><h3>고객 · 상세주소</h3>
               <div className="site-register-grid">
                 {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
@@ -692,7 +718,7 @@ export default function SiteRegisterModal({
                 />
               </label>
             </section>
-            </details>
+            </div>
           </fieldset>
 
           {message && (
@@ -718,13 +744,15 @@ export default function SiteRegisterModal({
 
           <footer>
             <div className="save-summary"><strong>{registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
+            {step > 0 && !saved && <button type="button" disabled={blocked} onClick={()=>{setMessage("");setStep(current=>current-1);}}>이전</button>}
+            {step === 1 && !form.work_dates.length && <p className="intro">아직 날짜가 정해지지 않았다면 ‘일정 미정으로 다음’을 누르세요.</p>}
             {(!saved || pendingLink.current) && (
               <button type="submit" disabled={blocked}>
                 {blocked
                   ? (screenshotBusy || callBusy ? "AI 분석 중…" : "저장 중…")
                   : saved
                     ? "거래처 연결 재시도"
-                    : "현장 저장"}
+                    : step === 0 ? "다음 · 시공 날짜" : step === 1 ? (form.work_dates.length ? "날짜 입력 완료 · 다음" : "일정 미정으로 다음") : "현장 저장"}
               </button>
             )}
           </footer>
@@ -843,6 +871,10 @@ export default function SiteRegisterModal({
           padding: 14px 0 max(14px, env(safe-area-inset-bottom));
           z-index: 3;
         }
+        .registration-steps { display: flex; gap: 6px; margin: 6px 0 16px; font-size: 13px; }
+        .registration-steps span { flex: 1; padding: 10px 4px; text-align: center; border-radius: 9px; background: #eae8e0; color: #657078; }
+        .registration-steps span[aria-current="step"] { background: #dbeafe; color: #1d4ed8; font-weight: 800; }
+        .site-register-fields > div[hidden] { display: none; }
         .input-methods { display: flex; gap: 4px; background: #eae8e0; padding: 5px; border-radius: 16px; }
         .input-methods button { flex: 1; border: 0; background: transparent; color: #657078; font-weight: 700; padding: 14px 4px; }
         .input-methods button[aria-pressed="true"] { background: white; color: #253e4d; box-shadow: 0 2px 6px #253e4d10; }
