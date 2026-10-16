@@ -43,6 +43,22 @@ export async function paymentApi(body, write = false) {
   return result;
 }
 
+export function fullPaymentRequest(site, paidOn) {
+  if (!site || site.status === "cancelled" || !(Number(site.contract_amount) > 0)) return null;
+  const remaining = Number(site.outstanding);
+  if (site.confirmed && (!Number.isFinite(remaining) || remaining <= 0)) return null;
+  if (site.status === "completed") {
+    return { action: "settle", values: { contractAmount: site.contract_amount } };
+  }
+  // Ongoing work can be paid in full without marking the construction complete.
+  // Reuse the existing revision-checked, idempotent payment ledger operation.
+  if (!site.confirmed) return null;
+  return { action: "add", values: {
+    amount: String(remaining), paidOn, direction: "payment", phase: "balance",
+    method: "other", memo: "미수금 전액 입금",
+  } };
+}
+
 export default function SitePaymentQuick({ siteId, onChanged }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -130,6 +146,7 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
   }
 
   const disabled = busy || retry;
+  const fullPayment = fullPaymentRequest(site, koreanDay());
 
   return (
     <section className="payment">
@@ -155,23 +172,20 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
             </p>
           )}
 
+          {!site.confirmed && site.status !== "completed" && site.status !== "cancelled" && (
+            <p>전액입금 처리 전 ‘기존 입금액 확인’에서 지금까지 받은 금액을 입력해주세요. 받은 금액이 없으면 0원을 입력하세요.</p>
+          )}
+          {site.contract_amount == null || Number(site.contract_amount) <= 0 ? <p>계약금액을 먼저 입력하면 전액입금 처리할 수 있습니다.</p> : null}
           <div className="buttons">
             <button
-              disabled={
-                disabled ||
-                site.status !== "completed" ||
-                !Number(site.contract_amount) ||
-                (site.confirmed && Number(site.outstanding) === 0)
-              }
+              disabled={disabled || !fullPayment}
               onClick={() => {
                 const text = site.confirmed
                   ? `남은 ${paymentWon(site.outstanding)}를 받아 전액입금 완료했나요?`
                   : `계약금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 계약금액으로 기록합니다.`;
 
-                if (confirm(text)) {
-                  save("settle", {
-                    contractAmount: site.contract_amount,
-                  });
+                if (fullPayment && confirm(text)) {
+                  save(fullPayment.action, fullPayment.values);
                 }
               }}
             >
