@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {findNearbyPlaces} from '../lib/nearbyPlaces.mjs';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 
 test('restaurant search uses site coordinates, radius and distance sort',async()=>{
  const urls=[];
@@ -35,17 +35,32 @@ test('ambiguous address stops before place search; provider errors are actionabl
 
 const source=readFileSync(new URL('../app/api/worker/nearby/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
 const siteId='11111111-1111-4111-8111-111111111111';
-function endpoint(){
- let authorized=true,providerCalls=0,accessCalls=0;
- const context=vm.createContext({URL,Request,Response,createHash,process:{env:{KAKAO_REST_API_KEY:'test'}},uuid:s=>s===siteId,nearbyKinds:{film:'필름',food:'음식점'},json:(body,status=200)=>Response.json(body,{status}),
-  mySitesGET:async()=>{accessCalls++;return authorized?Response.json({site:{site_id:siteId,address:'실제 현장 주소'}}):Response.json({error:'배정된 현장이 아닙니다.'},{status:403});},
+function endpoint({quotaOk=true,quotaError=null}={}){
+ let authorized=true,providerCalls=0,accessCalls=0,quotaCalls=0;
+ const context=vm.createContext({URL,Request,Response,createHash,randomUUID,process:{env:{KAKAO_REST_API_KEY:'test'}},uuid:s=>s===siteId,nearbyKinds:{film:'필름',food:'음식점'},json:(body,status=200)=>Response.json(body,{status}),
+  privateAuth:async()=>({db:{rpc:async(name,args)=>{quotaCalls++;assert.equal(name,'reserve_commute_quota');assert.equal(args.p_company_id,'company');return {data:{ok:quotaOk},error:quotaError};}}}),
+  mySitesGET:async()=>{accessCalls++;return authorized?Response.json({site:{site_id:siteId,company_id:'company',address:'실제 현장 주소'}}):Response.json({error:'배정된 현장이 아닙니다.'},{status:403});},
   findNearbyPlaces:async({address})=>{providerCalls++;assert.equal(address,'실제 현장 주소');return {places:[]};}});
  vm.runInContext(source+'\nglobalThis.handler=GET;',context);
- return {deny(){authorized=false;},counts:()=>({providerCalls,accessCalls}),get:()=>context.handler(new Request('https://test/api/worker/nearby?siteId='+siteId+'&kind=food&radius=3000&address=forged'))};
+ return {deny(){authorized=false;},counts:()=>({providerCalls,accessCalls,quotaCalls}),get:()=>context.handler(new Request('https://test/api/worker/nearby?siteId='+siteId+'&kind=food&radius=3000&address=forged'))};
 }
 test('cached results still require site authorization; client address is ignored',async()=>{
  const f=endpoint();assert.equal((await f.get()).status,200);assert.equal((await f.get()).status,200);
- assert.deepEqual(f.counts(),{providerCalls:1,accessCalls:2});
+ assert.deepEqual(f.counts(),{providerCalls:1,accessCalls:2,quotaCalls:1});
  f.deny();assert.equal((await f.get()).status,403);
- assert.deepEqual(f.counts(),{providerCalls:1,accessCalls:3});
+ assert.deepEqual(f.counts(),{providerCalls:1,accessCalls:3,quotaCalls:1});
+});
+
+test('exhausted quota blocks all external map calls',async()=>{
+ const f=endpoint({quotaOk:false});assert.equal((await f.get()).status,429);
+ assert.deepEqual(f.counts(),{providerCalls:0,accessCalls:1,quotaCalls:1});
+});
+test('quota database failure blocks external calls',async()=>{
+ const f=endpoint({quotaError:{code:'42883'}});assert.equal((await f.get()).status,503);
+ assert.equal(f.counts().providerCalls,0);
+});
+test('simultaneous same searches share one reservation',async()=>{
+ const f=endpoint();const results=await Promise.all([f.get(),f.get()]);
+ assert.ok(results.every(r=>r.status===200));
+ assert.equal(f.counts().quotaCalls,1);assert.equal(f.counts().providerCalls,1);
 });

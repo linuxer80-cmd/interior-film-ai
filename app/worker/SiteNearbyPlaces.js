@@ -32,6 +32,7 @@ export default function SiteNearbyPlaces({siteId,address}){
   <div className={styles.controls}>{['film','materials','food'].map(k=><button type='button' key={k} disabled={!siteId||!address||busy} aria-pressed={data?.kind===k} onClick={()=>search(k)}>{k==='materials'?'자재점':labels[k]}</button>)}
    <label>반경 <select value={radius} disabled={busy} onChange={e=>{const r=Number(e.target.value);setRadius(r);setData(null);setError('');}}>{[1000,3000,5000,10000].map(r=><option key={r} value={r}>{r/1000}km</option>)}</select></label>
   </div>
+  <small>새 검색은 업체 지도 조회 1회를 사용합니다. 저장된 결과·페이지 이동·외부 지도 열기는 추가 차감하지 않습니다.</small>
   {!address&&<p>현장 주소를 등록하면 주변 장소를 찾을 수 있습니다.</p>}
   {busy&&<p role='status'>현장 주변을 검색하는 중…</p>}
   {error&&<p role='alert'>{error} <button type='button' disabled={busy} onClick={()=>search()}>다시 검색</button></p>}
