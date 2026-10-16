@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import LandingStats from "./LandingStats";
 import ToolIllustration from "../components/ui/ToolIllustration";
 import ui from "../admin/AdminUi.module.css";
 import {
@@ -417,6 +418,8 @@ export default function SuperAdminPage() {
           </p>
         </div>
       </header>
+
+      {activeView === "home" && <LandingStats />}
 
       {activeView !== "home" && (
         <a

@@ -19,6 +19,24 @@ export default function BusinessLanding() {
   const nextFeature = feature ? features[(features.indexOf(feature) + 1) % features.length] : null;
 
   useEffect(() => {
+    // Do not count hidden prerenders. Failures never block the landing page.
+    function recordVisit() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        let visitorId = localStorage.getItem('filmjang-landing-visitor');
+        if (!/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(visitorId || '')) {
+          visitorId = crypto.randomUUID();
+          localStorage.setItem('filmjang-landing-visitor', visitorId);
+        }
+        fetch('/api/landing-visit', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId}),keepalive:true}).catch(() => {});
+      } catch { /* Storage-disabled browsers are not counted. */ }
+    }
+    recordVisit();
+    document.addEventListener('visibilitychange', recordVisit);
+    return () => document.removeEventListener('visibilitychange', recordVisit);
+  }, []);
+
+  useEffect(() => {
     if (!activeId) return;
     const dialog = dialogRef.current;
     const priorOverflow = document.body.style.overflow;
