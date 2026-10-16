@@ -413,24 +413,26 @@ export default function CustomerPageAdmin() {
 
   return (
     <main className={styles.page}>
-      <a href="/admin">‹ 관리자 홈</a>
+      <nav className={styles.pageActions} aria-label="페이지 이동">
+        <a className={styles.actionLink} href="/admin">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/></svg>
+          <span>관리자 홈</span>
+        </a>
+        {companySlug && (
+          <a className={styles.actionLink}
+            href={`/estimate/${encodeURIComponent(companySlug)}`}
+            target="_blank" rel="noopener noreferrer"
+            aria-label="고객페이지 열기 (새 창)">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3h7v7M21 3l-11 11"/><path d="M10 3H3v18h18v-7"/></svg>
+            <span>고객페이지 열기</span>
+          </a>
+        )}
+      </nav>
 
       <h1>고객페이지 관리</h1>
-
-      <p>
-        사진 견적 아래에 표시할 {companyName}의
-        업체 정보와 실제 시공 사례를 등록합니다.
+      <p className={styles.pageIntro}>
+        {companyName}의 업체 소개와 시공 사례를 관리하세요.
       </p>
-
-      {companySlug && (
-        <a
-          href={`/estimate/${encodeURIComponent(companySlug)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          고객페이지 열기 ↗
-        </a>
-      )}
 
       <p role="status" className={styles.status}>
         {adminError || message}

@@ -169,3 +169,11 @@
 .tabs button[aria-pressed=true] { background: #243f52; color: white; }
 .tabs button:disabled { opacity: .5; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; }
+
+.pageActions { display: flex; gap: 10px; align-items: stretch; margin: 0 0 16px; }
+.page .actionLink { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; min-height: 48px; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d4dedf; border-radius: 12px; background: #fffdf9; color: #243f52; text-decoration: none; font-size: 14px; font-weight: 700; line-height: 1.4; }
+.actionLink svg { flex-shrink: 0; }
+.page .actionLink:hover { background: #edf4f1; border-color: #91aaa5; }
+.page .actionLink:active { background: #e3ece8; }
+.page .pageIntro { margin: 10px 0 16px; font-size: 13px; }
+@media(max-width:340px) { .pageActions { flex-direction: column; } }
