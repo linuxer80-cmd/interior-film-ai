@@ -291,20 +291,8 @@ export default function WorkerHomeDashboard({
           <small>홈</small>
         </Link>
 
-        {menus
-          .filter(menu =>
-            ![
-              "samples",
-              "attendance",
-              "inventory",
-              "jobs",
-              "account",
-              "pay",
-              "film",
-              "report",
-              "business-card",
-            ].includes(menu.id)
-          )
+        {['notebook', 'sites', 'attendance', 'samples']
+          .map(id => menus.find(menu => menu.id === id))
           .map(menu => (
             <Link
               key={menu.id}
@@ -312,7 +300,7 @@ export default function WorkerHomeDashboard({
             >
               <ToolIllustration kind={menu.id === "sites" ? "camera" : menu.icon} size={36} className="film-nav-image" />
 
-              <small>{menu.title}</small>
+              <small>{menu.id === "attendance" ? "근무기록" : menu.id === "samples" ? "필름 샘플" : menu.title}</small>
             </Link>
           ))}
         <Link href="/worker/more"><span aria-hidden="true" style={{ fontSize: 30 }}>▦</span><small>더보기</small></Link>

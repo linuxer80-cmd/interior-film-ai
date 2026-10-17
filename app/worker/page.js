@@ -581,6 +581,8 @@ export default function WorkerPage({ mode = "home" }) {
                 { id: "home", label: "홈", href: "/worker", icon: "home" },
                 { id: "notebook", label: "실측수첩", href: "/worker/notebook", icon: "notebook" },
                 { id: "sites", label: "내 현장", href: "/worker/menu/sites", icon: "camera" },
+                { id: "attendance", label: "근무기록", href: "/worker/attendance", icon: "attendance" },
+                { id: "samples", label: "필름 샘플", href: "/samples?from=worker", icon: "customer" },
                 { id: "more", label: "더보기", href: "/worker/more" },
               ].map(item => (
                 <Link key={item.id} href={item.href} aria-current={mode === item.id ? "page" : undefined}>
