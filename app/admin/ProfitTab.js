@@ -1,5 +1,7 @@
 "use client";
 
+import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
+
 import useProfitExclusions from "./useProfitExclusions";
 import LaborPayments from "./LaborPayments";
 import LaborCostSettings from "./LaborCostSettings";
@@ -527,9 +529,9 @@ export default function ProfitTab() {
             lineHeight: 1.5,
           }}
         >
-          시공 시작일 기준 계약금액 − 인건비 − 실제 사용 자재비 −
-          경비입니다. 계약금액 기준 예상 수익이며 입금·세금·본사
-          공통비는 반영하지 않습니다.
+          시공 시작일 기준 매출에서 인건비·실제 사용 자재비·경비를 뺀 예상 수익입니다.
+          계약금액이 있으면 우선 적용하고, 없으면 최신 완료보고서의 관리자 승인금액을 적용합니다.
+          검수 대기·반려 보고서의 금액은 반영하지 않습니다. 입금·세금·본사 공통비는 별도입니다.
         </p>
 
         <div
@@ -730,7 +732,7 @@ export default function ProfitTab() {
               }}
             >
               {[
-                ["계약 매출", data.totals.revenue],
+                ["기준 매출", data.totals.revenue],
                 ["인건비", data.totals.labor],
                 ["자재비", data.totals.material],
                 ["기타 경비", data.totals.expense],
@@ -1014,7 +1016,7 @@ export default function ProfitTab() {
                           : "개인 현장"
                         : "고객 구분 확인 필요"}
                     </div>
-                    계약 {won(site.revenue)}
+                    {revenueSourceLabel(site.revenueSource)} {site.missingContract ? "확인 필요" : won(site.revenue)}
                     {" · "}인건비 {won(site.labor)}
                     {" · "}자재 {won(site.material)}
                     {" · "}경비 {won(site.expense)}
@@ -1037,7 +1039,7 @@ export default function ProfitTab() {
 
                   {site.missingContract && (
                     <p style={{ color: "#b45309", fontSize: 12 }}>
-                      ⚠️ 계약금액 미입력: 매출 0원으로 집계됩니다.
+                      ⚠️ 계약금액과 최신 완료보고서의 관리자 승인금액이 없어 매출이 미확정입니다. 합계에는 임시로 0원 반영됩니다.
                     </p>
                   )}
 

@@ -1,3 +1,4 @@
+import { resolveRevenue } from "../../../../lib/siteRevenue.mjs";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 
@@ -378,36 +379,6 @@ function resolveLabor(site, automated, expenses, people) {
  * 승인된 0원은 유효한 확정금액으로 처리합니다.
  * 검수 대기/보완 요청 보고서의 금액은 반영하지 않습니다.
  */
-function resolveRevenue(site, report) {
-  const contract = rateValue(site.contract_amount);
-
-  const approved =
-    report?.review_status === "approved"
-      ? rateValue(report.approved_amount)
-      : null;
-
-  if (contract !== null && contract > 0) {
-    return {
-      revenue: contract,
-      missingContract: false,
-      revenueSource: "contract",
-    };
-  }
-
-  if (approved !== null) {
-    return {
-      revenue: approved,
-      missingContract: false,
-      revenueSource: "approved_report",
-    };
-  }
-
-  return {
-    revenue: contract ?? 0,
-    missingContract: contract === null,
-    revenueSource: contract === null ? "missing" : "contract",
-  };
-}
 
 export async function GET(request) {
   try {
