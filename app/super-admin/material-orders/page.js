@@ -332,6 +332,8 @@ export default function SuperAdminMaterialOrdersPage() {
           <ToolIllustration kind="film" size={52} />
         </header>
 
+        <Link href="/super-admin/material-pilot" data-ui-link="action">대리점 연동 테스트 · 주문·배정·출고 관리 →</Link>
+
         <section style={styles.statsGrid} aria-label="조회 주문 요약">
           {[
             ["조회 주문", counts.total],

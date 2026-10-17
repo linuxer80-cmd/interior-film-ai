@@ -4,8 +4,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import MaterialPilot, { pilotFetch } from "../../components/MaterialPilot";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 
@@ -158,9 +160,6 @@ function MaterialOrderForm() {
   const [sites, setSites] = useState([]);
   const [siteError, setSiteError] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("saved");
-  const [orders, setOrders] = useState([]);
-  const [ordersError, setOrdersError] = useState("");
-  const [ordersLoading, setOrdersLoading] = useState(false);
 
   function navigate(next) { setScreen(next); setDetail(null); window.scrollTo({ top: 0, behavior: "smooth" }); }
   async function loadSiteAddresses() {
@@ -175,12 +174,9 @@ function MaterialOrderForm() {
       setSites(data || []); setSiteError("");
     } catch { setSiteError("현장을 불러오지 못했습니다. 새 주소로 직접 입력해주세요."); }
   }
-  async function showOrders() {
-    navigate("orders"); setOrdersLoading(true); setOrdersError("");
-    try { const result = await apiFetch("/api/admin/material-orders"); setOrders(result.orders || []); }
-    catch (error) { setOrdersError(error.message); }
-    finally { setOrdersLoading(false); }
-  }
+  function showOrders() { navigate("orders"); }
+  const pendingOrder = useRef(null);
+  const orderLock = useRef(false);
 
   const [addresses, setAddresses] =
     useState([]);
@@ -686,94 +682,21 @@ function MaterialOrderForm() {
   }
 
   async function submitOrder() {
+    if (orderLock.current) return;
+    try { validateOrder(); } catch(error) { window.alert(error.message); return; }
+    if (!window.confirm(`테스트 주문을 접수할까요?\n${cart.length}개 제품 · ${cartTotals.quantity}m · ${formatWon(cartTotals.total)}\n실제 카드결제와 운영 재고 반영은 없습니다.`)) return;
+    const values = {action:"create",addressId:selectedAddressId,deliveryNote:deliveryNote.trim(),expectedTotal:cartTotals.total,items:cart.map(item=>({productId:item.product.id,quantityM:Number(item.quantityM)}))};
+    const signature = JSON.stringify(values);
+    if (pendingOrder.current?.signature !== signature) pendingOrder.current = {signature,body:{...values,requestId:crypto.randomUUID()}};
+    orderLock.current = true; setOrdering(true);
     try {
-      validateOrder();
-    } catch (error) {
+      await pilotFetch("buyer",pendingOrder.current.body);
+      pendingOrder.current=null;setCart([]);setDeliveryNote("");navigate("orders");
+    } catch(error) {
+      if(error.status && error.status < 500 && error.status !== 409) pendingOrder.current=null;
       window.alert(error.message);
-      return;
-    }
-
-    const confirmed = window.confirm(
-      [
-        "등록된 카드로 결제하시겠습니까?",
-        "",
-        `제품 ${cart.length}개`,
-        `총 주문량 ${cartTotals.quantity}m`,
-        `공급가액 ${formatWon(
-          cartTotals.supply,
-        )}`,
-        `부가세 ${formatWon(
-          cartTotals.vat,
-        )}`,
-        `최종 결제금액 ${formatWon(
-          cartTotals.total,
-        )}`,
-        "",
-        `배송지 ${
-          selectedAddress?.address_line1 || ""
-        }`,
-      ].join("\n"),
-    );
-
-    if (!confirmed) return;
-
-    setOrdering(true);
-
-    try {
-      const result = await apiFetch(
-        "/api/admin/material-orders",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            addressId: selectedAddressId,
-            deliveryNote:
-              deliveryNote.trim(),
-            items: cart.map((item) => ({
-              productId: item.product.id,
-              quantityM: Number(
-                item.quantityM,
-              ),
-            })),
-          }),
-        },
-      );
-
-      setCart([]);
-      setDeliveryNote("");
-
-      window.alert(
-        [
-          "자재 주문이 완료됐습니다.",
-          "",
-          `주문번호 ${
-            result.order?.orderNumber || ""
-          }`,
-          `결제금액 ${formatWon(
-            result.order?.totalAmount,
-          )}`,
-        ].join("\n"),
-      );
-    } catch (error) {
-      if (
-        error.code ===
-        "BILLING_CARD_NOT_FOUND"
-      ) {
-        const move = window.confirm(
-          `${error.message}\n\n결제관리로 이동하시겠습니까?`,
-        );
-
-        if (move) {
-          router.push("/admin/billing");
-        }
-      } else {
-        window.alert(
-          `주문 실패\n\n${error.message}`,
-        );
-      }
-    } finally {
-      setOrdering(false);
-    }
-                                          }
+    } finally { orderLock.current=false;setOrdering(false); }
+  }
     if (authorized === null) {
     return (
       <main className="center">
@@ -832,7 +755,7 @@ function MaterialOrderForm() {
 
   return (
     <main className="page">
-      <div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 카드결제 테스트 중</strong><div>현재 자재 구매 카드결제는 테스트 중입니다. 실제 주문·결제는 아직 지원되지 않습니다.</div></div>
+      <div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 필름장이 전용 주문 테스트</strong><div>기존 필름몰에서 테스트 주문 → 대리점 출고 → 테스트 입고를 확인합니다. 실제 결제와 운영 재고에는 반영되지 않습니다.</div></div>
       <header className="header">
         <button
           type="button"
@@ -1360,7 +1283,7 @@ function MaterialOrderForm() {
         <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
         {selectedAddress ? <p><strong>{selectedAddress.recipient_name}</strong> · {selectedAddress.recipient_phone}<br />{selectedAddress.address_line1} {selectedAddress.address_line2 || ""}</p> : <p>배송지를 선택해주세요.</p>}
         <div>
-          <span>등록카드 결제금액</span>
+          <span>테스트 주문금액</span>
           <strong>
             {formatWon(cartTotals.total)}
           </strong>
@@ -1368,12 +1291,10 @@ function MaterialOrderForm() {
 
         <button
           type="button"
-          disabled={
-            true
-          }
+          disabled={ordering || !cart.length || !selectedAddressId}
           onClick={submitOrder}
         >
-          테스트 중 · 주문 준비 중
+          {ordering ? "접수 중…" : "테스트 주문 접수"}
         </button>
       </section>
 
@@ -1394,7 +1315,7 @@ function MaterialOrderForm() {
         <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
         <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
       </section>}
-      {screen === "orders" && <section className="panel"><h2>주문내역</h2>{ordersLoading ? <p>불러오는 중...</p> : ordersError ? <p role="alert">{ordersError}</p> : !orders.length ? <p>주문내역이 없습니다.</p> : orders.map(order => <article className="cart" key={order.id}><strong>{order.order_number}</strong><p>{({ paid: "결제 완료", payment_pending: "결제 대기", payment_failed: "결제 실패", shipped: "출고 완료", delivered: "배송 완료", canceled: "취소" })[order.status] || order.status}</p><p>{formatWon(order.total_amount)} · {order.total_quantity_m}m</p><p>{order.address_line1} {order.address_line2}</p></article>)}</section>}
+      {screen === "orders" && <MaterialPilot mode="buyer" />}
       <style jsx>{`
         [hidden] { display: none !important; }
         .shop-nav, .shop-action { max-width: 760px; margin: 0 auto 18px; display: flex; gap: 8px; }
