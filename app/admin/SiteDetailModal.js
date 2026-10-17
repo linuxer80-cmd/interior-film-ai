@@ -606,8 +606,8 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
               <SiteMaterials key={site.id} site={site} />
+              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
             </section>
           )}
 
