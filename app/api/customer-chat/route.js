@@ -1,11 +1,10 @@
-import { visitorChat,chatMessages,saveChat,chatOrigin,chatError,chatFail,chatMessage } from '../../../lib/customerChatServer';
+import { readChatBody,visitorChat,chatMessages,saveChat,chatOrigin,chatError,chatFail,chatMessage } from '../../../lib/customerChatServer';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function GET(request){try{const a=await visitorChat(request);return a.reply({thread:a.thread,companyName:a.companyName,...await chatMessages(a.db,a.thread,request)});}catch(error){return chatError(error);}}
 export async function POST(request){try{
   chatOrigin(request);
-  const raw=await request.text();if(raw.length>12000)throw chatFail('메시지가 너무 깁니다.');
-  const body=JSON.parse(raw);chatMessage(body);
+  const body=await readChatBody(request);chatMessage(body);
   const a=await visitorChat(request);
   if(!a.hasCookie)throw chatFail('채팅을 다시 열어주세요. 브라우저 쿠키 허용이 필요합니다.');
   let thread=a.thread;

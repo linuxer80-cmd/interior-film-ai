@@ -1,5 +1,5 @@
 import { priceOwner } from '../../../../lib/dealerPriceServer';
-import { ownerChat,chatMessages,saveChat,chatOrigin,chatError,chatReply,chatFail } from '../../../../lib/customerChatServer';
+import { readChatBody,ownerChat,chatMessages,saveChat,chatOrigin,chatError,chatReply,chatFail } from '../../../../lib/customerChatServer';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function GET(request){try{
@@ -13,7 +13,7 @@ export async function GET(request){try{
 }catch(error){return chatError(error);}}
 export async function POST(request){try{
   chatOrigin(request);const a=await ownerChat(request);
-  const raw=await request.text();if(raw.length>12000)throw chatFail('메시지가 너무 깁니다.');const body=JSON.parse(raw);
+  const body=await readChatBody(request);
   if(body.action==='read'){
     // Acknowledge only the snapshot actually displayed; later arrivals remain unread.
     if(body.seenAt && (!Number.isFinite(Date.parse(body.seenAt)) || body.seenAt>a.thread.last_customer_at))throw chatFail('읽음 시점을 확인해주세요.');
