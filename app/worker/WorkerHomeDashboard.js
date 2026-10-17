@@ -302,6 +302,7 @@ export default function WorkerHomeDashboard({
               "pay",
               "film",
               "report",
+              "business-card",
             ].includes(menu.id)
           )
           .map(menu => (

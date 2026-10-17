@@ -579,7 +579,6 @@ export default function WorkerPage({ mode = "home" }) {
             >
               {[
                 { id: "home", label: "홈", href: "/worker", icon: "home" },
-                { id: "business-card", label: "디지털 명함", href: "/business-card?from=worker", icon: "businessCard" },
                 { id: "notebook", label: "실측수첩", href: "/worker/notebook", icon: "notebook" },
                 { id: "sites", label: "내 현장", href: "/worker/menu/sites", icon: "camera" },
                 { id: "more", label: "더보기", href: "/worker/more" },
