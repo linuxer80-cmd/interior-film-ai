@@ -10,6 +10,8 @@ export default function AnnouncementBar() {
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
   const [distance, setDistance] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
   const box = useRef(null), text = useRef(null);
   useEffect(() => {
     if (!visible) return;
@@ -34,7 +36,11 @@ export default function AnnouncementBar() {
   }, [visible]);
   useEffect(() => {
     if (!message || !visible) return;
-    const measure = () => setDistance(Math.max(0, (text.current?.scrollWidth || 0) - (box.current?.clientWidth || 0)));
+    const measure = () => {
+      const width = text.current?.scrollWidth || 0, viewport = box.current?.clientWidth || 0;
+      setDistance(Math.max(0, width - viewport));
+      setTextWidth(width); setViewportWidth(viewport);
+    };
     const observer = new ResizeObserver(measure);
     if (box.current) observer.observe(box.current);
     if (text.current) observer.observe(text.current);
@@ -45,7 +51,7 @@ export default function AnnouncementBar() {
   return <aside className={styles.bar} aria-label="공지사항">
     <button type="button" className={styles.line} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`공지사항: ${message}. 눌러서 전체 보기`}>
       <span className={styles.label}>공지</span>
-      <span className={styles.viewport} ref={box} aria-hidden="true"><span ref={text} className={distance > 0 && !open ? styles.moving : styles.text} style={{ '--distance': `-${distance}px`, '--duration': `${Math.max(12, distance / 22 + 6)}s` }}>{message}</span></span>
+      <span className={styles.viewport} ref={box} aria-hidden="true"><span ref={text} className={distance > 0 && !open ? styles.moving : styles.text} style={{ '--viewport': `${viewportWidth}px`, '--duration': `${Math.max(12, (textWidth + viewportWidth) / 35)}s` }}>{message}</span></span>
       <span aria-hidden="true">{open ? '−' : '+'}</span>
     </button>
     {open && <p className={styles.full}>{message}</p>}

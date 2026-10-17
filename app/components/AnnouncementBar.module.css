@@ -4,8 +4,7 @@
 .viewport { flex:1; min-width:0; overflow:hidden; }
 .text,.moving { display:block; width:max-content; white-space:nowrap; line-height:1.6; }
 .moving { animation:noticeRight var(--duration) linear infinite; }
-.line:hover .moving,.line:focus-visible .moving { animation-play-state:paused; }
 .line:focus-visible { outline:2px solid #214c40; outline-offset:-3px; }
 .full { margin:0; padding:0 18px 14px; line-height:1.7; overflow-wrap:anywhere; }
-@keyframes noticeRight { 0%,10% { transform:translateX(var(--distance)); } 90%,100% { transform:translateX(0); } }
-@media(prefers-reduced-motion:reduce) { .moving { animation:none; } }
+@keyframes noticeRight { from { transform:translateX(-100%); } to { transform:translateX(var(--viewport)); } }
+@media(prefers-reduced-motion:reduce) { .moving { animation:none; width:auto; white-space:normal; overflow-wrap:anywhere; } }
