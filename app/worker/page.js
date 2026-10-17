@@ -578,35 +578,14 @@ export default function WorkerPage({ mode = "home" }) {
               aria-label="시공자 메뉴"
             >
               {[
-                { id: "home", label: "홈" },
-                {
-                  id: "sites",
-                  label: "내 현장",
-                },
-                { id: "film", label: "재단" },
-                {
-                  id: "report",
-                  label: "완료보고",
-                },
-                {
-                  id: "pay",
-                  label: "근무금액",
-                },
+                { id: "home", label: "홈", href: "/worker", icon: "home" },
+                { id: "business-card", label: "디지털 명함", href: "/business-card?from=worker", icon: "businessCard" },
+                { id: "notebook", label: "실측수첩", href: "/worker/notebook", icon: "notebook" },
+                { id: "sites", label: "내 현장", href: "/worker/menu/sites", icon: "camera" },
+                { id: "more", label: "더보기", href: "/worker/more" },
               ].map(item => (
-                <Link
-                  key={item.id}
-                  href={
-                    item.id === "home"
-                      ? "/worker"
-                      : `/worker/menu/${item.id}`
-                  }
-                  aria-current={
-                    mode === item.id
-                      ? "page"
-                      : undefined
-                  }
-                >
-                  <ToolIllustration kind={{home: "home", sites: "camera", film: "film", report: "report", pay: "money"}[item.id]} size={36} className="film-nav-image" />
+                <Link key={item.id} href={item.href} aria-current={mode === item.id ? "page" : undefined}>
+                  {item.icon ? <ToolIllustration kind={item.icon} size={36} className="film-nav-image" /> : <span aria-hidden="true" style={{fontSize:30}}>▦</span>}
                   <small>{item.label}</small>
                 </Link>
               ))}

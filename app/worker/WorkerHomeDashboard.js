@@ -17,8 +17,8 @@ import {
 } from "../utils/workerCalendar";
 
 const menus = [
-  { id: "business-card", href: "/business-card?from=worker", icon: "customer", title: "디지털 명함", subtitle: "내 로고와 정보로 만드는 나만의 명함" },
-  { id: "notebook", href: "/worker/notebook", icon: "report", title: "실측수첩", subtitle: "장소별 치수·사진·메모 · 재단 연결" },
+  { id: "business-card", href: "/business-card?from=worker", icon: "businessCard", title: "디지털 명함", subtitle: "내 로고와 정보로 만드는 나만의 명함" },
+  { id: "notebook", href: "/worker/notebook", icon: "notebook", title: "실측수첩", subtitle: "장소별 치수·사진·메모 · 재단 연결" },
   { id: "samples", href: "/samples?from=worker", icon: "customer", title: "필름 샘플 보기", subtitle: "브랜드·색상별 필름 샘플 확인" },
   {
     id: "jobs",
@@ -300,12 +300,14 @@ export default function WorkerHomeDashboard({
               "jobs",
               "account",
               "pay",
+              "film",
+              "report",
             ].includes(menu.id)
           )
           .map(menu => (
             <Link
               key={menu.id}
-              href={`/worker/menu/${menu.id}`}
+              href={menu.href || `/worker/menu/${menu.id}`}
             >
               <ToolIllustration kind={menu.id === "sites" ? "camera" : menu.icon} size={36} className="film-nav-image" />
 

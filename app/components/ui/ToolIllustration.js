@@ -20,6 +20,8 @@ const positions = {
 };
 
 const images = {
+  businessCard: "/images/menu/business-card.webp",
+  notebook: "/images/menu/measurement-notebook.webp",
   website: "/images/menu/website-photo.png",
   recruitment: "/images/menu/recruitment.webp",
   stock: "/images/menu/film-stock.png",

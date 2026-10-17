@@ -6,6 +6,7 @@ import {loadMyWorkerSites} from '../../utils/workerSites';
 import {id,newNotebook,newRoom,newPart,newSize,filmName,notebookDraft,validateBackup} from '../../../lib/measurementNotebook.mjs';
 import {listBooks,saveBook,compressPhoto} from '../../../lib/notebookStore';
 import s from './notebook.module.css';
+import BulkSizes from './BulkSizes';
 
 export default function Notebook(){
  const [user,setUser]=useState(null),[loading,setLoading]=useState(true),[books,setBooks]=useState([]),[book,setBook]=useState(null),[roomIndex,setRoomIndex]=useState(0),[stage,setStage]=useState('list'),[sites,setSites]=useState([]),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState(''),[photoView,setPhotoView]=useState(null);
@@ -129,6 +130,8 @@ export default function Notebook(){
        <label className={s.check}><input type="checkbox" checked={p.grain} onChange={e=>field(pi,'grain',e.target.checked)}/>무늬 방향 유지 · 세로 방향 고정</label>
        <p className={s.hint}>단위 mm · 여유를 포함해 실측한 치수를 그대로 입력하세요.</p>
        {p.sizes.map((size,si)=><div className={s.sizeEdit} key={size.id}><input aria-label={`${p.name} ${si+1} 상세 이름`} maxLength={100} value={size.label} placeholder="상부 문, 측면 등" onChange={e=>sizeField(pi,si,'label',e.target.value)}/><div><label>가로<input inputMode="decimal" type="number" min="1" max="100000" value={size.width} onChange={e=>sizeField(pi,si,'width',e.target.value)}/></label><b>×</b><label>세로<input inputMode="decimal" type="number" min="1" max="100000" value={size.height} onChange={e=>sizeField(pi,si,'height',e.target.value)}/></label><label>수량<input inputMode="numeric" type="number" min="1" max="1000" step="1" value={size.quantity} onChange={e=>sizeField(pi,si,'quantity',e.target.value)}/></label><button aria-label={`${si+1}번째 치수 삭제`} onClick={()=>edit(b=>{b.rooms[roomIndex].parts[pi].sizes.splice(si,1);})}>×</button></div></div>)}
+       <BulkSizes key={p.id} remaining={300-p.sizes.filter(row=>row.width!==''||row.height!==''||row.label.trim()||Number(row.quantity)!==1||row.done).length} disabled={busy} onAdd={rows=>edit(b=>{const part=b.rooms[roomIndex].parts[pi];const kept=part.sizes.filter(row=>row.width!==''||row.height!==''||row.label.trim()||Number(row.quantity)!==1||row.done);if(kept.length+rows.length>300)return;part.sizes=[...kept,...rows.map(row=>({...newSize(),...row}))];})}/>
+       <div className={s.actions}><button disabled={busy||p.sizes.length>295} onClick={()=>field(pi,'sizes',[...p.sizes,...Array.from({length:5},()=>newSize())])}>＋ 입력칸 5개 추가</button></div>
        <div className={s.actions}><button disabled={p.sizes.length>=300} onClick={()=>field(pi,'sizes',[...p.sizes,newSize()])}>＋ 치수 추가</button><button disabled={busy || room.parts.length>=200} onClick={()=>edit(b=>{b.rooms[roomIndex].parts.push({...structuredClone(p),id:id(),name:p.name+' 복사',photos:[],sizes:p.sizes.map(size=>({...size,id:id(),done:false}))});})}>부위 복사</button></div>
        {partDetails(p,pi)}
       </section>)}
