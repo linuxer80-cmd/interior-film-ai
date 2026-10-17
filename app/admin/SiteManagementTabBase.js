@@ -15,8 +15,8 @@ const STATUS_INFO = {
   },
   scheduled: {
     label: "시공 예정",
-    background: "#eff6ff",
-    color: "#1d4ed8",
+    background: "#edf3ec",
+    color: "#285340",
   },
   in_progress: {
     label: "시공 중",
@@ -30,8 +30,8 @@ const STATUS_INFO = {
   },
   cancelled: {
     label: "취소",
-    background: "#f8fafc",
-    color: "#64748b",
+    background: "#f7f5ee",
+    color: "#6e7b73",
   },
 };
 
@@ -101,7 +101,7 @@ export default function SiteManagementTab(props) {
               style={{
                 margin: "4px 0 0",
                 fontSize: 12,
-                color: "#64748b",
+                color: "#6e7b73",
               }}
             >
               날짜별 시공 일정과 현장을 확인하세요.
@@ -128,40 +128,6 @@ export default function SiteManagementTab(props) {
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 6,
-            marginBottom: 14,
-          }}
-        >
-          {[
-            "consulting",
-            "scheduled",
-            "in_progress",
-            "completed",
-          ].map((key) => (
-            <div
-              key={key}
-              style={{
-                padding: "10px 2px",
-                border: "1px solid #e2e8f0",
-                borderRadius: 12,
-                background: "#fff",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "#64748b" }}>
-                {STATUS_INFO[key].label}
-              </div>
-              <strong style={{ fontSize: 22, color: "#111827" }}>
-                {sites.filter((site) => site.status === key).length}
-              </strong>
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
             display: "flex",
             flexWrap: "wrap",
             gap: 6,
@@ -175,11 +141,11 @@ export default function SiteManagementTab(props) {
               aria-pressed={filter === key}
               onClick={() => setFilter(key)}
               style={{
-                border: "1px solid #cbd5e1",
+                border: "1px solid #d6dcd2",
                 borderRadius: 24,
                 padding: "8px 12px",
                 background: filter === key ? "#111827" : "#fff",
-                color: filter === key ? "#fff" : "#475569",
+                color: filter === key ? "#fff" : "#53665a",
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
@@ -199,7 +165,7 @@ export default function SiteManagementTab(props) {
               background: sitesMessage.startsWith("✅")
                 ? "#f0fdf4"
                 : "#fef2f2",
-              color: "#334155",
+              color: "#31453a",
               whiteSpace: "pre-wrap",
             }}
           >
@@ -220,7 +186,7 @@ export default function SiteManagementTab(props) {
               boxSizing: "border-box",
               padding: 12,
               minHeight: 44,
-              border: "1px solid #cbd5e1",
+              border: "1px solid #d6dcd2",
               borderRadius: 10,
               marginTop: 6,
             }}
@@ -363,7 +329,7 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
       style={{
         width: "100%",
         padding: 14,
-        border: "1px solid #e2e8f0",
+        border: "1px solid #e3e0d6",
         borderRadius: 14,
         background: "#fff",
         textAlign: "left",
@@ -388,15 +354,6 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
           >
             {site.site_name || site.customer_name || "현장명 미정"}
           </strong>
-          <div
-            style={{
-              marginTop: 3,
-              fontSize: 12,
-              color: "#64748b",
-            }}
-          >
-            고객 {site.customer_name || "미정"}
-          </div>
         </div>
 
         <span
@@ -414,53 +371,12 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
         </span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 7,
-          marginTop: 12,
-          fontSize: 13,
-          color: "#334155",
-          overflowWrap: "anywhere",
-        }}
-      >
-        <div>📅 {label}</div>
-        <div>
-          📍 {site.address || "미정"} {site.address_detail || ""}
-        </div>
-        <div>🛠️ {site.work_type || "미정"}</div>
-
-        {day && (
-          <div style={{ color: "#1d4ed8", fontWeight: 700 }}>
-            {day} 배정 인원
-          </div>
-        )}
-
-        {day && crewError ? (
-          <div role="alert">배정 조회 실패 · {crewError}</div>
-        ) : day && !daily ? (
-          <div role="status">배정 인원 확인 중…</div>
-        ) : (
-          <>
-            {!day && (
-              <div style={{ color: "#64748b" }}>
-                현장 기본 배정 · 날짜별 인원은 캘린더에서 확인
-              </div>
-            )}
-
-            {day && !daily.hasDailySchedule && (
-              <div style={{ color: "#64748b" }}>
-                날짜별 배정이 없는 기존 현장 · 기본 배정 표시
-              </div>
-            )}
-
-            <div>
-              ★ 팀장 <strong>{leaders.join(", ") || "미배정"}</strong>
-            </div>
-            <div>👷 담당 {members.join(", ") || "미배정"}</div>
-          </>
-        )}
+      <div style={{ marginTop: 8, fontSize: 13, color: "#6e7b73", lineHeight: 1.6 }}>
+        {day || label} · {day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
       </div>
+      {(!day || daily) && !crewError && !leaders.length && site.status !== "cancelled" && (
+        <span style={{ display: "inline-block", marginTop: 8, padding: "4px 7px", borderRadius: 6, fontSize: 12, background: "#fff2dd", color: "#925f25" }}>팀장 배정 필요</span>
+      )}
     </button>
   );
 }
@@ -502,10 +418,21 @@ function SiteCalendar({
   const [month, setMonth] = useState(() => today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(() => today);
   const [view, setView] = useState("calendar");
+  const [monthOpen, setMonthOpen] = useState(false);
+  const weekDays = useMemo(() => {
+    const start = new Date(`${selectedDay}T00:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(start);
+      date.setUTCDate(start.getUTCDate() + i);
+      return date.toISOString().slice(0, 10);
+    });
+  }, [selectedDay]);
 
   const calendar = useMemo(() => {
     const { days, cells } = monthDays(month);
-    const byDay = new Map(days.map((day) => [day, []]));
+    const visibleDays = [...new Set([...days, ...weekDays])];
+    const byDay = new Map(visibleDays.map((day) => [day, []]));
     const undated = [];
     const monthIds = new Set();
 
@@ -517,7 +444,7 @@ function SiteCalendar({
         continue;
       }
 
-      for (const day of days) {
+      for (const day of visibleDays) {
         const matches = schedule.dates
           ? schedule.dates.includes(day)
           : day >= schedule.start && day <= schedule.end;
@@ -535,7 +462,7 @@ function SiteCalendar({
       undated,
       count: monthIds.size,
     };
-  }, [sites, month]);
+  }, [sites, month, weekDays]);
 
   const shown =
     searching || view === "list"
@@ -545,10 +472,10 @@ function SiteCalendar({
         : calendar.byDay.get(selectedDay) || [];
 
   const button = {
-    border: "1px solid #cbd5e1",
+    border: "1px solid #d6dcd2",
     borderRadius: 10,
     background: "#fff",
-    color: "#334155",
+    color: "#31453a",
     padding: "10px 12px",
     cursor: "pointer",
     fontWeight: 700,
@@ -586,7 +513,7 @@ function SiteCalendar({
             style={{
               ...button,
               background: view === key ? "#111827" : "#fff",
-              color: view === key ? "#fff" : "#334155",
+              color: view === key ? "#fff" : "#31453a",
             }}
           >
             {label}
@@ -598,7 +525,7 @@ function SiteCalendar({
         <div
           style={{
             background: "#fff",
-            border: "1px solid #e2e8f0",
+            border: "1px solid #e3e0d6",
             borderRadius: 16,
             padding: "12px 6px",
             marginBottom: 16,
@@ -615,6 +542,7 @@ function SiteCalendar({
           >
             <button
               type="button"
+              hidden={!monthOpen}
               aria-label="이전 달"
               onClick={() => moveMonth(-1)}
               style={button}
@@ -622,12 +550,13 @@ function SiteCalendar({
               ‹
             </button>
 
-            <strong style={{ fontSize: 18 }}>
+            <strong style={{ fontSize: 15 }}>
               {Number(month.slice(0, 4))}년{" "}
               {Number(month.slice(5))}월
             </strong>
 
             <div style={{ display: "flex", gap: 4 }}>
+              <button type="button" aria-expanded={monthOpen} onClick={() => setMonthOpen(value => !value)} style={button}>{monthOpen ? "달력 닫기" : "달력 열기"}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -641,6 +570,7 @@ function SiteCalendar({
 
               <button
                 type="button"
+                hidden={!monthOpen}
                 aria-label="다음 달"
                 onClick={() => moveMonth(1)}
                 style={button}
@@ -653,7 +583,7 @@ function SiteCalendar({
           <p
             style={{
               fontSize: 12,
-              color: "#64748b",
+              color: "#6e7b73",
               margin: "0 4px 12px",
             }}
           >
@@ -680,8 +610,8 @@ function SiteCalendar({
                       index === 0
                         ? "#dc2626"
                         : index === 6
-                          ? "#2563eb"
-                          : "#64748b",
+                          ? "#285340"
+                          : "#6e7b73",
                   }}
                 >
                   {name}
@@ -689,7 +619,7 @@ function SiteCalendar({
               )
             )}
 
-            {calendar.cells.map((day, index) => {
+            {(monthOpen ? calendar.cells : weekDays).map((day, index) => {
               if (!day) return <div key={`blank-${index}`} />;
 
               const entries = calendar.byDay.get(day);
@@ -703,16 +633,16 @@ function SiteCalendar({
                   aria-label={`${day}${
                     day === today ? " 오늘" : ""
                   }, 현장 ${entries.length}개`}
-                  onClick={() => setSelectedDay(day)}
+                  onClick={() => { setSelectedDay(day); setMonth(day.slice(0, 7)); }}
                   style={{
                     minWidth: 0,
-                    minHeight: 88,
+                    minHeight: 54,
                     padding: "5px 2px",
                     border: selected
-                      ? "2px solid #2563eb"
-                      : "1px solid #e2e8f0",
+                      ? "2px solid #285340"
+                      : "1px solid #e3e0d6",
                     borderRadius: 8,
-                    background: selected ? "#eff6ff" : "#fff",
+                    background: selected ? "#edf3ec" : "#fff",
                     textAlign: "left",
                     cursor: "pointer",
                     overflow: "hidden",
@@ -730,79 +660,23 @@ function SiteCalendar({
                           : index % 7 === 0
                             ? "#dc2626"
                             : index % 7 === 6
-                              ? "#2563eb"
-                              : "#334155",
+                              ? "#285340"
+                              : "#31453a",
                       background:
-                        day === today ? "#2563eb" : "transparent",
+                        day === today ? "#285340" : "transparent",
                       borderRadius: 6,
                     }}
                   >
                     {Number(day.slice(8))}
                   </span>
 
-                  {entries.slice(0, 2).map((site) => {
-                    const status =
-                      STATUS_INFO[site.status] ||
-                      STATUS_INFO.consulting;
-
-                    return (
-                      <span
-                        key={site.id}
-                        title={site.site_name || site.customer_name}
-                        style={{
-                          display: "block",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: 10,
-                          marginTop: 4,
-                          borderRadius: 3,
-                          padding: "2px 1px",
-                          background: status.background,
-                          color: status.color,
-                        }}
-                      >
-                        {site.site_name ||
-                          site.customer_name ||
-                          "현장"}
-                      </span>
-                    );
-                  })}
-
-                  {entries.length > 2 && (
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 10,
-                        color: "#475569",
-                        marginTop: 3,
-                      }}
-                    >
-                      +{entries.length - 2}개
-                    </span>
-                  )}
+                  {entries.length > 0 && <span style={{ display: "block", textAlign: "center", marginTop: 5, fontSize: 11, color: "#446b55" }}>● {entries.length}</span>}
                 </button>
               );
             })}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginTop: 12,
-            }}
-          >
-            {Object.entries(STATUS_INFO).map(([key, value]) => (
-              <span
-                key={key}
-                style={{ fontSize: 11, color: value.color }}
-              >
-                ● {value.label}
-              </span>
-            ))}
-          </div>
+
         </div>
       )}
 
@@ -811,7 +685,7 @@ function SiteCalendar({
         style={{
           margin: "12px 0",
           fontWeight: 800,
-          color: "#334155",
+          color: "#31453a",
         }}
       >
         {searching
@@ -825,7 +699,7 @@ function SiteCalendar({
       </div>
 
       {loading && (
-        <p role="status" style={{ color: "#64748b" }}>
+        <p role="status" style={{ color: "#6e7b73" }}>
           현장 정보를 불러오는 중입니다…
         </p>
       )}
@@ -836,7 +710,7 @@ function SiteCalendar({
             padding: 20,
             background: "#fff",
             borderRadius: 12,
-            color: "#64748b",
+            color: "#6e7b73",
             textAlign: "center",
           }}
         >

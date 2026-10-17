@@ -29,7 +29,7 @@
   border: 1px solid #dbe2ea;
   border-radius: 10px;
   background: #fff;
-  color: #334155;
+  color: #31453a;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -90,8 +90,8 @@
 }
 
 .days div:first-child {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #edf3ec;
+  color: #285340;
 }
 
 .days span {
@@ -116,7 +116,7 @@
 }
 
 .breakdown dt {
-  color: #64748b;
+  color: #6e7b73;
 }
 
 .breakdown dd {
@@ -131,7 +131,7 @@
   font-size: 12px;
   line-height: 1.65;
   margin: 12px 0 0;
-  color: #64748b;
+  color: #6e7b73;
   overflow-wrap: anywhere;
 }
 
@@ -147,7 +147,7 @@
 }
 
 .company {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #e3e0d6;
   padding-top: 10px;
   margin-top: 10px;
 }
@@ -163,7 +163,7 @@
   min-height: 44px;
   box-sizing: border-box;
   cursor: pointer;
-  color: #334155;
+  color: #31453a;
   font-size: 13px;
   font-weight: 700;
 }
@@ -188,7 +188,7 @@
 .entries p {
   font-size: 12px;
   line-height: 1.5;
-  color: #64748b;
+  color: #6e7b73;
   margin: 6px 0 0;
   overflow-wrap: anywhere;
 }

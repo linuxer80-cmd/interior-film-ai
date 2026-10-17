@@ -1,0 +1,70 @@
+/* Shared screen UI. Printed estimates and designed card/notebook canvases retain their own layout. */
+:root {
+  --film-bg: #f7f5ee;
+  --film-blue: #285340;
+  --film-blue-soft: #edf3ec;
+  --film-text: #273b34;
+  --film-line: #e3e0d6;
+  --film-shadow: none;
+}
+@media screen {
+  .film-photo-theme { color: var(--film-text); }
+  main { padding-top: 22px; }
+  .film-photo-theme main > h1,
+  .film-photo-theme .worker-menu-heading h2 {
+    padding: 12px 14px; border-radius: 16px; box-shadow: none;
+    font-size: 23px; margin-top: 8px; margin-bottom: 18px;
+  }
+  .film-photo-theme main > h1::before,
+  .film-photo-theme .worker-menu-heading h2::before {
+    width: 42px; height: 42px; flex-basis: 42px; border-radius: 10px;
+  }
+  .film-photo-theme :is(input:not([type]),input[type="text"],input[type="email"],input[type="password"],input[type="search"],input[type="tel"],input[type="number"],input[type="date"],input[type="time"],input[type="url"],select,textarea) {
+    border: 1px solid #d6dcd2 !important;
+    border-radius: 12px !important;
+    background-color: #fffef9 !important;
+    color: #273b34 !important;
+    font-size: 16px; padding: 11px 12px; min-height: 44px; max-width: 100%;
+  }
+  .film-photo-theme :is(input,select,textarea):disabled { opacity: .65; }
+  .film-photo-theme :is(input,select,textarea)[aria-invalid="true"] { border-color: #b91c1c !important; }
+  .film-photo-theme input[type="file"] { padding: 12px; margin-top: 8px; border: 1px dashed #a5b29f; background: #fffef9; }
+  .film-photo-theme :is(button,a)[data-ui-link="action"] { border-radius: 12px !important; color: #285340 !important; }
+  .film-photo-theme button[style*="background: rgb(37, 99, 235)"],
+  .film-photo-theme button[style*="background: #2563eb"],
+  .film-photo-theme button[style*="background: rgb(17, 24, 39)"],
+  .film-photo-theme button[style*="background: #111827"],
+  .film-photo-theme button[style*="background: rgb(40, 68, 92)"],
+  .film-photo-theme button[style*="background: #28445c"] {
+    background: #285340 !important; color: #fffef9 !important; border-color: #285340 !important;
+  }
+  .film-photo-theme button[aria-pressed="true"],
+  .film-photo-theme button[role="tab"][aria-selected="true"] {
+    background: #e4ede2 !important; color: #285340 !important; border-color: #8fa58d !important;
+  }
+  .film-photo-theme :is(table,dl) { color: #273b34; font-size: 14px; line-height: 1.6; }
+  .film-photo-theme th { background-color: #edf3ec; color: #314d3b; }
+  .film-photo-theme :is(th,td) { padding: 10px 12px; border-color: #e3e0d6; }
+  .film-admin-hero,.wp-hero { padding: 16px; margin: 12px 0 18px; border-radius: 18px; box-shadow: none; }
+  :where(button,input,select,textarea,summary,a):focus-visible { outline-color: #64876c; }
+}
+@media screen {
+  /* Neutral screen panels only: leave alert colors and film/product swatches intact. */
+  .film-photo-theme :is(section,article,form)[style*="background: rgb(255, 255, 255)"],
+  .film-photo-theme :is(section,article,form)[style*="background: #fff;"],
+  .film-photo-theme :is(section,article,form)[style*="background: white"] {
+    background-color: #fffef9 !important; border-color: #e3e0d6 !important;
+    border-radius: 16px !important; box-shadow: none !important;
+  }
+  .film-photo-theme button[style*="background: rgb(239, 246, 255)"],
+  .film-photo-theme button[style*="background: #eff6ff"] {
+    background-color: #edf3ec !important; color: #285340 !important;
+    border-color: #d6dcd2 !important; border-radius: 12px !important;
+  }
+  .film-photo-theme :is(button,a)[style*="background: rgb(255, 255, 255)"],
+  .film-photo-theme :is(button,a)[style*="background: #fff;"] {
+    background-color: #fffef9 !important; border-color: #d6dcd2 !important;
+    border-radius: 12px !important;
+  }
+  .film-photo-theme button:disabled { opacity: .6; }
+}

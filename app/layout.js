@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./compact-ui.css";
 import ReferralClaim from "./components/ReferralClaim";
 import PhotoTheme from "./components/ui/PhotoTheme";
 import AnnouncementBar from "./components/AnnouncementBar";

@@ -24,7 +24,7 @@
 
 .eyebrow {
   margin: 0 0 4px;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 11px;
   font-weight: 700;
 }
@@ -42,7 +42,7 @@
   min-height: 44px;
   padding: 0 14px;
   background: #fff;
-  color: #475569;
+  color: #53665a;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -93,7 +93,7 @@
 
 .workerPhone {
   margin: 4px 0 0;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
 }
 
@@ -129,7 +129,7 @@
 .loadingPage {
   padding: 60px 20px;
   text-align: center;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 14px;
 }
 
@@ -175,7 +175,7 @@
 
 .subtitle {
   margin: 6px 0 0;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -187,7 +187,7 @@
   border-radius: 10px;
   padding: 8px 10px;
   background: #fff;
-  color: #475569;
+  color: #53665a;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -231,7 +231,7 @@
   min-height: 44px;
   border-radius: 9px;
   background: #fff;
-  color: #475569;
+  color: #53665a;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -244,7 +244,7 @@
   height: 44px;
   padding: 0;
   background: #f5f7fa;
-  color: #334155;
+  color: #31453a;
   font-size: 27px;
   line-height: 1;
   cursor: pointer;
@@ -252,12 +252,12 @@
 
 .monthSummary {
   margin: 5px 0 17px;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
 }
 
 .monthSummary strong {
-  color: #2563eb;
+  color: #285340;
 }
 
 .weekdays,
@@ -271,7 +271,7 @@
   margin-bottom: 7px;
   font-size: 11px;
   font-weight: 700;
-  color: #64748b;
+  color: #6e7b73;
   text-align: center;
 }
 
@@ -302,7 +302,7 @@
   border: 1px solid #edf0f5;
   border-radius: 10px;
   background: #fff;
-  color: #475569;
+  color: #53665a;
   cursor: pointer;
   font-family: inherit;
 }
@@ -333,21 +333,21 @@
 }
 
 .day[data-has-work="true"] {
-  border-color: #dbeafe;
+  border-color: #e4ede2;
   background: #edf5ff;
-  color: #1d4ed8;
+  color: #285340;
 }
 
 .day[data-today="true"] .dayNumber {
-  box-shadow: inset 0 0 0 1.5px #2563eb;
-  color: #2563eb;
+  box-shadow: inset 0 0 0 1.5px #285340;
+  color: #285340;
 }
 
 .day[data-selected="true"] {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #285340;
+  border-color: #285340;
   color: #fff;
-  box-shadow: 0 3px 8px #2563eb25;
+  box-shadow: 0 3px 8px #28534025;
 }
 
 .day[data-selected="true"] .dayNumber {
@@ -376,7 +376,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: 12px;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 11px;
 }
 
@@ -391,7 +391,7 @@
   height: 10px;
   border: 1px solid #93c5fd;
   border-radius: 3px;
-  background: #dbeafe;
+  background: #e4ede2;
 }
 
 .cancelToggle {
@@ -406,7 +406,7 @@
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: #2563eb;
+  accent-color: #285340;
 }
 
 .agenda {
@@ -436,9 +436,9 @@
 
 .todayTag {
   padding: 3px 6px;
-  background: #eff6ff;
+  background: #edf3ec;
   border-radius: 5px;
-  color: #2563eb;
+  color: #285340;
   font-size: 10px;
 }
 
@@ -446,7 +446,7 @@
   padding: 5px 8px;
   border-radius: 8px;
   background: #f1f5f9;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 11px;
   font-weight: 700;
 }
@@ -505,8 +505,8 @@
   margin-top: 10px;
   padding: 5px 8px;
   border-radius: 6px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: #edf3ec;
+  color: #285340;
   font-size: 11px;
   font-weight: 800;
 }
@@ -533,7 +533,7 @@
   align-self: center;
   font-size: 13px;
   line-height: 1.6;
-  color: #475569;
+  color: #53665a;
   overflow-wrap: anywhere;
 }
 
@@ -560,8 +560,8 @@
   margin-top: 8px;
   padding: 10px;
   border-radius: 9px;
-  background: #f8fafc;
-  color: #64748b;
+  background: #f7f5ee;
+  color: #6e7b73;
   font-size: 11px;
   font-weight: 400;
   line-height: 1.6;
@@ -577,7 +577,7 @@
 .workType {
   display: block;
   margin-top: 4px;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
 }
 
@@ -600,7 +600,7 @@
   border: 0;
   border-top: 1px solid #eef2f6;
   background: #fff;
-  color: #2563eb;
+  color: #285340;
   font-family: inherit;
   font-size: 12px;
   font-weight: 800;
@@ -612,8 +612,8 @@
   min-height: 44px;
   padding: 13px;
   border-top: 1px solid #eef2f6;
-  background: #f8fafc;
-  color: #334155;
+  background: #f7f5ee;
+  color: #31453a;
   text-align: center;
   font-size: 12px;
   font-weight: 800;
@@ -624,18 +624,18 @@
   padding: 22px 12px;
   border: 1px dashed #dbe3ed;
   border-radius: 12px;
-  background: #f8fafc;
+  background: #f7f5ee;
   text-align: center;
 }
 
 .empty strong {
   font-size: 13px;
-  color: #475569;
+  color: #53665a;
 }
 
 .empty p {
   margin: 8px 0 0;
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
   line-height: 1.6;
 }
@@ -647,7 +647,7 @@
   border: 1px solid #bfdbfe;
   border-radius: 9px;
   background: #fff;
-  color: #2563eb;
+  color: #285340;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -658,7 +658,7 @@
   padding: 13px 0;
   border-top: 1px solid #e6ebf0;
   font-size: 13px;
-  color: #475569;
+  color: #53665a;
 }
 
 .undated summary {
@@ -668,7 +668,7 @@
 }
 
 .undated p {
-  color: #64748b;
+  color: #6e7b73;
   font-size: 12px;
 }
 
@@ -692,7 +692,7 @@
 
 .loading {
   font-size: 12px;
-  color: #64748b;
+  color: #6e7b73;
 }
 
 @media (max-width: 380px) {
