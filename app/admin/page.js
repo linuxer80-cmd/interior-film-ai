@@ -20,7 +20,6 @@ const UsageTab = dynamic(() => import("./UsageTab"));
 const ProfitTab = dynamic(() => import("./ProfitTab"));
 const LeadsTab = dynamic(() => import("./LeadsTab"));
 const SiteManagementTab = dynamic(() => import("./SiteManagementTab"));
-import PlanUsageButton from "./PlanUsageButton";
 
 import useAdminCompany from "./hooks/useAdminCompany";
 import useJobs from "./hooks/useJobs";
@@ -696,14 +695,7 @@ export default function AdminPage() {
         }
       />
 
-      <header className={ui.header}>
-        <div style={{ minWidth: 0 }}>
-          <div className={ui.eyebrow}>관리자</div>
-          <h1 className={ui.title}>{companyName}</h1>
-        </div>
 
-        <PlanUsageButton />
-      </header>
 
       {adminError && (
         <div

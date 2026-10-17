@@ -1,4 +1,5 @@
 "use client";
+import PlanUsageButton from "./PlanUsageButton";
 import moreStyles from "./AdminMore.module.css";
 import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 
@@ -253,6 +254,7 @@ export default function AdminTabs({
 
           <a href="/account/kakao" className={moreStyles.item}>카카오 계정 연결 · 연결 상태 확인</a>
           <a href="/achievements?scope=owner" className={moreStyles.item}>우리 업체 업적 · 배지 보관함</a>
+          <div style={{ padding: "12px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><strong>현재 요금제 · 사용량</strong><PlanUsageButton /></div>
           <a href="/admin/billing" className={moreStyles.item}>요금제 · 결제</a>
           <a href="/support?from=admin" className={moreStyles.item}>고객지원</a>
         </nav>

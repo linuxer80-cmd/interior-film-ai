@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
@@ -15,6 +15,31 @@ export default function AppRoleSwitch() {
 
   const isAdminHome = pathname === "/admin";
   const isWorkerHome = pathname === "/worker";
+
+  const [companyName, setCompanyName] = useState("");
+
+  useEffect(() => {
+    if (!isAdminHome) { setCompanyName(""); return; }
+    let active = true;
+    let request = 0;
+    async function loadCompany() {
+      const current = ++request;
+      setCompanyName("");
+      try {
+        const { data, error } = await supabase.rpc("get_my_company");
+        const company = Array.isArray(data) ? data[0] : data;
+        if (active && current === request && !error && company?.role === "owner" && company.is_active !== false) {
+          setCompanyName(company.company_name || "");
+        }
+      } catch { /* Keep the generic heading if the company cannot be loaded. */ }
+    }
+    loadCompany();
+    const { data: subscription } = supabase.auth.onAuthStateChange(() => {
+      // Run the lookup after the auth callback has released its lock.
+      setTimeout(() => { if (active) loadCompany(); }, 0);
+    });
+    return () => { active = false; subscription.subscription.unsubscribe(); };
+  }, [isAdminHome]);
 
   if (!isAdminHome && !isWorkerHome) return null;
 
@@ -105,7 +130,7 @@ export default function AppRoleSwitch() {
   return (
     <nav className="role-bar" aria-label="역할 전환">
       <div className="bar-content">
-        <span>{isAdminHome ? "관리자 홈" : "시공자 홈"}</span>
+        <span>{isAdminHome ? `${companyName ? companyName + " " : ""}관리자 홈` : "시공자 홈"}</span>
 
         <button
           type="button"
@@ -168,6 +193,9 @@ export default function AppRoleSwitch() {
           font-size: 14px;
           font-weight: 700;
         }
+
+        .bar-content > span { min-width: 0; overflow-wrap: anywhere; }
+        .bar-content > button { flex-shrink: 0; }
 
         button {
           font: inherit;
