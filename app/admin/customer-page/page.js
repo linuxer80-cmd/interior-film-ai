@@ -68,6 +68,23 @@ export default function CustomerPageAdmin() {
     adminError,
   } = useAdminCompany();
 
+  const [shareMessage, setShareMessage] = useState("");
+  const [sharing, setSharing] = useState(false);
+  async function shareEstimate() {
+    if (!companySlug || sharing) return;
+    const url = `${window.location.origin}/estimate/${encodeURIComponent(companySlug)}`;
+    setSharing(true); setShareMessage("");
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${companyName} 고객 AI 견적`, text: "사진으로 인테리어필름 견적을 받아보세요.", url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareMessage("고객 AI 견적 주소를 복사했습니다.");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") setShareMessage(`아래 주소를 길게 눌러 복사해주세요: ${url}`);
+    } finally { setSharing(false); }
+  }
   const [view, setView] = useState("profile");
   const [caseVersion, setCaseVersion] = useState(0);
   const [casePage, setCasePage] = useState(0);
@@ -418,7 +435,17 @@ export default function CustomerPageAdmin() {
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/></svg>
           <span>관리자 홈</span>
         </a>
+
+      </nav>
+
+      <h1>고객페이지 관리</h1>
+      <p className={styles.pageIntro}>
+        {companyName}의 업체 소개와 시공 사례를 관리하세요.
+      </p>
+
+      <div className={styles.pageActions} aria-label="고객페이지 열기와 공유">
         {companySlug && (
+          <>
           <a className={styles.actionLink}
             href={`/estimate/${encodeURIComponent(companySlug)}`}
             target="_blank" rel="noopener noreferrer"
@@ -426,13 +453,11 @@ export default function CustomerPageAdmin() {
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3h7v7M21 3l-11 11"/><path d="M10 3H3v18h18v-7"/></svg>
             <span>고객페이지 열기</span>
           </a>
+          <button type="button" className={styles.actionLink} disabled={sharing} onClick={shareEstimate}>↗ {sharing ? '공유 중…' : '고객 AI 견적 링크 공유'}</button>
+          </>
         )}
-      </nav>
-
-      <h1>고객페이지 관리</h1>
-      <p className={styles.pageIntro}>
-        {companyName}의 업체 소개와 시공 사례를 관리하세요.
-      </p>
+      </div>
+      {shareMessage && <p role="status" className={styles.status} style={{ overflowWrap:'anywhere' }}>{shareMessage}</p>}
 
       <p role="status" className={styles.status}>
         {adminError || message}

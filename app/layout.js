@@ -1,6 +1,7 @@
 import "./globals.css";
 import ReferralClaim from "./components/ReferralClaim";
 import PhotoTheme from "./components/ui/PhotoTheme";
+import AnnouncementBar from "./components/AnnouncementBar";
 import AppRoleSwitch from "./components/AppRoleSwitch";
 
 export const metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({ children }) {
     <html lang="ko">
       <body>
         <PhotoTheme>
+          <AnnouncementBar />
           <AppRoleSwitch />
           <ReferralClaim />
           {children}

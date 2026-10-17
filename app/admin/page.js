@@ -980,42 +980,6 @@ export default function AdminPage() {
         secondaryOnly
       />
 
-      {customerEstimateUrl && (
-        <details className={ui.share}>
-          <summary>고객 AI 견적 링크 공유</summary>
-
-          <div className={ui.shareBody}>
-            <div className={ui.shareUrl}>
-              {customerEstimateUrl}
-            </div>
-
-            <div className={ui.actionRow}>
-              <button
-                type="button"
-                className={ui.secondary}
-                onClick={openCustomerEstimatePage}
-              >
-                고객페이지 열기
-              </button>
-
-              <button
-                type="button"
-                className={ui.secondary}
-                onClick={copyCustomerEstimateUrl}
-              >
-                주소 복사
-              </button>
-            </div>
-
-            {copyMessage && (
-              <p role="status" className={ui.help}>
-                {copyMessage}
-              </p>
-            )}
-          </div>
-        </details>
-      )}
-
       <PhotoPreviewModal
         previewPhoto={
           previewPhoto

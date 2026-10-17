@@ -10,6 +10,12 @@ import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
+  {
+    href: "/admin/customer-page",
+    label: "고객페이지 관리",
+    description: "공개 시공 사례와 업체 정보",
+    icon: "website",
+  },
   { href: "/admin/customer-chat", label: "고객 채팅", description: "고객 문의 확인 · 답장하기", icon: "chat" },
   { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
@@ -66,12 +72,6 @@ const menus = [
     disabled: true,
     description: "주문 기능을 점검하고 있습니다",
     icon: "box",
-  },
-  {
-    href: "/admin/customer-page",
-    label: "고객페이지 관리",
-    description: "공개 시공 사례와 업체 정보",
-    icon: "website",
   },
 ];
 
