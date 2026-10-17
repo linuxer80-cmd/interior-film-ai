@@ -52,7 +52,6 @@ const MENUS = [
   { id: "quote", label: "상담 견적서", kind: "report" },
   { id: "schedule", label: "일정배정", kind: "people" },
   { id: "materials", label: "자재", kind: "film" },
-  { id: "photos", label: "요청사진", kind: "camera" },
   { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
   { id: "settlement", label: "상태·수금" },
@@ -62,7 +61,7 @@ const SECTION_MENU = {
   info: "info",
   quote: "quote",
   materials: "materials",
-  photos: "photos",
+  photos: "info",
   settlement: "settlement",
   expenses: "expenses",
   schedule: "schedule",
@@ -463,7 +462,7 @@ export default function SiteDetailModal({
           <section
             id="admin-site-panel-photos"
             aria-label="현장 요청사진"
-            hidden={menu !== "info" && menu !== "photos"}
+            hidden={menu !== "info"}
           >
             <SiteRequestPhotos
               key={site.id}
@@ -492,7 +491,7 @@ export default function SiteDetailModal({
               updateSiteBasicInfo={updateSiteBasicInfo}
             />
 
-            <SiteOperations key={site.id} siteId={site.id} active={menu === "info"} collapsible />
+            <SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" collapsible />
           </section>
 
           {visited.quote && (

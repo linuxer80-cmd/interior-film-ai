@@ -323,6 +323,7 @@ export default function SiteOperations({
   }, []);
 
   const materialsMode = mode === "materials";
+  const summaryMode = mode === "summary";
   const History = "details";
   const groups = [];
   const groupMap = new Map();
@@ -353,7 +354,7 @@ export default function SiteOperations({
         <h3 style={{ margin: 0, fontSize: 17 }}>
           {materialsMode
             ? "📦 반출 · 반입 · 소모량"
-            : "📦 현장 자재 · 변경사항"}
+            : summaryMode ? "사용 자재" : "📦 현장 자재 · 변경사항"}
         </h3>
 
         <button
@@ -386,7 +387,7 @@ export default function SiteOperations({
         />
       )}
 
-      <details ref={inventoryDetails} style={{ margin: "16px 0" }}>
+      {!summaryMode && <details ref={inventoryDetails} style={{ margin: "16px 0" }}>
         <summary style={{ ...btn, listStyle: "none" }}>
           📦 롤 반출 · 자재 반납 완료
         </summary>
@@ -400,7 +401,7 @@ export default function SiteOperations({
           onChanged={refresh}
           selectionRequest={stockSelection}
         />
-      </details>
+      </details>}
 
       {!data ? (
         <p>불러오는 중…</p>
@@ -778,11 +779,11 @@ export default function SiteOperations({
         <>
           <div
             style={{
-              ...card,
-              background: "#f8fafc",
+              ...(summaryMode ? {} : card),
+              background: summaryMode ? "transparent" : "#f8fafc",
             }}
           >
-            <strong>현장 사용 필름</strong>
+            {!summaryMode && <strong>현장 사용 필름</strong>}
 
             <p
               style={{
@@ -790,7 +791,7 @@ export default function SiteOperations({
                 color: "#64748b",
               }}
             >
-              전체 반출량에서 반입량을 뺀 사용량입니다.
+              {summaryMode ? "추가·변경은 자재 탭에서 할 수 있습니다." : "전체 반출량에서 반입량을 뺀 사용량입니다."}
             </p>
 
             {!data.materials.length && (
@@ -807,10 +808,10 @@ export default function SiteOperations({
                   marginTop: 12,
                 }}
               >
-                <FilmThumbnail
+                {!summaryMode && <FilmThumbnail
                   material={material}
                   size={72}
-                />
+                />}
 
                 <div>
                   <strong>
@@ -825,7 +826,7 @@ export default function SiteOperations({
                       : `사용량 ${Number(material.used).toLocaleString("ko-KR", { maximumFractionDigits: 3 })}${material.unit}`}
                   </p>
 
-                  {material.name && (
+                  {!summaryMode && material.name && (
                     <p
                       style={{
                         margin: "4px 0",
