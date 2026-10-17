@@ -17,6 +17,7 @@ import {
 } from "../utils/workerCalendar";
 
 const menus = [
+  { id: "notebook", href: "/worker/notebook", icon: "report", title: "실측수첩", subtitle: "장소별 치수·사진·메모 · 재단 연결" },
   { id: "samples", href: "/samples?from=worker", icon: "customer", title: "필름 샘플 보기", subtitle: "브랜드·색상별 필름 샘플 확인" },
   {
     id: "jobs",

@@ -418,6 +418,7 @@ export default function WorkerPage({ mode = "home" }) {
               mode
             ) && (
               <section className="worker-menu-picker">
+                {mode === "film" && <Link href="/worker/notebook" data-ui-link="action" style={{display:"block",marginBottom:16}}>📒 실측수첩 · 치수 기록하고 재단하기 →</Link>}
                 {mode === "film" && (
                   <div
                     style={{

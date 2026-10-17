@@ -95,14 +95,18 @@ export default function CuttingWorkspace() {
 
         const materials = materialsOf(data);
 
-        const storageKey =
+        const notebookId = new URLSearchParams(window.location.search).get("notebook");
+        if (notebookId && !/^[0-9a-f-]{36}$/i.test(notebookId)) throw Error("수첩 정보를 확인해주세요.");
+        const storageKey = notebookId
+          ? "film-cutting-v2:" + (data.worker.user_id || data.worker.worker_id) + ":notebook:" + notebookId
+          :
           "film-cutting-v2:" +
           (data.worker.user_id || data.worker.worker_id) +
           ":" +
           (siteId || "general");
 
         // Keep existing drafts while moving to a stable personal-account key.
-        if (!window.localStorage.getItem(storageKey)) {
+        if (!notebookId && !window.localStorage.getItem(storageKey)) {
           for (const workerId of data.worker.membership_worker_ids || [data.worker.worker_id]) {
             const legacyKey = "film-cutting-v2:" + workerId + ":" + (siteId || "general");
             const previous = window.localStorage.getItem(legacyKey);
@@ -154,6 +158,7 @@ export default function CuttingWorkspace() {
           ...data,
           materials,
           storageKey,
+          notebookId,
           selectedMaterialId: null,
           restrictMaterials: Boolean(siteId),
           issued,
@@ -393,6 +398,10 @@ export default function CuttingWorkspace() {
 
   return (
     <>
+      {context.notebookId && <section style={panel}>
+        <a href={"/worker/notebook?book="+encodeURIComponent(context.notebookId)} data-ui-link="action">← 실측수첩으로 돌아가기</a>
+        <p style={{fontSize:13}}>실측수첩의 미완료 치수를 불러왔습니다. 보유 롤 길이를 입력한 뒤 계산하세요. 재단 체크는 수첩에서 별도로 기록해주세요.</p>
+      </section>}
       {context.site && (
         <section style={panel}>
           <div

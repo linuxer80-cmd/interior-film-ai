@@ -5,7 +5,8 @@ const uuid =
 
 // 로그인 후 이동할 수 있는 시공자 내부 경로만 허용합니다.
 export function workerDestination(value) {
-  if (value === "/worker") return value;
+  if (value === "/worker" || value === "/worker/notebook") return value;
+  if (new RegExp(`^/worker/notebook\\?book=${uuid}$`, "i").test(value || "")) return value;
   if (new RegExp(`^/worker/connect/${uuid}$`,"i").test(value || "")) return value;
 
   if (

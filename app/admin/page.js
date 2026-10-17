@@ -15,6 +15,7 @@ import AdminTabs from "./AdminTabs";
 import NewLeadAlert from "./NewLeadAlert";
 import JobsTab from "./JobsTab";
 import RegisterTab from "./RegisterTab";
+const HelpChat = dynamic(() => import("./HelpChat"), { ssr: false });
 const UsageTab = dynamic(() => import("./UsageTab"));
 const ProfitTab = dynamic(() => import("./ProfitTab"));
 const LeadsTab = dynamic(() => import("./LeadsTab"));
@@ -979,6 +980,8 @@ export default function AdminPage() {
         unreadCount={unreadCount}
         secondaryOnly
       />
+
+      {activeTab === "today" && <HelpChat />}
 
       <PhotoPreviewModal
         previewPhoto={
