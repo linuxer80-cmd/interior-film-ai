@@ -292,7 +292,7 @@ export default function WorkerAccount() {
       <Link className='labor-nav-button' href='/jobs?view=worker'><span className='labor-nav-icon' aria-hidden='true'>▦</span><span>구인·구직</span><span className='labor-nav-arrow' aria-hidden='true'>›</span></Link>
     </nav>
 
-    {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('required')==='1' && <aside role='status' style={{padding:14,border:'1px solid #fbbf24',borderRadius:12,background:'#fffbeb',marginBottom:14}}><strong>필수 프로필 작성</strong><p>현장 이용 전에 이름과 연락처를 확인해주세요. 프리랜서는 개인 일당도 입력해야 합니다. 저장 후 시공자 홈으로 이동합니다.</p></aside>}
+    {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('required')==='1' && <aside role='status' style={{padding:14,border:'1px solid #fbbf24',borderRadius:12,background:'#fffbeb',marginBottom:14}}><strong>필수 프로필 작성</strong><p>이름과 연락처를 확인해주세요. 프리랜서는 정확한 일당 확인을 위해 개인 일당도 입력해주세요. 현장 배정은 프로필 등록 전에도 가능합니다.</p></aside>}
     {pendingInvite && <aside role='status' style={{padding:14,border:'1px solid #bfdbfe',borderRadius:12,background:'#eff6ff',marginBottom:14}}><strong>업체 연결 마지막 단계</strong><p style={{margin:'8px 0 0'}}>이름·연락처·일당만 확인하고 아래 버튼을 누르세요. 프로필 저장 후 초대 수락과 업체 연결을 자동으로 이어서 처리합니다.</p></aside>}
     {!pendingInvite && <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>}
     <h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>

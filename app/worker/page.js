@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { siteStatus, koreanDay, isPastWorkerSchedule } from "../utils/workerCalendar";
 import { supabase } from "../../lib/supabase";
-import { workerProfileRequirements } from "../utils/workerProfileRequirements";
 import {
   loadMyWorkerSites,
   workerDestination,
@@ -100,12 +99,6 @@ export default function WorkerPage({ mode = "home" }) {
     setMessage("");
 
     try {
-      const completion = await workerProfileRequirements();
-      if(completion.authenticated && !completion.complete){
-        const params=new URLSearchParams({required:"1",next:window.location.pathname+window.location.search});
-        router.replace("/worker/account?"+params.toString());
-        return;
-      }
       const result = await loadMyWorkerSites();
 
       setWorker(result.worker);

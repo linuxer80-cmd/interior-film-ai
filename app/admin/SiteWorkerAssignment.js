@@ -279,7 +279,12 @@ export default function SiteWorkerAssignment({
 
       if (currentKey.current !== savedKey) return;
 
-      setMessage(result?.warnings?.length ? "✅ 배정 저장 완료 · 다른 업체와 일정이 겹칩니다. 시공자에게 확인해주세요." : "✅ 날짜별 담당자가 저장되었습니다.");
+      setMessage([
+        "✅ 날짜별 담당자가 저장되었습니다.",
+        result?.pendingWages?.length ? "일당 미등록: " + [...new Set(result.pendingWages.map(p => p.workerName))].join(", ") + " · 일당 확인이 필요합니다." : "",
+        result?.warnings?.length ? "다른 업체와 일정이 겹칩니다. 시공자에게 확인해주세요." : "",
+        result?.notificationWarning || "",
+      ].filter(Boolean).join(" "));
 
       try {
         await callbacks.current.onSaved?.();

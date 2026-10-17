@@ -508,14 +508,8 @@ export async function POST(request) {
         }
       }
     }
-    const blocking = problems;
-    const pendingWages = [];
-    if(blocking.length){
-      return reply({
-        error:"새 현장 배정 전 필수 프로필을 완성해주세요: "+blocking.map(p=>p.workerName+"("+p.workDate+" · "+p.reason+")").join(", "),
-        problems:blocking
-      },422);
-    }
+    // Missing rates are advisory; the database retains unresolved freelance wages as pending.
+    const pendingWages = problems;
 
     // Cross-company schedule conflicts are advisory: a worker may have
     // legitimate multiple-company relationships, so do not silently override
