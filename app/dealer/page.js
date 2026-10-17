@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {supabase} from '../../lib/supabase';
+import KakaoLoginButton from '../components/KakaoLoginButton';
 import MaterialPilot from '../components/MaterialPilot';
 import styles from '../components/MaterialPilot.module.css';
 export default function DealerPage(){
@@ -13,6 +14,6 @@ export default function DealerPage(){
  <Link href="/login?role=worker" data-ui-link="action">시공자 로그인</Link>
  <Link href="/start" data-ui-link="action">앱 시작화면</Link>
  </nav><h1>필름장이 · 대리점</h1><p>배정받은 필름 발주의 준비와 출고를 관리합니다.</p>
- {session===undefined?<p>로그인 확인 중…</p>:session?<><div className={styles.heading}><small>{session.user.email}</small><Link href="/admin" data-ui-link="action">업체 관리자 홈</Link><button onClick={()=>supabase.auth.signOut()}>로그아웃</button></div><MaterialPilot key={session.user.id} mode="dealer"/></>:<form className={styles.card} onSubmit={e=>{e.preventDefault();login()}}><label>이메일<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>비밀번호<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><button disabled={busy}>로그인</button> <button type="button" disabled={busy||!email||password.length<8} onClick={()=>login(true)}>처음 이용 · 계정 만들기</button><p>대리점 전용 로그인입니다. 업체 업무를 보시려면 위의 ‘업체 로그인’을 눌러주세요. 대리점 권한은 슈퍼관리자 승인 후 부여됩니다.</p></form>}
+ {session===undefined?<p>로그인 확인 중…</p>:session?<><div className={styles.heading}><small>{session.user.email || "카카오 로그인 계정"}</small><Link href="/account/kakao?role=dealer" data-ui-link="action">카카오 계정 연결 · 상태 확인</Link><Link href="/admin" data-ui-link="action">업체 관리자 홈</Link><button onClick={()=>supabase.auth.signOut()}>로그아웃</button></div><MaterialPilot key={session.user.id} mode="dealer"/></>:<form className={styles.card} onSubmit={e=>{e.preventDefault();login()}}><KakaoLoginButton role="dealer" disabled={busy}/><p>또는 이메일로 로그인</p><label>이메일<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>비밀번호<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><button disabled={busy}>로그인</button> <button type="button" disabled={busy||!email||password.length<8} onClick={()=>login(true)}>처음 이용 · 계정 만들기</button><p>기존 이메일 계정이 있다면 이메일로 로그인한 뒤 ‘카카오 계정 연결’을 이용해주세요. 대리점 전용 로그인입니다. 업체 업무를 보시려면 위의 ‘업체 로그인’을 눌러주세요. 대리점 권한은 슈퍼관리자 승인 후 부여됩니다.</p></form>}
  {message&&<p role="status">{message}</p>}</main>;
 }

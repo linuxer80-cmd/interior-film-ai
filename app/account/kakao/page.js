@@ -5,6 +5,7 @@ import { supabase } from "../../../lib/supabase";
 
 const pendingKey = "film-kakao-link";
 export default function KakaoAccount() {
+  const [dealer,setDealer]=useState(false);
   const [user,setUser]=useState(null);
   const [ready,setReady]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -12,6 +13,7 @@ export default function KakaoAccount() {
   const lock=useRef(false);
   useEffect(()=>{
     let active=true;
+    setDealer(new URLSearchParams(window.location.search).get("role")==="dealer");
     supabase.auth.getUser().then(({data,error})=>{
       if(active){setUser(error?null:data?.user);setReady(true);}
     }).catch(()=>{if(active){setError("계정을 확인하지 못했습니다. 새로고침해주세요.");setReady(true);}});
@@ -26,6 +28,7 @@ export default function KakaoAccount() {
       if(data.user.identities?.some(i=>i.provider==="kakao")){setUser(data.user);return;}
       const callback=new URL("/auth/kakao",window.location.origin);
       callback.searchParams.set("mode","link");
+      if(dealer)callback.searchParams.set("role","dealer");
       sessionStorage.setItem(pendingKey,JSON.stringify({userId:data.user.id,createdAt:Date.now()}));
       const result=await supabase.auth.linkIdentity({provider:"kakao",options:{redirectTo:callback.toString()}});
       if(result.error)throw result.error;
@@ -47,7 +50,7 @@ export default function KakaoAccount() {
       const {error:failure}=await supabase.auth.signOut({scope:"local"});
       if(failure)throw failure;
       sessionStorage.removeItem(pendingKey);
-      window.location.replace("/login?role=owner");
+      window.location.replace(dealer?"/dealer":"/login?role=owner");
     }catch{
       setError("계정 전환에 실패했습니다. 다시 시도해주세요.");
       lock.current=false;setBusy(false);
@@ -58,7 +61,7 @@ export default function KakaoAccount() {
   return <main style={{maxWidth:480,margin:"40px auto",padding:24}}>
     <h1>카카오 계정 연결</h1>
     {!ready?<p role="status">계정을 확인하고 있습니다…</p>:!user?
-      <p>기존 이메일 계정으로 로그인한 후 이 화면에서 연결해주세요. <Link href="/login" data-ui-link="action">로그인하기</Link></p>:
+      <p>기존 이메일 계정으로 로그인한 후 이 화면에서 연결해주세요. <Link href={dealer?"/dealer":"/login"} data-ui-link="action">로그인하기</Link></p>:
       <>
         <p>현재 계정: {user.email||"이메일 없는 계정"}</p>
         <p>연결할 기존 계정의 이메일이 맞는지 먼저 확인해주세요. 카카오 이메일과 달라도 연결할 수 있습니다.</p>
@@ -73,6 +76,6 @@ export default function KakaoAccount() {
         <button type="button" disabled={busy} onClick={switchAccount} style={{marginTop:20,padding:14}}>기존 이메일 계정으로 전환</button>
       </>}
     {error&&<p role="alert">{error}</p>}
-    <p><Link href="/admin" data-ui-link="action">관리자 홈</Link> · <Link href="/worker/account" data-ui-link="action">시공자 개인설정</Link></p>
+    {dealer?<p><Link href="/dealer" data-ui-link="action">대리점 홈으로 돌아가기</Link></p>:<p><Link href="/admin" data-ui-link="action">관리자 홈</Link> · <Link href="/worker/account" data-ui-link="action">시공자 개인설정</Link></p>}
   </main>;
 }

@@ -13,7 +13,7 @@ export default function KakaoLoginButton({ role = "owner", disabled = false }) {
     setError("");
     try {
       const callback = new URL("/auth/kakao", window.location.origin);
-      callback.searchParams.set("role", role === "worker" ? "worker" : "owner");
+      callback.searchParams.set("role", ["worker", "dealer"].includes(role) ? role : "owner");
       const { data, error: failure } = await supabase.auth.signInWithOAuth({
         provider: "kakao",
         options: { redirectTo: callback.toString() },
