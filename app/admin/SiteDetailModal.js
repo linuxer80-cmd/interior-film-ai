@@ -94,6 +94,7 @@ export default function SiteDetailModal({
   const [menu, setMenu] = useState("info");
   const [quoteDirty, setQuoteDirty] = useState(false);
   const [estimateDirty, setEstimateDirty] = useState(false);
+  const [reportEstimateOpen, setReportEstimateOpen] = useState(false);
   const [visited, setVisited] = useState({ info: true });
   const [reportOpen, setReportOpen] = useState(false);
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
@@ -111,6 +112,8 @@ export default function SiteDetailModal({
 
   useEffect(() => {
     setReportOpen(false);
+    setReportEstimateOpen(false);
+    setEstimateDirty(false);
     setHasWorkerReport(null);
     setReviewStatus(null);
     clearReportMessage?.();
@@ -590,13 +593,10 @@ export default function SiteDetailModal({
             aria-label="완료보고와 검수"
             hidden={menu !== "report"}
           >
-            {(site.status === "completed" || ["pending", "approved"].includes(reviewStatus)) && visited.report && (
-              <CompletionEstimate
-                key={site.id}
-                siteId={site.id}
-                onDirtyChange={setEstimateDirty}
-              />
-            )}
+            <p style={{margin:"0 0 14px",fontSize:14,color:"#50617a",lineHeight:1.6}}>
+              시공자가 제출한 완료보고서의 시공내용·사진·자재·경비를 확인하고 검수해주세요.
+              검수 승인 후 보고서에 연결된 현장 내역으로 견적서를 작성할 수 있습니다.
+            </p>
 
             <div
               ref={element => {
@@ -614,10 +614,33 @@ export default function SiteDetailModal({
                   reviewStatus: nextReviewStatus,
                 }) => {
                   setReviewStatus(nextReviewStatus);
+                  if (nextReviewStatus !== "approved") {
+                    setReportEstimateOpen(false);
+                    setEstimateDirty(false);
+                  }
                   setHasWorkerReport(Boolean(hasReport));
                 }}
               />
             </div>
+
+            {hasWorkerReport === true && visited.report && (
+              <section aria-label="검수 후 견적서 작성" style={{marginTop:20,padding:16,border:"1px solid #d4dedf",borderRadius:14,background:"#fffdf9"}}>
+                <h3 style={{margin:"0 0 8px",fontSize:17}}>보고서 기반 견적서</h3>
+                <p style={{fontSize:13,lineHeight:1.6,color:"#50617a"}}>
+                  {reviewStatus === "approved"
+                    ? "검수 승인된 현장의 실제 자재 사용량·인건비·경비를 불러옵니다. 청구 단가와 금액을 확인하고 저장해주세요."
+                    : "먼저 위 보고서의 검수 메뉴에서 승인해주세요. 보완이 필요하면 시공자에게 반려할 수 있습니다."}
+                </p>
+                {reviewStatus === "approved" && <button type="button" style={{...actionStyle,width:"100%",background:"#244b43",color:"#fff"}} onClick={()=>{
+                  if(reportEstimateOpen && estimateDirty && !window.confirm("저장하지 않은 견적 내용이 있거나 처리 중입니다. 닫을까요?"))return;
+                  if(reportEstimateOpen)setEstimateDirty(false);
+                  setReportEstimateOpen(value=>!value);
+                }}>{reportEstimateOpen?"견적서 닫고 보고서 보기":"검수한 보고서로 견적서 작성"}</button>}
+                {reviewStatus === "approved" && reportEstimateOpen && (
+                  <CompletionEstimate key={site.id} siteId={site.id} onDirtyChange={setEstimateDirty}/>
+                )}
+              </section>
+            )}
 
             <ReportHistory siteId={site.id} version={reviewStatus} />
 
