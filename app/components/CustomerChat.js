@@ -63,6 +63,24 @@ export function ChatConversation({url,admin=false,onUpdated}){
 }
 export default function CustomerChat({slug,companyName}){
   const [open,setOpen]=useState(false);const trigger=useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    // Fixed body also locks mobile browsers; restore the exact page position on close.
+    const body=document.body,root=document.documentElement;
+    const x=window.scrollX,y=window.scrollY;
+    const keys=['position','top','left','width','overflow'];
+    const previous=keys.map(key=>[key,body.style[key]]);
+    const overflow=root.style.overflow,behavior=root.style.scrollBehavior;
+    Object.assign(body.style,{position:'fixed',top:`-${y}px`,left:`-${x}px`,width:'100%',overflow:'hidden'});
+    root.style.overflow='hidden';
+    return()=>{
+      for(const [key,value] of previous)body.style[key]=value;
+      root.style.overflow=overflow;
+      root.style.scrollBehavior='auto';
+      window.scrollTo(x,y);
+      root.style.scrollBehavior=behavior;
+    };
+  },[open]);
   useEffect(()=>{if(!open)return;const escape=e=>{if(e.key==='Escape'){setOpen(false);trigger.current?.focus();}};window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);},[open]);
   return <>{!open&&<button ref={trigger} className={styles.launcher} onClick={()=>setOpen(true)}>채팅 문의</button>}{open&&<section className={styles.panel} role="dialog" aria-label="업체 채팅 문의"><header className={styles.header}><div><h2>{companyName || '담당 관리자'}</h2><small>고객 문의 채팅 · 자동 새로고침</small></div><button autoFocus onClick={()=>{setOpen(false);setTimeout(()=>trigger.current?.focus(),0);}}>닫기</button></header><p className={styles.notice}>답장은 이 페이지에서 확인해주세요. 같은 브라우저에서 대화가 이어지며 쿠키를 삭제하면 이전 대화를 다시 볼 수 없습니다.</p><ChatConversation key={slug} url={'/api/customer-chat?slug='+encodeURIComponent(slug)}/></section>}</>;
 }
