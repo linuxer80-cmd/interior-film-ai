@@ -27,7 +27,7 @@ export default function CustomerChatQuote({thread,onClose}){
    if(!['included','separate','none'].includes(analysis.vat))throw Error('부가세 표시를 선택해주세요.');
    const value=String(analysis.contract_amount).trim();
    if(value!==''&&(!/^\d+$/.test(value)||Number(value)>1000000000))throw Error('견적 금액은 0~10억원의 정수로 입력해주세요.');
-   return {...analysis,contract_amount:value===''?'':Number(value)};
+   return {...analysis,customer_name:analysis.customer_name.trim()||'미정',customer_phone:analysis.customer_phone.trim()||'미정',contract_amount:value===''?'':Number(value)};
  }
  function selectSite(value){
    try{setActiveDraft(reviewed());setSite(value);setError('');}catch(e){setError(e.message);}
