@@ -21,6 +21,7 @@ export default function MaterialIssueStatus({
   siteId,
   refreshKey = 0,
   active = true,
+  compact = false,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -135,8 +136,8 @@ export default function MaterialIssueStatus({
         </div>
       ) : data ? (
         <>
-          <p className={data.issuedCount ? "done" : "pending"}>
-            <b>{labels[data.status]}</b>
+          <p className={data.status === "recorded" ? "done" : "pending"}>
+            <b>{compact ? ({ unregistered: "사용 자재 미등록", none: "자재 미반출", partial: "자재 일부 반출 · 미반출 있음", recorded: "자재 반출 완료" }[data.status] || labels[data.status]) : labels[data.status]}</b>
             {data.materialCount > 0 && (
               <span>
                 {" "}
@@ -145,11 +146,15 @@ export default function MaterialIssueStatus({
             )}
           </p>
 
-          {people.length > 0 && (
+          {compact && data.materials.some(material => !material.issued) && (
+            <p>미반출: {data.materials.filter(material => !material.issued).map(material => [material.brand, material.code].filter(Boolean).join(" ")).join(" · ")}</p>
+          )}
+
+          {!compact && people.length > 0 && (
             <p>반출 등록: {people.join(" · ")}</p>
           )}
 
-          <details>
+          {!compact && <details>
             <summary>반출자 · 필름 · 수량 보기</summary>
 
             {data.materials.map((material) => (
@@ -190,12 +195,10 @@ export default function MaterialIssueStatus({
                 )}
               </div>
             ))}
-          </details>
+          </details>}
 
           <small>
-            저장된 반출 기록 기준입니다. 필요한 전체 수량이
-            준비됐는지는 확인해주세요. 관리자 등록 기록은 실제
-            가져간 시공자를 뜻하지 않습니다.
+            {compact ? "등록 자재별 반출 기록 기준입니다. 전체 필요 수량의 준비 완료 여부와는 다를 수 있습니다." : "저장된 반출 기록 기준입니다. 필요한 전체 수량이 준비됐는지는 확인해주세요. 관리자 등록 기록은 실제 가져간 시공자를 뜻하지 않습니다."}
           </small>
         </>
       ) : null}

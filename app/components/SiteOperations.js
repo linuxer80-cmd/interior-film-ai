@@ -379,10 +379,11 @@ export default function SiteOperations({
         </p>
       )}
 
-      {materialsMode && (
+      {(materialsMode || summaryMode) && (
         <MaterialIssueStatus
           siteId={siteId}
           refreshKey={data}
+          compact={summaryMode}
           active={active}
         />
       )}
