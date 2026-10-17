@@ -4,7 +4,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function GET(request){try{
   const url=new URL(request.url);
-  if(url.searchParams.has('thread')){const a=await ownerChat(request);return chatReply({thread:a.thread,...await chatMessages(a.db,a.thread,request)});}
+  if(url.searchParams.has('thread')){const a=await ownerChat(request);return chatReply({companyId:a.companyId,thread:a.thread,...await chatMessages(a.db,a.thread,request)});}
   const a=await priceOwner(request);
   const offset=Math.max(0,Math.min(100000,Number(url.searchParams.get('offset'))||0));
   const result=await a.db.from('customer_chat_threads').select('id,customer_name,updated_at,last_preview,last_customer_at,last_owner_at,owner_read_at').eq('company_id',a.companyId).order('updated_at',{ascending:false}).order('id').range(offset,offset+50);

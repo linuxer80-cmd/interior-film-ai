@@ -8,3 +8,9 @@
 /* Keep touch/wheel scrolling inside the open conversation, including its edges. */
 .panel,.panel .messages,.panel .form,.panel textarea{overscroll-behavior:contain}
 .panel .messages,.panel .form{-webkit-overflow-scrolling:touch}
+.form .quoteButton{background:#f2eee5;color:#244b43;border:1px solid #d8d5ca}
+.quoteOverlay{position:fixed;inset:0;z-index:1000;background:#0005;display:flex;align-items:center;justify-content:center;padding:12px}
+.quotePanel{background:#fffdf9;color:#243648;width:min(900px,100%);height:calc(100dvh - 24px);border-radius:18px;display:flex;flex-direction:column;overflow:hidden}
+.quoteContent{overflow:auto;overscroll-behavior:contain;padding:16px;flex:1;min-height:0}
+.siteSearch{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d4ded6;border-radius:10px;font:inherit}
+.newSite{display:block;margin:12px 0;padding:12px;border:1px solid #d4ded6;border-radius:10px;background:#e8f0eb;color:#244b43;font:inherit}

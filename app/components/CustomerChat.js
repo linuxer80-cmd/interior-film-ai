@@ -9,7 +9,7 @@ export async function chatRequest(url,body,admin=false){
   const response=await fetch(url,{method:body?'POST':'GET',headers,body:body?(multipart?body:JSON.stringify(body)):undefined,cache:'no-store',signal:AbortSignal.timeout(15000)});
   const result=await response.json();if(!response.ok)throw Error(result.error||'채팅을 불러오지 못했습니다.');return result;
 }
-export function ChatConversation({url,admin=false,onUpdated}){
+export function ChatConversation({url,admin=false,onUpdated,onCreateQuote}){
   const [messages,setMessages]=useState([]),[thread,setThread]=useState(null),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[older,setOlder]=useState(false),[loadingOlder,setLoadingOlder]=useState(false);
   const [photo,setPhoto]=useState(null),[preview,setPreview]=useState(''),[preparing,setPreparing]=useState(false);
   const [text,setText]=useState(''),[name,setName]=useState(''),[consent,setConsent]=useState(false);
@@ -58,6 +58,7 @@ export function ChatConversation({url,admin=false,onUpdated}){
       <label className={styles.photoButton}>{preparing?'사진 준비 중…':'＋ 사진 첨부'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy||preparing||!ready} onChange={choosePhoto}/></label>
       <textarea aria-label="메시지" placeholder="문의 내용을 입력하세요" maxLength={2000} value={text} onChange={e=>setText(e.target.value)} disabled={busy}/>
       <button disabled={busy||preparing||!ready||(!text.trim()&&!photo)||(!admin&&!thread&&(!consent||!name.trim()))}>{busy?'보내는 중…':'보내기'}</button>
+      {admin&&onCreateQuote&&<button type="button" className={styles.quoteButton} onClick={onCreateQuote}>견적서 작성</button>}
     </form>
   </div>;
 }
