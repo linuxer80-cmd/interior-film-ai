@@ -6,6 +6,16 @@ import styles from '../../components/CustomerChat.module.css';
 export default function CustomerChatInbox(){
  const [threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[offset,setOffset]=useState(0),[hasMore,setHasMore]=useState(false);
  const current=useRef(0);
+ useEffect(()=>{
+   let active=true;
+   const id=new URLSearchParams(window.location.search).get('thread');
+   if(!id)return;
+   chatRequest('/api/admin/customer-chat?thread='+encodeURIComponent(id),null,true)
+     .then(data=>{if(active)setSelected(data.thread);})
+     .catch(e=>{if(active)setError(e.message);});
+   return()=>{active=false;};
+ },[]);
+
  const load=useCallback(async()=>{const version=++current.current;try{const data=await chatRequest('/api/admin/customer-chat?offset='+offset,null,true);if(version!==current.current)return;setThreads(data.threads);setHasMore(data.hasMore);setError('');}catch(e){if(version===current.current)setError(e.message);}finally{if(version===current.current)setLoading(false);}},[offset]);
  useEffect(()=>{setLoading(true);load();const timer=setInterval(()=>{if(document.visibilityState==='visible')load();},10000);return()=>{current.current++;clearInterval(timer);};},[load]);
  return <main className={styles.inbox}><header className={styles.top}><Link href="/admin">‹ 관리자 홈</Link><button onClick={load}>새로고침</button></header><h1>고객 채팅</h1><p>고객 페이지에서 보낸 문의에 답장하세요. 열린 화면에서 새 메시지를 자동으로 확인합니다.</p>{error&&<p role="alert" className={styles.error}>{error}</p>}
