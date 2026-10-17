@@ -447,9 +447,7 @@ export default function SiteDetailModal({
               <p style={{margin:"0 0 14px",fontSize:13,lineHeight:1.7,color:"#61736d"}}>
                 {reviewStatus === "approved" ? "견적서 발행은 필요한 경우에만 진행하세요. 자재 반납은 별도로 확인할 수 있습니다." : "자재 반납과 완료보고는 순서에 관계없이 진행할 수 있습니다."}
               </p>
-              {site.status !== "cancelled" && <button type="button" style={{...actionStyle,width:"100%",background:"#244b43",color:"white"}} onClick={()=>chooseMenu(reviewStatus || site.status === "completed" ? "report" : site.status === "consulting" ? "quote" : "schedule")}>
-                {reviewStatus === "approved" ? "승인 보고서·견적서 열기" : reviewStatus || site.status === "completed" ? "완료보고 열기" : site.status === "consulting" ? "상담 견적서 열기" : "일정·시공자 배정 확인"} →
-              </button>}
+
             </div>
           </section>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
@@ -542,15 +540,7 @@ export default function SiteDetailModal({
                     borderTop: "1px solid #e4eaf2",
                   }}
                 >
-                  <h3
-                    style={{
-                      margin: "0 0 10px",
-                      fontSize: 16,
-                      color: "#243247",
-                    }}
-                  >
-                    담당 시공자 배정
-                  </h3>
+
 
                   <div
                     ref={element => {
