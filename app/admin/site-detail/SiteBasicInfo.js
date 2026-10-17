@@ -41,6 +41,7 @@ function hasAmount(value) {
 export default function SiteBasicInfo({
   site,
   updateSiteBasicInfo,
+  materialSummary,
 }) {
   const [
     editing,
@@ -605,6 +606,8 @@ export default function SiteBasicInfo({
             "미배정"
           }
         />
+
+        {materialSummary && <DetailRow label="자재" value={materialSummary} />}
 
         <DetailRow
           label="메모"

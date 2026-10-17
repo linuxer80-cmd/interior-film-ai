@@ -341,6 +341,18 @@ export default function SiteOperations({
   );
   const shortMessage = message => message?.startsWith("현장 날짜별 배정이 변경") ? "시공자 배정 변경" : message?.startsWith("시공 일정이 변경") ? "시공 일정 변경" : message?.startsWith("현장 메모·전달사항이 변경") ? "현장 메모 변경" : message;
 
+  if (summaryMode) return (
+    <div style={{ fontWeight: 400, lineHeight: 1.6 }}>
+      {error ? <span role="alert">자재 확인 필요 · {error}</span> : !data ? <span>자재 확인 중…</span> : !data.materials.length ? <span>등록된 자재 없음</span> : data.materials.map(material => (
+        <div key={material.id}>
+          <strong>{material.brand} {material.code || material.name}</strong>
+          {" · "}{material.used == null ? "사용량 미확정" : `${Number(material.used).toLocaleString("ko-KR", { maximumFractionDigits: 3 })}${material.unit}`}
+        </div>
+      ))}
+      <MaterialIssueStatus siteId={siteId} refreshKey={data} active={active} inline />
+    </div>
+  );
+
   return (
     <section style={card}>
       <div
@@ -842,7 +854,10 @@ export default function SiteOperations({
             ))}
           </div>
 
-          <History style={{ marginTop: 16 }}>
+        </>
+      )}
+
+      {data && <History style={{ marginTop: 16 }}>
       {(
         <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
           변경 이력 · {groups.length}개 항목
@@ -1038,9 +1053,7 @@ export default function SiteOperations({
             </details>
           ))}
           {historyLimit < displayedGroups.length && <button type="button" style={{...btn,width:"100%",marginTop:12}} onClick={() => setHistoryLimit(n => n+3)}>이전 내역 더 보기 ({displayedGroups.length-historyLimit})</button>}
-          </History>
-        </>
-      )}
+          </History>}
     </section>
   );
                          }

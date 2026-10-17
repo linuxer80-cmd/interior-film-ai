@@ -22,6 +22,7 @@ export default function MaterialIssueStatus({
   refreshKey = 0,
   active = true,
   compact = false,
+  inline = false,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -122,6 +123,13 @@ export default function MaterialIssueStatus({
       )
     ),
   ];
+
+  if (inline) return (
+    <div style={{ fontSize: 12, color: data?.status === "recorded" ? "#35714f" : "#925f25", marginTop: 4 }}>
+      {loading ? "반출 확인 중…" : error ? "반출 상태 확인 필요" : data ? ({ unregistered: "자재 미등록", none: "자재 미반출", partial: "자재 일부 반출", recorded: "자재 반출 완료 (기록 기준)" }[data.status]) : "반출 상태 미확인"}
+      {!loading && data?.status === "partial" && <div>미반출: {data.materials.filter(material => !material.issued).map(material => [material.brand, material.code].filter(Boolean).join(" ")).join(" · ")}</div>}
+    </div>
+  );
 
   return (
     <div className="issue-status" aria-busy={loading}>

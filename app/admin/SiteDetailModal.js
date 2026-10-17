@@ -489,9 +489,9 @@ export default function SiteDetailModal({
               key={site.id}
               site={site}
               updateSiteBasicInfo={updateSiteBasicInfo}
+              materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
-            <SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" collapsible />
           </section>
 
           {visited.quote && (
