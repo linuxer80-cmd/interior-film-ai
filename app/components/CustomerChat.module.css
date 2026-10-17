@@ -19,3 +19,8 @@
 .draftReview h3{margin:0}.draftReview label{display:grid;gap:6px;font-size:14px;font-weight:600}
 .draftReview input,.draftReview textarea,.draftReview select{width:100%;box-sizing:border-box;border:1px solid #ccd6cf;border-radius:9px;padding:10px;font:inherit;font-size:16px;background:white}
 .draftReview textarea{min-height:100px;resize:vertical}
+
+.top .pageAction{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 14px;margin:4px 0;border:1px solid #d4dedf;border-radius:12px;background:#fffdf9;color:#243f52;font:inherit;font-size:14px;font-weight:700;line-height:1.45;cursor:pointer}
+.pageAction:focus-visible{outline:3px solid #297d92;outline-offset:3px}
+@media(hover:hover){.top .pageAction:hover{background:#edf4f1;border-color:#91aaa5}}
+.top .pageAction:active{background:#e3ece8}
