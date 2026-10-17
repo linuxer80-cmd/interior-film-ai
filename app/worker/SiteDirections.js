@@ -9,6 +9,7 @@ import styles from "./WorkerSiteCalendar.module.css";
 export default function SiteDirections({
   site,
   workDate,
+  compact = false,
 }) {
   const [userAgent, setUserAgent] = useState("");
   const [openedAddress, setOpenedAddress] = useState("");
@@ -73,12 +74,24 @@ export default function SiteDirections({
         </div>
       )}
 
+      {compact ? (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ padding: "8px 0", color: "#285340", fontSize: 13 }}>주변 찾기 · 출발 시간</summary>
       <SiteNearbyPlaces key={`${site?.site_id}:${address}`} siteId={site?.site_id} address={address}/>
 
       <WorkerCommute
         siteId={site?.site_id}
         workDate={workDate}
       />
+        </details>
+      ) : <>
+      <SiteNearbyPlaces key={`${site?.site_id}:${address}`} siteId={site?.site_id} address={address}/>
+
+      <WorkerCommute
+        siteId={site?.site_id}
+        workDate={workDate}
+      />
+      </>}
     </div>
   );
 }

@@ -27,10 +27,10 @@ const menus = [
 ];
 
 const card = {
-  background: "#fff",
+  background: "#fffef9",
   border: "1px solid #e2e8f0",
-  borderRadius: 22,
-  padding: 18,
+  borderRadius: 16,
+  padding: 14,
   marginTop: 12,
   boxShadow: "var(--film-shadow)",
 };
@@ -40,14 +40,14 @@ const action = {
   padding: "10px 14px",
   border: "1px solid #cbd5e1",
   borderRadius: 12,
-  background: "#fff",
-  color: "#334155",
+  background: "#fffef9",
+  color: "#273b34",
   fontWeight: 800,
   cursor: "pointer",
 };
 
 const muted = {
-  color: "#64748b",
+  color: "#6e7b73",
   fontSize: 13,
   lineHeight: 1.7,
 };
@@ -55,13 +55,13 @@ const muted = {
 const statusMap = {
   scheduled: {
     label: "시공 예정",
-    color: "#1d4ed8",
-    background: "#eff6ff",
+    color: "#285340",
+    background: "#edf3ec",
   },
   in_progress: {
     label: "시공 중",
-    color: "#1d4ed8",
-    background: "#eff6ff",
+    color: "#285340",
+    background: "#edf3ec",
   },
   completed: {
     label: "시공 완료",
@@ -342,7 +342,7 @@ export default function WorkerSiteDetailPage() {
             </button>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <small style={{ color: "#64748b" }}>
+              <small style={{ color: "#6e7b73" }}>
                 현장 상세 ·{" "}
                 {site.my_role === "leader" ? "책임 팀장" : "팀원"}
               </small>
@@ -397,8 +397,8 @@ export default function WorkerSiteDetailPage() {
                   borderRadius: 10,
                   minHeight: 44,
                   padding: "8px 2px",
-                  background: tab === menu.id ? "#edf5ff" : "#fff",
-                  color: tab === menu.id ? "#1d4ed8" : "#475569",
+                  background: tab === menu.id ? "#edf3ec" : "#fffef9",
+                  color: tab === menu.id ? "#285340" : "#53665a",
                   fontSize: 12,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -465,7 +465,7 @@ export default function WorkerSiteDetailPage() {
 
           <div style={card}>
             <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
-              📅 내 작업 일정
+              현장 기본정보
             </h2>
 
             {site.assigned_dates?.length ? (
@@ -474,9 +474,9 @@ export default function WorkerSiteDetailPage() {
                   <div
                     key={day.work_date}
                     style={{
-                      padding: "10px 12px",
+                      padding: "6px 0",
                       borderRadius: 12,
-                      background: "#edf5ff",
+                      background: "transparent",
                       fontSize: 13,
                     }}
                   >
@@ -502,46 +502,17 @@ export default function WorkerSiteDetailPage() {
                 {site.schedule_notice}
               </p>
             )}
-          </div>
-
-          <div style={card}>
-            <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
-              🏠 현장정보
-            </h2>
+            <div style={{ borderTop: "1px solid #e3e0d6", marginTop: 10, paddingTop: 2 }} />
 
             <InfoRow label="고객" value={site.customer_name} />
             <InfoRow label="지역" value={site.region} />
             <InfoRow
               label="주소"
-              value={<SiteDirections site={site} />}
+              value={<SiteDirections site={site} compact />}
             />
             <InfoRow label="시공" value={site.work_type} />
 
-            {site.work_description && (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "var(--film-bg)",
-                }}
-              >
-                <strong style={{ fontSize: 13 }}>
-                  작업 내용
-                </strong>
-
-                <p
-                  style={{
-                    ...muted,
-                    margin: "6px 0 0",
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {site.work_description}
-                </p>
-              </div>
-            )}
+            <InfoRow label="작업" value={site.work_description} />
 
             {site.customer_phone && (
               <a
@@ -707,15 +678,15 @@ function InfoRow({ label, value }) {
         display: "flex",
         alignItems: "flex-start",
         gap: 12,
-        marginTop: 10,
+        marginTop: 8,
         fontSize: 13,
         lineHeight: 1.7,
       }}
     >
       <span
         style={{
-          flex: "0 0 40px",
-          color: "#94a3b8",
+          flex: "0 0 56px",
+          color: "#6e7b73",
           fontWeight: 700,
         }}
       >

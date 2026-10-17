@@ -101,7 +101,7 @@ export default function WorkerCommute({ siteId, workDate }) {
       marginTop: 10,
       padding: 12,
       borderRadius: 12,
-      background: "#eff6ff",
+      background: "#edf3ec",
       fontSize: 13,
       lineHeight: 1.7,
     }}>
@@ -115,7 +115,7 @@ export default function WorkerCommute({ siteId, workDate }) {
           display: "block",
           marginTop: 6,
           padding: "8px 12px",
-          border: "1px solid #cbd5e1",
+          border: "1px solid #d6dcd2",
           borderRadius: 8,
           background: "white",
         }}
