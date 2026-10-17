@@ -7,6 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
+import MaterialFilmPicker from "../../components/MaterialFilmPicker";
+import MaterialDeliveryFields from "../../components/MaterialDeliveryFields";
+import {deliveryMethods,deliveryInput} from "../../../lib/materialPilot.mjs";
 import MaterialPilot, { pilotFetch } from "../../components/MaterialPilot";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
@@ -147,7 +150,10 @@ function MaterialOrderForm() {
 
   const [cart, setCart] = useState([]);
   const [quantities, setQuantities] = useState({});
+  const [delivery,setDelivery]=useState({method:"parcel",recipient_name:"",recipient_phone:"",address_line1:"",address_line2:"",feeAccepted:false});
+  const [picker,setPicker]=useState({product_code:""});
   const [screen, setScreen] = useState("products");
+  useEffect(()=>{if(new URLSearchParams(window.location.search).has("order"))setScreen("orders");},[]);
   const [detail, setDetail] = useState(null);
   const [variantSource, setVariantSource] = useState(null);
   const [variants, setVariants] = useState([]);
@@ -642,11 +648,7 @@ function MaterialOrderForm() {
       );
     }
 
-    if (!selectedAddressId) {
-      throw new Error(
-        "배송지를 선택해주세요.",
-      );
-    }
+
 
     cart.forEach((item) => {
       const quantity = Number(item.quantityM);
@@ -683,9 +685,9 @@ function MaterialOrderForm() {
 
   async function submitOrder() {
     if (orderLock.current) return;
-    try { validateOrder(); } catch(error) { window.alert(error.message); return; }
-    if (!window.confirm(`테스트 주문을 접수할까요?\n${cart.length}개 제품 · ${cartTotals.quantity}m · ${formatWon(cartTotals.total)}\n실제 카드결제와 운영 재고 반영은 없습니다.`)) return;
-    const values = {action:"create",addressId:selectedAddressId,deliveryNote:deliveryNote.trim(),expectedTotal:cartTotals.total,items:cart.map(item=>({productId:item.product.id,quantityM:Number(item.quantityM)}))};
+    try { validateOrder(); deliveryInput(delivery); if(cart.some(i=>orderFlameLabel(i.product.flame_type)==="방염 구분 미등록"))throw Error("방염 구분을 확인해주세요."); } catch(error) { window.alert(error.message); return; }
+    if (!window.confirm(`테스트 주문을 접수할까요?\n${cart.length}개 제품 · ${cartTotals.quantity}m · ${formatWon(cartTotals.total)}\n대리점 준비 완료 후 테스트 결제를 진행합니다. 실제 청구는 없습니다.`)) return;
+    const values = {action:"create",shipping:delivery,addressId:selectedAddressId,deliveryNote:deliveryNote.trim(),expectedTotal:cartTotals.total,items:cart.map(item=>({productId:item.product.id,quantityM:Number(item.quantityM)}))};
     const signature = JSON.stringify(values);
     if (pendingOrder.current?.signature !== signature) pendingOrder.current = {signature,body:{...values,requestId:crypto.randomUUID()}};
     orderLock.current = true; setOrdering(true);
@@ -794,6 +796,17 @@ function MaterialOrderForm() {
 
       <section className="panel" hidden={screen !== "products" || !!detail}>
         <h2>필름 선택</h2>
+        <MaterialFilmPicker value={picker} onChange={async value=>{
+          setPicker(value);
+          if(!value.film_product_id)return;
+          setSearchInput(value.product_code);setBrand(value.brand);
+          try{
+            const result=await apiFetch("/api/admin/material-products?variantOf="+encodeURIComponent(value.film_product_id));
+            const rows=result.products||[];
+            if(!rows.length)throw Error("판매 등록된 자재가 없습니다.");
+            setVariantSource(rows[0].id);setDetail(rows[0]);
+          }catch(e){window.alert(e.message);}
+        }}/>
 
         <input
           className="search"
@@ -1055,6 +1068,8 @@ function MaterialOrderForm() {
 
       {screen === "cart" && <div className="shop-action"><button type="button" className="primary" disabled={!cart.length || cart.some(item => quantityError(item.product, item.quantityM))} onClick={() => navigate("checkout")}>배송지 선택 →</button></div>}
       <section className="panel" hidden={screen !== "checkout"}>
+        <MaterialDeliveryFields value={delivery} onChange={setDelivery}/>
+        {selectedAddress&&<button type="button" onClick={()=>setDelivery(d=>({...d,...selectedAddress}))}>아래 선택한 배송지 정보 가져오기</button>}
         <div className="title-row">
           <h2>받을 주소 선택</h2>
 
@@ -1281,7 +1296,10 @@ function MaterialOrderForm() {
       <section className="payment" hidden={screen !== "checkout"}>
         <h2>4. 주문 내용 확인</h2>
         <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
-        {selectedAddress ? <p><strong>{selectedAddress.recipient_name}</strong> · {selectedAddress.recipient_phone}<br />{selectedAddress.address_line1} {selectedAddress.address_line2 || ""}</p> : <p>배송지를 선택해주세요.</p>}
+        {cart.map(i=><p key={i.product.id}><strong>{i.product.brand} · {i.product.product_code}</strong> · {orderFlameLabel(i.product.flame_type)} · {i.quantityM}m</p>)}
+        <p>받는 방법: {deliveryMethods[delivery.method]}<br/>{delivery.recipient_name} · {delivery.recipient_phone}<br/>{delivery.method!=="pickup"&&delivery.address_line1}</p>
+        <p>대리점이 준비 수량을 확인한 뒤 결제를 요청합니다. 퀵·화물 운임은 별도 본인 부담입니다.</p>
+
         <div>
           <span>테스트 주문금액</span>
           <strong>
@@ -1291,7 +1309,7 @@ function MaterialOrderForm() {
 
         <button
           type="button"
-          disabled={ordering || !cart.length || !selectedAddressId}
+          disabled={ordering || !cart.length}
           onClick={submitOrder}
         >
           {ordering ? "접수 중…" : "테스트 주문 접수"}

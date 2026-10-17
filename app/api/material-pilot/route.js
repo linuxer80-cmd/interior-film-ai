@@ -1,6 +1,8 @@
+import { after } from 'next/server';
+import { dispatchMaterialNotifications } from '../../../lib/materialPilotPush';
 import { createHash } from 'node:crypto';
 import { pilotIdentity, pilotRole, pilotJson } from '../../../lib/materialPilotServer';
-import { salesItem, transition, visibleOrder, uuid } from '../../../lib/materialPilot.mjs';
+import { salesItem, transition, visibleOrder, uuid, deliveryInput } from '../../../lib/materialPilot.mjs';
 export const runtime = 'nodejs';
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail = error => {
@@ -25,6 +27,9 @@ async function ownOrder(db,actor,id) {
 export async function GET(request) {
  try {
   const {db,user}=await pilotIdentity(request);
+  const {data:notices,error:ne}=await db.from('material_pilot_notifications').select('id,title,message,link,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(20);
+  if(ne)throw ne;
+  after(()=>dispatchMaterialNotifications(db).catch(()=>{}));
   const mode=new URL(request.url).searchParams.get('mode') || 'buyer';
   if(mode==='dealer') {
     const {data,error}=await db.from('material_pilot_dealers').select('id,name,status').eq('user_id',user.id).maybeSingle();
@@ -45,7 +50,7 @@ export async function GET(request) {
     if(result.error) throw result.error;
     dealers=result.data || [];
   }
-  return pilotJson({role:actor.role,orders:(data||[]).map(o=>visibleOrder(o,actor.role)),dealers});
+  return pilotJson({notices: notices||[],role:actor.role,orders:(data||[]).map(o=>visibleOrder(o,actor.role)),dealers});
  } catch(error) {return fail(error);}
 }
 export async function POST(request) {
@@ -78,24 +83,26 @@ export async function POST(request) {
       if(existing.buyer_id!==user.id || existing.request_hash!==requestHash) throw Error('이미 사용된 요청 번호입니다.');
       return pilotJson({order:visibleOrder(existing,'buyer')});
     }
-    if(!uuid(b.addressId) || !Array.isArray(b.items) || !b.items.length || b.items.length>30 || b.items.some(i=>!uuid(i.productId)) || new Set(b.items.map(i=>i.productId)).size!==b.items.length) throw Error('배송지와 주문 제품을 확인해주세요.');
+    if(!Array.isArray(b.items) || !b.items.length || b.items.length>30 || b.items.some(i=>!uuid(i.productId)) || new Set(b.items.map(i=>i.productId)).size!==b.items.length) throw Error('배송지와 주문 제품을 확인해주세요.');
     const [addressResult,productsResult]=await Promise.all([
-      db.from('material_shipping_addresses').select('recipient_name,recipient_phone,postal_code,address_line1,address_line2').eq('id',b.addressId).eq('company_id',actor.companyId).eq('is_active',true).maybeSingle(),
+      (uuid(b.addressId)?db.from('material_shipping_addresses').select('recipient_name,recipient_phone,postal_code,address_line1,address_line2').eq('id',b.addressId).eq('company_id',actor.companyId).eq('is_active',true).maybeSingle():Promise.resolve({data:null})),
       db.from('film_products').select('id,brand,product_code,product_name,flame_type,minimum_order_m,order_unit_m,dealer_price_per_m,price_vat_included,is_order_available,stock_status').in('id',b.items.map(i=>i.productId))
     ]);
     if(addressResult.error || productsResult.error) throw addressResult.error || productsResult.error;
-    if(!addressResult.data) throw Error('업체 배송지를 확인해주세요.');
+    const shipping=deliveryInput(b.shipping || {...addressResult.data,method:'parcel'});
     const items=b.items.map(item=>{
       const product=productsResult.data?.find(p=>p.id===item.productId);
       if(!product) throw Error('판매 제품을 확인해주세요.');
+      if(!['fire','non_fire','flame_retardant','non_flame_retardant','방염','비방염'].includes(product.flame_type))throw Error('방염 구분이 등록된 제품만 주문해주세요.');
       return salesItem(product,item.quantityM);
     });
     if(b.expectedTotal!==items.reduce((n,i)=>n+i.total,0)) throw Error('판매가격이 변경되었습니다. 상품을 새로 확인해주세요.');
-    const {data,error}=await db.from('material_pilot_orders').insert({id:b.requestId,company_id:actor.companyId,buyer_id:user.id,request_hash:requestHash,items,shipping:{...addressResult.data,note:String(b.deliveryNote||'').slice(0,500)}}).select('*').single();
+    const {data,error}=await db.from('material_pilot_orders').insert({id:b.requestId,company_id:actor.companyId,buyer_id:user.id,request_hash:requestHash,items,shipping:{...shipping,note:String(b.deliveryNote||shipping.note||'').slice(0,500),workflow:{version:2,phase:'review'}}}).select('*').single();
     if(error) {
       if(error.code==='23505') return pilotJson({error:'같은 요청이 처리 중입니다. 주문내역 확인 후 다시 시도해주세요.'},409);
       throw error;
     }
+    after(()=>dispatchMaterialNotifications(db,data.id).catch(()=>{}));
     return pilotJson({order:visibleOrder(data,'buyer')});
   }
   const order=await ownOrder(db,actor,b.orderId);
@@ -114,6 +121,7 @@ export async function POST(request) {
   const next=transition(order,actor.role,b.action,b);
   const {data,error}=await db.rpc('material_pilot_commit',{p_order:order.id,p_revision:order.revision,p_actor:user.id,p_request:b.requestId,p_action:b.action,p_hash:requestHash,p_next:next});
   if(error) throw error;
+  after(()=>dispatchMaterialNotifications(db,data.id).catch(()=>{}));
   return pilotJson({order:visibleOrder(data,actor.role)});
  } catch(error) {return fail(error);}
 }
