@@ -1,0 +1,76 @@
+begin;
+
+-- Keep the legacy column name/type for existing payment functions.
+-- Only the view changes; sites.contract_amount and payment entries remain intact.
+do $$
+declare
+  amount_type text;
+begin
+  select format_type(atttypid, atttypmod)
+    into amount_type
+  from pg_attribute
+  where attrelid = 'public.site_receivable_balances'::regclass
+    and attname = 'contract_amount' and not attisdropped;
+
+  if amount_type is null then
+    raise exception '미수금 집계의 금액 항목을 확인해주세요.';
+  end if;
+
+  execute format($view$
+    create or replace view public.site_receivable_balances
+    with (security_invoker = true) as
+    select
+      s.id, s.company_id, s.site_name, s.customer_name, s.status,
+      cast(b.amount as %s) as contract_amount,
+      s.deposit_amount,
+      a.opening_paid, a.opening_date, a.due_date,
+      coalesce(a.revision, 0) as revision,
+      a.site_id is not null as confirmed,
+      case when a.site_id is not null
+        then a.opening_paid + coalesce(e.net, 0::numeric)
+        else null::numeric end as paid,
+      case when a.site_id is not null and b.amount is not null
+        then greatest(b.amount - a.opening_paid - coalesce(e.net, 0::numeric), 0::numeric)
+        else null::numeric end as outstanding,
+      case when a.site_id is not null and b.amount is not null
+        then greatest(a.opening_paid + coalesce(e.net, 0::numeric) - b.amount, 0::numeric)
+        else null::numeric end as overpaid,
+      s.contract_amount as original_contract_amount,
+      case when s.contract_amount > 0 then 'contract'
+        when r.review_status = 'approved' and r.approved_amount >= 0 then 'approved_report'
+        else 'missing' end::text as amount_source
+    from public.sites s
+    left join public.site_payment_accounts a
+      on a.site_id = s.id and a.company_id = s.company_id
+    left join lateral (
+      select w.review_status, w.approved_amount
+      from public.work_reports w
+      where w.site_id = s.id and w.company_id = s.company_id
+      order by w.updated_at desc, w.id asc
+      limit 1
+    ) r on true
+    cross join lateral (
+      select case
+        when s.contract_amount > 0 then s.contract_amount
+        when r.review_status = 'approved' and r.approved_amount >= 0
+          then r.approved_amount
+        else null::numeric
+      end as amount
+    ) b
+    left join lateral (
+      select sum(case when p.direction = 'payment' then p.amount else -p.amount end) as net
+      from public.site_payment_entries p
+      where p.site_id = s.id and p.company_id = s.company_id
+        and p.voided_at is null
+    ) e on true
+  $view$, amount_type);
+end $$;
+
+commit;
+
+select
+  '승인보고서 기준 미수금 연결 완료' as result,
+  count(*) filter (where amount_source = 'contract') as 계약금액기준,
+  count(*) filter (where amount_source = 'approved_report') as 승인보고서기준,
+  count(*) filter (where amount_source = 'missing') as 금액미확정
+from public.site_receivable_balances;

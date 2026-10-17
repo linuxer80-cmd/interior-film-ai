@@ -1,6 +1,7 @@
 "use client";
 import useAdminOverlayBack from "../../../lib/useAdminOverlayBack";
 
+import { revenueSourceLabel } from "../../../lib/siteRevenue.mjs";
 import { useEffect, useState } from "react";
 import SitePaymentQuick, {
   paymentApi,
@@ -120,7 +121,7 @@ export default function ReceivablesPage() {
             <article key={site.id}>
               <strong>{site.site_name || "현장"}</strong>
               <p>
-                계약 {paymentWon(site.contract_amount)}
+                {site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"} {paymentWon(site.contract_amount)}
                 {" · "}입금 {paymentWon(site.paid)}
                 <br />
                 미수금 <b>{paymentWon(site.outstanding)}</b>

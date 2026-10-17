@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 
@@ -159,7 +160,7 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
       ) : (
         <>
           <p>
-            계약 <b>{paymentWon(site.contract_amount)}</b>
+            {site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"} <b>{paymentWon(site.contract_amount)}</b>
             <br />
             받은 금액 <b>{paymentWon(site.paid)}</b>
             {" · "}미수금 <b>{paymentWon(site.outstanding)}</b>
@@ -175,14 +176,14 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
           {!site.confirmed && site.status !== "completed" && site.status !== "cancelled" && (
             <p>전액입금 처리 전 ‘기존 입금액 확인’에서 지금까지 받은 금액을 입력해주세요. 받은 금액이 없으면 0원을 입력하세요.</p>
           )}
-          {site.contract_amount == null || Number(site.contract_amount) <= 0 ? <p>계약금액을 먼저 입력하면 전액입금 처리할 수 있습니다.</p> : null}
+          {site.contract_amount == null ? <p>계약금액을 입력하거나 완료보고서 검수를 승인하면 기준금액이 반영됩니다.</p> : Number(site.contract_amount) === 0 ? <p>확정 금액이 0원입니다. 별도 입금은 필요하지 않으며 기존 입금액은 확인해주세요.</p> : null}
           <div className="buttons">
             <button
               disabled={disabled || !fullPayment}
               onClick={() => {
                 const text = site.confirmed
                   ? `남은 ${paymentWon(site.outstanding)}를 받아 전액입금 완료했나요?`
-                  : `계약금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 계약금액으로 기록합니다.`;
+                  : `기준금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 이 금액으로 기록합니다.`;
 
                 if (fullPayment && confirm(text)) {
                   save(fullPayment.action, fullPayment.values);
