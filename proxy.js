@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createHmac, randomUUID } from "node:crypto";
 
 const features = {
+  "/api/test/door-estimate": "ai_photo_analysis",
   "/api/analyze": "ai_photo_analysis",
   "/api/estimate-analyze": "ai_photo_analysis",
   "/api/similar-estimate": "similar_image_search",
@@ -21,6 +22,7 @@ const features = {
 };
 
 const publicPaths = new Set([
+  "/api/test/door-estimate",
   "/api/analyze",
   "/api/estimate-analyze",
   "/api/similar-estimate",
