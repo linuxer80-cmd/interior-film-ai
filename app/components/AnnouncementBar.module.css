@@ -3,8 +3,8 @@
 .label { flex-shrink:0; background:#214c40; color:white; border-radius:6px; padding:3px 7px; font-size:12px; font-weight:700; }
 .viewport { flex:1; min-width:0; overflow:hidden; }
 .text,.moving { display:block; width:max-content; white-space:nowrap; line-height:1.6; }
-.moving { animation:noticeRight var(--duration) linear infinite; }
+.moving { animation:noticeLeft var(--duration) linear infinite; }
 .line:focus-visible { outline:2px solid #214c40; outline-offset:-3px; }
 .full { margin:0; padding:0 18px 14px; line-height:1.7; overflow-wrap:anywhere; }
-@keyframes noticeRight { from { transform:translateX(-100%); } to { transform:translateX(var(--viewport)); } }
+@keyframes noticeLeft { from { transform:translateX(var(--viewport)); } to { transform:translateX(-100%); } }
 @media(prefers-reduced-motion:reduce) { .moving { animation:none; width:auto; white-space:normal; overflow-wrap:anywhere; } }
