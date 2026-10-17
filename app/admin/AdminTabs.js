@@ -16,6 +16,7 @@ const menus = [
     description: "공개 시공 사례와 업체 정보",
     icon: "website",
   },
+  { href: "/business-card?from=admin", label: "디지털 명함", description: "로고·정보 입력 · 디자인 선택 · 이미지 저장", icon: "website" },
   { href: "/admin/customer-chat", label: "고객 채팅", description: "고객 문의 확인 · 답장하기", icon: "chat" },
   { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
