@@ -42,11 +42,13 @@ export default function MaterialPilot({mode='buyer'}) {
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {!data && !error && <p>불러오는 중…</p>}
     {mode==='dealer' && data && !data.role && <div className={styles.card}>
-      {data.registration ? <p>{data.registration.status==='pending'?'슈퍼관리자 승인 대기 중입니다. 승인 후 새로고침해주세요.':'대리점 이용이 중지되었습니다. 슈퍼관리자에게 문의해주세요.'}</p> : <><label>대리점 이름<input maxLength={80} value={name} onChange={e=>setName(e.target.value)}/></label><button disabled={busy||!name.trim()} onClick={()=>act({action:'register',name:name.trim()})}>대리점 이용 신청</button></>}
+      {data.registration ? <p>{data.registration.status==='pending'?'슈퍼관리자 승인 대기 중입니다. 승인 후 새로고침해주세요.':data.registration.status==='deleted'?'대리점 등록이 삭제되었습니다. 슈퍼관리자에게 문의해주세요.':'대리점 이용이 중지되었습니다. 슈퍼관리자에게 문의해주세요.'}</p> : <><label>대리점 이름<input maxLength={80} value={name} onChange={e=>setName(e.target.value)}/></label><button disabled={busy||!name.trim()} onClick={()=>act({action:'register',name:name.trim()})}>대리점 이용 신청</button></>}
     </div>}
     {mode==='super' && data && <details className={styles.card} open><summary>대리점 승인·관리 ({data.dealers?.length||0})</summary>
       {!data.dealers?.length && <p>대리점이 /dealer에서 가입·로그인 후 이용 신청하면 표시됩니다.</p>}
-      {data.dealers?.map(d=><div className={styles.dealer} key={d.id}><strong>{d.name}</strong><small>{d.status==='active'?'승인됨':d.status==='pending'?'승인 대기':'중지'}</small><button disabled={busy} onClick={()=>act({action:'dealer_status',dealerId:d.id,status:d.status==='active'?'disabled':'active'})}>{d.status==='active'?'중지':'승인'}</button></div>)}
+      {data.dealers?.map(d=><div className={styles.dealer} key={d.id}><strong>{d.name}</strong><small>{d.status==='active'?'승인됨':d.status==='pending'?'승인 대기':'중지'}</small><button disabled={busy} onClick={()=>{if(d.status!=='active'||confirm(d.name+' 대리점 이용을 중지할까요? 중지하면 발주 처리에 접근할 수 없습니다.'))act({action:'dealer_status',dealerId:d.id,status:d.status==='active'?'disabled':'active'});}}>{d.status==='active'?'중지':d.status==='disabled'?'다시 활성화':'승인'}</button>
+      {d.status==='pending'&&<button disabled={busy} onClick={()=>act({action:'dealer_status',dealerId:d.id,status:'disabled'})}>중지</button>}
+      {d.status==='disabled'&&<button disabled={busy} style={{color:'#a52c26'}} onClick={()=>{if(confirm(d.name+' 대리점을 삭제할까요? 대리점 목록에서 제거되고 이용이 차단됩니다. 기존 주문 내역과 로그인 계정은 보존됩니다. 진행 중 주문이 있으면 삭제할 수 없습니다.'))act({action:'dealer_delete',dealerId:d.id});}}>삭제</button>}</div>)}
     </details>}
     {!!data?.notices?.length&&<details className={styles.card}><summary>주문 알림 ({data.notices.length})</summary>{data.notices.map(n=><p key={n.id}><a href={n.link}>{n.title}</a><br/><small>{new Date(n.created_at).toLocaleString('ko-KR')}</small></p>)}</details>}
     {data?.role && !data.orders?.length && <p>테스트 주문이 없습니다.</p>}

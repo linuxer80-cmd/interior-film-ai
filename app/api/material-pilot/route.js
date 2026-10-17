@@ -46,7 +46,7 @@ export async function GET(request) {
   if(error) throw error;
   let dealers=[];
   if(actor.role==='super') {
-    const result=await db.from('material_pilot_dealers').select('id,name,status,user_id').order('created_at',{ascending:false}).limit(100);
+    const result=await db.from('material_pilot_dealers').select('id,name,status,user_id').neq('status','deleted').order('created_at',{ascending:false}).limit(100);
     if(result.error) throw result.error;
     dealers=result.data || [];
   }
@@ -67,9 +67,16 @@ export async function POST(request) {
     return pilotJson({ok:true});
   }
   const actor=await pilotRole(db,user,b.mode);
+  if(b.action==='dealer_delete') {
+    if(actor.role!=='super' || !uuid(b.dealerId))throw Object.assign(Error('슈퍼관리자만 대리점을 삭제할 수 있습니다.'),{status:403});
+    const {data,error}=await db.from('material_pilot_dealers').update({status:'deleted'}).eq('id',b.dealerId).eq('status','disabled').select('id').maybeSingle();
+    if(error)throw error;
+    if(!data)throw Error('대리점을 먼저 중지해주세요. 이미 삭제된 경우 새로고침해주세요.');
+    return pilotJson({ok:true,id:data.id});
+  }
   if(b.action==='dealer_status') {
     if(actor.role!=='super' || !uuid(b.dealerId) || !['active','disabled'].includes(b.status)) throw Object.assign(Error('슈퍼관리자만 승인·중지할 수 있습니다.'),{status:403});
-    const {data,error}=await db.from('material_pilot_dealers').update({status:b.status}).eq('id',b.dealerId).select('id').single();
+    const {data,error}=await db.from('material_pilot_dealers').update({status:b.status}).eq('id',b.dealerId).neq('status','deleted').select('id').single();
     if(error) throw error;
     return pilotJson({ok:true,id:data.id});
   }
