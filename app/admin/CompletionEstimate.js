@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { chatCompletionDraft } from "../../lib/chatQuoteDraft.mjs";
 import { supabase } from "../../lib/supabase";
 
 import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames, withManualCompletionItems } from "../../lib/completionEstimate.mjs";
@@ -88,6 +89,7 @@ async function request(siteId, body, signal) {
 
 export default function CompletionEstimate({
   siteId,
+  initialChatDraft,
   onDirtyChange,
 }) {
   const [draft, setDraft] = useState(null);
@@ -104,6 +106,7 @@ export default function CompletionEstimate({
   const [pdfName, setPdfName] = useState("");
   useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
   const lock = useRef(false);
+  const chatApplied = useRef(false);
   const controller = useRef(null);
 
   useEffect(() => {
@@ -119,14 +122,16 @@ export default function CompletionEstimate({
       const result = await request(siteId, null, signal);
       if (signal.aborted) return;
 
-      const source = result.saved || result.automatic;
+      const applyChat = initialChatDraft && !result.saved && !chatApplied.current;
+      const source = applyChat ? chatCompletionDraft(result.automatic,initialChatDraft) : result.saved || result.automatic;
+      if(applyChat)chatApplied.current=true;
       const normalized = normalizeLaborNames(summarizeMeals(source.items));
       const items = withManualCompletionItems(normalized);
       setDraft({ ...source, items });
       setDefaults(result.defaults || {note:"",bank_account:""});
       setAutomatic(result.automatic);
       setWarning(result.warning || "");
-      setDirty(Boolean(result.saved) && JSON.stringify(normalized) !== JSON.stringify(source.items));
+      setDirty(Boolean(applyChat) || Boolean(result.saved) && JSON.stringify(normalized) !== JSON.stringify(source.items));
     } catch (err) {
       if (!signal.aborted) setError(err.message);
     } finally {
@@ -291,6 +296,12 @@ export default function CompletionEstimate({
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
         자동으로 채워진 수량과 청구 단가를 확인하고 저장하세요. 필름은 인테리어업자 판매단가 기준입니다.
       </p>
+
+      {initialChatDraft && draft && !chatApplied.current && !busy && <button type="button" style={button} onClick={()=>{
+        if(!window.confirm("현재 견적 내용 대신 채팅 초안을 불러올까요? 저장하기 전에는 기존 저장본이 변경되지 않습니다."))return;
+        chatApplied.current=true;
+        change(chatCompletionDraft(draft,initialChatDraft));
+      }}>채팅 초안으로 견적 내용 바꾸기</button>}
 
       {warning && (
         <p role="status" style={{ color: "#92400e" }}>

@@ -407,7 +407,7 @@ function LegacyConsultationQuote({
   );
 }
 
-export default function ConsultationQuote({ siteId, onDirtyChange }) {
+export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft }) {
   const [legacy, setLegacy] = useState(false);
   const pending = useRef(false);
   useEffect(() => { setLegacy(false); pending.current = false; }, [siteId]);
@@ -423,6 +423,6 @@ export default function ConsultationQuote({ siteId, onDirtyChange }) {
       {legacy ? "물량·인건비·경비 견적서로 돌아가기" : "이전 부위별 견적서 열기"}
     </button>
     {legacy ? <LegacyConsultationQuote key={siteId} siteId={siteId} onDirtyChange={status} />
-      : <CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={status} />}
+      : <CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={status} initialChatDraft={initialChatDraft} />}
   </section>;
 }

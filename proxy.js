@@ -13,6 +13,7 @@ const features = {
   "/api/admin/site-screenshot": "consultation_ocr",
   "/api/admin/transcribe-site-call": "voice_transcription",
   "/api/admin/parse-site-call": "consultation_parse",
+  "/api/admin/customer-chat/quote": "consultation_parse",
   "/api/admin/help-chat": "help_chat",
   "/api/quick-register/analyze": "quick_photo_analysis",
   "/api/embedding": "embedding",

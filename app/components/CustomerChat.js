@@ -2,11 +2,11 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import styles from './CustomerChat.module.css';
-export async function chatRequest(url,body,admin=false){
+export async function chatRequest(url,body,admin=false,timeout=15000){
   const headers={};if(admin){const {data}=await supabase.auth.getSession();if(!data.session)throw Error('관리자 로그인이 필요합니다.');headers.Authorization=`Bearer ${data.session.access_token}`;}
   const multipart=body instanceof FormData;
   if(body&&!multipart)headers['Content-Type']='application/json';
-  const response=await fetch(url,{method:body?'POST':'GET',headers,body:body?(multipart?body:JSON.stringify(body)):undefined,cache:'no-store',signal:AbortSignal.timeout(15000)});
+  const response=await fetch(url,{method:body?'POST':'GET',headers,body:body?(multipart?body:JSON.stringify(body)):undefined,cache:'no-store',signal:AbortSignal.timeout(timeout)});
   const result=await response.json();if(!response.ok)throw Error(result.error||'채팅을 불러오지 못했습니다.');return result;
 }
 export function ChatConversation({url,admin=false,onUpdated,onCreateQuote}){

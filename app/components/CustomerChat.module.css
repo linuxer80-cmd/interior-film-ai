@@ -14,3 +14,8 @@
 .quoteContent{overflow:auto;overscroll-behavior:contain;padding:16px;flex:1;min-height:0}
 .siteSearch{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d4ded6;border-radius:10px;font:inherit}
 .newSite{display:block;margin:12px 0;padding:12px;border:1px solid #d4ded6;border-radius:10px;background:#e8f0eb;color:#244b43;font:inherit}
+
+.draftReview{padding:16px;border:1px solid #d8e1d9;border-radius:14px;background:#f4f6f1;margin:12px 0;display:grid;gap:12px}
+.draftReview h3{margin:0}.draftReview label{display:grid;gap:6px;font-size:14px;font-weight:600}
+.draftReview input,.draftReview textarea,.draftReview select{width:100%;box-sizing:border-box;border:1px solid #ccd6cf;border-radius:9px;padding:10px;font:inherit;font-size:16px;background:white}
+.draftReview textarea{min-height:100px;resize:vertical}
