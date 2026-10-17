@@ -7,6 +7,7 @@ import styles from './AnnouncementBar.module.css';
 export default function AnnouncementBar() {
   const path = usePathname();
   const visible = (path === '/admin' || path.startsWith('/admin/') || path === '/worker' || path.startsWith('/worker/')) && !path.startsWith('/worker/login') && !path.startsWith('/worker/signup');
+  const audience = path === '/worker' || path.startsWith('/worker/') ? 'worker' : 'owner';
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
   const [distance, setDistance] = useState(0);
@@ -14,6 +15,7 @@ export default function AnnouncementBar() {
   const [textWidth, setTextWidth] = useState(0);
   const box = useRef(null), text = useRef(null);
   useEffect(() => {
+    setMessage(''); setOpen(false);
     if (!visible) return;
     let alive = true, busy = false;
     async function refresh() {
@@ -22,7 +24,7 @@ export default function AnnouncementBar() {
       try {
         const { data } = await supabase.auth.getSession();
         if (!data.session) { if (alive) setMessage(''); return; }
-        const response = await fetch('/api/announcement', { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        const response = await fetch(`/api/announcement?audience=${audience}`, { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store', signal: AbortSignal.timeout(10000) });
         if (response.ok) { const result = await response.json(); if (alive) setMessage(result.announcement?.message || ''); }
         else if (alive) setMessage('');
       } catch { /* Keep the last notice during a temporary connection loss. */ }
@@ -33,7 +35,7 @@ export default function AnnouncementBar() {
     document.addEventListener('visibilitychange', refresh);
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => { setMessage(''); setTimeout(refresh, 0); });
     return () => { alive = false; clearInterval(timer); subscription.unsubscribe(); document.removeEventListener('visibilitychange', refresh); };
-  }, [visible]);
+  }, [visible, audience]);
   useEffect(() => {
     if (!message || !visible) return;
     const measure = () => {
