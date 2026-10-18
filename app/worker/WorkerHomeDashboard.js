@@ -1,5 +1,6 @@
 "use client";
 
+import usePersonalMenus from "../../lib/usePersonalMenus";
 import {relationshipRequest} from "../../lib/workerRelationshipClient";
 import LaborNotifications from "../components/LaborNotifications";
 import WorkerConnectionPanel from "../components/WorkerDirectoryClient";
@@ -79,6 +80,7 @@ export default function WorkerHomeDashboard({
   sites = [],
   onOpen,
 }) {
+  const { orderedMenus, record } = usePersonalMenus(menus, "worker");
   const [employeeHome, setEmployeeHome] = useState(null);
   const [companyNames,setCompanyNames] = useState({});
   const [relationshipError, setRelationshipError] = useState("");
@@ -239,13 +241,14 @@ export default function WorkerHomeDashboard({
         className="wp-grid"
         aria-label="시공자 주요 메뉴"
       >
-        {menus.filter(menu => employeeHome !== false ? menu.id !== "jobs" : true).map(menu => (
+        {orderedMenus.filter(menu => employeeHome !== false ? menu.id !== "jobs" : true).map(menu => (
           <Link
             key={menu.id}
             href={
               menu.href ||
               `/worker/menu/${menu.id}`
             }
+            onClick={event => record(menu, event)}
             className="wp-menu"
           >
             <ToolIllustration
@@ -297,6 +300,7 @@ export default function WorkerHomeDashboard({
             <Link
               key={menu.id}
               href={menu.href || `/worker/menu/${menu.id}`}
+              onClick={event => record(menu, event)}
             >
               <ToolIllustration kind={menu.id === "sites" ? "camera" : menu.icon} size={36} className="film-nav-image" />
 

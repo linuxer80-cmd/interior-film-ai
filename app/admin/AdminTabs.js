@@ -1,4 +1,5 @@
 "use client";
+import usePersonalMenus from "../../lib/usePersonalMenus";
 import PlanUsageButton from "./PlanUsageButton";
 import moreStyles from "./AdminMore.module.css";
 import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
@@ -94,6 +95,7 @@ export default function AdminTabs({
   unreadCount = 0,
   secondaryOnly = false,
 }) {
+  const { orderedMenus, record } = usePersonalMenus(menus, `admin:${companyId || "none"}`, activeTab === "today" && !secondaryOnly);
   const [moreOpen, setMoreOpen] = useState(false);
   const [orderPreview, setOrderPreview] = useState(false);
   const closeMore = useAdminOverlayBack(moreOpen, () => setMoreOpen(false), () => true, 900);
@@ -116,6 +118,7 @@ export default function AdminTabs({
   const section = sections[activeTab];
 
   function go(tab) {
+    if (tab !== activeTab) record({id: tab});
     setMoreOpen(false);
     changeTab(tab);
   }
@@ -136,7 +139,7 @@ export default function AdminTabs({
             className="film-admin-menu-grid"
             aria-label="관리자 업무 메뉴"
           >
-            {menus.map(menu => {
+            {orderedMenus.map(menu => {
               const content = (
                 <>
                   <ToolIllustration
@@ -159,7 +162,7 @@ export default function AdminTabs({
               return menu.disabled && !orderPreview ? (
                 <button key={menu.href} type="button" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>{content}</button>
               ) : menu.href ? (
-                <a key={menu.href} href={menu.href}>
+                <a key={menu.href} href={menu.href} onClick={event => record(menu, event)}>
                   {content}
                 </a>
               ) : (
