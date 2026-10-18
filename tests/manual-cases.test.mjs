@@ -50,3 +50,12 @@ test('user named folders retain arbitrary depth in SQL without inventing structu
  assert.match(sql,/manual_classification_path/);
  assert.match(sql,/내 세부 분류/);
 });
+
+test('custom top level categories survive normalization and SQL generation',()=>{
+ const path=[{key:'space',value:'주거'},{key:'part',value:'사용자 새 부위'}];
+ const profile=folderProfile(path);
+ assert.equal(profile.part,'사용자 새 부위');
+ assert.equal(profile.space,'주거');
+ const sql=manualCaseSql([{id:'g',profile,photos:[{id:'p',path,storagePath:'p.jpg'}]}],{g:{price:100000,scope:'전체',type:'after'}},'c','p');
+ assert.match(sql,/"category":"사용자 새 부위"/);
+});

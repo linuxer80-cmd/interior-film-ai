@@ -31,10 +31,11 @@ export default function ManualCases() {
   useEffect(()=>{if(!ready||!draftKey)return;const timer=setTimeout(()=>{writeDraft(draftKey,{photos,details,path,customFolders,savedAt}).catch(e=>setMessage(`임시 저장 실패: ${e.message}. 화면을 닫지 마세요.`));},300);return()=>clearTimeout(timer);},[photos,details,path,customFolders,ready,draftKey,savedAt]);
   useEffect(()=>setPage(0),[path]);
   const visible=photos.filter(p=>key(p.path)===key(path));
-  const step=!path.length?['space','공간 분류',['주거','상업']]:path.length===1&&path[0].key==='space'?['part','대분류',PARTS.filter(p=>p!=='확인 필요')]:path.length?['custom_'+path.length,'내 하위 분류',customFolders.filter(f=>key(f.parent)===key(path)).map(f=>f.name)]:['part','대분류',PARTS.filter(p=>p!=='확인 필요')];
+  const customNames=customFolders.filter(f=>key(f.parent)===key(path)).map(f=>f.name);
+  const step=!path.length?['space','공간 분류',[...new Set(['주거','상업',...customNames])]]:path.length===1&&path[0].key==='space'?['part','대분류',[...new Set([...PARTS.filter(p=>p!=='확인 필요'),...customNames])]]:['custom_'+path.length,'내 하위 분류',customNames];
   const groups=groupManualPhotos(photos);
   useEffect(()=>{setBatch(b=>Math.min(b,Math.max(0,Math.ceil(groups.length/30)-1)));},[groups.length]);
-  const folders=new Map([[key([]),[]]]);customFolders.forEach(f=>{const p=[...f.parent,{key:'custom_'+f.parent.length,value:f.name}];folders.set(key(p),p);});photos.forEach(p=>{for(let n=1;n<=p.path.length;n++)folders.set(key(p.path.slice(0,n)),p.path.slice(0,n));});
+  const folders=new Map([[key([]),[]]]);customFolders.forEach(f=>{const p=[...f.parent,{key:f.key||'custom_'+f.parent.length,value:f.name}];folders.set(key(p),p);});photos.forEach(p=>{for(let n=1;n<=p.path.length;n++)folders.set(key(p.path.slice(0,n)),p.path.slice(0,n));});
   const change=(id,patch)=>{setDetails(d=>({...d,[id]:{...d[id],...patch}}));setSql('');};
   function navigate(p){setPath(p);setSelected([]);setFolderName('');}
   async function add(event){
@@ -119,10 +120,10 @@ export default function ManualCases() {
           {!visible.length&&<p>이 폴더에는 남은 사진이 없습니다. 상위 폴더로 돌아가 나머지를 분류하세요.</p>}
           <div className={styles.sticky}><strong>{step[1]}</strong>
           <p>폴더 이름을 누르면 체크한 사진을 이동합니다. 사진 없이 폴더를 열려면 ‘열기’를 누르세요.</p>
-          <div className={styles.choices}>{step[2].map(v=><span key={v}><button disabled={!selected.length} onClick={()=>move(v)}>{step[0]==='space'?v+'공간':v}</button><button onClick={()=>navigate([...path,{key:step[0],value:v}])}>{step[0]==='space'?v+'공간':v} 열기</button></span>)}</div>
-          {path.some(x=>x.key==='part')&&<div><label>새 하위 폴더 이름<input value={folderName} maxLength={100} placeholder="예: 냉장고장 있는 싱크대" onChange={e=>setFolderName(e.target.value)}/></label><button disabled={!folderName.trim()} onClick={()=>{
+          <div className={styles.choices}>{step[2].map(v=><span key={v}><button disabled={!selected.length} onClick={()=>move(v)}>{step[0]==='space'&&['주거','상업'].includes(v)?v+'공간':v}</button><button onClick={()=>navigate([...path,{key:step[0],value:v}])}>{step[0]==='space'&&['주거','상업'].includes(v)?v+'공간':v} 열기</button></span>)}</div>
+          {<div><label>{step[0]==='space'?'새 공간 분류':step[0]==='part'?'새 대분류 이름':'새 하위 폴더 이름'}<input value={folderName} maxLength={100} placeholder={step[0]==='part'?'예: 계단':step[0]==='space'?'예: 공용공간':'예: 냉장고장 있는 싱크대'} onChange={e=>setFolderName(e.target.value)}/></label><button disabled={!folderName.trim()} onClick={()=>{
             const name=folderName.trim();if(step[2].includes(name)){setMessage('같은 이름의 폴더가 있습니다.');return;}
-            setCustomFolders(f=>[...f,{parent:[...path],name}]);setFolderName('');
+            setCustomFolders(f=>[...f,{parent:[...path],key:step[0],name}]);setFolderName('');
             if(selected.length)move(name);else navigate([...path,{key:step[0],value:name}]);
           }}>폴더 만들기{selected.length?' · 체크한 사진 이동':''}</button></div>}
           <button onClick={()=>setMode('prices')}>여기까지 분류하고 가격 입력</button>
