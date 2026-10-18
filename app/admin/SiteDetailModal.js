@@ -47,7 +47,6 @@ const STATUS_INFO = {
 };
 
 const MENUS = [
-  { id: "overview", label: "진행현황" },
   { id: "info", label: "현장정보", kind: "home" },
   { id: "quote", label: "상담 견적서", kind: "report" },
   { id: "schedule", label: "일정배정", kind: "people" },
@@ -58,6 +57,7 @@ const MENUS = [
 ];
 
 const SECTION_MENU = {
+  overview: "info",
   info: "info",
   quote: "quote",
   materials: "materials",
@@ -97,7 +97,7 @@ export default function SiteDetailModal({
   assignSiteWorkers,
   reloadSites,
 }) {
-  const [menu, setMenu] = useState("overview");
+  const [menu, setMenu] = useState("info");
   const [quoteDirty, setQuoteDirty] = useState(false);
   const [estimateDirty, setEstimateDirty] = useState(false);
   const [reportEstimateOpen, setReportEstimateOpen] = useState(false);
@@ -128,8 +128,8 @@ export default function SiteDetailModal({
 
     const nextMenu =
       params.get("site") === String(site?.id)
-        ? SECTION_MENU[params.get("section")] || "overview"
-        : "overview";
+        ? SECTION_MENU[params.get("section")] || "info"
+        : "info";
 
     setMenu(nextMenu);
     setVisited({ info: true, [nextMenu]: true });
@@ -437,18 +437,9 @@ export default function SiteDetailModal({
               "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
-          <section id="admin-site-panel-overview" aria-label="현장 진행현황" hidden={menu !== "overview"} style={{padding:"16px 0"}}>
-            <div style={{padding:18,borderRadius:18,background:"#edf4f1",border:"1px solid #d4e2dc"}}>
-              <small style={{color:"#547168"}}>지금 확인할 일</small>
-              <h3 style={{margin:"8px 0",fontSize:20,color:"#244b43"}}>
-                {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
-              </h3>
-              <p style={{margin:"0 0 14px",fontSize:13,lineHeight:1.7,color:"#61736d"}}>
-                {reviewStatus === "approved" ? "견적서 발행은 필요한 경우에만 진행하세요. 자재 반납은 별도로 확인할 수 있습니다." : "자재 반납과 완료보고는 순서에 관계없이 진행할 수 있습니다."}
-              </p>
-
-            </div>
-          </section>
+          <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
+            {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
+          </p>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
             <SiteStatusControl
               key={site.id}
