@@ -8,12 +8,33 @@ import CaseClassificationFields from "../../components/CaseClassificationFields"
 export default function DoorReclassification({companyId}) {
   const [items,setItems]=useState([]),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[drafts,setDrafts]=useState({});
   const [stats,setStats]=useState(null),[sqlPage,setSqlPage]=useState(0),[copied,setCopied]=useState({});
+  const [cacheKey,setCacheKey]=useState(null),[cacheReady,setCacheReady]=useState(false);
   const [kind,setKind]=useState("전체 부위");
   const matchesKind=item=>kind==="전체 부위" || (/문|도어|door/i.test(`${item.category} ${item.sub_category}`) && doorCaseType(item)===kind) || item.case_profile?.part===kind || item.category===kind;
   const visibleItems=items.filter(item=>matchesKind(item));
   const stop = useRef(false), running = useRef(false);
   const [failures,setFailures]=useState({}),[progress,setProgress]=useState({done:0,total:0});
   useEffect(()=>()=>{stop.current=true;},[]);
+  useEffect(()=>{
+    let active=true;
+    supabase.auth.getSession().then(({data})=>{
+      if(!active)return;
+      const userId=data.session?.user?.id;
+      if(!userId){setMessage("로그인 후 다시 열어주세요.");return;}
+      const key=`case-classification-v2:${userId}:${companyId}`;
+      try {
+        const saved=JSON.parse(localStorage.getItem(key)||"null");
+        if(saved){setItems(saved.items||[]);setDrafts(saved.drafts||{});setFailures(saved.failures||{});setStats(saved.stats||null);setMessage("이전에 완료한 분석을 불러왔습니다. 다음 30건부터 이어서 진행하세요.");}
+      }catch{setMessage("이전 분석을 불러오지 못했습니다. 저장된 SQL을 확인해주세요.");}
+      setCacheKey(key);setCacheReady(true);
+    }).catch(()=>{if(active)setMessage("로그인을 확인하지 못했습니다. 다시 열어주세요.");});
+    return ()=>{active=false;};
+  },[companyId]);
+  useEffect(()=>{
+    if(!cacheReady||!cacheKey)return;
+    try{localStorage.setItem(cacheKey,JSON.stringify({items,drafts,failures,stats}));}
+    catch{setMessage("브라우저에 진행 상황을 저장하지 못했습니다. 화면을 닫기 전에 SQL을 복사해주세요.");}
+  },[cacheReady,cacheKey,items,drafts,failures,stats]);
   async function call(body) {
     const {data}=await supabase.auth.getSession();
     const response=await fetch("/api/super-admin/reclassify-doors",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${data.session?.access_token||""}`},body:JSON.stringify({company_id:companyId,...body})});
@@ -26,7 +47,7 @@ export default function DoorReclassification({companyId}) {
     let done=0,failed=0;
     try {
       if(!targets){const result=await call({});setItems(result.items);setStats(result.stats);targets=result.items.filter(item=>matchesKind(item) && item.photo_count>0 && !drafts[item.id]);}
-      targets=targets.slice(0,50);
+      targets=targets.slice(0,30);
       setProgress({done:0,total:targets.length});
       for(const item of targets) {
         if(stop.current)break;
@@ -41,7 +62,7 @@ export default function DoorReclassification({companyId}) {
         }
         done++;setProgress({done,total:targets.length});
       }
-      if(!stop.current)setMessage(`분석 종료 · 성공 ${done-failed}건 / 실패 ${failed}건. 아래에서 50건씩 SQL을 복사해주세요. 다음 50건 분석으로 이어갈 수 있습니다.`);
+      if(!stop.current)setMessage(`분석 종료 · 성공 ${done-failed}건 / 실패 ${failed}건. 아래에서 30건씩 SQL을 복사해주세요. 다음 30건 분석으로 이어갈 수 있습니다.`);
     } catch(e){setMessage(e.message);}
     finally{running.current=false;setBusy(false);}
   }
@@ -52,7 +73,7 @@ export default function DoorReclassification({companyId}) {
   const sql=classificationSql(batches[currentPage]||[],drafts,companyId);
   return <section style={{background:"#fffefa",padding:20,border:"1px solid #ddd",borderRadius:18,marginTop:20}}>
     <h2>전체 시공 사례 · 세부 분류</h2>
-    <label>분석할 부위 <select value={kind} disabled={busy} onChange={e=>{setKind(e.target.value);setMessage("");setProgress({done:0,total:0});}} style={{minHeight:44}}>
+    <label>분석할 부위 <select value={kind} disabled={busy||!cacheReady} onChange={e=>{setKind(e.target.value);setMessage("");setProgress({done:0,total:0});}} style={{minHeight:44}}>
       {["전체 부위",...PARTS.filter(part=>part!=="확인 필요"),"가구문","종류 확인 필요"].map(value=><option key={value}>{value}</option>)}
     </select></label>
     <p>{kind} {visibleItems.length}건 · 종류가 불명확한 문·문틀은 ‘종류 확인 필요’에서 확인하세요.</p>
@@ -60,19 +81,19 @@ export default function DoorReclassification({companyId}) {
     <p>분류 단위는 사진 한 장이 아니라 시공 사례 한 건입니다. 현재 사례당 시공 전 사진 우선 최대 3장을 분석합니다. 미연결 사진은 사례에 연결해야 분석할 수 있습니다.</p>
     <p>기존 사진·가격·임베딩 유지. 분석에 성공한 모든 사례의 SQL을 자동 생성합니다. 개별 확인 체크는 필요 없습니다. 색상은 분류하지 않습니다. AI 비용이 발생하며 DB에는 자동 저장하지 않습니다.</p>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-      <button disabled={busy} onClick={()=>runBatch()}>다음 50건 분석 · 이어서</button>
-      <button disabled={busy} onClick={load}>목록 새로고침</button>
-      {Object.keys(failures).length>0&&<button disabled={busy} onClick={()=>runBatch(visibleItems.filter(item=>failures[item.id]))}>실패한 사례만 재시도</button>}
+      <button disabled={busy||!cacheReady} onClick={()=>runBatch()}>다음 30건 분석 · 이어서</button>
+      <button disabled={busy||!cacheReady} onClick={load}>목록 새로고침</button>
+      {Object.keys(failures).length>0&&<button disabled={busy||!cacheReady} onClick={()=>runBatch(visibleItems.filter(item=>failures[item.id]))}>실패한 사례만 재시도</button>}
       {busy&&<button onClick={()=>{stop.current=true;setMessage("현재 사례가 끝나면 중지합니다.");}}>중지</button>}
     </div>
     {progress.total>0&&<p>진행 {progress.done} / {progress.total}건</p>}
     <p role="status">{message}</p>
     {visibleItems.map(item=><details key={item.id} style={{padding:"12px 0",borderBottom:"1px solid #ddd"}}><summary>{item.category} · {item.sub_category || "세부 분류 없음"} · {item.id.slice(0,8)} · 사진 {item.photo_count ?? "-"}장 {drafts[item.id]?"분석 완료":failures[item.id]?"분석 실패":"대기"}</summary>
       {failures[item.id]&&<p role="alert">{failures[item.id]}</p>}
-      <button disabled={busy} onClick={()=>analyze(item)}>이 사례 새 기준 분석</button>
-      {drafts[item.id]&&<><CaseClassificationFields value={drafts[item.id].profile} disabled={busy} onChange={profile=>setDrafts(old=>({...old,[item.id]:{profile,reviewed:true}}))}/>
+      <button disabled={busy||!cacheReady} onClick={()=>analyze(item)}>이 사례 새 기준 분석</button>
+      {drafts[item.id]&&<><CaseClassificationFields value={drafts[item.id].profile} disabled={busy||!cacheReady} onChange={profile=>setDrafts(old=>({...old,[item.id]:{profile,reviewed:true}}))}/>
       </>}
     </details>)}
-    {sql&&<><h3>분석 완료 {readyCount}건 적용 SQL</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{batches.map((batch,index)=><button key={index} disabled={busy} onClick={()=>setSqlPage(index)} aria-pressed={currentPage===index}>{index+1}묶음 · {batch.length}건{copied[index]?" · 복사함":""}</button>)}</div><p>현재 {currentPage+1}/{batches.length}묶음 · {batches[currentPage]?.length}건. 복사 후 실제 앱 DB에서 실행하세요. 복사 표시는 DB 적용 완료를 뜻하지 않습니다. 페이지를 닫으면 저장하지 않은 초안은 사라집니다.</p><textarea readOnly value={sql} style={{width:"100%",minHeight:180}}/><button onClick={async()=>{try{await navigator.clipboard.writeText(sql);setCopied(old=>({...old,[currentPage]:true}));setMessage(`${currentPage+1}묶음 SQL을 복사했습니다.`);}catch{setMessage("SQL 입력칸을 길게 눌러 복사해주세요.");}}}>현재 묶음 SQL 복사</button></>}
+    {sql&&<><h3>분석 완료 {readyCount}건 적용 SQL</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{batches.map((batch,index)=><button key={index} disabled={busy||!cacheReady} onClick={()=>setSqlPage(index)} aria-pressed={currentPage===index}>{index+1}묶음 · {batch.length}건{copied[index]?" · 복사함":""}</button>)}</div><p>현재 {currentPage+1}/{batches.length}묶음 · {batches[currentPage]?.length}건. 복사 후 실제 앱 DB에서 실행하세요. 복사 표시는 DB 적용 완료를 뜻하지 않습니다. 분석 결과는 현재 계정·업체별로 이 브라우저에 보관됩니다. 다음 방문에는 완료 건을 건너뜁니다. 다른 기기에서는 이어지지 않습니다.</p><textarea readOnly value={sql} style={{width:"100%",minHeight:180}}/><button onClick={async()=>{try{await navigator.clipboard.writeText(sql);setCopied(old=>({...old,[currentPage]:true}));setMessage(`${currentPage+1}묶음 SQL을 복사했습니다.`);}catch{setMessage("SQL 입력칸을 길게 눌러 복사해주세요.");}}}>현재 묶음 SQL 복사</button></>}
   </section>;
 }

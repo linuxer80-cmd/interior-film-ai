@@ -17,12 +17,12 @@ test('non-door profiles keep applicable detail and omit unrelated door attribute
  assert.ok(!Object.keys(PROFILE_FIELDS).some(k=>/color|colour/i.test(k)));
 });
 
-test('153 successful cases export in independent groups of 50 without omissions',async()=>{
+test('153 successful cases export in independent groups of 30 without omissions',async()=>{
  const {classificationBatches}=await import('../lib/classificationSql.mjs');
  const items=Array.from({length:154},(_,i)=>({id:String(i),case_profile:{}}));
  const drafts=Object.fromEntries(items.slice(0,153).map(item=>[item.id,{profile:{part:'방문'}}]));
  const batches=classificationBatches(items,drafts);
- assert.deepEqual(batches.map(b=>b.length),[50,50,50,3]);
+ assert.deepEqual(batches.map(b=>b.length),[30,30,30,30,30,3]);
  assert.equal(new Set(batches.flat().map(i=>i.id)).size,153);
  for(const batch of batches){const sql=classificationSql(batch,drafts,'co');assert.ok(sql.startsWith('BEGIN;'));assert.ok(sql.endsWith('COMMIT;'));}
  assert.deepEqual(classificationBatches(items,{}),[]);
