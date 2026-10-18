@@ -462,9 +462,9 @@ function getAreaInstruction(key, label) {
     door_all:
       "Apply this film only to the existing architectural door leaf and its existing surrounding frame. Never invent a door or frame.",
     door_leaf:
-      "Apply this film only to the existing moving door leaf. Preserve the handle, lock, hinges and glass.",
+      "Apply this film ONLY to the moving door leaf (the broad hinged panel), NEVER to its stationary frame. Preserve the handle, lock, hinges and glass. Any separately selected frame receives its own assigned film.",
     door_frame:
-      "Apply this film only to the existing door frame, jamb and casing. Preserve the door leaf and surrounding wall.",
+      "Apply this film ONLY to the stationary door frame, jamb and casing around the opening, NEVER to the moving leaf. Preserve the surrounding wall. A separately selected leaf receives its own assigned film; otherwise leave the leaf unchanged.",
     built_in:
       "Apply this film only to the existing built-in wardrobe fronts and film-finished panels. Preserve divisions, handles and seams. Do not turn furniture into a room door.",
     shoe_cabinet:
@@ -770,13 +770,15 @@ export async function POST(request) {
 
       if (reference?.sampleImage) {
         promptParts.push(
-          `For ${film.areaLabel}, match material reference IMAGE ${reference.imageNumber}.`
+          `EXCLUSIVE ASSIGNMENT: ${film.areaKey} (${film.areaLabel}) = ${film.brand} ${film.productCode} = material reference IMAGE ${reference.imageNumber}. Never use this reference for a different area unless that area explicitly has the same film.`
         );
       }
     });
 
     promptParts.push(
-      useSplitTone
+      useSplitTone && targetType === "door"
+        ? "DOOR TWO-TONE: The moving door leaf and stationary surrounding frame are separate surfaces. Apply each material reference ONLY to its explicitly assigned area. Never swap their colors. Complete BOTH assignments when both are selected. Preserve unselected surfaces and all hardware."
+        : useSplitTone
         ? "MULTI-TONE: Keep each film strictly within its own assigned existing area, including that area's fixed frames, filler strips, finishing trims, side/end panels and toe kicks. Refrigerator enclosure and its overhead storage use only their own assigned film. Never swap, blend or inherit an adjacent zone's finish."
         : "UNIFIED COLOR: Apply the same film consistently only to the selected existing target surfaces. Leave unrelated objects unchanged.",
       targetType === "kitchen"

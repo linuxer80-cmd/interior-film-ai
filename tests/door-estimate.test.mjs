@@ -236,3 +236,12 @@ test('quota exhaustion and long retry-after never retry', async()=>{
   assert.equal(calls,1);
  }
 });
+
+test('exhausted credit is a configuration failure, not temporary congestion', async () => {
+  let calls = 0;
+  await assert.rejects(analyzeEstimatePhotos([new Blob(['x'], {type:'image/jpeg'})], 'test', async () => {
+    calls++;
+    return {ok:false, status:429, json:async()=>({error:{code:'credit_balance_exhausted'}})};
+  }), error => error.analysisCode === 'configuration' && error.providerCode === 'credit_balance_exhausted');
+  assert.equal(calls, 1);
+});
