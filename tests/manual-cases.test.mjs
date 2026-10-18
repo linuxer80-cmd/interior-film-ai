@@ -59,3 +59,16 @@ test('custom top level categories survive normalization and SQL generation',()=>
  const sql=manualCaseSql([{id:'g',profile,photos:[{id:'p',path,storagePath:'p.jpg'}]}],{g:{price:100000,scope:'전체',type:'after'}},'c','p');
  assert.match(sql,/"category":"사용자 새 부위"/);
 });
+
+test('suggestions follow structural choices while retaining custom folder levels',async()=>{
+ const {suggestedFolder}=await import('../lib/manualCases.mjs');
+ const path=[{key:'space',value:'주거'},{key:'part',value:'문·문틀'},{key:'custom_2',value:'직접 만든 폴더'}];
+ assert.equal(suggestedFolder(path)[0],'door_kind');
+ path.push({key:'door_kind',value:'방문'},{key:'shape',value:'여닫이'},{key:'pattern',value:'알판'});
+ assert.equal(suggestedFolder(path)[0],'panel_form');
+ const kitchen=[{key:'part',value:'싱크대'}];
+ assert.ok(suggestedFolder(kitchen)[2].includes('냉장고장 + 팬트리 + 아일랜드장'));
+ kitchen.push({key:'kitchen_configuration',value:'냉장고장 + 팬트리'});
+ assert.equal(suggestedFolder(kitchen)[0],'kitchen_target');
+ assert.ok(suggestedFolder(kitchen)[2].includes('냉장고장'));
+});
