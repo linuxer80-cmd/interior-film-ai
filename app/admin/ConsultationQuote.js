@@ -64,7 +64,7 @@ async function request(siteId, body, signal) {
   return result;
 }
 
-function LegacyConsultationQuote({
+function AreaConsultationQuote({
   siteId,
   onDirtyChange,
 }) {
@@ -178,7 +178,7 @@ function LegacyConsultationQuote({
 
   return (
     <section className="consultation-quote">
-      <h3>상담 견적서</h3>
+      <h3>부위별 견적서</h3>
 
       <p>
         상담 내용으로 항목을 준비합니다. 단가는 직접 입력하세요.
@@ -408,21 +408,32 @@ function LegacyConsultationQuote({
 }
 
 export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft }) {
-  const [legacy, setLegacy] = useState(false);
+  const [quoteType, setQuoteType] = useState("cost");
   const pending = useRef(false);
-  useEffect(() => { setLegacy(false); pending.current = false; }, [siteId]);
+  useEffect(() => { setQuoteType("cost"); pending.current = false; }, [siteId]);
   const status = useCallback((value) => { pending.current = value; onDirtyChange?.(value); }, [onDirtyChange]);
-  function toggle() {
+  function selectType(type) {
+    if (type === quoteType) return;
     if (pending.current && !window.confirm("처리 중이거나 저장하지 않은 내용이 있을 수 있습니다. 견적서 화면을 전환할까요?")) return;
     pending.current = false;
     onDirtyChange?.(false);
-    setLegacy(value => !value);
+    setQuoteType(type);
   }
   return <section>
-    <button type="button" onClick={toggle} style={{ padding: 12, marginTop: 12 }}>
-      {legacy ? "물량·인건비·경비 견적서로 돌아가기" : "이전 부위별 견적서 열기"}
-    </button>
-    {legacy ? <LegacyConsultationQuote key={siteId} siteId={siteId} onDirtyChange={status} />
+    <div role="group" aria-label="견적서 작성 방식" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 16 }}>
+      {[
+        ["cost", "인건비·자재비", "인원·물량·경비로 계산"],
+        ["area", "부위별 견적", "문·싱크대 등 부위별 계산"],
+      ].map(([type, title, description]) => (
+        <button key={type} type="button" aria-pressed={quoteType === type} onClick={() => selectType(type)}
+          style={{ padding: "14px 10px", borderRadius: 14, border: quoteType === type ? "1px solid #819985" : "1px solid #d9ddd5", background: quoteType === type ? "#e5eee2" : "#fffefa", color: "#294e40", textAlign: "left", cursor: "pointer", minHeight: 76 }}>
+          <strong style={{ display: "block", fontSize: 16 }}>{title}</strong>
+          <span style={{ display: "block", marginTop: 5, fontSize: 12, color: "#69756d", lineHeight: 1.5 }}>{description}</span>
+        </button>
+      ))}
+    </div>
+    <p style={{ margin: "10px 0 0", fontSize: 12, color: "#69756d" }}>두 견적서는 각각 저장됩니다. 작성 후 저장해주세요.</p>
+    {quoteType === "area" ? <AreaConsultationQuote key={siteId} siteId={siteId} onDirtyChange={status} />
       : <CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={status} initialChatDraft={initialChatDraft} />}
   </section>;
 }

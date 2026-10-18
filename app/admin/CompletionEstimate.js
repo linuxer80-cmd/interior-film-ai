@@ -291,7 +291,7 @@ export default function CompletionEstimate({
         borderRadius: 16,
       }}
     >
-      <h3 style={{ margin: "0 0 8px" }}>업체 견적서 · 물량·인건비·경비</h3>
+      <h3 style={{ margin: "0 0 8px" }}>인건비·자재비 견적서</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
         자동으로 채워진 수량과 청구 단가를 확인하고 저장하세요. 필름은 인테리어업자 판매단가 기준입니다.
