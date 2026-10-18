@@ -11,9 +11,20 @@ import styles from './page.module.css';
 import { readDraft, writeDraft, readPhoto, writePhoto } from '../../../lib/manualPhotoDraft';
 const key = path => JSON.stringify(path);
 function PhotoPreview({ photo }) {
-  const [url,setUrl]=useState('');
+  const [url,setUrl]=useState(''),[zoom,setZoom]=useState(1);
+  const dialog=useRef(null);
   useEffect(()=>{let active=true,objectUrl;readPhoto(photo.blobKey).then(file=>{if(active&&file){objectUrl=URL.createObjectURL(file);setUrl(objectUrl);}}).catch(()=>{});return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};},[photo.blobKey]);
-  return url?<img src={url} alt={photo.name} loading="lazy"/>:<span>사진 불러오는 중</span>;
+  return <>
+    <button type="button" className={styles.previewButton} disabled={!url} aria-label={`${photo.name} 확대 보기`} onClick={()=>{setZoom(1);dialog.current.showModal();}}>
+      {url?<img src={url} alt={photo.name} loading="lazy"/>:<span>사진 불러오는 중</span>}<span className={styles.zoomHint}>확대 보기</span>
+    </button>
+    <dialog ref={dialog} className={styles.viewer} aria-label={`${photo.name} 확대 사진`} onClick={e=>{if(e.target===dialog.current)dialog.current.close();}}>
+      <div className={styles.viewerBar}><strong>{photo.name}</strong><button type="button" onClick={()=>dialog.current.close()} autoFocus>닫기 ✕</button></div>
+      <div className={styles.viewerControls}><button type="button" disabled={zoom<=1} onClick={()=>setZoom(z=>Math.max(1,z-0.5))}>축소 −</button><span>{Math.round(zoom*100)}%</span><button type="button" disabled={zoom>=4} onClick={()=>setZoom(z=>Math.min(4,z+0.5))}>확대 ＋</button><button type="button" onClick={()=>setZoom(1)}>화면 맞춤</button></div>
+      <div className={styles.viewerScroll}>{url&&<img src={url} alt={photo.name} style={{width:`${zoom*100}%`}}/>}</div>
+      <p>확대 후 좌우·위아래로 스크롤해 확인하세요. 저장된 압축 사진을 표시합니다.</p>
+    </dialog>
+  </>;
 }
 export default function ManualCases() {
   const [companies,setCompanies]=useState([]),[company,setCompany]=useState(''),[photos,setPhotos]=useState([]),[path,setPath]=useState([]),[selected,setSelected]=useState([]),[details,setDetails]=useState({}),[mode,setMode]=useState('folders'),[busy,setBusy]=useState(false),[message,setMessage]=useState('권한 확인 중'),[sql,setSql]=useState(''),[batch,setBatch]=useState(0);
@@ -117,7 +128,7 @@ export default function ManualCases() {
           <nav className={styles.crumb}><button onClick={()=>navigate([])}>전체 / 미분류</button>{path.map((x,i)=><button key={i} onClick={()=>navigate(path.slice(0,i+1))}>{x.value}</button>)}</nav>
           <label>폴더 바로가기<select value={key(path)} onChange={e=>navigate(JSON.parse(e.target.value))}>{[...folders].map(([k,p])=><option key={k} value={k}>{p.map(x=>x.value).join(' / ')||'미분류'} ({photos.filter(x=>key(x.path)===k).length}장)</option>)}</select></label>
           <div className={styles.actions}><button onClick={()=>setSelected(visible.map(p=>p.id))}>현재 폴더 전체 체크</button><button onClick={()=>setSelected([])}>체크 해제</button><strong>{selected.length}장 선택</strong></div>
-          <div className={styles.grid}>{visible.slice(page*60,page*60+60).map(p=><label key={p.id} className={selected.includes(p.id)?styles.checked:styles.photo}><PhotoPreview photo={p}/><span><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,p.id]:s.filter(id=>id!==p.id))}/>{p.name}</span></label>)}</div>
+          <div className={styles.grid}>{visible.slice(page*60,page*60+60).map(p=><div key={p.id} className={selected.includes(p.id)?styles.checked:styles.photo}><PhotoPreview photo={p}/><label><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,p.id]:s.filter(id=>id!==p.id))}/>{p.name}</label></div>)}</div>
           {visible.length>60&&<div className={styles.actions}><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>이전 60장</button><span>{page+1} / {Math.ceil(visible.length/60)}</span><button disabled={(page+1)*60>=visible.length} onClick={()=>setPage(p=>p+1)}>다음 60장</button></div>}
           {!visible.length&&<p>이 폴더에는 남은 사진이 없습니다. 상위 폴더로 돌아가 나머지를 분류하세요.</p>}
           <div className={styles.sticky}><strong>{suggested?`기본 추천 분류: ${step[1]}`:step[1]}</strong>
