@@ -43,7 +43,7 @@ export default function LeadsTab({
 }) {
   return (
     <>
-      <section style={sectionStyle}>
+      <section style={{ ...sectionStyle, padding: 14, marginBottom: 12 }}>
         <div
           style={{
             display: "flex",
@@ -52,7 +52,7 @@ export default function LeadsTab({
             gap: "10px",
           }}
         >
-          <h2 style={{ margin: 0 }}>고객 상담</h2>
+          <h2 style={{ margin: 0, fontSize: 20 }}>고객 상담 <small style={{ fontSize: 13, color: "#68746c", fontWeight: 400 }}>{leadTotal.toLocaleString("ko-KR")}건 · 미확인 {unreadCount}건</small></h2>
 
           <button
             type="button"
@@ -92,16 +92,6 @@ export default function LeadsTab({
           ))}
         </select>
 
-        <div
-          style={{
-            marginTop: "10px",
-            fontSize: "14px",
-            color: "#6b7280",
-          }}
-        >
-          총 {leadTotal.toLocaleString("ko-KR")}건 · 미확인{" "}
-          {unreadCount}건
-        </div>
       </section>
 
       {leadFilter === "unread" && (
@@ -186,86 +176,26 @@ function LeadCard({
     <section
       style={{
         ...sectionStyle,
+        padding: 14,
+        marginBottom: 10,
+        borderRadius: 16,
         border:
           lead.is_read === false
             ? "2px solid #dc2626"
             : "1px solid #e5e7eb",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "10px",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: "18px", fontWeight: "bold" }}>
-            {lead.is_read === false && "🔴 "}
-            {lead.customer_name || "고객"}
-          </div>
-
-          <div
-            style={{
-              marginTop: "4px",
-              fontSize: "14px",
-              color: "#4b5563",
-            }}
-          >
-            {lead.phone || "-"}
-          </div>
+      <button type="button" onClick={() => toggleLeadDetail(lead)} aria-expanded={open}
+        style={{ width: "100%", padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer", color: "#293b34" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <strong style={{ fontSize: 17 }}>{lead.is_read === false && <span style={{ color: "#b45309", fontSize: 12 }}>미확인 · </span>}{lead.customer_name || "고객"}</strong>
+          <span style={{ fontSize: 12, borderRadius: 20, padding: "5px 9px", background: "#eaf0e7", flexShrink: 0 }}>{lead.status || "신규문의"} {open ? "⌃" : "⌄"}</span>
         </div>
-
-        <select
-          value={lead.status || "신규문의"}
-          onChange={(event) =>
-            updateLeadStatus(lead.id, event.target.value)
-          }
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: "8px",
-            padding: "7px",
-            background: "#ffffff",
-          }}
-        >
-          {STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div
-        style={{
-          marginTop: "10px",
-          fontSize: "14px",
-          lineHeight: 1.6,
-        }}
-      >
-        <div>
-          <b>지역:</b> {lead.region || lead.address || "-"}
+        <div style={{ marginTop: 6, fontSize: 13, color: "#68746c", overflowWrap: "anywhere" }}>{lead.region || lead.address || "지역 미입력"}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginTop: 6, fontSize: 12, color: "#68746c" }}>
+          <span>AI 견적 {formatWon(lead.estimate_average)}</span>
+          <span>{formatDate(lead.created_at).split(" ").slice(0, 3).join(" ")}</span>
         </div>
-        <div>
-          <b>희망일:</b> {lead.preferred_date || "-"}
-        </div>
-        <div>
-          <b>AI 평균:</b> {formatWon(lead.estimate_average)}
-        </div>
-        <div>
-          <b>접수:</b> {formatDate(lead.created_at)}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => toggleLeadDetail(lead)}
-        style={{
-          ...secondaryButtonStyle,
-          marginTop: "12px",
-        }}
-      >
-        {open ? "상세 닫기" : "상세 보기"}
       </button>
 
       {open && (
@@ -276,6 +206,18 @@ function LeadCard({
             borderTop: "1px solid #e5e7eb",
           }}
         >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <label style={{ fontSize: 13 }}>상담 상태 <select aria-label="상담 상태" value={lead.status || "신규문의"}
+              onChange={event => updateLeadStatus(lead.id, event.target.value)}
+              style={{ padding: 8, border: "1px solid #d6ded3", borderRadius: 10, background: "#fffefa" }}>
+              {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+            </select></label>
+            <span style={{ fontSize: 13 }}>연락처 {lead.phone || "-"}</span>
+          </div>
+          <div style={{ fontSize: 13, color: "#68746c", marginBottom: 12, lineHeight: 1.7 }}>
+            <div>희망일 {lead.preferred_date || "미정"}</div>
+            <div>접수 {formatDate(lead.created_at)}</div>
+          </div>
           <div
             style={{
               whiteSpace: "pre-wrap",
