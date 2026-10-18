@@ -5,9 +5,9 @@ test("unknown or malformed classifications never become normal", () => {
   for (const input of [undefined, null, {}, {damage:"없는 값"}])
     assert.equal(normalizeProfile(input).damage, "확인 필요");
 });
-test("known space, structure, grooves and damage conflicts reject price candidates", () => {
+test("hard constraints reject candidates, decorative differences remain for visual verification", () => {
   for (const [key, values] of Object.entries(PROFILE_FIELDS)) {
-    assert.equal(profileMatch({[key]:values[1]}, {[key]:values[2]}).compatible, false, key);
+    assert.equal(profileMatch({[key]:values[1]}, {[key]:values[2]}).compatible, !["space","part","coverage","damage","damage_location","damage_extent","leaf_count"].includes(key), key);
     assert.equal(profileMatch({[key]:values[1]}, {}).compatible, true, key);
   }
 });
@@ -20,3 +20,5 @@ test("AI schema and saved profile share exactly the same fields", () => {
   assert.deepEqual(profileSchema.required,Object.keys(normalizeProfile({})));
   assert.equal(profileSchema.additionalProperties,false);
 });
+
+test("old profiles remain compatible with new unknown details",()=>{ const old={part:"방문",pattern:"평판"}; assert.equal(normalizeProfile(old).panel_form,"확인 필요"); assert.equal(profileMatch(old,{...old,panel_form:"없음"}).compatible,true); assert.ok(profileMatch(old,old).score > profileMatch(old,{part:"방문",pattern:"알판"}).score); });
