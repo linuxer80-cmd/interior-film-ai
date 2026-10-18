@@ -11,6 +11,7 @@ import {
   loadMyWorkerSites,
   workerLoginUrl,
 } from "../../../utils/workerSites";
+import WorkerTeam from "./WorkerTeam";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import SiteOperations from "../../../components/SiteOperations";
 import WorkerWorkReport from "./WorkerWorkReport";
@@ -436,6 +437,8 @@ export default function WorkerSiteDetailPage() {
           hidden={tab !== "info"}
         >
 
+
+          <WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} active={tab === "info"} />
 
           {site.memo?.trim() && (
             <div
