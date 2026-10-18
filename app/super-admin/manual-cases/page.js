@@ -38,7 +38,9 @@ export default function ManualCases() {
   const change=(id,patch)=>{setDetails(d=>({...d,[id]:{...d[id],...patch}}));setSql('');};
   function navigate(p){setPath(p);setSelected([]);setFolderName('');}
   async function add(event){
-    const files=[...event.target.files];event.target.value='';if(!files.length||working.current)return;
+    const picked=[...event.target.files];event.target.value='';if(working.current)return;
+    const files=picked.filter(file=>file.type.startsWith('image/')||/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(file.name));
+    if(!files.length){setMessage('선택한 폴더에 지원하는 사진 파일이 없습니다.');return;}
     working.current=true;stop.current=false;setBusy(true);let added=[],failed=0,totalBytes=0;
     try{for(let index=0;index<files.length;index++){
       if(stop.current)break;
@@ -49,7 +51,7 @@ export default function ManualCases() {
       const id=crypto.randomUUID(),blobKey=`${draftKey}:${id}`;
       await writePhoto(blobKey,file);
       totalBytes+=file.size;
-      added.push({...metadata,id,caseId:id,blobKey,bytes:file.size,path:[...path]});
+      added.push({...metadata,id,caseId:id,blobKey,bytes:file.size,sourcePath:files[index].webkitRelativePath||files[index].name,path:[...path]});
       if(added.length%20===0){const next=[...photos,...added];await writeDraft(draftKey,{photos:next,details,path,customFolders});setPhotos(next);}
     }
     const next=[...photos,...added];await writeDraft(draftKey,{photos:next,details,path,customFolders});setPhotos(next);
@@ -106,7 +108,9 @@ export default function ManualCases() {
         <p>작업 저장은 이 기기에 보관됩니다. 다른 기기와 동기화되지 않으며 브라우저 데이터 삭제 시 사라집니다.</p>
         <div className={styles.tabs}><button onClick={()=>setMode('folders')} aria-pressed={mode==='folders'}>1. 사진 분류 ({photos.length})</button><button onClick={()=>setMode('prices')} aria-pressed={mode==='prices'}>2. 사례·가격 ({groups.length})</button></div>
         {mode==='folders'?<>
-          <label>현재 폴더에 사진 추가 (장수 제한 없음)<input type="file" accept="image/*" multiple onChange={add}/></label>
+          <label>사진 선택해서 추가<input type="file" accept="image/*" multiple onChange={add}/></label>
+          <label>사진 폴더 추가<input type="file" webkitdirectory="" directory="" multiple onChange={add}/></label>
+          <p>폴더와 그 안의 하위 폴더에서 사진만 가져옵니다. 기존 사진에 추가하며, 현재 분류 폴더에 넣고 한 장씩 압축합니다. 폴더 선택이 지원되지 않는 기기에서는 사진 선택을 이용해주세요.</p>
           <nav className={styles.crumb}><button onClick={()=>navigate([])}>전체 / 미분류</button>{path.map((x,i)=><button key={i} onClick={()=>navigate(path.slice(0,i+1))}>{x.value}</button>)}</nav>
           <label>폴더 바로가기<select value={key(path)} onChange={e=>navigate(JSON.parse(e.target.value))}>{[...folders].map(([k,p])=><option key={k} value={k}>{p.map(x=>x.value).join(' / ')||'미분류'} ({photos.filter(x=>key(x.path)===k).length}장)</option>)}</select></label>
           <div className={styles.actions}><button onClick={()=>setSelected(visible.map(p=>p.id))}>현재 폴더 전체 체크</button><button onClick={()=>setSelected([])}>체크 해제</button><strong>{selected.length}장 선택</strong></div>
