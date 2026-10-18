@@ -27,7 +27,23 @@ export async function POST(request) {
         if(!data.length) break;
         items.push(...data);cursor=data[data.length-1].id;
       }
-      return NextResponse.json({items});
+      const counts=new Map();
+      const ids=new Set(items.map(item=>item.id));
+      let photoCursor=null,totalPhotos=0,unlinkedPhotos=0;
+      while(true) {
+        let query=db.from("work_photos").select("id,work_item_id").eq("company_id",body.company_id).order("id").limit(500);
+        if(photoCursor) query=query.gt("id",photoCursor);
+        const {data,error}=await query;
+        if(error) throw error;
+        if(!data.length) break;
+        for(const photo of data) {
+          totalPhotos++;
+          if(!ids.has(photo.work_item_id)) unlinkedPhotos++;
+          else counts.set(photo.work_item_id,(counts.get(photo.work_item_id)||0)+1);
+        }
+        photoCursor=data[data.length-1].id;
+      }
+      return NextResponse.json({items:items.map(item=>({...item,photo_count:counts.get(item.id)||0})),stats:{totalPhotos,unlinkedPhotos,totalCases:items.length,casesWithPhotos:counts.size}});
     }
     const {data:work,error:workError}=await db.from("work_items").select("id,category,sub_category,case_profile").eq("company_id",body.company_id).eq("id",body.work_id).single();
     if(workError) throw workError;
