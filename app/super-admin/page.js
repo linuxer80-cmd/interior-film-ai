@@ -511,6 +511,13 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
+                href="/super-admin/manual-cases"
+                kind="home"
+                title="사진 폴더 분류"
+                description="AI 없이 사진 체크 · 분류 · 가격 입력"
+              />
+
+              <MenuCard
                 href="/super-admin/bulk-register"
                 kind="home"
                 title="대량 시공데이터 등록"
