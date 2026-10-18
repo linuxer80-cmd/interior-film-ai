@@ -1,3 +1,4 @@
+import { profilePrompt, normalizeProfile } from '../lib/caseClassification.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ function endpoint(photos) {
   const source = fs.readFileSync(new URL('../app/api/quick-register/analyze/route.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replaceAll('export ', '');
   const context = {
-    QUICK_REGISTER_CATEGORIES, resolveQuickRegisterCategory, FILM_TARGET_RULES, Buffer, JSON,
+    profilePrompt, normalizeProfile, QUICK_REGISTER_CATEGORIES, resolveQuickRegisterCategory, FILM_TARGET_RULES, Buffer, JSON,
     process: { env: {} },
     NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200 }) },
     createClient: () => ({
@@ -25,7 +26,7 @@ function endpoint(photos) {
     headers: new Headers({ authorization: 'Bearer test-token' }),
     formData: async () => ({
       getAll: () => photos.map(() => ({ type: 'image/jpeg', size: 10, arrayBuffer: async () => new ArrayBuffer(10) })),
-      get: () => JSON.stringify(photos.map(() => ({}))),
+      get: key => key === "metadata" ? JSON.stringify(photos.map(() => ({}))) : null,
     }),
   });
 }

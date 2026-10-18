@@ -511,6 +511,13 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
+                href="/super-admin/bulk-register"
+                kind="home"
+                title="대량 시공데이터 등록"
+                description="업체 지정 · 사진 분류 · 묶음별 금액 등록"
+              />
+
+              <MenuCard
                 href="/super-admin/structure"
                 kind="home"
                 title="구조분석 관리"

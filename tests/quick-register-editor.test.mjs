@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
+import * as classification from '../lib/caseClassification.mjs';
 import * as groups from '../app/utils/quickRegisterGroups.js';
 import * as categories from '../app/utils/quickRegisterCategories.js';
 
@@ -41,6 +42,7 @@ function harness(initialPhotos = [], initialPrices = {}, options = {}) {
     }) },
   };
   const modules = {
+    '../../lib/caseClassification.mjs': classification, '../components/CaseClassificationFields': { default: () => null },
     react: React, './AdminUi.module.css': new Proxy({}, { get: (_, key) => String(key) }),
     '../utils/quickRegisterCategories': categories, '../utils/quickRegisterGroups': groups,
     './quickRegisterFiles': { prepareBulkPhoto: async file => { calls.prepared.push(file.name); return options.prepare ? options.prepare(file) : { file, name: file.name, imageHash: 'prepared-hash', fileError: '' }; } },

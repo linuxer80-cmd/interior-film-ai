@@ -16,12 +16,20 @@ export async function POST(request) {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
     const { data: { user }, error: authError } = await scoped.auth.getUser(token);
-    const { data: membership, error: membershipError } = await scoped.rpc("get_my_company");
-    if (authError || !user || membershipError || !Array.isArray(membership) ||
-        !membership.some((row) => row.company_id && row.is_active !== false)) {
-      return NextResponse.json({ error: "관리자 권한이 없습니다." }, { status: 403 });
-    }
+    if (authError || !user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     const form = await request.formData();
+    if (form.get("company_id")) {
+      const { data: status, error } = await scoped.rpc("get_super_admin_status");
+      if (error || !(Array.isArray(status) ? status[0] : status)?.is_super_admin)
+        return NextResponse.json({ error: "슈퍼관리자 권한이 없습니다." }, { status: 403 });
+      const { data: companies, error: companyError } = await scoped.rpc("super_admin_get_companies");
+      if (companyError || !companies?.some(c => c.id === form.get("company_id")))
+        return NextResponse.json({ error: "업체를 확인해주세요." }, { status: 400 });
+    } else {
+      const { data: membership, error } = await scoped.rpc("get_my_company");
+      if (error || !Array.isArray(membership) || !membership.some(row => row.company_id && row.is_active !== false))
+        return NextResponse.json({ error: "관리자 권한이 없습니다." }, { status: 403 });
+    }
     const files = form.getAll("images");
     const metadata = JSON.parse(String(form.get("metadata") || "[]"));
     if (!Array.isArray(metadata) || files.length < 1 || files.length > 12 || files.length !== metadata.length ||

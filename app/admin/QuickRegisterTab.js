@@ -21,7 +21,7 @@ function siteHint(photo) {
   return latitude === "" ? date : `${date} · 위치 ${latitude}, ${longitude}`;
 }
 
-export default function QuickRegisterTab({ companyId, loadJobs }) {
+export default function QuickRegisterTab({ companyId, loadJobs, superAdmin = false, onPendingChange }) {
   const [photos, setPhotos] = useState([]);
   const [prices, setPrices] = useState({});
   const [siteNames, setSiteNames] = useState({});
@@ -42,6 +42,8 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
   useEffect(() => {
     if (fieldError && !busy) focusBulkField(fields.current.get(fieldError.field));
   }, [fieldError, busy]);
+
+  useEffect(() => { onPendingChange?.(busy || photos.length > 0); }, [busy, photos.length, onPendingChange]);
 
   function release(photo) {
     if (photo.url) { URL.revokeObjectURL(photo.url); urls.current.delete(photo.url); }
@@ -140,6 +142,7 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
         const input = [...references, ...batch];
         setMessage(`AI 분류 중: ${offset}/${ready.length}장 완료`);
         const form = new FormData();
+        if (superAdmin) form.append("company_id", companyId);
         input.forEach((photo) => form.append("images", photo.file));
         form.append("metadata", JSON.stringify(input.map((photo, index) => ({
           takenAt: photo.takenAt, latitude: photo.latitude, longitude: photo.longitude,
@@ -182,6 +185,30 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
           const { category, subCategory } = group;
           activePhoto = group.photos[0];
           setMessage(`${siteName} / ${category} ${subCategory} 저장 중...`);
+          if (superAdmin) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("로그인이 필요합니다.");
+            const headers = { Authorization: `Bearer ${session.access_token}` };
+            const caseId = group.photos[0].id;
+            const savedPhotos = [];
+            for (const photo of group.photos) {
+              activePhoto = photo;
+              const form = new FormData();
+              form.append("company_id", companyId); form.append("case_id", caseId);
+              form.append("photo_id", photo.id); form.append("image", photo.file);
+              const response = await fetch("/api/super-admin/bulk-register", { method: "POST", headers, body: form });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || "사진 업로드 실패");
+              const embedding = await createEmbedding([category, subCategory, photo.description, ...photo.tags].filter(Boolean).join(" "));
+              if (!embedding) throw new Error("검색 데이터 생성에 실패했습니다. 다시 등록해주세요.");
+              savedPhotos.push({ embedding, id: photo.id, storage_path: result.path, photo_type: photo.type, image_hash: photo.imageHash, ai_description: photo.description, ai_tags: photo.tags });
+            }
+            const response = await fetch("/api/super-admin/bulk-register", { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ company_id: companyId, case_id: caseId, category, sub_category: subCategory, case_profile: mergeProfiles(group.photos.map(photo => photo.caseProfile)), actual_cost: parseBulkMoney(prices[group.key]), memo: `[슈퍼관리자 확인 등록] ${siteName}`, photos: savedPhotos }) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "사례 저장 실패");
+            group.photos.forEach(photo => completed.add(photo.id));
+            continue;
+          }
           const { data: item, error: itemError } = await supabase.from("work_items").insert({
             company_id: companyId, project_id: PROJECT_ID, category, sub_category: subCategory,
             case_profile: mergeProfiles(group.photos.map(photo => photo.caseProfile)),
