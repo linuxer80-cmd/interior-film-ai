@@ -469,7 +469,7 @@ export default function WorkerSiteDetailPage() {
             </h2>
 
             {site.assigned_dates?.length ? (
-              <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
                 {site.assigned_dates.map((day) => (
                   <div
                     key={day.work_date}
@@ -505,14 +505,14 @@ export default function WorkerSiteDetailPage() {
             <div style={{ borderTop: "1px solid #e3e0d6", marginTop: 10, paddingTop: 2 }} />
 
             <InfoRow label="고객" value={site.customer_name} />
-            <InfoRow label="지역" value={site.region} />
             <InfoRow
               label="주소"
               value={<SiteDirections site={site} compact />}
             />
             <InfoRow label="시공" value={site.work_type} />
 
-            <InfoRow label="작업" value={site.work_description} />
+            {site.work_description !== site.work_type && <InfoRow label="작업" value={site.work_description} />}
+            <InfoRow label="자재" value={materialsMessage ? "자재 확인 필요" : materials.length ? materials.map(material => [material.brand, material.product_code || material.product_name].filter(Boolean).join(" ")).join(" · ") : "등록된 자재 없음"} />
 
             {site.customer_phone && (
               <a
@@ -529,10 +529,19 @@ export default function WorkerSiteDetailPage() {
               </a>
             )}
           </div>
+
+        </section>
+
+        {visited.film && (
+          <section
+            id="site-panel-film"
+            aria-label="필름과 재단"
+            hidden={tab !== "film"}
+          >
           <SiteOperations
-            active={tab === "info"}
+            active={tab === "film"}
             key={siteId}
-            collapsible
+            mode="materials"
             siteId={siteId}
             onCurrentData={async () => {
               const requestId = ++detailRequest.current;
@@ -549,14 +558,6 @@ export default function WorkerSiteDetailPage() {
               setMaterialsMessage(result.materialsError || "");
             }}
           />
-        </section>
-
-        {visited.film && (
-          <section
-            id="site-panel-film"
-            aria-label="필름과 재단"
-            hidden={tab !== "film"}
-          >
             {materialsMessage ? (
               <div role="alert" style={card}>
                 <p style={{ ...muted, color: "#b91c1c" }}>

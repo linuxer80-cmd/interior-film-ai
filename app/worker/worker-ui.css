@@ -1,0 +1,46 @@
+/* Shared worker controls; screen-only so exported/printed designs remain intact. */
+@media screen {
+  .worker-ui { color: #273b34; background: #f7f5ee; min-width: 0; }
+  .worker-ui :is(button,input,select,textarea) { box-sizing: border-box; }
+  .worker-ui :is(button,select,input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=color]):not([type=range]),textarea) {
+    border-radius: 12px !important; font-size: 16px; min-height: 44px;
+  }
+  .worker-ui :is(input:not([type]),input[type=text],input[type=number],input[type=tel],input[type=email],input[type=password],input[type=search],input[type=date],input[type=time],input[type=url],select,textarea) {
+    background-color: #fffef9 !important; color: #273b34 !important;
+    border: 1px solid #d6dcd2 !important; padding: 10px 12px; max-width: 100%;
+  }
+  .worker-ui input:is([type=checkbox],[type=radio]) { accent-color: #285340; }
+  .worker-ui input[type=file]::file-selector-button {
+    background: #edf3ec; color: #285340; border: 1px solid #d6dcd2;
+    border-radius: 10px; padding: 10px 12px; min-height: 44px; margin-right: 10px;
+  }
+  .worker-ui :is(input,select,textarea)[aria-invalid=true] { border-color: #b91c1c !important; }
+  .worker-ui :is(button,input,select,textarea):disabled { opacity: .6; cursor: not-allowed; }
+  .worker-ui :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #64876c; outline-offset: 3px; }
+  .worker-ui summary { cursor: pointer; min-height: 44px; box-sizing: border-box; padding-block: 10px; }
+  .worker-ui button:is([aria-pressed=true],[aria-selected=true]) {
+    background-color: #e4ede2 !important; color: #285340 !important; border-color: #8fa58d !important;
+  }
+  .worker-ui :is(table,dl) { font-size: 14px; line-height: 1.6; }
+  .worker-ui :is(th,td) { padding: 10px 12px; border-color: #e3e0d6; }
+  .worker-ui th { background: #edf3ec; color: #314d3b; }
+  .worker-ui .wh-site-card { padding: 14px; border-radius: 16px; box-shadow: none; background: #fffef9; }
+  .worker-ui .wh-site-card .wp-site-text strong { font-size: 19px; }
+  .worker-ui .wh-site-actions { margin-top: 12px; gap: 8px; }
+  .worker-ui .wh-site-actions button { background: #285340; border-color: #285340; }
+  .worker-ui .wh-site-actions a { color: #285340; border-color: #d6dcd2; background: #fffef9; }
+  .worker-ui .wh-shortcuts { gap: 8px; margin-block: 14px; }
+  .worker-ui .wh-shortcuts a { border-radius: 12px; background: #fffef9; color: #273b34; }
+  .worker-ui .wh-notification-panel { padding: 14px; border-radius: 16px; background: #fffef9; }
+}
+
+@media screen {
+.worker-ui button[style*="background: #2563eb"],
+.worker-ui button[style*="background: rgb(37, 99, 235)"],
+.worker-ui button[style*="background: #111827"],
+.worker-ui button[style*="background: rgb(17, 24, 39)"],
+.worker-ui button[style*="background: #0f172a"],
+.worker-ui button[style*="background: rgb(15, 23, 42)"],
+.worker-ui button[style*="background: #28445c"],
+.worker-ui button[style*="background: rgb(40, 68, 92)"] { background: #285340 !important; color: #fffef9 !important; border-color: #285340 !important; }
+}

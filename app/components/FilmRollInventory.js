@@ -401,7 +401,6 @@ export default function FilmRollInventory({
                         <span>
                           <b>{r.brand} {r.product_code} · {r.remaining}m</b>
                           <FilmFireBadge type={r.price_type} />
-                          <small>{r.label}</small>
                           <small>{r.supplier} · {r.location}</small>
                         </span>
                       </label>

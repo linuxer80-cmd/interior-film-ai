@@ -1,4 +1,6 @@
 import WorkerProfileReminder from "./WorkerProfileReminder";
-export default function WorkerLayout({children}) {
-  return <><WorkerProfileReminder />{children}</>;
+import "./worker-ui.css";
+
+export default function WorkerLayout({ children }) {
+  return <div className="worker-ui"><WorkerProfileReminder />{children}</div>;
 }

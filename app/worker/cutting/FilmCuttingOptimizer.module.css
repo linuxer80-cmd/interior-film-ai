@@ -964,3 +964,13 @@
     width: 100%;
   }
 }
+
+@media screen {
+  .page { background: #f7f5ee; color: #273b34; }
+  .card, .sectionCard, .resultRoll { background: #fffef9; border-color: #e3e0d6; border-radius: 16px; padding: 14px; box-shadow: none; }
+  .summaryPill, .resultSummary { background: #edf3ec; border-color: #d6dcd2; border-radius: 12px; }
+  .title, .summaryPill strong, .resultRollTop h3 { color: #273b34; }
+  .blackButton, .calculateButton, .bulkActions .applyButton { background: #285340; color: #fffef9; border-color: #285340; }
+  .resetButton, .addColorButton, .sectionActions button, .resultHeader button { background: #fffef9; color: #285340; border-color: #d6dcd2; }
+  .bulkBox { background: #edf3ec; border-color: #d6dcd2; border-radius: 12px; }
+}
