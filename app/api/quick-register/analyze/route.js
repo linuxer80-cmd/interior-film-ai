@@ -1,3 +1,4 @@
+import { profilePrompt, normalizeProfile } from "../../../../lib/caseClassification.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { QUICK_REGISTER_CATEGORIES, resolveQuickRegisterCategory } from "../../../utils/quickRegisterCategories";
@@ -30,6 +31,8 @@ export async function POST(request) {
     }
     const instruction = `인테리어필름 시공 사진 ${files.length}장을 비교하라. 번호는 0부터 시작한다. 각 사진의 시공 부위(category: ${QUICK_REGISTER_CATEGORIES.join("/")}), 세부 부위(sub_category), 전후(before/after/unknown), 현장 번호(site_key), 실제 시공 대상 번호(object_key), 대상 구분 근거(object_evidence), 대상 동일성 확신(object_confidence), description, tags를 판별하라.
 ${FILM_TARGET_RULES}
+${profilePrompt}
+각 photos 항목에 case_profile 객체를 추가한다.
 [냉장고장과 붙박이장 구분]
 - 냉장고가 들어가는 바닥까지 열린 큰 빈 칸, 깊은 측판·칸막이, 빈 칸 위의 수납부가 주 대상이면 category는 냉장고장이다. 냉장고가 빠져 있어도 냉장고장일 수 있다.
 - 냉장고 자리의 옆판·상단 수납부·문짝을 각각 촬영한 사진도 같은 구조를 보여주는 다른 사진과 비교해 냉장고장으로 분류한다. 냉장고장 세부 부위는 전체/측판/상단 수납부/도어 중 보이는 범위로 적고 싱크대 상부장·하부장과 섞지 않는다.
@@ -68,7 +71,7 @@ JSON만 반환: {"photos":[{"index":0,"site_key":"new-site-1","object_key":"new-
         photos.some((p) => !Number.isInteger(p.index) || p.index < 0 || p.index >= files.length)) {
       throw new Error("AI 분석 결과가 불완전합니다. 다시 분석해주세요.");
     }
-    return NextResponse.json({ photos: photos.map((photo) => ({ ...photo, category: resolveQuickRegisterCategory(photo.category) })) });
+    return NextResponse.json({ photos: photos.map((photo) => ({ ...photo, case_profile: normalizeProfile(photo.case_profile), category: resolveQuickRegisterCategory(photo.category) })) });
   } catch (error) {
     return NextResponse.json({ error: error.message || "분석 실패" }, { status: 500 });
   }

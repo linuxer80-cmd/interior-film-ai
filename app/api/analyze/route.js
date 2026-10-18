@@ -1,3 +1,4 @@
+import { profilePrompt, normalizeProfile } from "../../../lib/caseClassification.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -1139,7 +1140,7 @@ ${ESTIMATE_OBSERVATION_RULES}
                         "input_text",
 
                       text:
-                        analysisInstruction,
+                        analysisInstruction + "\n" + profilePrompt + "\n출력 JSON에 case_profile 객체를 추가한다.",
                     },
 
                     {
@@ -1220,6 +1221,7 @@ ${ESTIMATE_OBSERVATION_RULES}
         normalizeAnalysisClassification(
           analysis
         );
+      analysis.case_profile = normalizeProfile(analysis.case_profile);
     } catch (error) {
       console.error(
         "Single JSON parse error:",

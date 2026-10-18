@@ -832,7 +832,7 @@ export async function POST(
     let visual = { rows: [], status: "no_candidates", usage: null };
     let candidateCount = 0;
     try {
-      const analysis = { category, sub_category: subCategory, construction_scope: body?.construction_scope };
+      const analysis = { category, sub_category: subCategory, construction_scope: body?.construction_scope, case_profile: body?.case_profile };
       const hydrationStarted = Date.now();
       const candidates = await loadVisualCandidates(supabase, company.id, rawCases, analysis, process.env.NEXT_PUBLIC_SUPABASE_URL);
       candidateCount = candidates.length;

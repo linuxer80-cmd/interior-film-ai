@@ -788,6 +788,9 @@ export default function AdminPage() {
 
       {activeTab === "register" && (
         <RegisterTab
+          suggestClassification={registerHook.suggestClassification}
+          caseProfile={registerHook.caseProfile}
+          setCaseProfile={registerHook.setCaseProfile}
           category={category}
           setCategory={setCategory}
           actualCost={actualCost}

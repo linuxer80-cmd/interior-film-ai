@@ -1,5 +1,7 @@
 "use client";
 
+import { mergeProfiles } from "../../lib/caseClassification.mjs";
+
 import { useRef, useState } from "react";
 
 import {
@@ -683,6 +685,7 @@ export default function useEstimate({
     [...group.photos].sort((a, b) => Number(b.analysis?.view_completeness === "full") - Number(a.analysis?.view_completeness === "full")).slice(0, 2).forEach((photo) => form.append("images", photo.file));
     form.append("metadata", JSON.stringify({
       company_slug: normalizedCompanySlug, text: searchText,
+      case_profile: mergeProfiles(group.photos.map(photo => photo.analysis?.case_profile)),
       category: group.category || null, sub_category: group.subCategory || null,
       construction_scope: group.scope, analysis_id: group.photos[0]?.analysisRecordId || null, photo_indices: group.photos.map((photo) => photo.analysisIndex), match_threshold: MATCH_THRESHOLD, match_count: 50,
     }));

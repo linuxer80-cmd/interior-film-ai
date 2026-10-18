@@ -1,3 +1,4 @@
+import { normalizeProfile } from "../../lib/caseClassification.mjs";
 import { resolveQuickRegisterCategory } from "./quickRegisterCategories.js";
 
 export const parseBulkMoney = (value) => Number(String(value ?? "").replace(/,/g, "").trim());
@@ -99,6 +100,7 @@ export function resolveBulkBatch(batch, references, results, allocateSite, alloc
       category: resolveQuickRegisterCategory(result.category), subCategory: text(result.sub_category).slice(0, 80),
       type: ["before", "after"].includes(result.photo_type) ? result.photo_type : "unknown",
       confidence: ["high", "medium"].includes(result.confidence) ? result.confidence : "low",
+      caseProfile: normalizeProfile(result.case_profile),
       description: text(result.description).slice(0, 500),
       tags: Array.isArray(result.tags) ? result.tags.filter((tag) => typeof tag === "string").slice(0, 12) : [],
     };

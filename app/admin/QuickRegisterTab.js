@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { mergeProfiles } from "../../lib/caseClassification.mjs";
+import CaseClassificationFields from "../components/CaseClassificationFields";
 import ui from "./AdminUi.module.css";
 import { QUICK_REGISTER_CATEGORIES as categories } from "../utils/quickRegisterCategories";
 import { buildBulkSites, bulkGroupKey, chooseBulkReferences, firstBulkError, focusBulkField, parseBulkMoney, resolveBulkBatch, retainBulkPrices } from "../utils/quickRegisterGroups";
@@ -182,6 +184,7 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
           setMessage(`${siteName} / ${category} ${subCategory} 저장 중...`);
           const { data: item, error: itemError } = await supabase.from("work_items").insert({
             company_id: companyId, project_id: PROJECT_ID, category, sub_category: subCategory,
+            case_profile: mergeProfiles(group.photos.map(photo => photo.caseProfile)),
             actual_cost: parseBulkMoney(prices[group.key]), memo: `[빠른등록 현장] ${siteName}`,
           }).select("id").single();
           if (itemError) throw itemError;
@@ -257,6 +260,11 @@ export default function QuickRegisterTab({ companyId, loadJobs }) {
           <strong>묶음 {groupIndex + 1} · {group.category} / {group.subCategory} · {group.photos.length}장</strong>
           <input {...fieldProps(`price:${group.key}`)} aria-label={`현장 ${site} 묶음 ${groupIndex + 1} 실제금액`} inputMode="numeric" placeholder="이 묶음 실제금액 (원)" style={{ ...inputStyle, margin: "8px 0" }} value={prices[group.key] ?? ""} onChange={(e) => { setPrices((s) => ({ ...s, [group.key]: e.target.value })); if (fieldError?.field === `price:${group.key}`) setFieldError(null); }} />
           {errorText(`price:${group.key}`)}
+          <CaseClassificationFields value={mergeProfiles(group.photos.map(photo => photo.caseProfile))} disabled={busy} onChange={value => {
+            const ids = new Set(group.photos.map(photo => photo.id));
+            setPhotos(current => current.map(photo => ids.has(photo.id) ? { ...photo, caseProfile: value } : photo));
+          }} />
+
           <details open={group.photos.some(review) || group.photos.some((p) => fieldError?.photoId === p.id)}>
             <summary className={ui.bulkSummary}>사진·분류 확인{group.photos.some(review) ? " · 확인 필요" : " · 펼쳐보기"}</summary>
             {group.photos.map((photo) => <div key={photo.id} className={ui.bulkPhoto}>

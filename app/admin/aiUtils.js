@@ -76,6 +76,7 @@ export async function analyzeImage(file, photoType) {
   }
 
   return {
+    case_profile: result?.analysis?.case_profile || result?.case_profile || {},
     category:
       result?.category ||
       result?.analysis?.category ||

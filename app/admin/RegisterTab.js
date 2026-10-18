@@ -1,3 +1,4 @@
+import CaseClassificationFields from "../components/CaseClassificationFields";
 import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import ui from "./AdminUi.module.css";
 
@@ -9,6 +10,7 @@ import {
 } from "./adminStyles";
 
 export default function RegisterTab({
+  caseProfile, setCaseProfile, suggestClassification,
   category,
   setCategory,
   actualCost,
@@ -93,7 +95,7 @@ export default function RegisterTab({
           선택 {afterImages.length}장
         </div>
 
-        </InputStep><InputStep index={1}><label style={labelStyle}>
+        </InputStep><InputStep index={1}><button type="button" disabled={loading} onClick={suggestClassification} style={secondaryButtonStyle}>사진으로 세부 분류 제안</button><CaseClassificationFields value={caseProfile} onChange={value => { setCaseProfile(value); if(value.part !== "확인 필요") setCategory(value.part); }} disabled={loading} /><label style={labelStyle}>
           시공 부위
         </label>
 

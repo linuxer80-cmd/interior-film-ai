@@ -21,6 +21,7 @@ export default function useJobRegister({
   const [beforeImages, setBeforeImages] = useState([]);
   const [afterImages, setAfterImages] = useState([]);
 
+  const [caseProfile, setCaseProfile] = useState({});
   const [category, setCategory] = useState("");
   const [actualCost, setActualCost] = useState("");
   const [material, setMaterial] = useState("");
@@ -28,6 +29,21 @@ export default function useJobRegister({
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function suggestClassification() {
+    if (loading) return;
+    const file = beforeImages[0] || afterImages[0];
+    if (!file) { setMessage("사진을 먼저 선택해주세요."); return; }
+    setLoading(true);
+    try {
+      const prepared = await resizeImage(file);
+      const result = await analyzeImage(prepared, beforeImages.length ? "before" : "after");
+      setCaseProfile(result.case_profile || {});
+      if (result.case_profile?.part && result.case_profile.part !== "확인 필요") setCategory(result.case_profile.part);
+      setMessage("AI 분류 초안입니다. 구조·손상·실제 시공 범위를 확인한 뒤 저장해주세요.");
+    } catch (error) { setMessage(error.message || "분류하지 못했습니다. 직접 선택할 수 있습니다."); }
+    finally { setLoading(false); }
+  }
 
   /* =========================================================
      이미지 파일 정리
@@ -188,6 +204,7 @@ export default function useJobRegister({
           category: cleanCategory,
           sub_category: cleanCategory,
           actual_cost: cost,
+          case_profile: caseProfile,
           memo: cleanMemo || null,
         })
         .select("id")
@@ -556,6 +573,7 @@ export default function useJobRegister({
       setAfterImages([]);
 
       setCategory("");
+      setCaseProfile({});
       setActualCost("");
       setMaterial("");
       setMemo("");
@@ -700,6 +718,7 @@ export default function useJobRegister({
   ========================================================= */
 
   return {
+    caseProfile, setCaseProfile, suggestClassification,
     beforeImages,
     setBeforeImages,
 
