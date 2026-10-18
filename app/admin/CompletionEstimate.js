@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import QuoteFileActions from "../components/QuoteFileActions";
 import { chatCompletionDraft } from "../../lib/chatQuoteDraft.mjs";
 import { supabase } from "../../lib/supabase";
 
@@ -93,6 +94,11 @@ export default function CompletionEstimate({
   onDirtyChange,
 }) {
   const [draft, setDraft] = useState(null);
+  const fileDraft = useMemo(() => draft ? { ...draft,
+    items: draft.items.filter(includedCompletionItem).map(row => ({
+      ...row, quantity: Number(row.quantity), amount: Number(row.amount)
+    })) } : null, [draft]);
+
   const [automatic, setAutomatic] = useState(null);
   const [busy, setBusy] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -683,6 +689,7 @@ export default function CompletionEstimate({
               {busy ? "처리 중…" : "저장하고 PDF 받기"}
             </button>
             </div>{pdfUrl && <p><a href={pdfUrl} download={pdfName} data-ui-link="action">PDF 다시 다운로드</a></p>}
+            <QuoteFileActions draft={fileDraft} filename={(draft.header?.site_name || "현장") + "_인건비자재비견적서"} disabled={busy || !fileDraft?.items.length} />
           </fieldset>
         </form>
       )}

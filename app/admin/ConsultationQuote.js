@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import {
   quoteTotals,
   validateQuote,
 } from "../../lib/consultationQuote";
+import QuoteFileActions from "../components/QuoteFileActions";
 import CompletionEstimate from "./CompletionEstimate";
 import { quoteHtml } from "../../lib/consultationQuotePrint";
 
@@ -175,6 +176,19 @@ function AreaConsultationQuote({
   }
 
   const total = draft ? quoteTotals(draft.items) : null;
+  const fileDraft = useMemo(() => draft ? {
+    header: { company_name: draft.company_name, company_phone: draft.company_phone,
+      business_number: draft.business_number, customer_name: draft.customer_name,
+      address: draft.address, work_date: draft.work_date },
+    vat: draft.vat,
+    items: draft.items.map(row => ({ ...row,
+      name: [row.name, row.detail, row.film_no ? "필름: " + row.film_no : "", row.note].filter(Boolean).join("\n"),
+      amount: Math.round(Number(row.quantity) * Number(row.unit_price)) })),
+    note: [draft.title, draft.customer_phone ? "고객 연락처: " + draft.customer_phone : "",
+      draft.duration ? "공사기간: " + draft.duration : "", draft.customer_note,
+      draft.other_schedule ? "타 공정 일정: " + draft.other_schedule : "", draft.footer].filter(Boolean).join("\n")
+  } : null, [draft]);
+
 
   return (
     <section className="consultation-quote">
@@ -341,8 +355,9 @@ function AreaConsultationQuote({
           </button>{" "}
 
           <button type="button" onClick={preview}>
-            견적서 미리보기 / 인쇄·PDF
+            견적서 미리보기
           </button>
+          <QuoteFileActions draft={fileDraft} filename={(draft.customer_name || "고객") + "_부위별견적서"} disabled={busy || !total?.complete} />
         </fieldset>
       )}
 
