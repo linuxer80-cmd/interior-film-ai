@@ -219,3 +219,20 @@ test('one identified doorway among furniture does not need a matching second doo
   assert.equal(two[0].subjectId, undefined);
   assert.equal(two[1].subjectId, undefined);
 });
+
+test('short rate limit retries once with the same deadline and can recover', async () => {
+  let calls=0, signal;
+  const result=await analyzeEstimatePhotos([new Blob(['x'],{type:'image/jpeg'})],'test',async(_,options)=>{
+    calls++; if(signal) assert.equal(options.signal,signal); signal=options.signal;
+    if(calls===1)return {ok:false,status:429,headers:new Headers({'retry-after':'0'}),json:async()=>({error:{code:'rate_limit_exceeded'}})};
+    return {ok:true,status:200,json:async()=>({output_text:JSON.stringify({photos:{photo_0:{index:0,...analysis('door')}}})})};
+  });
+  assert.equal(calls,2);assert.equal(result.photos.length,1);
+});
+test('quota exhaustion and long retry-after never retry', async()=>{
+ for(const error of [{code:'rate_limit_exceeded'},{code:'rate_limit_exceeded',type:'insufficient_quota'}]){
+  let calls=0;
+  await assert.rejects(analyzeEstimatePhotos([new Blob(['x'],{type:'image/jpeg'})],'test',async()=>{calls++;return {ok:false,status:429,headers:new Headers({'retry-after':error.type?'0':'60'}),json:async()=>({error})};}));
+  assert.equal(calls,1);
+ }
+});

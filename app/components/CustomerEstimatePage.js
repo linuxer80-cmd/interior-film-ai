@@ -816,23 +816,21 @@ export default function CustomerEstimatePage({
           >
             <div className={styles.screenHeader}>
               <h1>
-                AI가 사진을
-                <br />
-                분석하고 있어요
+                {loading ? "AI가 사진을 분석하고 있어요" : "사진 분석을 완료하지 못했어요"}
               </h1>
 
               <p>
-                사진에서 시공 부위를 확인하고
-                기존 시공 데이터와 비교 중입니다.
+                {loading ? "사진에서 시공 부위를 확인하고 기존 시공 데이터와 비교 중입니다." : "아래 안내를 확인한 후 다시 시도해주세요."}
               </p>
             </div>
 
-            <div className={styles.analysisVisual}>
+            {loading && <div className={styles.analysisVisual}>
               <div className={styles.analysisCircle}>
                 <div className={styles.analysisInner}>⌂</div>
               </div>
             </div>
 
+            }
             <div className={styles.analysisList}>
               <div className={styles.analysisDone}>
                 <span>✓</span>
@@ -840,8 +838,8 @@ export default function CustomerEstimatePage({
               </div>
 
               <div className={styles.analysisActive}>
-                <span>✓</span>
-                시공 부위 분석 중...
+                <span>{loading ? "○" : "!"}</span>
+                {loading ? "시공 부위 분석 중..." : "시공 부위 분석 중단"}
               </div>
 
               <div>
