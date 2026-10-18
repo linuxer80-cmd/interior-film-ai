@@ -18,7 +18,7 @@ function PhotoPreview({ photo }) {
 export default function ManualCases() {
   const [companies,setCompanies]=useState([]),[company,setCompany]=useState(''),[photos,setPhotos]=useState([]),[path,setPath]=useState([]),[selected,setSelected]=useState([]),[details,setDetails]=useState({}),[mode,setMode]=useState('folders'),[busy,setBusy]=useState(false),[message,setMessage]=useState('권한 확인 중'),[sql,setSql]=useState(''),[batch,setBatch]=useState(0);
   const [customFolders,setCustomFolders]=useState([]),[folderName,setFolderName]=useState('');
-  const [actor,setActor]=useState(''),[ready,setReady]=useState(false),[page,setPage]=useState(0);
+  const [actor,setActor]=useState(''),[ready,setReady]=useState(false),[page,setPage]=useState(0),[savedAt,setSavedAt]=useState('');
   const working=useRef(false),stop=useRef(false);
   const draftKey=actor&&company?`${actor}:${company}`:'';
   useEffect(()=>{let active=true;(async()=>{try{
@@ -27,11 +27,11 @@ export default function ManualCases() {
     const {data,error}=await supabase.rpc('super_admin_get_companies');if(error)throw error;if(active){setActor(a.user.id);setCompanies(data||[]);setMessage('업체를 선택하고 사진을 올려주세요.');}
   }catch(e){if(active)setMessage(e.message);}})();return()=>{active=false;};},[]);
   useEffect(()=>{if(!photos.length)return;const fn=e=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',fn);return()=>window.removeEventListener('beforeunload',fn);},[photos.length]);
-  useEffect(()=>{if(!draftKey)return;let active=true;setReady(false);readDraft(draftKey).then(d=>{if(!active)return;setPhotos(d?.photos||[]);setDetails(d?.details||{});setPath(d?.path||[]);setSelected([]);setCustomFolders(d?.customFolders||[]);setReady(true);setMessage(d?.photos?.length?`${d.photos.length}장 임시 작업을 복원했습니다.`:'사진을 추가해주세요.');}).catch(e=>{if(active)setMessage(`임시 저장소를 열 수 없습니다: ${e.message}`);});return()=>{active=false;};},[draftKey]);
-  useEffect(()=>{if(!ready||!draftKey)return;const timer=setTimeout(()=>{writeDraft(draftKey,{photos,details,path,customFolders}).catch(e=>setMessage(`임시 저장 실패: ${e.message}. 화면을 닫지 마세요.`));},300);return()=>clearTimeout(timer);},[photos,details,path,customFolders,ready,draftKey]);
+  useEffect(()=>{if(!draftKey)return;let active=true;setReady(false);readDraft(draftKey).then(d=>{if(!active)return;setPhotos(d?.photos||[]);setDetails(d?.details||{});setPath(d?.path||[]);setSelected([]);setCustomFolders(d?.customFolders||[]);setSavedAt(d?.savedAt||'');setReady(true);setMessage(d?.photos?.length?`${d.photos.length}장 임시 작업을 복원했습니다.`:'사진을 추가해주세요.');}).catch(e=>{if(active)setMessage(`임시 저장소를 열 수 없습니다: ${e.message}`);});return()=>{active=false;};},[draftKey]);
+  useEffect(()=>{if(!ready||!draftKey)return;const timer=setTimeout(()=>{writeDraft(draftKey,{photos,details,path,customFolders,savedAt}).catch(e=>setMessage(`임시 저장 실패: ${e.message}. 화면을 닫지 마세요.`));},300);return()=>clearTimeout(timer);},[photos,details,path,customFolders,ready,draftKey,savedAt]);
   useEffect(()=>setPage(0),[path]);
   const visible=photos.filter(p=>key(p.path)===key(path));
-  const step=path.length?['custom_'+path.length,'내 하위 분류',customFolders.filter(f=>key(f.parent)===key(path)).map(f=>f.name)]:['part','대분류',PARTS.filter(p=>p!=='확인 필요')];
+  const step=!path.length?['space','공간 분류',['주거','상업']]:path.length===1&&path[0].key==='space'?['part','대분류',PARTS.filter(p=>p!=='확인 필요')]:path.length?['custom_'+path.length,'내 하위 분류',customFolders.filter(f=>key(f.parent)===key(path)).map(f=>f.name)]:['part','대분류',PARTS.filter(p=>p!=='확인 필요')];
   const groups=groupManualPhotos(photos);
   useEffect(()=>{setBatch(b=>Math.min(b,Math.max(0,Math.ceil(groups.length/30)-1)));},[groups.length]);
   const folders=new Map([[key([]),[]]]);customFolders.forEach(f=>{const p=[...f.parent,{key:'custom_'+f.parent.length,value:f.name}];folders.set(key(p),p);});photos.forEach(p=>{for(let n=1;n<=p.path.length;n++)folders.set(key(p.path.slice(0,n)),p.path.slice(0,n));});
@@ -63,6 +63,18 @@ export default function ManualCases() {
     setPhotos(all=>all.map(p=>selected.includes(p.id)?{...p,path:target,caseId:p.id}:p));setDetails(d=>Object.fromEntries(Object.entries(d).filter(([id])=>!photos.some(p=>p.caseId===id&&selected.includes(p.id)))));setSql('');setPath(target);setFolderName('');
   }
   function merge(){if(selected.length<2)return;const id=crypto.randomUUID();setPhotos(all=>all.map(p=>selected.includes(p.id)?{...p,caseId:id}:p));setSql('');setSelected([]);setMessage('선택한 사진을 한 사례로 묶었습니다. 금액은 한 번만 입력합니다.');}
+  async function saveWork(){
+    if(!ready||working.current)return;
+    working.current=true;setBusy(true);
+    try{
+      const stamp=new Date().toISOString();
+      await writeDraft(draftKey,{photos,details,path,customFolders,savedAt:stamp});
+      setSavedAt(stamp);
+      setMessage('작업 저장 완료. 같은 기기·브라우저에서 이 업체를 선택하면 이어서 작업할 수 있습니다.');
+      if(navigator.storage?.persist)await navigator.storage.persist().catch(()=>false);
+    }catch(e){setMessage(`작업 저장 실패: ${e.message}. 화면을 닫지 마세요.`);}
+    finally{working.current=false;setBusy(false);}
+  }
   async function generate(){
     if(working.current)return;const current=groups.slice(batch*30,batch*30+30);
     try{
@@ -83,12 +95,15 @@ export default function ManualCases() {
   }
   return <main className={styles.page}>
     <Link href="/super-admin" onClick={e=>{if(photos.length&&!confirm('임시 저장은 같은 기기에 보관됩니다. 나가시겠습니까?'))e.preventDefault();}}>← 슈퍼관리자</Link>
-    <h1>사진 폴더 분류</h1><p>대분류 선택 → 내 하위 폴더 만들기 → 사진 체크·이동 → 같은 대상 묶기 → 가격 입력</p>
+    <h1>사진 폴더 분류</h1><p>주거공간·상업공간 → 대분류 선택 → 내 하위 폴더 만들기 → 사진 체크·이동 → 같은 대상 묶기 → 가격 입력</p>
     <p role="status">{message}</p>
     {busy&&<button onClick={()=>{stop.current=true;}}>사진 준비 중단</button>}
     <fieldset disabled={busy}>
       <label>등록 업체<select value={company} disabled={photos.length>0} onChange={e=>setCompany(e.target.value)}><option value="">업체 선택</option>{companies.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}</select></label>
       {company&&ready&&<>
+        <button className={styles.primary} onClick={saveWork}>오늘 작업 저장 · 나중에 이어하기</button>
+        <p>{savedAt?`마지막 작업 저장: ${new Date(savedAt).toLocaleString('ko-KR')}`:'자동 임시 저장 중 · 작업을 마칠 때 작업 저장을 눌러주세요.'}</p>
+        <p>작업 저장은 이 기기에 보관됩니다. 다른 기기와 동기화되지 않으며 브라우저 데이터 삭제 시 사라집니다.</p>
         <div className={styles.tabs}><button onClick={()=>setMode('folders')} aria-pressed={mode==='folders'}>1. 사진 분류 ({photos.length})</button><button onClick={()=>setMode('prices')} aria-pressed={mode==='prices'}>2. 사례·가격 ({groups.length})</button></div>
         {mode==='folders'?<>
           <label>현재 폴더에 사진 추가 (장수 제한 없음)<input type="file" accept="image/*" multiple onChange={add}/></label>
@@ -100,8 +115,8 @@ export default function ManualCases() {
           {!visible.length&&<p>이 폴더에는 남은 사진이 없습니다. 상위 폴더로 돌아가 나머지를 분류하세요.</p>}
           <div className={styles.sticky}><strong>{step[1]}</strong>
           <p>폴더 이름을 누르면 체크한 사진을 이동합니다. 사진 없이 폴더를 열려면 ‘열기’를 누르세요.</p>
-          <div className={styles.choices}>{step[2].map(v=><span key={v}><button disabled={!selected.length} onClick={()=>move(v)}>{v}</button><button onClick={()=>navigate([...path,{key:step[0],value:v}])}>{v} 열기</button></span>)}</div>
-          {path.length>0&&<div><label>새 하위 폴더 이름<input value={folderName} maxLength={100} placeholder="예: 냉장고장 있는 싱크대" onChange={e=>setFolderName(e.target.value)}/></label><button disabled={!folderName.trim()} onClick={()=>{
+          <div className={styles.choices}>{step[2].map(v=><span key={v}><button disabled={!selected.length} onClick={()=>move(v)}>{step[0]==='space'?v+'공간':v}</button><button onClick={()=>navigate([...path,{key:step[0],value:v}])}>{step[0]==='space'?v+'공간':v} 열기</button></span>)}</div>
+          {path.some(x=>x.key==='part')&&<div><label>새 하위 폴더 이름<input value={folderName} maxLength={100} placeholder="예: 냉장고장 있는 싱크대" onChange={e=>setFolderName(e.target.value)}/></label><button disabled={!folderName.trim()} onClick={()=>{
             const name=folderName.trim();if(step[2].includes(name)){setMessage('같은 이름의 폴더가 있습니다.');return;}
             setCustomFolders(f=>[...f,{parent:[...path],name}]);setFolderName('');
             if(selected.length)move(name);else navigate([...path,{key:step[0],value:name}]);
