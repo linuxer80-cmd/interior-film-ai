@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import DoorReclassification from "./DoorReclassification";
 import { supabase } from "../../../lib/supabase";
 import ToolIllustration from "../../components/ui/ToolIllustration";
 
@@ -368,7 +369,9 @@ export default function StructureAnalysisPage() {
             <>
               <p style={styles.help}>슈퍼관리자 전용 페이지입니다.</p>
 
-              {message && (
+              {selectedCompanyId && <DoorReclassification key={selectedCompanyId} companyId={selectedCompanyId} />}
+
+        {message && (
                 <div role="alert" style={styles.error}>
                   {message}
                 </div>
@@ -459,6 +462,8 @@ export default function StructureAnalysisPage() {
             </button>
           )}
         </section>
+
+        {selectedCompanyId && <DoorReclassification key={selectedCompanyId} companyId={selectedCompanyId} />}
 
         {message && (
           <div
