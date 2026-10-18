@@ -44,8 +44,8 @@ export async function POST(request) {
     if(!response.ok) {
       const code=String(result.error?.code||result.error?.type||"unknown");
       const exhausted=["insufficient_quota","credit_balance_exhausted","billing_hard_limit_reached"].includes(code);
-      const stopBatch=exhausted || [401,403,429].includes(response.status) || code==="model_not_found";
-      const reason=exhausted?"AI 크레딧 또는 결제 한도가 부족합니다.":response.status===401?"AI API 키 인증에 실패했습니다.":code==="model_not_found"?"설정된 AI 모델을 사용할 수 없습니다.":response.status===429?"AI 요청 한도에 도달했습니다. 잠시 후 실패 건만 재시도해주세요.":code.includes("image")?"사진을 AI가 읽지 못했습니다. 사진 경로와 파일을 확인해주세요.":"AI 요청이 거절되었습니다.";
+      const stopBatch=code==="AI_QUOTA_UNAVAILABLE" || exhausted || [401,403,429].includes(response.status) || code==="model_not_found";
+      const reason=code==="AI_QUOTA_UNAVAILABLE"?"AI 사용량 확인에 실패했습니다. 서버의 사용량 설정을 확인해주세요.":exhausted?"AI 크레딧 또는 결제 한도가 부족합니다.":response.status===401?"AI API 키 인증에 실패했습니다.":code==="model_not_found"?"설정된 AI 모델을 사용할 수 없습니다.":response.status===429?"AI 요청 한도에 도달했습니다. 잠시 후 실패 건만 재시도해주세요.":code.includes("image")?"사진을 AI가 읽지 못했습니다. 사진 경로와 파일을 확인해주세요.":"AI 요청이 거절되었습니다.";
       console.error("Door reclassification provider error",{status:response.status,code});
       return NextResponse.json({error:`${reason} (HTTP ${response.status}, ${code.replace(/[^a-zA-Z0-9_-]/g,"").slice(0,80)})`,stopBatch},{status:502});
     }

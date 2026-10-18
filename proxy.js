@@ -19,6 +19,7 @@ const features = {
   "/api/quick-register/analyze": "quick_photo_analysis",
   "/api/embedding": "embedding",
   "/api/analyze-work-structure": "structure_analysis",
+  "/api/super-admin/reclassify-doors": "structure_analysis",
 };
 
 const publicPaths = new Set([
@@ -65,6 +66,11 @@ export async function proxy(request) {
       body = await request.clone().formData();
     } else if (type.includes("application/json")) {
       body = await request.clone().json();
+    }
+
+    // Listing existing cases makes no AI call; route still verifies super-admin access.
+    if (path === "/api/super-admin/reclassify-doors" && body && !body.work_id) {
+      return NextResponse.next({ request: { headers } });
     }
 
     let metadata = null;

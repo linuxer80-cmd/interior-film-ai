@@ -14,7 +14,7 @@ export default function DoorReclassification({companyId}) {
   async function call(body) {
     const {data}=await supabase.auth.getSession();
     const response=await fetch("/api/super-admin/reclassify-doors",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${data.session?.access_token||""}`},body:JSON.stringify({company_id:companyId,...body})});
-    const result=await response.json();if(!response.ok)throw Object.assign(Error(result.error),{stopBatch:result.stopBatch || response.status===401 || response.status===403});return result;
+    const result=await response.json();if(!response.ok)throw Object.assign(Error(result.error),{stopBatch:result.stopBatch || result.code==="AI_QUOTA_UNAVAILABLE" || response.status===429 || response.status===503 || response.status===401 || response.status===403});return result;
   }
   async function load(){setBusy(true);try{const result=await call({});setItems(result.items);setMessage(`목록 조회 완료 · 종류별로 나누어 표시합니다.`);}catch(e){setMessage(e.message);}finally{setBusy(false);}}
   async function runBatch(targets) {
