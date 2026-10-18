@@ -1,3 +1,4 @@
+import {designVars,getCustomerDesign} from "../../lib/customerPageDesigns.mjs";
 import styles from "./CompanyHomepageContent.module.css";
 import {
   phoneHref,
@@ -38,7 +39,7 @@ export default function CompanyHomepageContent({ homepage }) {
     .filter(([, value]) => value);
 
   return (
-    <div className={styles.content}>
+    <div className={styles.content} data-layout={getCustomerDesign(profile.design_id).layout} style={designVars(profile.design_id)}>
       {cases.length > 0 && (
         <section aria-labelledby="public-case-title">
           <h2 id="public-case-title">실제 시공 사례</h2>

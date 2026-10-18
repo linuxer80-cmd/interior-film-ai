@@ -11,6 +11,8 @@ import {
 
 import GuidedForm, { InputStep, InputFinal } from "../../components/GuidedForm";
 
+import DesignPicker from "./DesignPicker";
+import {getCustomerDesign} from "../../../lib/customerPageDesigns.mjs";
 import styles from "./page.module.css";
 
 const services = [
@@ -85,6 +87,19 @@ export default function CustomerPageAdmin() {
       if (error.name !== "AbortError") setShareMessage(`아래 주소를 길게 눌러 복사해주세요: ${url}`);
     } finally { setSharing(false); }
   }
+  const [designId,setDesignId] = useState('natural-oak');
+  const [savedDesign,setSavedDesign] = useState('natural-oak');
+  async function saveDesign() {
+    if (!ready || busy) return;
+    setBusy(true); setMessage('디자인을 저장하고 있습니다.');
+    try {
+      const {data,error} = await supabase.from('company_public_profiles').update({design_id:designId,updated_at:new Date().toISOString()}).eq('company_id',companyId).select('design_id').maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('먼저 업체 정보를 저장해주세요.');
+      setSavedDesign(data.design_id);setMessage('고객페이지 디자인을 적용했습니다.');
+    } catch(error) { setMessage(/design_id/.test(error.message || '') ? '디자인 저장 설정이 필요합니다. 안내된 SQL을 실행한 후 다시 적용해주세요.' : error.message); }
+    finally {setBusy(false);}
+  }
   const [view, setView] = useState("profile");
   const [caseVersion, setCaseVersion] = useState(0);
   const [casePage, setCasePage] = useState(0);
@@ -151,6 +166,8 @@ export default function CustomerPageAdmin() {
         ...(p.data || {}),
       });
 
+      setDesignId(getCustomerDesign(p.data?.design_id).id);
+      setSavedDesign(getCustomerDesign(p.data?.design_id).id);
       setCases(c.data || []);
       setSavedPublished(p.data?.is_published === true);
       setReady(true);
@@ -464,10 +481,11 @@ export default function CustomerPageAdmin() {
       </p>
 
       <nav ref={menu} tabIndex={-1} className={styles.tabs} aria-label="고객페이지 관리 메뉴">
-        {[["profile","업체 정보"],["case","사례 등록"],["list",`등록 사례 ${cases.length}`]].map(([id,label]) =>
+        {[["profile","업체 정보"],["design","디자인 선택"],["case","사례 등록"],["list",`등록 사례 ${cases.length}`]].map(([id,label]) =>
           <button type="button" key={id} disabled={busy} aria-pressed={view===id} onClick={()=>openView(id)}>{label}</button>
         )}
       </nav>
+      {view==="design" && <DesignPicker value={designId} onChange={setDesignId} profile={profile} companyName={companyName} busy={!ready || busy} saved={savedDesign} onSave={saveDesign} />}
       <div hidden={view!=="profile"}>
       <GuidedForm
         titles={["사업자 정보","상담 연락처·지역","블로그·플레이스","업체 소개·서비스","공개 설정"]}

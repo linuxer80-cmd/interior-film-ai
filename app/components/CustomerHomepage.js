@@ -1,3 +1,4 @@
+import CustomerDesignHero from "./CustomerDesignHero";
 import CustomerChat from "./CustomerChat";
 import CustomerEstimatePage from "./CustomerEstimatePage";
 import CompanyHomepageContent from "./CompanyHomepageContent";
@@ -22,6 +23,7 @@ export default async function CustomerHomepage({ slug }) {
       initialCompany={homepage?.company || null}
       initialSettings={homepage?.settings || null}
       publicProfile={homepage?.profile || null}
+      brandHero={homepage?.profile ? <CustomerDesignHero designId={homepage.profile.design_id} name={homepage.profile.business_name || homepage.company.company_name} introduction={homepage.profile.introduction} region={homepage.profile.regions} image={homepage.cases?.[0]?.after?.[0]} logo={homepage.company.logo_url} /> : null}
       homepageContent={
         <CompanyHomepageContent homepage={homepage} />
       }

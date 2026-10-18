@@ -1,4 +1,5 @@
 "use client";
+import {designVars} from "../../lib/customerPageDesigns.mjs";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -65,6 +66,7 @@ export default function CustomerEstimatePage({
   initialCompany = null,
   initialSettings = null,
   homepageContent = null,
+  brandHero = null,
   publicProfile = null,
 }) {
   const [tenantLoading, setTenantLoading] = useState(
@@ -615,7 +617,7 @@ export default function CustomerEstimatePage({
   }
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-designed={!!publicProfile} style={publicProfile ? designVars(publicProfile.design_id) : undefined}>
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <div className={styles.headerLeft}>
@@ -689,6 +691,7 @@ export default function CustomerEstimatePage({
       >
         {screen === SCREEN.HOME && (
           <section className={styles.homeScreen}>
+            {brandHero}
             <div className={styles.quoteHero}>
               {publicProfile?.regions && (
                 <div className={styles.heroEyebrow}>

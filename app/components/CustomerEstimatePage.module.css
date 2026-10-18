@@ -708,3 +708,10 @@
     transition: none;
   }
 }
+
+.page[data-designed=true]{--blue:var(--customer-accent);--blue-dark:var(--customer-accent);--text:var(--customer-text);--sub:var(--customer-muted);background:var(--customer-bg)}
+.page[data-designed=true] .header{background:var(--customer-bg)}
+.page[data-designed=true] .homeScreen :is(.quoteUpload,.quoteCamera,.quotePhone){background:var(--customer-surface);color:var(--customer-accent);border-color:var(--customer-muted)}
+.page[data-designed=true] .homeScreen .primaryButton{background:var(--customer-accent);color:var(--customer-bg)}
+/* Keep form/result readability independent of dark showcase themes. */
+.page[data-designed=true] .contentScreen{--text:#173456;--sub:#607086;--blue:#398be0;--blue-dark:#2672bf;background:#fcf9f2;color:#173456}
