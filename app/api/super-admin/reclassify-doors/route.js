@@ -30,7 +30,7 @@ export async function POST(request) {
     if(error) throw error;
     const selected=[...photos].sort((a,b)=>Number(b.photo_type==="before")-Number(a.photo_type==="before")).slice(0,3);
     if(!selected.length) throw Error("등록된 사진이 없습니다.");
-    const content=[{type:"input_text",text:profilePrompt+" 기존 사례의 같은 대상 사진들이다. 사진이 서로 다른 대상이면 확실한 공통 정보만 기록한다. 시공 후 사진으로 원래 손상을 추정하지 말고 확인 필요로 둔다. 실제 금액의 시공 범위는 사진으로 단정하지 않는다."}];
+    const content=[{type:"input_text",text:profilePrompt+JSON.stringify({registered_category:work.category,registered_sub_category:work.sub_category})+" 등록된 방문/방화문 종류를 참고하되 사진과 충돌하면 확인 필요로 남긴다. 기존 사례의 같은 대상 사진들이다. 사진이 서로 다른 대상이면 확실한 공통 정보만 기록한다. 시공 후 사진으로 원래 손상을 추정하지 말고 확인 필요로 둔다. 실제 금액의 시공 범위는 사진으로 단정하지 않는다."}];
     for(const photo of selected){
       const path=registeredStoragePath(photo.storage_path||photo.photo_url,process.env.NEXT_PUBLIC_SUPABASE_URL);
       if(!path) throw Error("사진 경로를 확인해주세요.");
@@ -38,9 +38,17 @@ export async function POST(request) {
       if(signError) throw signError;
       content.push({type:"input_text",text:`사진 종류: ${photo.photo_type}`},{type:"input_image",image_url:signed.signedUrl});
     }
+    if(!process.env.OPENAI_API_KEY) return NextResponse.json({error:"서버에 OPENAI_API_KEY가 설정되지 않았습니다.",stopBatch:true},{status:503});
     const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},signal:AbortSignal.timeout(45000),body:JSON.stringify({model:"gpt-5.6-luna",input:[{role:"user",content}],text:{format:{type:"json_schema",name:"door_profile",strict:true,schema:profileSchema}}})});
     const result=await response.json();
-    if(!response.ok) throw Error("AI 분석 요청에 실패했습니다. 사용 한도와 API 상태를 확인해주세요.");
+    if(!response.ok) {
+      const code=String(result.error?.code||result.error?.type||"unknown");
+      const exhausted=["insufficient_quota","credit_balance_exhausted","billing_hard_limit_reached"].includes(code);
+      const stopBatch=exhausted || [401,403,429].includes(response.status) || code==="model_not_found";
+      const reason=exhausted?"AI 크레딧 또는 결제 한도가 부족합니다.":response.status===401?"AI API 키 인증에 실패했습니다.":code==="model_not_found"?"설정된 AI 모델을 사용할 수 없습니다.":response.status===429?"AI 요청 한도에 도달했습니다. 잠시 후 실패 건만 재시도해주세요.":code.includes("image")?"사진을 AI가 읽지 못했습니다. 사진 경로와 파일을 확인해주세요.":"AI 요청이 거절되었습니다.";
+      console.error("Door reclassification provider error",{status:response.status,code});
+      return NextResponse.json({error:`${reason} (HTTP ${response.status}, ${code.replace(/[^a-zA-Z0-9_-]/g,"").slice(0,80)})`,stopBatch},{status:502});
+    }
     const output=result.output?.flatMap(item=>item.content||[]).filter(item=>item.type==="output_text").map(item=>item.text).join("");
     if(!output) throw Error("AI 분석 결과가 없습니다.");
     // Return a reviewable draft only. The user applies SQL after checking it.
