@@ -521,6 +521,7 @@ export default function ProfitTab() {
     <section style={{ display: "grid", gap: 14 }}>
       <div style={card}>
         <h2 style={{ margin: "0 0 8px" }}>📊 현장 수익</h2>
+        {data?.materialPending > 0 && <p role="status" style={{padding:12,background:"#fff2d9",color:"#765321",borderRadius:12}}>원가 미입력 자재 {data.materialPending}건이 있습니다. 표시 합계는 확인된 원가만 반영한 잠정 금액이며 수익 확정 대기입니다.</p>}
 
         <p
           style={{
@@ -1027,7 +1028,7 @@ export default function ProfitTab() {
                       color: site.profit < 0 ? "#b91c1c" : "#166534",
                     }}
                   >
-                    예상 수익 {won(site.profit)}
+                    {site.materialPending ? "수익 확정 대기" : `예상 수익 ${won(site.profit)}`}
                   </strong>
 
                   {site.excludedOwnerLabor > 0 && (

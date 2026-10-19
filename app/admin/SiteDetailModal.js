@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { guardAdminSiteHistory } from "../../lib/adminSiteHistory.mjs";
+import OwnerSiteWork from "./owner-work/OwnerSiteWork";
+import dynamic from "next/dynamic";
+const OwnerCutting = dynamic(() => import("./owner-work/OwnerCutting"));
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
 import SiteCompletedReport from "./SiteCompletedReport";
@@ -47,16 +50,18 @@ const STATUS_INFO = {
 };
 
 const MENUS = [
+  { id: "self-work", label: "내 시공·출근" },
   { id: "info", label: "현장정보", kind: "home" },
   { id: "quote", label: "상담 견적서", kind: "report" },
   { id: "schedule", label: "일정배정", kind: "people" },
-  { id: "materials", label: "자재", kind: "film" },
+  { id: "materials", label: "자재·재단", kind: "film" },
   { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
   { id: "settlement", label: "상태·수금" },
 ];
 
 const SECTION_MENU = {
+  "self-work": "self-work",
   overview: "info",
   info: "info",
   quote: "quote",
@@ -440,6 +445,7 @@ export default function SiteDetailModal({
           <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
             {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
           </p>
+          {visited["self-work"] && <section hidden={menu !== "self-work"} id="admin-site-panel-self-work" aria-label="대표 직접 시공"><OwnerSiteWork key={site.id} siteId={site.id} onNavigate={chooseMenu} /></section>}
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
             <SiteStatusControl
               key={site.id}
@@ -575,6 +581,7 @@ export default function SiteDetailModal({
             >
               <SiteMaterials key={site.id} site={site} />
               <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
+              <OwnerCutting key={site.id} siteId={site.id} />
             </section>
           )}
 
@@ -598,7 +605,7 @@ export default function SiteDetailModal({
             hidden={menu !== "report"}
           >
             <p style={{margin:"0 0 14px",fontSize:14,color:"#50617a",lineHeight:1.6}}>
-              시공자가 제출한 완료보고서의 시공내용·사진·자재·경비를 확인하고 검수해주세요.
+              대표가 직접 시공한 현장도 여기에서 완료보고를 작성할 수 있습니다. 시공자가 제출한 보고서는 시공내용·사진·자재·경비를 확인하고 검수해주세요.
               검수 승인 후 보고서에 연결된 현장 내역으로 견적서를 작성할 수 있습니다.
             </p>
 

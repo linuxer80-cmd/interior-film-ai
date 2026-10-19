@@ -124,6 +124,7 @@ async function preparePhoto(file) {
 }
 
 export default function CuttingPhotoImport({
+  owner = false,
   siteId,
   colors = [],
   onApply,
@@ -316,7 +317,7 @@ export default function CuttingPhotoImport({
           (
             siteId
               ? "?siteId=" +
-                encodeURIComponent(siteId)
+                encodeURIComponent(siteId) + (owner ? "&view=owner" : "")
               : ""
           ),
         {

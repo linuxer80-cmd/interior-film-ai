@@ -1,3 +1,4 @@
+import { ownerWorkSchemaMissing, ownerWorkRows } from "../../../../lib/ownerWork.mjs";
 import { resolveRevenue } from "../../../../lib/siteRevenue.mjs";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
@@ -446,6 +447,13 @@ export async function GET(request) {
         .order("id"),
     );
 
+    let ownerDays = [];
+    try {
+      for (let i=0;i<sites.length;i+=100) {
+        ownerDays.push(...await ownerWorkRows(db.from('owner_work_days').select('site_id,user_id,work_date,labor_amount').eq('company_id',companyId).in('site_id',sites.slice(i,i+100).map(site=>site.id)).order('work_date').order('user_id')));
+      }
+    } catch(error) { if (!ownerWorkSchemaMissing(error)) throw error; }
+
     const materials = [];
     const expenses = [];
     const daily = [];
@@ -639,6 +647,10 @@ export async function GET(request) {
         });
       }
 
+      for(const record of ownerDays.filter(row=>row.site_id===site.id && row.labor_amount>0)) {
+        laborRows.push({name:'대표 본인',amount:Number(record.labor_amount),description:`대표 직접 시공 ${record.work_date} · 직원 지급 제외`,ownerLabor:true});
+      }
+
       const labor = laborRows.reduce(
         (sum, row) => sum + row.amount,
         0,
@@ -652,6 +664,7 @@ export async function GET(request) {
         })),
       );
 
+      const materialPending = materials.filter(row=>row.site_id===site.id && Number(row.quantity)>0 && row.unit_price==null).length;
       let material = 0;
       let expense = 0;
       const entries = [];
@@ -780,8 +793,9 @@ export async function GET(request) {
           (sum, row) => sum + row.pending,
           0,
         ),
-        profitIsEstimated: automated.some(row => row.pending > 0),
-        profitWarning: automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
+        materialPending,
+        profitIsEstimated: materialPending > 0 || automated.some(row => row.pending > 0),
+        profitWarning: materialPending > 0 ? '원가 미입력 자재가 있어 수익 확정 대기입니다.' : automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
         missingContract: revenueInfo.missingContract,
         revenueSource: revenueInfo.revenueSource,
       };
@@ -814,6 +828,7 @@ export async function GET(request) {
       sites: result,
       totals,
       breakdown,
+      materialPending: result.reduce((sum,site)=>sum+site.materialPending,0),
     });
   } catch (error) {
     console.error("profit GET", error);

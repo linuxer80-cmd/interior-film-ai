@@ -1,0 +1,130 @@
+.panel {
+  background: #fffdfa;
+  border: 1px solid #dfdfd4;
+  border-radius: 20px;
+  padding: 18px;
+  margin: 14px 0;
+  color: #243648;
+  overflow-wrap: anywhere;
+}
+.feature {
+  background: #edf2eb;
+}
+.panel h2 {
+  font-size: 19px;
+  margin: 0 0 12px;
+}
+.panel h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.panel p {
+  line-height: 1.65;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.muted {
+  font-size: 13px;
+  color: #647369;
+}
+.badge {
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 20px;
+  background: #e3ecdf;
+  color: #294b39;
+}
+.action {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 11px 15px;
+  border-radius: 12px;
+  border: 1px solid #ccd7cc;
+  background: #fffdfa;
+  color: #304f40;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.primary {
+  background: #304f40;
+  color: #fffdfa;
+  border-color: #304f40;
+}
+.full {
+  width: 100%;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 10px;
+}
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font-size: 16px;
+  border: 1px solid #ccd7cc;
+  border-radius: 12px;
+  background: #fffdfa;
+  color: #243648;
+  margin: 7px 0 14px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+}
+.notice {
+  background: #fff1d8;
+  color: #735021;
+  padding: 12px;
+  border-radius: 12px;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.site {
+  padding: 15px 0;
+  border-top: 1px solid #dce3d8;
+}
+.choice {
+  text-align: left;
+  width: 100%;
+  margin: 5px 0;
+}
+.choice small {
+  display: block;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.choice[aria-pressed="true"] {
+  background: #304f40;
+  color: #fffdfa;
+}
+.links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.error {
+  color: #a13929;
+}
+.history {
+  padding: 12px 0;
+  border-top: 1px solid #dfdfd4;
+  font-size: 13px;
+}
