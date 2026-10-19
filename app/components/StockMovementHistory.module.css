@@ -1,0 +1,15 @@
+.root { display:grid; gap:14px; min-width:0; }
+.root h2,.root h3,.root p { margin:0; }
+.root p { line-height:1.6; }
+.filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
+.filters label { display:grid; gap:6px; min-width:0; font-weight:700; }
+.filters input,.filters select { width:100%; min-width:0; box-sizing:border-box; min-height:48px; font-size:16px; padding:10px; border:1px solid #d7ddd5; border-radius:12px; background:#fff; color:#26353b; }
+.filters button { grid-column:1/-1; }
+.day { display:grid; gap:12px; }
+.day h3 { color:#315746; padding-top:12px; }
+.card { display:grid; gap:8px; padding:16px; border:1px solid #d7ddd5; border-radius:16px; background:#fff; overflow-wrap:anywhere; }
+.heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; color:#315746; }
+.heading time { color:#65736a; font-size:14px; }
+.help { color:#65736a; font-size:14px; }
+.warning { background:#fff4e5; border:1px solid #e2bb7c; border-radius:12px; padding:14px; color:#874923; }
+@media(max-width:480px) { .filters { grid-template-columns:minmax(0,1fr); } }

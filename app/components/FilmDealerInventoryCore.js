@@ -1,5 +1,6 @@
 "use client";
 
+import StockMovementHistory from "./StockMovementHistory";
 import GuidedForm, {InputStep, InputFinal} from "./GuidedForm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -293,7 +294,7 @@ export default function FilmDealerInventory() {
 
         if (draft && typeof draft === "object") {
           setTab(
-            ["stock", "receive", "dealers"].includes(draft.tab)
+            ["stock", "receive", "dealers", "history"].includes(draft.tab)
               ? draft.tab
               : "receive"
           );
@@ -793,6 +794,7 @@ export default function FilmDealerInventory() {
       <nav>
         {[
           ["stock", "재고 현황"],
+          ["history", "입출고 이력"],
           ["receive", "입고 등록"],
           ["dealers", "대리점 관리"],
         ].map(([key, title]) => (
@@ -1295,6 +1297,8 @@ export default function FilmDealerInventory() {
               )}
             </article>
           )}
+
+          {tab === "history" && <StockMovementHistory />}
 
           {tab === "stock" && (
             <>
