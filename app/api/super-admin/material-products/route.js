@@ -412,11 +412,6 @@ export async function GET(request) {
     } = await auth.supabase
       .from("film_products")
       .select("brand")
-      .not(
-        "dealer_price_per_m",
-        "is",
-        null,
-      )
       .order("brand", {
         ascending: true,
       });

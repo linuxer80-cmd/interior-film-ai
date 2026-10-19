@@ -385,9 +385,9 @@ export default function SuperAdminPage() {
           <button
             type="button"
             style={styles.homeButton}
-            onClick={() => openPage("/admin")}
+            onClick={() => openPage("/super-admin/login")}
           >
-            관리자 페이지로 이동
+            슈퍼관리자 로그인
           </button>
         </div>
       </main>
