@@ -71,3 +71,23 @@ test('successful cache reads count as usage without another map call; empty resu
  const blank=endpoint({empty:true});await blank.get();assert.equal(blank.activity(),0);
  const blocked=endpoint({quotaOk:false});await blocked.get();assert.equal(blocked.activity(),0);
 });
+
+test('apartment unit suffix uses one exact building location after address miss',async()=>{
+ const urls=[];
+ const result=await findNearbyPlaces({address:'청라한일베라체아파트 463-204',kind:'food',radius:3000,key:'test',fetcher:async url=>{
+  urls.push(url);return {ok:true,json:async()=>urls.length===1?{meta:{total_count:0},documents:[]}:urls.length===2?{meta:{is_end:true},documents:[{place_name:'청라한일베라체 아파트',x:'126.6',y:'37.5'}]}:{meta:{is_end:true},documents:[]}};
+ }});
+ assert.equal(urls[1].searchParams.get('query'),'청라한일베라체아파트');
+ assert.equal(urls[2].searchParams.get('x'),'126.6');
+ assert.deepEqual(result.places,[]);
+});
+test('building cleanup preserves road and lot numbers',async()=>{
+ const {buildingQuery}=await import('../lib/nearbyPlaces.mjs');
+ assert.equal(buildingQuery('서울시 가로 463-204'),'서울시 가로 463-204');
+ assert.equal(buildingQuery('아파트 463동 204호'),'아파트');
+});
+test('same named buildings are not guessed',async()=>{
+ let count=0;
+ await assert.rejects(findNearbyPlaces({address:'한일아파트 101-202',kind:'film',radius:3000,key:'test',fetcher:async()=>({ok:true,json:async()=>++count===1?{meta:{total_count:0},documents:[]}:{meta:{is_end:true},documents:[{place_name:'한일아파트',x:'126',y:'37'},{place_name:'한일아파트',x:'127',y:'38'}]}})}),/하나로/);
+ assert.equal(count,2);
+});
