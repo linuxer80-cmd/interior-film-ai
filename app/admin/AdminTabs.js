@@ -8,10 +8,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
+import OwnerWorkHome from "./owner-work/OwnerWorkHome";
 import AdminHomeSummary from "./AdminHomeSummary";
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
+  { href: "/admin/owner-work", label: "내 시공 · 업체 설정", description: "대표 직접 시공·출퇴근·운영 방식", icon: "people" },
   {
     href: "/admin/customer-page",
     label: "고객페이지 관리",
@@ -127,6 +129,7 @@ export default function AdminTabs({
     <section className="film-admin-dashboard">
       {isHome ? (
         <>
+          <OwnerWorkHome key={`owner-${companyId}`} />
           <AdminHomeSummary key={companyId} companyId={companyId} />
           <LaborNotifications />
           <AchievementBadges key={companyId} scope="owner" compact />

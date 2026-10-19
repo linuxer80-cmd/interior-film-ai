@@ -1,3 +1,4 @@
+import { privateAuth, uuid } from "../../../../lib/workerPrivate";
 import { GET as workerContext } from "../my-sites/route";
 import {
   checkAnalysis,
@@ -79,7 +80,16 @@ export async function POST(request) {
       authUrl.searchParams.set("profileOnly", "1");
     }
 
-    const authResponse = await workerContext(
+    const ownerView = new URL(request.url).searchParams.get("view") === "owner";
+    if(ownerView){
+      const a=await privateAuth(request);
+      if(a.error)return json({error:a.error},a.status);
+      if(!uuid(siteId))return json({error:"현장을 확인해주세요."},400);
+      const site=await a.db.from("sites").select("id").eq("company_id",a.companyId).eq("id",siteId).maybeSingle();
+      if(site.error)throw site.error;
+      if(!site.data)return json({error:"접근 가능한 현장이 아닙니다."},404);
+    }
+    const authResponse = ownerView ? null : await workerContext(
       new Request(authUrl, {
         headers: {
           authorization:
@@ -88,7 +98,7 @@ export async function POST(request) {
       })
     );
 
-    if (!authResponse.ok) return authResponse;
+    if (authResponse && !authResponse.ok) return authResponse;
 
     if (!process.env.OPENAI_API_KEY) {
       return json(

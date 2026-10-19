@@ -770,9 +770,9 @@ export default function FilmCuttingOptimizer({
 
         <a
           href={
-            context.site
+            context.returnHref || (context.site
               ? `/worker/site/${context.site.site_id}?section=film`
-              : "/worker"
+              : "/worker")
           }
          data-ui-link="action">
           ← 내 현장으로

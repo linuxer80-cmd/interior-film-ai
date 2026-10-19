@@ -357,15 +357,7 @@ export default function WorkReportForm({
           });
         }
 
-        if (Number(m.used) > 0 && data.missingPrices.includes(m.id)) {
-          list.push({
-            label:
-              `${m.code || m.name}: 원가 단가 미입력` +
-              (owner ? " · 자재 메뉴에서 입력" : " · 관리자에게 입력 요청"),
-            target: "materials",
-            id: m.id,
-          });
-        }
+
       }
     }
 
@@ -644,6 +636,9 @@ export default function WorkReportForm({
   }
 
   const missing = issues();
+  const unpricedMaterials = (context.operations.materials || []).filter(
+    m => Number(m.used) > 0 && (context.missingPrices || []).includes(m.id)
+  );
 
   const materialCost = tracked
     ? context.operations.materials
@@ -665,6 +660,7 @@ export default function WorkReportForm({
     preview &&
     preview.revenue != null &&
     !preview.laborPending &&
+    unpricedMaterials.length === 0 &&
     !missing.some((i) => i.target === "materials" || i.target === "expenses");
 
   const field = (key, label, props = {}) => (
@@ -942,7 +938,7 @@ export default function WorkReportForm({
             <p>인건비: {preview.laborPending ? "일당·수당 확인 필요" : won(preview.labor)}</p>
             <p>
               자재비:{" "}
-              {missing.some((i) => i.target === "materials")
+              {(unpricedMaterials.length > 0 || missing.some((i) => i.target === "materials"))
                 ? "사용량·단가 확인 필요"
                 : won(materialCost + preview.extraMaterial + newMaterial)}
             </p>
@@ -970,6 +966,14 @@ export default function WorkReportForm({
           </section>
         )}
       </fieldset>
+
+      {unpricedMaterials.length > 0 && (
+        <section role="status" style={{ ...box, background: "#fff7ed", color: "#9a3412" }}>
+          <strong>원가 단가 미입력 · 완료보고는 저장할 수 있습니다</strong>
+          <p>{unpricedMaterials.map(m => m.code || m.name).join(", ")}</p>
+          <p>단가는 미입력 상태로 유지됩니다. 관리자가 현장 자재의 매입원가를 확인해 입력하면 자재비와 수익을 계산할 수 있습니다.</p>
+        </section>
+      )}
 
       {(error || message || (attempted && missing.length > 0)) && (
         <section

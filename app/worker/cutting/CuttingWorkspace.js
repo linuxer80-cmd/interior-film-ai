@@ -45,7 +45,7 @@ function materialsOf(data) {
   );
 }
 
-export default function CuttingWorkspace() {
+export default function CuttingWorkspace({ siteId: embeddedSiteId, loadSite = loadMyWorkerSites, embedded = false }) {
   const [context, setContext] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -58,14 +58,14 @@ export default function CuttingWorkspace() {
   useEffect(() => {
     let active = true;
 
-    const siteId = new URLSearchParams(
+    const siteId = embeddedSiteId || new URLSearchParams(
       window.location.search
     ).get("siteId");
 
     async function load() {
       try {
         const [data, stock] = await Promise.all([
-          loadMyWorkerSites(
+          loadSite(
             siteId
               ? { siteId }
               : { profileOnly: true }
@@ -87,7 +87,8 @@ export default function CuttingWorkspace() {
           );
         }
 
-        if (!data.worker?.worker_id) {
+        const identity = data.actor || data.worker;
+        if (!identity?.id && !identity?.worker_id) {
           throw Error(
             "시공자 정보를 확인하지 못했습니다."
           );
@@ -95,19 +96,19 @@ export default function CuttingWorkspace() {
 
         const materials = materialsOf(data);
 
-        const notebookId = new URLSearchParams(window.location.search).get("notebook");
+        const notebookId = embedded ? null : new URLSearchParams(window.location.search).get("notebook");
         if (notebookId && !/^[0-9a-f-]{36}$/i.test(notebookId)) throw Error("수첩 정보를 확인해주세요.");
         const storageKey = notebookId
-          ? "film-cutting-v2:" + (data.worker.user_id || data.worker.worker_id) + ":notebook:" + notebookId
+          ? "film-cutting-v2:" + (identity.user_id || identity.worker_id || identity.id) + ":notebook:" + notebookId
           :
           "film-cutting-v2:" +
-          (data.worker.user_id || data.worker.worker_id) +
+          (identity.user_id || identity.worker_id || identity.id) +
           ":" +
           (siteId || "general");
 
         // Keep existing drafts while moving to a stable personal-account key.
         if (!notebookId && !window.localStorage.getItem(storageKey)) {
-          for (const workerId of data.worker.membership_worker_ids || [data.worker.worker_id]) {
+          for (const workerId of identity.membership_worker_ids || [identity.worker_id || identity.id]) {
             const legacyKey = "film-cutting-v2:" + workerId + ":" + (siteId || "general");
             const previous = window.localStorage.getItem(legacyKey);
             if (previous) {
@@ -156,6 +157,7 @@ export default function CuttingWorkspace() {
 
         setContext({
           ...data,
+          returnHref: embedded ? `/admin?tab=sites&site=${siteId}&section=materials` : null,
           materials,
           storageKey,
           notebookId,
@@ -179,7 +181,7 @@ export default function CuttingWorkspace() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [embeddedSiteId, loadSite, embedded]);
 
   async function reloadIssuedRolls() {
     if (
@@ -198,7 +200,7 @@ export default function CuttingWorkspace() {
       const siteId = context.site.site_id;
 
       const [data, stock] = await Promise.all([
-        loadMyWorkerSites({ siteId }),
+        loadSite({ siteId }),
         reportRequest(
           `/api/film-stock?siteId=${encodeURIComponent(
             siteId
@@ -337,7 +339,7 @@ export default function CuttingWorkspace() {
     return (
       <main style={{ padding: 24 }}>
         <p role="alert">{error}</p>
-        <a href="/worker" data-ui-link="action">
+        <a href={embedded ? "/admin" : "/worker"} data-ui-link="action">
           내 현장으로 돌아가기
         </a>
         <button
@@ -378,7 +380,7 @@ export default function CuttingWorkspace() {
           관리자에게 현장 필름 등록을 요청해주세요.
         </p>
         <a
-          href={`/worker/site/${context.site.site_id}?section=film`}
+          href={embedded ? `/admin?tab=sites&site=${context.site.site_id}&section=materials` : `/worker/site/${context.site.site_id}?section=film`}
          data-ui-link="action">
           ← 현장으로 돌아가기
         </a>
@@ -491,6 +493,7 @@ export default function CuttingWorkspace() {
         </summary>
 
         <CuttingPhotoImport
+          owner={embedded}
           siteId={context.site?.site_id}
           colors={[
             ...new Set(
