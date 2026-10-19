@@ -1,3 +1,5 @@
+import { after } from 'next/server';
+import { dispatchTeamMessage } from '../../../../lib/workerTeamPush.mjs';
 import { privateAuth, privateJson, uuid } from '../../../../lib/workerPrivate';
 import { resolveWorkerSite } from '../../../../lib/workerSiteAccess.mjs';
 import { authorizedTeam, teamDate, teamMessage } from '../../../../lib/workerTeam.mjs';
@@ -40,5 +42,17 @@ export async function POST(request){try{
   const body=teamMessage(input.body);
   const r=await a.db.from('worker_team_messages').insert({id:input.id,company_id:a.site.company_id,site_id:a.site.id,work_date:a.date,sender_id:a.user.id,body});
   if(r.error){if(r.error.code!=='23505')throw r.error;const old=await a.db.from('worker_team_messages').select('sender_id,site_id,work_date,body').eq('id',input.id).single();if(old.error||old.data.sender_id!==a.user.id||old.data.site_id!==a.site.id||old.data.work_date!==a.date||old.data.body!==body)throw Object.assign(Error('중복 요청 정보가 다릅니다.'),{status:409});}
+  // Only a newly persisted message schedules push. Retrying the same message ID
+  // does not send another notification, and push errors never undo the message.
+  if (!r.error) after(async () => {
+    try {
+      const delivery = await dispatchTeamMessage(a.db, {
+        members: a.members, senderId: a.user.id, siteId: a.site.id,
+        date: a.date, messageId: input.id, body,
+      });
+      if (delivery.state === 'unconfigured' || delivery.failed || delivery.unsubscribed || delivery.expired)
+        console.warn('Team chat push delivery', delivery);
+    } catch { console.error('Team chat push dispatch failed'); }
+  });
   return privateJson({ok:true});
 }catch(e){return failure(e);}}

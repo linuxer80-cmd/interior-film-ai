@@ -8,6 +8,7 @@ export default function WorkerTeam({siteId,dates,active}){
  const [date,setDate]=useState(days.includes(today)?today:days[0]||''),[data,setData]=useState(null),[error,setError]=useState(''),[text,setText]=useState(''),[sending,setSending]=useState(false),[chat,setChat]=useState(false);
  const daysKey=days.join(',');
  useEffect(()=>{if(!days.includes(date))setDate(days.includes(today)?today:days[0]||'');},[daysKey,date,today]);
+ useEffect(()=>{const requested=new URLSearchParams(window.location.search).get('teamDate');if(requested&&days.includes(requested)){setDate(requested);setChat(true);}},[siteId,daysKey]);
  const endpoint=`/api/worker/team?siteId=${encodeURIComponent(siteId)}&date=${encodeURIComponent(date)}`;
  async function request(options={}){const {data:{session}}=await supabase.auth.getSession();if(!session)throw Error('로그인이 필요합니다.');const r=await fetch(endpoint,{...options,headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},cache:'no-store'});const result=await r.json();if(!r.ok)throw Error(result.error||'불러오지 못했습니다.');return result;}
  useEffect(()=>{
