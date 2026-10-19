@@ -47,13 +47,18 @@ test('test dealer uses neutral name and both brands with VAT excluded',async()=>
 test('both brand publishers preserve net prices and explicitly exclude VAT',async()=>{
  for(const brand of ['영림','현대보닥']) {
   let productUpdate,linked;const filters=[];
-  const db={from(table){return {select(){return this},eq(k,v){filters.push([k,v]);return this},gt(){return this},in(){return this},async maybeSingle(){return {data:{id,is_test:true,status:'active'}}},async upsert(row){linked=row;return {}},update(row){productUpdate=row;return this},then(resolve){resolve({data:[{id}],error:null})}}}};
+  const db={from(table){return {select(){return this},eq(k,v){filters.push([k,v]);return this},gt(){return this},in(k,v){filters.push([k,v]);return this},async maybeSingle(){return {data:{id,is_test:true,status:'active'}}},async upsert(row){linked=row;return {}},update(row){productUpdate=row;return this},then(resolve){resolve({data:[{id}],error:null})}}}};
   const result=await dealerSettings(db,{id:'super'},{action:'publish_brand',brand,dealerId:id},{role:'super'});
   assert.equal(linked.brand,brand);assert.equal(result.brand,brand);assert.equal(result.published,1);
-  assert.deepEqual(productUpdate,{is_order_available:true,price_vat_included:false});assert.ok(filters.some(([k,v])=>k==='brand'&&v===brand));
+  assert.deepEqual(productUpdate,{is_order_available:true,price_vat_included:false});assert.ok(filters.some(([k,v])=>k==='brand'&&Array.isArray(v)&&v.includes(brand)));
  }
 });
 test('VAT exclusive price adds tax exactly once at payment',()=>{
  const item=salesItem({id,brand:'영림',product_code:'PS156',dealer_price_per_m:6500,price_vat_included:false,is_order_available:true,stock_status:'in_stock'},10);
  assert.equal(item.supply,65000);assert.equal(item.total-item.supply,6500);assert.equal(item.total,71500);
+});
+
+test('Younglim catalog aliases use the configured supplier and preserve product brand',()=>{
+ assert.equal(orderSupplier([{brand:'영림 인테리어필름'}],[link('영림')]),id);
+ assert.equal(orderSupplier([{brand:'영림인테리어필름'},{brand:'현대보닥'}],[link('영림'),link('현대보닥')]),id);
 });
