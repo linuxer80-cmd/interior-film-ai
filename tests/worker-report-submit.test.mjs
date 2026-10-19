@@ -53,6 +53,8 @@ function findAll(node, predicate) {
 }
 
 async function form({
+  trackedMaterials = [],
+  missingPrices = [],
   failUploadOnce = false,
   failSaveOnce = false,
 } = {}) {
@@ -167,7 +169,7 @@ async function form({
     },
 
     async fetch(url, options) {
-      if (url.includes("report-support?")) return {ok:true,json:async()=>({operations:{materials:[],locked:false},afterCount:0,missingPrices:[]})};
+      if (url.includes("report-support?")) return {ok:true,json:async()=>({operations:{materials:trackedMaterials,locked:false},afterCount:0,missingPrices})};
       if (url.includes("site-work-report?")) {
         return {
           ok: true,
@@ -362,3 +364,17 @@ test(
     assert.equal(h.completed(), 1);
   }
 );
+
+test("missing tracked cost warns but still submits photos and report; usage checks remain mandatory", async () => {
+ const material = {id:"material",code:"W192",issued:10,returned:2,used:8,unitPrice:null};
+ const h=await form({trackedMaterials:[material],missingPrices:["material"]});
+ const text=JSON.stringify(h.render());
+ assert.ok(text.includes("완료보고는 저장할 수 있습니다"));
+ await h.submit();
+ assert.equal(h.completed(),1);
+ assert.equal(h.calls.filter(x=>x==="report").length,1);
+ const blocked=await form({trackedMaterials:[{...material,returned:null}],missingPrices:["material"]});
+ await blocked.submit();
+ assert.equal(blocked.completed(),0);
+ assert.equal(blocked.calls.includes("report"),false);
+});
