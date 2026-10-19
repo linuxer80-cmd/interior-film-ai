@@ -374,6 +374,18 @@ function MaterialOrderForm() {
     [addresses, selectedAddressId],
   );
 
+  const appliedAddress = useRef(null);
+  useEffect(() => {
+    if (!selectedAddress || delivery.method === "pickup" || appliedAddress.current === selectedAddress.id) return;
+    appliedAddress.current = selectedAddress.id;
+    setDelivery(current => ({...current,
+      recipient_name: selectedAddress.recipient_name || "",
+      recipient_phone: selectedAddress.recipient_phone || "",
+      address_line1: selectedAddress.address_line1 || "",
+      address_line2: selectedAddress.address_line2 || "",
+    }));
+  }, [selectedAddress, delivery.method]);
+
   function quantityError(product, value) {
     const quantity = Number(value);
     const minimum = Number(product.minimum_order_m || 1);
@@ -675,7 +687,6 @@ function MaterialOrderForm() {
             제품번호·방염 구분·길이를 입력해 주문하세요.
           </p>
         </div>
-        <button className="outline" type="button" onClick={() => navigate("cart")}>주문목록 {cart.length}</button>
       </header>
       <nav className="shop-nav" aria-label="자재 주문 메뉴">
         <button type="button" aria-current={screen === "products" ? "page" : undefined} onClick={() => navigate("products")}>자재 입력</button>
@@ -846,10 +857,10 @@ function MaterialOrderForm() {
         </div>
       </section>
 
-      {screen === "cart" && <div className="shop-action"><button type="button" className="primary" disabled={!cart.length || cart.some(item => quantityError(item.product, item.quantityM))} onClick={() => navigate("checkout")}>배송지 선택 →</button></div>}
+      {screen === "cart" && <div className="shop-action"><button type="button" className="primary" disabled={!cart.length || cart.some(item => quantityError(item.product, item.quantityM))} onClick={() => navigate("checkout")}>수령·배송 정보 입력 →</button></div>}
       <section className="panel" hidden={screen !== "checkout"}>
         <MaterialDeliveryFields value={delivery} onChange={setDelivery}/>
-        {selectedAddress&&<button type="button" onClick={()=>setDelivery(d=>({...d,...selectedAddress}))}>아래 선택한 배송지 정보 가져오기</button>}
+        {delivery.method !== "pickup" && <div className="delivery-address-picker">
         <div className="title-row">
           <h2>받을 주소 선택</h2>
 
@@ -1058,8 +1069,10 @@ function MaterialOrderForm() {
           </div>
         ) : null}
 
+        </div>}
+
         <label className="delivery">
-          <span>이번 주문 배송 요청사항</span>
+          <span>이번 주문 요청사항</span>
 
           <textarea
             value={deliveryNote}
@@ -1074,7 +1087,7 @@ function MaterialOrderForm() {
       </section>
 
       <section className="payment" hidden={screen !== "checkout"}>
-        <h2>4. 주문 내용 확인</h2>
+        <h2>주문 내용 확인</h2>
         <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
         {cart.map(i=><p key={orderVariantKey(i.product)}><strong>{i.product.brand} · {i.product.product_code}</strong> · {orderFlameLabel(i.product.flame_type)} · {i.quantityM}m</p>)}
         <p>받는 방법: {deliveryMethods[delivery.method]}<br/>{delivery.recipient_name} · {delivery.recipient_phone}<br/>{delivery.method!=="pickup"&&delivery.address_line1}</p>
@@ -1102,7 +1115,12 @@ function MaterialOrderForm() {
         .shop-nav, .shop-action { max-width: 760px; margin: 0 auto 18px; display: flex; gap: 8px; }
         .shop-nav button, .delivery-tabs button { flex: 1; padding: 14px 8px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; color: #243648; font-weight: 700; }
         .shop-nav [aria-current="page"], .delivery-tabs [aria-pressed="true"] { border-color: #f36a20; color: #d84e0a; background: #fff6ef; }
-        .delivery-tabs { display: flex; gap: 8px; margin: 16px 0; }
+        .delivery-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+        .delivery-tabs button { min-width: 0; overflow-wrap: anywhere; }
+        .delivery-address-picker { margin-top: 20px; }
+        .title-row { flex-wrap: wrap; }
+        .shop-action button { white-space: normal; overflow-wrap: anywhere; }
+        .header > div { min-width: 0; }
         .primary { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #f36a20; color: white; font-size: 17px; font-weight: 800; margin-top: 16px; }
         select { width: 100%; padding: 14px; border: 1px solid #d1d5db; border-radius: 10px; background: white; font-size: 16px; margin: 8px 0; }
         .order-entry { margin-top: 18px; padding-top: 16px; border-top: 1px solid #e5e7eb; }

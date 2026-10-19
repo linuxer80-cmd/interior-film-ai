@@ -1,0 +1,18 @@
+.fields {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 18px 16px;
+  border: 1px solid #dedfd5;
+  border-radius: 16px;
+  background: #fffdfa;
+  color: #243648;
+}
+.fields legend { padding: 0 6px; font-size: 18px; font-weight: 700; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.field { display: grid; min-width: 0; gap: 7px; font-size: 15px; font-weight: 600; }
+.control { display: block; width: 100%; min-width: 0; min-height: 48px; box-sizing: border-box; margin: 0; padding: 12px; border: 1px solid #d4d9d2; border-radius: 12px; background: #fff; color: #243648; font: inherit; font-size: 16px; font-weight: 400; }
+.help { margin: 0; color: #627267; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.consent { display: flex; align-items: flex-start; gap: 10px; min-width: 0; font-size: 14px; line-height: 1.6; }
+.consent input { flex: 0 0 20px; width: 20px; height: 20px; margin: 3px 0 0; accent-color: #304f40; }
