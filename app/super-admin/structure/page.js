@@ -369,6 +369,7 @@ export default function StructureAnalysisPage() {
             <>
               <p style={styles.help}>슈퍼관리자 전용 페이지입니다.</p>
 
+              <p><Link href="/super-admin/door-pilot" data-ui-link="action">문 계층 분류·유사사진 테스트 →</Link></p>
               {selectedCompanyId && <DoorReclassification key={selectedCompanyId} companyId={selectedCompanyId} />}
 
         {message && (
