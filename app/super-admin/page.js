@@ -457,6 +457,13 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
+                href="/super-admin/dealers"
+                kind="film"
+                title="필름 대리점 활동"
+                description="가입·승인 · 주문 접수 · 준비·출고 활동"
+              />
+
+              <MenuCard
                 href="/super-admin/material-orders"
                 kind="film"
                 title="자재 주문"
