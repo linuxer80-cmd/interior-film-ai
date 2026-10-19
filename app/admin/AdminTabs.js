@@ -19,7 +19,7 @@ const menus = [
     icon: "website",
   },
   { href: "/business-card?from=admin", label: "디지털 명함", description: "로고·정보 입력 · 디자인 선택 · 이미지 저장", icon: "businessCard" },
-  { href: "/admin/customer-chat", label: "고객 채팅", description: "고객 문의 확인 · 답장하기", icon: "chat" },
+  { href: "/admin/customer-chat", label: "고객 채팅", description: "고객 문의 확인 · 답장하기", icon: "customerChat" },
   { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
     href: "/jobs",
@@ -142,13 +142,11 @@ export default function AdminTabs({
             {orderedMenus.map(menu => {
               const content = (
                 <>
-                  {menu.href !== "/admin/customer-chat" && (
-                    <ToolIllustration
-                      kind={menu.icon}
-                      size="100%"
-                      className="photo-menu-art"
-                    />
-                  )}
+                  <ToolIllustration
+                    kind={menu.icon}
+                    size="100%"
+                    className="photo-menu-art"
+                  />
 
                   <span>
                     <strong>{menu.label}</strong>
