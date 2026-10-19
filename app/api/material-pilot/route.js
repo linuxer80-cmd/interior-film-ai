@@ -1,6 +1,8 @@
 import { after } from 'next/server';
 import { dispatchMaterialNotifications } from '../../../lib/materialPilotPush';
 import { createHash } from 'node:crypto';
+import { dealerColumns, brandLinks, supplierSnapshot, dealerSettings } from '../../../lib/materialDealerSettings';
+import { normalizeDealerProfile } from '../../../lib/materialDealerProfile.mjs';
 import { pilotIdentity, pilotRole, pilotJson } from '../../../lib/materialPilotServer';
 import { salesItem, transition, visibleOrder, uuid, deliveryInput } from '../../../lib/materialPilot.mjs';
 export const runtime = 'nodejs';
@@ -31,9 +33,11 @@ export async function GET(request) {
   if(ne)throw ne;
   after(()=>dispatchMaterialNotifications(db).catch(()=>{}));
   const mode=new URL(request.url).searchParams.get('mode') || 'buyer';
+  let registration=null;
   if(mode==='dealer') {
-    const {data,error}=await db.from('material_pilot_dealers').select('id,name,status').eq('user_id',user.id).maybeSingle();
+    const {data,error}=await db.from('material_pilot_dealers').select(dealerColumns).eq('user_id',user.id).maybeSingle();
     if(error) throw error;
+    registration=data;
     if(data?.status!=='active') return pilotJson({registration:data,orders:[]});
   }
   const actor=await pilotRole(db,user,mode);
@@ -46,11 +50,12 @@ export async function GET(request) {
   if(error) throw error;
   let dealers=[];
   if(actor.role==='super') {
-    const result=await db.from('material_pilot_dealers').select('id,name,status,user_id').neq('status','deleted').order('created_at',{ascending:false}).limit(100);
+    const result=await db.from('material_pilot_dealers').select(dealerColumns).neq('status','deleted').order('created_at',{ascending:false}).limit(100);
     if(result.error) throw result.error;
     dealers=result.data || [];
   }
-  return pilotJson({notices: notices||[],role:actor.role,orders:(data||[]).map(o=>visibleOrder(o,actor.role)),dealers});
+  const links=actor.role==='super'?await brandLinks(db):[];
+  return pilotJson({notices: notices||[],role:actor.role,orders:(data||[]).map(o=>visibleOrder(o,actor.role)),dealers,registration,brandLinks:links});
  } catch(error) {return fail(error);}
 }
 export async function POST(request) {
@@ -60,13 +65,14 @@ export async function POST(request) {
   if(raw.length>40000) return pilotJson({error:'요청이 너무 큽니다.'},413);
   const b=JSON.parse(raw),{db,user}=await pilotIdentity(request);
   if(b.action==='register' && b.mode==='dealer') {
-    const name=String(b.name||'').trim();
-    if(!name || name.length>80) throw Error('대리점 이름을 80자 이내로 입력해주세요.');
-    const {error}=await db.from('material_pilot_dealers').insert({user_id:user.id,name});
-    if(error && error.code!=='23505') throw error;
+    const {name,...profile}=normalizeDealerProfile(b.profile);
+    const {error}=await db.from('material_pilot_dealers').insert({user_id:user.id,name,profile});
+    if(error) throw error;
     return pilotJson({ok:true});
   }
+  if(b.action==='dealer_profile' && b.mode==='dealer')return pilotJson(await dealerSettings(db,user,b,null));
   const actor=await pilotRole(db,user,b.mode);
+  if(['dealer_profile','create_test_dealer','brand_dealer','publish_younglim','publish_brand'].includes(b.action))return pilotJson(await dealerSettings(db,user,b,actor));
   if(b.action==='dealer_delete') {
     if(actor.role!=='super' || !uuid(b.dealerId))throw Object.assign(Error('슈퍼관리자만 대리점을 삭제할 수 있습니다.'),{status:403});
     const {data,error}=await db.from('material_pilot_dealers').update({status:'deleted'}).eq('id',b.dealerId).eq('status','disabled').select('id').maybeSingle();
@@ -76,6 +82,12 @@ export async function POST(request) {
   }
   if(b.action==='dealer_status') {
     if(actor.role!=='super' || !uuid(b.dealerId) || !['active','disabled'].includes(b.status)) throw Object.assign(Error('슈퍼관리자만 승인·중지할 수 있습니다.'),{status:403});
+    if(b.status==='active') {
+      const {data:d,error:e}=await db.from('material_pilot_dealers').select(dealerColumns).eq('id',b.dealerId).maybeSingle();
+      if(e)throw e;
+      if(!d)throw Error('대리점을 찾을 수 없습니다.');
+      if(!d.is_test)normalizeDealerProfile({...d.profile,name:d.name});
+    }
     const {data,error}=await db.from('material_pilot_dealers').update({status:b.status}).eq('id',b.dealerId).neq('status','deleted').select('id').single();
     if(error) throw error;
     return pilotJson({ok:true,id:data.id});
@@ -97,12 +109,13 @@ export async function POST(request) {
     ]);
     if(addressResult.error || productsResult.error) throw addressResult.error || productsResult.error;
     const shipping=deliveryInput(b.shipping || {...addressResult.data,method:'parcel'});
-    const items=b.items.map(item=>{
+    const pricedItems=b.items.map(item=>{
       const product=productsResult.data?.find(p=>p.id===item.productId);
       if(!product) throw Error('판매 제품을 확인해주세요.');
       if(!['fire','non_fire','flame_retardant','non_flame_retardant','방염','비방염'].includes(product.flame_type))throw Error('방염 구분이 등록된 제품만 주문해주세요.');
       return salesItem(product,item.quantityM);
     });
+    const {items}=await supplierSnapshot(db,pricedItems);
     if(b.expectedTotal!==items.reduce((n,i)=>n+i.total,0)) throw Error('판매가격이 변경되었습니다. 상품을 새로 확인해주세요.');
     const {data,error}=await db.from('material_pilot_orders').insert({id:b.requestId,company_id:actor.companyId,buyer_id:user.id,request_hash:requestHash,items,shipping:{...shipping,note:String(b.deliveryNote||shipping.note||'').slice(0,500),workflow:{version:2,phase:'review'}}}).select('*').single();
     if(error) {
