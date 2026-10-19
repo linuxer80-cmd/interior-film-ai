@@ -704,6 +704,7 @@ export default function SiteDetailModal({
                     </>
                   ) : (
                     <SiteWorkReport
+                      active={menu === "report"}
                       key={site.id}
                       site={site}
                       saving={reportSaving}

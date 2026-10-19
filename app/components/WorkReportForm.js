@@ -76,6 +76,7 @@ export default function WorkReportForm({
   onSave,
   onCancel,
   onSubmitted,
+  active = true,
 }) {
   const [step, setStep] = useState(0);
   useEffect(() => { setStep(0); }, [siteId]);
@@ -103,6 +104,7 @@ export default function WorkReportForm({
   const userId = useRef(null);
   const mounted = useRef(true);
   const draftLock = useRef(false);
+  const refreshSequence = useRef(0);
 
   current.current = form;
 
@@ -158,12 +160,29 @@ export default function WorkReportForm({
   }
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     const data = await reportRequest(`/api/report-support?siteId=${encodeURIComponent(siteId)}`);
-    if (mounted.current) {
+    if (mounted.current && sequence === refreshSequence.current) {
       setContext(data);
     }
     return data;
   }, [siteId]);
+
+  // Recheck server prices when returning from materials or opening final review.
+  // Only context is refreshed: photos, expenses and the local report draft are preserved.
+  useEffect(() => {
+    if (!ready || !active || submitted) return;
+    refresh().catch((e) => setError(e.message));
+    const visible = () => {
+      if (!document.hidden) refresh().catch((e) => setError(e.message));
+    };
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      window.removeEventListener("focus", visible);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [active, ready, step, submitted, refresh]);
 
   useEffect(() => {
     mounted.current = true;
