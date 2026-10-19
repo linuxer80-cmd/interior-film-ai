@@ -142,11 +142,13 @@ export default function AdminTabs({
             {orderedMenus.map(menu => {
               const content = (
                 <>
-                  <ToolIllustration
-                    kind={menu.icon}
-                    size="100%"
-                    className="photo-menu-art"
-                  />
+                  {menu.href !== "/admin/customer-chat" && (
+                    <ToolIllustration
+                      kind={menu.icon}
+                      size="100%"
+                      className="photo-menu-art"
+                    />
+                  )}
 
                   <span>
                     <strong>{menu.label}</strong>
