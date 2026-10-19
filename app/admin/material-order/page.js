@@ -16,7 +16,6 @@ import { supabase } from "../../../lib/supabase";
 
 import { orderFlameLabel, orderVariantKey, orderPriceType } from "../../../lib/materialOrderVariants.mjs";
 
-const PAGE_SIZE = 40;
 
 function formatWon(value) {
   return `${Number(value || 0).toLocaleString(
@@ -35,43 +34,6 @@ function emptyAddress() {
     delivery_note: "",
     is_default: false,
   };
-}
-
-function getImageUrl(product) {
-  const direct =
-    product?.sample_image_url ||
-    product?.image_url ||
-    "";
-
-  if (direct) return direct;
-
-  let path =
-    product?.sample_image_path ||
-    product?.image_path ||
-    "";
-
-  if (!path) return "";
-
-  if (
-    path.startsWith("http://") ||
-    path.startsWith("https://")
-  ) {
-    return path;
-  }
-
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-
-  path = path.replace(/^\/+/, "");
-
-  if (path.startsWith("film-samples/")) {
-    path = path.slice("film-samples/".length);
-  }
-
-  return (
-    `${supabaseUrl}/storage/v1/object/public/` +
-    `film-samples/${path}`
-  );
 }
 
 function calculateAmounts(product, quantityM) {
@@ -136,18 +98,6 @@ function MaterialOrderForm() {
   const [accessToken, setAccessToken] =
     useState("");
 
-  const [products, setProducts] = useState([]);
-  const [brands, setBrands] = useState([]);
-
-  const [brand, setBrand] = useState("");
-  const [searchInput, setSearchInput] =
-    useState("");
-  const [search, setSearch] = useState("");
-
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] =
-    useState(1);
-
   const [cart, setCart] = useState([]);
   const [quantities, setQuantities] = useState({});
   const [delivery,setDelivery]=useState({method:"parcel",recipient_name:"",recipient_phone:"",address_line1:"",address_line2:"",feeAccepted:false});
@@ -159,10 +109,6 @@ function MaterialOrderForm() {
   const [variants, setVariants] = useState([]);
   const [variantLoading, setVariantLoading] = useState(false);
   const [variantError, setVariantError] = useState("");
-  function openProduct(product) {
-    setVariants([]); setVariantError(""); setVariantLoading(true);
-    setVariantSource(product.id); setDetail(product);
-  }
   const [sites, setSites] = useState([]);
   const [siteError, setSiteError] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("saved");
@@ -201,9 +147,6 @@ function MaterialOrderForm() {
 
   const [deliveryNote, setDeliveryNote] =
     useState("");
-
-  const [loadingProducts, setLoadingProducts] =
-    useState(false);
 
   const [loadingAddresses, setLoadingAddresses] =
     useState(false);
@@ -330,37 +273,6 @@ function MaterialOrderForm() {
     return ()=>{active=false;};
   }, [variantSource, Boolean(detail), apiFetch]);
 
-  const loadProducts = useCallback(
-    async (requestedPage = 1) => {
-      try {
-        setLoadingProducts(true);
-
-        const params = new URLSearchParams({
-          brand,
-          search,
-          page: String(requestedPage),
-          limit: String(PAGE_SIZE),
-        });
-
-        const result = await apiFetch(
-          `/api/admin/material-products?${params.toString()}`,
-        );
-
-        setProducts(result.products || []);
-        setBrands(result.brands || []);
-        setPage(result.pagination?.page || 1);
-        setTotalPages(
-          result.pagination?.totalPages || 1,
-        );
-      } catch (error) {
-        showMessage(error.message, "error");
-      } finally {
-        setLoadingProducts(false);
-      }
-    },
-    [apiFetch, brand, search, showMessage],
-  );
-
   const loadAddresses = useCallback(
     async (preferredId = "") => {
       try {
@@ -420,27 +332,12 @@ function MaterialOrderForm() {
   useEffect(() => {
     if (authorized !== true) return;
 
-    loadProducts(1);
-
     loadAddresses().catch((error) => {
       setAddressStatus(
         `배송지 조회 실패: ${error.message}`,
       );
     });
   }, [authorized]);
-
-  useEffect(() => {
-    if (authorized !== true) return;
-    loadProducts(1);
-  }, [brand, search]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setSearch(searchInput.trim());
-    }, 400);
-
-    return () => window.clearTimeout(timer);
-  }, [searchInput]);
 
   const cartTotals = useMemo(() => {
     return cart.reduce(
@@ -492,8 +389,8 @@ function MaterialOrderForm() {
     const error = quantityError(product, value);
     if (error) { showMessage(error, "error"); return; }
     setCart(current => [...current.filter(item => orderVariantKey(item.product) !== orderVariantKey(product)), { product, quantityM: Number(value) }]);
-    showMessage(`${product.product_code} · ${value}m를 담았습니다.`);
-    setDetail(null);
+    showMessage(`${product.product_code} · ${value}m를 주문목록에 추가했습니다.`);
+    setDetail(null); setPicker({product_code:""}); setVariants([]); setVariantSource(null);
   }
 
   function removeCart(productId) {
@@ -644,7 +541,7 @@ function MaterialOrderForm() {
   function validateOrder() {
     if (cart.length === 0) {
       throw new Error(
-        "주문할 제품을 담아주세요.",
+        "주문할 자재를 추가해주세요.",
       );
     }
 
@@ -775,14 +672,14 @@ function MaterialOrderForm() {
           </span>
           <h1>자재 주문하기</h1>
           <p>
-            필요한 필름을 선택해 대리점에 주문하세요.
+            제품번호·방염 구분·길이를 입력해 주문하세요.
           </p>
         </div>
-        <button className="outline" type="button" onClick={() => navigate("cart")}>장바구니 {cart.length}</button>
+        <button className="outline" type="button" onClick={() => navigate("cart")}>주문목록 {cart.length}</button>
       </header>
       <nav className="shop-nav" aria-label="자재 주문 메뉴">
-        <button type="button" aria-current={screen === "products" ? "page" : undefined} onClick={() => navigate("products")}>상품</button>
-        <button type="button" aria-current={screen === "cart" ? "page" : undefined} onClick={() => navigate("cart")}>장바구니 ({cart.length})</button>
+        <button type="button" aria-current={screen === "products" ? "page" : undefined} onClick={() => navigate("products")}>자재 입력</button>
+        <button type="button" aria-current={screen === "cart" ? "page" : undefined} onClick={() => navigate("cart")}>주문목록 ({cart.length})</button>
         <button type="button" aria-current={screen === "orders" ? "page" : undefined} onClick={showOrders}>주문내역</button>
       </nav>
 
@@ -794,159 +691,42 @@ function MaterialOrderForm() {
         </div>
       ) : null}
 
-      <section className="panel" hidden={screen !== "products" || !!detail}>
-        <h2>필름 선택</h2>
-        <MaterialFilmPicker value={picker} onChange={async value=>{
+      <section className="panel" hidden={screen !== "products"}>
+        <h2>주문 자재 입력</h2>
+        <MaterialFilmPicker showImages={false} value={picker} onChange={value => {
           setPicker(value);
-          if(!value.film_product_id)return;
-          setSearchInput(value.product_code);setBrand(value.brand);
-          try{
-            const result=await apiFetch("/api/admin/material-products?variantOf="+encodeURIComponent(value.film_product_id));
-            const rows=result.products||[];
-            if(!rows.length)throw Error("판매 등록된 자재가 없습니다.");
-            setVariants(rows);setVariantError("");setVariantLoading(true);setVariantSource(rows[0].id);setDetail(rows[0]);
-          }catch(e){window.alert(e.message);}
+          setDetail(null); setVariants([]); setVariantError("");
+          setVariantSource(value.film_product_id || null);
+          setVariantLoading(Boolean(value.film_product_id));
+          if (value.film_product_id) setDetail({id:value.film_product_id,brand:value.brand,product_code:value.product_code,product_name:value.product_name});
         }}/>
-
-        <input
-          className="search"
-          type="search"
-          value={searchInput}
-          onChange={(event) =>
-            setSearchInput(event.target.value)
-          }
-          placeholder="제품번호 또는 제품명 검색"
-        />
-
-        <div className="brands">
-          <button
-            type="button"
-            className={
-              brand === "" ? "active" : ""
-            }
-            onClick={() => setBrand("")}
-          >
-            전체
-          </button>
-
-          {brands.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={
-                brand === item ? "active" : ""
-              }
-              onClick={() => setBrand(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-
-        {loadingProducts ? (
-          <div className="empty">
-            제품을 불러오는 중입니다.
-          </div>
-        ) : products.length === 0 ? (
-          <div className="empty">
-            판매 가능한 제품이 없습니다.
-          </div>
-        ) : (
-          <div className="products">
-            {products.map((product) => {
-              const imageUrl =
-                getImageUrl(product);
-
-              const added = cart.some(
-                (item) =>
-                  item.product.id === product.id,
-              );
-
-              return (
-                <article
-                  key={product.id}
-                  className="product"
-                >
-                  <div className="image">
-                    {imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt={product.product_code}
-                      />
-                    ) : (
-                      <span>이미지 없음</span>
-                    )}
-                  </div>
-
-                  <div className="product-info">
-                    <small>{product.brand}</small>
-                    <strong>
-                      {product.product_code}
-                    </strong>
-
-                    <p>
-                      {product.product_name ||
-                        product.color_description ||
-                        "제품명 없음"}
-                    </p>
-
-                    <div className="price">
-                      {formatWon(
-                        product.dealer_price_per_m,
-                      )}
-                      /m
-                    </div>
-
-                    <small>
-                      {product.price_vat_included
-                        ? "VAT 포함"
-                        : "VAT 별도"}
-                    </small>
-
-                    <button type="button" onClick={() => openProduct(product)}>옵션·길이 선택</button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="pagination">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() =>
-              loadProducts(page - 1)
-            }
-          >
-            이전
-          </button>
-
-          <span>
-            {page} / {totalPages}
-          </span>
-
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() =>
-              loadProducts(page + 1)
-            }
-          >
-            다음
-          </button>
-        </div>
+        {variantLoading && <p role="status">방염 구분과 주문 단가를 확인하고 있습니다…</p>}
+        {variantError && <p role="alert">{variantError}</p>}
+      {detail && !variantLoading && !variantError && variants.length > 0 && <div className="order-entry">
+        <strong className="price">{formatWon(detail.dealer_price_per_m)}/m</strong>
+        <p>{detail.price_vat_included ? "부가세 포함" : "부가세 별도"}</p>
+        <label>방염 옵션<select disabled={variantLoading || !!variantError || !variants.length} value={orderVariantKey(detail)} onChange={event => { const variant = variants.find(item => orderVariantKey(item) === event.target.value); if (variant) setDetail(variant); }}>
+          {(variants.length ? variants : [detail]).map(item => <option key={orderVariantKey(item)} value={orderVariantKey(item)}>{orderFlameLabel(item.flame_type)} · {formatWon(item.dealer_price_per_m)}/m · 부가세 {item.price_vat_included?"포함":"별도"}</option>)}
+        </select></label>
+        <p className="help">{variants.length === 1 ? "이 제품은 현재 표시된 구분만 주문할 수 있습니다." : "방염 구분을 선택해주세요."}</p>
+        <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[orderVariantKey(detail)] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: event.target.value }))} /></label>
+        <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
+        <p>최소 {detail.minimum_order_m || 1}m · {detail.order_unit_m || 1}m 단위</p>
+        <p role="status">{quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)}</p>
+        <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
+        <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>주문목록에 추가</button>
+      </div>}
       </section>
 
       <section className="panel" hidden={screen !== "cart"}>
         <div className="title-row">
-          <h2>장바구니</h2>
+          <h2>주문목록</h2>
           <strong>{cart.length}개</strong>
         </div>
 
         {cart.length === 0 ? (
           <div className="empty">
-            주문할 필름을 담아주세요.
+            주문할 자재를 추가해주세요.
           </div>
         ) : (
           <div className="cart-list">
@@ -1316,23 +1096,6 @@ function MaterialOrderForm() {
         </button>
       </section>
 
-      {detail && <section className="panel detail">
-        <button type="button" className="outline" onClick={() => setDetail(null)}>‹ 상품 목록</button>
-        {getImageUrl(detail) && <img className="detail-image" src={getImageUrl(detail)} alt={`${detail.brand || ""} ${detail.product_code}`} />}
-        <h2>{detail.brand} {detail.product_code}</h2><p>{detail.product_name}</p>
-        <strong className="price">{formatWon(detail.dealer_price_per_m)}/m</strong>
-        <p>{detail.price_vat_included ? "부가세 포함" : "부가세 별도"}</p>
-        <label>방염 옵션<select disabled={variantLoading || !!variantError || !variants.length} value={orderVariantKey(detail)} onChange={event => { const variant = variants.find(item => orderVariantKey(item) === event.target.value); if (variant) setDetail(variant); }}>
-          {(variants.length ? variants : [detail]).map(item => <option key={orderVariantKey(item)} value={orderVariantKey(item)}>{orderFlameLabel(item.flame_type)} · {formatWon(item.dealer_price_per_m)}/m · 부가세 {item.price_vat_included?"포함":"별도"}</option>)}
-        </select></label>
-        {variantLoading ? <p role="status">방염·비방염 판매 옵션 확인 중...</p> : variantError ? <p role="alert">{variantError}</p> : <p className="help">{variants.length===1 ? "현재 판매 등록된 옵션은 위 옵션 한 가지입니다." : "판매 등록된 방염·비방염 옵션을 선택해주세요."}</p>}
-        <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[orderVariantKey(detail)] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: event.target.value }))} /></label>
-        <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
-        <p>최소 {detail.minimum_order_m || 1}m · {detail.order_unit_m || 1}m 단위</p>
-        <p role="status">{quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)}</p>
-        <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
-        <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
-      </section>}
       {screen === "orders" && <MaterialPilot mode="buyer" />}
       <style jsx>{`
         [hidden] { display: none !important; }
@@ -1342,7 +1105,7 @@ function MaterialOrderForm() {
         .delivery-tabs { display: flex; gap: 8px; margin: 16px 0; }
         .primary { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #f36a20; color: white; font-size: 17px; font-weight: 800; margin-top: 16px; }
         select { width: 100%; padding: 14px; border: 1px solid #d1d5db; border-radius: 10px; background: white; font-size: 16px; margin: 8px 0; }
-        .detail-image { width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; margin: 18px 0; background: #f4f1eb; }
+        .order-entry { margin-top: 18px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
         .length-buttons { display: flex; gap: 8px; margin-top: 8px; }
         .length-buttons button { flex: 1; padding: 10px; background: #fff6ef; border: 1px solid #efc9ae; border-radius: 10px; font-size: 20px; }
         .help { color: #6b7280; font-size: 13px; }
@@ -1476,90 +1239,13 @@ function MaterialOrderForm() {
           text-align: center;
         }
 
-        .products {
-          display: grid;
-          grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-          gap: 9px;
-        }
-
-        .product {
-          overflow: hidden;
-          border: 1px solid #e5e7eb;
-          border-radius: 16px;
-        }
-
-        .image {
-          aspect-ratio: 1 / 0.8;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          background: #f3f4f6;
-          color: #9ca3af;
-          font-size: 11px;
-        }
-
-        .image img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .product-info {
-          padding: 11px;
-        }
-
-        .product-info > strong {
-          font-size: 18px;
-        }
-
-        .product-info p {
-          min-height: 35px;
-          margin: 4px 0;
-          color: #4b5563;
-          font-size: 12px;
-        }
-
         .price {
           color: #e95e17;
           font-weight: 900;
         }
 
-        .product-info small {
-          display: block;
-          color: #9ca3af;
-        }
-
-        .product-info button {
-          width: 100%;
-          height: 40px;
-          margin-top: 8px;
-          border: 0;
-          border-radius: 10px;
-          background: #111827;
-          color: white;
-          font-weight: 900;
-        }
-
         button:disabled {
           opacity: 0.4;
-        }
-
-        .pagination {
-          display: grid;
-          grid-template-columns: 1fr auto 1fr;
-          align-items: center;
-          gap: 10px;
-          margin-top: 13px;
-        }
-
-        .pagination button {
-          height: 43px;
-          border: 1px solid #d1d5db;
-          border-radius: 11px;
-          background: white;
-          font-weight: 900;
         }
 
         .title-row,
@@ -1800,12 +1486,6 @@ function MaterialOrderForm() {
           font-weight: 900;
         }
 
-        @media (min-width: 700px) {
-          .products {
-            grid-template-columns:
-              repeat(3, minmax(0, 1fr));
-          }
-        }
       `}</style>
     </main>
   );
