@@ -45,7 +45,7 @@ function materialsOf(data) {
   );
 }
 
-export default function CuttingWorkspace() {
+export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = false } = {}) {
   const [context, setContext] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -58,7 +58,7 @@ export default function CuttingWorkspace() {
   useEffect(() => {
     let active = true;
 
-    const siteId = new URLSearchParams(
+    const siteId = embeddedSiteId || new URLSearchParams(
       window.location.search
     ).get("siteId");
 
@@ -179,7 +179,7 @@ export default function CuttingWorkspace() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [embeddedSiteId]);
 
   async function reloadIssuedRolls() {
     if (
@@ -378,7 +378,7 @@ export default function CuttingWorkspace() {
           관리자에게 현장 필름 등록을 요청해주세요.
         </p>
         <a
-          href={`/worker/site/${context.site.site_id}?section=film`}
+          href={embedded ? `/admin?tab=sites&site=${context.site.site_id}&section=materials` : `/worker/site/${context.site.site_id}?section=film`}
          data-ui-link="action">
           ← 현장으로 돌아가기
         </a>

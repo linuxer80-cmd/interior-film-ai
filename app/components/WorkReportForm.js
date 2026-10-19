@@ -12,7 +12,7 @@ import {
 
 const box = {
   padding: 16,
-  border: "1px solid #dbe3ee",
+  border: "1px solid #dfe4d7",
   borderRadius: 14,
   background: "white",
   margin: "12px 0",
@@ -24,17 +24,17 @@ const input = {
   boxSizing: "border-box",
   padding: 12,
   fontSize: 16,
-  border: "1px solid #cbd5e1",
+  border: "1px solid #d5dfcd",
   borderRadius: 10,
   marginTop: 6,
 };
 
 const button = {
   padding: "11px 14px",
-  border: "1px solid #cbd5e1",
+  border: "1px solid #d5dfcd",
   borderRadius: 10,
-  background: "#eff6ff",
-  color: "#1e40af",
+  background: "#edf3e8",
+  color: "#355d46",
   fontWeight: 700,
   cursor: "pointer",
 };
@@ -711,7 +711,7 @@ export default function WorkReportForm({
       <nav aria-label="완료보고 단계" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
       </nav>
-      <section hidden={step !== 2} style={{ ...box, background: "#eff6ff" }}>
+      <section hidden={step !== 2} style={{ ...box, background: "#edf3e8" }}>
         <h3>{missing.length ? `확인할 항목 ${missing.length}건` : "제출 준비 완료 ✓"}</h3>
 
         <p role="status">{draftMessage || "임시저장 준비 중"}</p>

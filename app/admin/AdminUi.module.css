@@ -3,7 +3,7 @@
   margin: 0 auto;
   padding: 20px 16px 80px;
   background: var(--film-bg, #faf8f4);
-  color: #202c3d;
+  color: #29392e;
   min-height: 100vh;
   box-sizing: border-box;
 }
@@ -15,14 +15,14 @@
   gap: 12px;
   margin: 0 0 22px;
   padding: 18px;
-  background: #fff;
-  border: 1px solid var(--film-line, #e7eaf0);
+  background: #fffefb;
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 22px;
   box-shadow: var(--film-shadow, 0 5px 24px #23395506);
 }
 
 .eyebrow {
-  color: #637187;
+  color: #788371;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -54,10 +54,10 @@
   gap: 7px;
   min-height: 96px;
   padding: 10px 3px;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #637187;
+  background: #fffefb;
+  color: #788371;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -65,25 +65,25 @@
 }
 
 .tabs button[aria-current="page"] {
-  color: #285cce;
-  background: var(--film-blue-soft, #edf5ff);
-  border-color: #81b4f7;
+  color: #355d46;
+  background: var(--film-blue-soft, #edf3e8);
+  border-color: #95ad87;
 }
 
 .count {
   margin-left: 3px;
-  color: #285cce;
+  color: #355d46;
   font-size: 11px;
 }
 
 .more {
   margin: 18px 0;
-  border-top: 1px solid #dfe6f0;
+  border-top: 1px solid #dfe4d7;
 }
 
 .more > summary {
   padding: 15px 0;
-  color: #637187;
+  color: #788371;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -106,10 +106,10 @@
   min-height: 44px;
   padding: 10px;
   box-sizing: border-box;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #31453a;
+  background: #fffefb;
+  color: #29392e;
   text-decoration: none;
   font: inherit;
   font-size: 13px;
@@ -118,8 +118,8 @@
 }
 
 .moreGrid [aria-current="page"] {
-  background: #edf3ff;
-  color: #285cce;
+  background: #edf3e8;
+  color: #355d46;
   border-color: #c7d7f6;
 }
 
@@ -148,8 +148,8 @@
   box-sizing: border-box;
   border: 1px solid #d7dfeb;
   border-radius: 9px;
-  background: #fff;
-  color: #31453a;
+  background: #fffefb;
+  color: #29392e;
   text-decoration: none;
   font-size: 12px;
   font-weight: 600;
@@ -157,7 +157,7 @@
 }
 
 .help {
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   line-height: 1.6;
   margin: 0 0 16px;
@@ -179,7 +179,7 @@
   align-items: center;
   min-height: 44px;
   margin-bottom: 14px;
-  color: #637187;
+  color: #788371;
   text-decoration: none;
   font-size: 13px;
 }
@@ -193,7 +193,7 @@
 .share > summary {
   padding: 15px 0;
   cursor: pointer;
-  color: #637187;
+  color: #788371;
   font-size: 13px;
   font-weight: 600;
 }
@@ -206,7 +206,7 @@
   word-break: break-all;
   user-select: all;
   font-size: 12px;
-  color: #637187;
+  color: #788371;
   margin-bottom: 12px;
 }
 
@@ -231,10 +231,10 @@
   gap: 7px;
   min-width: 0;
   padding: 16px;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #637187;
+  background: #fffefb;
+  color: #788371;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -242,21 +242,21 @@
 }
 
 .task strong {
-  color: #285cce;
+  color: #355d46;
   font-size: 25px;
   font-weight: 700;
 }
 
 .task small {
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   font-weight: 400;
 }
 
 .company {
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
+  background: #fffefb;
   box-shadow: var(--film-shadow, 0 5px 24px #23395506);
 }
 
@@ -276,7 +276,7 @@
 
 .company > summary::after {
   content: "⌄";
-  color: #637187;
+  color: #788371;
 }
 
 .company[open] > summary::after {
@@ -290,7 +290,7 @@
 }
 
 .companyPlan {
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   margin-top: 4px;
 }
@@ -302,7 +302,7 @@
 .account {
   border-top: 1px solid #e4e9f1;
   padding-top: 14px;
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -339,7 +339,7 @@
   padding: 8px;
   border: 1px solid #d6dcd2;
   border-radius: 8px;
-  background: #fff;
+  background: #fffefb;
   font-size: 14px;
 }
 
@@ -415,7 +415,7 @@
   border-radius: 8px;
   padding: 8px;
   font-size: 14px;
-  background: #fff;
+  background: #fffefb;
 }
 
 .bulkInvalid {
@@ -446,7 +446,7 @@
 
 .todayDate {
   margin: 7px 0 0;
-  color: #637187;
+  color: #788371;
   font-size: 12px;
 }
 
@@ -461,10 +461,10 @@
   min-height: 90px;
   min-width: 0;
   text-align: left;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #31453a;
+  background: #fffefb;
+  color: #29392e;
   cursor: pointer;
   box-shadow: var(--film-shadow, 0 5px 24px #23395506);
 }
@@ -483,15 +483,15 @@
 
 .todayCounts small {
   margin-left: 4px;
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   font-weight: 500;
 }
 
 .todayCounts [aria-pressed="true"] {
-  border-color: #285cce;
-  box-shadow: 0 0 0 1px #285cce;
-  background: #f4f7ff;
+  border-color: #355d46;
+  box-shadow: 0 0 0 1px #355d46;
+  background: #edf3e8;
 }
 
 .todayCounts [data-tone="orange"] > strong {
@@ -499,7 +499,7 @@
 }
 
 .todayCounts [data-tone="blue"] > strong {
-  color: #285cce;
+  color: #355d46;
 }
 
 .todayCounts [data-tone="purple"] > strong {
@@ -525,7 +525,7 @@
 
 .todayListHeading h3 span {
   margin-left: 5px;
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   font-weight: 500;
 }
@@ -536,7 +536,7 @@
   min-height: 44px;
   border: 0;
   background: none;
-  color: #285cce;
+  color: #355d46;
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
@@ -554,10 +554,10 @@
 .todayTask {
   display: block;
   padding: 15px;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #202c3d;
+  background: #fffefb;
+  color: #29392e;
   text-decoration: none;
   box-shadow: var(--film-shadow, 0 5px 24px #23395506);
 }
@@ -573,8 +573,8 @@
 .todayBadge {
   padding: 5px 7px;
   border-radius: 6px;
-  color: #285cce;
-  background: #edf3ff;
+  color: #355d46;
+  background: #edf3e8;
   font-size: 11px;
   font-weight: 700;
 }
@@ -595,7 +595,7 @@
 }
 
 .todayMeta {
-  color: #637187;
+  color: #788371;
   font-size: 11px;
 }
 
@@ -608,26 +608,26 @@
 
 .todayTask p {
   margin: 7px 0 12px;
-  color: #637187;
+  color: #788371;
   font-size: 12px;
   line-height: 1.6;
 }
 
 .todayTaskBottom {
   padding-top: 10px;
-  border-top: 1px solid #eef2f6;
+  border-top: 1px solid #edf0e6;
   font-size: 11px;
   line-height: 1.5;
 }
 
 .todayTaskBottom span {
-  color: #637187;
+  color: #788371;
   overflow-wrap: anywhere;
 }
 
 .todayTaskBottom strong {
   flex-shrink: 0;
-  color: #285cce;
+  color: #355d46;
 }
 
 .todayEmpty,
@@ -635,8 +635,8 @@
   padding: 22px 16px;
   border: 1px solid #e3e0d6;
   border-radius: 12px;
-  background: #fff;
-  color: #637187;
+  background: #fffefb;
+  color: #788371;
   font-size: 13px;
   line-height: 1.7;
   text-align: center;
@@ -654,10 +654,10 @@
   justify-content: space-between;
   gap: 12px;
   padding: 15px;
-  border: 1px solid var(--film-line, #e7eaf0);
+  border: 1px solid var(--film-line, #dfe4d7);
   border-radius: 18px;
-  background: #fff;
-  color: #202c3d;
+  background: #fffefb;
+  color: #29392e;
   text-decoration: none;
   box-shadow: var(--film-shadow, 0 5px 24px #23395506);
 }
@@ -675,7 +675,7 @@
 .todaySite div span {
   display: block;
   margin-top: 6px;
-  color: #637187;
+  color: #788371;
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -696,9 +696,9 @@
   width: 100%;
   min-height: 44px;
   margin-top: 10px;
-  border: 1px solid #dfe6f0;
+  border: 1px solid #dfe4d7;
   border-radius: 9px;
-  background: #fff;
+  background: #fffefb;
   color: #53665a;
   font-size: 12px;
   cursor: pointer;
@@ -706,7 +706,7 @@
 
 .todayUpdated {
   margin: 18px 0 0;
-  color: #637187;
+  color: #788371;
   font-size: 11px;
   line-height: 1.6;
 }
@@ -716,7 +716,7 @@
 .todayCounts button:focus-visible,
 .todayMore:focus-visible,
 .todayTextButton:focus-visible {
-  outline: 3px solid #285cce;
+  outline: 3px solid #355d46;
   outline-offset: 3px;
 }
 

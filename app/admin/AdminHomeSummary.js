@@ -278,9 +278,9 @@ export default function AdminHomeSummary({ companyId }) {
       <style jsx>{`
         .summary {
           padding: 16px;
-          border: 1px solid #dfd8cc;
-          border-radius: 18px;
-          background: #fffdfa;
+          border: 1px solid #dfe4d7;
+          border-radius: 20px;
+          background: #fffefb;
           color: #243648;
           margin-bottom: 14px;
         }
@@ -317,7 +317,7 @@ export default function AdminHomeSummary({ companyId }) {
         .counts span {
           padding: 12px 4px;
           border-radius: 12px;
-          background: #f1f6fb;
+          background: #f0f4e9;
           text-align: center;
           font-size: 12px;
           color: #526171;
@@ -344,7 +344,7 @@ export default function AdminHomeSummary({ companyId }) {
           min-height: 44px;
           margin-top: 8px;
           padding: 8px 12px;
-          border: 1px solid #ddd5c9;
+          border: 1px solid #dfe4d7;
           border-radius: 10px;
           background: white;
           color: #243648;

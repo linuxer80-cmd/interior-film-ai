@@ -17,6 +17,8 @@ import SiteStatusControl from "./site-detail/SiteStatusControl";
 import SiteExpenses from "../components/SiteExpenses";
 import ConsultationQuote from "./ConsultationQuote";
 import CompletionEstimate from "./CompletionEstimate";
+import AdminAssignedWork from "./AdminAssignedWork";
+import fieldUi from "./FieldUi.module.css";
 
 const STATUS_INFO = {
   consulting: {
@@ -26,7 +28,7 @@ const STATUS_INFO = {
   },
   scheduled: {
     label: "시공 예정",
-    background: "#eff6ff",
+    background: "#edf3e8",
     color: "#1d4ed8",
   },
   in_progress: {
@@ -72,10 +74,10 @@ const SECTION_MENU = {
 
 const actionStyle = {
   minHeight: 44,
-  border: "1px solid #dfe6ef",
+  border: "1px solid #dfe4d7",
   borderRadius: 14,
   background: "#ffffff",
-  color: "#50617a",
+  color: "#596c50",
   padding: "10px 14px",
   fontWeight: 800,
   cursor: "pointer",
@@ -206,6 +208,7 @@ export default function SiteDetailModal({
   }
 
   async function handleAssignmentSaved() {
+    window.dispatchEvent(new Event("site-assignment-changed"));
     if (typeof reloadSites === "function") await reloadSites();
   }
 
@@ -260,6 +263,7 @@ export default function SiteDetailModal({
     >
       <div
         role="dialog"
+        className={fieldUi.dialog}
         aria-modal="true"
         aria-labelledby="admin-site-detail-title"
         onClick={event => event.stopPropagation()}
@@ -302,7 +306,7 @@ export default function SiteDetailModal({
                 style={{
                   margin: "3px 0 6px",
                   fontSize: 21,
-                  color: "#243247",
+                  color: "#29392e",
                   overflowWrap: "anywhere",
                 }}
               >
@@ -316,7 +320,7 @@ export default function SiteDetailModal({
                   padding: "6px 10px",
                   marginBottom: 4,
                   borderRadius: 12,
-                  background: "#eff6ff",
+                  background: "#edf3e8",
                   color: "#24549a",
                   fontWeight: 800,
                 }}
@@ -388,7 +392,7 @@ export default function SiteDetailModal({
                   background:
                     menu === item.id ? "#eaf3ff" : "#ffffff",
                   color:
-                    menu === item.id ? "#3268bd" : "#50617a",
+                    menu === item.id ? "#3268bd" : "#596c50",
                   fontSize: 13,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -437,6 +441,7 @@ export default function SiteDetailModal({
               "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
+          <AdminAssignedWork key={site.id} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
           <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
             {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
           </p>
@@ -597,7 +602,7 @@ export default function SiteDetailModal({
             aria-label="완료보고와 검수"
             hidden={menu !== "report"}
           >
-            <p style={{margin:"0 0 14px",fontSize:14,color:"#50617a",lineHeight:1.6}}>
+            <p style={{margin:"0 0 14px",fontSize:14,color:"#596c50",lineHeight:1.6}}>
               시공자가 제출한 완료보고서의 시공내용·사진·자재·경비를 확인하고 검수해주세요.
               검수 승인 후 보고서에 연결된 현장 내역으로 견적서를 작성할 수 있습니다.
             </p>
@@ -630,12 +635,12 @@ export default function SiteDetailModal({
             {hasWorkerReport === true && visited.report && (
               <section aria-label="검수 후 견적서 작성" style={{marginTop:20,padding:16,border:"1px solid #d4dedf",borderRadius:14,background:"#fffdf9"}}>
                 <h3 style={{margin:"0 0 8px",fontSize:17}}>보고서 기반 견적서</h3>
-                <p style={{fontSize:13,lineHeight:1.6,color:"#50617a"}}>
+                <p style={{fontSize:13,lineHeight:1.6,color:"#596c50"}}>
                   {reviewStatus === "approved"
                     ? "검수 승인된 현장의 실제 자재 사용량·인건비·경비를 불러옵니다. 청구 단가와 금액을 확인하고 저장해주세요."
                     : "먼저 위 보고서의 검수 메뉴에서 승인해주세요. 보완이 필요하면 시공자에게 반려할 수 있습니다."}
                 </p>
-                {reviewStatus === "approved" && <button type="button" style={{...actionStyle,width:"100%",background:"#244b43",color:"#fff"}} onClick={()=>{
+                {reviewStatus === "approved" && <button type="button" style={{...actionStyle,width:"100%",background:"#244b43",color:"#fffefb"}} onClick={()=>{
                   if(reportEstimateOpen && estimateDirty && !window.confirm("저장하지 않은 견적 내용이 있거나 처리 중입니다. 닫을까요?"))return;
                   if(reportEstimateOpen)setEstimateDirty(false);
                   setReportEstimateOpen(value=>!value);
@@ -670,7 +675,7 @@ export default function SiteDetailModal({
                         style={{
                           margin: 0,
                           fontSize: 16,
-                          color: "#243247",
+                          color: "#29392e",
                         }}
                       >
                         시공 완료 보고
@@ -730,7 +735,7 @@ export default function SiteDetailModal({
                       cursor: "pointer",
                       fontSize: 13,
                       fontWeight: 800,
-                      color: "#50617a",
+                      color: "#596c50",
                     }}
                   >
                     저장된 시공 완료 자료 보기

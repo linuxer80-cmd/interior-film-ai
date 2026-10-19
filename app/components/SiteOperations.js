@@ -9,26 +9,26 @@ import FilmThumbnail from "../worker/cutting/FilmThumbnail";
 
 const card = {
   padding: 16,
-  border: "1px solid #dbe3ee",
+  border: "1px solid #dfe4d7",
   borderRadius: 14,
   margin: "12px 0",
-  background: "#fff",
+  background: "#fffefb",
   overflowWrap: "anywhere",
 };
 
 const btn = {
   padding: "10px 12px",
   borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  background: "#eff6ff",
-  color: "#1e40af",
+  border: "1px solid #d5dfcd",
+  background: "#edf3e8",
+  color: "#355d46",
   fontWeight: 700,
   cursor: "pointer",
 };
 
 const input = {
   padding: 10,
-  border: "1px solid #cbd5e1",
+  border: "1px solid #d5dfcd",
   borderRadius: 10,
   width: "100%",
   boxSizing: "border-box",
@@ -946,7 +946,7 @@ export default function SiteOperations({
                     <div
                       style={{
                         ...card,
-                        background: "#fff",
+                        background: "#fffefb",
                       }}
                     >
                       <strong>현재 저장된 현장정보</strong>

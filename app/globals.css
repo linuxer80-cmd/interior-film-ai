@@ -1,9 +1,9 @@
 :root {
-  --film-bg: #f7f4ee;
-  --film-blue: #28445c;
-  --film-blue-soft: #edf0f2;
-  --film-text: #243648;
-  --film-line: #e6dfd4;
+  --film-bg: #f9f8f2;
+  --film-blue: #355d46;
+  --film-blue-soft: #edf3e8;
+  --film-text: #29392e;
+  --film-line: #dfe4d7;
   --film-shadow: 0 8px 28px #4b39240a;
 }
 * { box-sizing: border-box; }
