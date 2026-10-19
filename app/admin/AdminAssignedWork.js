@@ -53,9 +53,9 @@ export default function AdminAssignedWork({ siteId, companyId, section, onNaviga
   if (!mine) return section === "info" ? <div className={styles.notice}>현장 관리자 · 본인을 팀장 또는 시공팀원으로 배정하면 이 화면에 본인 시공 기능이 표시됩니다.</div> : null;
   return <section hidden={!visible} className={styles.work} aria-label="관리자 본인 시공">
     <div className={styles.card}>
-      <div className={styles.row}><div><small className={styles.muted}>일정 배정으로 참여 확정</small><h3>내 시공 · {mine.my_role === "leader" ? "책임 팀장" : "시공팀원"}</h3></div><button onClick={refresh}>배정 새로고침</button></div>
+      <div className={styles.row}><div>{section === "info" && <small className={styles.muted}>일정 배정으로 참여 확정</small>}<h3>내 시공 · {mine.my_role === "leader" ? "책임 팀장" : "시공팀원"}</h3></div><button onClick={refresh}>배정 새로고침</button></div>
       {section === "info" && <><p>관리자 계정으로 본인의 작업을 기록합니다. 저장 권한은 현재 현장 배정을 다시 확인합니다.</p><div className={styles.actions}><button onClick={() => setAttendance(v => !v)} aria-expanded={attendance}>내 출퇴근</button><button onClick={() => onNavigate("materials")}>자재 반출·반납</button><button onClick={() => onNavigate("expenses")}>내 경비</button><button onClick={() => onNavigate("report")}>내 완료보고</button></div></>}
-      {section === "materials" && <><p>아래 창고 롤에서 반출·반납하고, 현장에 지정된 필름으로 재단합니다. 방염 구분은 선택한 롤의 정보를 따릅니다.</p><button onClick={() => setCutting(v => !v)} aria-expanded={cutting}>{cutting ? "재단 도구 접기" : "이 화면에서 재단하기"}</button></>}
+      {section === "materials" && <><p className={styles.muted}>제품을 누르면 반출·반납할 수 있습니다.</p><button onClick={() => setCutting(v => !v)} aria-expanded={cutting}>{cutting ? "재단 도구 접기" : "이 화면에서 재단하기"}</button></>}
       {section === "report" && <><p>본인 시공 내용·완료 사진·경비를 저장합니다. 제출 가능 여부는 기존 완료보고 권한 검증을 따릅니다.</p><button onClick={() => setReport(true)}>{report ? "작성 중인 내 완료보고" : "내 완료보고 작성"}</button></>}
     </div>
     {attendance && <div hidden={section !== "info"}><AttendancePage embedded mode="worker" /></div>}

@@ -54,8 +54,11 @@ export default function SiteOperations({
   disabled = false,
   reportEditable = false,
   inventoryExpanded = false,
+  compact = false,
 }) {
   const [data, setData] = useState(null);
+  const [expandedMaterial, setExpandedMaterial] = useState(null);
+  const [visitedMaterials, setVisitedMaterials] = useState({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -65,7 +68,7 @@ export default function SiteOperations({
   const inventoryDetails = useRef(null);
   const [stockSelection, setStockSelection] = useState(null);
   const [historyLimit, setHistoryLimit] = useState(3);
-  useEffect(() => setHistoryLimit(3), [siteId]);
+  useEffect(() => { setHistoryLimit(3); setExpandedMaterial(null); setVisitedMaterials({}); }, [siteId]);
 
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -392,16 +395,20 @@ export default function SiteOperations({
         </p>
       )}
 
-      {(materialsMode || summaryMode) && (
+      {(materialsMode || summaryMode) && !compact && (
         <MaterialIssueStatus
           siteId={siteId}
           refreshKey={data}
           compact={summaryMode}
+          inline={compact}
           active={active}
         />
       )}
 
-      {!summaryMode && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
+      {compact && data && <p style={{ margin: "10px 0", fontSize: 13, color: "#687961" }}>
+        자재 {data.materials.length}종 · 반출 {data.materials.filter(m => Number(m.issued) > 0).length}종 · 반납 미입력 {data.materials.filter(m => Number(m.issued) > 0 && m.returned == null).length}종
+      </p>}
+      {!summaryMode && !compact && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
         <summary style={{ ...btn, listStyle: "none" }}>
           📦 자재 반출·반납
         </summary>
@@ -421,7 +428,7 @@ export default function SiteOperations({
         <p>불러오는 중…</p>
       ) : materialsMode ? (
         <>
-          <p style={{ color: "#64748b", fontSize: 13 }}>
+          <p hidden={compact} style={{ color: "#64748b", fontSize: 13 }}>
             소모량 = 총 반출량 − 남은 자재 반입량.
             재단 손실도 포함됩니다.
           </p>
@@ -497,17 +504,40 @@ export default function SiteOperations({
                   background: "#f8fafc",
                 }}
               >
+                {compact && <button type="button" aria-expanded={expandedMaterial === material.id}
+                  aria-controls={`material-detail-${material.id}`} disabled={busy || disabled}
+                  onClick={() => {
+                    setExpandedMaterial(id => id === material.id ? null : material.id);
+                    setVisitedMaterials(previous => ({ ...previous, [material.id]: true }));
+                  }} style={{ width: "100%", border: 0, background: "transparent", color: "#29392e", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <strong style={{ fontSize: 17 }}>{material.code || material.name}<FilmFireBadge type={material.price_type} /></strong>
+                    <span aria-hidden="true">{expandedMaterial === material.id ? "−" : "+"}</span>
+                  </div>
+                  <small style={{ color: "#788371", display: "block", marginTop: 4 }}>{material.brand}</small>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12, fontSize: 13 }}>
+                    <span>반출 <b>{material.issued}{material.unit}</b></span>
+                    <span>반납 <b>{material.returned == null ? "미입력" : `${material.returned}${material.unit}`}</b></span>
+                    <span>소모 <b>{material.used == null ? "미확정" : `${material.used}${material.unit}`}</b></span>
+                  </div>
+                </button>}
+                <div id={`material-detail-${material.id}`} hidden={compact && expandedMaterial !== material.id}>
+                {compact && visitedMaterials[material.id] && <FilmRollInventory
+                  siteId={siteId} active={active && expandedMaterial === material.id}
+                  disabled={disabled} onTracked={handleTrackedRolls} onChanged={refresh}
+                  focusMaterialId={material.id} compact />}
                 <div
+                  hidden={compact}
                   style={{
-                    display: "flex",
+                    display: compact ? "none" : "flex",
                     alignItems: "center",
                     gap: 12,
                   }}
                 >
-                  <FilmThumbnail
+                  {!compact && <FilmThumbnail
                     material={material}
                     size={64}
-                  />
+                  />}
                   <strong>
                     {material.brand}{" "}
                     {material.code || material.name}
@@ -515,7 +545,7 @@ export default function SiteOperations({
                   </strong>
                 </div>
 
-                <p>
+                <p hidden={compact}>
                   반출 {material.issued}
                   {material.unit} · 반입{" "}
                   {material.returned == null
@@ -549,8 +579,9 @@ export default function SiteOperations({
                   !trackedRolls.includes(material.id) &&
                   !data.locked &&
                   data.canReturn && (
-                    <div style={{ marginTop: 12 }}>
-                      {data.owner && (
+                    <details open={!compact || undefined} style={{ marginTop: 12 }}>
+                      <summary hidden={!compact}>롤 없이 수량 직접 입력</summary>
+                      {data.owner && !compact && (
                         <div style={{ marginBottom: 16 }}>
                           <button type="button" style={btn} disabled={disabled || busy}
                             onClick={() => {
@@ -728,17 +759,17 @@ export default function SiteOperations({
                           저장값으로 되돌리기
                         </button>
                       )}
-                    </div>
+                    </details>
                   )}
 
-                {trackedRolls.includes(material.id) && (
+                {!compact && trackedRolls.includes(material.id) && (
                   <p>
                     이 자재는 위의 롤 재고에서 반출·반입을
                     처리합니다.
                   </p>
                 )}
 
-                {!reportEditable && (
+                {!compact && !reportEditable && (
                   <p>반출·반입량은 시공 보고서에서 입력합니다.</p>
                 )}
 
@@ -785,6 +816,7 @@ export default function SiteOperations({
                       </p>
                     ))}
                 </details>
+                </div>
               </div>
             );
           })}

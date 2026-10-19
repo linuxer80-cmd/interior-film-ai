@@ -578,8 +578,11 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteMaterials key={site.id} site={site} />
-              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable inventoryExpanded />
+              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable compact />
+              <details style={{ margin: "14px 0" }}>
+                <summary style={{ ...actionStyle, cursor: "pointer" }}>자재 추가·수정 / 단가·메모 관리</summary>
+                <SiteMaterials key={site.id} site={site} />
+              </details>
             </section>
           )}
 

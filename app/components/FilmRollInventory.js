@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import FilmFireBadge, { filmFireLabel } from "./FilmFireBadge";
+import { materialTrips } from "../../lib/materialTripScope.mjs";
 import { reportRequest } from "../utils/reportClient";
 
 const same = (a, b) =>
@@ -29,6 +30,8 @@ export default function FilmRollInventory({
   onTracked,
   onChanged,
   selectionRequest,
+  focusMaterialId,
+  compact = false,
 }) {
   const [data, setData] = useState(null);
   const [materialId, setMaterialId] = useState("");
@@ -201,7 +204,7 @@ export default function FilmRollInventory({
 
   const materials = data?.materials || [];
   const selectedId =
-    materialId || (materials.length === 1 ? materials[0].id : "");
+    focusMaterialId || materialId || (materials.length === 1 ? materials[0].id : "");
   const material = materials.find(m => m.id === selectedId);
 
   const stock = (data?.rolls || []).filter(
@@ -215,16 +218,15 @@ export default function FilmRollInventory({
   const picked = stock.filter(r => checked.includes(r.id));
   const query = search.trim().toLowerCase();
   const matchesSearch = (...values) => !query || values.filter(value => value != null).join(" ").toLowerCase().includes(query);
-  const visibleMaterials = materials.filter(m =>
+  const visibleMaterials = materials.filter(m => (!focusMaterialId || m.id === focusMaterialId) && (
     matchesSearch(m.brand, m.code, m.name) ||
     (data?.rolls || []).some(r => r.status === "available" && Number(r.remaining) > 0 &&
-      matchesMaterial(r, m) && matchesSearch(r.supplier, r.location, r.remaining))
+      matchesMaterial(r, m) && matchesSearch(r.supplier, r.location, r.remaining)))
   );
   const visibleStock = stock.filter(r => matchesSearch(material?.brand, material?.code, material?.name, r.supplier, r.location, r.remaining));
 
-  const trips = (data?.trips || []).filter(
-    t => t.site_id === siteId && t.returned == null
-  );
+  const trips = materialTrips(data?.trips, siteId, focusMaterialId);
+  const returnedTrips = materialTrips(data?.trips, siteId, focusMaterialId, true);
 
   const canIssue = data?.canIssue ?? data?.canEdit;
   const canReturnRoll = data?.canReturnRoll ?? data?.canEdit;
@@ -245,7 +247,7 @@ export default function FilmRollInventory({
   return (
     <section className="stock" aria-busy={busy || loading}>
       <header>
-        <h3>롤 반출 · 자재 반납</h3>
+        <h3>{compact ? "이 제품 반출·반납" : "롤 반출 · 자재 반납"}</h3>
         <button
           type="button"
           disabled={busy || pending || loading}
@@ -329,12 +331,12 @@ export default function FilmRollInventory({
 
           {tab === "issue" ? (
             <>
-              <p>
+              <p hidden={compact}>
                 현장에 사용할 필름을 누르면 가져갈 수 있는 롤이 표시됩니다.
               </p>
 
               <div className="materials">
-                <label style={{ display: "block", width: "100%" }}>
+                <label style={{ display: compact ? "none" : "block", width: "100%" }}>
                   창고 재고 검색
                   <input type="search" value={search} placeholder="필름 번호 · 대리점 · 보관 위치 · 길이"
                     onChange={event => setSearch(event.target.value)}
@@ -352,6 +354,8 @@ export default function FilmRollInventory({
                     <div className={`material-group${selectedId === m.id ? " selected" : ""}`} key={m.id}>
                     <button
                       className="material-button"
+                      hidden={compact}
+                      style={compact ? { display: "none" } : undefined}
                       type="button"
                       aria-expanded={selectedId === m.id}
                       aria-controls={selectedId === m.id ? `stock-${m.id}` : undefined}
@@ -378,7 +382,7 @@ export default function FilmRollInventory({
                   <p>
                     <b>보관 재고 {stock.length}롤 · {sum(stock)}m</b>
                   </p>
-                  <p>
+                  <p hidden={compact}>
                     가져갈 롤을 체크하세요.
                     선택한 롤 전체가 현장으로 이동합니다.
                   </p>
@@ -416,7 +420,7 @@ export default function FilmRollInventory({
                     </p>
                   )}
 
-                  <p>
+                  <p hidden={compact}>
                     반출량은 선택한 롤의 남은 길이로 자동 입력됩니다.
                     반출 후 이 제품의 창고 잔량:{" "}
                     <b>{metres(sum(stock) - sum(picked))}m</b>
@@ -552,9 +556,9 @@ export default function FilmRollInventory({
           )}
 
           <details>
-            <summary>반납 완료 내역 ({data.trips.filter(t => t.returned != null).length}롤)</summary>
+            <summary>반납 완료 내역 ({returnedTrips.length}롤)</summary>
             {data.locked && <p>보고서 제출·승인 후에는 관리자가 보고서를 반려한 뒤 수정할 수 있습니다.</p>}
-            {data.trips.filter(t => t.returned != null).map(t => (
+            {returnedTrips.map(t => (
               <article key={t.id} className="returned-roll">
                 <strong>{t.brand} / {t.product_code}<FilmFireBadge type={t.price_type} /></strong>
                 <span>사용 {metres(Number(t.issued) - Number(t.returned))}m</span>
