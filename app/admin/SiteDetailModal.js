@@ -579,7 +579,7 @@ export default function SiteDetailModal({
               hidden={menu !== "materials"}
             >
               <SiteMaterials key={site.id} site={site} />
-              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" />
+              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable inventoryExpanded />
             </section>
           )}
 

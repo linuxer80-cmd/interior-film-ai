@@ -53,6 +53,7 @@ export default function SiteOperations({
   onDraftChange,
   disabled = false,
   reportEditable = false,
+  inventoryExpanded = false,
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -400,9 +401,9 @@ export default function SiteOperations({
         />
       )}
 
-      {!summaryMode && <details ref={inventoryDetails} style={{ margin: "16px 0" }}>
+      {!summaryMode && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
         <summary style={{ ...btn, listStyle: "none" }}>
-          📦 롤 반출 · 자재 반납 완료
+          📦 자재 반출·반납
         </summary>
 
         <FilmRollInventory
