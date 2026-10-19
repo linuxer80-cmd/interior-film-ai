@@ -17,6 +17,9 @@ const empty = {
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
 
+const pricePending = (item) =>
+  Number(item.quantity) > 0 && (item.unit_price == null || item.unit_price === "");
+
 const field = {
   width: "100%",
   boxSizing: "border-box",
@@ -113,14 +116,15 @@ export default function ActualMaterialEditor({
     });
   }
 
+  const pendingCount = materials.filter(pricePending).length;
   const total = materials.reduce(
     (sum, item) =>
       sum +
-      Number(
+      (pricePending(item) ? 0 : Number(
         item.total_price ??
           Number(item.quantity || 0) *
             Number(item.unit_price || 0)
-      ),
+      )),
     0
   );
 
@@ -172,11 +176,9 @@ export default function ActualMaterialEditor({
               : won(item.unit_price)}
             <br />
             자재비{" "}
-            {won(
-              item.total_price ??
-                Number(item.quantity || 0) *
-                  Number(item.unit_price || 0)
-            )}
+            {pricePending(item)
+              ? "계산 대기 · 단가 미입력"
+              : won(item.total_price ?? Number(item.quantity || 0) * Number(item.unit_price || 0))}
           </p>
 
           <MaterialPurchaseCost
@@ -223,7 +225,9 @@ export default function ActualMaterialEditor({
 
       {!!materials.length && (
         <strong style={{ textAlign: "right" }}>
-          실제 자재비 합계 {won(total)}
+          {pendingCount > 0
+            ? <>입력된 자재비 소계 {won(total)}<br />단가 미입력 {pendingCount}건 · 전체 자재비 계산 대기</>
+            : <>실제 자재비 합계 {won(total)}</>}
         </strong>
       )}
 
