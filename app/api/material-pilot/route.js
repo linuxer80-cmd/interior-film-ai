@@ -1,3 +1,4 @@
+import { loadSaleOptions, selectSaleOption, orderVariantKey } from "../../../lib/materialOrderVariants.mjs";
 import { after } from 'next/server';
 import { dispatchMaterialNotifications } from '../../../lib/materialPilotPush';
 import { createHash } from 'node:crypto';
@@ -90,16 +91,22 @@ export async function POST(request) {
       if(existing.buyer_id!==user.id || existing.request_hash!==requestHash) throw Error('이미 사용된 요청 번호입니다.');
       return pilotJson({order:visibleOrder(existing,'buyer')});
     }
-    if(!Array.isArray(b.items) || !b.items.length || b.items.length>30 || b.items.some(i=>!uuid(i.productId)) || new Set(b.items.map(i=>i.productId)).size!==b.items.length) throw Error('배송지와 주문 제품을 확인해주세요.');
+    if(!Array.isArray(b.items) || !b.items.length || b.items.length>30 || b.items.some(i=>!uuid(i.productId))) throw Error('배송지와 주문 제품을 확인해주세요.');
     const [addressResult,productsResult]=await Promise.all([
       (uuid(b.addressId)?db.from('material_shipping_addresses').select('recipient_name,recipient_phone,postal_code,address_line1,address_line2').eq('id',b.addressId).eq('company_id',actor.companyId).eq('is_active',true).maybeSingle():Promise.resolve({data:null})),
-      db.from('film_products').select('id,brand,product_code,product_name,flame_type,minimum_order_m,order_unit_m,dealer_price_per_m,price_vat_included,is_order_available,stock_status').in('id',b.items.map(i=>i.productId))
+      db.from('film_products').select('id,brand,product_code,product_name,flame_type,minimum_order_m,order_unit_m,dealer_price_per_m,price_vat_included,is_order_available,stock_status,is_active').in('id',b.items.map(i=>i.productId))
     ]);
     if(addressResult.error || productsResult.error) throw addressResult.error || productsResult.error;
     const shipping=deliveryInput(b.shipping || {...addressResult.data,method:'parcel'});
+    const options=await loadSaleOptions(db,productsResult.data||[]);
+    const selected=new Set();
     const items=b.items.map(item=>{
-      const product=productsResult.data?.find(p=>p.id===item.productId);
-      if(!product) throw Error('판매 제품을 확인해주세요.');
+      const base=productsResult.data?.find(p=>p.id===item.productId);
+      if(!base || base.is_active===false) throw Error('판매 제품을 확인해주세요.');
+      const product=selectSaleOption(options,item.productId,item.priceType,base.flame_type);
+      const key=orderVariantKey(product);
+      if(selected.has(key))throw Error('같은 제품·방염 옵션이 중복되었습니다.');
+      selected.add(key);
       if(!['fire','non_fire','flame_retardant','non_flame_retardant','방염','비방염'].includes(product.flame_type))throw Error('방염 구분이 등록된 제품만 주문해주세요.');
       return salesItem(product,item.quantityM);
     });

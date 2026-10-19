@@ -71,7 +71,7 @@ const menus = [
   },
   {
     href: "/admin/material-order",
-    label: "자재 주문 · 테스트 중",
+    label: "자재 주문하기 · 테스트 중",
     disabled: true,
     description: "주문 기능을 점검하고 있습니다",
     icon: "box",

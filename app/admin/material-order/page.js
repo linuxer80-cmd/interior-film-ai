@@ -14,7 +14,7 @@ import MaterialPilot, { pilotFetch } from "../../components/MaterialPilot";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 
-import { orderFlameLabel } from "../../../lib/materialOrderVariants.mjs";
+import { orderFlameLabel, orderVariantKey, orderPriceType } from "../../../lib/materialOrderVariants.mjs";
 
 const PAGE_SIZE = 40;
 
@@ -323,7 +323,7 @@ function MaterialOrderForm() {
         const rows=result.products || [];
         setVariants(rows);
         if(!rows.length) setVariantError("현재 주문 가능한 판매 옵션이 없습니다.");
-        else setDetail(current=>rows.find(row=>row.id===current?.id) || rows[0]);
+        else setDetail(current=>rows.find(row=>orderVariantKey(row)===orderVariantKey(current||{})) || rows[0]);
       })
       .catch(error=>{if(active) setVariantError(error.message);})
       .finally(()=>{if(active) setVariantLoading(false);});
@@ -488,10 +488,10 @@ function MaterialOrderForm() {
   }
 
   function addCart(product) {
-    const value = quantities[product.id] ?? String(product.minimum_order_m || 1);
+    const value = quantities[orderVariantKey(product)] ?? String(product.minimum_order_m || 1);
     const error = quantityError(product, value);
     if (error) { showMessage(error, "error"); return; }
-    setCart(current => [...current.filter(item => item.product.id !== product.id), { product, quantityM: Number(value) }]);
+    setCart(current => [...current.filter(item => orderVariantKey(item.product) !== orderVariantKey(product)), { product, quantityM: Number(value) }]);
     showMessage(`${product.product_code} · ${value}m를 담았습니다.`);
     setDetail(null);
   }
@@ -499,7 +499,7 @@ function MaterialOrderForm() {
   function removeCart(productId) {
     setCart((current) =>
       current.filter(
-        (item) => item.product.id !== productId,
+        (item) => orderVariantKey(item.product) !== productId,
       ),
     );
   }
@@ -507,7 +507,7 @@ function MaterialOrderForm() {
   function updateQuantity(productId, value) {
     setCart((current) =>
       current.map((item) =>
-        item.product.id === productId
+        orderVariantKey(item.product) === productId
           ? {
               ...item,
               quantityM: value,
@@ -687,7 +687,7 @@ function MaterialOrderForm() {
     if (orderLock.current) return;
     try { validateOrder(); deliveryInput(delivery); if(cart.some(i=>orderFlameLabel(i.product.flame_type)==="방염 구분 미등록"))throw Error("방염 구분을 확인해주세요."); } catch(error) { window.alert(error.message); return; }
     if (!window.confirm(`테스트 주문을 접수할까요?\n${cart.length}개 제품 · ${cartTotals.quantity}m · ${formatWon(cartTotals.total)}\n대리점 준비 완료 후 테스트 결제를 진행합니다. 실제 청구는 없습니다.`)) return;
-    const values = {action:"create",shipping:delivery,addressId:selectedAddressId,deliveryNote:deliveryNote.trim(),expectedTotal:cartTotals.total,items:cart.map(item=>({productId:item.product.id,quantityM:Number(item.quantityM)}))};
+    const values = {action:"create",shipping:delivery,addressId:selectedAddressId,deliveryNote:deliveryNote.trim(),expectedTotal:cartTotals.total,items:cart.map(item=>({productId:item.product.id,priceType:item.product.price_type||orderPriceType(item.product.flame_type),quantityM:Number(item.quantityM)}))};
     const signature = JSON.stringify(values);
     if (pendingOrder.current?.signature !== signature) pendingOrder.current = {signature,body:{...values,requestId:crypto.randomUUID()}};
     orderLock.current = true; setOrdering(true);
@@ -757,7 +757,7 @@ function MaterialOrderForm() {
 
   return (
     <main className="page">
-      <div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 필름장이 전용 주문 테스트</strong><div>기존 필름몰에서 테스트 주문 → 대리점 출고 → 테스트 입고를 확인합니다. 실제 결제와 운영 재고에는 반영되지 않습니다.</div></div>
+      <div role="status" style={{padding:"16px",marginBottom:"16px",background:"#fff7ed",border:"1px solid #fdba74",borderRadius:"14px",color:"#9a3412",lineHeight:1.6}}><strong>🧪 필름장이 전용 주문 테스트</strong><div>필름 선택 화면에서 테스트 주문 → 대리점 출고 → 테스트 입고를 확인합니다. 실제 결제와 운영 재고에는 반영되지 않습니다.</div></div>
       <header className="header">
         <button
           type="button"
@@ -773,14 +773,14 @@ function MaterialOrderForm() {
           <span className="badge">
             자재 주문
           </span>
-          <h1>필름장이 자재몰</h1>
+          <h1>자재 주문하기</h1>
           <p>
-            필름을 고르고, 원하는 현장으로.
+            필요한 필름을 선택해 대리점에 주문하세요.
           </p>
         </div>
         <button className="outline" type="button" onClick={() => navigate("cart")}>장바구니 {cart.length}</button>
       </header>
-      <nav className="shop-nav" aria-label="자재몰 메뉴">
+      <nav className="shop-nav" aria-label="자재 주문 메뉴">
         <button type="button" aria-current={screen === "products" ? "page" : undefined} onClick={() => navigate("products")}>상품</button>
         <button type="button" aria-current={screen === "cart" ? "page" : undefined} onClick={() => navigate("cart")}>장바구니 ({cart.length})</button>
         <button type="button" aria-current={screen === "orders" ? "page" : undefined} onClick={showOrders}>주문내역</button>
@@ -804,7 +804,7 @@ function MaterialOrderForm() {
             const result=await apiFetch("/api/admin/material-products?variantOf="+encodeURIComponent(value.film_product_id));
             const rows=result.products||[];
             if(!rows.length)throw Error("판매 등록된 자재가 없습니다.");
-            setVariantSource(rows[0].id);setDetail(rows[0]);
+            setVariants(rows);setVariantError("");setVariantLoading(true);setVariantSource(rows[0].id);setDetail(rows[0]);
           }catch(e){window.alert(e.message);}
         }}/>
 
@@ -958,7 +958,7 @@ function MaterialOrderForm() {
 
               return (
                 <article
-                  key={item.product.id}
+                  key={orderVariantKey(item.product)}
                   className="cart"
                 >
                   <div className="cart-head">
@@ -980,7 +980,7 @@ function MaterialOrderForm() {
                       type="button"
                       onClick={() =>
                         removeCart(
-                          item.product.id,
+                          orderVariantKey(item.product),
                         )
                       }
                     >
@@ -1013,7 +1013,7 @@ function MaterialOrderForm() {
                         value={item.quantityM}
                         onChange={(event) =>
                           updateQuantity(
-                            item.product.id,
+                            orderVariantKey(item.product),
                             event.target.value,
                           )
                         }
@@ -1296,7 +1296,7 @@ function MaterialOrderForm() {
       <section className="payment" hidden={screen !== "checkout"}>
         <h2>4. 주문 내용 확인</h2>
         <p>제품 {cart.length}종 · 총 {cartTotals.quantity}m</p>
-        {cart.map(i=><p key={i.product.id}><strong>{i.product.brand} · {i.product.product_code}</strong> · {orderFlameLabel(i.product.flame_type)} · {i.quantityM}m</p>)}
+        {cart.map(i=><p key={orderVariantKey(i.product)}><strong>{i.product.brand} · {i.product.product_code}</strong> · {orderFlameLabel(i.product.flame_type)} · {i.quantityM}m</p>)}
         <p>받는 방법: {deliveryMethods[delivery.method]}<br/>{delivery.recipient_name} · {delivery.recipient_phone}<br/>{delivery.method!=="pickup"&&delivery.address_line1}</p>
         <p>대리점이 준비 수량을 확인한 뒤 결제를 요청합니다. 퀵·화물 운임은 별도 본인 부담입니다.</p>
 
@@ -1322,16 +1322,16 @@ function MaterialOrderForm() {
         <h2>{detail.brand} {detail.product_code}</h2><p>{detail.product_name}</p>
         <strong className="price">{formatWon(detail.dealer_price_per_m)}/m</strong>
         <p>{detail.price_vat_included ? "부가세 포함" : "부가세 별도"}</p>
-        <label>방염 옵션<select disabled={variantLoading || !!variantError || !variants.length} value={detail.id} onChange={event => { const variant = variants.find(item => String(item.id) === event.target.value); if (variant) setDetail(variant); }}>
-          {(variants.length ? variants : [detail]).map(item => <option key={item.id} value={item.id}>{orderFlameLabel(item.flame_type)} · {item.product_code}</option>)}
+        <label>방염 옵션<select disabled={variantLoading || !!variantError || !variants.length} value={orderVariantKey(detail)} onChange={event => { const variant = variants.find(item => orderVariantKey(item) === event.target.value); if (variant) setDetail(variant); }}>
+          {(variants.length ? variants : [detail]).map(item => <option key={orderVariantKey(item)} value={orderVariantKey(item)}>{orderFlameLabel(item.flame_type)} · {formatWon(item.dealer_price_per_m)}/m · 부가세 {item.price_vat_included?"포함":"별도"}</option>)}
         </select></label>
         {variantLoading ? <p role="status">방염·비방염 판매 옵션 확인 중...</p> : variantError ? <p role="alert">{variantError}</p> : <p className="help">{variants.length===1 ? "현재 판매 등록된 옵션은 위 옵션 한 가지입니다." : "판매 등록된 방염·비방염 옵션을 선택해주세요."}</p>}
-        <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[detail.id] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [detail.id]: event.target.value }))} /></label>
-        <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [detail.id]: String(Math.round((Number(current[detail.id] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
+        <label className="product-quantity">주문 길이 (m)<input type="number" inputMode="decimal" min={detail.minimum_order_m || 1} step={detail.order_unit_m || 1} value={quantities[orderVariantKey(detail)] ?? String(detail.minimum_order_m || 1)} onChange={event => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: event.target.value }))} /></label>
+        <div className="length-buttons"><button type="button" aria-label="주문 길이 줄이기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.max(Number(detail.minimum_order_m || 1), Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) - Number(detail.order_unit_m || 1)) * 1000) / 1000)) }))}>−</button><button type="button" aria-label="주문 길이 늘리기" onClick={() => setQuantities(current => ({ ...current, [orderVariantKey(detail)]: String(Math.round((Number(current[orderVariantKey(detail)] || detail.minimum_order_m || 1) + Number(detail.order_unit_m || 1)) * 1000) / 1000) }))}>＋</button></div>
         <p>최소 {detail.minimum_order_m || 1}m · {detail.order_unit_m || 1}m 단위</p>
-        <p role="status">{quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)}</p>
-        <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
-        <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[detail.id] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
+        <p role="status">{quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)}</p>
+        <div className="totals">상품금액 <strong>{formatWon(calculateAmounts(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1).total)}</strong></div>
+        <button className="primary" type="button" disabled={variantLoading || !!variantError || !variants.length || !!quantityError(detail, quantities[orderVariantKey(detail)] ?? detail.minimum_order_m ?? 1)} onClick={() => addCart(detail)}>장바구니 담기</button>
       </section>}
       {screen === "orders" && <MaterialPilot mode="buyer" />}
       <style jsx>{`
