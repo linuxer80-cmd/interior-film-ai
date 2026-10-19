@@ -1,3 +1,4 @@
+import { simulationRole, canSimulateDealer } from '../../../lib/materialPilotSimulation.mjs';
 import { loadSaleOptions, selectSaleOption, orderVariantKey } from "../../../lib/materialOrderVariants.mjs";
 import { after } from 'next/server';
 import { dispatchMaterialNotifications } from '../../../lib/materialPilotPush';
@@ -47,11 +48,11 @@ export async function GET(request) {
   if(error) throw error;
   let dealers=[];
   if(actor.role==='super') {
-    const result=await db.from('material_pilot_dealers').select('id,name,status,user_id').neq('status','deleted').order('created_at',{ascending:false}).limit(100);
+    const result=await db.from('material_pilot_dealers').select('*').neq('status','deleted').order('created_at',{ascending:false}).limit(100);
     if(result.error) throw result.error;
-    dealers=result.data || [];
+    dealers=(result.data || []).map(({id,name,status,user_id,is_test})=>({id,name,status,user_id,is_test}));
   }
-  return pilotJson({notices: notices||[],role:actor.role,orders:(data||[]).map(o=>visibleOrder(o,actor.role)),dealers});
+  return pilotJson({notices: notices||[],role:actor.role,orders:(data||[]).map(o=>({...visibleOrder(o,actor.role),canSimulateDealer:canSimulateDealer(actor.role,o,dealers.find(d=>d.id===o.dealer_id))})),dealers});
  } catch(error) {return fail(error);}
 }
 export async function POST(request) {
@@ -132,7 +133,8 @@ export async function POST(request) {
     if(error) throw error;
     if(!data) throw Error('승인된 대리점을 선택해주세요.');
   }
-  const next=transition(order,actor.role,b.action,b);
+  const effectiveRole=await simulationRole(db,actor,order,b);
+  const next=transition(order,effectiveRole,b.action,b);
   const {data,error}=await db.rpc('material_pilot_commit',{p_order:order.id,p_revision:order.revision,p_actor:user.id,p_request:b.requestId,p_action:b.action,p_hash:requestHash,p_next:next});
   if(error) throw error;
   after(()=>dispatchMaterialNotifications(db,data.id).catch(()=>{}));

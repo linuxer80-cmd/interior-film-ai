@@ -59,11 +59,16 @@ export default function MaterialPilot({mode='buyer'}) {
 function PilotOrder({order:o,mode,dealers,busy,act}) {
   const [dealer,setDealer]=useState(o.dealer_id||''),[prices,setPrices]=useState(o.supply_prices||o.items.map(()=>''));
   const [rolls,setRolls]=useState([{item:0,length:''}]),[tracking,setTracking]=useState('');
-  const action=(action,values={})=>act({action,orderId:o.id,revision:o.revision,...values});
+  const [simulating,setSimulating]=useState(false);
+  const canSimulate=mode==='super'&&o.canSimulateDealer===true;
+  const dealerMode=mode==='dealer'||(canSimulate&&simulating);
+  const action=(action,values={})=>act({action,orderId:o.id,revision:o.revision,...values,
+    ...(canSimulate&&simulating&&['accept','ready','ship'].includes(action)?{simulateDealer:true}:{})});
   return <article id={o.id} className={styles.card}>
     <div className={styles.heading}><strong>TEST-{o.id.slice(0,8).toUpperCase()}</strong><span className={styles.badge}>{orderStage(o)}</span></div>
     <small>{new Date(o.created_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</small>
-    <MaterialOrderWorkflow order={o} mode={mode} busy={busy} action={action}/>
+    {canSimulate&&<div className={styles.banner}><strong>테스트 대리점 대신 처리</strong><p>슈퍼관리자 계정으로 접수·준비 완료·출고를 처리합니다. 주문자 알림은 기존 경로로 발송되며 실제 결제·배송·재고에는 반영되지 않습니다.</p><label><input type="checkbox" checked={simulating} disabled={busy} onChange={e=>setSimulating(e.target.checked)}/> 테스트 대리점 역할 켜기</label><p>처리 이력에는 현재 슈퍼관리자가 기록됩니다.</p></div>}
+    <MaterialOrderWorkflow order={o} mode={dealerMode?'dealer':mode} busy={busy} action={action}/>
     {o.items.map((item,i)=><div className={styles.item} key={item.productId}>
       <strong>{item.brand} · {item.code}</strong><div>{item.name} · {orderFlameLabel(item.flame)}</div>
       <p>요청 {item.quantity}m · 미출고 {remaining(o,i)}m</p>
@@ -76,8 +81,8 @@ function PilotOrder({order:o,mode,dealers,busy,act}) {
       {o.items.map((item,i)=><label key={item.productId}>{item.code} 공급단가 (원/m · VAT 별도)<input type="number" min="1" step="1" value={prices[i]??''} onChange={e=>setPrices(p=>o.items.map((_,n)=>n===i?e.target.value:p[n]))}/></label>)}
       <button disabled={!dealer} onClick={()=>action('assign',{dealerId:dealer,prices:prices.map(Number)})}>배정 저장</button>
     </fieldset>}
-    {mode==='dealer' && o.status==='assigned' && <button disabled={busy} onClick={()=>action('accept')}>준비 가능 · 발주 수락</button>}
-    {mode==='dealer' && ['preparing','partial'].includes(o.status) && (!o.shipping.workflow || o.shipping.workflow.phase==='paid') && <fieldset disabled={busy}><legend>실제 출고 롤 입력</legend>
+    {dealerMode && o.status==='assigned' && <button disabled={busy} onClick={()=>action('accept')}>준비 가능 · 발주 수락</button>}
+    {dealerMode && ['preparing','partial'].includes(o.status) && (!o.shipping.workflow || o.shipping.workflow.phase==='paid') && <fieldset disabled={busy}><legend>{canSimulate?'테스트 출고 롤 입력':'실제 출고 롤 입력'}</legend>
       {rolls.map((r,i)=><div className={styles.roll} key={i}><label>제품<select value={r.item} onChange={e=>setRolls(a=>a.map((v,n)=>n===i?{...v,item:Number(e.target.value)}:v))}>{o.items.map((item,n)=><option key={item.productId} value={n}>{item.code} · 잔여 {remaining(o,n)}m</option>)}</select></label><label>길이(m)<input type="number" min="0.01" step="0.01" value={r.length} onChange={e=>setRolls(a=>a.map((v,n)=>n===i?{...v,length:e.target.value}:v))}/></label><button aria-label={`${i+1}번째 롤 삭제`} onClick={()=>setRolls(a=>a.filter((_,n)=>n!==i))}>삭제</button></div>)}
       <button disabled={rolls.length>=100} onClick={()=>setRolls(a=>[...a,{item:0,length:''}])}>+ 롤 추가</button>
       <label>{o.shipping.method==='quick'?'퀵 기사 전화번호':o.shipping.method==='freight'?'화물회사·송장번호·도착 영업소':o.shipping.method==='parcel'?'택배회사·송장번호':'수령·전달 확인 메모'}<input maxLength={200} value={tracking} onChange={e=>setTracking(e.target.value)} placeholder="테스트 택배 / 송장번호"/></label>
