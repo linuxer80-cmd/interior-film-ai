@@ -1,3 +1,4 @@
+import { provisionalMaterialCosts } from '../../../../lib/provisionalMaterialCost.mjs';
 import { resolveRevenue } from "../../../../lib/siteRevenue.mjs";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
@@ -447,6 +448,7 @@ export async function GET(request) {
     );
 
     const materials = [];
+    const trips = [];
     const expenses = [];
     const daily = [];
     const reports = [];
@@ -461,10 +463,9 @@ export async function GET(request) {
           db
             .from("site_materials")
             .select(
-              "id,site_id,brand,product_code,product_name,quantity,unit,unit_price,total_price",
+              "id,company_id,site_id,material_type,brand,product_code,product_name,quantity,unit,unit_price,total_price,price_type",
             )
             .eq("company_id", companyId)
-            .eq("material_type", "actual")
             .in("site_id", ids)
             .order("id"),
         ),
@@ -499,6 +500,9 @@ export async function GET(request) {
         ),
       ]);
 
+      trips.push(...await allRows(db.from("film_stock_trips")
+        .select("id,company_id,site_id,material_id,issued,returned")
+        .eq("company_id", companyId).in("site_id", ids).order("id")));
       materials.push(...results[0]);
       expenses.push(...results[1]);
       daily.push(...results[2]);
@@ -590,6 +594,7 @@ export async function GET(request) {
       expense: [],
     };
 
+    const provisional = provisionalMaterialCosts(materials, trips);
     const result = sites.map((site) => {
       const siteName =
         site.site_name || site.customer_name || "이름 없는 현장";
@@ -657,7 +662,7 @@ export async function GET(request) {
       const entries = [];
 
       for (const item of materials.filter(
-        (row) => row.site_id === site.id,
+        (row) => row.site_id === site.id && row.material_type === "actual",
       )) {
         const amount = money(
           item.total_price ??
@@ -680,6 +685,16 @@ export async function GET(request) {
           unit: item.unit || "m",
           amount,
         });
+      }
+
+      const provisionalRows = provisional.filter(row => row.site_id === site.id);
+      for (const item of provisionalRows) {
+        material += item.amount;
+        breakdown.material.push({siteId:site.id,siteName,brand:item.brand || "브랜드 미입력",
+          productCode:item.product_code,productName:item.product_name,
+          product:[item.product_code,item.product_name].filter(Boolean).join(" · "),
+          quantity:item.quantity,unit:item.unit || "m",amount:item.amount,provisional:true,
+          quantityPending:item.quantityPending,pricePending:item.pricePending});
       }
 
       for (const item of siteExpenses) {
@@ -775,12 +790,14 @@ export async function GET(request) {
         material,
         expense,
         profit: revenue - labor - material - expense,
+        materialProvisional: provisionalRows.length > 0,
+        materialPending: provisionalRows.some(row => row.quantityPending || row.pricePending),
         entries,
         laborPending: automated.reduce(
           (sum, row) => sum + row.pending,
           0,
         ),
-        profitIsEstimated: automated.some(row => row.pending > 0),
+        profitIsEstimated: automated.some(row => row.pending > 0) || provisionalRows.length > 0,
         profitWarning: automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
         missingContract: revenueInfo.missingContract,
         revenueSource: revenueInfo.revenueSource,
@@ -937,5 +954,6 @@ export async function DELETE(request) {
     );
   }
 }
+
 
 

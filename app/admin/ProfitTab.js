@@ -203,11 +203,13 @@ function Breakdown({ data, type, title, itemKey }) {
                               }}
                             >
                               {row.siteName} ·{" "}
-                              {row.quantity == null
+                              {row.quantityPending
+                                ? "반납량 미확정"
+                                : row.quantity == null
                                 ? "수기 입력"
                                 : `${row.quantity.toLocaleString("ko-KR")}${row.unit}`}
                               {" · "}
-                              {won(row.amount)}
+                              {row.pricePending ? "단가 미확정" : won(row.amount)}{row.provisional ? " · 잠정" : ""}
                             </div>
                           ))}
                       </div>
@@ -1030,6 +1032,11 @@ export default function ProfitTab() {
                     예상 수익 {won(site.profit)}
                   </strong>
 
+                  {site.materialProvisional && <p style={{fontSize:12,color:'#b45309'}}>
+                    자재비 잠정 반영 · 반납 완료 소모량 × 등록 단가 기준입니다. 실제 정산 저장 후 해당 자재 금액으로 대체됩니다.
+                    {site.materialPending && ' 반납량 또는 단가 미확정 자재가 있어 일부 비용은 아직 합산되지 않았습니다.'}
+                  </p>}
+
                   {site.excludedOwnerLabor > 0 && (
                     <p style={{ fontSize: 12, color: "#1d4ed8" }}>
                       선택한 시공자 인건비{" "}
@@ -1241,3 +1248,4 @@ export default function ProfitTab() {
     </section>
   );
                 }
+
