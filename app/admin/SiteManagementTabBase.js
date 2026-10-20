@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { koreanDay, monthDays, shiftMonth } from "../utils/workerCalendar";
 import { supabase } from "../../lib/supabase";
+import {loadMyWorkerSites} from "../utils/workerSites";
+import {combineAdminPersonalSites,isPersonalWorkDay,personalCalendarLabel} from "../../lib/adminPersonalSites.mjs";
+import AdminPersonalSiteModal from "./AdminPersonalSiteModal";
 import SiteRegisterModal from "./SiteRegisterModal";
 import SiteDetailModal from "./SiteDetailModal";
 import { matchesSite } from "../utils/siteSearch";
@@ -56,6 +59,36 @@ export default function SiteManagementTab(props) {
     ...detailProps
   } = props;
 
+  const [personalSites, setPersonalSites] = useState([]);
+  const [personalError, setPersonalError] = useState("");
+  const [personalLoading, setPersonalLoading] = useState(true);
+  const [personalSite, setPersonalSite] = useState(null);
+  const [personalAttempt, setPersonalAttempt] = useState(0);
+  const personalRequest = useRef(0);
+  useEffect(() => {
+    let alive = true;
+    setPersonalSites([]);setPersonalSite(null);
+    async function refresh() {
+      const version=++personalRequest.current;
+      setPersonalLoading(true);
+      try {
+        const result=await loadMyWorkerSites();
+        if(alive&&version===personalRequest.current){
+          const next=result.sites||[];
+          setPersonalSites(next);setPersonalError("");
+          setPersonalSite(current=>current&&next.some(s=>(s.site_id||s.id)===current.site.id&&s.company_id===current.site.company_id)?current:null);
+        }
+      } catch(e){if(alive&&version===personalRequest.current){setPersonalError(e.message);setPersonalSites([]);setPersonalSite(null);}}
+      finally{if(alive&&version===personalRequest.current)setPersonalLoading(false);}
+    }
+    const resume=()=>{if(document.visibilityState==='visible')void refresh();};
+    void refresh();
+    window.addEventListener('focus',resume);window.addEventListener('site-assignment-changed',resume);
+    const {data}=supabase.auth.onAuthStateChange(event=>{if(['SIGNED_IN','SIGNED_OUT','USER_UPDATED'].includes(event)){personalRequest.current++;setPersonalSites([]);setPersonalSite(null);setTimeout(()=>{if(alive)void refresh();},0);}});
+    return()=>{alive=false;personalRequest.current++;window.removeEventListener('focus',resume);window.removeEventListener('site-assignment-changed',resume);data.subscription.unsubscribe();};
+  },[detailProps.companyId,personalAttempt]);
+  const combinedSites=useMemo(()=>combineAdminPersonalSites(sites,personalSites,detailProps.companyId),[sites,personalSites,detailProps.companyId]);
+
   const [chatDay, setChatDay] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [filter, setFilter] = useState("all");
@@ -63,9 +96,9 @@ export default function SiteManagementTab(props) {
 
   const filteredSites = useMemo(
     () =>
-      sites.filter(
+      combinedSites.filter(
         (site) =>
-          matchesSite(site, search) &&
+          matchesSite({...site,site_name:[site.company_name,site.site_name].filter(Boolean).join(" ")}, search) &&
           (filter === "all" ||
             (filter === "active"
               ? ["consulting", "scheduled", "in_progress"].includes(
@@ -73,7 +106,7 @@ export default function SiteManagementTab(props) {
                 )
               : site.status === filter))
       ),
-    [sites, filter, search]
+    [combinedSites, filter, search]
   );
 
   return (
@@ -180,7 +213,7 @@ export default function SiteManagementTab(props) {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="현장명·주소·고객·전화번호·시공자 (초성 가능)"
+            placeholder="현장명·업체명·주소·고객·시공자 (초성 가능)"
             style={{
               display: "block",
               width: "100%",
@@ -201,15 +234,20 @@ export default function SiteManagementTab(props) {
           </p>
         )}
 
+        <p style={{fontSize:13,color:"#53665a"}}>우리 업체 현장과 내 시공 일정을 함께 표시합니다. 협력 업체 현장은 본인 배정 날짜에만 표시됩니다.</p>
+        {personalLoading && <p role="status">내 시공 일정을 확인하고 있습니다…</p>}
+        {personalError && <div role="alert"><p>내 시공 일정 확인 필요 · {personalError}</p><button type="button" onClick={()=>setPersonalAttempt(v=>v+1)}>내 일정 다시 확인</button></div>}
         <SiteCalendar
           sites={filteredSites}
-          openSite={(site, day) => { setChatDay(day || null); openSite(site); }}
+          openSite={(site, day) => { if(site.personal_only){setPersonalSite({site,day:day?.date||null});return;} setChatDay(day || null); openSite(site); }}
           loading={sitesLoading}
           searching={Boolean(search.trim())}
           workers={detailProps.workers || []}
           refreshKey={selectedSite?.id || ""}
         />
       </section>
+
+      {personalSite && <AdminPersonalSiteModal key={personalSite.site.id} site={personalSite.site} day={personalSite.day} onClose={()=>setPersonalSite(null)} />}
 
       <SiteRegisterModal
         open={registerOpen}
@@ -241,7 +279,7 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
     setDaily(null);
     setCrewError("");
 
-    if (!day) {
+    if (!day || site.personal_only) {
       return () => controller.abort();
     }
 
@@ -287,7 +325,7 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
     loadCrew();
 
     return () => controller.abort();
-  }, [site.id, day, refreshKey]);
+  }, [site.id, site.personal_only, day, refreshKey]);
 
   const legacy = site.site_workers || [];
 
@@ -354,7 +392,9 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
               overflowWrap: "anywhere",
             }}
           >
+            {site.personal_only && <span style={{display:"block",fontSize:12,color:"#2563eb",marginBottom:5}}>협력 업체 · {site.company_name}</span>}
             {site.site_name || site.customer_name || "현장명 미정"}
+            {isPersonalWorkDay(site,day) && <span style={{display:"block",fontSize:12,color:"#355d46",marginTop:5}}>내 시공 · {site.personal_role === "leader" ? "팀장" : "팀원"}</span>}
           </strong>
         </div>
 
@@ -374,9 +414,9 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
       </div>
 
       <div style={{ marginTop: 8, fontSize: 13, color: "#6e7b73", lineHeight: 1.6 }}>
-        {day || label} · {day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
+        {day || label} · {site.personal_only ? "내 시공 기능 열기 →" : day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
       </div>
-      {(!day || daily) && !crewError && !leaders.length && site.status !== "cancelled" && (
+      {!site.personal_only && (!day || daily) && !crewError && !leaders.length && site.status !== "cancelled" && (
         <span style={{ display: "inline-block", marginTop: 8, padding: "4px 7px", borderRadius: 6, fontSize: 12, background: "#fff2dd", color: "#925f25" }}>팀장 배정 필요</span>
       )}
     </button>
@@ -458,6 +498,8 @@ function SiteCalendar({
       }
     }
 
+    for(const [day,entries] of byDay)entries.sort((a,b)=>
+      Number(Boolean(b.personal_only))-Number(Boolean(a.personal_only)) || Number(isPersonalWorkDay(b,day))-Number(isPersonalWorkDay(a,day)));
     return {
       cells,
       byDay,
@@ -634,7 +676,7 @@ function SiteCalendar({
                   aria-pressed={selected}
                   aria-label={`${day}${
                     day === today ? " 오늘" : ""
-                  }, 현장 ${entries.length}개${entries.length ? ": " + entries.map(site => site.site_name || site.customer_name || "이름 없는 현장").join(", ") : ""}`}
+                  }, 현장 ${entries.length}개${entries.length ? ": " + entries.map(site => personalCalendarLabel(site,day)).join(", ") : ""}`}
                   onClick={() => { setSelectedDay(day); setMonth(day.slice(0, 7)); }}
                   style={{
                     minWidth: 0,
@@ -673,11 +715,11 @@ function SiteCalendar({
                   </span>
 
                   {entries.slice(0, 2).map(site => (
-                    <span key={site.id} title={site.site_name || site.customer_name || "이름 없는 현장"}
+                    <span key={site.id} title={personalCalendarLabel(site,day)}
                       style={{display:"block",marginTop:3,padding:"2px 3px",fontSize:10,lineHeight:1.4,
                         color:"#285340",background:"#eef4ee",borderRadius:4,whiteSpace:"nowrap",
                         overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {site.site_name || site.customer_name || "이름 없는 현장"}
+                      {personalCalendarLabel(site,day)}
                     </span>
                   ))}
                   {entries.length > 2 && <span style={{display:"block",fontSize:10,color:"#647168",marginTop:2}}>
@@ -755,3 +797,4 @@ function SiteCalendar({
     </div>
   );
         }
+

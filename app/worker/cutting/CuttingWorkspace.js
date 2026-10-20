@@ -45,7 +45,7 @@ function materialsOf(data) {
   );
 }
 
-export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = false } = {}) {
+export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = false, onClose } = {}) {
   const [context, setContext] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -337,9 +337,7 @@ export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = fa
     return (
       <main style={{ padding: 24 }}>
         <p role="alert">{error}</p>
-        <a href="/worker" data-ui-link="action">
-          내 현장으로 돌아가기
-        </a>
+        {embedded && onClose ? <button type="button" onClick={onClose}>현장으로 돌아가기</button> : <a href="/worker" data-ui-link="action">내 현장으로 돌아가기</a>}
         <button
           type="button"
           onClick={() =>
@@ -377,11 +375,11 @@ export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = fa
           등록된 필름이 없습니다.
           관리자에게 현장 필름 등록을 요청해주세요.
         </p>
-        <a
+        {embedded && onClose ? <button type="button" onClick={onClose}>← 현장으로 돌아가기</button> : <a
           href={embedded ? `/admin?tab=sites&site=${context.site.site_id}&section=materials` : `/worker/site/${context.site.site_id}?section=film`}
          data-ui-link="action">
           ← 현장으로 돌아가기
-        </a>
+        </a>}
       </main>
     );
   }
@@ -504,3 +502,4 @@ export default function CuttingWorkspace({ siteId: embeddedSiteId, embedded = fa
     </>
   );
 }
+
