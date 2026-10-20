@@ -424,7 +424,7 @@ export default function WorkerSiteCalendar({
                       isToday ? ", 오늘" : ""
                     }, ${
                       entries.length
-                        ? `현장 ${entries.length}건`
+                        ? `현장 ${entries.length}건: ${entries.map(({site}) => site.site_name || site.customer_name || "현장").join(", ")}`
                         : "배정 없음"
                     }`
                   }
@@ -434,9 +434,15 @@ export default function WorkerSiteCalendar({
                     {Number(day.slice(8))}
                   </span>
 
+                  {entries.slice(0, 2).map(({site, role}) => (
+                    <span key={site.site_id} className={styles.daySite}
+                      title={`${site.company_name || "협력 업체"} · ${site.site_name || site.customer_name || "현장"} · ${role === "leader" ? "팀장" : "팀원"}`}>
+                      {site.site_name || site.customer_name || "현장"}
+                    </span>
+                  ))}
                   <span className={styles.dayCount}>
                     {entries.length
-                      ? `${entries.length}건`
+                      ? entries.length > 2 ? `+${entries.length - 2}건` : ""
                       : isToday
                         ? "오늘"
                         : ""}
