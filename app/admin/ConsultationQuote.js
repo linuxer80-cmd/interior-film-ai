@@ -6,6 +6,7 @@ import {
   quoteTotals,
   validateQuote,
 } from "../../lib/consultationQuote";
+import QuoteFilmNumber, { useSiteQuoteFilms } from "../components/QuoteFilmNumber";
 import QuoteFileActions from "../components/QuoteFileActions";
 import CompletionEstimate from "./CompletionEstimate";
 import { quoteHtml } from "../../lib/consultationQuotePrint";
@@ -31,7 +32,7 @@ const columns = {
   unit_price: "단가 (원)",
   quantity: "수량",
   unit: "단위",
-  film_no: "film no.",
+  film_no: "필름 번호",
   note: "비고",
 };
 
@@ -69,6 +70,7 @@ function AreaConsultationQuote({
   siteId,
   onDirtyChange,
 }) {
+  const siteFilms = useSiteQuoteFilms(siteId);
   const [draft, setDraft] = useState(null);
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(true);
@@ -261,7 +263,8 @@ function AreaConsultationQuote({
                 {Object.entries(columns).map(([key, label]) => (
                   <label key={key}>
                     {label}
-                    <input
+                    {key === "film_no" ? <QuoteFilmNumber value={row.film_no || ""}
+                      {...siteFilms} onChange={value => change({ ...draft, items: draft.items.map((item, i) => i === index ? { ...item, film_no: value } : item) })} /> : <input
                       type={
                         ["quantity", "unit_price"].includes(key)
                           ? "number"
@@ -284,7 +287,7 @@ function AreaConsultationQuote({
                           ),
                         })
                       }
-                    />
+                    />}
                   </label>
                 ))}
               </div>
