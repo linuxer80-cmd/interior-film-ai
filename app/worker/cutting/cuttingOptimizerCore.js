@@ -516,14 +516,17 @@ function findPlacementInBatch(batch, piece) {
   return best;
 }
 
+function priorityLength(piece) {
+  return Math.max(...pieceOrientations(piece).map(option => option.height));
+}
+
 function difficultySort(a, b) {
+  // Place long pieces before small area-perfect combinations. Smaller pieces
+  // can then fill the continuous side strip alongside the long anchor.
+  const lengthDiff = priorityLength(b) - priorityLength(a);
+  if (lengthDiff !== 0) return lengthDiff;
   if (b.area !== a.area) return b.area - a.area;
-
-  const aMax = Math.max(a.originalWidth, a.originalHeight);
-  const bMax = Math.max(b.originalWidth, b.originalHeight);
-
-  if (bMax !== aMax) return bMax - aMax;
-  return b.originalHeight - a.originalHeight;
+  return b.originalWidth - a.originalWidth;
 }
 
 function fillBatch2D(batch, remaining, excludedIds = new Set()) {
@@ -652,12 +655,18 @@ function buildBestBatch(remaining, maxHeight = Infinity) {
     )
   );
 
-  const anchors = selectAnchorPieces(eligible);
+  // Length is a hard constraint, not a bonus that width-fill scores can beat.
+  // Respect the current roll remainder and grain/rotation constraints.
+  const longest = eligible.reduce((max, piece) => Math.max(max,
+    ...pieceOrientations(piece).filter(option => option.height <= maxHeight).map(option => option.height)), 0);
+  const anchors = selectAnchorPieces(eligible.filter(piece =>
+    pieceOrientations(piece).some(option => option.height === longest)));
+
   let best = null;
 
   anchors.forEach(piece => {
     pieceOrientations(piece).forEach(orientation => {
-      if (orientation.height > maxHeight) return;
+      if (orientation.height !== longest || orientation.height > maxHeight) return;
 
       const batch = buildBatchCandidate(piece, orientation, remaining);
       if (batch.height > maxHeight) return;
@@ -1113,3 +1122,4 @@ export function optimizeCutting({
 
   return { success: true, errors: [], result };
     }
+
