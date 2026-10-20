@@ -1,3 +1,4 @@
+import { resolveFilmType, filmCodeInfo } from "../../../../lib/hyundaiFilmCode";
 import { plannedDealerPrice } from "../../../../lib/plannedDealerPrice.mjs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -115,6 +116,8 @@ async function handle(request) {
       "brand",
       "product_code",
       "product_name",
+      "film_product_id",
+      "price_type",
       "quantity",
       "unit",
       "unit_price",
@@ -181,7 +184,12 @@ async function handle(request) {
         );
       }
 
+      const type = resolveFilmType(text("brand", 100), text("product_code", 100), body.price_type);
+      if (type.conflict || !["fire", "non_fire"].includes(type.resolvedType)) {
+        return json({ error: type.conflict ? "제품코드의 방염 구분과 선택한 구분이 다릅니다. G·F 코드와 방염 구분을 확인해주세요." : "방염 또는 비방염을 선택해주세요." }, 400);
+      }
       values = {
+        price_type: type.resolvedType,
         brand: text("brand", 100),
         product_code: text("product_code", 100),
         product_name: text("product_name", 200),
@@ -199,7 +207,7 @@ async function handle(request) {
       if (request.method === "PATCH") {
         const result = await db
           .from("site_materials")
-          .select("brand,product_code,product_name,unit,film_product_id")
+          .select("brand,product_code,product_name,unit,film_product_id,price_type,unit_price")
           .eq("id", body.id)
           .eq("site_id", site.id)
           .eq("company_id", profile.company_id)
@@ -213,6 +221,8 @@ async function handle(request) {
         }
 
         previous = result.data;
+        // Do not carry the old variant's cost into the newly selected variant.
+        if (previous.price_type !== values.price_type && Number(body.unit_price) === Number(previous.unit_price)) values.unit_price = null;
 
         // 과거에 저장된 예정 수량·금액은 보존합니다.
         delete values.quantity;
@@ -243,7 +253,7 @@ async function handle(request) {
           .from("film_products")
           .select("id")
           .eq("brand", values.brand)
-          .eq("product_code", values.product_code)
+          .ilike("product_code", filmCodeInfo(values.brand, values.product_code).baseCode)
           .limit(2);
 
         if (result.error) throw result.error;

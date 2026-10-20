@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import MaterialFilmPicker from "../../components/MaterialFilmPicker";
+import { filmCodeInfo } from "../../../lib/hyundaiFilmCode";
+import FilmFireBadge from "../../components/FilmFireBadge";
 import ActualMaterialEditor from "../ActualMaterialEditor";
 import { formatWon } from "./siteDetailUtils";
 
@@ -11,6 +13,7 @@ const endpoint = "/api/admin/site-planned-materials";
 const emptyForm = () => ({
   id: crypto.randomUUID(),
   brand: "",
+  price_type: "",
   product_code: "",
   product_name: "",
   unit: "m",
@@ -336,6 +339,7 @@ function PlannedSiteMaterials({ site }) {
             unit_price: material.unit_price ?? "",
             memo: material.memo || "",
             brand: material.brand || "",
+            price_type: material.price_type || (filmCodeInfo(material.brand, material.product_code).priceType === "unknown" ? "" : filmCodeInfo(material.brand, material.product_code).priceType),
             product_code: material.product_code || "",
             product_name: material.product_name || "",
           }
@@ -353,6 +357,10 @@ function PlannedSiteMaterials({ site }) {
       return;
     }
 
+    if (!["fire", "non_fire"].includes(form.price_type)) {
+      setMessage("방염 또는 비방염을 선택해주세요.");
+      return;
+    }
     if (!form.product_code.trim() && !form.product_name.trim()) {
       setMessage("제품코드 또는 제품명을 입력해주세요.");
       return;
@@ -546,8 +554,20 @@ function PlannedSiteMaterials({ site }) {
             }}
           >
             <MaterialFilmPicker key={form.id} value={form} disabled={busy || !canWrite}
-              onChange={(patch) => setForm((previous) => ({ ...previous, ...patch }))} />
-            <small>G는 비방염, F는 방염 코드로 유지합니다.</small>
+              onChange={(patch) => setForm((previous) => {
+                const info = filmCodeInfo(patch.brand, patch.product_code);
+                return { ...previous, ...patch, price_type: info.priceType === "unknown" ? "" : info.priceType, unit_price: "" };
+              })} />
+            <label style={{ display: "grid", gap: 7, fontWeight: 700 }}>
+              방염 구분
+              <select required value={form.price_type || ""} style={input}
+                onChange={event => setForm(previous => ({ ...previous, price_type: event.target.value, unit_price: "" }))}>
+                <option value="">방염·비방염을 선택해주세요</option>
+                <option value="fire">방염</option>
+                <option value="non_fire">비방염</option>
+              </select>
+            </label>
+            <small>현장에 사용할 구분을 선택하세요. G·F 코드와 다른 구분은 저장할 수 없습니다. 실제 반출 롤도 같은 구분이어야 합니다.</small>
 
             {field("product_name", "제품명", {
               placeholder: "예: 발렌블랑",
@@ -656,6 +676,7 @@ function PlannedSiteMaterials({ site }) {
             >
               <strong style={{ fontSize: 18 }}>
                 {material.product_code || material.product_name}
+                <FilmFireBadge type={material.price_type} />
               </strong>
 
               <p style={{ margin: "8px 0", color: "#64748b" }}>
