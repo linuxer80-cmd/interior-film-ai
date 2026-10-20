@@ -77,6 +77,7 @@ export function filmLabel(material) {
 export default function FilmThumbnail({
   material,
   size = 42,
+  onPreview,
 }) {
   const id = material?.film_product_id || "";
   const brand = material?.brand || "";
@@ -157,7 +158,7 @@ export default function FilmThumbnail({
   };
 
   if (url) {
-    return (
+    const picture = (
       <img
         src={url}
         alt={`${label} 샘플`}
@@ -175,6 +176,11 @@ export default function FilmThumbnail({
         }
       />
     );
+    return onPreview ? <button type="button" aria-label={`${label} 사진 크게 보기`}
+      onClick={event => { event.preventDefault(); event.stopPropagation(); onPreview({ url, label }); }}
+      style={{ padding: 0, border: 0, background: "transparent", width: size, height: size, flexShrink: 0, borderRadius: 8, cursor: "zoom-in" }}>
+      {picture}
+    </button> : picture;
   }
 
   if (!material) {

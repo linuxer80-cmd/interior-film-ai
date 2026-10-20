@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import MaterialPhotoPreview from "./MaterialPhotoPreview";
 import FilmFireBadge from "./FilmFireBadge";
 import FilmRollInventory from "./FilmRollInventory";
 import MaterialIssueStatus from "./MaterialIssueStatus";
@@ -57,6 +58,7 @@ export default function SiteOperations({
   compact = false,
 }) {
   const [data, setData] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [expandedMaterial, setExpandedMaterial] = useState(null);
   const [visitedMaterials, setVisitedMaterials] = useState({});
   const [error, setError] = useState("");
@@ -359,6 +361,7 @@ export default function SiteOperations({
 
   return (
     <section style={card}>
+      {photoPreview && <MaterialPhotoPreview photo={photoPreview} onClose={() => setPhotoPreview(null)} />}
       <div
         style={{
           display: "flex",
@@ -504,7 +507,9 @@ export default function SiteOperations({
                   background: "#f8fafc",
                 }}
               >
-                {compact && <button type="button" aria-expanded={expandedMaterial === material.id}
+                {compact && <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <FilmThumbnail material={material} size={48} onPreview={setPhotoPreview} />
+                  <button type="button" aria-expanded={expandedMaterial === material.id}
                   aria-controls={`material-detail-${material.id}`} disabled={busy || disabled}
                   onClick={() => {
                     setExpandedMaterial(id => id === material.id ? null : material.id);
@@ -520,7 +525,7 @@ export default function SiteOperations({
                     <span>반납 <b>{material.returned == null ? "미입력" : `${material.returned}${material.unit}`}</b></span>
                     <span>소모 <b>{material.used == null ? "미확정" : `${material.used}${material.unit}`}</b></span>
                   </div>
-                </button>}
+                </button></div>}
                 <div id={`material-detail-${material.id}`} hidden={compact && expandedMaterial !== material.id}>
                 {compact && visitedMaterials[material.id] && <FilmRollInventory
                   siteId={siteId} active={active && expandedMaterial === material.id}
