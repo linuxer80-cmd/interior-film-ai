@@ -328,6 +328,7 @@ export default function SiteOperations({
     }
   }, []);
 
+  const changesMode = mode === "changes";
   const materialsMode = mode === "materials";
   const summaryMode = mode === "summary";
   const History = "details";
@@ -373,7 +374,7 @@ export default function SiteOperations({
         <h3 style={{ margin: 0, fontSize: 17 }}>
           {materialsMode
             ? "📦 반출 · 반입 · 소모량"
-            : summaryMode ? "사용 자재" : "📦 현장 자재 · 변경사항"}
+            : changesMode ? "현장 변경 · 확인 현황" : summaryMode ? "사용 자재" : "📦 현장 자재 · 변경사항"}
         </h3>
 
         <button
@@ -411,7 +412,7 @@ export default function SiteOperations({
       {compact && data && <p style={{ margin: "10px 0", fontSize: 13, color: "#687961" }}>
         자재 {data.materials.length}종 · 반출 {data.materials.filter(m => Number(m.issued) > 0).length}종 · 반납 미입력 {data.materials.filter(m => Number(m.issued) > 0 && m.returned == null).length}종
       </p>}
-      {!summaryMode && !compact && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
+      {!changesMode && !summaryMode && !compact && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
         <summary style={{ ...btn, listStyle: "none" }}>
           📦 자재 반출·반납
         </summary>
@@ -429,7 +430,7 @@ export default function SiteOperations({
 
       {!data ? (
         <p>불러오는 중…</p>
-      ) : materialsMode ? (
+      ) : changesMode ? null : materialsMode ? (
         <>
           <p hidden={compact} style={{ color: "#64748b", fontSize: 13 }}>
             소모량 = 총 반출량 − 남은 자재 반입량.
@@ -895,7 +896,7 @@ export default function SiteOperations({
         </>
       )}
 
-      {data && <History style={{ marginTop: 16 }}>
+      {data && <History open={changesMode || undefined} style={{ marginTop: 16 }}>
       {(
         <summary style={{ cursor: "pointer", padding: "12px 0", fontWeight: 700, color: "#243648" }}>
           변경 이력 · {groups.length}개 항목
@@ -910,8 +911,9 @@ export default function SiteOperations({
           )}
 
           <p style={{fontSize:12,color:"#64748b"}}>최근 기록 최대 100건 기준 · 동일 시각·내용은 묶어서 표시합니다.{!data.owner && " 미확인 기록을 먼저 표시합니다."}</p>
+          {data.owner && changesMode && <p style={{fontSize:13}}>각 변경사항에서 확인한 시공자와 아직 확인하지 않은 시공자를 볼 수 있습니다.</p>}
           {displayedGroups.slice(0, historyLimit).map(group => (
-            <details key={group.id} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}>
+            <details key={group.id} open={changesMode && group.events.some(e => e.receipts.some(r => !r.confirmedAt)) || undefined} style={{borderTop:"1px solid #e2e8f0",padding:"12px 0"}}>
               <summary style={{cursor:"pointer",lineHeight:1.6}}>
                 <small style={{color:"#64748b"}}>{date(group.at)}</small><br />
                 <strong>{shortMessage(group.message)}</strong>
@@ -947,7 +949,7 @@ export default function SiteOperations({
                     {event.receipts.length}명
                   </b>
 
-                  <details style={{marginTop:8}}>
+                  <details open={changesMode || undefined} style={{marginTop:8}}>
                     <summary style={{cursor:"pointer",fontSize:13}}>확인 현황 보기</summary>
                     <p style={{fontSize:13,lineHeight:1.6}}>미확인: {event.receipts.filter(r => !r.confirmedAt).map(r => r.name).join(", ") || "없음"}</p>
                   {event.receipts.filter(receipt => receipt.confirmedAt).map((receipt, index) => (
@@ -989,6 +991,7 @@ export default function SiteOperations({
                     >
                       <strong>현재 저장된 현장정보</strong>
                       <p>{review.snapshot.site.site_name}</p>
+                      {review.snapshot.site.address && <p>주소: {review.snapshot.site.address}</p>}
 
                       <p>
                         일정:{" "}
@@ -1080,7 +1083,7 @@ export default function SiteOperations({
                           })
                         }
                       >
-                        최신 내용을 확인했습니다
+                        확인했어요 · 최신 내용 확인 완료
                       </button>
                     </div>
                   )}
@@ -1095,5 +1098,6 @@ export default function SiteOperations({
     </section>
   );
                          }
+
 
 

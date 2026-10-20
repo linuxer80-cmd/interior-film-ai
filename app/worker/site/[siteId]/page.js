@@ -12,6 +12,7 @@ import {
   workerLoginUrl,
 } from "../../../utils/workerSites";
 import WorkerTeam from "./WorkerTeam";
+import SiteExtraWork from "../../../components/SiteExtraWork";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import SiteOperations from "../../../components/SiteOperations";
 import WorkerWorkReport from "./WorkerWorkReport";
@@ -23,6 +24,7 @@ const menus = [
   { id: "info", label: "현장정보", kind: "home" },
   { id: "film", label: "필름·재단", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
+  { id: "extra", label: "추가 작업", kind: "report" },
   { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
 ];
@@ -378,7 +380,7 @@ export default function WorkerSiteDetailPage() {
             aria-label="현장 상세 메뉴"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 5,
               marginTop: 8,
             }}
@@ -506,6 +508,7 @@ export default function WorkerSiteDetailPage() {
           </div>
 
 
+          <SiteOperations siteId={siteId} active={tab === "info"} mode="changes" compact onCurrentData={loadSiteDetail} />
           <WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} active={tab === "info"} />
 
           {site.memo?.trim() && (
@@ -535,6 +538,8 @@ export default function WorkerSiteDetailPage() {
           )}
 
         </section>
+
+        <section id="site-panel-extra" hidden={tab !== "extra"} aria-label="추가 작업 요청"><SiteExtraWork key={siteId} siteId={siteId} active={tab === "extra"} /></section>
 
         {visited.film && (
           <section
@@ -906,3 +911,4 @@ function ReportPanel({
     </>
   );
               }
+

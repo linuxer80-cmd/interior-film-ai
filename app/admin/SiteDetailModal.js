@@ -19,6 +19,7 @@ import ConsultationQuote from "./ConsultationQuote";
 import CompletionEstimate from "./CompletionEstimate";
 import AdminAssignedWork from "./AdminAssignedWork";
 import AdminSiteTeam from "./AdminSiteTeam";
+import SiteExtraWork from "../components/SiteExtraWork";
 import fieldUi from "./FieldUi.module.css";
 
 const STATUS_INFO = {
@@ -52,6 +53,7 @@ const STATUS_INFO = {
 const MENUS = [
   { id: "info", label: "현장정보", kind: "home" },
   { id: "quote", label: "상담 견적서", kind: "report" },
+  { id: "extra", label: "추가 작업", kind: "report" },
   { id: "chat", label: "현장 채팅", kind: "chat" },
   { id: "schedule", label: "일정배정", kind: "people" },
   { id: "materials", label: "자재", kind: "film" },
@@ -61,6 +63,7 @@ const MENUS = [
 ];
 
 const SECTION_MENU = {
+  extra: "extra",
   chat: "chat",
   overview: "info",
   info: "info",
@@ -445,6 +448,7 @@ export default function SiteDetailModal({
           }}
         >
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} active={menu === "chat"} /></section>
+          <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
           <AdminAssignedWork key={site.id} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
           <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
             {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
@@ -477,6 +481,7 @@ export default function SiteDetailModal({
             aria-label="현장정보"
             hidden={menu !== "info"}
           >
+            <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
             <SiteScheduleEditor
               key={'info-schedule-'+site.id}
               site={site}
@@ -500,6 +505,7 @@ export default function SiteDetailModal({
               hidden={menu !== "quote"}
               aria-label="상담 견적서"
             >
+              <SiteExtraWork siteId={site.id} active={menu === "quote"} approvedSummary />
               <ConsultationQuote
                 key={site.id}
                 siteId={site.id}
@@ -761,5 +767,6 @@ export default function SiteDetailModal({
     </div>
   );
                 } 
+
 
 

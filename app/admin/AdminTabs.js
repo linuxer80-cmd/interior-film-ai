@@ -11,6 +11,7 @@ import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
 import AdminHomeSummary from "./AdminHomeSummary";
+const SiteExtraWork = dynamic(() => import("../components/SiteExtraWork"), { ssr: false });
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
@@ -132,6 +133,7 @@ export default function AdminTabs({
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
+          <SiteExtraWork key={companyId} summary />
           <LaborNotifications />
           <AchievementBadges key={companyId} scope="owner" compact />
 
@@ -300,5 +302,6 @@ export default function AdminTabs({
     </section>
   );
                 }
+
 
 
