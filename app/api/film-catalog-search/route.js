@@ -1,3 +1,4 @@
+import { normalizeFilmBrand } from "../../../lib/filmBrand.mjs";
 import {createClient} from "@supabase/supabase-js";
 export const runtime="nodejs";
 
@@ -24,6 +25,7 @@ export async function GET(request){
   };
   const products=(data||[]).sort((a,b)=>score(a)-score(b)||
    String(a.product_code).localeCompare(String(b.product_code),"ko"));
-  return Response.json({products},{headers:{"Cache-Control":"no-store"}});
+  return Response.json({products:products.map(p=>({...p,brand:normalizeFilmBrand(p.brand)}))},{headers:{"Cache-Control":"no-store"}});
  }catch(error){console.error("film catalog search",error);return Response.json({error:"제품 검색에 실패했습니다."},{status:500});}
 }
+

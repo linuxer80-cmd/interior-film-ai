@@ -1,3 +1,5 @@
+import { normalizeFilmBrand, sameFilmBrand } from "../../../../lib/filmBrand.mjs";
+import { matchingFilmProducts } from "../../../../lib/matchingFilmProducts.mjs";
 import { resolveFilmType, filmCodeInfo } from "../../../../lib/hyundaiFilmCode";
 import { plannedDealerPrice } from "../../../../lib/plannedDealerPrice.mjs";
 import { createClient } from "@supabase/supabase-js";
@@ -184,13 +186,13 @@ async function handle(request) {
         );
       }
 
-      const type = resolveFilmType(text("brand", 100), text("product_code", 100), body.price_type);
+      const type = resolveFilmType(normalizeFilmBrand(text("brand", 100)), text("product_code", 100), body.price_type);
       if (type.conflict || !["fire", "non_fire"].includes(type.resolvedType)) {
         return json({ error: type.conflict ? "제품코드의 방염 구분과 선택한 구분이 다릅니다. G·F 코드와 방염 구분을 확인해주세요." : "방염 또는 비방염을 선택해주세요." }, 400);
       }
       values = {
         price_type: type.resolvedType,
-        brand: text("brand", 100),
+        brand: normalizeFilmBrand(text("brand", 100)),
         product_code: text("product_code", 100),
         product_name: text("product_name", 200),
         quantity,
@@ -241,27 +243,15 @@ async function handle(request) {
       }
 
       values.film_product_id = null;
+      const products = await matchingFilmProducts(db, values.brand, values.product_code);
+      const chosen = uuid(body.film_product_id) ? products.find(p=>p.id===body.film_product_id) : null;
+      if (uuid(body.film_product_id) && !chosen) return json({error:"선택한 제품과 브랜드·제품번호가 다릅니다. 제품을 다시 선택해주세요."},400);
+      if (chosen) values.film_product_id = chosen.id;
+      else if (previous?.film_product_id && sameFilmBrand(previous.brand,values.brand) &&
+        (previous.product_code || "") === (values.product_code || "") &&
+        products.some(p=>p.id===previous.film_product_id)) values.film_product_id = previous.film_product_id;
+      else if (products.length === 1) values.film_product_id = products[0].id;
 
-      if (
-        previous &&
-        (previous.brand || "") === (values.brand || "") &&
-        (previous.product_code || "") === (values.product_code || "")
-      ) {
-        values.film_product_id = previous.film_product_id;
-      } else if (values.brand && values.product_code) {
-        const result = await db
-          .from("film_products")
-          .select("id")
-          .eq("brand", values.brand)
-          .ilike("product_code", filmCodeInfo(values.brand, values.product_code).baseCode)
-          .limit(2);
-
-        if (result.error) throw result.error;
-
-        if (result.data?.length === 1) {
-          values.film_product_id = result.data[0].id;
-        }
-      }
     }
 
     if (values && values.unit_price == null) {
@@ -336,3 +326,4 @@ export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
 export const DELETE = handle;
+

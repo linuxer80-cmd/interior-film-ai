@@ -1,3 +1,4 @@
+import { normalizeFilmBrand } from "../../../lib/filmBrand.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -66,7 +67,7 @@ function makePublicProduct(row) {
 
   return {
     id: row.id,
-    brand: row.brand,
+    brand: normalizeFilmBrand(row.brand),
     product_code: row.product_code,
     product_name: row.product_name,
 
@@ -231,3 +232,4 @@ export async function GET() {
     );
   }
 }
+

@@ -1,3 +1,4 @@
+import { normalizeFilmBrand } from "../../../lib/filmBrand.mjs";
 import { withFilmFireTypes } from "../../../lib/filmFireTypes";
 import { createClient } from "@supabase/supabase-js";
 
@@ -149,6 +150,8 @@ async function handle(request) {
       )
     )) return json({ error: "반납 기록과 수정 수량을 확인해주세요." }, 400);
 
+    if (typeof body.brand === "string") body.brand = normalizeFilmBrand(body.brand);
+
     const result = await db.rpc("film_stock", {
       p_user: data.user.id,
       p_site: body.siteId || null,
@@ -192,4 +195,5 @@ async function handle(request) {
 
 export const GET = handle;
 export const POST = handle;
+
 

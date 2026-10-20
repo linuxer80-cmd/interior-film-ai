@@ -1,4 +1,5 @@
 "use client";
+import { normalizeFilmBrand } from "../../lib/filmBrand.mjs";
 
 import { useEffect, useId, useState } from "react";
 import FilmSampleImage from "./FilmSampleImage";
@@ -60,7 +61,7 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
           aria-label={`${product.brand} ${product.product_code} ${product.product_name || ""} 선택`}
           onClick={() => {
             const prefix = /^[GF][A-Z]/i.test(query) ? query[0].toUpperCase() : "";
-            onChange({ film_product_id: product.id, brand: product.brand, product_code: prefix + product.product_code, product_name: product.product_name || "" });
+            onChange({ film_product_id: product.id, brand: normalizeFilmBrand(product.brand), product_code: prefix + product.product_code, product_name: product.product_name || "" });
             setChosen(product); setOpen(false);
           }}
           style={{ border: "1px solid #cbd5e1", borderRadius: 12, padding: 10, background: "#fff", color: "#172b3a", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
@@ -77,3 +78,4 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
     </div>}
   </div>;
 }
+

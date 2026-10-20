@@ -1,3 +1,5 @@
+import { normalizeFilmBrand } from "../../../lib/filmBrand.mjs";
+import { matchingFilmProducts } from "../../../lib/matchingFilmProducts.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -72,6 +74,14 @@ async function handle(request) {
       return reply({ error: "지원하지 않는 요청입니다." }, 400);
     }
 
+    if (typeof body.brand === "string") body.brand = normalizeFilmBrand(body.brand);
+    // Reuse the exact catalog row even when its historical brand label differs.
+    if (body.action === "register_product") {
+      const products = await matchingFilmProducts(db,body.brand,String(body.productCode || "").trim());
+      if(products.length>1)return reply({error:"동일 브랜드·제품번호의 기존 제품이 여러 개입니다. 검색 결과에서 사용할 제품을 선택해주세요."},409);
+      if(products.length===1)body.brand=products[0].brand;
+    }
+
     const result =
       body.action === "register_product"
         ? await db.rpc("register_dealer_film", {
@@ -120,3 +130,4 @@ async function handle(request) {
 
 export const GET = handle;
 export const POST = handle;
+

@@ -1,3 +1,4 @@
+import { normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 const json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -27,7 +28,7 @@ async function handle(request) {
       const text = (key, limit) => typeof body[key] === "string" ? body[key].trim().slice(0, limit) : "";
       const quantity = Number(body.quantity), unitPrice = Number(body.unit_price);
       if (!(text("product_code", 100) || text("product_name", 200)) || body.quantity === "" || body.quantity == null || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000 || body.unit_price === "" || body.unit_price == null || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000000 || !Number.isSafeInteger(Math.round(quantity * unitPrice))) return json({ error: "제품명 또는 코드를 입력하고 사용량과 단가를 확인해주세요." }, 400);
-      values = { brand: text("brand", 100), product_code: text("product_code", 100), product_name: text("product_name", 200), quantity, unit: text("unit", 20) || "m", unit_price: unitPrice, total_price: Math.round(quantity * unitPrice), memo: text("memo", 1000), updated_at: new Date().toISOString() };
+      values = { brand: normalizeFilmBrand(text("brand", 100)), product_code: text("product_code", 100), product_name: text("product_name", 200), quantity, unit: text("unit", 20) || "m", unit_price: unitPrice, total_price: Math.round(quantity * unitPrice), memo: text("memo", 1000), updated_at: new Date().toISOString() };
     }
     let query;
     if (request.method === "POST") query = db.from("site_materials").insert({ ...values, company_id: profile.company_id, site_id: site.id, material_type: "actual", created_by: user.id });
@@ -47,3 +48,4 @@ async function handle(request) {
 export const POST = handle;
 export const PATCH = handle;
 export const DELETE = handle;
+

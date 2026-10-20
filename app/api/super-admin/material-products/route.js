@@ -1,3 +1,4 @@
+import { filmBrandAliases, normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -337,7 +338,7 @@ export async function GET(request) {
       .select("*", {
         count: "exact",
       })
-      .eq("brand", brand);
+      .in("brand", filmBrandAliases(brand));
 
     if (search) {
       query = query.or(
@@ -431,7 +432,7 @@ export async function GET(request) {
     const brands = [
       ...new Set(
         (brandRows || [])
-          .map((row) => row.brand)
+          .map((row) => normalizeFilmBrand(row.brand))
           .filter(Boolean),
       ),
     ];
@@ -448,7 +449,7 @@ export async function GET(request) {
           "dealer_price_per_m",
         ].join(","),
       )
-      .eq("brand", brand);
+      .in("brand", filmBrandAliases(brand));
 
     if (statsError) {
       console.error(
@@ -584,7 +585,7 @@ export async function PATCH(request) {
       }
 
       targetQuery =
-        targetQuery.eq("brand", brand);
+        targetQuery.in("brand", filmBrandAliases(brand));
     } else {
       if (productIds.length === 0) {
         return NextResponse.json(
@@ -779,3 +780,4 @@ export async function PATCH(request) {
     );
   }
 }
+

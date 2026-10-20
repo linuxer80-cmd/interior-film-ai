@@ -1,4 +1,5 @@
 "use client";
+import { normalizeFilmBrand } from "../../lib/filmBrand.mjs";
 
 import StockMovementHistory from "./StockMovementHistory";
 import GuidedForm, {InputStep, InputFinal} from "./GuidedForm";
@@ -43,12 +44,8 @@ const types = {
 };
 
 const brandLabel = value => {
-  const raw = String(value || "").trim();
-  const key = raw.replace(/\s/g, "").toUpperCase();
-
-  if (["영림", "영림인테리어필름"].includes(key)) return "영림";
-  if (["LX", "LX하우시스베니프"].includes(key)) return "LX 베니프";
-
+  const raw = normalizeFilmBrand(value);
+  if (["LX", "LX하우시스베니프"].includes(raw.replace(/\s/g, "").toUpperCase())) return "LX 베니프";
   return raw || "브랜드 미등록";
 };
 
@@ -1066,6 +1063,7 @@ export default function FilmDealerInventory() {
                             않습니다.
                           </p>
 
+                          <p>현대·현대&C는 현대보닥, 영림필름·영림 인테리어필름은 영림으로 저장됩니다.</p>
                           <InputStep index={0}>{[
                             ["brand", "브랜드", 100],
                             ["productCode", "제품번호", 80],
@@ -1076,6 +1074,7 @@ export default function FilmDealerInventory() {
                               <input
                                 maxLength={max}
                                 value={newProduct[key]}
+                                onBlur={key === "brand" ? () => setNewProduct(p => ({...p,brand:normalizeFilmBrand(p.brand)})) : undefined}
                                 onChange={e =>
                                   setNewProduct(p => ({
                                     ...p,
@@ -1996,6 +1995,7 @@ export default function FilmDealerInventory() {
     </section>
   );
                   }
+
 
 
 

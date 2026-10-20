@@ -1,3 +1,4 @@
+import { filmBrandAliases, normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { loadOrderVariants } from "../../../../lib/materialOrderVariants.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -222,7 +223,7 @@ export async function GET(request) {
 
     if (brand) {
       productsQuery =
-        productsQuery.eq("brand", brand);
+        productsQuery.in("brand", filmBrandAliases(brand));
     }
 
     if (category) {
@@ -308,7 +309,7 @@ export async function GET(request) {
     const brands = [
       ...new Set(
         filterRows
-          .map((row) => row.brand)
+          .map((row) => normalizeFilmBrand(row.brand))
           .filter(Boolean),
       ),
     ].sort((a, b) =>
@@ -373,4 +374,5 @@ export async function GET(request) {
     );
   }
 }
+
 
