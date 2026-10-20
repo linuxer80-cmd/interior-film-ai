@@ -14,7 +14,7 @@ async function request(action,method='GET') {
   if(current.error||current.data?.session?.user?.id!==data.session.user?.id)throw Error('앱 계정이 변경됐습니다. 새로고침 후 다시 확인해주세요.');
   if(!response.ok)throw Error(result.error||'캘린더 연결을 확인하지 못했습니다.');return result;
 }
-export default function AutoCalendarConnection({embedded=false}) {
+export default function AutoCalendarConnection({embedded=false,compact=false}) {
   const [state,setState]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[manual,setManual]=useState(false);
   const operation=useRef(false),finish=useRef(null),version=useRef(0);
   useEffect(()=>{
@@ -47,9 +47,9 @@ export default function AutoCalendarConnection({embedded=false}) {
   }
   const c=state?.connection,enabled=c?.enabled&&!c.needs_reconnect;
   return <section style={{padding:embedded?18:24,margin:'16px auto',maxWidth:760,border:'1px solid #dedfd5',borderRadius:22,background:'#fff'}}>
-    {embedded&&enabled&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><strong style={{color:'#355d47'}}>구글 캘린더 · 자동 연결됨</strong></div>}
-    <details open={embedded&&enabled?undefined:true}>
-    <summary style={{display:embedded&&enabled?'list-item':'none',cursor:'pointer',color:'#355d47',fontWeight:700,marginTop:embedded&&enabled?8:0}}>더보기 · 캘린더 관리</summary>
+    {embedded&&(enabled||compact)&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><strong style={{color:'#355d47'}}>구글 캘린더{enabled?' · 자동 연결됨':''}</strong></div>}
+    <details open={embedded&&(enabled||compact)?undefined:true}>
+    <summary style={{display:embedded&&(enabled||compact)?'list-item':'none',cursor:'pointer',color:'#355d47',fontWeight:700,marginTop:embedded&&(enabled||compact)?8:0}}>{enabled?'더보기 · 캘린더 관리':'구글 캘린더 연결하기'}</summary>
     <h2 style={{margin:'0 0 10px'}}>구글 캘린더 자동 연결</h2>
     <p>한 번 동의하면 앱을 닫아도 내 현장 일정이 자동으로 반영됩니다.</p>
     <p style={{color:'#647168'}}>오늘부터 90일 · 배정·현장 요약 변경 반영 · 취소·배정 제외된 앱 일정 정리 · 같은 일정 중복 방지</p>

@@ -1,4 +1,6 @@
 "use client";
+import dynamic from "next/dynamic";
+const AutoCalendarConnection = dynamic(() => import("../account/calendar/AutoCalendarConnection"), { ssr: false });
 import usePersonalMenus from "../../lib/usePersonalMenus";
 import PlanUsageButton from "./PlanUsageButton";
 import moreStyles from "./AdminMore.module.css";
@@ -128,6 +130,7 @@ export default function AdminTabs({
       {isHome ? (
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
+          <AutoCalendarConnection embedded compact />
           <LaborNotifications />
           <AchievementBadges key={companyId} scope="owner" compact />
 
