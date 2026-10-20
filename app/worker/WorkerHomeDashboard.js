@@ -177,9 +177,10 @@ export default function WorkerHomeDashboard({
 
               <span className="wp-site-text">
                 <span style={{fontSize:12,fontWeight:800,color:"#2563eb"}}>협력 업체 · {site.company_name || site.companyName || companyNames[site.company_id] || "업체명 확인 필요"}</span>
-                <small>
-                  {site.address ||
-                    site.site_address ||
+                <small style={{ whiteSpace: "normal", overflow: "visible", overflowWrap: "anywhere", lineHeight: 1.5 }}>
+                  {[site.address || site.site_address, site.address_detail]
+                    .map(value => String(value || "").trim())
+                    .filter(Boolean).join(" ") ||
                     "주소는 현장 상세에서 확인하세요"}
                 </small>
 

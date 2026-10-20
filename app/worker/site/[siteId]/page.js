@@ -438,34 +438,6 @@ export default function WorkerSiteDetailPage() {
         >
 
 
-          <WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} active={tab === "info"} />
-
-          {site.memo?.trim() && (
-            <div
-              style={{
-                ...card,
-                background: "#fffbeb",
-                borderColor: "#fcd34d",
-              }}
-            >
-              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>
-                📌 현장 메모 · 전달사항
-              </h2>
-
-              <p
-                style={{
-                  ...muted,
-                  margin: 0,
-                  color: "#713f12",
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {site.memo}
-              </p>
-            </div>
-          )}
-
           <div style={card}>
             <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
               현장 기본정보
@@ -532,6 +504,35 @@ export default function WorkerSiteDetailPage() {
               </a>
             )}
           </div>
+
+
+          <WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} active={tab === "info"} />
+
+          {site.memo?.trim() && (
+            <div
+              style={{
+                ...card,
+                background: "#fffbeb",
+                borderColor: "#fcd34d",
+              }}
+            >
+              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>
+                📌 현장 메모 · 전달사항
+              </h2>
+
+              <p
+                style={{
+                  ...muted,
+                  margin: 0,
+                  color: "#713f12",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {site.memo}
+              </p>
+            </div>
+          )}
 
         </section>
 
