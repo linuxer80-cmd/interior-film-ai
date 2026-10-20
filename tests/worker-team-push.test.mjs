@@ -15,3 +15,11 @@ test('no subscription is not reported as successful delivery',async()=>{const f=
 test('expired subscription is removed only for its recipient',async()=>{const f=fixture({other:[sub]},{endpoint:410});const r=await dispatchTeamMessage(f.db,message,options(f));assert.equal(r.accepted,0);assert.equal(r.expired,1);assert.deepEqual(f.deleted,[['sub','other']]);});
 test('transient push failure is reported without deleting subscription',async()=>{const f=fixture({other:[sub]},{endpoint:503});const r=await dispatchTeamMessage(f.db,message,options(f));assert.equal(r.failed,1);assert.deepEqual(f.deleted,[]);});
 test('missing configuration does not report or attempt a delivery',async()=>{const f=fixture({other:[sub]});const r=await dispatchTeamMessage(f.db,message,{...options(f),privateKey:''});assert.equal(r.state,'unconfigured');assert.equal(r.accepted,0);assert.equal(f.sent.length,0);});
+
+test('manager recipients get admin site chat link and remain deduplicated',async()=>{
+ const f=fixture({other:[sub]});
+ const r=await dispatchTeamMessage(f.db,{...message,members:[{user_id:'sender'},{user_id:'other',role:'owner'},{user_id:'other',role:'member'}]},options(f));
+ assert.equal(r.accepted,1);
+ assert.equal(f.sent[0].payload.url,'/admin?tab=sites&site=site&section=chat&teamDate=2026-10-20');
+});
+
