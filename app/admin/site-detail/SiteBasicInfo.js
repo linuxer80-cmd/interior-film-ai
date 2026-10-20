@@ -1,4 +1,5 @@
 "use client";
+import SiteDirections from "../../worker/SiteDirections";
 
 import {
   useEffect,
@@ -535,10 +536,7 @@ export default function SiteBasicInfo({
 
         <DetailRow
           label="주소"
-          value={
-            fullAddress ||
-            "미정"
-          }
+          value={<SiteDirections site={{...site,site_id:site.id}} navigationOnly />}
         />
 
         <DetailRow
@@ -1204,3 +1202,4 @@ const inputStyle = {
   fontSize: "14px",
   outline: "none",
 };
+

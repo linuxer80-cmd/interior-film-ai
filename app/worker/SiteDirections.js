@@ -10,6 +10,7 @@ export default function SiteDirections({
   site,
   workDate,
   compact = false,
+  navigationOnly = false,
 }) {
   const [userAgent, setUserAgent] = useState("");
   const [openedAddress, setOpenedAddress] = useState("");
@@ -74,7 +75,7 @@ export default function SiteDirections({
         </div>
       )}
 
-      {compact ? (
+      {navigationOnly ? null : compact ? (
         <details style={{ marginTop: 8 }}>
           <summary style={{ padding: "8px 0", color: "#285340", fontSize: 13 }}>주변 찾기 · 출발 시간</summary>
       <SiteNearbyPlaces key={`${site?.site_id}:${address}`} siteId={site?.site_id} address={address}/>
@@ -95,3 +96,4 @@ export default function SiteDirections({
     </div>
   );
 }
+
