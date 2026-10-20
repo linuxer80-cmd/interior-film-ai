@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { rows, companySites, siteFields } from '../lib/workerSiteAssignments.mjs';
+import { nextSiteStatus } from '../lib/siteLifecycle.mjs';
 
 const A = '00000000-0000-0000-0000-000000000001';
 const B = '00000000-0000-0000-0000-000000000002';
@@ -45,7 +47,7 @@ function harness({ tables = {}, errors = {}, invalidToken = false } = {}) {
   const source = fs.readFileSync(new URL('../app/api/worker/my-sites/route.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replaceAll('export ', '');
   const context = {
-    URL, Intl, console: { error() {} }, createClient: () => client,
+    URL, Intl, rows, companySites, siteFields, nextSiteStatus, console: { error() {} }, createClient: () => client,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     Response: { json: (body, options) => ({ body: JSON.parse(JSON.stringify(body)), ...options }) },
   };

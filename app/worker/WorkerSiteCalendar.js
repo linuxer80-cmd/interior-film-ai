@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-const CalendarConnection = dynamic(()=>import("../account/calendar/CalendarConnection"),{ssr:false});
+const CalendarConnection = dynamic(()=>import("../account/calendar/AutoCalendarConnection"),{ssr:false});
 
 import {
   isUndated,

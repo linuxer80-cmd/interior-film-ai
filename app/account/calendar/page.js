@@ -1,2 +1,2 @@
-import CalendarConnection from "./CalendarConnection";
-export default function CalendarPage(){return <CalendarConnection/>;}
+import AutoCalendarConnection from "./AutoCalendarConnection";
+export default function CalendarPage() { return <AutoCalendarConnection/>; }
