@@ -1,5 +1,6 @@
 "use client";
 import KakaoLoginButton from "../components/KakaoLoginButton";
+import GoogleLoginButton from "../components/GoogleLoginButton";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -309,6 +310,7 @@ export default function WorkerLogin() {
             <br />
             소속 회사 관리자에게 문의해주세요.
           </p>
+        <GoogleLoginButton role="worker" disabled={loading} />
         <KakaoLoginButton role="worker" disabled={loading} />
           </form>
 

@@ -1,5 +1,6 @@
 "use client";
 import KakaoLoginButton from "../components/KakaoLoginButton";
+import GoogleLoginButton from "../components/GoogleLoginButton";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -915,6 +916,7 @@ export default function OwnerLogin() {
                 업체 회원가입
               </Link>
             </div>
+          <GoogleLoginButton disabled={loading} />
           <KakaoLoginButton disabled={loading} />
           </form>
         )}
