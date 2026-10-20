@@ -125,10 +125,21 @@ export function isUndated(site) {
   );
 }
 
-export function workerMonth(sites, month) {
+export function selectedWeek(day) {
+  const start = new Date(`${day}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+export function workerMonth(sites, month, extraDays = []) {
   const { days, cells } = monthDays(month);
+  const visibleDays = [...new Set([...days, ...extraDays])];
   const byDay = new Map(
-    days.map((day) => [day, []])
+    visibleDays.map((day) => [day, []])
   );
   const siteIds = new Set();
 
@@ -137,7 +148,7 @@ export function workerMonth(sites, month) {
     const range =
       personal === null ? legacyRange(site) : null;
 
-    for (const day of days) {
+    for (const day of visibleDays) {
       const role =
         personal !== null
           ? personal.get(day)
@@ -158,7 +169,7 @@ export function workerMonth(sites, month) {
       }
 
       entries.push({ site, role });
-      siteIds.add(site.site_id);
+      if (day.startsWith(`${month}-`)) siteIds.add(site.site_id);
     }
   }
 
@@ -166,8 +177,8 @@ export function workerMonth(sites, month) {
     cells,
     byDay,
     siteCount: siteIds.size,
-    workDays: [...byDay.values()].filter(
-      (entries) => entries.length
+    workDays: days.filter(
+      (day) => byDay.get(day).length
     ).length,
   };
 }

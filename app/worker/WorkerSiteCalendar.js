@@ -11,6 +11,7 @@ import {
   shiftMonth,
   siteStatus,
   workerMonth,
+  selectedWeek,
 } from "../utils/workerCalendar";
 
 import SiteDirections from "./SiteDirections";
@@ -147,6 +148,8 @@ export default function WorkerSiteCalendar({
   onOpen,
 }) {
   const calendarConnectionId = useId();
+  const calendarDaysId = useId();
+  const [monthOpen, setMonthOpen] = useState(false);
   const [today, setToday] =
     useState(() => koreanDay());
 
@@ -194,9 +197,11 @@ export default function WorkerSiteCalendar({
     [visible, search],
   );
 
+  const weekDays = useMemo(() => selectedWeek(selected), [selected]);
+
   const calendar = useMemo(
-    () => workerMonth(visible, month),
-    [visible, month],
+    () => workerMonth(visible, month, weekDays),
+    [visible, month, weekDays],
   );
 
   const undated = useMemo(
@@ -337,6 +342,15 @@ export default function WorkerSiteCalendar({
               <button
                 type="button"
                 className={styles.todayButton}
+                aria-expanded={monthOpen}
+                aria-controls={calendarDaysId}
+                onClick={() => setMonthOpen(value => !value)}
+              >
+                {monthOpen ? "달력 닫기" : "달력 열기"}
+              </button>
+              <button
+                type="button"
+                className={styles.todayButton}
                 onClick={() => chooseDay(koreanDay())}
               >
                 오늘
@@ -347,6 +361,7 @@ export default function WorkerSiteCalendar({
                 className={styles.arrowButton}
                 onClick={() => moveMonth(-1)}
                 aria-label="이전 달"
+                hidden={!monthOpen}
               >
                 ‹
               </button>
@@ -356,6 +371,7 @@ export default function WorkerSiteCalendar({
                 className={styles.arrowButton}
                 onClick={() => moveMonth(1)}
                 aria-label="다음 달"
+                hidden={!monthOpen}
               >
                 ›
               </button>
@@ -390,10 +406,11 @@ export default function WorkerSiteCalendar({
           </div>
 
           <div
+            id={calendarDaysId}
             className={styles.days}
-            aria-label={`${year}년 ${monthNumber}월 날짜`}
+            aria-label={monthOpen ? `${year}년 ${monthNumber}월 날짜` : `${dateLabel(selected)}이 포함된 주`}
           >
-            {calendar.cells.map((day, index) => {
+            {(monthOpen ? calendar.cells : weekDays).map((day, index) => {
               if (!day) {
                 return (
                   <span
