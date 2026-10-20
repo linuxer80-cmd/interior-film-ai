@@ -255,6 +255,7 @@ export default function AdminTabs({
           <button type="button" className={moreStyles.item} onClick={() => go("jobs")}>시공 DB</button>
           <button type="button" className={moreStyles.item} onClick={() => go("usage")}>로그 분석</button>
 
+          <a href="/account/calendar" className={moreStyles.item}>구글 캘린더 연결 · 현장 일정 보내기</a>
           <a href="/account/google" className={moreStyles.item}>구글 계정 연결 · 연결 상태 확인</a>
           <a href="/account/kakao" className={moreStyles.item}>카카오 계정 연결 · 연결 상태 확인</a>
           <a href="/achievements?scope=owner" className={moreStyles.item}>우리 업체 업적 · 배지 보관함</a>
