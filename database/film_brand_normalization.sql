@@ -37,6 +37,29 @@ begin
  return new;
 end $function$;
 
+-- Allow a spelling-only brand update; every other actual-cost write keeps the original settlement guard.
+create or replace function app_private.guard_settled_actual()
+returns trigger language plpgsql security definer set search_path='' as $function$
+declare sid uuid; typ text;
+begin
+ if tg_op='UPDATE' then
+  if old.material_type='actual' and new.material_type='actual'
+   and public.canonical_film_brand(new.brand) is not distinct from public.canonical_film_brand(old.brand)
+   and (pg_catalog.to_jsonb(new)-'brand'-'updated_at') is not distinct from
+       (pg_catalog.to_jsonb(old)-'brand'-'updated_at') then
+   return new;
+  end if;
+ end if;
+ if tg_op='DELETE' then sid:=old.site_id; typ:=old.material_type;
+ else sid:=new.site_id; typ:=new.material_type; end if;
+ if typ='actual' and exists(select 1 from public.site_material_issues where site_id=sid and voided_at is null)
+    and current_setting('app.material_settlement',true) is distinct from 'on' then
+  raise exception '반출·반입 관리 현장은 완료보고에서 자재비가 자동 계산됩니다. 반입량 수정 후 보고서를 다시 제출해주세요.';
+ end if;
+ if tg_op='DELETE' then return old; end if;
+ return new;
+end $function$;
+
 -- Apply to all write paths, including existing RPCs and direct, authorized catalog entry.
 drop trigger if exists normalize_saved_film_brand on public.film_products;
 create trigger normalize_saved_film_brand before insert or update of brand on public.film_products for each row execute function public.normalize_saved_film_brand();
