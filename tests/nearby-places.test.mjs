@@ -91,3 +91,15 @@ test('same named buildings are not guessed',async()=>{
  await assert.rejects(findNearbyPlaces({address:'한일아파트 101-202',kind:'film',radius:3000,key:'test',fetcher:async()=>({ok:true,json:async()=>++count===1?{meta:{total_count:0},documents:[]}:{meta:{is_end:true},documents:[{place_name:'한일아파트',x:'126',y:'37'},{place_name:'한일아파트',x:'127',y:'38'}]}})}),/하나로/);
  assert.equal(count,2);
 });
+
+
+test('convenience stores use site radius and nearest sorting',async()=>{
+ const urls=[];
+ const result=await findNearbyPlaces({address:'주소',kind:'convenience',radius:3000,key:'test',fetcher:async url=>{
+  urls.push(url);return {ok:true,json:async()=>urls.length===1?{meta:{total_count:1},documents:[{x:'127',y:'37'}]}:{meta:{is_end:true},documents:[{id:'42',place_name:'편의점',distance:'50'}]}};
+ }});
+ assert.equal(urls[1].searchParams.get('query'),'편의점');
+ assert.equal(urls[1].searchParams.get('radius'),'3000');
+ assert.equal(urls[1].searchParams.get('sort'),'distance');
+ assert.equal(result.kind,'convenience');assert.equal(result.places[0].name,'편의점');
+});
