@@ -1,6 +1,6 @@
 -- 1. Enable pg_cron and pg_net in Supabase Database > Extensions.
 -- 2. Vault > Secrets: create calendar_auto_cron_secret with the exact value of
---    Vercel's server-only CRON_SECRET. Do not put the secret into this SQL file.
+--    Vercel's server-only CALENDAR_CRON_SECRET. Do not put the secret into this SQL file.
 -- 3. Run google_calendar_auto.sql first, then this file.
 do $$ begin
   if not exists(select 1 from vault.decrypted_secrets where name='calendar_auto_cron_secret') then

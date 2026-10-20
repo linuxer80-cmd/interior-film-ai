@@ -26,10 +26,10 @@
    | `GOOGLE_CLIENT_ID` | 기존 Web application Client ID 전체 | 일반 텍스트(서버용) |
    | `GOOGLE_CLIENT_SECRET` | 해당 Client Secret | 비밀 |
    | `CALENDAR_TOKEN_ENCRYPTION_KEY` | 별도로 생성한 32바이트 랜덤 키의 64자리 hex | 비밀 |
-   | `CRON_SECRET` | 기존 예약 작업과 동일한 서버 비밀 값, 없으면 새 랜덤 값 | 비밀 |
+   | `CALENDAR_CRON_SECRET` | 캘린더 전용으로 새로 생성한 랜덤 값 | 비밀 |
 
-   기존 `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `SUPABASE_SERVICE_ROLE_KEY`, Supabase URL 설정을 유지합니다. Secret/암호화 키에는 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다. 암호화 키 예시 생성 명령은 `openssl rand -hex 32`입니다. 키를 바꾸면 기존 연결은 재동의해야 합니다. 비밀 값을 채팅·저장소에 넣지 않습니다.
-4. Supabase Database → Extensions에서 **pg_cron**, **pg_net**을 활성화합니다. Vault → Secrets에 `calendar_auto_cron_secret`을 만들고 Vercel **CRON_SECRET과 같은 값**을 넣습니다. 이어서 `database/google_calendar_auto_cron.sql`을 실행합니다. 이름이 같은 작업은 갱신됩니다. Vercel Hobby의 하루 1회 Cron 제한으로 배포가 실패하지 않도록 `vercel.json`은 바꾸지 않았습니다. Pro라면 별도 Vercel Cron으로 같은 endpoint를 호출해도 되지만 두 스케줄러를 동시에 설정할 필요는 없습니다.
+   기존 `CRON_SECRET`은 다른 예약 작업에서 사용하므로 수정하지 않습니다. 캘린더 endpoint는 전용 `CALENDAR_CRON_SECRET`만 허용합니다. 기존 `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `SUPABASE_SERVICE_ROLE_KEY`, Supabase URL 설정을 유지합니다. Secret/암호화 키에는 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다. 암호화 키 예시 생성 명령은 `openssl rand -hex 32`입니다. 키를 바꾸면 기존 연결은 재동의해야 합니다. 비밀 값을 채팅·저장소에 넣지 않습니다.
+4. Supabase Database → Extensions에서 **pg_cron**, **pg_net**을 활성화합니다. Vault → Secrets에 `calendar_auto_cron_secret`을 만들고 Vercel **CALENDAR_CRON_SECRET과 같은 값**을 넣습니다. 이어서 `database/google_calendar_auto_cron.sql`을 실행합니다. 이름이 같은 작업은 갱신됩니다. Vercel Hobby의 하루 1회 Cron 제한으로 배포가 실패하지 않도록 `vercel.json`은 바꾸지 않았습니다. 이 endpoint는 캘린더 전용 비밀 값만 허용하므로 기존 전역 CRON_SECRET을 자동 전송하는 Vercel Cron 대신 위 Supabase 예약 작업을 사용합니다.
 5. 내 현장에서 자동 연결 동의 후 **지금 반영 확인**을 눌러 최초 결과를 확인합니다. 앱을 닫고 현장 요약/배정을 바꾼 후 다음 예약 실행에서 Google 일정이 수정되는지 확인합니다. 같은 내용 재실행 시 중복이 없어야 하며 취소·배정 제외 시 향후 앱 일정만 지워져야 합니다.
 6. 예약 실행 결과는 Cron History뿐 아니라 `net._http_response`의 HTTP 200/응답 본문, 연결 테이블 `last_sync_at`과 `last_error`를 함께 확인합니다. 예약 큐 등록 성공만으로 실제 동기화 성공으로 판단하지 않습니다. 한 호출은 최대 10명의 대기 사용자를 순차 처리하며, 시간 제한 내 나머지는 다음 실행에서 처리합니다. 부하가 늘면 처리량/예약 주기를 조정해야 합니다.
 

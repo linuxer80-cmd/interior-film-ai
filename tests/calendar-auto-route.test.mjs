@@ -9,14 +9,14 @@ const require=createRequire(import.meta.url),swc=require('next/dist/build/swc');
 const {code}=await swc.transform(fs.readFileSync(new URL('../app/api/calendar/auto/[action]/route.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript'}},module:{type:'commonjs'}});
 process.env.CALENDAR_TOKEN_ENCRYPTION_KEY='ab'.repeat(32);process.env.GOOGLE_CLIENT_ID='test';process.env.GOOGLE_CLIENT_SECRET='secret';
 const origin=secrets.APP_ORIGIN;
-function setup({user='u',pending=null}={}) {
+function setup({user='u',pending=null,calendarSecret='calendar-private'}={}) {
   const calls=[],exchanged=[],stored=[],exports={};
   const db={from(table){const op={table,filters:[]};calls.push(op);const q={};
     for(const method of ['select','delete','update','upsert','eq','is','gt','lt','not'])q[method]=(...args)=>{if(['eq','is','gt','lt','not'].includes(method))op.filters.push([method,...args]);else {op[method]=args;if(method==='upsert')stored.push(args[0]);}return q;};
     q.maybeSingle=async()=>({data:table==='calendar_auto_pending'?pending:null,error:null});q.then=(resolve,reject)=>Promise.resolve({data:[],error:null}).then(resolve,reject);return q;
   }};
   const crypto={...secrets,googleToken:async fields=>{exchanged.push(fields);return {access_token:'access',refresh_token:'refresh',scope:CALENDAR_SCOPE};}};
-  vm.runInNewContext(code,{exports,Response,URL,Date,crypto:globalThis.crypto,process:{env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'https://test',SUPABASE_SERVICE_ROLE_KEY:'service',CRON_SECRET:'cron-private'}},require:path=>path.includes('workerPrivate')?{privateAuth:async()=>({db,user:{id:user}}),privateJson:(body,status=200)=>Response.json(body,{status})}:path.includes('supabase')?{createClient:()=>db}:path.includes('calendarAutoCrypto')?crypto:path.includes('googleCalendar')?{CALENDAR_SCOPE}:path.includes('calendarAutoSync')?{checked:async q=>{const r=await q;if(r.error)throw r.error;return r.data;},runAutoSync:async()=>({queued:true})}:assert.fail(path)});
+  vm.runInNewContext(code,{exports,Response,URL,Date,crypto:globalThis.crypto,process:{env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'https://test',SUPABASE_SERVICE_ROLE_KEY:'service',CRON_SECRET:'cron-private',CALENDAR_CRON_SECRET:calendarSecret}},require:path=>path.includes('workerPrivate')?{privateAuth:async()=>({db,user:{id:user}}),privateJson:(body,status=200)=>Response.json(body,{status})}:path.includes('supabase')?{createClient:()=>db}:path.includes('calendarAutoCrypto')?crypto:path.includes('googleCalendar')?{CALENDAR_SCOPE}:path.includes('calendarAutoSync')?{checked:async q=>{const r=await q;if(r.error)throw r.error;return r.data;},runAutoSync:async()=>({queued:true})}:assert.fail(path)});
   return {exports,calls,exchanged,stored};
 }
 const req=(action,{method='POST',cookie='',requestOrigin=origin,query=''}={})=>new Request(origin+'/api/calendar/auto/'+action+query,{method,headers:{Origin:requestOrigin,Cookie:cookie}});
@@ -39,4 +39,17 @@ test('successful finish consumes pending code with PKCE and saves encrypted offl
 });
 test('cron rejects missing or incorrect secret',async()=>{
   const s=setup(),r=await s.exports.GET(req('cron',{method:'GET'}),ctx('cron'));assert.equal(r.status,401);assert.equal(s.calls.length,0);
+});
+
+test('calendar cron accepts only its dedicated secret, leaving the global scheduler secret separate',async()=>{
+  for(const [secret,expected] of [['cron-private',401],['wrong',401],['calendar-private',200]]) {
+    const s=setup(),request=req('cron',{method:'GET'});request.headers.set('authorization','Bearer '+secret);
+    const response=await s.exports.GET(request,ctx('cron'));assert.equal(response.status,expected);
+    if(expected===200)assert.deepEqual(await response.json(),{processed:0,failed:0});
+    else assert.equal(s.calls.length,0);
+  }
+});
+test('missing dedicated secret fails closed even when global secret is present',async()=>{
+  const s=setup({calendarSecret:''}),request=req('cron',{method:'POST'});request.headers.set('authorization','Bearer cron-private');
+  const response=await s.exports.POST(request,ctx('cron'));assert.equal(response.status,401);assert.equal(s.calls.length,0);
 });

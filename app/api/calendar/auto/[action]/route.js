@@ -40,7 +40,7 @@ export async function GET(request,{params}) {
   }catch(error){return errorResponse(error);}
 }
 async function cron(request) {
-  if(!process.env.CRON_SECRET||!equalSecret(request.headers.get('authorization')||'','Bearer '+process.env.CRON_SECRET))return privateJson({error:'Unauthorized'},401);
+  if(!process.env.CALENDAR_CRON_SECRET||!equalSecret(request.headers.get('authorization')||'','Bearer '+process.env.CALENDAR_CRON_SECRET))return privateJson({error:'Unauthorized'},401);
   try {
     const db=serverDb(),deadline=Date.now()+220000;let processed=0,failed=0;
     await checked(db.from('calendar_auto_pending').delete().lt('expires_at',new Date().toISOString()));
