@@ -19,6 +19,24 @@ end $$;
 revoke all on function public.normalize_saved_film_brand() from public,anon;
 grant execute on function public.normalize_saved_film_brand() to authenticated,service_role;
 
+-- Treat spelling aliases as the same brand while preserving every existing issued-material guard.
+create or replace function app_private.guard_issued_material()
+returns trigger language plpgsql security definer set search_path='' as $function$
+begin
+ if old.material_type='planned' and exists(select 1 from public.site_material_issues where material_id=old.id) then
+  if tg_op='DELETE' then raise exception '반출 이력이 있는 자재는 삭제할 수 없습니다.'; end if;
+  if (public.canonical_film_brand(new.brand),new.product_code,new.product_name,new.unit,new.film_product_id) is distinct from
+     (public.canonical_film_brand(old.brand),old.product_code,old.product_name,old.unit,old.film_product_id) then
+   raise exception '반출 이력이 있는 제품은 바꿀 수 없습니다. 새 자재를 추가해주세요.';
+  end if;
+  if new.unit_price is distinct from old.unit_price and exists(select 1 from public.work_reports where site_id=old.site_id and review_status in ('pending','approved')) then
+   raise exception '제출된 보고서의 자재 단가는 변경할 수 없습니다. 보고서를 반려한 뒤 수정해주세요.';
+  end if;
+ end if;
+ if tg_op='DELETE' then return old; end if;
+ return new;
+end $function$;
+
 -- Apply to all write paths, including existing RPCs and direct, authorized catalog entry.
 drop trigger if exists normalize_saved_film_brand on public.film_products;
 create trigger normalize_saved_film_brand before insert or update of brand on public.film_products for each row execute function public.normalize_saved_film_brand();
