@@ -632,11 +632,11 @@ function SiteCalendar({
                   aria-pressed={selected}
                   aria-label={`${day}${
                     day === today ? " 오늘" : ""
-                  }, 현장 ${entries.length}개`}
+                  }, 현장 ${entries.length}개${entries.length ? ": " + entries.map(site => site.site_name || site.customer_name || "이름 없는 현장").join(", ") : ""}`}
                   onClick={() => { setSelectedDay(day); setMonth(day.slice(0, 7)); }}
                   style={{
                     minWidth: 0,
-                    minHeight: 54,
+                    minHeight: 84,
                     padding: "5px 2px",
                     border: selected
                       ? "2px solid #285340"
@@ -670,7 +670,17 @@ function SiteCalendar({
                     {Number(day.slice(8))}
                   </span>
 
-                  {entries.length > 0 && <span style={{ display: "block", textAlign: "center", marginTop: 5, fontSize: 11, color: "#446b55" }}>● {entries.length}</span>}
+                  {entries.slice(0, 2).map(site => (
+                    <span key={site.id} title={site.site_name || site.customer_name || "이름 없는 현장"}
+                      style={{display:"block",marginTop:3,padding:"2px 3px",fontSize:10,lineHeight:1.4,
+                        color:"#285340",background:"#eef4ee",borderRadius:4,whiteSpace:"nowrap",
+                        overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {site.site_name || site.customer_name || "이름 없는 현장"}
+                    </span>
+                  ))}
+                  {entries.length > 2 && <span style={{display:"block",fontSize:10,color:"#647168",marginTop:2}}>
+                    +{entries.length - 2}건
+                  </span>}
                 </button>
               );
             })}
