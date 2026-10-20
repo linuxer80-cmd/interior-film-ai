@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
 const ManualCalendar = dynamic(()=>import('./CalendarConnection'),{ssr:false});
@@ -14,8 +15,10 @@ async function request(action,method='GET') {
   if(current.error||current.data?.session?.user?.id!==data.session.user?.id)throw Error('앱 계정이 변경됐습니다. 새로고침 후 다시 확인해주세요.');
   if(!response.ok)throw Error(result.error||'캘린더 연결을 확인하지 못했습니다.');return result;
 }
-export default function AutoCalendarConnection({embedded=false,compact=false}) {
+export default function AutoCalendarConnection({embedded=false,compact=false,connectedTargetId=null}) {
   const [state,setState]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[manual,setManual]=useState(false);
+  const [connectedTarget,setConnectedTarget]=useState(null);
+  useEffect(()=>{setConnectedTarget(connectedTargetId?document.getElementById(connectedTargetId):null);},[connectedTargetId]);
   const operation=useRef(false),finish=useRef(null),version=useRef(0);
   useEffect(()=>{
     let alive=true;
@@ -46,7 +49,7 @@ export default function AutoCalendarConnection({embedded=false,compact=false}) {
     }catch(e){setError(e.message);}finally{operation.current=false;setBusy(false);}
   }
   const c=state?.connection,enabled=c?.enabled&&!c.needs_reconnect;
-  return <section style={{padding:embedded?18:24,margin:'16px auto',maxWidth:760,border:'1px solid #dedfd5',borderRadius:22,background:'#fff'}}>
+  const panel = <section style={{padding:embedded?18:24,margin:'16px auto',maxWidth:760,border:'1px solid #dedfd5',borderRadius:22,background:'#fff'}}>
     {embedded&&(enabled||compact)&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><strong style={{color:'#355d47'}}>구글 캘린더{enabled?' · 자동 연결됨':''}</strong></div>}
     <details open={embedded&&(enabled||compact)?undefined:true}>
     <summary style={{display:embedded&&(enabled||compact)?'list-item':'none',cursor:'pointer',color:'#355d47',fontWeight:700,marginTop:embedded&&(enabled||compact)?8:0}}>{enabled?'더보기 · 캘린더 관리':'구글 캘린더 연결하기'}</summary>
@@ -72,4 +75,6 @@ export default function AutoCalendarConnection({embedded=false,compact=false}) {
     {message&&<p role="status">{message}</p>}
     {!embedded&&<p><Link href="/worker/menu/sites">내 현장으로</Link></p>}
   </section>;
+  if(connectedTargetId && !state && !error)return null;
+  return enabled && !error && !c?.last_error && connectedTarget ? createPortal(panel,connectedTarget) : panel;
 }

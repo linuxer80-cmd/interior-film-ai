@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 const CalendarConnection = dynamic(()=>import("../account/calendar/AutoCalendarConnection"),{ssr:false});
 
@@ -146,6 +146,7 @@ export default function WorkerSiteCalendar({
   onRefresh,
   onOpen,
 }) {
+  const calendarConnectionId = useId();
   const [today, setToday] =
     useState(() => koreanDay());
 
@@ -269,7 +270,7 @@ export default function WorkerSiteCalendar({
         </button>
       </div>
 
-      <CalendarConnection embedded />
+      <CalendarConnection embedded connectedTargetId={calendarConnectionId} />
 
       {error && (
         <div className={styles.error} role="alert">
@@ -569,6 +570,7 @@ export default function WorkerSiteCalendar({
       <p className={styles.privacyNote}>
         본인에게 배정된 날짜만 표시됩니다.
       </p>
+      <div id={calendarConnectionId} />
     </section>
   );
           }
