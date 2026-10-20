@@ -1,5 +1,6 @@
 "use client";
 
+import { groupCostRows as group } from "../../lib/costBrandGroups.mjs";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
 
 import useProfitExclusions from "./useProfitExclusions";
@@ -42,21 +43,6 @@ const MENUS = [
   { id: "sites", label: "현장별 수익", kind: "home" },
   { id: "payments", label: "인건비 지급", kind: "money" },
 ];
-
-const group = (rows, key) =>
-  Object.entries(
-    (rows || []).reduce((map, row) => {
-      const label = row[key] || "미분류";
-      if (!map[label]) {
-        map[label] = { amount: 0, rows: [] };
-      }
-      map[label].amount += Number(row.amount || 0);
-      map[label].rows.push(row);
-      return map;
-    }, {})
-  )
-    .map(([label, value]) => ({ label, ...value }))
-    .sort((a, b) => b.amount - a.amount);
 
 function Breakdown({ data, type, title, itemKey }) {
   const [open, setOpen] = useState("");
