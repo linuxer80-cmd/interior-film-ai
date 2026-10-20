@@ -53,7 +53,7 @@ export default function AutoCalendarConnection({embedded=false}) {
     {enabled?<>
       <strong style={{color:'#355d47'}}>자동 연결됨</strong>
       <p>{c.last_sync_at?'최근 반영: '+new Date(c.last_sync_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'첫 자동 반영 대기 중'}</p>
-      <p>선택한 구글 계정의 기본 캘린더로 보냅니다. 예약 작업이 설정되어 있으면 약 5분 간격으로 확인하며, 이용량이나 재시도에 따라 늦어질 수 있습니다.</p>
+      <p>선택한 구글 계정의 기본 캘린더로 보냅니다. 예약 작업이 설정되어 있으면 약 5분 간격으로 변경된 사용자만 처리하고 하루 한 번 누락을 점검합니다. 이용량이나 재시도에 따라 늦어질 수 있습니다.</p>
       <button style={button} disabled={busy} onClick={()=>run('sync')}>{busy?'처리 중…':'지금 반영 확인'}</button>
       <button style={{...button,background:'#fff',color:'#355d47'}} disabled={busy} onClick={()=>run('disconnect')}>자동 연결 해제</button>
     </>:<>

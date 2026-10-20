@@ -5,7 +5,7 @@
 ## 결과
 
 - 서울 날짜 기준 오늘부터 90일의 내 배정 현장을 선택한 Google 계정의 기본 캘린더에 종일 일정으로 반영합니다. 현장명·전체 주소/동호수·시공 내용·사용 필름/방염 구분·현장/자재 메모·날짜별 배정 역할·현장 링크를 보냅니다. 금액/고객 전화 필드는 자동으로 넣지 않습니다. 공유 캘린더의 공유 대상에게도 요약이 보일 수 있음을 연결 전에 안내합니다.
-- 약 5분마다 서버 예약 작업이 배정·내용 변경을 확인합니다. 앱을 열어 둘 필요가 없습니다. 사용자 수/외부 API 지연에 따라 다음 실행으로 넘어갈 수 있습니다. 즉시성이 보장되는 푸시나 Google → 앱 양방향 배정 변경은 아닙니다.
+- 배정·내용 변경 시 DB 트리거가 해당 사용자만 대기열에 넣습니다. 약 5분마다 서버 예약 작업이 대기 중인 사용자만 처리합니다. 변경이 없으면 하루 한 번 90일 범위를 재점검합니다. 앱을 열어 둘 필요가 없습니다. 사용자 수/외부 API 지연에 따라 다음 실행으로 넘어갈 수 있습니다. 즉시성이 보장되는 푸시나 Google → 앱 양방향 배정 변경은 아닙니다.
 - 현장/사용자/배정 날짜의 기존 안정적인 event ID를 그대로 사용해 기존 수동 전송과도 중복을 피합니다. 동일 내용은 건너뛰고 변경은 ETag 조건부 PATCH합니다. 취소·배정 제외·날짜 변경은 향후 앱 일정만 삭제합니다. 이미 지난 일정은 보존합니다. 취소된 날짜의 재배정은 앱 표식/서버 기록을 확인하여 복원합니다.
 - 자동 작업은 앱/사용자 private 표식으로 필터링한 Google 일정만 조회하고 수정합니다. 개인 일정과 다른 앱 사용자의 일정을 수정하거나 DB에 저장하지 않습니다. 수동 조회 기능은 필요할 때 별도로 열어 사용합니다.
 - 활성 시공자 멤버십·업체·현장·날짜 배정을 매번 서버에서 재조회합니다. 관리자도 본인 시공자 배정만 보냅니다. DB 조회/Google 목록 중 일부라도 실패하면 부분 목록을 근거로 일괄 삭제하지 않습니다.
@@ -13,7 +13,7 @@
 
 ## 운영 설정 — 이 설정 전에는 자동 실행되지 않음
 
-1. **실제 앱 Supabase 프로젝트** `gxtvvzysuhexhpljpswj` SQL editor에서 `database/google_calendar_auto.sql`을 실행합니다. 마지막 확인 쿼리가 3개 테이블 모두 `rls=true`, `anon_select=false`, `authenticated_select=false`여야 합니다. 이 코드 작업에서는 운영 DB에 SQL을 대신 실행하지 않았습니다.
+1. **실제 앱 Supabase 프로젝트** `gxtvvzysuhexhpljpswj` SQL editor에서 `database/google_calendar_auto.sql`을 실행합니다. `database/google_calendar_queue.sql`도 이어서 실행하여 변경 대기열 트리거와 버전별 완료 함수를 설치합니다. 마지막 확인 쿼리가 3개 테이블 모두 `rls=true`, `anon_select=false`, `authenticated_select=false`여야 합니다. 이 코드 작업에서는 운영 DB에 SQL을 대신 실행하지 않았습니다.
 2. 기존 Google Cloud **Web application** OAuth 클라이언트의 승인된 리디렉션 URI에 다음 URI를 **추가**합니다. Supabase 로그인용 callback은 유지합니다.
    ```text
    https://interior-film-ai.vercel.app/api/calendar/auto/callback
@@ -39,6 +39,7 @@ Google OAuth 앱이 **Testing** 상태에서 캘린더 권한을 요청하면 re
 
 - 앱 bearer 인증 후 연결 시작, HTTPOnly/Secure/SameSite 쿠키와 해시 state, 10분 만료, PKCE, 원래 앱 사용자+동일 브라우저로만 일회용 인증 코드 교환. callback은 고정된 운영 URI이며 사용자 입력 redirect/Host를 사용하지 않습니다.
 - refresh token과 임시 인증 코드는 AES-256-GCM 및 사용자/용도 AAD로 암호화합니다. access token은 서버 실행 메모리에만 보관합니다. DB 3개 테이블/claim RPC는 service_role만 접근합니다. public schema RLS 활성화, anon/authenticated 테이블·함수 권한 철회, SECURITY INVOKER 사용.
+- 트리거는 private schema의 호출 불가능한 SECURITY DEFINER 함수로 기존 RLS/RPC에서 허가된 쓰기 후 해당 사용자 큐만 갱신합니다. 토큰을 읽거나 응답하지 않습니다. 처리 중 새 변경은 dirty_version으로 남기고 완료 RPC가 처리한 버전만 기록합니다. 완료 후 변경이 남아 있으면 즉시 대기, 없으면 다음 날 재점검합니다.
 - 원자적인 SKIP LOCKED claim과 사용자별 lease로 중복 실행을 방지합니다. 각 쓰기 전에 연결 generation/lease/해제를 확인합니다. 만료·철회는 재연결 필요로 전환하고, 일시 실패는 다음 실행에서 같은 event ID로 재시도합니다. 일부 Google 쓰기 후 실패해도 다음 실행이 이어서 수렴합니다.
 - 일정 소유권 private 표식 + ETag로 변경/삭제를 제한합니다. 서버 기록은 앱이 만든 이벤트 식별자와 날짜만 보관하며 개인정보 본문은 보관하지 않습니다.
 
@@ -57,3 +58,10 @@ npm run build
 - https://developers.google.com/workspace/calendar/api/v3/reference/events
 - https://supabase.com/docs/guides/functions/schedule-functions
 - https://vercel.com/docs/cron-jobs/usage-and-pricing
+
+변경 대기열 SQL 통합 테스트는 별도의 실제 PostgreSQL 엔진(PGlite)으로 실행할 수 있습니다. 운영 DB를 대신하지 않는 격리 테스트입니다.
+
+```sh
+npm install --prefix /tmp/calendar-queue-db --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+CALENDAR_TEST_PGLITE=file:///tmp/calendar-queue-db/node_modules/@electric-sql/pglite/dist/index.js node --test test/calendar-queue-sql.mjs
+```
