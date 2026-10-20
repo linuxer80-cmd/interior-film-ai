@@ -47,6 +47,9 @@ export default function AutoCalendarConnection({embedded=false}) {
   }
   const c=state?.connection,enabled=c?.enabled&&!c.needs_reconnect;
   return <section style={{padding:embedded?18:24,margin:'16px auto',maxWidth:760,border:'1px solid #dedfd5',borderRadius:22,background:'#fff'}}>
+    {embedded&&enabled&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><strong style={{color:'#355d47'}}>구글 캘린더 · 자동 연결됨</strong></div>}
+    <details open={embedded&&enabled?undefined:true}>
+    <summary style={{display:embedded&&enabled?'list-item':'none',cursor:'pointer',color:'#355d47',fontWeight:700,marginTop:embedded&&enabled?8:0}}>더보기 · 캘린더 관리</summary>
     <h2 style={{margin:'0 0 10px'}}>구글 캘린더 자동 연결</h2>
     <p>한 번 동의하면 앱을 닫아도 내 현장 일정이 자동으로 반영됩니다.</p>
     <p style={{color:'#647168'}}>오늘부터 90일 · 배정·현장 요약 변경 반영 · 취소·배정 제외된 앱 일정 정리 · 같은 일정 중복 방지</p>
@@ -62,10 +65,11 @@ export default function AutoCalendarConnection({embedded=false}) {
       {state?.configured===false&&<p>자동 연결 서버 설정을 준비 중입니다. 기존 수동 보내기는 계속 사용할 수 있습니다.</p>}
     </>}
     {c?.last_error&&<p role="status" style={{color:'#9d4b20'}}>{c.last_error}</p>}
-    {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
-    {message&&<p role="status">{message}</p>}
     <button type="button" style={{...button,background:'#f1f3ee',color:'#355d47'}} aria-expanded={manual} onClick={()=>setManual(!manual)}>{manual?'수동 보내기·일정 조회 접기':'수동 보내기·구글 일정 조회'}</button>
     {manual&&<ManualCalendar/>}
+    </details>
+    {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
+    {message&&<p role="status">{message}</p>}
     {!embedded&&<p><Link href="/worker/menu/sites">내 현장으로</Link></p>}
   </section>;
 }
