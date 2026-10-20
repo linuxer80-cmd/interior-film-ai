@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+const CalendarConnection = dynamic(()=>import("../account/calendar/CalendarConnection"),{ssr:false});
 
 import {
   isUndated,
@@ -266,6 +268,8 @@ export default function WorkerSiteCalendar({
           {" "}{loading ? "확인 중" : "새로고침"}
         </button>
       </div>
+
+      <CalendarConnection embedded />
 
       {error && (
         <div className={styles.error} role="alert">

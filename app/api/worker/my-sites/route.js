@@ -571,7 +571,7 @@ export async function GET(request) {
           db
             .from("site_materials")
             .select(
-              "id,film_product_id,brand,product_code,product_name,quantity,unit,memo"
+              "id,film_product_id,brand,product_code,product_name,quantity,unit,memo,price_type"
             )
             .eq("company_id", site.company_id)
             .eq("site_id", siteId)

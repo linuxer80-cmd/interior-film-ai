@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),swc=require('next/dist/build/swc');await swc.loadBindings();
+const {code}=await swc.transform(fs.readFileSync(new URL('../app/account/calendar/CalendarConnection.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
+const nodes=n=>Array.isArray(n)?n.flatMap(nodes):!n||typeof n!=='object'?[]:[n,...nodes(n.props?.children)];
+test('my-sites entry requests consent on first use and keeps period controls without a second request while connected',async()=>{
+ let cursor=0,config;const slots=[],effects=[],requests=[];
+ const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(v){const i=cursor++;if(!(i in slots))slots[i]=typeof v==='function'?v():v;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v]},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v})},useEffect:f=>effects.push(f)};
+ const Script=()=>{},user={id:'user',email:'user@example.test'};
+ const supabase={auth:{getUser:async()=>({data:{user}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})}};
+ const helpers={CALENDAR_SCOPE:'calendar',calendarWindow(){},siteCalendarEvents:async()=>[],enrichCalendarSites:async()=>[],readCalendarEvents:async()=>({items:[],summary:'my calendar'}),obsoleteCalendarEvents:()=>[]};
+ const exports={};vm.runInNewContext(code,{exports,React,Date,Intl,process:{env:{NEXT_PUBLIC_GOOGLE_CLIENT_ID:'public.apps.googleusercontent.com'}},window:{location:{origin:'https://app.test'},google:{accounts:{oauth2:{initTokenClient(c){config=c;return {requestAccessToken:o=>requests.push(o)}},hasGrantedAllScopes:()=>true}}}},require:p=>p==='react'?React:p==='next/script'?{__esModule:true,default:Script}:p.includes('googleCalendar')?helpers:p.includes('workerSites')?{loadMyWorkerSites:async()=>({sites:[]})}:p.includes('supabase')?{supabase}:{__esModule:true,default:()=>{}}});
+ const render=()=>{cursor=0;return exports.default({embedded:true})};
+ let tree=render();effects[0]();await new Promise(r=>setTimeout(r,0));nodes(tree).find(n=>n.type===Script).props.onReady();
+ tree=render();assert.equal(requests.length,0);nodes(tree).find(n=>n.type==='button'&&n.props['aria-expanded']!==undefined).props.onClick();assert.equal(requests.length,1);assert.equal(requests[0].prompt,'');
+ await config.callback({access_token:'temporary',expires_in:3600});tree=render();assert.equal(nodes(tree).filter(n=>n.type==='input'&&n.props.type==='date').length,2);
+ nodes(tree).find(n=>n.type==='button'&&n.props.children.includes('접기')).props.onClick();tree=render();nodes(tree).find(n=>n.type==='button'&&n.props['aria-expanded']!==undefined).props.onClick();assert.equal(requests.length,1);
+});
