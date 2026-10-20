@@ -6,7 +6,7 @@ import PlanUsageButton from "./PlanUsageButton";
 import moreStyles from "./AdminMore.module.css";
 import useAdminOverlayBack from "../../lib/useAdminOverlayBack";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
@@ -98,6 +98,7 @@ export default function AdminTabs({
   secondaryOnly = false,
 }) {
   const { orderedMenus, record } = usePersonalMenus(menus, `admin:${companyId || "none"}`, activeTab === "today" && !secondaryOnly);
+  const calendarConnectionId = useId();
   const [moreOpen, setMoreOpen] = useState(false);
   const [orderPreview, setOrderPreview] = useState(false);
   const closeMore = useAdminOverlayBack(moreOpen, () => setMoreOpen(false), () => true, 900);
@@ -130,7 +131,7 @@ export default function AdminTabs({
       {isHome ? (
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
-          <AutoCalendarConnection embedded compact />
+          <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
           <LaborNotifications />
           <AchievementBadges key={companyId} scope="owner" compact />
 
@@ -179,6 +180,7 @@ export default function AdminTabs({
               );
             })}
           </nav>
+          <div id={calendarConnectionId} />
         </>
       ) : (
         <div className="film-admin-section-bar">
