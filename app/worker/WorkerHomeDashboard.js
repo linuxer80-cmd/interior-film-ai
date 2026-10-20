@@ -54,9 +54,9 @@ const menus = [
     id: "inventory",
     href: "/worker/inventory",
     icon: "stock",
-    title: "현장 자재 재고",
+    title: "업체 창고 재고",
     subtitle:
-      "팀장으로 맡은 현장의 사용 필름 재고 확인",
+      "연결된 업체의 전체 창고 필름 검색",
   },
   {
     id: "report",
