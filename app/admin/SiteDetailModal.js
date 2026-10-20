@@ -91,6 +91,7 @@ const actionStyle = {
 
 export default function SiteDetailModal({
   companyId,
+  initialTeamDate = null,
   site,
   onClose,
   updateSiteBasicInfo,
@@ -447,7 +448,7 @@ export default function SiteDetailModal({
               "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
-          <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} active={menu === "chat"} /></section>
+          <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
           <AdminAssignedWork key={site.id} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
           <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
@@ -482,6 +483,8 @@ export default function SiteDetailModal({
             hidden={menu !== "info"}
           >
             <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
+            <button type="button" style={{...actionStyle,width:"100%",marginBottom:12}} onClick={() => chooseMenu("chat")}>현장 팀 채팅 참여{initialTeamDate ? ` · ${initialTeamDate}` : ""} →</button>
+            <p style={{fontSize:13,color:"#64748b"}}>시공 배정이 없어도 본인 업체의 날짜별 현장 채팅에 참여할 수 있습니다.</p>
             <SiteScheduleEditor
               key={'info-schedule-'+site.id}
               site={site}

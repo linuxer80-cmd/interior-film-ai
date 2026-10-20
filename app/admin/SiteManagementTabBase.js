@@ -56,6 +56,7 @@ export default function SiteManagementTab(props) {
     ...detailProps
   } = props;
 
+  const [chatDay, setChatDay] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -202,7 +203,7 @@ export default function SiteManagementTab(props) {
 
         <SiteCalendar
           sites={filteredSites}
-          openSite={openSite}
+          openSite={(site, day) => { setChatDay(day || null); openSite(site); }}
           loading={sitesLoading}
           searching={Boolean(search.trim())}
           workers={detailProps.workers || []}
@@ -221,6 +222,7 @@ export default function SiteManagementTab(props) {
         <SiteDetailModal
           {...detailProps}
           site={selectedSite}
+          initialTeamDate={chatDay?.siteId === selectedSite.id ? chatDay.date : null}
           onClose={closeSite}
         />
       )}
@@ -739,7 +741,7 @@ function SiteCalendar({
                 : "all"
             }-${refreshKey}`}
             site={site}
-            onOpen={() => openSite(site)}
+            onOpen={() => openSite(site, !searching && view === "calendar" ? {siteId:site.id,date:selectedDay} : null)}
             workers={workers}
             refreshKey={refreshKey}
             day={

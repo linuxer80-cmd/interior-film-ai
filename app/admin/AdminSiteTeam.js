@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import WorkerTeam from '../worker/site/[siteId]/WorkerTeam';
-export default function AdminSiteTeam({siteId,active}){
+export default function AdminSiteTeam({siteId,active,initialDate=null}){
  const [dates,setDates]=useState(null),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);
  useEffect(()=>{
   if(!active)return;
@@ -18,6 +18,6 @@ export default function AdminSiteTeam({siteId,active}){
  if(!active)return null;
  if(error)return <div role="alert"><p>{error}</p><button onClick={()=>setAttempt(v=>v+1)}>다시 확인</button></div>;
  if(!dates)return <p role="status">현장 채팅을 불러오는 중입니다…</p>;
- return <><p>업체 관리자로 현장 팀 채팅에 참여합니다. 날짜를 선택하면 해당 날짜의 팀원과 대화할 수 있습니다.</p><WorkerTeam key={siteId} siteId={siteId} dates={dates} active={active} initialChat /></>;
+ return <><p>업체 관리자로 현장 팀 채팅에 참여합니다. 날짜를 선택하면 해당 날짜의 팀원과 대화할 수 있습니다.</p><WorkerTeam key={siteId} siteId={siteId} dates={dates} initialDate={initialDate} active={active} initialChat /></>;
 }
 
