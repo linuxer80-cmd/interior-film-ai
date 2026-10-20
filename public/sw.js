@@ -127,58 +127,27 @@ self.addEventListener(
             includeUncontrolled: true,
           });
 
-        /*
-         * 정확히 같은 페이지가 이미 열려 있으면
-         * 최신 배정을 다시 읽도록 같은 URL도 이동 후 앞으로 가져오기
-         */
-        for (const client of clientsList) {
+        // Bring the app forward while the notification click still carries
+        // user activation. A background navigation must not consume it first.
+        const candidates = clientsList.filter((client) => {
+          try { return new URL(client.url).origin === self.location.origin; }
+          catch { return false; }
+        }).sort((a, b) => Number(b.url === targetUrl) - Number(a.url === targetUrl));
+        for (const client of candidates) {
           try {
-            if (
-              client.url ===
-              targetUrl
-            ) {
-              if ("navigate" in client) {
-                const refreshed = await client.navigate(targetUrl);
-                if (refreshed) {
-                  await refreshed.focus();
-                  return;
-                }
-              }
-              // If navigation fails, try another client or a new window.
-              continue;
+            if ("focus" in client) {
+              try { await client.focus(); } catch { /* Still try navigation. */ }
             }
-          } catch {
-            // 다음 창 확인
-          }
-        }
-
-        /*
-         * 같은 사이트 창이 열려 있으면
-         * 기존 창을 목적지로 이동
-         */
-        for (const client of clientsList) {
-          try {
-            const clientUrl =
-              new URL(
-                client.url
-              );
-
-            if (
-              clientUrl.origin ===
-              self.location.origin
-            ) {
-              if (
-                "navigate" in client
-              ) {
-                const navigated = await client.navigate(targetUrl);
-                if (navigated) {
-                  await navigated.focus();
-                  return;
-                }
+            if ("navigate" in client) {
+              const navigated = await client.navigate(targetUrl);
+              if (navigated) {
+                // Navigation succeeded even if a second focus is rejected.
+                try { await navigated.focus(); } catch { /* Already foregrounded. */ }
+                return;
               }
             }
           } catch {
-            // 새 창 열기로 진행
+            // A closed or detached window must not prevent opening the target.
           }
         }
 

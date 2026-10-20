@@ -187,7 +187,7 @@ test('login return paths preserve a site link and reject external or unrelated d
   for (const input of ['//attacker.example', 'https://attacker.example', '/admin', '/worker/../../admin', '/worker/site/bad', null]) assert.equal(context.dest(input), '/worker');
 });
 
-test('clicking an existing notification window navigates to refresh assignments before focus', async () => {
+test('clicking an existing notification window focuses before navigating to refresh assignments', async () => {
   const handlers = {}, actions = [];
   const target = `https://app.example/worker/site/${S}`;
   const client = { url: target, navigate: async (url) => { actions.push(['navigate', url]); return client; }, focus: async () => { actions.push(['focus']); } };
@@ -197,7 +197,7 @@ test('clicking an existing notification window navigates to refresh assignments 
   let pending;
   handlers.notificationclick({ notification: { close() {}, data: { url: target } }, waitUntil(promise) { pending = promise; } });
   await pending;
-  assert.deepEqual(actions, [['navigate', target], ['focus']]);
+  assert.deepEqual(actions, [['focus'], ['navigate', target], ['focus']]);
 });
 
 test('site detail returns the matching company worker while keeping a stable personal identity', async () => {
