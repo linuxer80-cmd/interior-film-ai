@@ -57,7 +57,7 @@ const MENU_GROUPS = [
   { id: "quote", label: "견적서", items: [{id:"quote",label:"견적서 작성"},{id:"extra",label:"추가작업"}] },
   { id: "schedule", label: "일정·자재", items: [{id:"schedule",label:"일정·시공자 배정"},{id:"materials",label:"자재·반출·반납·재단"}] },
   { id: "report", label: "사진·완료보고", items: [{id:"report",label:"사진·보고서·검수"},{id:"expenses",label:"경비"}] },
-  { id: "settlement", label: "정산", items: [{id:"settlement",label:"상태·수금"}] },
+  { id: "settlement", label: "정산", items: [{id:"settlement",label:"입금·미수금"}] },
 ];
 
 const SECTION_MENU = {
@@ -540,11 +540,11 @@ export default function SiteDetailModal({
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
-            <p style={{fontSize:14,lineHeight:1.6}}>고객 입금·미수금은 아래에서 관리하고, 실제 비용과 수익은 매출·수익에서 확인합니다.</p>
+            <p style={{fontSize:14,lineHeight:1.6}}>고객 입금·미수금과 이 현장의 실제 비용·수익을 확인하세요.</p>
             <a href="/admin?tab=profit" data-ui-link="action" style={{...actionStyle,display:"inline-flex",alignItems:"center",textDecoration:"none"}} onClick={event => {
               event.preventDefault();
               requestLeave(() => { window.location.href = "/admin?tab=profit"; }, undefined, true);
-            }}>실제 비용·수익 확인 →</a>
+            }}>업체 전체 매출·수익 →</a>
             <SiteStatusControl
               key={site.id}
               site={site}
@@ -552,6 +552,7 @@ export default function SiteDetailModal({
               reviewStatus={reviewStatus}
               reportOpen={reportOpen}
               onDraftState={registerDraft}
+              onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))}
               updateSiteStatus={updateSiteStatus}
             />
           </section>

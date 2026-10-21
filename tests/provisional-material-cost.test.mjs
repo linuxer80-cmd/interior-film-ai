@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {provisionalMaterialCosts as costs} from '../lib/provisionalMaterialCost.mjs';
+import {actualMaterialUnpriced} from '../lib/settlementFlow.mjs';
+import {dealerMaterialCosts} from '../lib/dealerMaterialCosts.mjs';
 const material=(id,code,price,extra={})=>({id,company_id:'co',site_id:'site',material_type:'planned',brand:'영림',product_code:code,unit:'m',unit_price:price,...extra});
 const trip=(id,issued,returned,extra={})=>({material_id:id,issued,returned,company_id:'co',site_id:'site',...extra});
 test('Cheolsan usage yields 656000 without creating accounting records',()=>{
@@ -38,12 +40,14 @@ test('profit API sums actual plus provisional once and retains company-scoped re
  const tables={profiles:[{id:'user',company_id:'co',role:'owner',is_active:true}],companies:[{id:'co',is_active:true}],sites:[{id:'site',company_id:'co',site_name:'철산대림',status:'in_progress',contract_amount:3540000,site_workers:[],work_dates:[]}],site_materials:[material('a','PS160',6500)],film_stock_trips:[trip('a',108.2,25)],site_expenses:[],site_daily_assignments:[],work_reports:[],company_leader_allowance_rates:[],company_leader_allowances:[]};
  const reads=[];
  const db={auth:{getUser:async()=>({data:{user:{id:'user'}}})},from(name){const filters=[];const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},neq(k,v){filters.push(r=>r[k]!==v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},range(){return q},maybeSingle(){q.single=true;return q},then(resolve){reads.push({name,count:filters.length});const rows=(tables[name]||[]).filter(r=>filters.every(f=>f(r)));return Promise.resolve({data:q.single?rows[0]||null:rows,error:null}).then(resolve)}};return q}};
- const GET=new Function('createClient','process','Response','provisionalMaterialCosts','resolveRevenue','loadLaborContracts','contractWage',source+';return GET;')(()=>db,{env:{NEXT_PUBLIC_SUPABASE_URL:'x',SUPABASE_SERVICE_ROLE_KEY:'x'}},Response,costs,s=>({revenue:s.contract_amount}),async()=>[],()=>0);
+ const GET=new Function('createClient','process','Response','provisionalMaterialCosts','resolveRevenue','loadLaborContracts','contractWage','actualMaterialUnpriced','dealerMaterialCosts',source+';return GET;')(()=>db,{env:{NEXT_PUBLIC_SUPABASE_URL:'x',SUPABASE_SERVICE_ROLE_KEY:'x'}},Response,costs,s=>({revenue:s.contract_amount}),async()=>[],()=>0,actualMaterialUnpriced,dealerMaterialCosts);
  async function get(){const response=await GET(new Request('https://app.example/api/admin/profit?siteId=11111111-1111-1111-1111-111111111111',{headers:{authorization:'Bearer test'}}));return response.json()}
  // Site ID must match the requested UUID for the real scoped query.
  const id='11111111-1111-1111-1111-111111111111';for(const rows of Object.values(tables))for(const r of rows){if(r.site_id==='site')r.site_id=id;if(r.id==='site')r.id=id;}
  let result=await get();assert.equal(result.sites[0].material,540800);assert.equal(result.sites[0].materialProvisional,true);
  tables.site_materials.push({...tables.site_materials[0],id:'actual',material_type:'actual',quantity:83.2,total_price:499200});
  result=await get();assert.equal(result.sites[0].material,499200);assert.equal(result.sites[0].materialProvisional,false);assert.equal(result.breakdown.material.length,1);
+ tables.site_materials[1].unit_price=null;tables.site_materials[1].total_price=null;
+ result=await get();assert.equal(result.sites[0].materialPending,true);assert.equal(result.sites[0].profitIsEstimated,true);assert.equal(result.breakdown.material[0].pricePending,true);
  assert.ok(reads.filter(r=>r.name==='film_stock_trips').every(r=>r.count>=2));
 });

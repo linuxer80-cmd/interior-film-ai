@@ -2,6 +2,7 @@
 
 import { groupCostRows as group } from "../../lib/costBrandGroups.mjs";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
+import { profitState } from "../../lib/settlementFlow.mjs";
 
 import useProfitExclusions from "./useProfitExclusions";
 import LaborPayments from "./LaborPayments";
@@ -740,7 +741,7 @@ export default function ProfitTab() {
                           : "#182c47",
                     }}
                   >
-                    {won(value)}
+                    {label === "예상 수익" && profitSites.some(site=>profitState(site).pending) ? "확인 필요 · 미확정 포함" : won(value)}
                   </strong>
                 </div>
               ))}
@@ -945,7 +946,7 @@ export default function ProfitTab() {
                 선택 결과 {filteredSites.length}현장 · 계약{" "}
                 {won(scopedTotals.revenue)}
                 <br />
-                예상 수익 <strong>{won(scopedTotals.profit)}</strong>
+                수익 <strong>{filteredSites.some(site=>profitState(site).pending) ? "확인 필요 · 미확정 포함" : won(scopedTotals.profit)}</strong>
               </p>
 
               {tradeData &&
@@ -1025,7 +1026,7 @@ export default function ProfitTab() {
                       color: site.profit < 0 ? "#b91c1c" : "#166534",
                     }}
                   >
-                    예상 수익 {won(site.profit)}
+                    {profitState(site).pending ? "수익 확인 필요 · 미확정 금액·비용 있음" : `현재 등록 비용 기준 수익 ${won(site.profit)}`}
                   </strong>
 
                   {site.materialProvisional && <p style={{fontSize:12,color:'#b45309'}}>

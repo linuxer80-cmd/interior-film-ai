@@ -25,6 +25,7 @@ export default function SiteStatusControl({
   hasReport = null,
   reviewStatus = null,
   onDraftState,
+  onNavigate,
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -77,7 +78,7 @@ export default function SiteStatusControl({
         borderTop: "1px solid #e5e7eb",
       }}
     >
-      <SitePaymentQuick key={site.id} siteId={site.id} onDraftState={onDraftState} />
+      <SitePaymentQuick key={site.id} siteId={site.id} onDraftState={onDraftState} onNavigate={onNavigate} />
       <details style={{ marginTop: 20 }}><summary style={{ cursor: "pointer", padding: "14px 0", fontWeight: 800 }}>현장 상태 변경</summary>
       <h3
         style={{

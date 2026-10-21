@@ -1,6 +1,7 @@
 import { dealerMaterialCosts } from '../../../../lib/dealerMaterialCosts.mjs';
 import { provisionalMaterialCosts } from '../../../../lib/provisionalMaterialCost.mjs';
 import { resolveRevenue } from "../../../../lib/siteRevenue.mjs";
+import { actualMaterialUnpriced } from "../../../../lib/settlementFlow.mjs";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
 import { createClient } from "@supabase/supabase-js";
 
@@ -695,10 +696,12 @@ export async function GET(request) {
           quantity: money(item.quantity),
           unit: item.unit || "m",
           amount,
+          pricePending: actualMaterialUnpriced(item),
         });
       }
 
       const provisionalRows = provisional.filter(row => row.site_id === site.id);
+      const actualPricePending = materials.some(row => row.site_id === site.id && row.material_type === "actual" && actualMaterialUnpriced(row));
       for (const item of provisionalRows) {
         material += item.amount;
         breakdown.material.push({siteId:site.id,siteName,materialId:item.id,priceType:item.price_type,brand:item.brand || "브랜드 미입력",
@@ -802,13 +805,13 @@ export async function GET(request) {
         expense,
         profit: revenue - labor - material - expense,
         materialProvisional: provisionalRows.length > 0,
-        materialPending: provisionalRows.some(row => row.quantityPending || row.pricePending),
+        materialPending: actualPricePending || provisionalRows.some(row => row.quantityPending || row.pricePending),
         entries,
         laborPending: automated.reduce(
           (sum, row) => sum + row.pending,
           0,
         ),
-        profitIsEstimated: automated.some(row => row.pending > 0) || provisionalRows.length > 0,
+        profitIsEstimated: actualPricePending || automated.some(row => row.pending > 0) || provisionalRows.length > 0,
         profitWarning: automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
         missingContract: revenueInfo.missingContract,
         revenueSource: revenueInfo.revenueSource,
