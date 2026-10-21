@@ -1,3 +1,4 @@
+import { withFilmFireTypes } from "../../../lib/filmFireTypes";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -87,6 +88,8 @@ export async function GET(request) {
     if (!state.data || !Array.isArray(state.data.materials)) {
       throw Error("현장 자재 응답을 확인해주세요.");
     }
+
+    state.data = await withFilmFireTypes(db, siteId, state.data);
 
     const site = await db
       .from("sites")

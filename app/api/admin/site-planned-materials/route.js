@@ -131,7 +131,7 @@ async function handle(request) {
     if (request.method === "GET") {
       const { data, error } = await db
         .from("site_materials")
-        .select(columns)
+        .select("*")
         .eq("company_id", profile.company_id)
         .eq("site_id", site.id)
         .eq("material_type", "planned")
@@ -140,7 +140,7 @@ async function handle(request) {
       if (error) throw error;
 
       return json({
-        materials: data || [],
+        materials: (data || []).filter(row => !row.removed_at).map(row => Object.fromEntries(columns.split(",").map(key => [key,row[key]]))),
         canWrite: site.status !== "cancelled",
       });
     }
@@ -284,6 +284,16 @@ async function handle(request) {
     }
 
     const { data, error } = await query.select("id,unit_price").maybeSingle();
+
+    if (request.method === "DELETE" && error?.code === "P0001" && String(error.message).includes("반출 이력")) {
+      const archived = await db.rpc("remove_returned_site_material", {p_user:user.id,p_site:site.id,p_material:body.id});
+      if (archived.error) {
+        if (["PGRST202","42883"].includes(archived.error.code)) return json({error:"전량 반납 자재 제외 설정 SQL을 먼저 적용해주세요."},503);
+        if (["22023","42501","P0001"].includes(archived.error.code)) return json({error:archived.error.message},409);
+        throw archived.error;
+      }
+      return json(archived.data);
+    }
 
     if (error?.code === "23505") {
       return json(

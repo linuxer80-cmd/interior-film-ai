@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+const sql=fs.readFileSync(new URL('../database/remove_returned_site_material.sql',import.meta.url),'utf8');
+const user='11111111-1111-4111-8111-111111111111',co='22222222-2222-4222-8222-222222222222',site='33333333-3333-4333-8333-333333333333',id='44444444-4444-4444-8444-444444444444';
+test('full return removes only from active list; partial/open returns and foreign users are rejected; history survives',async()=>{
+const db=new PGlite();try{await db.exec(`create role anon;create role authenticated;create role service_role;create schema app_private;
+create table companies(id uuid,is_active boolean);create table profiles(id uuid,company_id uuid,role text,is_active boolean);
+create table sites(id uuid,company_id uuid,status text);create table site_materials(id uuid,site_id uuid,company_id uuid,material_type text,product_code text,product_name text);
+create table film_stock_trips(id serial,material_id uuid,issued numeric,returned numeric,returned_at timestamptz);
+create table site_material_issues(id serial,material_id uuid);
+create table events(message text);create table fixture(issued numeric,returned numeric,used numeric);
+create function app_private.record_site_change(uuid,text) returns void language sql as $$insert into public.events values($2)$$;
+create function public.site_operations(uuid,uuid,text,jsonb) returns jsonb language sql as $$select jsonb_build_object('materials',jsonb_build_array(jsonb_build_object('id','${id}','issued',issued,'returned',returned,'used',used))) from public.fixture$$;
+insert into companies values('${co}',true);insert into profiles values('${user}','${co}','owner',true);insert into sites values('${site}','${co}','in_progress');insert into site_materials values('${id}','${site}','${co}','planned','PSM197','제품');insert into fixture values(9.5,9.5,0);insert into film_stock_trips(material_id,issued,returned,returned_at) values('${id}',9.5,9.5,now());insert into site_material_issues(material_id) values('${id}');`);
+await db.exec(sql);const call=(u=user)=>db.query('select public.remove_returned_site_material($1,$2,$3)',[u,site,id]);
+await assert.rejects(()=>call('55555555-5555-4555-8555-555555555555'),/관리자/);
+await db.exec('update fixture set returned=9,used=.5');await assert.rejects(call,/전량 반납/);
+await db.exec('update fixture set returned=9.5,used=0;update film_stock_trips set returned_at=null');await assert.rejects(call,/전량 반납/);
+await db.exec('update film_stock_trips set returned_at=now()');await call();await call();
+assert.ok((await db.query('select removed_at from site_materials')).rows[0].removed_at);assert.equal((await db.query('select * from film_stock_trips')).rows.length,1);assert.equal((await db.query('select * from site_material_issues')).rows.length,1);assert.equal((await db.query('select * from events')).rows.length,1);
+await assert.rejects(()=>db.exec(`insert into site_material_issues(material_id) values('${id}')`),/제외된 자재/);
+}finally{await db.close();}});

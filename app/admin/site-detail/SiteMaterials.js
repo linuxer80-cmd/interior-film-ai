@@ -407,13 +407,13 @@ function PlannedSiteMaterials({ site }) {
     setMessage("");
 
     try {
-      await api("DELETE", siteId, { id: material.id });
+      const result = await api("DELETE", siteId, { id: material.id });
 
       if (form?.id === material.id) {
         setForm(null);
       }
 
-      setMessage("사용 필름을 삭제했습니다.");
+      setMessage(result.removed ? "전량 반납 자재를 현장 목록에서 제외했습니다. 반출·반납 이력은 보존됩니다." : "사용 필름을 삭제했습니다.");
 
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {
@@ -720,7 +720,7 @@ function PlannedSiteMaterials({ site }) {
                 </div>
               )}
               {deleteTarget === material.id && <div role="group" aria-label="자재 삭제 확인" style={{marginTop:12,padding:12,background:"#fff7ed",borderRadius:12}}>
-                <p>이 자재를 삭제할까요? 반출 이력이 있는 자재는 기록 보존을 위해 삭제할 수 없습니다.</p>
+                <p>이 자재를 삭제할까요? 반출 이력이 있으면 전량 반납·사용량 0을 확인한 뒤 목록에서 제외합니다. 이력은 보존됩니다.</p>
                 <button type="button" style={button} disabled={busy} onClick={()=>remove(material)}>삭제 확인</button>{" "}
                 <button type="button" style={button} onClick={()=>setDeleteTarget(null)}>취소</button>
               </div>}
