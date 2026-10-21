@@ -301,7 +301,7 @@ export async function GET(request) {
     return json({
       site,
       automatic, defaults,
-      saved: savedDocument ? { ...savedDocument, header: savedDocument.header || automatic.header } : null,
+      saved: savedDocument ? { ...savedDocument, header: { ...(savedDocument.header || automatic.header), customer_name: automatic.header.customer_name, site_name: automatic.header.site_name, address: automatic.header.address } } : null,
 
       warning: [
         ...partialWarnings,
