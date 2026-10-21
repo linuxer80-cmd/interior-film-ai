@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import TradeClients from "../../components/TradeClients";
+import SiteTradeSummary from "./SiteTradeSummary";
 import SitePaymentQuick from "../../components/SitePaymentQuick";
 
 const choices = [
@@ -26,6 +26,8 @@ export default function SiteStatusControl({
   reviewStatus = null,
   onDraftState,
   onNavigate,
+  onTradeChange,
+  active = true,
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -193,9 +195,11 @@ export default function SiteStatusControl({
       </div>
 
       </details>
-      <TradeClients
+      <SiteTradeSummary
         key={`trade-${site.id}`}
         siteId={site.id}
+        active={active}
+        onChange={onTradeChange}
       />
 
 

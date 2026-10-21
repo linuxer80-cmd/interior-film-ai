@@ -109,6 +109,7 @@ export default function SiteDetailModal({
 }) {
   const [materialFollowup,setMaterialFollowup]=useState(null);
   const materialPriceDetails=useRef(null);
+  const tradeLinkDetails=useRef(null);
   const [menu, setMenu] = useState("info");
   const [preparationStep, setPreparationStep] = useState("dates");
   useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
@@ -257,6 +258,16 @@ export default function SiteDetailModal({
       setPreparationStep(step);
       if (scrollBody.current) scrollBody.current.scrollTop = 0;
     }, [preparationStep === "dates" ? "schedule" : "assignments"]);
+  }
+
+  function openTradeLink() {
+    chooseMenu("info",()=>{
+      if(tradeLinkDetails.current)tradeLinkDetails.current.open=true;
+      requestAnimationFrame(()=>{
+        tradeLinkDetails.current?.scrollIntoView({block:"start",behavior:"smooth"});
+        tradeLinkDetails.current?.querySelector("summary")?.focus({preventScroll:true});
+      });
+    });
   }
 
   const historyGuard = useRef(null);
@@ -516,8 +527,8 @@ export default function SiteDetailModal({
           </section>
 
           <section hidden={menu !== "info"} aria-label="현장 거래처 연결">
-            <details style={{ margin: "12px 0" }}>
-              <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>거래처 연결</summary>
+            <details key={site.id} ref={tradeLinkDetails} style={{ margin: "12px 0",scrollMarginTop:12 }}>
+              <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분·거래처 연결</summary>
               <p style={{ fontSize: 13, color: "#53665a" }}>거래처 연결은 ‘거래처 연결 저장’으로 별도 저장합니다.</p>
               <TradeClients key={site.id} siteId={site.id} onLinked={reloadSites} onDraftState={registerDraft} />
             </details>
@@ -553,6 +564,8 @@ export default function SiteDetailModal({
               reportOpen={reportOpen}
               onDraftState={registerDraft}
               onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))}
+              onTradeChange={openTradeLink}
+              active={menu === "settlement"}
               updateSiteStatus={updateSiteStatus}
             />
           </section>

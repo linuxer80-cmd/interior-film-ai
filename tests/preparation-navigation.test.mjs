@@ -13,7 +13,7 @@ function fixture(){
   let cursor=0;const slots=[];
   const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(value){const i=cursor++;if(!(i in slots))slots[i]=value;return [slots[i],next=>slots[i]=typeof next==='function'?next(slots[i]):next];},useRef(value){const i=cursor++;return slots[i]??(slots[i]={current:value});},useCallback:fn=>fn,useEffect(){}};
   const exports={};
-  vm.runInNewContext(code,{exports,React,URLSearchParams,require(path){
+  vm.runInNewContext(code,{exports,React,URLSearchParams,requestAnimationFrame:fn=>fn(),require(path){
     if(path==='react')return React;
     if(path.includes('siteDrafts.mjs'))return {createSiteDrafts};
     if(path.includes('useSiteWorkReport'))return {__esModule:true,default:()=>({reportSaving:false})};
@@ -42,4 +42,17 @@ test('preparation navigation separates dates, team and materials and guards unsa
   assert.equal(h.button('3. 자재').props['aria-pressed'],true);
   h.button('← 시공자 배정 확인').props.onClick();
   assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+});
+
+test('trade editing has one input location and settlement change navigation protects payment drafts',()=>{
+ const h=fixture();assert.equal(all(h.render(),n=>n.type==='../components/TradeClients').length,1);
+ h.button('정산').props.onClick();
+ const status=h.component('SiteStatusControl');assert.equal(status.props.active,true);
+ let dirty=true;
+ status.props.onDraftState('payment',()=>({label:'입금 기록',dirty,pending:false,discard:()=>{dirty=false;}}));
+ status.props.onTradeChange();
+ assert.equal(all(h.render(),n=>n.props.id==='admin-site-panel-settlement')[0].props.hidden,false);
+ const guard=h.component('UnsavedChangesDialog');assert.deepEqual([...guard.props.request.labels],['입금 기록']);
+ guard.props.onDiscard();
+ assert.equal(all(h.render(),n=>n.props.id==='admin-site-panel-info')[0].props.hidden,false);
 });
