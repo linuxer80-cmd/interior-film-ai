@@ -270,6 +270,16 @@ export default function SiteDetailModal({
     });
   }
 
+  function openNextAction(next,task) {
+    chooseMenu(next,()=>{
+      setMaterialFollowup(task);
+      if(next === "schedule") {
+        const hasDates=Array.isArray(site.work_dates)?site.work_dates.length>0:Boolean(site.schedule_start||site.schedule_date);
+        setPreparationStep(task?.id === "assignment" && hasDates ? "team" : "dates");
+      }
+    });
+  }
+
   const historyGuard = useRef(null);
   const closeState = useRef(null);
   closeState.current = { estimateDirty, quoteDirty, reportSaving, onClose, requestLeave };
@@ -534,7 +544,7 @@ export default function SiteDetailModal({
             </details>
           </section>
 
-          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))} />
+          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={openNextAction} />
 
 
 

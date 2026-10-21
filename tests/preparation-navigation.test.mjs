@@ -9,7 +9,7 @@ await swc.loadBindings();
 const {code}=swc.transformSync(fs.readFileSync(new URL('../app/admin/SiteDetailModal.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
 const all=(node,predicate)=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(child=>all(child,predicate)):[...(predicate(node)?[node]:[]),...all(node.props?.children,predicate)];
 const text=node=>node==null?'':Array.isArray(node)?node.map(text).join(''):typeof node==='object'?text(node.props?.children):String(node);
-function fixture(){
+function fixture(siteValues={}){
   let cursor=0;const slots=[];
   const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(value){const i=cursor++;if(!(i in slots))slots[i]=value;return [slots[i],next=>slots[i]=typeof next==='function'?next(slots[i]):next];},useRef(value){const i=cursor++;return slots[i]??(slots[i]={current:value});},useCallback:fn=>fn,useEffect(){}};
   const exports={};
@@ -19,7 +19,7 @@ function fixture(){
     if(path.includes('useSiteWorkReport'))return {__esModule:true,default:()=>({reportSaving:false})};
     return {__esModule:true,default:path};
   }});
-  const render=()=>{cursor=0;return exports.default({site:{id:'s',status:'scheduled',work_dates:['2026-10-22']}});};
+  const render=()=>{cursor=0;return exports.default({site:{id:'s',status:'scheduled',work_dates:['2026-10-22'],...siteValues}});};
   const button=label=>all(render(),node=>node.type==='button'&&text(node)===label)[0];
   const component=name=>all(render(),node=>typeof node.type==='string'&&node.type.endsWith(name))[0];
   return {render,button,component};
@@ -42,6 +42,15 @@ test('preparation navigation separates dates, team and materials and guards unsa
   assert.equal(h.button('3. 자재').props['aria-pressed'],true);
   h.button('← 시공자 배정 확인').props.onClick();
   assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+});
+
+test('assignment shortcuts open crew directly when dates exist and retain date setup when missing',()=>{
+ const h=fixture();h.component('SiteNextActions').props.onNavigate('schedule',{id:'assignment'});
+ assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+ const undated=fixture({work_dates:[]});undated.component('SiteNextActions').props.onNavigate('schedule',{id:'assignment'});
+ assert.equal(undated.button('1. 날짜').props['aria-pressed'],true);
+ h.component('SiteNextActions').props.onNavigate('schedule',{id:'date'});
+ assert.equal(h.button('1. 날짜').props['aria-pressed'],true);
 });
 
 test('trade editing has one input location and settlement change navigation protects payment drafts',()=>{

@@ -242,6 +242,8 @@ function fixture(userId = owner, manager = true) {
     nextApplication,
     roughRegion,
     dispatchLaborNotifications: async () => {},
+    directoryBadges: async (_db, rows) => rows,
+    companyJobBadges: async (_db, rows) => rows,
   };
 
   const route = new Function(

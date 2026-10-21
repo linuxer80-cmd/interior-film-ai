@@ -25,12 +25,10 @@ test('assigned owner gets shared directions and date-scoped team tools inside ad
 });
 
 
-test('assigned owner has an embedded work section instead of navigating to worker pages',async()=>{
- const h=await harness([{site_id:'own-site',company_id:'company',my_role:'leader'}]);
- const entry=nodes(h.render('info')).find(n=>n.type==='button'&&n.props.children.includes('내 시공 상세'));
- assert.ok(entry);
- const workspace=nodes(h.render('work')).find(n=>n.props?.siteId==='own-site'&&typeof n.props?.onClose==='function');
- assert.equal(workspace.props.siteId,'own-site');
- assert.equal(typeof workspace.props.onClose,'function');
+test('administrator uses the separate worker home instead of restoring the removed embedded workspace',()=>{
+ const modal=fs.readFileSync(new URL('../app/admin/SiteDetailModal.js',import.meta.url),'utf8');
+ const home=fs.readFileSync(new URL('../app/admin/AdminTabs.js',import.meta.url),'utf8');
+ assert.ok(!modal.includes('import AdminAssignedWork'));
+ assert.match(home,/href="\/worker"/);assert.match(home,/시공자 홈으로/);
 });
 

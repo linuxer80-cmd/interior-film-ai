@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {mergeProfiles} from '../lib/caseClassification.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -71,7 +72,7 @@ function harness({ analyses = null } = {}) {
     .replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm, '')
     .replace('export default function useEstimate', 'function useEstimate');
   const context = {
-    ...categories, mergeDoorViews, console: { error() {}, warn() {} }, FormData,
+    ...categories, mergeDoorViews, mergeProfiles, performance, console: { error() {}, warn() {}, info() {} }, FormData,
     makeId: () => `id-${++id}`,
     prepareImage: async (file) => ({ file, preview: 'blob:test' }), revokePreviewUrl() {},
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], (value) => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },

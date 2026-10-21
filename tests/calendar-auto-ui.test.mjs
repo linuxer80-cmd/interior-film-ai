@@ -34,5 +34,5 @@ test('my sites exposes explicit ongoing consent; opening page never automaticall
   const tree=h.render(),connect=nodes(tree).find(n=>n.type==='button'&&n.props.children.includes('동의하고 자동 연결하기'));assert.ok(connect);await connect.props.onClick();assert.deepEqual(h.redirects,['https://accounts.google.com/consent']);assert.equal(h.actions.find(a=>a.url.endsWith('/start')).opts.method,'POST');
 });
 test('Strict Mode effect replay consumes the same callback once',async()=>{
-  const h=harness('?auto=finish');h.render();const cleanup=h.effects[0]();cleanup();h.effects[0]();await flush();assert.equal(h.actions.filter(a=>a.url.endsWith('/finish')).length,1);assert.ok(nodes(h.render()).some(n=>n.props?.role==='status'&&n.props.children.some(c=>String(c).includes('자동 연결을 완료'))));
+  const h=harness('?auto=finish');h.render();h.effects[0]();const cleanup=h.effects[1]();cleanup();h.effects[1]();await flush();assert.equal(h.actions.filter(a=>a.url.endsWith('/finish')).length,1);assert.ok(nodes(h.render()).some(n=>n.props?.role==='status'&&n.props.children.some(c=>String(c).includes('자동 연결을 완료'))));
 });

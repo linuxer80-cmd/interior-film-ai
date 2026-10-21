@@ -61,9 +61,10 @@ test('cancelled sites never generate tasks; completed or past work asks for a mi
   assert.deepEqual(ids({...base(), site:{status:'completed'}}), ['report']);
   assert.deepEqual(ids({...base(), schedule:{dates:['2026-10-20'], assignments:[]}}), ['report']);
 });
-test('own work shortcut only appears on an actual assigned day', () => {
+test('administrator field assignments never restore the removed own-work shortcut', () => {
   const value = {...base(), myWorkerIds:['w']};
-  assert.equal(siteNextActions(value).find(a => a.id === 'today').menu, 'work');
+  assert.equal(siteNextActions(value).find(a => a.id === 'today').menu, 'chat');
+  assert.ok(!siteNextActions(value).some(a => a.menu === 'work' || a.label === '내 시공 열기'));
   value.myWorkerIds = ['other'];
   assert.equal(siteNextActions(value).find(a => a.id === 'today').menu, 'chat');
   value.today = '2026-10-22';
