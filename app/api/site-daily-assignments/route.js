@@ -552,6 +552,11 @@ export async function POST(request) {
       if(conflict)warnings.push({workerName:person.name,workDate:row.work_date,
         reason:"다른 업체에도 같은 날짜에 배정되어 있습니다."});
     }
+    // The preview route runs the same authorization and validation, then exits
+    // before replacing assignments, creating notifications or syncing calendars.
+    if (body.preview === true) return reply({ success:true, preview:true, warnings, pendingWages,
+      missingLeaders:days.filter(day => !day.leaderId).map(day => day.workDate) });
+
     if(warnings.length && body.confirmScheduleConflicts!==true){
       return reply({error:"다른 업체 일정과 중복됩니다. 시공자에게 확인 후 다시 저장해주세요.",
         conflictConfirmationRequired:true,warnings},409);

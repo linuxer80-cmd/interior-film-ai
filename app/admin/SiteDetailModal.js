@@ -121,6 +121,7 @@ export default function SiteDetailModal({
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
   const [reviewStatus, setReviewStatus] = useState(null);
 
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const drafts = useRef(createSiteDrafts());
   const [leaveRequest, setLeaveRequest] = useState(null);
   const leaveRef = useRef(null);
@@ -142,6 +143,16 @@ export default function SiteDetailModal({
     setLeaveRequest(request);
     return false;
   }
+  async function saveScheduleChanges(payload) {
+    const entries = drafts.current.snapshot(["assignments"]);
+    if (entries.some(entry => entry.pending)) return {success:false,error:"배정 저장·점검이 끝난 뒤 시공일을 변경해주세요."};
+    if (entries.some(entry => entry.dirty) && !window.confirm("저장하지 않은 시공자 배정이 있습니다. 시공일을 바꾸면 이 배정 변경이 취소될 수 있습니다. 시공일을 변경할까요?")) return {success:false,error:"시공일 변경을 취소했습니다. 배정 변경을 먼저 저장하거나 취소해주세요."};
+    setScheduleSaving(true);
+    try { return await updateSiteSchedule(payload); }
+    finally { setScheduleSaving(false); }
+  }
+  saveScheduleChanges.supportsWorkDates = updateSiteSchedule?.supportsWorkDates === true;
+
   function continueEditing() { leaveRef.current = null; setLeaveRequest(null); }
   function discardAndLeave() {
     const request = leaveRef.current;
@@ -566,7 +577,9 @@ export default function SiteDetailModal({
                   key={site.id}
                   site={site}
                   reportOpen={reportOpen}
-                  updateSiteSchedule={updateSiteSchedule}
+                  updateSiteSchedule={saveScheduleChanges}
+                  onDraftState={registerDraft}
+                  onRequestDiscard={(id,proceed) => requestLeave(proceed,[id])}
                   reloadSites={reloadSites}
                 />
               </div>
@@ -590,6 +603,7 @@ export default function SiteDetailModal({
                     style={{ scrollMarginTop: 12 }}
                   >
                     <SiteWorkerAssignment
+                      externalSaving={scheduleSaving}
                       key={site.id}
                       site={site}
                       workers={workers}

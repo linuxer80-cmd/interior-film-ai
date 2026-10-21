@@ -1,4 +1,5 @@
 "use client";
+import useSiteDraft from "../hooks/useSiteDraft";
 
 import { useEffect, useRef, useState } from "react";
 import WorkDatePicker from "../WorkDatePicker";
@@ -91,6 +92,8 @@ export default function SiteScheduleEditor({
   reportOpen = false,
   updateSiteSchedule,
   reloadSites,
+  onDraftState,
+  onRequestDiscard,
 }) {
   const [editing, setEditing] = useState(false);
   const [workDates, setWorkDates] = useState([]);
@@ -103,6 +106,11 @@ export default function SiteScheduleEditor({
 
   const savedDates = getWorkDates(site);
   const savedDatesKey = savedDates.join(",");
+  useSiteDraft(onDraftState,"schedule",{
+    label:"시공 날짜",dirty:editing && normalizeDays(workDates).join(",") !== savedDatesKey,
+    pending:saving,discard:cancelEditor,
+  });
+
 
   useEffect(() => {
     setEditing(false);
@@ -240,7 +248,7 @@ export default function SiteScheduleEditor({
         <div style={{ color: "#111827", fontWeight: 600 }}>
           {savedDates.length ? (
             <>
-              <div style={{ marginBottom: 7, color: "#2563eb" }}>
+              <div style={{ marginBottom: 7, color: "#285340" }}>
                 총 {savedDates.length}일
               </div>
 
@@ -257,7 +265,7 @@ export default function SiteScheduleEditor({
                     style={{
                       padding: "6px 8px",
                       borderRadius: 7,
-                      background: "#eff6ff",
+                      background: "#edf3e8",
                       lineHeight: 1.5,
                     }}
                   >
@@ -303,9 +311,9 @@ export default function SiteScheduleEditor({
               style={{
                 ...buttonStyle,
                 width: "100%",
-                borderColor: "#bfdbfe",
-                background: "#eff6ff",
-                color: "#1d4ed8",
+                borderColor: "#cddfce",
+                background: "#edf3e8",
+                color: "#285340",
                 opacity: saving ? 0.6 : 1,
               }}
             >
@@ -315,15 +323,15 @@ export default function SiteScheduleEditor({
             <div
               style={{
                 padding: 12,
-                border: "1px solid #bfdbfe",
+                border: "1px solid #cddfce",
                 borderRadius: 11,
-                background: "#f8fbff",
+                background: "#f8faf5",
               }}
             >
               <div
                 style={{
                   marginBottom: 14,
-                  color: "#1e3a8a",
+                  color: "#285340",
                   fontSize: 15,
                   fontWeight: 900,
                 }}
@@ -361,7 +369,7 @@ export default function SiteScheduleEditor({
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={cancelEditor}
+                  onClick={() => onRequestDiscard ? onRequestDiscard("schedule",cancelEditor) : cancelEditor()}
                   style={buttonStyle}
                 >
                   취소
@@ -373,8 +381,8 @@ export default function SiteScheduleEditor({
                   onClick={saveSchedule}
                   style={{
                     ...buttonStyle,
-                    borderColor: "#2563eb",
-                    background: "#2563eb",
+                    borderColor: "#285340",
+                    background: "#285340",
                     color: "#fff",
                     opacity: saving ? 0.6 : 1,
                   }}
