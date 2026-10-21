@@ -1,0 +1,14 @@
+.root { margin-bottom:14px; padding:16px; border:1px solid #dfe4d7; border-radius:20px; background:#fffefb; color:#293d31; }
+.root header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.root h2 { font-size:19px; margin:0; }
+.root h3 { font-size:17px; margin:0 0 8px; overflow-wrap:anywhere; }
+.root p { font-size:14px; line-height:1.6; margin:8px 0; overflow-wrap:anywhere; }
+.root nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin:14px 0; }
+.root button,.root a { min-height:44px; padding:10px; box-sizing:border-box; border:1px solid #d6dfd1; border-radius:10px; background:white; color:#315d49; font-size:14px; font-weight:700; cursor:pointer; }
+.root button[aria-pressed=true] { background:#285340; color:white; }
+.root button:disabled { opacity:.6; }
+.root article { padding:14px; margin:12px 0; border:1px solid #dfe4d7; border-radius:14px; background:#f7faf4; }
+.action { border-top:1px solid #dfe4d7; padding:10px 0; }
+.root a { display:inline-flex; align-items:center; text-decoration:none; }
+.root small { display:block; margin-top:12px; color:#65736a; font-size:12px; line-height:1.6; }
+.root :is(a,button):focus-visible { outline:2px solid #315c91; outline-offset:3px; }

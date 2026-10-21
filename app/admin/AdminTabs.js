@@ -10,6 +10,7 @@ import { useEffect, useId, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
+import AdminClosingTasks from "./AdminClosingTasks";
 import AdminHomeSummary from "./AdminHomeSummary";
 const SiteExtraWork = dynamic(() => import("../components/SiteExtraWork"), { ssr: false });
 import ToolIllustration from "../components/ui/ToolIllustration";
@@ -132,6 +133,7 @@ export default function AdminTabs({
       {isHome ? (
         <>
           <AdminHomeSummary key={companyId} companyId={companyId} />
+          <AdminClosingTasks key={`closing-${companyId}`} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
           <SiteExtraWork key={companyId} summary />
           <LaborNotifications />

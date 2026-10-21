@@ -75,6 +75,8 @@ const SECTION_MENU = {
   info: "info",
   quote: "quote",
   materials: "materials",
+  "material-prices": "materials",
+  "material-returns": "materials",
   photos: "report",
   settlement: "settlement",
   expenses: "expenses",
@@ -193,6 +195,7 @@ export default function SiteDetailModal({
         ? SECTION_MENU[params.get("section")] || "info"
         : "info";
 
+    setMaterialFollowup(params.get("section") === "material-prices" ? {id:"price"} : params.get("section") === "material-returns" ? {id:"returns"} : null);
     setMenu(nextMenu);
     setVisited({ info: true, [nextMenu]: true });
 
