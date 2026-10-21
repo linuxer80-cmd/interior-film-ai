@@ -95,6 +95,7 @@ export default function SiteManagementTab(props) {
     () =>
       combinedSites.filter(
         (site) =>
+          site.status !== "cancelled" &&
           matchesSite({...site,site_name:[site.company_name,site.site_name].filter(Boolean).join(" ")}, search) &&
           (filter === "all" ||
             (filter === "active"
@@ -226,7 +227,7 @@ export default function SiteManagementTab(props) {
 
         {search.trim() && (
           <p role="status">
-            검색 결과 {filteredSites.length}건 · 모든 날짜에서
+            진행·완료 현장 검색 결과 {filteredSites.length}건 · 취소 현장은 취소 탭에서 확인 · 모든 날짜에서
             검색합니다.
           </p>
         )}
@@ -236,6 +237,7 @@ export default function SiteManagementTab(props) {
         {personalError && <div role="alert"><p>내 시공 일정 확인 필요 · {personalError}</p><button type="button" onClick={()=>setPersonalAttempt(v=>v+1)}>내 일정 다시 확인</button></div>}
         <SiteCalendar
           sites={filteredSites}
+          cancelledSites={combinedSites.filter(site => site.status === "cancelled" && matchesSite({...site,site_name:[site.company_name,site.site_name].filter(Boolean).join(" ")}, search))}
           openSite={(site, day) => { if(site.personal_only){window.location.href=`/worker/site/${encodeURIComponent(site.id)}`;return;} setChatDay(day || null); openSite(site); }}
           loading={sitesLoading}
           searching={Boolean(search.trim())}
@@ -451,6 +453,7 @@ function siteDates(site) {
 
 function SiteCalendar({
   sites,
+  cancelledSites = [],
   openSite,
   loading,
   searching,
@@ -510,7 +513,7 @@ function SiteCalendar({
   }, [sites, month, weekDays]);
 
   const shown =
-    searching || view === "list"
+    view === "cancelled" ? cancelledSites : searching || view === "list"
       ? sites
       : view === "undated"
         ? calendar.undated
@@ -549,6 +552,7 @@ function SiteCalendar({
           ["calendar", "캘린더"],
           ["list", "목록"],
           ["undated", `일정 미정 ${calendar.undated.length}`],
+          ["cancelled", `취소 현장 ${cancelledSites.length}`],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -743,7 +747,9 @@ function SiteCalendar({
           color: "#31453a",
         }}
       >
-        {searching
+        {view === "cancelled"
+          ? "취소 현장"
+          : searching
           ? "검색된 전체 현장"
           : view === "calendar"
             ? `${selectedDay.replaceAll("-", ".")} 현장`
