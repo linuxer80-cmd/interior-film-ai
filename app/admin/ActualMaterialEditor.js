@@ -1,6 +1,7 @@
 "use client";
 
 import MaterialPurchaseCost from "./MaterialPurchaseCost";
+import MaterialFilmPicker from "../components/MaterialFilmPicker";
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 
@@ -257,7 +258,14 @@ export default function ActualMaterialEditor({
             ["unit", "단위 (m, 개, 롤 등)"],
             ["unit_price", "단가 (원 / 위 단위)"],
             ["memo", "메모"],
-          ].map(([key, label]) => (
+          ].map(([key, label]) => key === "product_code" ? (
+            <MaterialFilmPicker
+              key={key}
+              value={draft}
+              disabled={busy}
+              onChange={product => setDraft(current => current ? { ...current, ...product } : current)}
+            />
+          ) : (
             <label
               key={key}
               style={{
