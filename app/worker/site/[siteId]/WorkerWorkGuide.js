@@ -39,7 +39,7 @@ export default function WorkerWorkGuide({ site, siteId, active, reportStatus, re
     <h3 style={{margin:"0 0 10px",fontSize:17}}>내 작업 안내</h3>
     {!operations && !error && !reportStatus?.hasReport && <p role="status">자재 상태를 확인하고 있습니다…</p>}
     {reportLoading && !reportStatus && <p role="status">작업 상태를 확인하고 있습니다…</p>}
-    {actions.map(action => <div key={action.id} style={{marginTop:12}}><p style={{lineHeight:1.6,whiteSpace:"pre-wrap"}}>{action.text}</p><button type="button" style={{minHeight:44,padding:"10px 14px",border:0,borderRadius:10,background:"#285340",color:"white",fontWeight:800}} onClick={() => onNavigate(action.tab)}>{action.label} →</button></div>)}
+    {actions.map(action => <div key={action.id} style={{marginTop:12}}><p style={{lineHeight:1.6,whiteSpace:"pre-wrap"}}>{action.text}</p><button type="button" style={{minHeight:44,padding:"10px 14px",border:0,borderRadius:10,background:"#285340",color:"white",fontWeight:800}} onClick={() => onNavigate(action.tab, action.id)}>{action.label} →</button></div>)}
     {(error || reportError) && <div role="alert"><p>{error} {reportError}</p><button type="button" onClick={() => {setAttempt(value=>value+1);onRetry();}} style={{minHeight:44}}>다시 확인</button></div>}
   </section>;
 }

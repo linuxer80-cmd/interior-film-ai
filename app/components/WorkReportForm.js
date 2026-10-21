@@ -79,6 +79,7 @@ export default function WorkReportForm({
   onSubmitted,
   active = true,
 }) {
+  const [materialFocus,setMaterialFocus]=useState(null);
   const [step, setStep] = useState(0);
   useEffect(() => { setStep(0); }, [siteId]);
   const [form, setForm] = useState(null);
@@ -461,6 +462,7 @@ export default function WorkReportForm({
   }
 
   function jump(item) {
+    if(item.target === "materials")setMaterialFocus({id:item.id,nonce:Date.now()});
     setStep(item.target === "photos" ? 0 : 1);
     requestAnimationFrame(() => {
 
@@ -732,6 +734,12 @@ export default function WorkReportForm({
       <nav aria-label="완료보고 단계" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
       </nav>
+      {step!==2&&<section style={{...box,background:'#edf3e8'}} aria-label="완료보고 준비 상태">
+        <strong>{missing.length?`마무리할 항목 ${missing.length}건`:"제출 준비 완료"}</strong>
+        <p>이미 등록한 사진·자재 사용량·경비는 다시 입력하지 않아도 됩니다.</p>
+        {missing.map((item,i)=><button key={i} type="button" disabled={disabled} style={{...button,margin:'4px',textAlign:'left'}} onClick={()=>jump(item)}>{item.label} →</button>)}
+        {!missing.length&&<button type="button" style={button} disabled={disabled} onClick={()=>setStep(2)}>최종 확인하고 제출 →</button>}
+      </section>}
       <p role="status" style={{ fontSize: 13, color: "#53665a" }}>{draftMessage || "작성 내용은 이 기기에 임시저장됩니다."}</p>
       <section hidden={step !== 2} style={{ ...box, background: "#edf3e8" }}>
         <h3>{missing.length ? `확인할 항목 ${missing.length}건` : "제출 준비 완료 ✓"}</h3>
@@ -839,6 +847,8 @@ export default function WorkReportForm({
           <SiteOperations
             siteId={siteId}
             mode="materials"
+            completionMode
+            focusRequest={materialFocus}
             compact
             easyMode
             active={active && step === 1}

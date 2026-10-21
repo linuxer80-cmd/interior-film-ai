@@ -122,6 +122,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
   const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState("");
   const [materialsMessage, setMaterialsMessage] = useState("");
+  const [materialTask,setMaterialTask]=useState("");
   const [tab, setTab] = useState(requestedSection);
   const [visited, setVisited] = useState(() => ({
     info: true,
@@ -443,7 +444,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
         >
 
 
-          <WorkerWorkGuide site={site} siteId={siteId} active={tab === "info"} reportStatus={reportStatus} reportLoading={reportLoading} reportError={reportError} onRetry={loadReportStatus} onNavigate={chooseTab} />
+          <WorkerWorkGuide site={site} siteId={siteId} active={tab === "info"} reportStatus={reportStatus} reportLoading={reportLoading} reportError={reportError} onRetry={loadReportStatus} onNavigate={(next,task)=>{setMaterialTask(task === "return" ? "return" : "");chooseTab(next);}} />
           <WorkerSiteInfo site={site} siteId={siteId} materials={materials} materialsMessage={materialsMessage} initialDate={initialDate} active={tab === "info"} />
           <details style={{ marginTop: 16 }}>
             <summary style={{ ...muted, cursor: "pointer", padding: "12px 0" }}>현장 변경·확인 이력</summary>
@@ -462,6 +463,8 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
           >
           <SiteOperations
             active={tab === "film"}
+            completionMode={materialTask === "return"}
+            onContinueReport={reportStatus?.canSubmit ? ()=>chooseTab("report") : undefined}
             key={siteId}
             mode="materials"
             compact

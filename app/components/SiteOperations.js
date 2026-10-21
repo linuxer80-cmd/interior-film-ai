@@ -57,6 +57,9 @@ export default function SiteOperations({
   inventoryExpanded = false,
   compact = false,
   easyMode = false,
+  completionMode = false,
+  focusRequest,
+  onContinueReport,
 }) {
   const [data, setData] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -67,6 +70,24 @@ export default function SiteOperations({
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState({});
   const [review, setReview] = useState(null);
+  const [finishing,setFinishing]=useState(completionMode);
+  const [rollPending,setRollPending]=useState({});
+  const rollHasPending=Object.values(rollPending).some(Boolean);
+  const handleRollPending=useCallback((id,value)=>setRollPending(previous=>previous[id]===value?previous:{...previous,[id]:value}),[]);
+  const finishOpened=useRef(false);
+  useEffect(()=>{finishOpened.current=false;setFinishing(completionMode);},[siteId,completionMode]);
+  useEffect(()=>{
+    if(!data||!finishing||finishOpened.current)return;
+    finishOpened.current=true;
+    const next=data.materials.find(m=>Number(m.issued)>0&&m.returned==null)||data.materials.find(m=>m.returned==null);
+    if(next){setExpandedMaterial(next.id);setVisitedMaterials(previous=>({...previous,[next.id]:true}));}
+  },[data,finishing]);
+  const consumedFocus=useRef(null);
+  useEffect(()=>{
+    if(!focusRequest||!data||consumedFocus.current===focusRequest)return;
+    const next=data.materials.find(m=>m.id===focusRequest.id)||data.materials.find(m=>m.returned==null);
+    if(next){consumedFocus.current=focusRequest;setExpandedMaterial(next.id);setVisitedMaterials(previous=>({...previous,[next.id]:true}));}
+  },[focusRequest,data]);
   const [trackedRolls, setTrackedRolls] = useState([]);
   const inventoryDetails = useRef(null);
   const [stockSelection, setStockSelection] = useState(null);
@@ -96,9 +117,9 @@ export default function SiteOperations({
 
   useEffect(() => {
     onPendingChange?.(
-      busy || Object.keys(values).length > 0
+      busy || rollHasPending || Object.keys(values).length > 0
     );
-  }, [busy, values, onPendingChange]);
+  }, [busy, values, rollHasPending, onPendingChange]);
 
   const call = useCallback(
     async (body) => {
@@ -429,6 +450,13 @@ export default function SiteOperations({
         />
       </details>}
 
+      {easyMode&&data&&<div style={{padding:14,background:'#eaf2e9',borderRadius:12,marginTop:14}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" style={btn} disabled={busy||disabled||rollHasPending} aria-pressed={!finishing} onClick={()=>setFinishing(false)}>자재 반출</button><button type="button" style={btn} disabled={busy||disabled||rollHasPending} aria-pressed={finishing} onClick={()=>{finishOpened.current=false;setFinishing(true);}}>작업 후 반납 확인</button></div>
+        <p>{data.materials.filter(m=>Number(m.issued)>0&&m.returned==null).length}종 반납 확인 필요 · 남은 길이만 입력하면 사용량은 자동 계산됩니다.</p>
+        {finishing&&data.materials.filter(m=>m.returned==null).map(m=><button key={m.id} type="button" style={{...btn,margin:'4px'}} disabled={busy||disabled} onClick={()=>{setExpandedMaterial(m.id);setVisitedMaterials(p=>({...p,[m.id]:true}));}}>{m.code||m.name} · {Number(m.issued)>0?'반납 확인':'미사용 여부 확인'} →</button>)}
+        {onContinueReport&&<button type="button" style={{...btn,width:'100%',minHeight:48,marginTop:10,background:'#285e45',color:'white'}} disabled={busy||disabled||rollHasPending||Object.keys(values).length>0} onClick={onContinueReport}>사진·경비 확인하고 완료보고 →</button>}
+        {(rollHasPending||Object.keys(values).length>0)&&<p role="status">입력 중인 자재 기록을 먼저 저장해주세요.</p>}
+      </div>}
       {easyMode && <p style={{ color: "#65766b", fontSize: 13 }}>자재를 고르면 바로 아래에서 반출·반납할 수 있습니다.</p>}
       {!data ? (
         <p>불러오는 중…</p>
@@ -534,7 +562,7 @@ export default function SiteOperations({
                 {compact && visitedMaterials[material.id] && <FilmRollInventory
                   siteId={siteId} active={active && expandedMaterial === material.id}
                   disabled={disabled} onTracked={handleTrackedRolls} onChanged={refresh}
-                  focusMaterialId={material.id} compact />}
+                  focusMaterialId={material.id} compact completionMode={finishing} onPendingChange={value=>handleRollPending(material.id,value)} />}
                 <div
                   hidden={compact}
                   style={{
@@ -689,7 +717,7 @@ export default function SiteOperations({
                       </p>
 
                       <label>
-                        총 반입량 ({material.unit})
+                        남은 총 반납량 ({material.unit})
                         <input
                           style={input}
                           type="number"
@@ -708,6 +736,7 @@ export default function SiteOperations({
                         />
                       </label>
 
+                      <button type="button" style={{...btn,marginTop:8}} disabled={busy||disabled||!outgoingValid} onClick={()=>change("returned","0")}>전량 사용 · 반납량 0{material.unit}</button>
                       <p>
                         소모량:{" "}
                         {valid

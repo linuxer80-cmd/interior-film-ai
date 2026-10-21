@@ -32,11 +32,13 @@ export default function FilmRollInventory({
   selectionRequest,
   focusMaterialId,
   compact = false,
+  completionMode = false,
+  onPendingChange,
 }) {
   const [data, setData] = useState(null);
   const [materialId, setMaterialId] = useState("");
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState("issue");
+  const [tab, setTab] = useState(completionMode ? "return" : "issue");
   const [checked, setChecked] = useState([]);
   const [remaining, setRemaining] = useState({});
   const [location, setLocation] = useState("창고");
@@ -55,6 +57,11 @@ export default function FilmRollInventory({
   const lock = useRef(false);
   const epoch = useRef(0);
   const batch = useRef(null);
+  const pendingCallback=useRef(onPendingChange);
+  pendingCallback.current=onPendingChange;
+  useEffect(()=>{pendingCallback.current?.(busy||pending||Boolean(editingReturn)||checked.length>0||Object.keys(remaining).length>0);},[busy,pending,editingReturn,checked,remaining]);
+  useEffect(()=>()=>pendingCallback.current?.(false),[]);
+  useEffect(()=>{if(completionMode)setTab("return");},[completionMode]);
   const callbacks = useRef({ onTracked, onChanged });
   callbacks.current = { onTracked, onChanged };
 
@@ -276,6 +283,7 @@ export default function FilmRollInventory({
         </button>
       </nav>
 
+      {!pending&&(Object.keys(remaining).length>0||checked.length>0||editingReturn)&&<button type="button" disabled={busy||disabled} onClick={()=>{setRemaining({});setChecked([]);setEditingReturn(null);}}>입력 취소 · 저장된 기록 유지</button>}
       {error && <p className="error" role="alert">{error}</p>}
       {message && (
         <p className="success" role="status">{message}</p>
@@ -497,6 +505,8 @@ export default function FilmRollInventory({
                       <FilmFireBadge type={t.price_type} />
                     </strong>
 
+                    <p style={{fontSize:13,overflowWrap:'anywhere'}}>롤 번호: {t.label || "미등록"}</p>
+                    <button type="button" disabled={blocked} onClick={()=>setRemaining(p=>({...p,[t.roll_id]:"0"}))}>전량 사용 · 남은 길이 0m</button>
                     <div className="return-row">
                       <input
                         aria-label={`${t.brand} ${t.product_code} 반출 ${t.issued}m 남은 길이`}
@@ -539,7 +549,7 @@ export default function FilmRollInventory({
                           }
                         }}
                       >
-                        자재 반납 완료
+                        {Number(value) === 0 && value !== "" ? "전량 사용 저장" : "반납 저장"}
                       </button>
                     </div>
 
