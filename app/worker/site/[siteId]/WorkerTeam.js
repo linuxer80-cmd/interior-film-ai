@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../../../../lib/supabase';
 import styles from '../../../components/CustomerChat.module.css';
 export default function WorkerTeam({siteId,dates,active,initialChat=false,initialDate=null}){
@@ -7,10 +7,29 @@ export default function WorkerTeam({siteId,dates,active,initialChat=false,initia
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const [date,setDate]=useState(days.includes(initialDate)?initialDate:days.includes(today)?today:days[0]||''),[data,setData]=useState(null),[error,setError]=useState(''),[text,setText]=useState(''),[sending,setSending]=useState(false),[chat,setChat]=useState(initialChat);
  const daysKey=days.join(',');
+ const [readError,setReadError]=useState('');
+ const readBatch=useRef({key:'',ids:new Set(),sent:new Set(),timer:null});
  useEffect(()=>{if(!days.includes(date))setDate(days.includes(today)?today:days[0]||'');},[daysKey,date,today]);
  useEffect(()=>{const requested=initialDate || new URLSearchParams(window.location.search).get('teamDate');if(requested&&days.includes(requested)){setDate(requested);setChat(true);}},[siteId,daysKey,initialDate]);
  const endpoint=`/api/worker/team?siteId=${encodeURIComponent(siteId)}&date=${encodeURIComponent(date)}`;
  async function request(options={}){const {data:{session}}=await supabase.auth.getSession();if(!session)throw Error('로그인이 필요합니다.');const r=await fetch(endpoint,{...options,headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},cache:'no-store'});const result=await r.json();if(!r.ok)throw Error(result.error||'불러오지 못했습니다.');return result;}
+ const markVisible=useCallback(id=>{
+  if(!active||!chat||document.hidden)return;
+  let batch=readBatch.current;
+  if(batch.key!==endpoint){clearTimeout(batch.timer);batch={key:endpoint,ids:new Set(),sent:new Set(),timer:null};readBatch.current=batch;}
+  if(batch.sent.has(id))return;
+  batch.ids.add(id);
+  if(batch.timer)return;
+  batch.timer=setTimeout(async()=>{
+   batch.timer=null;
+   if(document.hidden)return;
+   const ids=[...batch.ids].slice(0,100);if(!ids.length)return;
+   ids.forEach(id=>{batch.ids.delete(id);batch.sent.add(id);});
+   try{await request({method:'PATCH',body:JSON.stringify({messageIds:ids})});if(readBatch.current===batch)setReadError('');}
+   catch(e){ids.forEach(id=>batch.sent.delete(id));if(readBatch.current===batch)setReadError(e.message || '읽음 상태를 저장하지 못했습니다.');}
+  },250);
+ },[endpoint,active,chat]);
+ useEffect(()=>{setReadError('');return()=>{clearTimeout(readBatch.current.timer);readBatch.current.timer=null;};},[endpoint,active,chat]);
  useEffect(()=>{
   if(!active||!date)return;let alive=true,running=false;setData(null);setError('');
   async function load(){if(running||document.hidden)return;running=true;try{const result=await request();if(alive){setData(result);setError('');}}catch(e){if(alive){setError(e.message);setData(null);}}finally{running=false;}}
@@ -30,7 +49,26 @@ export default function WorkerTeam({siteId,dates,active,initialChat=false,initia
    <details style={{marginTop:10}}><summary style={{cursor:'pointer',padding:8}}>프로필 보기</summary>{m.profile?<div>{m.profile.photoUrl&&<img src={m.profile.photoUrl} alt={`${m.name} 프로필`} width={100} height={100} style={{objectFit:'cover',borderRadius:12}}/>}<p>지역: {m.profile.region||'미등록'} · 경력: {m.profile.experience_years??'미등록'}{m.profile.experience_years!=null?'년':''}</p><p>기술: {Array.isArray(m.profile.skills)?m.profile.skills.join(', '):m.profile.skills||'미등록'}</p><p style={{whiteSpace:'pre-wrap'}}>{m.profile.introduction||'소개 미등록'}</p></div>:<p>아직 등록된 프로필이 없습니다.</p>}</details>
   </article>)}
   <button type="button" className={styles.older} onClick={()=>setChat(v=>!v)}>{chat?'팀 채팅 닫기':'이 날짜 팀원들과 채팅하기'}</button>
-  {chat&&data&&<div className={styles.detail} style={{height:500,maxHeight:'75dvh'}}><div className={styles.header}><h2>{date} 팀 채팅</h2></div><div className={styles.messages} aria-live="polite"><p className={styles.notice}>최근 100개 메시지 · 팀원 전체가 보는 대화입니다.</p>{data.messages.map(m=><div key={m.id} className={`${styles.bubble} ${m.sender_id===data.userId?styles.mine:''}`}><small>{data.members.find(w=>w.user_id===m.sender_id)?.name||'이전 팀원'}</small>{m.body}<small>{new Date(m.created_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</small></div>)}{!data.messages.length&&<p>첫 메시지를 남겨주세요.</p>}</div>{data.notice&&<p className={styles.notice}>{data.notice}</p>}<form className={styles.form} onSubmit={send}><textarea value={text} disabled={sending||!data.chatReady} onChange={e=>setText(e.target.value)} maxLength={2000} aria-label="팀원에게 메시지" placeholder="팀원에게 메시지를 보내세요"/><button disabled={sending||!data.chatReady||!text.trim()}>{sending?'보내는 중':'보내기'}</button></form></div>}
+  {chat&&data&&<div className={styles.detail} style={{height:500,maxHeight:'75dvh'}}><div className={styles.header}><h2>{date} 팀 채팅</h2></div><div className={styles.messages} aria-live="polite"><p className={styles.notice}>최근 100개 메시지 · 팀원 전체가 보는 대화입니다.</p>{data.messages.map(m=><TeamChatMessage key={m.id} message={m} mine={m.sender_id===data.userId} active={active&&chat&&data.readReady!==false} onVisible={markVisible}><small>{data.members.find(w=>w.user_id===m.sender_id)?.name||'이전 팀원'}</small>{m.body}<small>{new Date(m.created_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</small></TeamChatMessage>)}{!data.messages.length&&<p>첫 메시지를 남겨주세요.</p>}</div>{data.readReady===false&&<p className={styles.notice}>읽음 인원수 설정이 필요합니다.</p>}{readError&&<p role="alert" className={styles.error}>{readError}</p>}{data.notice&&<p className={styles.notice}>{data.notice}</p>}<form className={styles.form} onSubmit={send}><textarea value={text} disabled={sending||!data.chatReady} onChange={e=>setText(e.target.value)} maxLength={2000} aria-label="팀원에게 메시지" placeholder="팀원에게 메시지를 보내세요"/><button disabled={sending||!data.chatReady||!text.trim()}>{sending?'보내는 중':'보내기'}</button></form></div>}
  </section>;
 }
 
+
+function TeamChatMessage({message,mine,active,onVisible,children}){
+ const element=useRef(null);
+ useEffect(()=>{
+  if(!active||mine||!element.current)return;
+  const node=element.current;let timer;
+  const observer=new IntersectionObserver(entries=>{
+   clearTimeout(timer);
+   if(entries.some(entry=>entry.isIntersecting&&entry.intersectionRatio>0)&&!document.hidden)
+    timer=setTimeout(()=>{if(!document.hidden)onVisible(message.id);},350);
+  },{threshold:[0,0.01]});
+  const observe=()=>{clearTimeout(timer);observer.disconnect();if(!document.hidden)observer.observe(node);};
+  observe();const retry=setInterval(observe,5000);document.addEventListener('visibilitychange',observe);
+  return()=>{clearTimeout(timer);clearInterval(retry);observer.disconnect();document.removeEventListener('visibilitychange',observe);};
+ },[message.id,message.unreadCount,mine,active,onVisible]);
+ return <div ref={element} className={`${styles.bubble} ${mine?styles.mine:''}`}>{children}
+  {Number(message.unreadCount)>0&&<small aria-label={`아직 읽지 않은 사람 ${message.unreadCount}명`} style={{color:'#a26708',fontWeight:800}}>{message.unreadCount}</small>}
+ </div>;
+}

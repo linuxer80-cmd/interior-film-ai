@@ -60,7 +60,12 @@ export async function GET(request){try{
   let q=a.db.from('worker_team_messages').select('id,sender_id,body,created_at').eq('company_id',a.site.company_id).eq('site_id',a.site.id).eq('work_date',a.date).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(100);
   const result=await q;
   if(result.error&& !['42P01','PGRST205'].includes(result.error.code))throw result.error;
-  return privateJson({members,messages:(result.data||[]).reverse(),userId:a.user.id,chatReady:!result.error,notice:result.error?'팀원 채팅 설정 SQL을 먼저 실행해주세요.':null});
+  const ids=(result.data||[]).map(m=>m.id);
+  const reads=ids.length ? await a.db.rpc('team_message_read_counts',{p_ids:ids}) : {data:[]};
+  if(reads.error && !['PGRST202','42883','42P01','PGRST205'].includes(reads.error.code))throw reads.error;
+  const counts=new Map((reads.data||[]).map(row=>[row.message_id,Number(row.unread_count)]));
+  const messages=(result.data||[]).reverse().map(m=>({...m,unreadCount:reads.error?null:counts.get(m.id)||0}));
+  return privateJson({members,messages,userId:a.user.id,readReady:!reads.error,chatReady:!result.error,notice:result.error?'팀원 채팅 설정 SQL을 먼저 실행해주세요.':null});
 }catch(e){return failure(e);}}
 export async function POST(request){try{
   const a=await context(request);
@@ -86,3 +91,14 @@ export async function POST(request){try{
   return privateJson({ok:true});
 }catch(e){return failure(e);}}
 
+
+export async function PATCH(request){try{
+ const a=await context(request);
+ if(a.dates)throw Object.assign(Error('메시지 날짜를 선택해주세요.'),{status:400});
+ const raw=await request.text();if(raw.length>6000)throw Object.assign(Error('읽음 요청이 너무 큽니다.'),{status:400});
+ let input;try{input=JSON.parse(raw);}catch{throw Object.assign(Error('읽음 요청을 확인해주세요.'),{status:400});}
+ if(!Array.isArray(input.messageIds)||!input.messageIds.length||input.messageIds.length>100||!input.messageIds.every(uuid))throw Object.assign(Error('메시지 번호를 확인해주세요.'),{status:400});
+ const result=await a.db.rpc('mark_team_messages_read',{p_user:a.user.id,p_company:a.site.company_id,p_site:a.site.id,p_date:a.date,p_ids:[...new Set(input.messageIds)]});
+ if(result.error){if(['PGRST202','42883','42P01','PGRST205'].includes(result.error.code))return privateJson({error:'팀 채팅 읽음 설정 SQL을 먼저 적용해주세요.'},503);throw result.error;}
+ return privateJson({ok:true});
+}catch(e){return failure(e);}}
