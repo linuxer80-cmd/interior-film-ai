@@ -266,8 +266,7 @@ export default function AdminTabs({
           <button type="button" className={moreStyles.item} onClick={() => go("usage")}>로그 분석</button>
 
           <a href="/account/calendar" className={moreStyles.item}>구글 캘린더 연결 · 현장 일정 보내기</a>
-          <a href="/account/google" className={moreStyles.item}>구글 계정 연결 · 연결 상태 확인</a>
-          <a href="/account/kakao" className={moreStyles.item}>카카오 계정 연결 · 연결 상태 확인</a>
+          <a href="/account/connections" className={moreStyles.item}>계정 연결 · 구글·카카오</a>
           <a href="/achievements?scope=owner" className={moreStyles.item}>우리 업체 업적 · 배지 보관함</a>
           <div style={{ padding: "12px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><strong>현재 요금제 · 사용량</strong><PlanUsageButton /></div>
           <a href="/admin/billing" className={moreStyles.item}>요금제 · 결제</a>

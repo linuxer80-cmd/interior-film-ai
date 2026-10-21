@@ -302,8 +302,7 @@ export default function WorkerAccount() {
       <p>로그인 방식: {[...new Set((session.user.identities||[]).map(i=>({email:'이메일·비밀번호',kakao:'카카오',google:'구글',apple:'애플'}[i.provider]||i.provider)))].join(' · ')||'확인 필요'}</p>
       <p style={{fontSize:13}}>기존 이메일로 가입했다면 해당 계정으로 로그인한 뒤 아래에서 카카오·구글을 연결해주세요. 이름이 같아도 서로 다른 계정일 수 있습니다.</p>
     </section>}
-    {session && <p><Link href='/account/google' data-ui-link="action">구글 계정 연결 · 연결 상태 확인</Link></p>}
-    {session && <p><Link href='/account/kakao' data-ui-link="action">카카오 계정 연결 · 연결 상태 확인</Link></p>}
+    {session && <p><Link href='/account/connections' data-ui-link="action">계정 연결 · 구글·카카오</Link></p>}
     {session && !pendingInvite && <WorkerConnectionPanel key={session.user.id} />}
 
     {!ready
