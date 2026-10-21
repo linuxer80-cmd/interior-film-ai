@@ -84,10 +84,10 @@ async function api(method, siteId, body, signal) {
   return result;
 }
 
-export default function SiteMaterials({ site }) {
+export default function SiteMaterials({ site, actualOnly = false }) {
   if (!site?.id) return null;
 
-  if (site.status === "completed") {
+  if (actualOnly || site.status === "completed") {
     return (
       <CompletedSiteMaterials
         key={`actual-${site.id}`}

@@ -112,7 +112,10 @@ export default function SiteDetailModal({
   assignSiteWorkers,
   reloadSites,
 }) {
+  const [materialFollowup,setMaterialFollowup]=useState(null);
+  const materialPriceDetails=useRef(null);
   const [menu, setMenu] = useState("info");
+  useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
   const [quoteDirty, setQuoteDirty] = useState(false);
   const [estimateDirty, setEstimateDirty] = useState(false);
   const [reportEstimateOpen, setReportEstimateOpen] = useState(false);
@@ -489,7 +492,7 @@ export default function SiteDetailModal({
             </details>
           </section>
 
-          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={chooseMenu} />
+          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))} />
 
           <nav aria-label="현장 상세 메뉴" style={{ margin: "12px 0" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
@@ -638,10 +641,10 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
-              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable compact />
-              <details style={{ margin: "14px 0" }}>
+              <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable compact completionMode={materialFollowup?.id === "returns"} />
+              <details ref={materialPriceDetails} style={{ margin: "14px 0" }}>
                 <summary style={{ ...actionStyle, cursor: "pointer" }}>자재 추가·수정 / 단가·메모 관리</summary>
-                <SiteMaterials key={site.id} site={site} />
+                <SiteMaterials key={site.id} site={site} actualOnly={materialFollowup?.id === "price"} />
               </details>
             </section>
           )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { siteClosure } from "../../lib/siteClosure.mjs";
 import { siteNextActions } from "../../lib/siteNextActions.mjs";
 import { koreanDay } from "../utils/workerCalendar";
 
@@ -37,6 +38,7 @@ export default function SiteNextActions({ site, companyId, active, onNavigate })
           if (path === "/api/admin/receivables" &&
               (!result.site || typeof result.site.confirmed !== "boolean" ||
                (result.site.outstanding != null && !Number.isFinite(Number(result.site.outstanding))))) throw Error("payment shape");
+          if (path === "/api/film-stock" && !Array.isArray(result.trips)) throw Error("stock shape");
           return result;
         };
         const assignment = async () => {
@@ -72,8 +74,13 @@ export default function SiteNextActions({ site, companyId, active, onNavigate })
           else errors.push(`${labels[index]} 상태를 확인하지 못했습니다.`);
         });
         if (snapshot.report?.hasReport && (snapshot.report.review?.status || snapshot.report.report?.review_status) === "approved") {
-          try { snapshot.payment = await read("/api/admin/receivables"); }
-          catch { errors.push("입금 내역을 확인하지 못했습니다."); }
+          // Approved sites no longer need preparation or assignment reminders.
+          errors.length=0;
+          const closing=await Promise.allSettled([read("/api/admin/receivables"),read("/api/film-stock")]);
+          if(closing[0].status==="fulfilled")snapshot.payment=closing[0].value;
+          else errors.push("입금 내역을 확인하지 못했습니다.");
+          if(closing[1].status==="fulfilled")snapshot.stock=closing[1].value;
+          else errors.push("롤 반납 내역을 확인하지 못했습니다.");
         }
         snapshot.myWorkerIds = snapshot.schedule?.myWorkerIds || [];
       } catch {
@@ -105,13 +112,17 @@ export default function SiteNextActions({ site, companyId, active, onNavigate })
   }, [active, site.id]);
 
   if (!active || site.status === "cancelled") return null;
-  const actions = siteNextActions({ site, ...state.snapshot, today: koreanDay() });
-  return <section aria-label="다음 할 일" aria-busy={state.loading} className="next-actions">
-    <div className="heading"><h3>다음 할 일</h3><button type="button" disabled={state.loading} onClick={() => setAttempt(value => value + 1)}>새로고침</button></div>
+  const closure=siteClosure({site,...state.snapshot});
+  const actions = closure?.actions || siteNextActions({ site, ...state.snapshot, today: koreanDay() });
+  return <section aria-label={closure?"마무리 확인":"다음 할 일"} aria-busy={state.loading} className="next-actions">
+    <div className="heading"><h3>{closure?"마무리 확인":"다음 할 일"}</h3><button type="button" disabled={state.loading} onClick={() => setAttempt(value => value + 1)}>새로고침</button></div>
     {state.loading ? <p role="status">실제 업무 상태를 확인하고 있습니다…</p> : <>
-      {actions.map(action => <div className="action" key={action.id}><p>{action.message}</p><button type="button" onClick={() => onNavigate(action.menu)}>{action.label} →</button></div>)}
+      {actions.map(action => <div className="action" key={action.id}><p>{action.message}</p>{action.detail&&<p style={{whiteSpace:"pre-wrap"}}>{action.detail}</p>}<button type="button" onClick={() => onNavigate(action.menu, action)}>{action.label} →</button></div>)}
       {state.errors.length > 0 && <div role="alert"><p>{state.errors.join(" ")}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 확인</button></div>}
-      {!actions.length && !state.errors.length && <p>현재 확인된 추가 업무가 없습니다.</p>}
+      {closure?.unknown.length>0&&<p role="alert">{closure.unknown.join(" · ")} 확인이 필요합니다. 새로고침하거나 해당 메뉴에서 내역을 확인해주세요.</p>}
+      {closure?.complete&&<p role="status"><strong>현장 정리 완료 ✓</strong><br/>현재 기록상 미수금·미반납 롤·자재 단가 미입력이 없습니다.</p>}
+      {!closure&&!actions.length&&!state.errors.length&&<p>현재 확인된 추가 업무가 없습니다.</p>}
+      {closure&&<p style={{fontSize:12}}>검수 승인과 수금·자재 정리는 별도로 확인합니다.</p>}
     </>}
     <style jsx>{`
       .next-actions { padding: 14px; margin: 12px 0; border-radius: 14px; background: #eaf2e9; color: #285340; }
