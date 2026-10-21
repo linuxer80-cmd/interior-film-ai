@@ -11,6 +11,7 @@ import useSiteWorkReport from "./hooks/useSiteWorkReport";
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
 import SiteOperations from "../components/SiteOperations";
 import SiteMaterials from "./site-detail/SiteMaterials";
+import SiteNextActions from "./SiteNextActions";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
@@ -256,18 +257,6 @@ export default function SiteDetailModal({
           ? "보완 요청"
           : "";
 
-  const nextAction = reviewStatus === "pending"
-    ? { message: "제출된 완료보고를 확인해주세요.", label: "완료보고 검수", menu: "report" }
-    : reviewStatus === "rejected"
-      ? { message: "보완 요청한 보고서의 진행 상황을 확인해주세요.", label: "보고서 확인", menu: "report" }
-      : reviewStatus === "approved"
-        ? { message: "시공이 완료되었습니다. 입금 내역을 확인해주세요.", label: "수금 확인", menu: "settlement" }
-        : site.status === "consulting"
-          ? { message: "상담 내용을 정리하고 견적을 작성해주세요.", label: "견적서 작성", menu: "quote" }
-          : site.status === "completed"
-            ? { message: "완료보고 제출 여부를 확인해주세요.", label: "완료보고 확인", menu: "report" }
-            : { message: "시공 날짜와 담당 시공자를 확인해주세요.", label: "일정·시공자 배정", menu: "schedule" };
-
   function renderMenuButton(item) {
     const selected = menu === item.id;
     return <button key={item.id} type="button" aria-pressed={selected}
@@ -423,13 +412,7 @@ export default function SiteDetailModal({
 
           </section>
 
-          {menu === "info" && site.status !== "cancelled" && (
-            <section aria-label="다음 할 일" style={{ padding: 14, margin: "12px 0", borderRadius: 14, background: "#eaf2e9", color: "#285340" }}>
-              <small>다음 할 일</small>
-              <p style={{ margin: "6px 0 10px", fontWeight: 800 }}>{nextAction.message}</p>
-              <button type="button" style={{ ...actionStyle, background: "#285340", color: "white" }} onClick={() => chooseMenu(nextAction.menu)}>{nextAction.label} →</button>
-            </section>
-          )}
+          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={chooseMenu} />
 
           <nav aria-label="현장 상세 메뉴" style={{ margin: "12px 0" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
