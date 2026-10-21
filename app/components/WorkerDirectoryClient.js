@@ -37,20 +37,19 @@ export default function WorkerConnectionPanel({compact=false,reviewOnly=false}) 
   return user?<ConnectionInbox key={user} api={api} compact={compact} reviewOnly={reviewOnly}/>:null;
 }
 function ConnectionInbox({api,compact,reviewOnly}) {
-  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[choice,setChoice]=useState(true);
+  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const live=useRef(true);
   const refresh=useCallback(async()=>{try{const next=await api('?mode=mine');if(live.current){setData(next);setError('');}}catch(e){if(live.current)setError(e.message);}},[api]);
   useEffect(()=>{live.current=true;refresh();const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);return()=>{live.current=false;clearInterval(timer);window.removeEventListener('focus',refresh);};},[refresh]);
   const act=async body=>{setBusy(true);setError('');try{await api('',body);await refresh();}catch(e){if(live.current)setError(e.message);}finally{if(live.current)setBusy(false);}};
   const pending=(data?.requests||[]).filter(row=>pendingConnection(row));
-  if(compact && data?.needs_review && data?.has_profile) return <section style={directoryCard} role='region' aria-label='프로필 검색 설정'><h2>업체 검색에 내 기본 프로필을 표시할까요?</h2><p>로그인한 업체 관리자에게 활동 지역·경력·전문 분야·소개가 표시됩니다. 연결 전 이름은 가리고 사진·일당·연락처는 공개하지 않습니다. 언제든 내 프로필에서 검색을 끌 수 있습니다.</p><button style={directoryButton} disabled={busy} onClick={()=>act({action:'consent',visible:true})}>기본 프로필 검색 허용</button>{' '}<button style={directoryButton} disabled={busy} onClick={()=>act({action:'consent',visible:false})}>검색에서 제외</button>{error&&<p role='alert'>{error}</p>}</section>;
   if(reviewOnly) return null;
   if(compact) return pending.length?<a href='/worker/account#company-connections' style={{...directoryCard,display:'block',color:'#163153',fontWeight:800}}>업체 연결 요청 {pending.length}건 · 확인하기 →</a>:null;
   return <section id='company-connections' style={directoryCard}>
     <h2>업체 검색 · 연결 요청</h2>
     <p>로그인한 업체 관리자에게 활동 지역·경력·전문 분야·소개를 표시합니다. 연결 전에는 이름을 가리고 사진·일당·연락처는 표시하지 않습니다.</p>
-    {data?.needs_review?<><p>기본 프로필 검색 설정을 선택해주세요.</p><label><input type='checkbox' checked={choice} disabled={busy} onChange={e=>setChoice(e.target.checked)}/> 업체 관리자의 기본 프로필 검색 허용</label><button style={directoryButton} disabled={busy||!data.has_profile} onClick={()=>act({action:'consent',visible:choice})}>검색 설정 저장</button></>:<label><input type='checkbox' checked={Boolean(data?.visible)} disabled={busy||!data} onChange={e=>act({action:'consent',visible:e.target.checked})}/> 업체 검색에 내 기본 프로필 표시</label>}
-    <p style={{color:'#667085'}}>연락처·계좌·주소는 검색에 공개되지 않습니다. 공개를 해제하면 대기 중인 연결 요청도 취소됩니다. 먼저 아래 기본 프로필을 저장해주세요.</p>
+    <label><input type='checkbox' checked={data?.visible===false} disabled={busy||!data||!data.has_profile} onChange={e=>act({action:'consent',visible:!e.target.checked})}/> 업체 검색에서 내 프로필 숨기기</label>
+    <p style={{color:'#667085'}}>연락처·계좌·주소는 검색에 공개되지 않습니다. 공개를 해제하면 대기 중인 연결 요청도 취소됩니다. 기본 프로필을 저장하면 기본적으로 검색에 표시됩니다. 숨기기는 언제든 변경할 수 있습니다.</p>
     <button type='button' style={directoryButton} disabled={busy} onClick={refresh}>새로고침</button>
     {error&&<p role='alert'>{error}</p>}
     {data&&!data.requests?.length&&<p>받은 업체 연결 요청이 없습니다.</p>}

@@ -18,7 +18,7 @@ function Directory({api}) {
   return <>
     <form style={card} onSubmit={e=>{e.preventDefault();setPage(0);setApplied({...filters});}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12}}>
-      {[['query','표시 이름',60],['region','활동 지역',100],['skill','전문 분야',40]].map(([key,label,max])=><label key={key}>{label}<input style={input} maxLength={max} value={filters[key]} onChange={e=>setFilters({...filters,[key]:e.target.value})}/></label>)}
+      {[['query','이름',60],['region','활동 지역',100],['skill','전문 분야',40]].map(([key,label,max])=><label key={key}>{label}<input style={input} maxLength={max} value={filters[key]} onChange={e=>setFilters({...filters,[key]:e.target.value})}/></label>)}
       <label>최소 경력 (년)<input style={input} type='number' min='0' max='70' step='1' value={filters.experience} onChange={e=>setFilters({...filters,experience:e.target.value})}/></label></div>
       <button style={{...button,marginTop:12}} disabled={busy}>검색</button>
     </form>

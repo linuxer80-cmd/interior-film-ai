@@ -53,8 +53,8 @@ begin
   end if;
   return jsonb_build_object('visible',visible_now);
  elsif p_action='mine' then
-  return jsonb_build_object('visible',coalesce((select visible from public.worker_directory_consent where user_id=p_actor),false),
-   'needs_review',not exists(select 1 from public.worker_directory_consent where user_id=p_actor and reviewed_at is not null),
+  return jsonb_build_object('visible',coalesce((select visible from public.worker_directory_consent where user_id=p_actor),true),
+   'needs_review',false,
    'has_profile',exists(select 1 from public.labor_profiles where user_id=p_actor),
    'requests',coalesce((select jsonb_agg(to_jsonb(x) order by x.updated_at desc) from (
     select r.id,r.relationship_type,r.message,r.status,r.revision,r.expires_at,r.updated_at,coalesce(to_jsonb(c)->>'company_name',to_jsonb(c)->>'name','업체') as company_name,c.is_active as company_active
@@ -80,7 +80,7 @@ begin
     from public.labor_profiles lp join public.worker_directory_consent dc on dc.user_id=lp.user_id and dc.visible=true and dc.reviewed_at is not null
     where lp.user_id<>p_actor and lp.experience_years>=min_exp
      and not exists(select 1 from public.profiles p where p.id=lp.user_id and p.is_active=false)
-     and (q='' or strpos(lower(case when exists(select 1 from public.workers w where w.company_id=co and w.user_id=lp.user_id and w.is_active is distinct from false) then lp.name else left(lp.name,1)||repeat('○',greatest(char_length(lp.name)-2,1))||case when char_length(lp.name)>2 then right(lp.name,1) else '' end end),lower(q))>0)
+     and (q='' or strpos(lower(lp.name),lower(q))>0 or strpos(lower(left(lp.name,1)||repeat('○',greatest(char_length(lp.name)-2,1))||case when char_length(lp.name)>2 then right(lp.name,1) else '' end),lower(q))>0)
      and (coalesce(p_body->>'date','')='' or (lp.seeking and lp.published and (p_body->>'date')::date=any(lp.available_dates)))
      and (coalesce(p_body->>'wage','')='' or (exists(select 1 from public.workers w where w.company_id=co and w.user_id=lp.user_id and w.is_active is distinct from false) and lp.daily_wage<=(p_body->>'wage')::integer))
      and (region_query='' or strpos(lower(lp.region),lower(region_query))>0)
@@ -142,5 +142,23 @@ begin
 end $$;
 revoke all on function public.worker_directory_action(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.worker_directory_action(uuid,text,jsonb) to service_role;
-select '시공자 기본 프로필 검색 설정 완료' as result;
+
+-- No prior choice: searchable by default. Preserve every saved exclusion.
+alter table public.worker_directory_consent alter column visible set default true;
+insert into public.worker_directory_consent(user_id,visible,reviewed_at)
+ select user_id,true,now() from public.labor_profiles on conflict(user_id) do nothing;
+update public.worker_directory_consent set reviewed_at=now() where reviewed_at is null;
+create or replace function public.initialize_worker_directory()
+returns trigger language plpgsql security invoker set search_path='' as $init$
+begin
+ insert into public.worker_directory_consent(user_id,visible,reviewed_at)
+ values(new.user_id,true,now()) on conflict(user_id) do nothing;
+ return new;
+end $init$;
+revoke all on function public.initialize_worker_directory() from public,anon,authenticated;
+drop trigger if exists initialize_worker_directory on public.labor_profiles;
+create trigger initialize_worker_directory after insert on public.labor_profiles
+ for each row execute function public.initialize_worker_directory();
+
+select '기본 검색 허용·개인설정 숨기기·실제 이름 검색 설정 완료' as result;
 commit;
