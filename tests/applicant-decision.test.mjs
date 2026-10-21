@@ -12,7 +12,7 @@ const render=new Function('React','Link','money',code+';return ApplicantDecision
 const flatten=n=>n&&typeof n==='object'?[n,...n.children.flat(Infinity).flatMap(flatten)]:[];
 test('applied applicant has enabled confirmation and click callback',()=>{
  let called=false;
- const tree=render({application:{status:'applied'},job:{status:'open',headcount:1},onAccept:()=>called=true});
+ const tree=render({application:{status:'applied',profile:{daily_wage:250000}},job:{status:'open',headcount:1},onAccept:()=>called=true});
  const button=flatten(tree).find(n=>n.type==='button');
  assert.equal(button.props.disabled,false);
  button.props.onClick();
@@ -31,4 +31,9 @@ test('closed jobs and full headcount cannot confirm',()=>{
   const nodes=flatten(render({application:{status:'applied'},job:{status:state,headcount:1},selected:count}));
   assert.equal(nodes.find(n=>n.type==='button').props.disabled,true);
  }
+});
+
+test('missing registered wage blocks finalization until profile is completed',()=>{
+ const nodes=flatten(render({application:{status:'applied'},job:{status:'open',headcount:1}}));
+ assert.equal(nodes.find(n=>n.type==='button').props.disabled,true);
 });

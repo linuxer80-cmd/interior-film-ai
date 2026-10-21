@@ -17,17 +17,17 @@ function fixture(manager=false){
  const button=label=>all(render(),n=>n.type==='button'&&text(n)===label)[0];
  return {slots,render,button};
 }
-test('worker must consent before accepting a proposal; confirmation carries the reviewed wage',()=>{
+test('worker must consent before applying to a proposal; confirmation carries the reviewed wage',()=>{
  const h=fixture();h.button('현장 제안 확인').props.onClick();
- let accept=h.button('동의하고 수락');assert.equal(accept.props.disabled,true);
+ let accept=h.button('이 현장에 지원');assert.equal(accept.props.disabled,true);
  all(h.render(),n=>n.type==='input'&&n.props.type==='checkbox')[0].props.onChange({target:{checked:true}});
- accept=h.button('동의하고 수락');assert.equal(accept.props.disabled,false);accept.props.onClick();
- assert.equal(h.slots[24].action,'proposal_accept');assert.equal(h.slots[24].expectedWage,250000);assert.equal(h.slots[24].share_phone,true);
+ accept=h.button('이 현장에 지원');assert.equal(accept.props.disabled,false);accept.props.onClick();
+ assert.equal(h.slots[24].action,'proposal_apply');assert.equal(h.slots[24].expectedWage,250000);assert.equal(h.slots[24].share_phone,true);
 });
 test('manager sees a collapsed site summary once for several proposals at the same site',()=>{
  const h=fixture(true);h.slots[0].jobs.push({...job,id:'j2'});h.slots[0].applications.push({...h.slots[0].applications[0],id:'a2',job_id:'j2'});
  const tree=h.render(),details=all(tree,n=>n.type==='details'&&n.props.className==='recruitment-status');assert.equal(details.length,1);assert.equal(details[0].props.open,undefined);
- assert.ok(text(tree).includes('제안 대기 2명'));assert.equal(all(tree,n=>n.type==='button'&&text(n)==='프로필 자세히 보기').length,0);
+ assert.ok(text(tree).includes('지원 전 제안 2명'));assert.equal(all(tree,n=>n.type==='button'&&text(n)==='프로필 자세히 보기').length,0);
  assert.equal(all(tree,n=>n.type==='button'&&text(n)==='지원자 확정').length,0);
 });
 test('seeking page explains only accepted dates are removed; deployment capability disables proposals',()=>{

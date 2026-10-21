@@ -275,7 +275,8 @@ export async function GET(request) {
 
     const capability=await db.rpc('labor_proposal_capabilities');
     if(capability.error && !['PGRST202','42883'].includes(capability.error.code))throw capability.error;
-    const proposalsEnabled=!capability.error && capability.data?.version===1;
+    const proposalsAvailable=!capability.error && capability.data?.version>=1;
+    const proposalsEnabled=!capability.error && capability.data?.version>=2;
     let jobsQuery = db.from('labor_jobs')
       .select('*')
       .order('created_at',{ascending:false})
@@ -286,7 +287,7 @@ export async function GET(request) {
       jobsQuery = jobsQuery.eq('company_id',companyId);
     } else {
       jobsQuery = jobsQuery.eq('status','open').gte('end_date',dayInKorea());
-      if(proposalsEnabled)jobsQuery=jobsQuery.or(`proposal_user_id.is.null,proposal_user_id.eq.${user.id}`);
+      if(proposalsAvailable)jobsQuery=jobsQuery.or(`proposal_user_id.is.null,proposal_user_id.eq.${user.id}`);
 
       if(ownerCompanyId) {
         jobsQuery=jobsQuery.neq('company_id',ownerCompanyId);
@@ -785,17 +786,20 @@ export async function POST(request) {
 
     if(!job) throw fail('공고를 찾을 수 없습니다.',404);
 
-    if(['proposal_accept','proposal_decline'].includes(body.action)) {
+    if(['proposal_apply','proposal_accept','proposal_decline'].includes(body.action)) {
       if(companyId)throw fail('시공자 홈에서 본인에게 온 제안을 확인해주세요.',403);
-      if(body.action==='proposal_accept' && (body.share_phone!==true || !Number.isSafeInteger(body.expectedWage) || body.expectedWage<=0))throw fail('제안 일당과 연락처 공유 동의를 확인해주세요.');
-      const result=await db.rpc('reply_labor_job_proposal',{p_actor:user.id,p_job:job.id,p_accept:body.action==='proposal_accept',p_expected_wage:body.expectedWage??null});
+      const applying=body.action!=='proposal_decline';
+      if(applying && (body.share_phone!==true || !Number.isSafeInteger(body.expectedWage) || body.expectedWage<=0))throw fail('제안 일당과 연락처 공유 동의를 확인해주세요.');
+      const capability=await db.rpc('labor_proposal_capabilities');
+      if(capability.error||!(capability.data?.version>=2))throw fail('제안 지원 방식 업데이트를 준비 중입니다. 잠시 후 다시 확인해주세요.',503);
+      const result=await db.rpc('reply_labor_job_proposal',{p_actor:user.id,p_job:job.id,p_accept:applying,p_expected_wage:body.expectedWage??null});
       if(result.error){if(result.error.code==='P0001')throw fail(result.error.message,409);throw result.error;}
       try{await dispatchLaborNotifications(db,job.id);}catch{}
       return json(result.data);
     }
-    if(job.proposal_user_id && !['close','finish'].includes(body.action))throw fail('현장 제안은 수락 또는 거절 버튼으로 처리해주세요.',409);
+    if(job.proposal_user_id && !['close','finish','accept','reject','withdraw'].includes(body.action))throw fail('현장 제안은 지원 또는 거절 버튼으로 처리해주세요.',409);
 
-    if(body.action==='direct_hire')throw fail('시공자에게 현장 제안을 보내고 수락을 기다려주세요.',409);
+    if(body.action==='direct_hire')throw fail('현장 제안 후 지원자를 확인하고 배정을 확정해주세요.',409);
     const manager=[
       'close','finish','invite','accept','reject','direct_hire'
     ].includes(body.action);
@@ -869,7 +873,7 @@ export async function POST(request) {
 
     const rated=['accept','direct_hire'].includes(body.action);
     if(rated && (!Number.isSafeInteger(body.expectedWage)||body.expectedWage<=0)) throw fail('적용할 시공자 등록 일당을 확인해주세요.');
-    const result=await db.rpc(rated?'labor_action_registered_wage':'labor_action',{
+    const result=await db.rpc(rated?(job.proposal_user_id?'finalize_labor_job_proposal':'labor_action_registered_wage'):'labor_action',{
       ...(rated?{p_expected_wage:body.expectedWage}:{}),
       p_actor:user.id,
       p_job:job.id,

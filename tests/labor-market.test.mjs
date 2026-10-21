@@ -203,7 +203,7 @@ function fixture(userId = owner, manager = true, proposals = false) {
 
     async rpc(name, args) {
       rpc.push({ name, args });
-      if(name==='labor_proposal_capabilities')return {data:proposals?{version:1}:null,error:null};
+      if(name==='labor_proposal_capabilities')return {data:proposals?{version:proposals===1?1:2}:null,error:null};
       return { data: null, error: null };
     },
 
@@ -562,7 +562,7 @@ test('private proposals are not listed or opened by an unrelated worker',async()
  const linked=await f.GET(get('?job='+jobId));assert.equal(linked.status,200);assert.equal((await linked.json()).jobs.length,0);
 });
 test('proposal replies require explicit consent and server actor; legacy direct hire is disabled',async()=>{
- const f=fixture(worker,false);f.tables.labor_jobs[0].proposal_user_id=worker;
+ const f=fixture(worker,false,true);f.tables.labor_jobs[0].proposal_user_id=worker;
  assert.equal((await f.POST(post({action:'proposal_accept',jobId,expectedWage:250000}))).status,400);
  assert.equal((await f.POST(post({action:'apply',jobId,share_phone:true}))).status,409);
  const response=await f.POST(post({action:'proposal_accept',jobId,userId:other,expectedWage:250000,share_phone:true}));assert.equal(response.status,200);
@@ -573,4 +573,14 @@ test('targeted job creation sends an invitation RPC and never invokes immediate 
  const f=fixture();const response=await f.POST(post({action:'job',recruitUserId:worker,expectedWage:250000,job:{...baseJob,site_id:siteId,work_dates:[dayInKorea()]}}));
  assert.equal(response.status,200);assert.ok(f.rpc.some(r=>r.name==='create_labor_job_proposal'));
  assert.equal(f.rpc.some(r=>r.name==='create_labor_direct_job_registered_wage'),false);
+});
+test('old proposal schema cannot accidentally assign a worker when applying',async()=>{
+ const f=fixture(worker,false,1);f.tables.labor_jobs[0].proposal_user_id=worker;
+ const r=await f.POST(post({action:'proposal_apply',jobId,share_phone:true,expectedWage:250000}));assert.equal(r.status,503);
+ assert.equal(f.rpc.some(r=>r.name==='reply_labor_job_proposal'),false);
+});
+test('manager finalizes a proposal applicant through the guarded finalization RPC',async()=>{
+ const f=fixture();f.tables.labor_jobs[0].proposal_user_id=worker;
+ const r=await f.POST(post({action:'accept',jobId,userId:worker,expectedWage:250000}));assert.equal(r.status,200);
+ assert.ok(f.rpc.some(r=>r.name==='finalize_labor_job_proposal'&&r.args.p_actor===owner&&r.args.p_target===worker));
 });
