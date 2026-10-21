@@ -110,6 +110,7 @@ export default function SiteDetailModal({
   const [materialFollowup,setMaterialFollowup]=useState(null);
   const materialPriceDetails=useRef(null);
   const [menu, setMenu] = useState("info");
+  const [preparationStep, setPreparationStep] = useState("dates");
   useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
   const [quoteDirty, setQuoteDirty] = useState(false);
   const [estimateDirty, setEstimateDirty] = useState(false);
@@ -190,6 +191,7 @@ export default function SiteDetailModal({
 
     setMaterialFollowup(params.get("section") === "material-prices" ? {id:"price"} : params.get("section") === "material-returns" ? {id:"returns"} : null);
     setMenu(nextMenu);
+    setPreparationStep(params.get("section") === "assignment" ? "team" : "dates");
     setVisited({ info: true, [nextMenu]: true });
 
     if (scrollBody.current) scrollBody.current.scrollTop = 0;
@@ -242,6 +244,19 @@ export default function SiteDetailModal({
     };
     if (id === menu) { navigate(); return; }
     requestLeave(navigate);
+  }
+
+  function choosePreparationStep(step) {
+    if (step === "materials") { chooseMenu("materials"); return; }
+    if (menu !== "schedule") {
+      chooseMenu("schedule", () => setPreparationStep(step));
+      return;
+    }
+    if (step === preparationStep) return;
+    requestLeave(() => {
+      setPreparationStep(step);
+      if (scrollBody.current) scrollBody.current.scrollTop = 0;
+    }, [preparationStep === "dates" ? "schedule" : "assignments"]);
   }
 
   const historyGuard = useRef(null);
@@ -461,7 +476,12 @@ export default function SiteDetailModal({
                 {group.label}
               </button>)}
             </div>
-            {activeGroup.items.length > 1 && <div aria-label={`${activeGroup.label} 세부 업무`} style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+            {activeGroup.id === "schedule" ? <div aria-label="시공 준비 단계" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,marginTop:8}}>
+              {[["dates","1. 날짜"],["team","2. 시공자"],["materials","3. 자재"]].map(([step,label]) => {
+                const selected = menu === "materials" ? step === "materials" : step === preparationStep;
+                return <button key={step} type="button" aria-pressed={selected} onClick={() => choosePreparationStep(step)} style={{...actionStyle,padding:"10px 4px",background:selected ? "#edf3e8" : "#fffefa"}}>{label}</button>;
+              })}
+            </div> : activeGroup.items.length > 1 && <div aria-label={`${activeGroup.label} 세부 업무`} style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
               {activeGroup.items.map(renderMenuButton)}
             </div>}
             {activeGroup.id === "schedule" && <a href={`/jobs?site=${encodeURIComponent(site.id)}`} data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,color:"#315d49"}}>이 현장 시공자 구인 →</a>}
@@ -572,7 +592,11 @@ export default function SiteDetailModal({
               aria-label="일정과 시공자 배정"
               hidden={menu !== "schedule"}
             >
+              <p style={{fontSize:13,color:"#53665a",lineHeight:1.7}}>
+                {preparationStep === "dates" ? "시공하는 날짜를 먼저 저장하세요. 시공자는 나중에 배정해도 됩니다." : "날짜별 팀장과 팀원을 정하세요. 같은 팀을 여러 날짜에 적용한 뒤 필요한 날짜만 바꿀 수 있습니다."}
+              </p>
               <div
+                hidden={preparationStep !== "dates"}
                 ref={element => {
                   taskSections.current.schedule = element;
                 }}
@@ -589,10 +613,13 @@ export default function SiteDetailModal({
                   onRequestDiscard={(id,proceed) => requestLeave(proceed,[id])}
                   reloadSites={reloadSites}
                 />
+                <button type="button" style={{...actionStyle,width:"100%",marginTop:12}} onClick={() => choosePreparationStep("team")}>다음 · 시공자 배정 →</button>
+                <p style={{fontSize:12,color:"#53665a"}}>시공일 저장 후 닫으면 날짜만 저장됩니다. 배정과 자재는 나중에 이어서 준비할 수 있습니다.</p>
               </div>
 
               {!reportOpen ? (
                 <section
+                  hidden={preparationStep !== "team"}
                   style={{
                     marginTop: 16,
                     paddingTop: 14,
@@ -621,6 +648,10 @@ export default function SiteDetailModal({
                       onDraftState={registerDraft}
                       onSaved={handleAssignmentSaved}
                     />
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:14}}>
+                      <button type="button" style={actionStyle} onClick={() => choosePreparationStep("dates")}>← 날짜 확인</button>
+                      <button type="button" style={{...actionStyle,flex:1,background:"#285340",color:"#fff"}} onClick={() => choosePreparationStep("materials")}>다음 · 자재 준비 →</button>
+                    </div>
                   </div>
                 </section>
               ) : (
@@ -644,11 +675,13 @@ export default function SiteDetailModal({
               aria-label="예정 자재"
               hidden={menu !== "materials"}
             >
+              <p style={{fontSize:13,color:"#53665a",lineHeight:1.7}}>사용할 필름과 반출·반납 내역을 확인하세요. 필름 등록·단가·메모는 아래에서 관리합니다.</p>
               <SiteOperations siteId={site.id} active={menu === "materials"} mode="materials" reportEditable compact completionMode={materialFollowup?.id === "returns"} />
               <details ref={materialPriceDetails} style={{ margin: "14px 0" }}>
                 <summary style={{ ...actionStyle, cursor: "pointer" }}>자재 추가·수정 / 단가·메모 관리</summary>
                 <SiteMaterials key={site.id} site={site} actualOnly={materialFollowup?.id === "price"} />
               </details>
+              <button type="button" style={{...actionStyle,width:"100%",marginBottom:14}} onClick={() => choosePreparationStep("team")}>← 시공자 배정 확인</button>
             </section>
           )}
 
