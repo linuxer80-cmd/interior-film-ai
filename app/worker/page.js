@@ -29,6 +29,7 @@ export default function WorkerPage({ mode = "home" }) {
   const [reportFilter, setReportFilter] = useState("todo");
   const [loading, setLoading] = useState(true);
   const [worker, setWorker] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [sites, setSites] = useState([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -41,6 +42,26 @@ export default function WorkerPage({ mode = "home" }) {
     useState("");
 
   const refreshInFlight = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    let version = 0;
+    async function checkOwner() {
+      const attempt = ++version;
+      const { data } = await supabase.auth.getSession();
+      const id = data?.session?.user?.id;
+      if (!id) { if (active && attempt === version) setIsOwner(false); return; }
+      const { data: profile, error } = await supabase.from("profiles").select("role,is_active").eq("id",id).maybeSingle();
+      if (active && attempt === version) setIsOwner(!error && profile?.role === "owner" && profile.is_active !== false);
+    }
+    void checkOwner().catch(() => { if(active) setIsOwner(false); });
+    const { data } = supabase.auth.onAuthStateChange(() => {
+      setIsOwner(false);
+      setTimeout(() => { if(active) void checkOwner().catch(() => { if(active) setIsOwner(false); }); },0);
+    });
+    return () => { active = false; version++; data.subscription.unsubscribe(); };
+  }, []);
+
 
   const titles = {
     sites: "내 현장",
@@ -341,6 +362,8 @@ export default function WorkerPage({ mode = "home" }) {
             </h1>
           </div>
 
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          {isOwner && <Link href="/admin" data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,padding:"8px 12px",borderRadius:12,background:"#edf3ec",color:"#285340",textDecoration:"none",fontWeight:700}}>관리자 홈으로</Link>}
           <button
             type="button"
             className={styles.logout}
@@ -348,6 +371,7 @@ export default function WorkerPage({ mode = "home" }) {
           >
             로그아웃
           </button>
+          </div>
         </div>
       </header>
 
