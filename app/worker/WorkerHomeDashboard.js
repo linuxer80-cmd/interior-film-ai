@@ -1,5 +1,6 @@
 "use client";
 
+import HomeSchedule from "../components/HomeSchedule";
 import usePersonalMenus from "../../lib/usePersonalMenus";
 import {relationshipRequest} from "../../lib/workerRelationshipClient";
 import LaborNotifications from "../components/LaborNotifications";
@@ -151,6 +152,8 @@ export default function WorkerHomeDashboard({
           {dateLabel}
         </span>
       </div>
+
+      <HomeSchedule sites={sites} worker onOpen={onOpen} />
 
       <div className="wp-section-title">
         <h3>오늘의 할 일</h3>

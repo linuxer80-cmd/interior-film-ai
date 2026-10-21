@@ -395,7 +395,7 @@ export default function AdminPage() {
     setActiveTab(tab);
 
     if (
-      tab === "sites"
+      tab === "sites" || tab === "today"
     ) {
       loadSites(
         companyId,
@@ -567,6 +567,7 @@ export default function AdminPage() {
         }
 
         await Promise.all([
+          loadSites(resolvedCompanyId),
           loadSettings(
             resolvedCompanyId,
           ),
@@ -717,6 +718,9 @@ export default function AdminPage() {
       )}
 
       <AdminTabs
+        sites={sites}
+        sitesLoading={sitesLoading}
+        sitesMessage={sitesMessage}
         companyName={companyName}
         companyId={companyId}
         activeTab={

@@ -10,6 +10,7 @@ import { useEffect, useId, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
+import HomeSchedule from "../components/HomeSchedule";
 import AdminHomeSummary from "./AdminHomeSummary";
 const SiteExtraWork = dynamic(() => import("../components/SiteExtraWork"), { ssr: false });
 import ToolIllustration from "../components/ui/ToolIllustration";
@@ -92,6 +93,9 @@ const sections = {
 
 export default function AdminTabs({
   activeTab,
+  sites = [],
+  sitesLoading = false,
+  sitesMessage = "",
   companyId,
   companyName,
   changeTab,
@@ -131,6 +135,8 @@ export default function AdminTabs({
     <section className="film-admin-dashboard">
       {isHome ? (
         <>
+          <div className="friendly-home-intro"><small>{companyName || "우리 업체"}</small><h1>오늘 할 일부터,<br />하나씩 끝내세요.</h1></div>
+          <HomeSchedule sites={sites} loading={sitesLoading} error={sitesMessage.startsWith("❌") ? sitesMessage : ""} onOpen={id => { window.location.href = `/admin?tab=sites&site=${encodeURIComponent(id)}`; }} />
           <AdminHomeSummary key={companyId} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
           <SiteExtraWork key={companyId} summary />
@@ -138,7 +144,7 @@ export default function AdminTabs({
           <AchievementBadges key={companyId} scope="owner" compact />
 
           <h3 className="film-admin-menu-heading">
-            무엇을 도와드릴까요?
+            전체 업무 메뉴
           </h3>
 
           <nav
@@ -275,7 +281,7 @@ export default function AdminTabs({
       <nav className="film-admin-bottom" aria-label="관리자 하단 메뉴">
         {[
           { id: "today", label: "홈", icon: "home" },
-          { id: "sites", label: "현장", icon: "camera" },
+          { id: "sites", label: "현장·일정", icon: "camera" },
           { id: "leads", label: "상담", icon: "chat" },
           { id: "profit", label: "매출·수익", icon: "money" },
         ].map(item => (
