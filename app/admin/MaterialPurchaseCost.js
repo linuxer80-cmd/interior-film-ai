@@ -142,7 +142,9 @@ export default function MaterialPurchaseCost({
                   사용 {data.quantity}m · 적용 자재비{" "}
                   <b>{money(selected.total)}원</b>
                   <br />
-                  {choice === "roll"
+                  {selected.label === "관리자 직접 입력 단가"
+                    ? "관리자가 직접 입력한 단가로 계산한 금액입니다."
+                    : choice === "roll"
                     ? "롤별 사용량 × 입고단가 합계입니다."
                     : "롤 이력이 없어 현재 등록된 공급가를 사용합니다. 과거 입고단가와 같은지 확인해주세요."}
                 </p>

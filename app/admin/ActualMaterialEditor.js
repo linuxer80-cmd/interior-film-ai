@@ -86,7 +86,9 @@ export default function ActualMaterialEditor({
 
       setDraft(null);
       setMessage(
-        method === "DELETE"
+        result.priceSource === "manual"
+          ? "단가를 저장했습니다. 반출·반입 사용량은 유지하고 자재비를 다시 계산했습니다."
+          : method === "DELETE"
           ? "자재를 삭제했습니다."
           : "자재를 저장했습니다. 매출수익을 다시 조회하면 반영됩니다."
       );
