@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { guardAdminSiteHistory } from "../../lib/adminSiteHistory.mjs";
 import SiteWorkerAssignment from "./SiteWorkerAssignment";
 import SiteWorkReport from "./SiteWorkReport";
@@ -11,6 +11,9 @@ import useSiteWorkReport from "./hooks/useSiteWorkReport";
 import SiteRequestPhotos from "./site-detail/SiteRequestPhotos";
 import SiteOperations from "../components/SiteOperations";
 import SiteMaterials from "./site-detail/SiteMaterials";
+import { createSiteDrafts } from "../../lib/siteDrafts.mjs";
+import UnsavedChangesDialog from "./UnsavedChangesDialog";
+import TradeClients from "../components/TradeClients";
 import SiteNextActions from "./SiteNextActions";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
@@ -118,6 +121,35 @@ export default function SiteDetailModal({
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
   const [reviewStatus, setReviewStatus] = useState(null);
 
+  const drafts = useRef(createSiteDrafts());
+  const [leaveRequest, setLeaveRequest] = useState(null);
+  const leaveRef = useRef(null);
+  const closeApproved = useRef(false);
+  const registerDraft = useCallback((id, read) => drafts.current.register(id, read), []);
+
+  function requestLeave(proceed, ids, closing = false) {
+    if (leaveRef.current) return false;
+    const entries = drafts.current.snapshot(ids);
+    const busy = reportSaving || entries.some(entry => entry.pending);
+    const changed = entries.filter(entry => entry.dirty || entry.pending);
+    const quoteChanged = closing && (estimateDirty || quoteDirty);
+    if (!busy && !changed.length && !quoteChanged) { proceed(); return true; }
+    const request = { proceed, entries, busy, labels: [
+      ...changed.map(entry => entry.label), ...(quoteChanged ? ["견적서"] : []),
+      ...(reportSaving ? ["완료보고 저장"] : []),
+    ] };
+    leaveRef.current = request;
+    setLeaveRequest(request);
+    return false;
+  }
+  function continueEditing() { leaveRef.current = null; setLeaveRequest(null); }
+  function discardAndLeave() {
+    const request = leaveRef.current;
+    if (!request || request.busy || !drafts.current.discard(request.entries)) return;
+    continueEditing();
+    request.proceed();
+  }
+
   const taskSections = useRef({});
   const scrollBody = useRef(null);
   const [basicEditRequest, setBasicEditRequest] = useState({ siteId: null, version: 0 });
@@ -130,6 +162,9 @@ export default function SiteDetailModal({
   } = useSiteWorkReport({ companyId, reloadSites });
 
   useEffect(() => {
+    leaveRef.current = null;
+    setLeaveRequest(null);
+    closeApproved.current = false;
     setReportOpen(false);
     setReportEstimateOpen(false);
     setEstimateDirty(false);
@@ -187,32 +222,53 @@ export default function SiteDetailModal({
     };
   }, [hasSite]);
 
-  function chooseMenu(id) {
-    setVisited(previous => ({ ...previous, [id]: true }));
-    setMenu(id);
-
-    if (scrollBody.current) scrollBody.current.scrollTop = 0;
+  function chooseMenu(id, onChosen) {
+    const navigate = () => {
+      setVisited(previous => ({ ...previous, [id]: true }));
+      setMenu(id);
+      if (scrollBody.current) scrollBody.current.scrollTop = 0;
+      if (typeof onChosen === "function") onChosen();
+    };
+    if (id === menu) { navigate(); return; }
+    requestLeave(navigate);
   }
 
   const historyGuard = useRef(null);
   const closeState = useRef(null);
-  closeState.current = { estimateDirty, quoteDirty, reportSaving, onClose };
+  closeState.current = { estimateDirty, quoteDirty, reportSaving, onClose, requestLeave };
 
   useEffect(() => {
     if (!site?.id) return;
     const guard = guardAdminSiteHistory(window, {
       canClose: () => {
         const current = closeState.current;
-        if (current.reportSaving) return false;
-        return !(current.estimateDirty || current.quoteDirty) || window.confirm(
-          "견적서에 저장하지 않은 변경이 있거나 처리 중입니다. 닫을까요?",
-        );
+        if (closeApproved.current) { closeApproved.current = false; return true; }
+        const entries = drafts.current.snapshot();
+        if (!current.reportSaving && !current.estimateDirty && !current.quoteDirty &&
+            !entries.some(entry => entry.dirty || entry.pending)) return true;
+        current.requestLeave(() => {
+          closeApproved.current = true;
+          historyGuard.current?.close();
+        }, undefined, true);
+        return false;
       },
       onClose: () => closeState.current.onClose?.(),
     });
     historyGuard.current = guard;
     return () => { guard.dispose(); historyGuard.current = null; };
   }, [site?.id]);
+
+  useEffect(() => {
+    const warn = event => {
+      const current = closeState.current;
+      if (current?.reportSaving || current?.estimateDirty || current?.quoteDirty ||
+          drafts.current.snapshot().some(entry => entry.dirty || entry.pending)) {
+        event.preventDefault(); event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
 
   function closeModal() {
     historyGuard.current?.close();
@@ -334,9 +390,10 @@ export default function SiteDetailModal({
               </h2>
 
               <button type="button" disabled={reportSaving} style={{ ...actionStyle, background: "#285340", color: "#fffef9", minHeight: 44, marginRight: 8, marginBottom: 6 }} onClick={() => {
-                chooseMenu("info");
-                setBasicEditRequest(value => ({ siteId: site.id, version: value.version + 1 }));
-                requestAnimationFrame(() => { if (scrollBody.current) scrollBody.current.scrollTop = 0; });
+                chooseMenu("info", () => {
+                  setBasicEditRequest(value => ({ siteId: site.id, version: value.version + 1 }));
+                  requestAnimationFrame(() => { if (scrollBody.current) scrollBody.current.scrollTop = 0; });
+                });
               }}>현장정보 수정</button>
               <span
                 style={{
@@ -403,13 +460,22 @@ export default function SiteDetailModal({
           >
             <SiteBasicInfo
               key={site.id}
-              onCustomerLinked={reloadSites}
+              onDraftState={registerDraft}
+              onRequestDiscard={(id, proceed) => requestLeave(proceed, [id])}
               editRequest={basicEditRequest.siteId === site.id ? basicEditRequest.version : 0}
               site={site}
               updateSiteBasicInfo={updateSiteBasicInfo}
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+          </section>
+
+          <section hidden={menu !== "info"} aria-label="현장 거래처 연결">
+            <details style={{ margin: "12px 0" }}>
+              <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>거래처 연결</summary>
+              <p style={{ fontSize: 13, color: "#53665a" }}>거래처 연결은 ‘거래처 연결 저장’으로 별도 저장합니다.</p>
+              <TradeClients key={site.id} siteId={site.id} onLinked={reloadSites} onDraftState={registerDraft} />
+            </details>
           </section>
 
           <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={chooseMenu} />
@@ -531,6 +597,7 @@ export default function SiteDetailModal({
                       loadWorkers={loadWorkers}
                       loadSiteWorkers={loadSiteWorkers}
                       assignSiteWorkers={assignSiteWorkers}
+                      onDraftState={registerDraft}
                       onSaved={handleAssignmentSaved}
                     />
                   </div>
@@ -731,6 +798,7 @@ export default function SiteDetailModal({
               )}
           </section>
         </div>
+        <UnsavedChangesDialog request={leaveRequest} onContinue={continueEditing} onDiscard={discardAndLeave} />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import useSiteDraft from "./hooks/useSiteDraft";
+import { assignmentSignature } from "../../lib/siteDrafts.mjs";
 import { supabase } from "../../lib/supabase";
 
 function localDay(value) {
@@ -96,6 +98,7 @@ export default function SiteWorkerAssignment({
   loadWorkers,
   loadSiteWorkers,
   onSaved,
+  onDraftState,
 }) {
   const dates = dayList(site);
   const datesKey = dates.join(",");
@@ -104,6 +107,7 @@ export default function SiteWorkerAssignment({
   const formKey = `${siteId}:${explicit}:${datesKey}`;
 
   const [assignments, setAssignments] = useState({});
+  const baseline = useRef({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -150,6 +154,12 @@ export default function SiteWorkerAssignment({
     workersLoading ||
     readyKey !== formKey ||
     locked;
+
+  const dirty = readyKey === formKey && assignmentSignature(assignments) !== assignmentSignature(baseline.current);
+  useSiteDraft(onDraftState, "assignments", {
+    label: "시공자 배정", dirty, pending: saving,
+    discard: () => { setAssignments(baseline.current); setMessage(""); setPicker(null); },
+  });
 
   useEffect(() => {
     if (!siteId) return;
@@ -206,6 +216,7 @@ export default function SiteWorkerAssignment({
           };
         }
 
+        baseline.current = initial;
         setAssignments(initial);
         setReadyKey(formKey);
       } catch (error) {
@@ -279,6 +290,7 @@ export default function SiteWorkerAssignment({
 
       if (currentKey.current !== savedKey) return;
 
+      baseline.current = assignments;
       setMessage([
         "✅ 날짜별 담당자가 저장되었습니다.",
         result?.pendingWages?.length ? "일당 미등록: " + [...new Set(result.pendingWages.map(p => p.workerName))].join(", ") + " · 일당 확인이 필요합니다." : "",
@@ -338,6 +350,7 @@ export default function SiteWorkerAssignment({
     <h3>일정 배정</h3>
     <p className="hint">날짜별로 함께할 시공자를 선택하세요.</p>
     {locked && <p>완료되거나 취소된 현장은 배정을 변경할 수 없습니다.</p>}
+    {dirty && <p role="status">시공자 배정 · 저장하지 않은 변경이 있습니다.</p>}
     {loading || workersLoading ? <p>담당자를 불러오는 중...</p> : !dates.length ? <p>먼저 시공 날짜를 선택하고 저장해주세요.</p> : readyKey !== formKey ?
       <button type="button" onClick={() => setRetry(v => v+1)}>담당자 다시 불러오기</button> :
       dates.map(date => {

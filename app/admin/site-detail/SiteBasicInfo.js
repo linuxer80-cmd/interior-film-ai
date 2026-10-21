@@ -1,9 +1,10 @@
 "use client";
-import TradeClients from "../../components/TradeClients";
+import useSiteDraft from "../hooks/useSiteDraft";
 import SiteDirections from "../../worker/SiteDirections";
 
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -40,12 +41,16 @@ function hasAmount(value) {
    현장 기본정보
 ========================================================= */
 
+const basicFields = ["customer_name", "customer_phone", "site_name", "address", "address_detail", "region", "work_type", "work_description", "contract_amount", "deposit_amount", "memo"];
+const basicDraft = site => Object.fromEntries(basicFields.map(key => [key, valueOrEmpty(site?.[key])]));
+
 export default function SiteBasicInfo({
   site,
   updateSiteBasicInfo,
   materialSummary,
   editRequest = 0,
-  onCustomerLinked,
+  onDraftState,
+  onRequestDiscard,
 }) {
   const [
     editing,
@@ -84,73 +89,23 @@ export default function SiteBasicInfo({
     memo: "",
   });
 
+  const baseline = useRef(basicDraft(site));
+  const dirty = editing && JSON.stringify(form) !== JSON.stringify(baseline.current);
+  useSiteDraft(onDraftState, "basic", {
+    label: "현장 기본정보", dirty, pending: saving, discard: cancelEditing,
+  });
+
   /* =======================================================
      현장 정보 → 수정폼 동기화
   ======================================================= */
 
   useEffect(() => {
-    if (!site) {
+    if (!site || editing || saving) {
       return;
     }
 
-    setForm({
-      customer_name:
-        valueOrEmpty(
-          site.customer_name,
-        ),
-
-      customer_phone:
-        valueOrEmpty(
-          site.customer_phone,
-        ),
-
-      site_name:
-        valueOrEmpty(
-          site.site_name,
-        ),
-
-      address:
-        valueOrEmpty(
-          site.address,
-        ),
-
-      address_detail:
-        valueOrEmpty(
-          site.address_detail,
-        ),
-
-      region:
-        valueOrEmpty(
-          site.region,
-        ),
-
-      work_type:
-        valueOrEmpty(
-          site.work_type,
-        ),
-
-      work_description:
-        valueOrEmpty(
-          site.work_description,
-        ),
-
-      contract_amount:
-        valueOrEmpty(
-          site.contract_amount,
-        ),
-
-      deposit_amount:
-        valueOrEmpty(
-          site.deposit_amount,
-        ),
-
-      memo:
-        valueOrEmpty(
-          site.memo,
-        ),
-    });
-
-    setMessage("");
+    baseline.current = basicDraft(site);
+    setForm(baseline.current);
   }, [
     site?.id,
     site?.customer_name,
@@ -218,62 +173,8 @@ export default function SiteBasicInfo({
   ======================================================= */
 
   function startEditing() {
-    setForm({
-      customer_name:
-        valueOrEmpty(
-          site.customer_name,
-        ),
-
-      customer_phone:
-        valueOrEmpty(
-          site.customer_phone,
-        ),
-
-      site_name:
-        valueOrEmpty(
-          site.site_name,
-        ),
-
-      address:
-        valueOrEmpty(
-          site.address,
-        ),
-
-      address_detail:
-        valueOrEmpty(
-          site.address_detail,
-        ),
-
-      region:
-        valueOrEmpty(
-          site.region,
-        ),
-
-      work_type:
-        valueOrEmpty(
-          site.work_type,
-        ),
-
-      work_description:
-        valueOrEmpty(
-          site.work_description,
-        ),
-
-      contract_amount:
-        valueOrEmpty(
-          site.contract_amount,
-        ),
-
-      deposit_amount:
-        valueOrEmpty(
-          site.deposit_amount,
-        ),
-
-      memo:
-        valueOrEmpty(
-          site.memo,
-        ),
-    });
+    baseline.current = basicDraft(site);
+    setForm(baseline.current);
 
     setMessage("");
     setEditing(true);
@@ -288,62 +189,8 @@ export default function SiteBasicInfo({
       return;
     }
 
-    setForm({
-      customer_name:
-        valueOrEmpty(
-          site.customer_name,
-        ),
-
-      customer_phone:
-        valueOrEmpty(
-          site.customer_phone,
-        ),
-
-      site_name:
-        valueOrEmpty(
-          site.site_name,
-        ),
-
-      address:
-        valueOrEmpty(
-          site.address,
-        ),
-
-      address_detail:
-        valueOrEmpty(
-          site.address_detail,
-        ),
-
-      region:
-        valueOrEmpty(
-          site.region,
-        ),
-
-      work_type:
-        valueOrEmpty(
-          site.work_type,
-        ),
-
-      work_description:
-        valueOrEmpty(
-          site.work_description,
-        ),
-
-      contract_amount:
-        valueOrEmpty(
-          site.contract_amount,
-        ),
-
-      deposit_amount:
-        valueOrEmpty(
-          site.deposit_amount,
-        ),
-
-      memo:
-        valueOrEmpty(
-          site.memo,
-        ),
-    });
+    baseline.current = basicDraft(site);
+    setForm(baseline.current);
 
     setMessage("");
     setEditing(false);
@@ -429,6 +276,7 @@ export default function SiteBasicInfo({
         "✅ 기본정보가 저장되었습니다.",
       );
 
+      baseline.current = { ...form };
       setEditing(false);
     } catch (error) {
       console.error(
@@ -551,7 +399,7 @@ export default function SiteBasicInfo({
         />
 
         <details style={{ marginTop: 10 }}>
-          <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: "#315d49", fontWeight: 800 }}>작업 내용·금액·거래처 자세히 보기 ▾</summary>
+          <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: "#315d49", fontWeight: 800 }}>작업 내용·금액 자세히 보기 ▾</summary>
         <DetailRow
           label="현장명"
           value={
@@ -635,7 +483,6 @@ export default function SiteBasicInfo({
             "미정"
           }
         />
-        <details style={{ margin: "14px 0" }}><summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분 · 거래처 연결</summary><TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} /></details>
         </details>
       </section>
     );
@@ -665,8 +512,8 @@ export default function SiteBasicInfo({
         현장정보 수정
       </div>
 
-      <TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} />
-      <p style={{ color: "#65766b", fontSize: 13 }}>거래처 연결은 위의 ‘거래처 지정 저장’, 아래 기본정보는 ‘저장’으로 각각 반영합니다.</p>
+      <p style={{ color: "#65766b", fontSize: 13 }}>이 영역은 ‘기본정보 저장’으로 저장합니다. 거래처는 별도의 ‘거래처 연결’ 영역에서 저장합니다.</p>
+      <p role="status" style={{ color: "#315d49", fontSize: 13 }}>{saving ? "기본정보 저장 중…" : dirty ? "기본정보 · 저장하지 않은 변경이 있습니다." : "기본정보 · 변경 사항 없음"}</p>
       <form
         onSubmit={
           saveBasicInfo
@@ -1027,9 +874,7 @@ export default function SiteBasicInfo({
         >
           <button
             type="button"
-            onClick={
-              cancelEditing
-            }
+            onClick={() => onRequestDiscard ? onRequestDiscard("basic", cancelEditing) : (!dirty || window.confirm("기본정보 변경을 취소할까요?")) && cancelEditing()}
             disabled={
               saving
             }
@@ -1058,7 +903,7 @@ export default function SiteBasicInfo({
                   : 1,
             }}
           >
-            취소
+            기본정보 변경 취소
           </button>
 
           <button
@@ -1092,8 +937,8 @@ export default function SiteBasicInfo({
             }}
           >
             {saving
-              ? "저장 중..."
-              : "💾 기본정보 저장"}
+              ? "기본정보 저장 중…"
+              : "기본정보 저장"}
           </button>
         </div>
       </form>
@@ -1188,6 +1033,7 @@ function MessageBox({
 
   return (
     <div
+      role={success ? "status" : "alert"}
       style={{
         marginTop: "10px",
         padding: "9px 10px",

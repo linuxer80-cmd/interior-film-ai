@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import useSiteDraft from "../admin/hooks/useSiteDraft";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
 import SitePaymentQuick, { paymentApi } from "./SitePaymentQuick";
@@ -450,7 +451,7 @@ function ClientFilter({ clients, value, onChange, disabled }) {
   </details>;
 }
 
-export default function TradeClients({ siteId, onScope, onLinked }) {
+export default function TradeClients({ siteId, onScope, onLinked, onDraftState }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -468,6 +469,26 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
   const [linkKind, setLinkKind] = useState("personal");
   const [linkMessage, setLinkMessage] = useState("");
   const linkPanel = useRef(null);
+  const linkBaseline = useRef(null);
+  const linkRevision = useRef(0);
+  const linkValue = { siteId: linkSite, kind: linkKind,
+    clientId: linkKind === "business" ? linkClient : "",
+    contactId: linkKind === "business" ? linkContact : "" };
+  const linkDirty = Boolean(linkBaseline.current && JSON.stringify(linkValue) !== JSON.stringify(linkBaseline.current));
+  const linkLatest = useRef(null);
+  linkLatest.current = { value: linkValue, dirty: linkDirty };
+  useSiteDraft(siteId ? onDraftState : undefined, "trade-link", {
+    label: "거래처 연결", dirty: linkDirty, pending: busy || retry,
+    discard: () => {
+      const currentSite = data?.sites.find(item => item.id === linkSite);
+      const saved = currentSite ? { siteId: linkSite, kind: currentSite.client_id ? "business" : "personal", clientId: currentSite.client_id || "", contactId: currentSite.contact_id || "" } : linkBaseline.current;
+      if (!saved) return;
+      linkBaseline.current = saved;
+      if (currentSite) linkRevision.current = currentSite.link_revision || 0;
+      setLinkKind(saved.kind); setLinkClient(saved.clientId); setLinkContact(saved.contactId); setLinkMessage("");
+    },
+  });
+
 
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(koreanDay);
@@ -521,9 +542,15 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
 
   useEffect(() => {
     const site = data?.sites.find((item) => item.id === linkSite);
-    setLinkClient(site?.client_id || "");
-    setLinkContact(site?.contact_id || "");
-    setLinkKind(site?.client_id ? "business" : "personal");
+    if (!site) return;
+    // Background refreshes must not replace a user's unsaved selection.
+    if (linkBaseline.current?.siteId === linkSite && linkLatest.current?.dirty) return;
+    const saved = { siteId: linkSite, kind: site.client_id ? "business" : "personal", clientId: site.client_id || "", contactId: site.contact_id || "" };
+    linkBaseline.current = saved;
+    linkRevision.current = site.link_revision || 0;
+    setLinkClient(saved.clientId);
+    setLinkContact(saved.contactId);
+    setLinkKind(saved.kind);
   }, [data, linkSite]);
 
   useEffect(() => {
@@ -553,6 +580,10 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
 
     try {
       await tradeApi(body);
+      if (body.action === "link") {
+        linkBaseline.current = { siteId: body.siteId, kind: body.clientId ? "business" : "personal", clientId: body.clientId || "", contactId: body.contactId || "" };
+        linkLatest.current = { value: linkBaseline.current, dirty: false };
+      }
       pending.current = null;
 
       window.dispatchEvent(new Event("trade-clients-changed"));
@@ -568,7 +599,7 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
           // A refresh failure must not turn a saved link into a failed transaction.
           Promise.resolve().then(() => linkedCallback.current?.()).catch(() => {});
           setLinkMessage(
-            "저장했습니다. 이 현장의 거래처 지정이 반영되었습니다."
+            "거래처 연결이 저장되었습니다. 기본정보는 별도로 저장해주세요."
           );
         }
       }
@@ -1065,7 +1096,8 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
             tabIndex={-1}
             style={{ scrollMarginTop: 120 }}
           >
-            <h4>거래처 지정</h4>
+            <h4>거래처 연결</h4>
+            {siteId && linkDirty && <p role="status">거래처 연결 · 저장하지 않은 변경이 있습니다.</p>}
             {siteId && linkedSite && <p aria-label="현재 연결된 거래처" style={{ padding: 12, borderRadius: 10, background: "#edf3ec", color: "#285340" }}>
               현재 연결: {linkedSite.client_name || (linkedSite.client_id ? clients.find(item => item.id === linkedSite.client_id)?.name || "거래처 확인 필요" : "개인 고객")}
               {linkedSite.contact_id && ` · 담당자 ${contacts.find(item => item.id === linkedSite.contact_id)?.name || "확인 필요"}`}
@@ -1215,13 +1247,11 @@ export default function TradeClients({ siteId, onScope, onLinked }) {
                       siteId: linkSite,
                       clientId: linkKind === "business" ? linkClient : "",
                       contactId: linkKind === "business" ? linkContact : "",
-                      revision:
-                        sites.find((site) => site.id === linkSite)
-                          ?.link_revision || 0,
+                      revision: linkRevision.current,
                     })
                   }
                 >
-                  {busy ? "저장 중…" : "거래처 지정 저장"}
+                  {busy ? "거래처 연결 저장 중…" : "거래처 연결 저장"}
                 </button>
 
                 {retry && (
