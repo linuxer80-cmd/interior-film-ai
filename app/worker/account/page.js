@@ -296,6 +296,12 @@ export default function WorkerAccount() {
     {pendingInvite && <aside role='status' style={{padding:14,border:'1px solid #bfdbfe',borderRadius:12,background:'#eff6ff',marginBottom:14}}><strong>업체 연결 마지막 단계</strong><p style={{margin:'8px 0 0'}}>이름·연락처·일당만 확인하고 아래 버튼을 누르세요. 프로필 저장 후 초대 수락과 업체 연결을 자동으로 이어서 처리합니다.</p></aside>}
     {!pendingInvite && <span className='eyebrow'>나를 소개하고 좋은 현장을 찾아요</span>}
     <p>저장한 기본 프로필은 로그인한 업체 관리자 검색에 기본 표시됩니다. 연결 전 이름은 가리며 사진·일당·연락처는 공개하지 않습니다. 원치 않으면 개인설정에서 ‘업체 검색에서 내 프로필 숨기기’를 체크해주세요.</p><h1>{session?'내 프로필 · 구직':'시공자 계정'}</h1>
+    {session && <section aria-label='가입 계정 정보' style={{padding:16,border:'1px solid #d8dfe5',borderRadius:16,marginBottom:16,overflowWrap:'anywhere'}}>
+      <h2>가입 계정 정보</h2>
+      <p>가입 이메일: <strong>{session.user.email||'연결된 이메일 없음'}</strong></p>
+      <p>로그인 방식: {[...new Set((session.user.identities||[]).map(i=>({email:'이메일·비밀번호',kakao:'카카오',google:'구글',apple:'애플'}[i.provider]||i.provider)))].join(' · ')||'확인 필요'}</p>
+      <p style={{fontSize:13}}>기존 이메일로 가입했다면 해당 계정으로 로그인한 뒤 아래에서 카카오·구글을 연결해주세요. 이름이 같아도 서로 다른 계정일 수 있습니다.</p>
+    </section>}
     {session && <p><Link href='/account/google' data-ui-link="action">구글 계정 연결 · 연결 상태 확인</Link></p>}
     {session && <p><Link href='/account/kakao' data-ui-link="action">카카오 계정 연결 · 연결 상태 확인</Link></p>}
     {session && !pendingInvite && <WorkerConnectionPanel key={session.user.id} />}
