@@ -182,6 +182,32 @@ export default function AdminHomeSummary({ companyId }) {
             </span>
           </a>
 
+          {todaySites.length > 0 && (
+            <ul className="today-sites" aria-label="오늘 시공 현장">
+              {todaySites.map((site) => (
+                <li key={site.siteId}>
+                  <a href={`/admin?${new URLSearchParams({
+                    tab: "sites",
+                    site: site.siteId,
+                  })}`}>
+                    <div className="site-info">
+                      <strong>{site.name}</strong>
+                      {[site.region, site.workType].filter(Boolean).length > 0 && (
+                        <p>{[site.region, site.workType].filter(Boolean).join(" · ")}</p>
+                      )}
+                      <p className="site-team">
+                        {site.workerCount > 0
+                          ? `시공자 ${site.workerCount}명 · ${site.hasLeader ? "팀장 배정 완료" : "팀장 미배정"}`
+                          : "시공자 배정 필요"}
+                      </p>
+                    </div>
+                    <span className="site-open">현장 보기 ›</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <p className="preview">
             {preview
               ? `${preview.name} · ${preview.reason}`
@@ -398,6 +424,38 @@ export default function AdminHomeSummary({ companyId }) {
         .note {
           font-size: 12px;
           color: #716c63;
+        }
+        .today-sites {
+          margin: 14px 0;
+        }
+        .today-sites li {
+          padding: 0;
+          border: 1px solid #dfe4d7;
+          border-radius: 12px;
+          margin-top: 8px;
+          background: #f8faf5;
+        }
+        .today-sites a {
+          padding: 14px 12px;
+        }
+        .site-info {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+        .today-sites strong {
+          display: block;
+          font-size: 16px;
+        }
+        .today-sites p {
+          margin-top: 4px;
+          color: #526171;
+        }
+        .today-sites .site-team {
+          color: #315d49;
+          font-size: 12px;
+        }
+        .site-open {
+          flex-shrink: 0;
         }
         summary:focus-visible,
         a:focus-visible,
