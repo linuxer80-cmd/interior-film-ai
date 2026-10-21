@@ -379,7 +379,15 @@ export default function ProfitTab() {
     (tradeData?.sites || []).map((site) => [site.id, site])
   );
 
-  const profitSites = data?.sites || [];
+  const pendingSites = (data?.sites || []).filter(site => profitState(site).pending);
+  const profitSites = (data?.sites || []).filter(site => !profitState(site).pending);
+  const confirmedTotals = profitSites.reduce((sum, site) => {
+    for (const key of ["revenue", "labor", "material", "expense", "profit"]) sum[key] += Number(site[key] || 0);
+    return sum;
+  }, {revenue:0,labor:0,material:0,expense:0,profit:0});
+  const confirmedIds = new Set(profitSites.map(site => site.id));
+  const confirmedData = data && {...data, sites:profitSites, totals:confirmedTotals,
+    breakdown:Object.fromEntries(Object.entries(data.breakdown || {}).map(([key,rows]) => [key,(rows || []).filter(row => confirmedIds.has(row.siteId))]))};
 
   const businessSites = profitSites.filter(
     (site) => tradeLookup.get(site.id)?.client_id
@@ -712,6 +720,7 @@ export default function ProfitTab() {
           </nav>
 
           <div hidden={view !== "summary"}>
+            <p style={{color:"#64748b",fontSize:13}}>확정 현장 {profitSites.length}건 기준 · 미확정 {pendingSites.length}개 현장 제외</p>
             <div
               style={{
                 ...card,
@@ -721,11 +730,11 @@ export default function ProfitTab() {
               }}
             >
               {[
-                ["기준 매출", data.totals.revenue],
-                ["인건비", data.totals.labor],
-                ["자재비", data.totals.material],
-                ["기타 경비", data.totals.expense],
-                ["예상 수익", data.totals.profit],
+                ["기준 매출", confirmedTotals.revenue],
+                ["인건비", confirmedTotals.labor],
+                ["자재비", confirmedTotals.material],
+                ["기타 경비", confirmedTotals.expense],
+                ["예상 수익", confirmedTotals.profit],
               ].map(([label, value]) => (
                 <div key={label}>
                   <div style={{ color: "#64748b", fontSize: 12 }}>
@@ -743,9 +752,7 @@ export default function ProfitTab() {
                   >
                     {won(value)}
                   </strong>
-                  {label === "예상 수익" && profitSites.some(site=>profitState(site).pending) && (
-                    <div style={{ color: "#92400e", fontSize: 12, marginTop: 4 }}>미확정 포함 · 현재 입력 금액 기준</div>
-                  )}
+
                 </div>
               ))}
             </div>
@@ -753,9 +760,9 @@ export default function ProfitTab() {
             <div style={{ ...card, marginTop: 14 }}>
               <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
 
-              {data.totals.labor +
-                data.totals.material +
-                data.totals.expense >
+              {confirmedTotals.labor +
+                confirmedTotals.material +
+                confirmedTotals.expense >
               0 ? (
                 <>
                   <div
@@ -773,10 +780,10 @@ export default function ProfitTab() {
                         key={type}
                         style={{
                           width: `${
-                            (100 * data.totals[type]) /
-                            (data.totals.labor +
-                              data.totals.material +
-                              data.totals.expense)
+                            (100 * confirmedTotals[type]) /
+                            (confirmedTotals.labor +
+                              confirmedTotals.material +
+                              confirmedTotals.expense)
                           }%`,
                           background: colors[type],
                         }}
@@ -809,7 +816,7 @@ export default function ProfitTab() {
                             marginRight: 4,
                           }}
                         />
-                        {label} {won(data.totals[key])}
+                        {label} {won(confirmedTotals[key])}
                       </span>
                     ))}
                   </div>
@@ -820,11 +827,22 @@ export default function ProfitTab() {
             </div>
           </div>
 
+          {view !== "payments" && pendingSites.length > 0 && <details style={{...card,marginTop:14,marginBottom:14}}>
+            <summary style={{cursor:"pointer",fontWeight:800}}>미확정 현장 {pendingSites.length}건 · 펼쳐보기</summary>
+            <p style={{fontSize:13,color:"#92400e"}}>아래 현장은 매출·인건비·자재비·경비 모두 상단 합계와 비용분석에서 제외됩니다. 금액 확인이 끝나면 자동으로 포함됩니다.</p>
+            {pendingSites.map(site => <div key={site.id} style={{borderTop:"1px solid #e2e8f0",padding:"14px 0"}}>
+              <strong>{site.site_name || site.customer_name || "이름 없는 현장"}</strong>
+              <p style={{fontSize:13,lineHeight:1.7}}>현재 입력 금액: 매출 {won(site.revenue)} · 인건비 {won(site.labor)} · 자재비 {won(site.material)} · 경비 {won(site.expense)}<br/>예상 수익 {won(site.profit)} (미확정)</p>
+              <p style={{fontSize:13,color:"#92400e"}}>{profitState(site).reasons.join(" · ")}</p>
+              <a href={`/admin?tab=sites&site=${encodeURIComponent(site.id)}&section=${site.missingContract ? "info" : site.materialPending || site.materialProvisional ? "material-prices" : site.laborPending ? "assignment" : "settlement"}`} style={{display:"inline-block",padding:"10px 14px",border:"1px solid #cbd5e1",borderRadius:10,color:"#285542",fontWeight:700,textDecoration:"none"}}>금액 확인하기 →</a>
+            </div>)}
+          </details>}
+
           {view === "payments" && <LaborPayments excludedWorkerIds={excludedWorkerIds} />}
 
           <div hidden={view !== "cost"}>
             <Breakdown
-              data={data}
+              data={confirmedData}
               type="labor"
               title="시공자별 인건비"
               itemKey="name"
@@ -832,7 +850,7 @@ export default function ProfitTab() {
 
             <div style={{ marginTop: 14 }}>
               <Breakdown
-                data={data}
+                data={confirmedData}
                 type="material"
                 title="브랜드별 자재비"
                 itemKey="brand"
@@ -841,7 +859,7 @@ export default function ProfitTab() {
 
             <div style={{ marginTop: 14 }}>
               <Breakdown
-                data={{...data,breakdown:{...data.breakdown,material:data.breakdown?.dealerMaterial || []}}}
+                data={{...confirmedData,breakdown:{...confirmedData.breakdown,material:confirmedData.breakdown?.dealerMaterial || []}}}
                 type="material"
                 title="대리점별 자재비"
                 itemKey="dealer"
@@ -851,7 +869,7 @@ export default function ProfitTab() {
 
             <div style={{ marginTop: 14 }}>
               <Breakdown
-                data={data}
+                data={confirmedData}
                 type="expense"
                 title="품목별 경비"
                 itemKey="category"
