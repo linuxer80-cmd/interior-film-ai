@@ -59,7 +59,7 @@ const MENUS = [
   { id: "schedule", label: "일정배정", kind: "people" },
   { id: "materials", label: "자재", kind: "film" },
   { id: "expenses", label: "경비", kind: "money" },
-  { id: "report", label: "완료보고", kind: "report" },
+  { id: "report", label: "사진·보고", kind: "report" },
   { id: "settlement", label: "상태·수금" },
 ];
 
@@ -71,7 +71,7 @@ const SECTION_MENU = {
   info: "info",
   quote: "quote",
   materials: "materials",
-  photos: "info",
+  photos: "report",
   settlement: "settlement",
   expenses: "expenses",
   schedule: "schedule",
@@ -256,6 +256,27 @@ export default function SiteDetailModal({
           ? "보완 요청"
           : "";
 
+  const nextAction = reviewStatus === "pending"
+    ? { message: "제출된 완료보고를 확인해주세요.", label: "완료보고 검수", menu: "report" }
+    : reviewStatus === "rejected"
+      ? { message: "보완 요청한 보고서의 진행 상황을 확인해주세요.", label: "보고서 확인", menu: "report" }
+      : reviewStatus === "approved"
+        ? { message: "시공이 완료되었습니다. 입금 내역을 확인해주세요.", label: "수금 확인", menu: "settlement" }
+        : site.status === "consulting"
+          ? { message: "상담 내용을 정리하고 견적을 작성해주세요.", label: "견적서 작성", menu: "quote" }
+          : site.status === "completed"
+            ? { message: "완료보고 제출 여부를 확인해주세요.", label: "완료보고 확인", menu: "report" }
+            : { message: "시공 날짜와 담당 시공자를 확인해주세요.", label: "일정·시공자 배정", menu: "schedule" };
+
+  function renderMenuButton(item) {
+    const selected = menu === item.id;
+    return <button key={item.id} type="button" aria-pressed={selected}
+      aria-controls={`admin-site-panel-${item.id}`} onClick={() => chooseMenu(item.id)}
+      style={{ ...actionStyle, padding: "10px 6px", background: selected ? "#285340" : "#fffefa", color: selected ? "#ffffff" : "#465b4e" }}>
+      {item.label}{item.id === "report" && reviewLabel && <small style={{ display: "block", marginTop: 3 }}>{reviewLabel}</small>}
+    </button>;
+  }
+
   return (
     <div
       onClick={closeModal}
@@ -328,21 +349,6 @@ export default function SiteDetailModal({
                 setBasicEditRequest(value => ({ siteId: site.id, version: value.version + 1 }));
                 requestAnimationFrame(() => { if (scrollBody.current) scrollBody.current.scrollTop = 0; });
               }}>현장정보 수정</button>
-              <a
-                href={`/jobs?site=${encodeURIComponent(site.id)}`}
-                style={{
-                  display: "inline-block",
-                  padding: "6px 10px",
-                  marginBottom: 4,
-                  borderRadius: 12,
-                  background: "#edf3e8",
-                  color: "#24549a",
-                  fontWeight: 800,
-                }}
-               data-ui-link="action">
-                구인하기
-              </a>
-
               <span
                 style={{
                   display: "inline-block",
@@ -374,61 +380,6 @@ export default function SiteDetailModal({
             </button>
           </div>
 
-          <nav
-            aria-label="현장 상세 메뉴"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              overscrollBehaviorX: "contain",
-              gap: 5,
-              marginTop: 10,
-              paddingBottom: 4,
-            }}
-          >
-            {MENUS.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={menu === item.id}
-                aria-controls={`admin-site-panel-${item.id}`}
-                onClick={event => {
-                  chooseMenu(item.id);
-                  event.currentTarget.scrollIntoView({block:"nearest", inline:"nearest", behavior:"smooth"});
-                }}
-                style={{
-                  minHeight: 44,
-                  flex: "0 0 auto",
-                  padding: "7px 4px",
-                  borderRadius: 12,
-                  border:
-                    menu === item.id
-                      ? "1px solid #3478ed"
-                      : "1px solid #e4eaf2",
-                  background:
-                    menu === item.id ? "#eaf3ff" : "#ffffff",
-                  color:
-                    menu === item.id ? "#3268bd" : "#596c50",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                {item.label}
-
-                {item.id === "report" && reviewLabel && (
-                  <small
-                    style={{
-                      display: "block",
-                      marginTop: 3,
-                      fontSize: 9,
-                    }}
-                  >
-                    {reviewLabel}
-                  </small>
-                )}
-              </button>
-            ))}
-          </nav>
 
           {reportOpen && menu !== "report" && (
             <button
@@ -458,7 +409,7 @@ export default function SiteDetailModal({
         >
           <section
             id="admin-site-panel-info"
-            aria-label="현장정보"
+            aria-label="현장 기본정보"
             hidden={menu !== "info"}
           >
             <SiteBasicInfo
@@ -470,25 +421,43 @@ export default function SiteDetailModal({
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+          </section>
+
+          {menu === "info" && site.status !== "cancelled" && (
+            <section aria-label="다음 할 일" style={{ padding: 14, margin: "12px 0", borderRadius: 14, background: "#eaf2e9", color: "#285340" }}>
+              <small>다음 할 일</small>
+              <p style={{ margin: "6px 0 10px", fontWeight: 800 }}>{nextAction.message}</p>
+              <button type="button" style={{ ...actionStyle, background: "#285340", color: "white" }} onClick={() => chooseMenu(nextAction.menu)}>{nextAction.label} →</button>
+            </section>
+          )}
+
+          <nav aria-label="현장 상세 메뉴" style={{ margin: "12px 0" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+              {MENUS.filter(item => ["info", "materials", "report"].includes(item.id)).map(renderMenuButton)}
+            </div>
+            <details key={site.id} style={{ marginTop: 8 }}>
+              <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: "#315d49", fontWeight: 800 }}>
+                추가 업무{!["info", "materials", "report"].includes(menu) ? ` · ${MENUS.find(item => item.id === menu)?.label || ""}` : ""} ▾
+              </summary>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                {MENUS.filter(item => !["info", "materials", "report"].includes(item.id)).map(renderMenuButton)}
+                <a href={`/jobs?site=${encodeURIComponent(site.id)}`} style={{ ...actionStyle, textAlign: "center", textDecoration: "none" }} data-ui-link="action">시공자 구인</a>
+              </div>
+            </details>
+          </nav>
+
+          <section aria-label="현장 변경 내역" hidden={menu !== "info"}>
+
             <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
             <button type="button" style={{...actionStyle,width:"100%",marginBottom:12}} onClick={() => chooseMenu("chat")}>현장 팀 채팅 참여{initialTeamDate ? ` · ${initialTeamDate}` : ""} →</button>
             <p style={{fontSize:13,color:"#64748b"}}>시공 배정이 없어도 본인 업체의 날짜별 현장 채팅에 참여할 수 있습니다.</p>
-            <SiteScheduleEditor
-              key={'info-schedule-'+site.id}
-              site={site}
-              reportOpen={reportOpen}
-              updateSiteSchedule={updateSiteSchedule}
-              reloadSites={reloadSites}
-            />
+
 
 
 
           </section>
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
-          <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
-            {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
-          </p>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
             <SiteStatusControl
               key={site.id}
@@ -502,7 +471,7 @@ export default function SiteDetailModal({
           <section
             id="admin-site-panel-photos"
             aria-label="현장 요청사진"
-            hidden={menu !== "info"}
+            hidden={menu !== "report"}
           >
             <SiteRequestPhotos
               key={site.id}

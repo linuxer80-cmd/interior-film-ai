@@ -452,6 +452,14 @@ export default function SiteBasicInfo({
   ======================================================= */
 
   if (!editing) {
+    const workDates = Array.isArray(site.work_dates)
+      ? [...new Set(site.work_dates.filter(Boolean))].sort()
+      : [];
+    const scheduleLabel = workDates.length
+      ? workDates.join(" · ")
+      : site.schedule_start
+        ? `${site.schedule_start}${site.schedule_end && site.schedule_end !== site.schedule_start ? ` ~ ${site.schedule_end}` : ""}`
+        : site.schedule_date || "미정";
     return (
       <section
         style={{
@@ -518,7 +526,7 @@ export default function SiteBasicInfo({
           />
         )}
 
-        <details style={{ margin: "14px 0" }}><summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분 · 거래처 연결</summary><TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} /></details>
+        <DetailRow label="시공일" value={scheduleLabel} />
 
         <DetailRow
           label="고객"
@@ -531,22 +539,25 @@ export default function SiteBasicInfo({
         <DetailRow
           label="전화번호"
           value={
-            site.customer_phone ||
-            "미정"
-          }
-        />
-
-        <DetailRow
-          label="현장명"
-          value={
-            site.site_name ||
-            "미정"
+            site.customer_phone
+              ? <a href={`tel:${site.customer_phone.replace(/[^+0-9]/g, "")}`} style={{ color: "#285340", textDecoration: "underline", display: "inline-flex", alignItems: "center", minHeight: 44 }}>{site.customer_phone} · 전화</a>
+              : "미정"
           }
         />
 
         <DetailRow
           label="주소"
           value={<SiteDirections site={{...site,site_id:site.id}} navigationOnly />}
+        />
+
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: "#315d49", fontWeight: 800 }}>작업 내용·금액·거래처 자세히 보기 ▾</summary>
+        <DetailRow
+          label="현장명"
+          value={
+            site.site_name ||
+            "미정"
+          }
         />
 
         <DetailRow
@@ -624,6 +635,8 @@ export default function SiteBasicInfo({
             "미정"
           }
         />
+        <details style={{ margin: "14px 0" }}><summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분 · 거래처 연결</summary><TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} /></details>
+        </details>
       </section>
     );
   }
