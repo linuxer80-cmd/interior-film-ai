@@ -1,3 +1,4 @@
+import {sameFilmProduct} from '../lib/hyundaiFilmCode.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -35,9 +36,10 @@ test('foreign actor, stale quantity and identity changes cannot bypass settlemen
 test('save API falls back to the owner-scoped price RPC and explains missing SQL',async()=>{
  const source=fs.readFileSync(new URL('../app/api/admin/site-materials/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
  let missing=false,calls=[];
- const db={auth:{getUser:async()=>({data:{user:{id:owner}}})},from(table){const q={select(){return q},eq(){return q},update(){return q},async maybeSingle(){if(table==='profiles')return {data:{company_id:co,role:'owner'}};if(table==='companies')return {data:{id:co,is_active:true}};if(table==='sites')return {data:{id:site}};return {error:{code:'P0001',message:'반출·반입 관리 현장은 완료보고에서 자재비가 자동 계산됩니다.'}};}};return q;},rpc:async(name,args)=>{calls.push({name,args});return missing?{error:{code:'PGRST202'}}:{data:{success:true,priceSource:'manual'}};}};
- const patch=new Function('createClient','normalizeFilmBrand','process','Response',source+';return PATCH;')(()=>db,x=>x,{env:{NEXT_PUBLIC_SUPABASE_URL:'test',SUPABASE_SERVICE_ROLE_KEY:'test'}},Response);
- const request=()=>new Request('https://example.test/api/admin/site-materials',{method:'PATCH',headers:{authorization:'Bearer test','content-type':'application/json'},body:JSON.stringify({...body,siteId:site,id,p_user:other})});
- const r=await patch(request());assert.equal(r.status,200);assert.equal((await r.json()).priceSource,'manual');assert.equal(calls[0].args.p_user,owner);assert.equal(calls[0].args.p_site,site);
+ const db={auth:{getUser:async()=>({data:{user:{id:owner}}})},from(table){let modifying=false;const q={select(){return q},eq(){return q},update(){modifying=true;return q},async maybeSingle(){if(table==='profiles')return {data:{company_id:co,role:'owner'}};if(table==='companies')return {data:{id:co,is_active:true}};if(table==='sites')return {data:{id:site}};if(table==='site_materials'&&!modifying)return {data:{id,brand:body.brand,product_code:'VM90',product_name:body.product_name,quantity:19.4,unit:'m',memo:body.memo}};return {error:{code:'P0001',message:'반출·반입 관리 현장은 완료보고에서 자재비가 자동 계산됩니다.'}};}};return q;},rpc:async(name,args)=>{calls.push({name,args});return missing?{error:{code:'PGRST202'}}:{data:{success:true,priceSource:'manual'}};}};
+ const patch=new Function('createClient','normalizeFilmBrand','sameFilmProduct','process','Response',source+';return PATCH;')(()=>db,x=>x,sameFilmProduct,{env:{NEXT_PUBLIC_SUPABASE_URL:'test',SUPABASE_SERVICE_ROLE_KEY:'test'}},Response);
+ const request=(patchBody={})=>new Request('https://example.test/api/admin/site-materials',{method:'PATCH',headers:{authorization:'Bearer test','content-type':'application/json'},body:JSON.stringify({...body,...patchBody,siteId:site,id,p_user:other})});
+ const r=await patch(request({product_name:"카탈로그 제품명 표기"}));assert.equal(r.status,200);assert.equal((await r.json()).priceSource,'manual');assert.equal(calls[0].args.p_user,owner);assert.equal(calls[0].args.p_site,site);assert.equal(calls[0].args.p_body.product_name,body.product_name);
+ const count=calls.length;const conflict=await patch(request({product_code:'VM91'}));assert.equal(conflict.status,409);const info=await conflict.json();assert.equal(info.priceOnlyMaterial.product_code,'VM90');assert.equal(calls.length,count);
  missing=true;const blocked=await patch(request());assert.equal(blocked.status,503);assert.match((await blocked.json()).error,/SQL/);
 });

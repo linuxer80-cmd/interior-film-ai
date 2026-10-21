@@ -51,9 +51,11 @@ export default function ActualMaterialEditor({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [priceLoading,setPriceLoading]=useState(false);
+  const [priceOnlyOffer,setPriceOnlyOffer]=useState(null);
 
   async function submit(method, item) {
     setBusy(true);
+    setPriceOnlyOffer(null);
     setError("");
     setMessage("");
 
@@ -85,6 +87,7 @@ export default function ActualMaterialEditor({
       const result = await response.json();
 
       if (!response.ok || !result.success) {
+        if(result.priceOnlyMaterial)setPriceOnlyOffer({material:result.priceOnlyMaterial,unit_price:String(item.unit_price)});
         throw new Error(
           result.error || "자재 저장에 실패했습니다."
         );
@@ -108,6 +111,7 @@ export default function ActualMaterialEditor({
   }
 
   function edit(item) {
+    setPriceOnlyOffer(null);
     setError("");
     setMessage("");
 
@@ -272,12 +276,12 @@ export default function ActualMaterialEditor({
               key={key}
               value={draft}
               disabled={busy}
-              onChange={product => setDraft(current => {
+              onChange={product => {setPriceOnlyOffer(null);setDraft(current => {
                 if(!current)return current;
                 const original=materials.find(row=>row.id===current.id);
                 const same=original&&sameFilmProduct(original.brand,original.product_code,product.brand,product.product_code);
                 return {...current,...product,...(same?{brand:original.brand,product_code:original.product_code,product_name:original.product_name}:{}),unit_price:same?current.unit_price:"",_purchaseCost:null};
-              })}
+              });}}
             />
           ) : (
             <label
@@ -317,12 +321,13 @@ export default function ActualMaterialEditor({
                   key === "unit"
                 }
                 value={draft[key] ?? ""}
-                onChange={(event) =>
+                onChange={(event) => {
+                  setPriceOnlyOffer(null);
                   setDraft({
                     ...draft,
                     [key]: event.target.value,
                     _purchaseCost:null,
-                  })
+                  });}
                 }
               />
             </label>
@@ -376,6 +381,16 @@ export default function ActualMaterialEditor({
         </p>
       )}
 
+      {priceOnlyOffer&&draft&&<div style={{padding:14,border:"1px solid #d5dfcd",borderRadius:12}}>
+        <p>기존 자재 확인</p>
+        <p>{[priceOnlyOffer.material.brand,priceOnlyOffer.material.product_code,priceOnlyOffer.material.product_name].filter(Boolean).join(" · ")}<br/>
+        사용량 {priceOnlyOffer.material.quantity}{priceOnlyOffer.material.unit} · 단가 {won(priceOnlyOffer.unit_price)}</p>
+        <p>제품·사용량·메모는 기존 기록을 유지하고 단가만 저장합니다.</p>
+        <button type="button" disabled={busy} style={button} onClick={()=>{
+          const corrected={...draft,...priceOnlyOffer.material,unit_price:priceOnlyOffer.unit_price,_purchaseCost:null};
+          setDraft(corrected);submit("PATCH",corrected);
+        }}>기존 자재의 단가만 저장</button>
+      </div>}
       {message && (
         <p role="status" style={{ color: "#166534" }}>
           {message}

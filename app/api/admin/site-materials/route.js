@@ -1,3 +1,4 @@
+import { sameFilmProduct } from "../../../../lib/hyundaiFilmCode";
 import { normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
@@ -39,7 +40,21 @@ async function handle(request) {
     const { data, error } = await query.select("id").maybeSingle();
     if (error) {
       if (request.method === "PATCH" && ((error.code === "P0001" && String(error.message).includes("반출·반입 관리 현장")) || (error.code === "22023" && String(error.message).includes("롤별 반입량과 입고단가")))) {
-        const saved = await db.rpc("update_actual_material_price", {p_user:user.id,p_site:site.id,p_material:body.id,p_body:body});
+        const originalResult=await db.from("site_materials").select("id,brand,product_code,product_name,quantity,unit,memo,updated_at").eq("id",body.id).eq("site_id",site.id).eq("company_id",profile.company_id).eq("material_type","actual").maybeSingle();
+        if(originalResult.error)throw originalResult.error;
+        const original=originalResult.data;
+        if(!original)return json({error:"자재가 변경됐습니다. 새로고침해주세요."},409);
+        const sameProduct=sameFilmProduct(original.brand,original.product_code,body.brand,body.product_code);
+        const sameQuantity=Number(original.quantity)===Number(body.quantity);
+        const sameUnit=String(original.unit||"").trim()===String(body.unit||"").trim();
+        const sameMemo=String(original.memo||"").trim()===String(body.memo||"").trim();
+        if(!sameProduct||!sameQuantity||!sameUnit||!sameMemo){
+          const changes=[!sameProduct&&"제품",!sameQuantity&&"사용량",!sameUnit&&"단위",!sameMemo&&"메모"].filter(Boolean);
+          return json({error:`반출·반입 정산 기록과 ${changes.join("·")}가 다릅니다. 기존 자재의 단가만 저장할 수 있습니다.`,priceOnlyMaterial:original},409);
+        }
+        // Catalog aliases and display names must not turn a price edit into a product edit.
+        const priceBody={...body,brand:original.brand,product_code:original.product_code,product_name:original.product_name,unit:original.unit,memo:original.memo};
+        const saved = await db.rpc("update_actual_material_price", {p_user:user.id,p_site:site.id,p_material:body.id,p_body:priceBody});
         if (saved.error) {
           if (["PGRST202","42883"].includes(saved.error.code)) return json({error:"단가 저장 설정 업데이트가 필요합니다. 관리자 단가 저장 SQL을 먼저 적용해주세요."},503);
           if (["22023","40001","42501","P0001"].includes(saved.error.code)) return json({error:saved.error.message},saved.error.code==="42501"?403:409);
