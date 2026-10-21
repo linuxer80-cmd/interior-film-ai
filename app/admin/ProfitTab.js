@@ -741,8 +741,11 @@ export default function ProfitTab() {
                           : "#182c47",
                     }}
                   >
-                    {label === "예상 수익" && profitSites.some(site=>profitState(site).pending) ? "확인 필요 · 미확정 포함" : won(value)}
+                    {won(value)}
                   </strong>
+                  {label === "예상 수익" && profitSites.some(site=>profitState(site).pending) && (
+                    <div style={{ color: "#92400e", fontSize: 12, marginTop: 4 }}>미확정 포함 · 현재 입력 금액 기준</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -946,7 +949,8 @@ export default function ProfitTab() {
                 선택 결과 {filteredSites.length}현장 · 계약{" "}
                 {won(scopedTotals.revenue)}
                 <br />
-                수익 <strong>{filteredSites.some(site=>profitState(site).pending) ? "확인 필요 · 미확정 포함" : won(scopedTotals.profit)}</strong>
+                수익 <strong>{won(scopedTotals.profit)}</strong>
+                {filteredSites.some(site=>profitState(site).pending) && <span style={{ color: "#92400e" }}> · 미확정 포함</span>}
               </p>
 
               {tradeData &&
@@ -1026,7 +1030,8 @@ export default function ProfitTab() {
                       color: site.profit < 0 ? "#b91c1c" : "#166534",
                     }}
                   >
-                    {profitState(site).pending ? "수익 확인 필요 · 미확정 금액·비용 있음" : `현재 등록 비용 기준 수익 ${won(site.profit)}`}
+                    현재 등록 비용 기준 수익 {won(site.profit)}
+                    {profitState(site).pending && <span style={{ color: "#92400e" }}> · 미확정 포함</span>}
                   </strong>
 
                   {site.materialProvisional && <p style={{fontSize:12,color:'#b45309'}}>
