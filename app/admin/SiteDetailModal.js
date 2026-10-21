@@ -54,21 +54,16 @@ const STATUS_INFO = {
   },
 };
 
-const MENUS = [
-  { id: "info", label: "현장정보", kind: "home" },
-  { id: "work", label: "내 시공", kind: "camera" },
-  { id: "quote", label: "상담 견적서", kind: "report" },
-  { id: "extra", label: "추가 작업", kind: "report" },
-  { id: "chat", label: "현장 채팅", kind: "chat" },
-  { id: "schedule", label: "일정배정", kind: "people" },
-  { id: "materials", label: "자재", kind: "film" },
-  { id: "expenses", label: "경비", kind: "money" },
-  { id: "report", label: "사진·보고", kind: "report" },
-  { id: "settlement", label: "상태·수금" },
+const MENU_GROUPS = [
+  { id: "info", label: "현장정보", items: [{id:"info",label:"기본정보·내 작업"},{id:"chat",label:"현장 채팅"}] },
+  { id: "quote", label: "견적서", items: [{id:"quote",label:"견적서 작성"},{id:"extra",label:"추가작업"}] },
+  { id: "schedule", label: "일정·자재", items: [{id:"schedule",label:"일정·시공자 배정"},{id:"materials",label:"자재·반출·반납·재단"}] },
+  { id: "report", label: "사진·완료보고", items: [{id:"report",label:"사진·보고서·검수"},{id:"expenses",label:"경비"}] },
+  { id: "settlement", label: "정산", items: [{id:"settlement",label:"상태·수금"}] },
 ];
 
 const SECTION_MENU = {
-  work: "work",
+  work: "info",
   extra: "extra",
   chat: "chat",
   overview: "info",
@@ -240,6 +235,7 @@ export default function SiteDetailModal({
   }, [hasSite]);
 
   function chooseMenu(id, onChosen) {
+    if (id === "work") id = "info";
     const navigate = () => {
       setVisited(previous => ({ ...previous, [id]: true }));
       setMenu(id);
@@ -329,6 +325,8 @@ export default function SiteDetailModal({
         : reviewStatus === "rejected"
           ? "보완 요청"
           : "";
+
+  const activeGroup = MENU_GROUPS.find(group => group.items.some(item => item.id === menu)) || MENU_GROUPS[0];
 
   function renderMenuButton(item) {
     const selected = menu === item.id;
@@ -458,6 +456,18 @@ export default function SiteDetailModal({
               작성 중인 완료보고로 돌아가기 →
             </button>
           )}
+          <nav aria-label="현장 상세 메뉴" style={{marginTop:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6}}>
+              {MENU_GROUPS.map(group => <button key={group.id} type="button" aria-pressed={activeGroup.id === group.id}
+                onClick={() => chooseMenu(group.id)} style={{...actionStyle,padding:"9px 4px",fontSize:13,background:activeGroup.id === group.id ? "#285340" : "#fffefa",color:activeGroup.id === group.id ? "#ffffff" : "#465b4e"}}>
+                {group.label}
+              </button>)}
+            </div>
+            {activeGroup.items.length > 1 && <div aria-label={`${activeGroup.label} 세부 업무`} style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+              {activeGroup.items.map(renderMenuButton)}
+            </div>}
+            {activeGroup.id === "schedule" && <a href={`/jobs?site=${encodeURIComponent(site.id)}`} data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,color:"#315d49"}}>이 현장 시공자 구인 →</a>}
+          </nav>
         </header>
 
         <div
@@ -497,20 +507,7 @@ export default function SiteDetailModal({
 
           <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))} />
 
-          <nav aria-label="현장 상세 메뉴" style={{ margin: "12px 0" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
-              {MENUS.filter(item => ["info", "materials", "report"].includes(item.id)).map(renderMenuButton)}
-            </div>
-            <details key={site.id} style={{ marginTop: 8 }}>
-              <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: "#315d49", fontWeight: 800 }}>
-                추가 업무{!["info", "materials", "report"].includes(menu) ? ` · ${MENUS.find(item => item.id === menu)?.label || ""}` : ""} ▾
-              </summary>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
-                {MENUS.filter(item => !["info", "materials", "report"].includes(item.id)).map(renderMenuButton)}
-                <a href={`/jobs?site=${encodeURIComponent(site.id)}`} style={{ ...actionStyle, textAlign: "center", textDecoration: "none" }} data-ui-link="action">시공자 구인</a>
-              </div>
-            </details>
-          </nav>
+
 
           <section aria-label="현장 변경 내역" hidden={menu !== "info"}>
 
@@ -525,6 +522,11 @@ export default function SiteDetailModal({
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
+            <p style={{fontSize:14,lineHeight:1.6}}>고객 입금·미수금은 아래에서 관리하고, 실제 비용과 수익은 매출·수익에서 확인합니다.</p>
+            <a href="/admin?tab=profit" data-ui-link="action" style={{...actionStyle,display:"inline-flex",alignItems:"center",textDecoration:"none"}} onClick={event => {
+              event.preventDefault();
+              requestLeave(() => { window.location.href = "/admin?tab=profit"; }, undefined, true);
+            }}>실제 비용·수익 확인 →</a>
             <SiteStatusControl
               key={site.id}
               site={site}
@@ -555,8 +557,10 @@ export default function SiteDetailModal({
             <section
               id="admin-site-panel-quote"
               hidden={menu !== "quote"}
-              aria-label="상담 견적서"
+              aria-label="견적서 작성"
             >
+              <p style={{fontSize:14,lineHeight:1.6}}>부위별 선견적은 아래에서 작성합니다. 작업 후 인건비·자재비·경비 견적은 완료보고를 검수한 뒤 작성할 수 있습니다.</p>
+              <button type="button" style={actionStyle} onClick={() => chooseMenu("report")}>완료보고 검수·후견적 작성 →</button>
               <SiteExtraWork siteId={site.id} active={menu === "quote"} approvedSummary />
               <ConsultationQuote
                 key={site.id}
