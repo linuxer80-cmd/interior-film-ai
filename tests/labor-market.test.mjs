@@ -53,7 +53,7 @@ const baseJob = {
   status: "open",
 };
 
-function fixture(userId = owner, manager = true) {
+function fixture(userId = owner, manager = true, proposals = false) {
   const tables = {
     profiles: [
       {
@@ -114,6 +114,10 @@ function fixture(userId = owner, manager = true) {
         eq(key, value) {
           filters.push((row) => row[key] === value);
           return query;
+        },
+        or(expression) {
+          const id=expression.split('proposal_user_id.eq.')[1];
+          filters.push(row=>row.proposal_user_id==null||row.proposal_user_id===id);return query;
         },
         neq(key, value) {
           filters.push((row) => row[key] !== value);
@@ -199,6 +203,7 @@ function fixture(userId = owner, manager = true) {
 
     async rpc(name, args) {
       rpc.push({ name, args });
+      if(name==='labor_proposal_capabilities')return {data:proposals?{version:1}:null,error:null};
       return { data: null, error: null };
     },
 
@@ -549,4 +554,23 @@ test("notification read is scoped to the authenticated recipient", async () => {
   );
 
   assert.equal(f.tables.labor_notifications[0].read_at, null);
+});
+
+test('private proposals are not listed or opened by an unrelated worker',async()=>{
+ const f=fixture(other,false,true);f.tables.labor_jobs[0].proposal_user_id=worker;
+ const listed=await f.GET(get());assert.equal(listed.status,200);assert.equal((await listed.json()).jobs.length,0);
+ const linked=await f.GET(get('?job='+jobId));assert.equal(linked.status,200);assert.equal((await linked.json()).jobs.length,0);
+});
+test('proposal replies require explicit consent and server actor; legacy direct hire is disabled',async()=>{
+ const f=fixture(worker,false);f.tables.labor_jobs[0].proposal_user_id=worker;
+ assert.equal((await f.POST(post({action:'proposal_accept',jobId,expectedWage:250000}))).status,400);
+ assert.equal((await f.POST(post({action:'apply',jobId,share_phone:true}))).status,409);
+ const response=await f.POST(post({action:'proposal_accept',jobId,userId:other,expectedWage:250000,share_phone:true}));assert.equal(response.status,200);
+ const call=f.rpc.find(r=>r.name==='reply_labor_job_proposal');assert.equal(call.args.p_actor,worker);assert.equal(call.args.p_accept,true);
+ const manager=fixture();assert.equal((await manager.POST(post({action:'direct_hire',jobId,userId:worker,expectedWage:250000}))).status,409);
+});
+test('targeted job creation sends an invitation RPC and never invokes immediate hiring',async()=>{
+ const f=fixture();const response=await f.POST(post({action:'job',recruitUserId:worker,expectedWage:250000,job:{...baseJob,site_id:siteId,work_dates:[dayInKorea()]}}));
+ assert.equal(response.status,200);assert.ok(f.rpc.some(r=>r.name==='create_labor_job_proposal'));
+ assert.equal(f.rpc.some(r=>r.name==='create_labor_direct_job_registered_wage'),false);
 });

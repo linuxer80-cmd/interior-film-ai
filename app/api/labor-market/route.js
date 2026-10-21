@@ -273,6 +273,9 @@ export async function GET(request) {
       Math.min(1000,Number.parseInt(params.get('page') || '0',10) || 0)
     );
 
+    const capability=await db.rpc('labor_proposal_capabilities');
+    if(capability.error && !['PGRST202','42883'].includes(capability.error.code))throw capability.error;
+    const proposalsEnabled=!capability.error && capability.data?.version===1;
     let jobsQuery = db.from('labor_jobs')
       .select('*')
       .order('created_at',{ascending:false})
@@ -283,6 +286,7 @@ export async function GET(request) {
       jobsQuery = jobsQuery.eq('company_id',companyId);
     } else {
       jobsQuery = jobsQuery.eq('status','open').gte('end_date',dayInKorea());
+      if(proposalsEnabled)jobsQuery=jobsQuery.or(`proposal_user_id.is.null,proposal_user_id.eq.${user.id}`);
 
       if(ownerCompanyId) {
         jobsQuery=jobsQuery.neq('company_id',ownerCompanyId);
@@ -311,7 +315,7 @@ export async function GET(request) {
         .maybeSingle()
       );
 
-      if(requested && !jobs.some(j=>j.id===requested.id)) {
+      if(requested && (!requested.proposal_user_id || requested.proposal_user_id===user.id || requested.company_id===companyId) && !jobs.some(j=>j.id===requested.id)) {
         const application=!companyId
           ?value(await db.from('labor_applications')
             .select('id')
@@ -472,6 +476,7 @@ export async function GET(request) {
 
     return json({
       manager:Boolean(companyId),
+      proposalsEnabled,
       companyId,
       jobs,
       applicationJobs,
@@ -726,7 +731,7 @@ export async function POST(request) {
         if(!uuid(body.recruitUserId))throw fail('시공자를 확인해주세요.');
         if(!Number.isSafeInteger(body.expectedWage)||body.expectedWage<=0)throw fail('적용할 시공자 등록 일당을 확인해주세요.');
 
-        const result=await db.rpc('create_labor_direct_job_registered_wage',{
+        const result=await db.rpc('create_labor_job_proposal',{
           p_expected_wage:body.expectedWage,
           p_actor:user.id,
           p_target:body.recruitUserId,
@@ -780,6 +785,17 @@ export async function POST(request) {
 
     if(!job) throw fail('공고를 찾을 수 없습니다.',404);
 
+    if(['proposal_accept','proposal_decline'].includes(body.action)) {
+      if(companyId)throw fail('시공자 홈에서 본인에게 온 제안을 확인해주세요.',403);
+      if(body.action==='proposal_accept' && (body.share_phone!==true || !Number.isSafeInteger(body.expectedWage) || body.expectedWage<=0))throw fail('제안 일당과 연락처 공유 동의를 확인해주세요.');
+      const result=await db.rpc('reply_labor_job_proposal',{p_actor:user.id,p_job:job.id,p_accept:body.action==='proposal_accept',p_expected_wage:body.expectedWage??null});
+      if(result.error){if(result.error.code==='P0001')throw fail(result.error.message,409);throw result.error;}
+      try{await dispatchLaborNotifications(db,job.id);}catch{}
+      return json(result.data);
+    }
+    if(job.proposal_user_id && !['close','finish'].includes(body.action))throw fail('현장 제안은 수락 또는 거절 버튼으로 처리해주세요.',409);
+
+    if(body.action==='direct_hire')throw fail('시공자에게 현장 제안을 보내고 수락을 기다려주세요.',409);
     const manager=[
       'close','finish','invite','accept','reject','direct_hire'
     ].includes(body.action);
