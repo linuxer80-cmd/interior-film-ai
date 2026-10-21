@@ -1,3 +1,4 @@
+import { dealerMaterialCosts } from '../../../../lib/dealerMaterialCosts.mjs';
 import { provisionalMaterialCosts } from '../../../../lib/provisionalMaterialCost.mjs';
 import { resolveRevenue } from "../../../../lib/siteRevenue.mjs";
 import { loadLaborContracts, contractWage } from '../../../../lib/laborContracts.mjs';
@@ -501,12 +502,20 @@ export async function GET(request) {
       ]);
 
       trips.push(...await allRows(db.from("film_stock_trips")
-        .select("id,company_id,site_id,material_id,issued,returned")
+        .select("id,company_id,site_id,material_id,roll_id,issued,returned")
         .eq("company_id", companyId).in("site_id", ids).order("id")));
       materials.push(...results[0]);
       expenses.push(...results[1]);
       daily.push(...results[2]);
       reports.push(...results[3]);
+    }
+
+    const rolls = [];
+    const rollIds = [...new Set(trips.map(t=>t.roll_id).filter(Boolean))];
+    for(let index=0;index<rollIds.length;index+=100) {
+      rolls.push(...await allRows(db.from("film_stock_rolls")
+        .select("id,company_id,supplier").eq("company_id",companyId)
+        .in("id",rollIds.slice(index,index+100)).order("id")));
     }
 
     /*
@@ -674,6 +683,8 @@ export async function GET(request) {
         breakdown.material.push({
           siteId: site.id,
           siteName,
+          materialId: item.id,
+          priceType: item.price_type,
           brand: item.brand?.trim() || "브랜드 미입력",
           productCode: item.product_code,
           productName: item.product_name,
@@ -690,7 +701,7 @@ export async function GET(request) {
       const provisionalRows = provisional.filter(row => row.site_id === site.id);
       for (const item of provisionalRows) {
         material += item.amount;
-        breakdown.material.push({siteId:site.id,siteName,brand:item.brand || "브랜드 미입력",
+        breakdown.material.push({siteId:site.id,siteName,materialId:item.id,priceType:item.price_type,brand:item.brand || "브랜드 미입력",
           productCode:item.product_code,productName:item.product_name,
           product:[item.product_code,item.product_name].filter(Boolean).join(" · "),
           quantity:item.quantity,unit:item.unit || "m",amount:item.amount,provisional:true,
@@ -827,6 +838,7 @@ export async function GET(request) {
       },
     );
 
+    breakdown.dealerMaterial = dealerMaterialCosts(breakdown.material,materials,trips,rolls,companyId);
     return json({
       sites: result,
       totals,

@@ -195,7 +195,7 @@ function Breakdown({ data, type, title, itemKey }) {
                                 ? "수기 입력"
                                 : `${row.quantity.toLocaleString("ko-KR")}${row.unit}`}
                               {" · "}
-                              {row.pricePending ? "단가 미확정" : won(row.amount)}{row.provisional ? " · 잠정" : ""}
+                              {row.pricePending ? "단가 미확정" : won(row.amount)}{row.provisional ? " · 잠정" : ""}{row.dealerAllocated ? " · 소모량 비례 배분" : ""}
                             </div>
                           ))}
                       </div>
@@ -833,6 +833,16 @@ export default function ProfitTab() {
                 title="브랜드별 자재비"
                 itemKey="brand"
               />
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <Breakdown
+                data={{...data,breakdown:{...data.breakdown,material:data.breakdown?.dealerMaterial || []}}}
+                type="material"
+                title="대리점별 자재비"
+                itemKey="dealer"
+              />
+              <p style={{fontSize:12,color:"#64748b",lineHeight:1.6}}>조회 기간에 해당하는 현장의 사용 자재비입니다. 롤 입고처 기준이며, 여러 입고처를 함께 사용한 자재는 소모량 비율로 배분합니다. 연결 기록이 없는 비용은 대리점 미확인으로 표시합니다.</p>
             </div>
 
             <div style={{ marginTop: 14 }}>
