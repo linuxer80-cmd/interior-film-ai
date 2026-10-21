@@ -664,6 +664,8 @@ export default function SiteDetailModal({
               style={{ scrollMarginTop: 12 }}
             >
               <SiteWorkReportReview
+                onDraftState={registerDraft}
+                onNavigate={chooseMenu}
                 key={site.id}
                 siteId={site.id}
                 onReportStateChange={({

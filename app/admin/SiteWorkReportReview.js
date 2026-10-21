@@ -1,12 +1,15 @@
 "use client";
 
-import ToolIllustration from "../components/ui/ToolIllustration";
-import { useEffect, useState } from "react";
+import useSiteDraft from "./hooks/useSiteDraft";
+import ReviewOverview from "./ReviewOverview";
+import { reviewReasons, reviewMemoText } from "../../lib/reviewOverview.mjs";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import ApprovedWorkAiRegister from "./ApprovedWorkAiRegister";
 import ActualMaterialEditor from "./ActualMaterialEditor";
 
 const MENUS = [
+  { id: "summary", label: "요약" },
   { id: "content", label: "시공내용", kind: "report" },
   { id: "photos", label: "사진", kind: "camera" },
   { id: "cost", label: "자재·경비", kind: "film" },
@@ -16,18 +19,37 @@ const MENUS = [
 export default function SiteWorkReportReview({
   siteId,
   onReportStateChange,
+  onNavigate,
+  onDraftState,
 }) {
-  const [view, setView] = useState("content");
+  const [view, setView] = useState("summary");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState(null);
   const [approvedAmount, setApprovedAmount] = useState("");
   const [reviewMemo, setReviewMemo] = useState("");
+  const [selectedReasons, setSelectedReasons] = useState([]);
+  const actionLock = useRef(false);
+  const alive = useRef(true);
+  const readVersion = useRef(0);
+  const readController = useRef(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
+  const baseline = useRef({amount:"",memo:""});
+  const latestDraft = useRef(null);
+  const reviewDirty = approvedAmount !== baseline.current.amount || reviewMemo !== baseline.current.memo || selectedReasons.length > 0;
+  latestDraft.current = {dirty:reviewDirty};
+  useSiteDraft(onDraftState,"review",{
+    label:"완료보고 검수",dirty:reviewDirty,pending:actionLoading,
+    discard:()=>{setApprovedAmount(baseline.current.amount);setReviewMemo(baseline.current.memo);setSelectedReasons([]);setActionError("");},
+  });
+
 
   useEffect(() => {
+    alive.current = true;
+    baseline.current = {amount:"",memo:""};
+    latestDraft.current = {dirty:false};
     if (!siteId) {
       setLoading(false);
       setData(null);
@@ -42,20 +64,27 @@ export default function SiteWorkReportReview({
       return;
     }
 
+    setView("summary");
+    setSelectedReasons([]);
     setApprovedAmount("");
     setReviewMemo("");
     setActionMessage("");
     setActionError("");
 
     loadReview();
+    return () => { alive.current = false; readVersion.current++; readController.current?.abort(); };
   }, [siteId]);
 
   async function loadReview() {
+    if (!alive.current) return;
+    const version = ++readVersion.current;
+    readController.current?.abort();
     setLoading(true);
     setErrorMessage("");
     setData(null);
 
     const controller = new AbortController();
+    readController.current = controller;
     const timeoutId = setTimeout(
       () => controller.abort(),
       15000
@@ -125,6 +154,7 @@ export default function SiteWorkReportReview({
         );
       }
 
+      if (!alive.current || version !== readVersion.current) return;
       setData(result);
 
       if (typeof onReportStateChange === "function") {
@@ -139,21 +169,16 @@ export default function SiteWorkReportReview({
         });
       }
 
-      if (
-        result?.review?.approvedAmount !== null &&
-        result?.review?.approvedAmount !== undefined
-      ) {
-        setApprovedAmount(
-          formatNumberInput(
-            result.review.approvedAmount
-          )
-        );
+      if (!latestDraft.current?.dirty || actionLock.current) {
+        const amount = formatNumberInput(result?.review?.approvedAmount);
+        const memo = result?.review?.memo || "";
+        baseline.current = {amount,memo};
+        setApprovedAmount(amount);
+        setReviewMemo(memo);
       }
 
-      if (result?.review?.memo) {
-        setReviewMemo(result.review.memo);
-      }
     } catch (error) {
+      if (!alive.current || version !== readVersion.current) return;
       console.error(
         "완료보고 검수자료 조회 오류:",
         error
@@ -169,12 +194,13 @@ export default function SiteWorkReportReview({
       );
     } finally {
       clearTimeout(timeoutId);
-      setLoading(false);
+      if (alive.current && version === readVersion.current) setLoading(false);
     }
   }
 
   async function submitReviewAction(action) {
-    if (actionLoading) return;
+    if (actionLock.current || actionLoading) return;
+    const outgoingMemo = action === "reject" ? reviewMemoText(selectedReasons, reviewMemo) : reviewMemo.trim();
 
     setActionMessage("");
     setActionError("");
@@ -209,7 +235,7 @@ export default function SiteWorkReportReview({
 
     if (
       action === "reject" &&
-      !reviewMemo.trim()
+      !outgoingMemo
     ) {
       setActionError(
         "보완 요청 사유를 입력해주세요."
@@ -222,7 +248,7 @@ export default function SiteWorkReportReview({
       !window.confirm(
         `실제 시공금액 ${formatMoney(
           numericAmount
-        )}으로 검수 승인하시겠습니까?\n\n아직 AI 견적자료에는 등록되지 않습니다.`
+        )}으로 검수 승인하시겠습니까?`
       )
     ) {
       return;
@@ -237,6 +263,7 @@ export default function SiteWorkReportReview({
       return;
     }
 
+    actionLock.current = true;
     setActionLoading(true);
 
     const controller = new AbortController();
@@ -286,7 +313,7 @@ export default function SiteWorkReportReview({
               action === "approve"
                 ? Number(numericAmount)
                 : null,
-            reviewMemo: reviewMemo.trim(),
+            reviewMemo: outgoingMemo,
           }),
         }
       );
@@ -324,6 +351,8 @@ export default function SiteWorkReportReview({
             : "보완 요청이 저장되었습니다.")
       );
 
+      setSelectedReasons([]);
+      setView("summary");
       await loadReview();
     } catch (error) {
       console.error(
@@ -339,6 +368,7 @@ export default function SiteWorkReportReview({
       );
     } finally {
       clearTimeout(timeoutId);
+      actionLock.current = false;
       setActionLoading(false);
     }
   }
@@ -493,6 +523,7 @@ export default function SiteWorkReportReview({
         >
           ❌ 완료보고 조회 오류
         </div>
+        {actionMessage && <p role="status" style={{color:"#166534"}}>{actionMessage} 아래 ‘다시 불러오기’로 최신 상태를 확인해주세요.</p>}
 
         <div
           style={{
@@ -602,10 +633,6 @@ export default function SiteWorkReportReview({
               cursor: "pointer",
             }}
           >
-            <ToolIllustration
-              kind={menu.kind}
-              size={34}
-            />
             <span>{menu.label}</span>
           </button>
         ))}
@@ -659,11 +686,11 @@ export default function SiteWorkReportReview({
           <br />
           시공 내용, 사진, 실제 사용 자재와 경비를
           확인해주세요.
-          <br />
-          아직 AI 견적자료로 등록되지 않았습니다.
         </NoticeBox>
       )}
 
+      {actionMessage && <p role="status" style={{color:"#166534",padding:12,background:"#f0fdf4",borderRadius:12}}>{actionMessage}</p>}
+      {view === "summary" && <ReviewOverview siteId={siteId} data={data} onShow={setView} onNavigate={onNavigate} disabled={actionLoading} />}
       <div hidden={view !== "content"}>
         <ReviewBlock title="👷 제출 시공자">
           <ReviewRow
@@ -762,7 +789,7 @@ export default function SiteWorkReportReview({
         </ReviewBlock>
 
         <ReviewBlock
-          title={`💳 현장 경비 · ${expenses.length}건`}
+          title={`등록 비용 내역 · ${expenses.length}건`}
         >
           {expenses.length === 0 ? (
             <EmptyText>
@@ -788,9 +815,7 @@ export default function SiteWorkReportReview({
                       <strong
                         style={{ fontSize: 12 }}
                       >
-                        {getExpenseLabel(
-                          expense.expense_type
-                        )}
+                        {["완료보고/인건비:","수익관리/인건비:"].some(prefix => expense.description?.startsWith(prefix)) ? "인건비" : getExpenseLabel(expense.expense_type)}
                       </strong>
 
                       <strong>
@@ -842,7 +867,7 @@ export default function SiteWorkReportReview({
                     fontWeight: 800,
                   }}
                 >
-                  경비 합계
+                  등록 비용 합계
                 </span>
 
                 <strong
@@ -938,6 +963,11 @@ export default function SiteWorkReportReview({
               </div>
             </div>
 
+            <fieldset disabled={actionLoading} style={{margin:"14px 0",padding:12,border:"1px solid #dfe4d7",borderRadius:12}}>
+              <legend>보완 요청할 항목 선택</legend>
+              <p style={{fontSize:13}}>필요한 항목을 선택하고, 아래에 구체적인 내용을 덧붙여주세요.</p>
+              {reviewReasons.map(([id,label]) => <label key={id} style={{display:"flex",alignItems:"center",gap:8,minHeight:44}}><input type="checkbox" checked={selectedReasons.includes(id)} onChange={event => {setSelectedReasons(current => event.target.checked ? [...current,id] : current.filter(value => value !== id));setActionError("");}} />{label}</label>)}
+            </fieldset>
             <div style={{ marginTop: 14 }}>
               <label
                 htmlFor={`review-memo-${siteId}`}
@@ -967,8 +997,7 @@ export default function SiteWorkReportReview({
               />
 
               <div style={hintStyle}>
-                보완 요청을 할 때는 사유 입력이
-                필수입니다.
+                보완 항목을 선택하거나 구체적인 사유를 입력해주세요. 선택 항목과 설명은 함께 시공자에게 전달됩니다.
               </div>
             </div>
 
@@ -1016,7 +1045,7 @@ export default function SiteWorkReportReview({
               >
                 {actionLoading
                   ? "처리 중..."
-                  : "🔴 보완 요청"}
+                  : "보완 요청"}
               </button>
 
               <button
@@ -1041,7 +1070,7 @@ export default function SiteWorkReportReview({
               >
                 {actionLoading
                   ? "처리 중..."
-                  : "🟢 검수 승인"}
+                  : "승인하기"}
               </button>
             </div>
 
