@@ -63,5 +63,22 @@ drop trigger if exists guard_removed_material_flow on public.film_stock_trips;
 create trigger guard_removed_material_flow before insert or update on public.film_stock_trips for each row execute function app_private.guard_removed_material_flow();
 drop trigger if exists guard_removed_material_flow on public.site_material_issues;
 create trigger guard_removed_material_flow before insert or update on public.site_material_issues for each row execute function app_private.guard_removed_material_flow();
+-- Excluded planned rows must not compete with a newly added product during cost matching.
+do $patch$
+declare fn regprocedure; definition text;
+begin
+ fn:=to_regprocedure('app_private.actual_roll_cost(public.site_materials)');
+ if fn is not null then
+  select pg_get_functiondef(fn) into definition;
+  if position('p.removed_at is null' in definition)=0 then
+   if definition !~ 'p[.]material_type[[:space:]]*=[[:space:]]*''planned''' then
+    raise exception '자재 원가 함수 형식이 변경됐습니다. 설정을 확인해주세요.';
+   end if;
+   definition:=regexp_replace(definition,'p[.]material_type[[:space:]]*=[[:space:]]*''planned''',
+    'p.material_type = ''planned'' and p.removed_at is null','g');
+   execute definition;
+  end if;
+ end if;
+end $patch$;
 commit;
 select '전량 반납 자재 목록 제외 설정 완료' as result;
