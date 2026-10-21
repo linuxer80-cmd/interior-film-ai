@@ -119,6 +119,7 @@ export default function SiteDetailModal({
 
   const taskSections = useRef({});
   const scrollBody = useRef(null);
+  const [basicEditRequest, setBasicEditRequest] = useState({ siteId: null, version: 0 });
 
   const {
     reportSaving,
@@ -322,6 +323,11 @@ export default function SiteDetailModal({
                 {site.site_name || site.customer_name || "현장명 미정"}
               </h2>
 
+              <button type="button" disabled={reportSaving} style={{ ...actionStyle, background: "#285340", color: "#fffef9", minHeight: 44, marginRight: 8, marginBottom: 6 }} onClick={() => {
+                chooseMenu("info");
+                setBasicEditRequest(value => ({ siteId: site.id, version: value.version + 1 }));
+                requestAnimationFrame(() => { if (scrollBody.current) scrollBody.current.scrollTop = 0; });
+              }}>현장정보 수정</button>
               <a
                 href={`/jobs?site=${encodeURIComponent(site.id)}`}
                 style={{
@@ -450,9 +456,35 @@ export default function SiteDetailModal({
               "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
+          <section
+            id="admin-site-panel-info"
+            aria-label="현장정보"
+            hidden={menu !== "info"}
+          >
+            <SiteBasicInfo
+              key={site.id}
+              editRequest={basicEditRequest.siteId === site.id ? basicEditRequest.version : 0}
+              site={site}
+              updateSiteBasicInfo={updateSiteBasicInfo}
+              materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
+            />
+
+            <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
+            <button type="button" style={{...actionStyle,width:"100%",marginBottom:12}} onClick={() => chooseMenu("chat")}>현장 팀 채팅 참여{initialTeamDate ? ` · ${initialTeamDate}` : ""} →</button>
+            <p style={{fontSize:13,color:"#64748b"}}>시공 배정이 없어도 본인 업체의 날짜별 현장 채팅에 참여할 수 있습니다.</p>
+            <SiteScheduleEditor
+              key={'info-schedule-'+site.id}
+              site={site}
+              reportOpen={reportOpen}
+              updateSiteSchedule={updateSiteSchedule}
+              reloadSites={reloadSites}
+            />
+
+
+
+          </section>
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
-          <AdminAssignedWork key={site.id} initialDate={initialTeamDate} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
           <p hidden={menu !== "info"} style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 12, background: "#edf4f1", color: "#244b43", fontSize: 14, lineHeight: 1.6 }}>
             {site.status === "cancelled" ? "취소된 현장입니다" : reviewStatus === "pending" ? "완료보고를 검수해주세요" : reviewStatus === "rejected" ? "보고서 보완 내용을 확인해주세요" : reviewStatus === "approved" ? "내역서와 입금 내역을 확인해주세요" : site.status === "consulting" ? "상담 내용과 견적을 정리해주세요" : site.status === "completed" ? "완료보고 제출 여부를 확인해주세요" : "시공 일정과 준비사항을 확인해주세요"}
           </p>
@@ -479,30 +511,8 @@ export default function SiteDetailModal({
             />
           </section>
 
-          <section
-            id="admin-site-panel-info"
-            aria-label="현장정보"
-            hidden={menu !== "info"}
-          >
-            <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
-            <button type="button" style={{...actionStyle,width:"100%",marginBottom:12}} onClick={() => chooseMenu("chat")}>현장 팀 채팅 참여{initialTeamDate ? ` · ${initialTeamDate}` : ""} →</button>
-            <p style={{fontSize:13,color:"#64748b"}}>시공 배정이 없어도 본인 업체의 날짜별 현장 채팅에 참여할 수 있습니다.</p>
-            <SiteScheduleEditor
-              key={'info-schedule-'+site.id}
-              site={site}
-              reportOpen={reportOpen}
-              updateSiteSchedule={updateSiteSchedule}
-              reloadSites={reloadSites}
-            />
 
-            <SiteBasicInfo
-              key={site.id}
-              site={site}
-              updateSiteBasicInfo={updateSiteBasicInfo}
-              materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
-            />
-
-          </section>
+          <AdminAssignedWork key={site.id} initialDate={initialTeamDate} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
 
           {visited.quote && (
             <section

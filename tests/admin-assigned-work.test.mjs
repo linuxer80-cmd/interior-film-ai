@@ -27,7 +27,7 @@ test('assigned owner gets shared directions and date-scoped team tools inside ad
 
 test('assigned owner has an embedded work section instead of navigating to worker pages',async()=>{
  const h=await harness([{site_id:'own-site',company_id:'company',my_role:'leader'}]);
- const entry=nodes(h.render('info')).find(n=>n.type==='button'&&n.props.children.includes('내 시공 도구 모두 보기'));
+ const entry=nodes(h.render('info')).find(n=>n.type==='button'&&n.props.children.includes('내 시공 상세'));
  assert.ok(entry);
  const workspace=nodes(h.render('work')).find(n=>n.props?.siteId==='own-site'&&typeof n.props?.onClose==='function');
  assert.equal(workspace.props.siteId,'own-site');

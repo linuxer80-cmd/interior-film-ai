@@ -43,6 +43,7 @@ export default function SiteBasicInfo({
   site,
   updateSiteBasicInfo,
   materialSummary,
+  editRequest = 0,
 }) {
   const [
     editing,
@@ -162,6 +163,11 @@ export default function SiteBasicInfo({
     site?.deposit_amount,
     site?.memo,
   ]);
+
+  // Open only for a new explicit request; preserve an existing edit draft.
+  useEffect(() => {
+    if (site && editRequest && !editing && !saving) startEditing();
+  }, [editRequest]);
 
   if (!site) {
     return null;
@@ -498,7 +504,7 @@ export default function SiteBasicInfo({
                 "pointer",
             }}
           >
-            ✏️ 기본정보 수정
+            현장정보 수정
           </button>
         </div>
 
@@ -639,7 +645,7 @@ export default function SiteBasicInfo({
           marginBottom: "10px",
         }}
       >
-        ✏️ 현장 기본정보 수정
+        현장정보 수정
       </div>
 
       <form
