@@ -47,7 +47,7 @@ function ConnectionInbox({api,compact,reviewOnly}) {
   if(compact) return pending.length?<a href='/worker/account#company-connections' style={{...directoryCard,display:'block',color:'#163153',fontWeight:800}}>업체 연결 요청 {pending.length}건 · 확인하기 →</a>:null;
   return <section id='company-connections' style={directoryCard}>
     <h2>업체 검색 · 연결 요청</h2>
-    <p>로그인한 업체 관리자에게 활동 지역·경력·전문 분야·소개를 표시합니다. 연결 전에는 이름을 가리고 사진·일당·연락처는 표시하지 않습니다.</p>
+    <p>로그인한 업체 관리자에게 활동 지역·경력·전문 분야·소개를 표시합니다. 이름은 그대로 표시하며, 연결 전에는 사진·일당·연락처를 표시하지 않습니다.</p>
     <label><input type='checkbox' checked={data?.visible===false} disabled={busy||!data||!data.has_profile} onChange={e=>act({action:'consent',visible:!e.target.checked})}/> 업체 검색에서 내 프로필 숨기기</label>
     <p style={{color:'#667085'}}>연락처·계좌·주소는 검색에 공개되지 않습니다. 공개를 해제하면 대기 중인 연결 요청도 취소됩니다. 기본 프로필을 저장하면 기본적으로 검색에 표시됩니다. 숨기기는 언제든 변경할 수 있습니다.</p>
     <button type='button' style={directoryButton} disabled={busy} onClick={refresh}>새로고침</button>

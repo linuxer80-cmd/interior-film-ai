@@ -13,13 +13,17 @@ async function run(request, action, body) {
   }
   if (action === 'search') {
     const rows=data?.profiles || [];
-    const profiles=await Promise.all(rows.slice(0,30).map(async row=>{
+    const visible=rows.slice(0,30);
+    const names=visible.length?await auth.db.from('labor_profiles').select('user_id,name').in('user_id',visible.map(p=>p.user_id)):{data:[]};
+    if(names.error)return privateJson({error:'시공자 이름을 불러오지 못했습니다.'},500);
+    const fullNames=new Map((names.data||[]).map(p=>[p.user_id,p.name]));
+    const profiles=await Promise.all(visible.map(async row=>{
       let photo_url=null;
       if(row.photo_path) {
         const signed=await auth.db.storage.from('labor-avatars').createSignedUrl(row.photo_path,300);
         photo_url=signed.data?.signedUrl || null;
       }
-      return {...publicDirectoryProfile(row),photo_url};
+      return {...publicDirectoryProfile({...row,name:fullNames.get(row.user_id)||row.name}),photo_url};
     }));
     return privateJson({profiles:await directoryBadges(auth.db,profiles),hasMore:rows.length>30});
   }

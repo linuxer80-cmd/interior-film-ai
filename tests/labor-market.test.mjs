@@ -53,7 +53,7 @@ const baseJob = {
   status: "open",
 };
 
-function fixture(userId = owner, manager = true, proposals = false) {
+function fixture(userId = owner, manager = true, proposals = false, searchProfiles = null) {
   const tables = {
     profiles: [
       {
@@ -203,6 +203,7 @@ function fixture(userId = owner, manager = true, proposals = false) {
 
     async rpc(name, args) {
       rpc.push({ name, args });
+      if(name==='worker_directory_action'&&searchProfiles!==null)return {data:{profiles:searchProfiles},error:null};
       if(name==='labor_proposal_capabilities')return {data:proposals?{version:proposals===1?1:2}:null,error:null};
       return { data: null, error: null };
     },
@@ -583,4 +584,10 @@ test('manager finalizes a proposal applicant through the guarded finalization RP
  const f=fixture();f.tables.labor_jobs[0].proposal_user_id=worker;
  const r=await f.POST(post({action:'accept',jobId,userId:worker,expectedWage:250000}));assert.equal(r.status,200);
  assert.ok(f.rpc.some(r=>r.name==='finalize_labor_job_proposal'&&r.args.p_actor===owner&&r.args.p_target===worker));
+});
+
+test('authorized candidate names display in full without adding contact fields',async()=>{
+ const f=fixture(owner,true,true,[{user_id:worker,name:'시○자',region:'인천',connected:false}]);
+ const r=await f.GET(get());assert.equal(r.status,200);const data=await r.json();
+ assert.equal(data.candidates[0].name,'시공자');assert.equal(data.candidates[0].connected,false);assert.equal('phone' in data.candidates[0],false);assert.equal('daily_wage' in data.candidates[0],false);
 });

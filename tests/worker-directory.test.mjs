@@ -20,9 +20,9 @@ test('API authenticates, binds actor and strips private data from search',async(
  assert.equal((await api.GET(get())).status,401);
  auth={user:{id:'real-user',email_confirmed_at:null}};
  assert.equal((await api.GET(get())).status,403);
- auth={user:{id:'real-user',email_confirmed_at:'2026-01-01'},db:{rpc:async(name,args)=>{calls.push(args);return {data:{profiles:Array.from({length:31},(_,i)=>({user_id:String(i),name:'시공자',phone:'secret',photo_path:'avatar'}))}};},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'signed-photo'}})})}}};
+ auth={user:{id:'real-user',email_confirmed_at:'2026-01-01'},db:{from(table){assert.equal(table,'labor_profiles');return {select(fields){assert.equal(fields,'user_id,name');return {in(key,ids){assert.equal(key,'user_id');assert.equal(ids.length,30);assert.ok(!ids.includes('30'));return Promise.resolve({data:ids.map(id=>({user_id:id,name:'최정민'}))});}};}};},rpc:async(name,args)=>{calls.push(args);return {data:{profiles:Array.from({length:31},(_,i)=>({user_id:String(i),name:'최○민',phone:'secret',photo_path:'avatar'}))}};},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'signed-photo'}})})}}};
  const response=await api.GET(get());const result=await response.json();
- assert.equal(result.profiles.length,30);assert.equal(result.hasMore,true);
+ assert.equal(result.profiles[0].name,'최정민');assert.equal(result.profiles.length,30);assert.equal(result.hasMore,true);
  assert.equal(result.profiles[0].photo_url,'signed-photo');assert.equal('phone' in result.profiles[0],false);assert.equal('photo_path' in result.profiles[0],false);
  assert.equal(calls.at(-1).p_actor,'real-user');
  const count=calls.length;

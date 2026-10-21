@@ -418,7 +418,11 @@ export async function GET(request) {
         query:params.get('name')||'',region:params.get('region')||'',skill:params.get('skill')||'',
         page,experience:Number(params.get('experience')||0),date:params.get('date')||'',wage:params.get('wage')||''
       }}));
-      candidates=await photos(db,(result?.profiles||[]).slice(0,30));
+      const visible=(result?.profiles||[]).slice(0,30);
+      // Only enrich identities already authorized by the directory RPC.
+      const names=visible.length?value(await db.from('labor_profiles').select('user_id,name').in('user_id',visible.map(p=>p.user_id))):[];
+      const fullNames=new Map(names.map(p=>[p.user_id,p.name]));
+      candidates=await photos(db,visible.map(p=>({...p,name:fullNames.get(p.user_id)||p.name})));
     }
 
     if (companyId) {
