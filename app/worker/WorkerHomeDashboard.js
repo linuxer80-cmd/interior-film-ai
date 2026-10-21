@@ -163,10 +163,10 @@ export default function WorkerHomeDashboard({
       <div className="wp-today">
         {entries.length ? (
           entries.map(({ site, role }) => (
+            <article key={site.site_id} style={{minWidth:0}}>
             <button
               type="button"
               className="wp-site"
-              key={site.site_id}
               onClick={() =>
                 onOpen(site.site_id)
               }
@@ -209,6 +209,11 @@ export default function WorkerHomeDashboard({
                 ›
               </span>
             </button>
+            <div style={{display:"flex",gap:8,margin:"8px 0 14px"}}>
+              <button type="button" onClick={() => onOpen(site.site_id,"film")} style={{flex:1,minWidth:0,minHeight:44,padding:"10px 8px",border:"1px solid #d5dfcd",borderRadius:12,background:"#fffef9",color:"#285340",fontWeight:800,cursor:"pointer"}}>자재·재단</button>
+              <button type="button" onClick={() => onOpen(site.site_id,role === "leader" ? "report" : "expenses")} style={{flex:1,minWidth:0,minHeight:44,padding:"10px 8px",border:0,borderRadius:12,background:"#285340",color:"#fffef9",fontWeight:800,cursor:"pointer"}}>{role === "leader" ? "완료보고 →" : "내 경비 등록 →"}</button>
+            </div>
+            </article>
           ))
         ) : (
           <div className="wp-empty">

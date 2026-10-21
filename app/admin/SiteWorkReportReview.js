@@ -29,6 +29,7 @@ export default function SiteWorkReportReview({
   const [approvedAmount, setApprovedAmount] = useState("");
   const [reviewMemo, setReviewMemo] = useState("");
   const [selectedReasons, setSelectedReasons] = useState([]);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const actionLock = useRef(false);
   const alive = useRef(true);
   const readVersion = useRef(0);
@@ -65,6 +66,7 @@ export default function SiteWorkReportReview({
     }
 
     setView("summary");
+    setFeedbackOpen(false);
     setSelectedReasons([]);
     setApprovedAmount("");
     setReviewMemo("");
@@ -352,6 +354,7 @@ export default function SiteWorkReportReview({
       );
 
       setSelectedReasons([]);
+      setFeedbackOpen(false);
       setView("summary");
       await loadReview();
     } catch (error) {
@@ -884,7 +887,7 @@ export default function SiteWorkReportReview({
         </ReviewBlock>
       </div>
 
-      <div hidden={view !== "review"}>
+      <div hidden={view !== "review" && !(view === "summary" && reviewStatus === "pending")} aria-label="완료보고 검수 처리">
         {reviewStatus === "pending" && (
           <div
             style={{
@@ -963,6 +966,8 @@ export default function SiteWorkReportReview({
               </div>
             </div>
 
+            <button type="button" disabled={actionLoading} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(value => !value)} style={{...inputStyle,marginTop:14,minHeight:44,cursor:"pointer"}}>검수 메모·보완 내용 입력</button>
+            <div hidden={!feedbackOpen}>
             <fieldset disabled={actionLoading} style={{margin:"14px 0",padding:12,border:"1px solid #dfe4d7",borderRadius:12}}>
               <legend>보완 요청할 항목 선택</legend>
               <p style={{fontSize:13}}>필요한 항목을 선택하고, 아래에 구체적인 내용을 덧붙여주세요.</p>
@@ -1000,6 +1005,7 @@ export default function SiteWorkReportReview({
                 보완 항목을 선택하거나 구체적인 사유를 입력해주세요. 선택 항목과 설명은 함께 시공자에게 전달됩니다.
               </div>
             </div>
+            </div>
 
             {actionError && (
               <MessageBox error>
@@ -1024,9 +1030,10 @@ export default function SiteWorkReportReview({
               <button
                 type="button"
                 disabled={actionLoading}
-                onClick={() =>
-                  submitReviewAction("reject")
-                }
+                onClick={() => {
+                  if (!reviewMemoText(selectedReasons,reviewMemo)) { setFeedbackOpen(true); setActionError("보완할 항목을 선택하거나 사유를 입력해주세요."); return; }
+                  return submitReviewAction("reject");
+                }}
                 style={{
                   width: "100%",
                   minHeight: 44,

@@ -463,7 +463,7 @@ export default function WorkReportForm({
 
   function jump(item) {
     if(item.target === "materials")setMaterialFocus({id:item.id,nonce:Date.now()});
-    setStep(item.target === "photos" ? 0 : 1);
+    setStep(["content", "photos"].includes(item.target) ? 0 : 1);
     requestAnimationFrame(() => {
 
     const section = root.current?.querySelector(`[data-section="${item.target}"]`);
@@ -676,6 +676,15 @@ export default function WorkReportForm({
     return <p role="alert">{error || "준비 중…"}</p>;
   }
 
+  if (submitted) {
+    return <section role="status" style={{...box,background:"#edf3e8"}} aria-label="완료보고 제출 결과">
+      <h3>{owner ? "완료보고를 저장했습니다" : "완료보고 제출됨 · 관리자 검수 대기"}</h3>
+      <p>{owner ? "현장에 저장된 보고서를 확인해주세요." : "관리자가 시공 내용·사진·자재·경비를 확인합니다. 보완 요청이 오면 이 현장에서 이어서 수정할 수 있습니다."}</p>
+      {progress && <p>{progress}</p>}
+      {error && <p role="alert">{error}</p>}
+    </section>;
+  }
+
   const missing = issues();
   const overview = reportOverview(context, form, existingExpenses);
   const unpricedMaterials = (context.operations.materials || []).filter(
@@ -732,12 +741,12 @@ export default function WorkReportForm({
   return (
     <form ref={root} onSubmit={e => { if (step !== 2) { e.preventDefault(); setStep(n => Math.min(2,n+1)); } else return submit(e); }} noValidate>
       <nav aria-label="완료보고 단계" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
+        {["1. 내용·사진", "2. 자재·경비", "3. 확인·제출"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, minWidth:0, padding:"11px 4px", minHeight:44, background: step === index ? "#285340" : "white", color: step === index ? "white" : "#285340" }}>{label}</button>)}
       </nav>
       {step!==2&&<section style={{...box,background:'#edf3e8'}} aria-label="완료보고 준비 상태">
         <strong>{missing.length?`마무리할 항목 ${missing.length}건`:"제출 준비 완료"}</strong>
         <p>이미 등록한 사진·자재 사용량·경비는 다시 입력하지 않아도 됩니다.</p>
-        {missing.map((item,i)=><button key={i} type="button" disabled={disabled} style={{...button,margin:'4px',textAlign:'left'}} onClick={()=>jump(item)}>{item.label} →</button>)}
+        {missing.length > 0 && <details><summary style={{minHeight:44,cursor:"pointer"}}>확인할 항목 보기</summary>{missing.map((item,i)=><button key={i} type="button" disabled={disabled} style={{...button,margin:'4px',textAlign:'left'}} onClick={()=>jump(item)}>{item.label} →</button>)}</details>}
         {!missing.length&&<button type="button" style={button} disabled={disabled} onClick={()=>setStep(2)}>최종 확인하고 제출 →</button>}
       </section>}
       <p role="status" style={{ fontSize: 13, color: "#53665a" }}>{draftMessage || "작성 내용은 이 기기에 임시저장됩니다."}</p>
@@ -777,9 +786,8 @@ export default function WorkReportForm({
       </section>
 
       <fieldset disabled={disabled} style={{ border: 0, padding: 0, minWidth: 0 }}>
-        <section style={box} hidden={step !== 1} data-section="content">
+        <section style={box} hidden={step !== 0} data-section="content">
           <h3>시공 내용 · {site?.site_name}</h3>
-          {field("work_region", "시공 지역")}
 
           <label>
             실제 시공 내용 *
@@ -791,6 +799,9 @@ export default function WorkReportForm({
             />
           </label>
 
+          <details style={{marginTop:12}}>
+            <summary style={{minHeight:44,cursor:"pointer"}}>시공 지역·작업 메모</summary>
+            {field("work_region", "시공 지역")}
           <label>
             작업 메모
             <textarea
@@ -800,12 +811,13 @@ export default function WorkReportForm({
               onChange={(e) => patch("memo", e.target.value)}
             />
           </label>
+          </details>
         </section>
 
         <section style={box} hidden={step !== 0} data-section="photos">
-          <h3>시공 사진</h3>
+          <h3>완료사진 <small style={{color:"#285340"}}>필수</small></h3>
           <p>
-            등록된 완료사진 {context.afterCount}장 · 새 사진은 긴 변 최대 2048px로 용량을 줄입니다.
+            등록된 완료사진 {context.afterCount}장 · 새 완료사진 {overview.newAfter}장
           </p>
 
           {!owner && (
@@ -1024,7 +1036,7 @@ export default function WorkReportForm({
       </fieldset>
 
       {unpricedMaterials.length > 0 && (
-        <section role="status" style={{ ...box, background: "#fff7ed", color: "#9a3412" }}>
+        <section hidden={step === 0} role="status" style={{ ...box, background: "#fff7ed", color: "#9a3412" }}>
           <strong>원가 단가 미입력 · 완료보고는 저장할 수 있습니다</strong>
           <p>{unpricedMaterials.map(m => m.code || m.name).join(", ")}</p>
           <p>단가는 미입력 상태로 유지됩니다. 관리자가 현장 자재의 매입원가를 확인해 입력하면 자재비와 수익을 계산할 수 있습니다.</p>
@@ -1091,7 +1103,7 @@ export default function WorkReportForm({
       </section>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, position: "sticky", bottom: 0, padding: "12px 0", background: "white", zIndex: 2 }}>
         {step > 0 && <button type="button" disabled={disabled} style={button} onClick={() => setStep(n => n-1)}>이전</button>}
-        {step < 2 && <button type="button" disabled={disabled} style={{ ...button, flex: 1 }} onClick={() => setStep(n => n+1)}>다음 단계 →</button>}
+        {step < 2 && <button type="button" disabled={disabled} style={{ ...button, flex: 1,background:"#285340",color:"white" }} onClick={() => setStep(n => n+1)}>{step === 0 ? "다음 · 자재·경비 →" : "다음 · 확인·제출 →"}</button>}
         {onCancel && (
           <button type="button" style={button} disabled={disabled} onClick={() => saveDraft(true)}>
             임시저장 후 닫기
@@ -1104,7 +1116,7 @@ export default function WorkReportForm({
           disabled={disabled}
           style={{
             ...button,
-            background: "#142238",
+            background: "#285340",
             color: "white",
             flex: 1,
           }}
@@ -1115,7 +1127,7 @@ export default function WorkReportForm({
               ? "완료보고 저장 중…"
               : preparing
                 ? "사진 준비 중…"
-                : "완료보고 저장"}
+                : owner ? "완료보고 저장" : "완료보고 제출"}
         </button>
       </div>
     </form>

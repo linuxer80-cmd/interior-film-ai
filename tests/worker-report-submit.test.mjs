@@ -60,6 +60,7 @@ async function form({
   failSaveOnce = false,
   existingExpenses = [],
   statusWarning = "",
+  afterPhotos = true,
 } = {}) {
   let cursor = 0;
   const slots = [];
@@ -137,6 +138,7 @@ async function form({
     FormData,
     AbortController,
     setTimeout, clearTimeout,
+    requestAnimationFrame: callback => callback(),
     crypto,
     window: {addEventListener(){},removeEventListener(){}},
     console: {
@@ -274,7 +276,7 @@ async function form({
   });
 
   render();
-  await findAll(render(), node => node.props.type === "file")[1].props.onChange({
+  if (afterPhotos) await findAll(render(), node => node.props.type === "file")[1].props.onChange({
     target: {
       files: [
         { name: "after1.jpg" },
@@ -285,7 +287,7 @@ async function form({
 
   // Follow the new final-review step before submitting the report.
   const review = findAll(render(), node => node.type === "button" &&
-    node.props.children?.includes("3. 최종 확인"))[0];
+    node.props.children?.includes("3. 확인·제출"))[0];
   assert.ok(review, "final review step is available");
   review.props.onClick();
 
@@ -294,12 +296,36 @@ async function form({
     payloads,
     render,
     submit: () =>
-      render().props.onSubmit({
+      render().props.onSubmit?.({
         preventDefault() {},
       }),
     completed: () => completed,
   };
 }
+
+test('content and photos share the first step and edits survive navigating to final review', async () => {
+  const h = await form();
+  const button = label => findAll(h.render(), node => node.type === 'button' && node.props.children?.includes(label))[0];
+  button('1. 내용·사진').props.onClick();
+  for (const target of ['content','photos']) assert.equal(findAll(h.render(),node=>node.props['data-section']===target)[0].props.hidden,false);
+  findAll(h.render(),node=>node.type==='textarea' && node.props.rows===4)[0].props.onChange({target:{value:'수정한 시공 내용'}});
+  button('2. 자재·경비').props.onClick();
+  assert.equal(findAll(h.render(),node=>node.props['data-section']==='content')[0].props.hidden,true);
+  button('3. 확인·제출').props.onClick();
+  assert.match(JSON.stringify(h.render()),/수정한 시공 내용/);
+  await h.submit();
+  assert.equal(h.payloads[0].work_summary,'수정한 시공 내용');
+  assert.equal(h.render().type,'section');
+  assert.match(JSON.stringify(h.render()),/관리자 검수 대기/);
+});
+
+test('missing completed photos directs the user to the first step without posting a report', async () => {
+  const h = await form({afterPhotos:false});
+  await h.submit();
+  assert.equal(h.calls.includes('report'),false);
+  assert.equal(findAll(h.render(),node=>node.props['data-section']==='photos')[0].props.hidden,false);
+  assert.match(JSON.stringify(h.render()),/완료사진 없음/);
+});
 
 test(
   "all before/after photos precede submission; rapid double tap submits once",

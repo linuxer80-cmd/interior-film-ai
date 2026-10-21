@@ -8,7 +8,7 @@ test('existing photos and confirmed material usage go straight to final review',
   assert.equal(firstReportStep(context,{work_summary:'완료',photos:[]}),2);
   assert.equal(firstReportStep({...context,afterCount:0},{work_summary:'완료',photos:[]}),0);
   assert.equal(firstReportStep({...context,afterCount:0},{work_summary:'완료',photos:[{type:'after'}]}),2);
-  assert.equal(firstReportStep(context,{work_summary:'',photos:[]}),1);
+  assert.equal(firstReportStep(context,{work_summary:'',photos:[]}),0);
   context.operations.materials[0].returned=null;
   assert.equal(firstReportStep(context,{work_summary:'완료',photos:[]}),1);
 });

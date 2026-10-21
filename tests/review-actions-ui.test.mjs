@@ -45,8 +45,11 @@ test('approval ignores purchase-price omissions and sends one request on a rapid
 });
 test('empty rejection is blocked while entered review edits can be explicitly discarded',async()=>{
  const h=await fixture();
+ const review=all(h.render(),node=>node.props['aria-label']==='완료보고 검수 처리')[0];
+ assert.equal(review.props.hidden,false,'pending report is actionable on the summary screen');
  await h.buttons().find(node=>text(node).trim()==='보완 요청').props.onClick();
  assert.equal(h.posts.length,0);
+ assert.equal(h.buttons().find(node=>text(node)==='검수 메모·보완 내용 입력').props['aria-expanded'],true);
  const memo=all(h.render(),node=>node.type==='textarea')[0];memo.props.onChange({target:{value:'보완해주세요'}});h.render();
  assert.equal(h.dirty().dirty,true);h.dirty().discard();h.render();assert.equal(h.dirty().dirty,false);
 });
