@@ -11,18 +11,17 @@ import {
   loadMyWorkerSites,
   workerLoginUrl,
 } from "../../../utils/workerSites";
-import WorkerTeam from "./WorkerTeam";
+import WorkerSiteInfo from "./WorkerSiteInfo";
 import SiteExtraWork from "../../../components/SiteExtraWork";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import SiteOperations from "../../../components/SiteOperations";
 import WorkerWorkReport from "./WorkerWorkReport";
 import SiteExpenses from "../../../components/SiteExpenses";
-import SiteDirections from "../../SiteDirections";
 import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
 
 const menus = [
   { id: "info", label: "현장정보", kind: "home" },
-  { id: "film", label: "필름·재단", kind: "film" },
+  { id: "film", label: "자재·재단", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
   { id: "extra", label: "추가 작업", kind: "report" },
   { id: "expenses", label: "경비", kind: "money" },
@@ -384,23 +383,23 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
               marginTop: 8,
             }}
           >
-            {menus.map((menu) => (
+            {[menus[0], menus[1], { id: "photos", label: "사진·보고" }].map((menu) => (
               <button
                 key={menu.id}
                 type="button"
-                aria-pressed={tab === menu.id}
+                aria-pressed={menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id}
                 aria-controls={`site-panel-${menu.id}`}
                 onClick={() => chooseTab(menu.id)}
                 style={{
                   border:
-                    tab === menu.id
+                    (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id)
                       ? "1px solid #81b4f7"
                       : "1px solid #e2e8f0",
                   borderRadius: 10,
                   minHeight: 44,
                   padding: "8px 2px",
-                  background: tab === menu.id ? "#edf3ec" : "#fffef9",
-                  color: tab === menu.id ? "#285340" : "#53665a",
+                  background: (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id) ? "#edf3ec" : "#fffef9",
+                  color: (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id) ? "#285340" : "#53665a",
                   fontSize: 12,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -422,6 +421,9 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
               </button>
             ))}
           </nav>
+          {!["info", "film"].includes(tab) && <nav aria-label="사진과 보고 세부 메뉴" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4, marginTop: 8 }}>
+            {menus.slice(2).map(menu => <button type="button" key={menu.id} aria-pressed={tab === menu.id} aria-controls={`site-panel-${menu.id}`} onClick={() => chooseTab(menu.id)} style={{ ...action, padding: "8px 2px", fontSize: 12, background: tab === menu.id ? "#edf3ec" : "#fffef9" }}>{menu.label}{menu.id === "report" && reportLabel && <small style={{ display: "block" }}>{reportLabel}</small>}</button>)}
+          </nav>}
         </div>
       </header>
 
@@ -439,102 +441,11 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
         >
 
 
-          <div style={card}>
-            <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
-              현장 기본정보
-            </h2>
-
-            {site.assigned_dates?.length ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
-                {site.assigned_dates.map((day) => (
-                  <div
-                    key={day.work_date}
-                    style={{
-                      padding: "6px 0",
-                      borderRadius: 12,
-                      background: "transparent",
-                      fontSize: 13,
-                    }}
-                  >
-                    <strong>{dateText(day.work_date)}</strong>
-                    {" · "}
-                    {day.role === "leader" ? "팀장" : "팀원"}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={muted}>
-                {dateText(site.schedule_start)}
-                {site.schedule_end &&
-                dateText(site.schedule_end) !==
-                  dateText(site.schedule_start)
-                  ? ` ~ ${dateText(site.schedule_end)}`
-                  : ""}
-              </p>
-            )}
-
-            {site.schedule_notice && (
-              <p style={{ ...muted, color: "#b45309" }}>
-                {site.schedule_notice}
-              </p>
-            )}
-            <div style={{ borderTop: "1px solid #e3e0d6", marginTop: 10, paddingTop: 2 }} />
-
-            <InfoRow label="고객" value={site.customer_name} />
-            <InfoRow
-              label="주소"
-              value={<SiteDirections site={site} compact />}
-            />
-            <InfoRow label="시공" value={site.work_type} />
-
-            {site.work_description !== site.work_type && <InfoRow label="작업" value={site.work_description} />}
-            <InfoRow label="자재" value={materialsMessage ? "자재 확인 필요" : materials.length ? materials.map(material => [material.brand, material.product_code || material.product_name].filter(Boolean).join(" ")).join(" · ") : "등록된 자재 없음"} />
-
-            {site.customer_phone && (
-              <a
-                href={`tel:${site.customer_phone}`}
-                style={{
-                  ...action,
-                  display: "block",
-                  textDecoration: "none",
-                  textAlign: "center",
-                  marginTop: 14,
-                }}
-               data-ui-link="action">
-                📞 고객 전화 · {site.customer_phone}
-              </a>
-            )}
-          </div>
-
-
-          <SiteOperations siteId={siteId} active={tab === "info"} mode="changes" compact onCurrentData={loadSiteDetail} />
-          <WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} initialDate={initialDate} active={tab === "info"} />
-
-          {site.memo?.trim() && (
-            <div
-              style={{
-                ...card,
-                background: "#fffbeb",
-                borderColor: "#fcd34d",
-              }}
-            >
-              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>
-                📌 현장 메모 · 전달사항
-              </h2>
-
-              <p
-                style={{
-                  ...muted,
-                  margin: 0,
-                  color: "#713f12",
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {site.memo}
-              </p>
-            </div>
-          )}
+          <WorkerSiteInfo site={site} siteId={siteId} materials={materials} materialsMessage={materialsMessage} initialDate={initialDate} active={tab === "info"} />
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ ...muted, cursor: "pointer", padding: "12px 0" }}>현장 변경·확인 이력</summary>
+            <SiteOperations siteId={siteId} active={tab === "info"} mode="changes" compact onCurrentData={loadSiteDetail} />
+          </details>
 
         </section>
 
@@ -543,13 +454,15 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
         {visited.film && (
           <section
             id="site-panel-film"
-            aria-label="필름과 재단"
+            aria-label="자재와 재단"
             hidden={tab !== "film"}
           >
           <SiteOperations
             active={tab === "film"}
             key={siteId}
             mode="materials"
+            compact
+            easyMode
             siteId={siteId}
             onCurrentData={async () => {
               const requestId = ++detailRequest.current;

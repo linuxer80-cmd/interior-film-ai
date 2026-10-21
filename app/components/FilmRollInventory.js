@@ -264,7 +264,7 @@ export default function FilmRollInventory({
           aria-pressed={tab === "issue"}
           onClick={() => setTab("issue")}
         >
-          창고 → 현장
+          {compact ? "반출하기" : "창고 → 현장"}
         </button>
         <button
           type="button"

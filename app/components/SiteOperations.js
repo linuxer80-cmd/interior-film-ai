@@ -56,6 +56,7 @@ export default function SiteOperations({
   reportEditable = false,
   inventoryExpanded = false,
   compact = false,
+  easyMode = false,
 }) {
   const [data, setData] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -373,7 +374,7 @@ export default function SiteOperations({
       >
         <h3 style={{ margin: 0, fontSize: 17 }}>
           {materialsMode
-            ? "📦 반출 · 반입 · 소모량"
+            ? easyMode ? "현장에 사용할 자재" : "📦 반출 · 반입 · 소모량"
             : changesMode ? "현장 변경 · 확인 현황" : summaryMode ? "사용 자재" : "📦 현장 자재 · 변경사항"}
         </h3>
 
@@ -409,7 +410,7 @@ export default function SiteOperations({
         />
       )}
 
-      {compact && data && <p style={{ margin: "10px 0", fontSize: 13, color: "#687961" }}>
+      {compact && !changesMode && !easyMode && data && <p style={{ margin: "10px 0", fontSize: 13, color: "#687961" }}>
         자재 {data.materials.length}종 · 반출 {data.materials.filter(m => Number(m.issued) > 0).length}종 · 반납 미입력 {data.materials.filter(m => Number(m.issued) > 0 && m.returned == null).length}종
       </p>}
       {!changesMode && !summaryMode && !compact && <details ref={inventoryDetails} open={inventoryExpanded || undefined} style={{ margin: "16px 0" }}>
@@ -428,6 +429,7 @@ export default function SiteOperations({
         />
       </details>}
 
+      {easyMode && <p style={{ color: "#65766b", fontSize: 13 }}>자재를 고르면 바로 아래에서 반출·반납할 수 있습니다.</p>}
       {!data ? (
         <p>불러오는 중…</p>
       ) : changesMode ? null : materialsMode ? (
@@ -440,7 +442,7 @@ export default function SiteOperations({
           {data.locked && (
             <p>
               수동 수량 수정은 잠겨 있습니다.
-              이미 반출한 롤은 위 메뉴에서 반납 권한을
+              이미 반출한 롤은 자재 반출·반납에서 반납 권한을
               확인하고 처리할 수 있습니다.
             </p>
           )}
@@ -527,6 +529,7 @@ export default function SiteOperations({
                     <span>소모 <b>{material.used == null ? "미확정" : `${material.used}${material.unit}`}</b></span>
                   </div>
                 </button></div>}
+                {easyMode && <button type="button" style={{ ...btn, width: "100%", marginTop: 14, minHeight: 50, background: "#285e45", color: "#fff" }} disabled={busy || disabled} aria-expanded={expandedMaterial === material.id} aria-controls={`material-detail-${material.id}`} onClick={() => { setExpandedMaterial(id => id === material.id ? null : material.id); setVisitedMaterials(previous => ({ ...previous, [material.id]: true })); }}>{expandedMaterial === material.id ? "반출·반납 접기" : Number(material.issued) > 0 ? "추가 반출·남은 자재 반납" : "자재 반출하기"}</button>}
                 <div id={`material-detail-${material.id}`} hidden={compact && expandedMaterial !== material.id}>
                 {compact && visitedMaterials[material.id] && <FilmRollInventory
                   siteId={siteId} active={active && expandedMaterial === material.id}
