@@ -20,9 +20,9 @@ test('quantity/price recalculate; direct amounts and clearing unit price retain 
  assert.equal(editCompletionItem(priced,'amount',50000).unit_price,null);
 });
 test('tax modes reconcile amounts and invalid headcounts are rejected',()=>{
- assert.deepEqual(completionTotals([{amount:110000}],'included'),{subtotal:110000,supply:100000,tax:10000,total:110000});
- assert.equal(completionTotals([{amount:100000}],'separate').total,110000);
- assert.equal(completionTotals([{amount:100000}]).total,100000);
+ assert.deepEqual(completionTotals([{name:'시공비',quantity:1,amount:110000}],'included'),{subtotal:110000,supply:100000,tax:10000,total:110000});
+ assert.equal(completionTotals([{name:'시공비',quantity:1,amount:100000}],'separate').total,110000);
+ assert.equal(completionTotals([{name:'시공비',quantity:1,amount:100000}]).total,100000);
  assert.throws(()=>normalizeHeader({crew_count:'1.5'})); assert.throws(()=>normalizeHeader({person_days:'NaN'}));
 });
 test('PDF byte offsets point to every object and xref including binary image bytes',async()=>{
@@ -85,4 +85,13 @@ test('unused placeholders stay optional; editing one marks it as a real unfinish
  const rows=withManualCompletionItems([]);assert.ok(rows.every(r=>r._placeholder));
  const edited=editCompletionItem(rows.find(r=>r.category==='film'),'name','PS156');assert.equal(edited._placeholder,false);
  const normalized=normalizePendingCompletionItems([{...edited,_position:0}]);assert.equal(normalized[0].quantity,'');
+});
+
+test('manual amounts and new priced rows count while unfinished rows stay excluded from invoice totals',()=>{
+ const rows=[{name:'기존 문',quantity:2,unit_price:100000,amount:200000}];
+ rows.push(editCompletionItem({name:'추가 팬트리장',quantity:1,amount:0},'unit_price',150000));
+ rows.push({name:'미확정 자재',quantity:'',amount:90000});
+ assert.deepEqual(completionTotals(rows,'separate'),{subtotal:350000,supply:350000,tax:35000,total:385000});
+ rows[1]=editCompletionItem(rows[1],'amount',170000);
+ assert.equal(completionTotals(rows).total,370000);
 });

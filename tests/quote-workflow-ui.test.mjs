@@ -27,3 +27,36 @@ test('delivery shares JPEG files, suppresses duplicate taps and treats cancellat
  const tree=h.render(exports.default,{draft,filename:'견적서',preview:true},false);const share=nodes(tree).find(n=>n.type==='button'&&text(n)==='견적서 이미지 공유');
  const pending=share.props.onClick();await share.props.onClick();assert.equal(calls,1);rejectShare(Object.assign(Error('cancel'),{name:'AbortError'}));await pending;assert.equal(h.state[1],'');assert.equal(h.state[2],false);
 });
+
+test('adding and editing an area immediately updates subtotal, VAT and the exported quote rows',async()=>{
+ const {quoteTotals,validateQuote}=await import('../lib/consultationQuote.js');
+ const {completionTotals}=await import('../lib/completionEstimate.mjs');
+ const draft={vat:'separate',items:[{name:'기존 문',detail:'',quantity:'2',unit_price:'100000',unit:'세트',film_no:'',note:''}]};
+ const h=hooks({0:draft,1:1,2:false}),exports={};
+ vm.runInNewContext(wrapper+'\nexports.testArea=AreaConsultationQuote;',{exports,React:h.React,URLSearchParams,window:{location:{search:''}},require(path){
+  if(path==='react')return h.React;
+  if(path.includes('completionEstimate.mjs'))return {completionTotals};
+  if(path.includes('consultationQuote'))return {quoteTotals,validateQuote};
+  if(path.includes('QuoteFilmNumber'))return {useSiteQuoteFilms:()=>({}),default:'FilmNumber',__esModule:true};
+  return {default:path,__esModule:true};
+ }});
+ const render=()=>h.render(exports.testArea,{siteId:'site'},false);
+ let tree=render();
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='+ 시공 항목 추가').props.onClick();tree=render();
+ const edit=(key,value)=>{
+  const rows=nodes(tree).filter(n=>n.type==='div'&&n.props.className==='quote-row');
+  const label=nodes(rows.at(-1)).find(n=>n.type==='label'&&text(n).startsWith(key));
+  nodes(label).find(n=>n.type==='input').props.onChange({target:{value}});tree=render();
+ };
+ edit('시공 항목','추가 팬트리장');edit('단가 (원)','150000');
+ assert.ok(text(tree).includes('견적 합계 385,000원'));
+ h.state[4]=true;tree=render();
+ const file=nodes(tree).find(n=>n.props?.draft?.items?.length===2&&n.props?.filename);
+ h.state[4]=false;tree=render();
+ assert.ok(file);assert.equal(file.props.draft.items[1].amount,150000);
+ assert.equal(completionTotals(file.props.draft.items,'separate').total,385000);
+ edit('수량','2');assert.ok(text(tree).includes('견적 합계 550,000원'));
+ const saved=validateQuote(JSON.parse(JSON.stringify(h.state[0])));
+ assert.equal(quoteTotals(saved.items).amount,500000);
+ edit('단가 (원)','');assert.ok(text(tree).includes('미완성'));
+});
