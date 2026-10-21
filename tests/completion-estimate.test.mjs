@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { completionSeed, normalizeHeader, completionTotals, editCompletionItem } from '../lib/completionEstimate.mjs';
+import { completionSeed, normalizeHeader, completionTotals, editCompletionItem, normalizePendingCompletionItems, restoreCompletionItems, withManualCompletionItems } from '../lib/completionEstimate.mjs';
 import { jpegPagesPdf } from '../lib/completionEstimatePdf.mjs';
 
 test('report costs seed editable material quantities, unique crew and person days without mutating sources', () => {
@@ -45,7 +45,7 @@ function api({role='owner',company='a',siteCompany='a',status='completed',revisi
   return {data:(tables[table]||[]).find(r=>filters.every(([k,v])=>r[k]===v||k==='id'&&table==='profiles'))||null};
  },async single(){return q.maybeSingle()},then(resolve,reject){return Promise.resolve({data:tables[table]||[]}).then(resolve,reject)}};return q;
  }};
- const ctx=vm.createContext({completionSeed,normalizeHeader,createClient:()=>client,process:{env:{}},console:{error(){}},Response,Request,URL,getProfit:async()=>Response.json({sites:[{id:tables.sites[0].id}],breakdown:{material:[],labor:[],expense:[]}})});
+ const ctx=vm.createContext({completionSeed,normalizeHeader,normalizePendingCompletionItems,createClient:()=>client,process:{env:{}},console:{error(){}},Response,Request,URL,getProfit:async()=>Response.json({sites:[{id:tables.sites[0].id}],breakdown:{material:[],labor:[],expense:[]}})});
  const src=fs.readFileSync(new URL('../app/api/admin/completion-estimate/route.js',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replaceAll('export ','');
  vm.runInContext(src+'\nglobalThis.post=POST;globalThis.get=GET;',ctx);
  const siteId=tables.sites[0].id;
@@ -62,4 +62,27 @@ test('save blocks unauthenticated, non-owner, other-tenant, stale and invalid am
  assert.equal((await api({revision:2}).post()).status,409);
  assert.equal((await h.post({...h.body,items:[{...h.body.items[0],amount:2}]})).status,400);
  assert.equal((await h.post({...h.body,vat:'bad'})).status,400);
+});
+
+test('both quote timing modes save for consulting and scheduled sites without a report',async()=>{
+ for(const status of ['consulting','scheduled','in_progress','completed']){
+  const h=api({status});assert.equal((await h.post()).status,200);
+ }
+});
+test('unfinished billing rows round trip without becoming zero-cost invoice lines',async()=>{
+ const h=api();const pending={category:'film',name:'영림 PS156',quantity:'12',unit:'m',unit_price:null,amount:'',_position:0};
+ const r=await h.post({...h.body,pending_items:[pending]});assert.equal(r.status,200);
+ assert.equal(r.body.saved.items.length,1);assert.equal(r.body.saved.pending_items[0].amount,'');
+ const restored=restoreCompletionItems(r.body.saved);assert.equal(restored[0].name,'영림 PS156');assert.equal(restored[1].category,'meal');assert.deepEqual(h.writes,['site_completion_estimates']);
+});
+test('invalid pending fields and duplicate complete lines are rejected before write',async()=>{
+ for(const patch of [{quantity:'-1'},{amount:'wrong'},{_position:-1},{unit:'x'.repeat(21)},{amount:'12000'}]){
+  const h=api();const pending={category:'film',name:'필름',quantity:'1',unit:'m',unit_price:null,amount:'',_position:0,...patch};
+  assert.equal((await h.post({...h.body,pending_items:[pending]})).status,400);assert.equal(h.writes.length,0);
+ }
+});
+test('unused placeholders stay optional; editing one marks it as a real unfinished row',()=>{
+ const rows=withManualCompletionItems([]);assert.ok(rows.every(r=>r._placeholder));
+ const edited=editCompletionItem(rows.find(r=>r.category==='film'),'name','PS156');assert.equal(edited._placeholder,false);
+ const normalized=normalizePendingCompletionItems([{...edited,_position:0}]);assert.equal(normalized[0].quantity,'');
 });

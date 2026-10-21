@@ -20,7 +20,6 @@ import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
 import SiteExpenses from "../components/SiteExpenses";
 import ConsultationQuote from "./ConsultationQuote";
-import CompletionEstimate from "./CompletionEstimate";
 import AdminSiteTeam from "./AdminSiteTeam";
 import SiteExtraWork from "../components/SiteExtraWork";
 import fieldUi from "./FieldUi.module.css";
@@ -114,7 +113,7 @@ export default function SiteDetailModal({
   useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
   const [quoteDirty, setQuoteDirty] = useState(false);
   const [estimateDirty, setEstimateDirty] = useState(false);
-  const [reportEstimateOpen, setReportEstimateOpen] = useState(false);
+  const [requestedQuoteType,setRequestedQuoteType]=useState(null);
   const [visited, setVisited] = useState({ info: true });
   const [reportOpen, setReportOpen] = useState(false);
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
@@ -176,7 +175,7 @@ export default function SiteDetailModal({
     setLeaveRequest(null);
     closeApproved.current = false;
     setReportOpen(false);
-    setReportEstimateOpen(false);
+    setRequestedQuoteType(null);
     setEstimateDirty(false);
     setHasWorkerReport(null);
     setReviewStatus(null);
@@ -557,13 +556,12 @@ export default function SiteDetailModal({
               hidden={menu !== "quote"}
               aria-label="견적서 작성"
             >
-              <p style={{fontSize:14,lineHeight:1.6}}>부위별 선견적은 아래에서 작성합니다. 작업 후 인건비·자재비·경비 견적은 완료보고를 검수한 뒤 작성할 수 있습니다.</p>
-              <button type="button" style={actionStyle} onClick={() => chooseMenu("report")}>완료보고 검수·후견적 작성 →</button>
               <SiteExtraWork siteId={site.id} active={menu === "quote"} approvedSummary />
               <ConsultationQuote
                 key={site.id}
                 siteId={site.id}
                 onDirtyChange={setQuoteDirty}
+                requestedType={requestedQuoteType}
               />
             </section>
           )}
@@ -675,7 +673,7 @@ export default function SiteDetailModal({
           >
             <p style={{margin:"0 0 14px",fontSize:14,color:"#596c50",lineHeight:1.6}}>
               시공자가 제출한 완료보고서의 시공내용·사진·자재·경비를 확인하고 검수해주세요.
-              검수 승인 후 보고서에 연결된 현장 내역으로 견적서를 작성할 수 있습니다.
+              견적서는 ‘견적서’ 메뉴에서 시공 전·후 언제든 작성할 수 있습니다.
             </p>
 
             <div
@@ -696,33 +694,16 @@ export default function SiteDetailModal({
                   reviewStatus: nextReviewStatus,
                 }) => {
                   setReviewStatus(nextReviewStatus);
-                  if (nextReviewStatus !== "approved") {
-                    setReportEstimateOpen(false);
-                    setEstimateDirty(false);
-                  }
                   setHasWorkerReport(Boolean(hasReport));
                 }}
               />
             </div>
 
-            {hasWorkerReport === true && visited.report && (
-              <section aria-label="검수 후 견적서 작성" style={{marginTop:20,padding:16,border:"1px solid #d4dedf",borderRadius:14,background:"#fffdf9"}}>
-                <h3 style={{margin:"0 0 8px",fontSize:17}}>보고서 기반 견적서</h3>
-                <p style={{fontSize:13,lineHeight:1.6,color:"#596c50"}}>
-                  {reviewStatus === "approved"
-                    ? "검수 승인된 현장의 실제 자재 사용량·인건비·경비를 불러옵니다. 청구 단가와 금액을 확인하고 저장해주세요."
-                    : "먼저 위 보고서의 검수 메뉴에서 승인해주세요. 보완이 필요하면 시공자에게 반려할 수 있습니다."}
-                </p>
-                {reviewStatus === "approved" && <button type="button" style={{...actionStyle,width:"100%",background:"#244b43",color:"#fffefb"}} onClick={()=>{
-                  if(reportEstimateOpen && estimateDirty && !window.confirm("저장하지 않은 견적 내용이 있거나 처리 중입니다. 닫을까요?"))return;
-                  if(reportEstimateOpen)setEstimateDirty(false);
-                  setReportEstimateOpen(value=>!value);
-                }}>{reportEstimateOpen?"견적서 닫고 보고서 보기":"검수한 보고서로 견적서 작성"}</button>}
-                {reviewStatus === "approved" && reportEstimateOpen && (
-                  <CompletionEstimate key={site.id} siteId={site.id} onDirtyChange={setEstimateDirty}/>
-                )}
-              </section>
-            )}
+            <section aria-label="견적서 연결" style={{marginTop:20,padding:16,border:"1px solid #d4dedf",borderRadius:14,background:"#fffdf9"}}>
+              <h3 style={{margin:"0 0 8px",fontSize:17}}>인건비·자재비 견적서</h3>
+              <p style={{fontSize:13,lineHeight:1.6}}>공수·자재 사용량·경비를 확인해 청구 내역으로 수정합니다. 기존 저장본은 불러오기·저장 전까지 유지됩니다.</p>
+              <button type="button" style={{...actionStyle,width:"100%"}} onClick={()=>chooseMenu("quote",()=>setRequestedQuoteType(value=>({type:"cost",version:(value?.version||0)+1})))}>인건비·자재비 견적서 작성 →</button>
+            </section>
 
             <ReportHistory siteId={site.id} version={reviewStatus} />
 

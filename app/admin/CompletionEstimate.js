@@ -5,7 +5,7 @@ import QuoteFileActions from "../components/QuoteFileActions";
 import { chatCompletionDraft } from "../../lib/chatQuoteDraft.mjs";
 import { supabase } from "../../lib/supabase";
 
-import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames, withManualCompletionItems } from "../../lib/completionEstimate.mjs";
+import { completionLabels as labels, headerFields, completionTotals, editCompletionItem, summarizeMeals, includedCompletionItem, normalizeLaborNames, withManualCompletionItems, restoreCompletionItems, normalizePendingCompletionItems } from "../../lib/completionEstimate.mjs";
 
 const won = (value) =>
   `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -102,15 +102,13 @@ export default function CompletionEstimate({
   const [automatic, setAutomatic] = useState(null);
   const [busy, setBusy] = useState(true);
   const [dirty, setDirty] = useState(false);
+  const [delivery,setDelivery]=useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [defaults, setDefaults] = useState({note:"",bank_account:""});
   const [defaultsSaving, setDefaultsSaving] = useState(false);
 
-  const [pdfUrl, setPdfUrl] = useState("");
-  const [pdfName, setPdfName] = useState("");
-  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
   const lock = useRef(false);
   const chatApplied = useRef(false);
   const controller = useRef(null);
@@ -132,7 +130,7 @@ export default function CompletionEstimate({
       const source = applyChat ? chatCompletionDraft(result.automatic,initialChatDraft) : result.saved || result.automatic;
       if(applyChat)chatApplied.current=true;
       const normalized = normalizeLaborNames(summarizeMeals(source.items));
-      const items = withManualCompletionItems(normalized);
+      const items = withManualCompletionItems(restoreCompletionItems({...source,items:normalized}));
       setDraft({ ...source, items });
       setDefaults(result.defaults || {note:"",bank_account:""});
       setAutomatic(result.automatic);
@@ -169,7 +167,7 @@ export default function CompletionEstimate({
   }, [dirty]);
 
   function change(next) {
-    setPdfUrl("");
+    setDelivery(false);
     setDraft(next);
     setDirty(true);
     setMessage("");
@@ -239,7 +237,12 @@ export default function CompletionEstimate({
       }
     }
 
-    const makePdf = event.nativeEvent?.submitter?.value === "pdf";
+    const showPreview = event.nativeEvent?.submitter?.value === "preview";
+    let pendingItems;
+    try { pendingItems=normalizePendingCompletionItems(draft.items.filter(row=>!row._placeholder).map((row,index)=>({...row,_position:index})).filter(row=>!includedCompletionItem(row))); }
+    catch(error){setError(error.message);return;}
+    if(showPreview && pendingItems.length){setError(pendingItems.map(row=>`${row._position+1}번 ${row.name || "항목"}: 항목명·수량·금액 확인`).join(" / "));return;}
+    if(showPreview && !draft.items.some(includedCompletionItem)){setError("청구할 항목을 하나 이상 입력해주세요.");return;}
     lock.current = true;
     setBusy(true);
     setError("");
@@ -252,11 +255,11 @@ export default function CompletionEstimate({
         amount: Number(row.amount),
       }));
 
-      const pdf = makePdf ? await (await import("../../lib/completionEstimatePdf.mjs")).completionPdf({ ...draft, items }) : null;
       const result = await request(
         siteId,
         {
           items,
+          pending_items: pendingItems,
           header: draft.header || {},
           vat: draft.vat || "none",
           note: draft.note,
@@ -268,17 +271,10 @@ export default function CompletionEstimate({
 
       if (controller.current.signal.aborted) return;
 
-      setDraft(result.saved);
+      setDraft({...result.saved,items:withManualCompletionItems(restoreCompletionItems(result.saved))});
       setDirty(false);
       setMessage("견적서를 저장했습니다.");
-      if (pdf) {
-        const url = URL.createObjectURL(pdf);
-        const filename = `${draft.header?.site_name || "현장"}_정산견적서_v${result.saved.version}.pdf`.replace(/[\\/:*?"<>|]/g, "_");
-        setPdfUrl(url); setPdfName(filename);
-        const link = document.createElement("a"); link.href = url; link.download = filename;
-        document.body.appendChild(link); link.click(); link.remove();
-        setMessage("견적서를 저장하고 PDF를 만들었습니다. 다운로드가 시작되지 않으면 아래 링크를 눌러주세요.");
-      }
+      setDelivery(showPreview);
     } catch (err) {
       if (err.name !== "AbortError") setError(err.message);
     } finally {
@@ -300,7 +296,7 @@ export default function CompletionEstimate({
       <h3 style={{ margin: "0 0 8px" }}>인건비·자재비 견적서</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        현장 내역을 불러온 뒤 관리자가 제품·사용량·공수·청구 단가·금액을 수정할 수 있습니다. 필름의 최초 단가는 인테리어업자 판매단가 기준입니다.
+        예정 또는 실제 공수·필름 물량·경비로 시공 전·후 언제든 작성할 수 있습니다. 불러온 제품·사용량·단가·금액은 수정할 수 있습니다. 필름의 최초 단가는 인테리어업자 판매단가 기준입니다.
       </p>
 
       <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>수정 내용은 이 견적서에만 저장됩니다. 완료보고·재고·실제 원가는 변경되지 않습니다. 금액을 직접 입력하면 단가는 비워지고 입력한 금액이 적용됩니다.</p>
@@ -331,6 +327,7 @@ export default function CompletionEstimate({
 
       {busy && <p role="status">처리 중…</p>}
 
+      <div hidden={delivery}>
       <details style={{marginBottom:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>저장본 다시 불러오기</summary>
       <button
         type="button"
@@ -354,13 +351,14 @@ export default function CompletionEstimate({
         저장본·최신 현장 내역 불러오기
       </button></details>
 
+      </div>
       {draft && (
         <form key={siteId} noValidate onSubmit={save}>
           <fieldset
             disabled={busy || defaultsSaving}
             style={{ border: 0, padding: 0, margin: 0 }}
           >
-            <div><p style={{ fontSize: 12, color: "#64748b" }}>
+            <div hidden={delivery}><div><p style={{ fontSize: 12, color: "#64748b" }}>
               {draft.version
                 ? `저장본 ${draft.version} · ${new Date(
                     draft.updated_at,
@@ -371,7 +369,7 @@ export default function CompletionEstimate({
               {dirty && " · 수정사항 저장 필요"}
             </p>
 
-            <details style={{marginBottom:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>자동 입력 다시 적용</summary>
+            <details style={{marginBottom:12}}><summary style={{cursor:"pointer",padding:"10px 0"}}>현장 내역 불러오기 / 다시 적용</summary>
             <button
               type="button"
               style={button}
@@ -391,7 +389,7 @@ export default function CompletionEstimate({
                 }
               }}
             >
-              현장 물량·비용으로 다시 작성
+              작업 내역의 공수·물량·경비 불러오기
             </button>
 
             <button type="button" style={{ ...button, marginTop: 10 }} disabled={!automatic}
@@ -431,8 +429,8 @@ export default function CompletionEstimate({
             </details>
 
             </div>{[
-              { title: "필름 물량", categories: ["film"] },
               { title: "인건비", categories: ["labor"] },
+              { title: "필름 자재비", categories: ["film"] },
               { title: "경비", categories: ["meal", "supplies", "overhead", "expense"] },
             ].map((group, groupIndex) => (
               <section key={group.title} style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
@@ -591,7 +589,7 @@ export default function CompletionEstimate({
             </p>
 
             <p style={{ fontSize: 12, color: "#64748b" }}>
-              항목명·수량·금액 중 하나를 빈칸으로 두면 저장 및 PDF에서 해당 항목이 제외됩니다. 단가만 비우면 입력한 합계금액은 유지됩니다.
+              미완성 항목도 작성 중 저장할 수 있습니다. 이미지 전달 전에는 항목명·수량·금액을 확인해주세요. 금액을 직접 입력하면 단가는 비워지고 입력 금액이 유지됩니다.
             </p>
 
             <label>부가세
@@ -666,24 +664,11 @@ export default function CompletionEstimate({
               )}
             </div>
 
-            <div style={{position:"sticky",bottom:0,background:"#fff",padding:"12px 0",borderTop:"1px solid #e2e8f0",zIndex:2}}><strong>합계 {won(completionTotals(draft.items, draft.vat).total)}</strong><button
-              type="submit"
-              disabled={busy}
-              style={{
-                ...button,
-                width: "100%",
-                marginTop: 12,
-                background: "#2563eb",
-                color: "#fff",
-              }}
-            >
-              {busy ? "저장 중…" : "견적서 저장"}
-            </button>
-            <button type="submit" value="pdf" disabled={busy} style={{ ...button, width: "100%", marginTop: 10, background: "#183d34", color: "white" }}>
-              {busy ? "처리 중…" : "저장하고 PDF 받기"}
-            </button>
-            </div>{pdfUrl && <p><a href={pdfUrl} download={pdfName} data-ui-link="action">PDF 다시 다운로드</a></p>}
-            <QuoteFileActions draft={fileDraft} filename={(draft.header?.site_name || "현장") + "_인건비자재비견적서"} disabled={busy || !fileDraft?.items.length} />
+            <div style={{position:"sticky",bottom:0,background:"#fff",padding:"12px 0",borderTop:"1px solid #e2e8f0",zIndex:2}}><strong>합계 {won(completionTotals(draft.items, draft.vat).total)}</strong>
+              <button type="submit" value="preview" disabled={busy} style={{...button,width:"100%",marginTop:12,background:"#285340",color:"white"}}>{busy?"저장 중…":"견적서 저장 후 미리보기 →"}</button>
+              <button type="submit" value="draft" disabled={busy} style={{...button,width:"100%",marginTop:8}}>작성 중인 견적서 저장</button>
+            </div></div>
+            {delivery && <QuoteFileActions draft={fileDraft} filename={(draft.header?.site_name || "현장") + "_인건비자재비견적서"} disabled={busy || dirty || !fileDraft?.items.length} preview onEdit={()=>setDelivery(false)}/>}
           </fieldset>
         </form>
       )}

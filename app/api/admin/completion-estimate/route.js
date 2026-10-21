@@ -1,4 +1,4 @@
-import { completionSeed, normalizeHeader } from "../../../../lib/completionEstimate.mjs";
+import { completionSeed, normalizeHeader, normalizePendingCompletionItems } from "../../../../lib/completionEstimate.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { GET as getProfit } from "../profit/route";
 import { sellingMaterialPrices, mergeCatalogSellingPrices } from "../../../../lib/dealerPriceImport.mjs";
@@ -154,6 +154,7 @@ function toSaved(row) {
     vat: row.document.vat || "none",
     useDefaultNote: row.document.useDefaultNote === true,
     items: row.document.items,
+    pending_items: row.document.pending_items || [],
     note: row.document.note,
     version: row.revision,
     updated_at: row.updated_at,
@@ -411,8 +412,12 @@ export async function POST(request) {
       };
     });
 
+    let pendingItems=[];
+    if(body.pending_items !== undefined){try{pendingItems=normalizePendingCompletionItems(body.pending_items);}catch(error){throw fail(error.message,400);}}
+    if(items.length+pendingItems.length>300)throw fail("견적 항목은 최대 300개입니다.",400);
     const value = {
       document: {
+        pending_items: pendingItems,
         header, vat,
         useDefaultNote: body.useDefaultNote === true,
         items,

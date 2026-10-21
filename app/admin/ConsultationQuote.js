@@ -9,7 +9,7 @@ import {
 import QuoteFilmNumber, { useSiteQuoteFilms } from "../components/QuoteFilmNumber";
 import QuoteFileActions from "../components/QuoteFileActions";
 import CompletionEstimate from "./CompletionEstimate";
-import { quoteHtml } from "../../lib/consultationQuotePrint";
+import { completionTotals } from "../../lib/completionEstimate.mjs";
 
 const headings = {
   title: "견적서 제목",
@@ -19,7 +19,7 @@ const headings = {
   customer_name: "고객 성함",
   customer_phone: "고객 연락처",
   address: "주소",
-  work_date: "시공 예정일",
+  work_date: "시공일",
   duration: "공사기간",
   customer_note: "고객 비고",
   other_schedule: "타 공정 일정 (도배·바닥·청소 등)",
@@ -75,6 +75,7 @@ function AreaConsultationQuote({
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(true);
   const [dirty, setDirty] = useState(false);
+  const [delivery, setDelivery] = useState(false);
   const [message, setMessage] = useState("");
 
   const lock = useRef(false);
@@ -127,15 +128,17 @@ function AreaConsultationQuote({
 
   function change(next) {
     setDraft(next);
+    setDelivery(false);
     setDirty(true);
     setMessage("");
   }
 
-  async function save() {
+  async function save(showPreview = false) {
     if (lock.current || busy) return;
 
     try {
       const document = validateQuote(draft);
+      if(showPreview && !quoteTotals(document.items).complete) throw Error("수량·단가가 빠진 항목을 확인해주세요. 작성 중 저장은 가능합니다.");
 
       lock.current = true;
       setBusy(true);
@@ -151,6 +154,7 @@ function AreaConsultationQuote({
         setRevision(result.revision);
         setDirty(false);
         setMessage("견적서를 저장했습니다.");
+        setDelivery(showPreview);
       }
     } catch (error) {
       if (error.name !== "AbortError") {
@@ -159,21 +163,6 @@ function AreaConsultationQuote({
     } finally {
       lock.current = false;
       setBusy(false);
-    }
-  }
-
-  function preview() {
-    try {
-      const document = validateQuote(draft);
-      const popup = window.open("", "_blank");
-
-      if (!popup) throw Error("팝업을 허용해주세요.");
-
-      popup.opener = null;
-      popup.document.write(quoteHtml(document));
-      popup.document.close();
-    } catch (error) {
-      setMessage(error.message);
     }
   }
 
@@ -192,6 +181,7 @@ function AreaConsultationQuote({
   } : null, [draft]);
 
 
+  const billTotal=fileDraft ? completionTotals(fileDraft.items,fileDraft.vat) : null;
   return (
     <section className="consultation-quote">
       <h3>부위별 견적서</h3>
@@ -231,6 +221,8 @@ function AreaConsultationQuote({
             {dirty ? " · 저장 필요" : ""}
           </p>
 
+          <div hidden={delivery}>
+          <details><summary>고객·현장·업체 정보 / 비고·계좌 수정</summary>
           <div className="quote-fields">
             {Object.entries(headings).map(([key, label]) => (
               <label key={key}>
@@ -255,12 +247,13 @@ function AreaConsultationQuote({
             기본값으로 사용합니다.
           </p>
 
+          </details>
           {draft.items.map((row, index) => (
             <div className="quote-row" key={index}>
               <strong>{index + 1}번 항목</strong>
 
               <div className="quote-fields">
-                {Object.entries(columns).map(([key, label]) => (
+                {Object.entries(columns).filter(([key])=>!["unit","film_no","note"].includes(key)).map(([key, label]) => (
                   <label key={key}>
                     {label}
                     {key === "film_no" ? <QuoteFilmNumber value={row.film_no || ""}
@@ -293,6 +286,9 @@ function AreaConsultationQuote({
                 ))}
               </div>
 
+              <p style={{textAlign:"right"}}>금액 <strong>{Math.round(Number(row.quantity || 0)*Number(row.unit_price || 0)).toLocaleString("ko-KR")}원</strong></p>
+              <details><summary>단위·필름번호·비고 / 항목 삭제</summary>
+              <div className="quote-fields">{["unit","film_no","note"].map(key=><label key={key}>{columns[key]}{key==="film_no" ? <QuoteFilmNumber value={row.film_no || ""} {...siteFilms} onChange={value=>change({...draft,items:draft.items.map((r,i)=>i===index?{...r,film_no:value}:r)})}/> : <input value={row[key]} maxLength={2000} onChange={event=>change({...draft,items:draft.items.map((r,i)=>i===index?{...r,[key]:event.target.value}:r)})}/>}</label>)}</div>
               <button
                 type="button"
                 onClick={() =>
@@ -305,7 +301,7 @@ function AreaConsultationQuote({
                 }
               >
                 항목 삭제
-              </button>
+              </button></details>
             </div>
           ))}
 
@@ -349,11 +345,12 @@ function AreaConsultationQuote({
           <p>
             <strong>
               {total.complete
-                ? `항목 합계 ${total.amount.toLocaleString("ko-KR")}원`
+                ? `견적 합계 ${billTotal.total.toLocaleString("ko-KR")}원`
                 : `입력된 금액 소계 ${total.amount.toLocaleString("ko-KR")}원 · 미완성`}
             </strong>
           </p>
 
+          <p>공급가액 {billTotal.supply.toLocaleString("ko-KR")}원 · 부가세 {billTotal.tax.toLocaleString("ko-KR")}원</p>
           {!total.complete && <p role="status" style={{ color: "#b45309" }}>
             {draft.items.map((row, index) => {
               const missing = [["quantity", "수량"], ["unit_price", "단가"]]
@@ -363,14 +360,10 @@ function AreaConsultationQuote({
             }).filter(Boolean).join(" / ")}
           </p>}
 
-          <button type="button" onClick={save}>
-            견적서 저장
-          </button>{" "}
-
-          <button type="button" onClick={preview}>
-            견적서 미리보기
-          </button>
-          <QuoteFileActions draft={fileDraft} filename={(draft.customer_name || "고객") + "_부위별견적서"} disabled={busy || !total?.complete} />
+          <button type="button" onClick={()=>save(true)} style={{width:"100%",background:"#285340",color:"white"}}>견적서 저장 후 미리보기 →</button>
+          <button type="button" onClick={()=>save(false)}>작성 중인 견적서 저장</button>
+          </div>
+          {delivery && <QuoteFileActions draft={fileDraft} filename={(draft.customer_name || "고객") + "_부위별견적서"} disabled={busy || dirty || !total?.complete} preview onEdit={()=>setDelivery(false)} />}
         </fieldset>
       )}
 
@@ -419,6 +412,7 @@ function AreaConsultationQuote({
           color: #1e3a8a;
           min-height: 44px;
         }
+        .consultation-quote summary { padding:12px 0; min-height:44px; cursor:pointer; }
         .quote-row {
           border: 1px solid #ddd;
           padding: 12px;
@@ -435,33 +429,25 @@ function AreaConsultationQuote({
   );
 }
 
-export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft }) {
-  const [quoteType, setQuoteType] = useState("cost");
-  const pending = useRef(false);
-  useEffect(() => { const params=new URLSearchParams(window.location.search);setQuoteType(params.get("site")===String(siteId) && params.get("quoteType")==="area" ? "area" : "cost"); pending.current = false; }, [siteId]);
-  const status = useCallback((value) => { pending.current = value; onDirtyChange?.(value); }, [onDirtyChange]);
-  function selectType(type) {
-    if (type === quoteType) return;
-    if (pending.current && !window.confirm("처리 중이거나 저장하지 않은 내용이 있을 수 있습니다. 견적서 화면을 전환할까요?")) return;
-    pending.current = false;
-    onDirtyChange?.(false);
-    setQuoteType(type);
-  }
+export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft, requestedType }) {
+  const [quoteType,setQuoteType]=useState(null);
+  const [visited,setVisited]=useState({});
+  const [dirtyTypes,setDirtyTypes]=useState({});
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const type=params.get("site")===String(siteId) && ["area","cost"].includes(params.get("quoteType")) ? params.get("quoteType") : initialChatDraft ? "cost" : null;
+    setQuoteType(type);setVisited(type?{[type]:true}:{});setDirtyTypes({});
+  },[siteId]);
+  useEffect(()=>{if(requestedType && ["area","cost"].includes(requestedType.type)){setQuoteType(requestedType.type);setVisited(previous=>({...previous,[requestedType.type]:true}));}},[requestedType]);
+  const areaStatus=useCallback(value=>setDirtyTypes(previous=>({...previous,area:value})),[]);
+  const costStatus=useCallback(value=>setDirtyTypes(previous=>({...previous,cost:value})),[]);
+  useEffect(()=>{onDirtyChange?.(Object.values(dirtyTypes).some(Boolean));},[dirtyTypes,onDirtyChange]);
+  function selectType(type){setQuoteType(type);setVisited(previous=>({...previous,[type]:true}));}
   return <section>
-    <div role="group" aria-label="견적서 작성 방식" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 16 }}>
-      {[
-        ["cost", "인건비·자재비", "인원·물량·경비로 계산"],
-        ["area", "부위별 견적", "문·싱크대 등 부위별 계산"],
-      ].map(([type, title, description]) => (
-        <button key={type} type="button" aria-pressed={quoteType === type} onClick={() => selectType(type)}
-          style={{ padding: "14px 10px", borderRadius: 14, border: quoteType === type ? "1px solid #819985" : "1px solid #d9ddd5", background: quoteType === type ? "#e5eee2" : "#fffefa", color: "#294e40", textAlign: "left", cursor: "pointer", minHeight: 76 }}>
-          <strong style={{ display: "block", fontSize: 16 }}>{title}</strong>
-          <span style={{ display: "block", marginTop: 5, fontSize: 12, color: "#69756d", lineHeight: 1.5 }}>{description}</span>
-        </button>
-      ))}
-    </div>
-    <p style={{ margin: "10px 0 0", fontSize: 12, color: "#69756d" }}>두 견적서는 각각 저장됩니다. 작성 후 저장해주세요.</p>
-    {quoteType === "area" ? <AreaConsultationQuote key={siteId} siteId={siteId} onDirtyChange={status} />
-      : <CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={status} initialChatDraft={initialChatDraft} />}
+    {quoteType===null ? <><h3>어떤 견적서를 작성할까요?</h3><div role="group" aria-label="견적서 작성 방식" style={{display:"grid",gap:10,marginTop:16}}>
+      {[["area","부위별 견적서","문·싱크대 등 시공 부위별로 계산"],["cost","인건비·자재비 견적서","공수·필름 물량·경비로 계산"]].map(([type,title,description])=><button key={type} type="button" onClick={()=>selectType(type)} style={{padding:16,border:"1px solid #d9ddd5",borderRadius:14,background:"#fffefa",color:"#294e40",textAlign:"left",minHeight:76}}><strong style={{display:"block",fontSize:17}}>{title}</strong><span style={{display:"block",marginTop:5,fontSize:13}}>{description}{visited[type]?" · 작성 내용 이어보기":""}</span></button>)}
+    </div><p style={{fontSize:13,color:"#69756d"}}>두 견적서 모두 시공 전·후 언제든 작성할 수 있으며 각각 저장됩니다.</p></> : <button type="button" onClick={()=>setQuoteType(null)} style={{minHeight:44,padding:"10px 14px",border:"1px solid #d9ddd5",borderRadius:12,background:"#fffefa",color:"#294e40"}}>← 견적서 선택</button>}
+    {visited.area && <div hidden={quoteType!=="area"}><AreaConsultationQuote key={siteId} siteId={siteId} onDirtyChange={areaStatus}/></div>}
+    {visited.cost && <div hidden={quoteType!=="cost"}><CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={costStatus} initialChatDraft={initialChatDraft}/></div>}
   </section>;
 }
