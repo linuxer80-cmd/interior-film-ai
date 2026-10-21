@@ -21,7 +21,6 @@ import SiteStatusControl from "./site-detail/SiteStatusControl";
 import SiteExpenses from "../components/SiteExpenses";
 import ConsultationQuote from "./ConsultationQuote";
 import CompletionEstimate from "./CompletionEstimate";
-import AdminAssignedWork from "./AdminAssignedWork";
 import AdminSiteTeam from "./AdminSiteTeam";
 import SiteExtraWork from "../components/SiteExtraWork";
 import fieldUi from "./FieldUi.module.css";
@@ -55,7 +54,7 @@ const STATUS_INFO = {
 };
 
 const MENU_GROUPS = [
-  { id: "info", label: "현장정보", items: [{id:"info",label:"기본정보·내 작업"},{id:"chat",label:"현장 채팅"}] },
+  { id: "info", label: "현장정보", items: [{id:"info",label:"기본정보"},{id:"chat",label:"현장 채팅"}] },
   { id: "quote", label: "견적서", items: [{id:"quote",label:"견적서 작성"},{id:"extra",label:"추가작업"}] },
   { id: "schedule", label: "일정·자재", items: [{id:"schedule",label:"일정·시공자 배정"},{id:"materials",label:"자재·반출·반납·재단"}] },
   { id: "report", label: "사진·완료보고", items: [{id:"report",label:"사진·보고서·검수"},{id:"expenses",label:"경비"}] },
@@ -551,7 +550,6 @@ export default function SiteDetailModal({
           </section>
 
 
-          <AdminAssignedWork key={site.id} initialDate={initialTeamDate} siteId={site.id} companyId={companyId} section={menu} onNavigate={chooseMenu} onSubmitted={reloadSites} />
 
           {visited.quote && (
             <section
