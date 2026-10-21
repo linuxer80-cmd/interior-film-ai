@@ -404,51 +404,16 @@ export async function GET(request) {
 
     let candidates = [];
 
-    if (companyId || params.get('directory') === '1') {
-      let query = db.from('labor_profiles')
-        .select(publicProfileFields+',worker_directory_consent!inner(visible)')
-        .eq('worker_directory_consent.visible',true)
-        .order('updated_at',{ascending:false})
-        .order('user_id',{ascending:true})
-        .range(page*30,page*30+29);
-
-      if (params.get('name')?.trim()) {
-        query = query.ilike('name',
-          `%${params.get('name').trim().slice(0,100).replace(/[%_\\]/g,'')}%`);
+    if (companyId) {
+      if(params.get('date')&&!validWorkDay(params.get('date'))) throw fail('날짜를 확인해주세요.');
+      for(const [key,max] of [['wage',2000000],['experience',70]]) {
+        if(params.get(key)&&(!Number.isInteger(Number(params.get(key)))||Number(params.get(key))<0||Number(params.get(key))>max)) throw fail('검색 범위를 확인해주세요.');
       }
-
-      if (params.get('region')) {
-        query = query.ilike(
-          'region',
-          `%${params.get('region').slice(0,100).replace(/[%_]/g,'')}%`
-        );
-      }
-
-      if (params.get('date')) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(params.get('date'))) {
-          throw fail('날짜를 확인해주세요.');
-        }
-        query=query.contains('available_dates',[params.get('date')]);
-      }
-
-      if (params.get('wage')) {
-        const n=Number(params.get('wage'));
-        if(!Number.isInteger(n)||n<0||n>2000000) {
-          throw fail('일당을 확인해주세요.');
-        }
-        query=query.lte('daily_wage',n);
-      }
-
-      if (params.get('experience')) {
-        const n=Number(params.get('experience'));
-        if(!Number.isInteger(n)||n<0||n>70) {
-          throw fail('경력을 확인해주세요.');
-        }
-        query=query.gte('experience_years',n);
-      }
-
-      candidates = await photos(db,value(await query).map(({worker_directory_consent,...profile})=>profile));
-
+      const result=value(await db.rpc('worker_directory_action',{p_actor:user.id,p_action:'search',p_body:{
+        query:params.get('name')||'',region:params.get('region')||'',skill:params.get('skill')||'',
+        page,experience:Number(params.get('experience')||0),date:params.get('date')||'',wage:params.get('wage')||''
+      }}));
+      candidates=await photos(db,(result?.profiles||[]).slice(0,30));
     }
 
     if (companyId) {
