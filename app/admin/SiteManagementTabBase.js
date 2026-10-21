@@ -413,6 +413,10 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
         </span>
       </div>
 
+      <div style={{ marginTop: 8, fontSize: 13, color: "#31453a", overflowWrap: "anywhere" }}>
+        고객 · {String(site.customer_name || "").trim() || "미입력"}
+      </div>
+
       <div style={{ marginTop: 8, fontSize: 13, color: "#6e7b73", lineHeight: 1.6 }}>
         {day || label} · {site.personal_only ? "내 시공 기능 열기 →" : day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
       </div>
