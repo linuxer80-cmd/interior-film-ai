@@ -525,6 +525,7 @@ export default function SiteDetailModal({
               hasReport={hasWorkerReport}
               reviewStatus={reviewStatus}
               reportOpen={reportOpen}
+              onDraftState={registerDraft}
               updateSiteStatus={updateSiteStatus}
             />
           </section>

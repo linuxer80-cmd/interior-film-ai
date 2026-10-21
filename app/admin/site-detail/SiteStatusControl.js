@@ -24,6 +24,7 @@ export default function SiteStatusControl({
   updateSiteStatus,
   hasReport = null,
   reviewStatus = null,
+  onDraftState,
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -76,6 +77,8 @@ export default function SiteStatusControl({
         borderTop: "1px solid #e5e7eb",
       }}
     >
+      <SitePaymentQuick key={site.id} siteId={site.id} onDraftState={onDraftState} />
+      <details style={{ marginTop: 20 }}><summary style={{ cursor: "pointer", padding: "14px 0", fontWeight: 800 }}>현장 상태 변경</summary>
       <h3
         style={{
           margin: "0 0 10px",
@@ -188,14 +191,13 @@ export default function SiteStatusControl({
         )}
       </div>
 
+      </details>
       <TradeClients
         key={`trade-${site.id}`}
         siteId={site.id}
       />
 
-      {site.status === "completed" && (
-        <SitePaymentQuick key={site.id} siteId={site.id} />
-      )}
+
     </section>
   );
 }

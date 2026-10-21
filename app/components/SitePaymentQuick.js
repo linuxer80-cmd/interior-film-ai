@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
 import { supabase } from "../../lib/supabase";
+import useSiteDraft from "../admin/hooks/useSiteDraft";
 import { koreanDay } from "../utils/workerCalendar";
 
 export const paymentWon = n =>
@@ -60,7 +61,7 @@ export function fullPaymentRequest(site, paidOn) {
   } };
 }
 
-export default function SitePaymentQuick({ siteId, onChanged }) {
+export default function SitePaymentQuick({ siteId, onChanged, onDraftState }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,12 +69,21 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
   const [form, setForm] = useState("");
   const [retry, setRetry] = useState(false);
   const [paidOn, setPaidOn] = useState(koreanDay);
+  const [phaseLabel, setPhaseLabel] = useState("중도금");
+  const [review, setReview] = useState(false);
+  const [success, setSuccess] = useState("");
   const [due, setDue] = useState("");
 
   const pending = useRef(null);
   const lock = useRef(false);
   const alive = useRef(false);
   const site = data?.site;
+
+  useSiteDraft(onDraftState, "payment", {
+    label: "입금 기록", dirty: Boolean(form) || due !== (site?.due_date || ""),
+    pending: busy || retry,
+    discard: () => { setForm(""); setAmount(""); setReview(false); setDue(site?.due_date || ""); },
+  });
 
   useEffect(() => {
     alive.current = true;
@@ -123,7 +133,9 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
       setRetry(false);
       setForm("");
       setAmount("");
-      onChanged?.();
+      setReview(false);
+      setSuccess("저장했습니다. 입금 내역이 반영되었습니다.");
+      try { onChanged?.(); } catch {}
     } catch (error) {
       if (!alive.current) return;
 
@@ -152,6 +164,8 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
   return (
     <section className="payment">
       <h3>입금 관리</h3>
+      <p>실제로 받은 금액을 기록해주세요. 시공 완료·검수와 별도로 관리합니다.</p>
+      {success && <p role="status">{success}</p>}
 
       {error && <p role="alert">{error}</p>}
 
@@ -159,12 +173,11 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
         <p>입금 내역 확인 중…</p>
       ) : (
         <>
-          <p>
-            {site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"} <b>{paymentWon(site.contract_amount)}</b>
-            <br />
-            받은 금액 <b>{paymentWon(site.paid)}</b>
-            {" · "}미수금 <b>{paymentWon(site.outstanding)}</b>
-          </p>
+          <div className="summary-card">
+            <span>남은 금액</span><strong>{paymentWon(site.outstanding)}</strong>
+            <div className="totals"><div>{site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"}<b>{paymentWon(site.contract_amount)}</b></div><div>받은 금액<b>{paymentWon(site.paid)}</b></div></div>
+            <p>입금 예정일 · {site.due_date || "미정"}</p>
+          </div>
 
           {!site.confirmed && (
             <p>
@@ -178,35 +191,16 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
           )}
           {site.contract_amount == null ? <p>계약금액을 입력하거나 완료보고서 검수를 승인하면 기준금액이 반영됩니다.</p> : Number(site.contract_amount) === 0 ? <p>확정 금액이 0원입니다. 별도 입금은 필요하지 않으며 기존 입금액은 확인해주세요.</p> : null}
           <div className="buttons">
-            <button
-              disabled={disabled || !fullPayment}
-              onClick={() => {
-                const text = site.confirmed
-                  ? `남은 ${paymentWon(site.outstanding)}를 받아 전액입금 완료했나요?`
-                  : `기준금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 이 금액으로 기록합니다.`;
-
-                if (fullPayment && confirm(text)) {
-                  save(fullPayment.action, fullPayment.values);
-                }
-              }}
-            >
-              {site.confirmed && site.outstanding === 0
-                ? "입금완료"
-                : "전액입금"}
-            </button>
-
-            <button
-              disabled={disabled}
-              onClick={() => {
-                setForm(site.confirmed ? "payment" : "initial");
-                setAmount("");
-                setPaidOn(koreanDay());
-              }}
-            >
-              {site.confirmed
-                ? "입금 금액 입력"
-                : "기존 입금액 확인"}
-            </button>
+            <button disabled={disabled || site.status === "cancelled"} onClick={() => {
+              setForm(site.confirmed ? "payment" : "initial"); setAmount(""); setPaidOn(koreanDay()); setReview(false); setSuccess("");
+            }}>{site.confirmed ? "입금 등록" : "기존 입금액 확인"}</button>
+            <button disabled={disabled || !fullPayment} onClick={() => {
+              if (site.confirmed) {
+                setForm("payment"); setAmount(String(site.outstanding)); setPaidOn(koreanDay()); setPhaseLabel("잔금"); setReview(true); setSuccess("");
+              } else if (confirm(`기준금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 이 금액으로 기록합니다.`)) {
+                save(fullPayment.action, fullPayment.values);
+              }
+            }}>{site.confirmed && Number(site.outstanding) === 0 ? "입금 완료" : "남은 금액 전액 등록"}</button>
           </div>
 
           {form && (
@@ -223,16 +217,18 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
                   return;
                 }
 
+                if (!review) { setReview(true); return; }
                 save(form === "initial" ? "initialize" : "add", {
                   amount,
                   paidOn,
                   direction: form === "refund" ? "refund" : "payment",
                   phase: "balance",
                   method: "other",
-                  memo: form === "refund" ? "환불 기록" : "입금 기록",
+                  memo: form === "refund" ? "환불 기록" : form === "initial" ? "기존 입금액 확인" : `${phaseLabel} 입금`,
                 });
               }}
             >
+              <h4>{form === "initial" ? "기존 입금액 확인" : form === "refund" ? "환불 기록" : "입금 등록"}</h4>
               <label>
                 {form === "initial"
                   ? "지금까지 받은 총액 (없으면 0)"
@@ -245,7 +241,7 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
                   max="1000000000000"
                   step="1"
                   required
-                  disabled={disabled}
+                  disabled={disabled || review}
                   value={amount}
                   onChange={event => setAmount(event.target.value)}
                 />
@@ -258,17 +254,20 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
                   required
                   max={koreanDay()}
                   min={form === "initial" ? undefined : site.opening_date}
-                  disabled={disabled}
+                  disabled={disabled || review}
                   value={paidOn}
                   onChange={event => setPaidOn(event.target.value)}
                 />
               </label>
 
-              <button disabled={disabled}>저장</button>
+              {form === "payment" && <label>입금 구분<select disabled={disabled || review} value={phaseLabel} onChange={e => setPhaseLabel(e.target.value)}><option>계약금</option><option>중도금</option><option>잔금</option></select></label>}
+              {review && <div className="confirmation" role="status"><b>{paymentWon(amount)} · {paidOn}</b><p>{form === "refund" ? "실제로 돌려준 금액을 기록합니다." : form === "initial" ? "기존에 받은 누적 금액으로 기록합니다." : `${phaseLabel}으로 기록합니다.`}</p>{site.contract_amount != null && <p>등록 후 남은 금액 · {paymentWon(Number(site.contract_amount) - (form === "initial" ? Number(amount) : Number(site.paid) + (form === "refund" ? -Number(amount) : Number(amount))))}</p>}</div>}
+              <button disabled={disabled}>{review ? "확인하고 저장" : "입력 내용 확인"}</button>
+              {review && <button type="button" disabled={disabled} onClick={() => setReview(false)}>다시 수정</button>}
               <button
                 type="button"
                 disabled={disabled}
-                onClick={() => setForm("")}
+                onClick={() => { setForm(""); setReview(false); }}
               >
                 닫기
               </button>
@@ -276,13 +275,14 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
           )}
 
           {site.confirmed && (
-            <details>
-              <summary>입금 이력 · 취소 · 환불</summary>
+            <div className="history">
+              <h4>입금 이력</h4>
               <p>
                 기존 입금 {paymentWon(site.opening_paid)}
                 {" · "}{site.opening_date}
               </p>
 
+              {!(data.entries || []).length && <p>추가 입금 기록이 없습니다.</p>}
               {(data.entries || []).map(entry => (
                 <div key={entry.id}>
                   <p>
@@ -316,9 +316,11 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
                 </div>
               ))}
 
+              <details><summary>환불 기록 · 입금 예정일 변경</summary>
               <button
                 disabled={disabled}
                 onClick={() => {
+                  setReview(false);
                   setForm("refund");
                   setAmount("");
                   setPaidOn(koreanDay());
@@ -342,7 +344,8 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
               >
                 예정일 저장
               </button>
-            </details>
+              </details>
+            </div>
           )}
         </>
       )}
@@ -355,15 +358,15 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
 
       <style jsx>{`
         .payment {
-          padding: 12px;
-          margin-top: 12px;
-          background: #f8fafc;
+          padding: 18px;
+          margin-top: 0;
+          background: #fcfbf7;
           border-radius: 12px;
           color: #243648;
         }
         h3 { font-size: 16px; margin: 0; }
         p { font-size: 13px; line-height: 1.6; }
-        button, input {
+        button, input, select {
           padding: 10px;
           min-height: 44px;
           border: 1px solid #cbd5e1;
@@ -373,14 +376,14 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
         }
         button {
           background: white;
-          color: #24445e;
+          color: #28533f;
           cursor: pointer;
           margin: 4px;
         }
         button:disabled { opacity: .5; }
         .buttons { display: flex; flex-wrap: wrap; }
         .buttons button:first-child {
-          background: #15803d;
+          background: #285b43;
           color: white;
         }
         label {
@@ -388,8 +391,18 @@ export default function SitePaymentQuick({ siteId, onChanged }) {
           font-size: 13px;
           margin: 10px 0;
         }
-        input { display: block; width: 100%; background: white; }
+        input, select { display: block; width: 100%; background: white; }
         summary { cursor: pointer; padding: 12px 0; font-size: 13px; }
+        .summary-card { background: #eaf2e9; padding: 20px; border-radius: 16px; margin: 16px 0; }
+        .summary-card > strong { display: block; font-size: clamp(24px, 6vw, 34px); margin: 8px 0 20px; overflow-wrap: anywhere; }
+        .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; }
+        .totals b { display: block; margin-top: 8px; font-size: 17px; overflow-wrap: anywhere; }
+        .buttons { display: grid; gap: 8px; }
+        .buttons button { margin: 0; width: 100%; font-weight: 800; min-height: 50px; }
+        form, .confirmation { background: #fff; border: 1px solid #d5e0d7; border-radius: 12px; padding: 14px; margin-top: 14px; }
+        .confirmation { background: #eaf2e9; }
+        .history { margin-top: 24px; }
+        .history > div { border-bottom: 1px solid #dfe5dc; padding: 8px 0; }
         [role="alert"] { color: #b91c1c; }
       `}</style>
     </section>
