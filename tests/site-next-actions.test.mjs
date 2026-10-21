@@ -70,3 +70,8 @@ test('administrator field assignments never restore the removed own-work shortcu
   value.today = '2026-10-22';
   assert.ok(!ids(value).includes('today'));
 });
+
+ test('partial issues identify recorded quantities and exactly which film has no record',()=>{
+ const result=siteNextActions({...base(),material:{status:'partial',issuedCount:2,materialCount:3,materials:[{brand:'영림',code:'Psm210',issued:70.3,unit:'m'},{brand:'영림',code:'Psm197',issued:9.5,unit:'m'},{brand:'영림',code:'Ps160',issued:0,unit:'m'}]}}).find(row=>row.id==='material');
+ assert.match(result.message,/3종 중 2종/);assert.match(result.detail,/Psm210 · 70.3m/);assert.match(result.detail,/Psm197 · 9.5m/);assert.match(result.detail,/반출 기록 없음: 영림 Ps160/);
+ });

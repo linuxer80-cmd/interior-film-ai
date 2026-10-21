@@ -117,6 +117,7 @@ export default function SiteNextActions({ site, companyId, active, onNavigate })
   return <section aria-label={closure?"마무리 확인":"다음 할 일"} aria-busy={state.loading} className="next-actions">
     <div className="heading"><h3>{closure?"마무리 확인":"다음 할 일"}</h3><button type="button" disabled={state.loading} onClick={() => setAttempt(value => value + 1)}>새로고침</button></div>
     {state.loading ? <p role="status">실제 업무 상태를 확인하고 있습니다…</p> : <>
+      {!closure && state.snapshot.material?.status === "recorded" && <p role="status"><strong>등록 자재 {state.snapshot.material.materialCount}종 모두 반출 기록 있음</strong><br/>{state.snapshot.material.materials?.filter(row=>Number(row.issued)>0).map(row=>`${row.brand || ""} ${row.code || ""} · ${row.issued}${row.unit || "m"}`).join(" / ")}</p>}
       {actions.map(action => <div className="action" key={action.id}><p>{action.message}</p>{action.detail&&<p style={{whiteSpace:"pre-wrap"}}>{action.detail}</p>}<button type="button" onClick={() => onNavigate(action.menu, action)}>{action.label} →</button></div>)}
       {state.errors.length > 0 && <div role="alert"><p>{state.errors.join(" ")}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 확인</button></div>}
       {closure?.unknown.length>0&&<p role="alert">{closure.unknown.join(" · ")} 확인이 필요합니다. 새로고침하거나 해당 메뉴에서 내역을 확인해주세요.</p>}
