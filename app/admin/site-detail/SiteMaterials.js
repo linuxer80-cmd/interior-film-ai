@@ -268,6 +268,8 @@ function PlannedSiteMaterials({ site }) {
   const [loading, setLoading] = useState(true);
   const [canWrite, setCanWrite] = useState(false);
   const [message, setMessage] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [rowMessage, setRowMessage] = useState(null);
   const [form, setForm] = useState(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -322,13 +324,15 @@ function PlannedSiteMaterials({ site }) {
   useEffect(() => {
     if (form) {
       formRef.current?.scrollIntoView({
-        block: "nearest",
+        block: "start",
         behavior: "smooth",
       });
     }
   }, [form?.id]);
 
   function openForm(material) {
+    setDeleteTarget(null);
+    setRowMessage(null);
     setMessage("");
     setEditing(Boolean(material));
 
@@ -394,15 +398,9 @@ function PlannedSiteMaterials({ site }) {
   }
 
   async function remove(material) {
-    if (
-      lock.current ||
-      !canWrite ||
-      !window.confirm(
-        `${material.product_code || material.product_name} 사용 필름을 삭제할까요?`
-      )
-    ) {
-      return;
-    }
+    if (lock.current || !canWrite) return;
+    setDeleteTarget(null);
+    setRowMessage(null);
 
     lock.current = true;
     setBusy(true);
@@ -426,6 +424,7 @@ function PlannedSiteMaterials({ site }) {
       await load();
     } catch (error) {
       setMessage(error.message || "삭제하지 못했습니다.");
+      setRowMessage({id:material.id,text:error.message || "삭제하지 못했습니다."});
     } finally {
       lock.current = false;
       setBusy(false);
@@ -705,7 +704,7 @@ function PlannedSiteMaterials({ site }) {
                     type="button"
                     style={button}
                     disabled={busy || loading}
-                    onClick={() => openForm(material)}
+                    onClick={() => {openForm(material);requestAnimationFrame(()=>formRef.current?.scrollIntoView({block:"start",behavior:"smooth"}));}}
                   >
                     수정
                   </button>
@@ -714,12 +713,18 @@ function PlannedSiteMaterials({ site }) {
                     type="button"
                     style={{ ...button, color: "#b91c1c" }}
                     disabled={busy || loading}
-                    onClick={() => remove(material)}
+                    onClick={() => {setDeleteTarget(material.id);setRowMessage(null);}}
                   >
                     삭제
                   </button>
                 </div>
               )}
+              {deleteTarget === material.id && <div role="group" aria-label="자재 삭제 확인" style={{marginTop:12,padding:12,background:"#fff7ed",borderRadius:12}}>
+                <p>이 자재를 삭제할까요? 반출 이력이 있는 자재는 기록 보존을 위해 삭제할 수 없습니다.</p>
+                <button type="button" style={button} disabled={busy} onClick={()=>remove(material)}>삭제 확인</button>{" "}
+                <button type="button" style={button} onClick={()=>setDeleteTarget(null)}>취소</button>
+              </div>}
+              {rowMessage?.id === material.id && <p role="alert" style={{color:"#b91c1c",lineHeight:1.7}}>{rowMessage.text}</p>}
             </article>
           ))}
         </div>
