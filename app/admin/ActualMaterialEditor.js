@@ -2,6 +2,8 @@
 
 import MaterialPurchaseCost from "./MaterialPurchaseCost";
 import MaterialFilmPicker from "../components/MaterialFilmPicker";
+import ActualMaterialPricePicker from "./ActualMaterialPricePicker";
+import {sameFilmProduct} from "../../lib/hyundaiFilmCode";
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 
@@ -48,6 +50,7 @@ export default function ActualMaterialEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [priceLoading,setPriceLoading]=useState(false);
 
   async function submit(method, item) {
     setBusy(true);
@@ -64,15 +67,18 @@ export default function ActualMaterialEditor({
         throw new Error("관리자 로그인이 필요합니다.");
       }
 
+      const original=materials.find(row=>row.id===item.id);
+      const purchase=item._purchaseCost;
+      const applyPurchase=method==="PATCH"&&purchase&&original&&Number(item.unit_price)===Number(purchase.unitPrice)&&Number(item.quantity)===Number(purchase.quantity)&&["brand","product_code","product_name","quantity","unit","memo"].every(key=>String(item[key]??"")===String(original[key]??""));
       const response = await fetch(
-        "/api/admin/site-materials",
+        applyPurchase?"/api/admin/material-purchase-cost":"/api/admin/site-materials",
         {
-          method,
+          method:applyPurchase?"POST":method,
           headers: {
             Authorization: `Bearer ${data.session.access_token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ ...item, siteId }),
+          body: JSON.stringify(applyPurchase?{materialId:item.id,action:"apply",optionId:purchase.optionId,version:purchase.version,confirmMetres:false}:{ ...item, siteId }),
         }
       );
 
@@ -238,6 +244,7 @@ export default function ActualMaterialEditor({
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if(priceLoading){setError("매입단가 확인이 끝난 뒤 저장해주세요.");return;}
             submit(draft.id ? "PATCH" : "POST", draft);
           }}
           style={{
@@ -265,7 +272,12 @@ export default function ActualMaterialEditor({
               key={key}
               value={draft}
               disabled={busy}
-              onChange={product => setDraft(current => current ? { ...current, ...product } : current)}
+              onChange={product => setDraft(current => {
+                if(!current)return current;
+                const original=materials.find(row=>row.id===current.id);
+                const same=original&&sameFilmProduct(original.brand,original.product_code,product.brand,product.product_code);
+                return {...current,...product,...(same?{brand:original.brand,product_code:original.product_code,product_name:original.product_name}:{}),unit_price:same?current.unit_price:"",_purchaseCost:null};
+              })}
             />
           ) : (
             <label
@@ -289,7 +301,7 @@ export default function ActualMaterialEditor({
                   key === "quantity"
                     ? "0.001"
                     : key === "unit_price"
-                      ? "1"
+                      ? "any"
                       : undefined
                 }
                 min={
@@ -309,12 +321,20 @@ export default function ActualMaterialEditor({
                   setDraft({
                     ...draft,
                     [key]: event.target.value,
+                    _purchaseCost:null,
                   })
                 }
               />
             </label>
           ))}
 
+          <ActualMaterialPricePicker siteId={siteId} value={draft} disabled={busy} onPending={setPriceLoading}
+            onApply={(price,context)=>setDraft(current=>{
+              if(!current)return current;
+              const key=[siteId,current.id||"",current.brand||"",current.product_code||"",current.unit||""].join("|");
+              if(key!==context.key || (context.automatic && current.unit_price!==context.expected))return current;
+              return {...current,unit_price:String(price),_purchaseCost:context.purchase||null};
+            })}/>
           <strong>
             자재비{" "}
             {won(
@@ -336,7 +356,7 @@ export default function ActualMaterialEditor({
             </button>
 
             <button
-              disabled={busy}
+              disabled={busy || priceLoading}
               type="submit"
               style={{
                 ...button,

@@ -1,3 +1,4 @@
+import {sameFilmProduct} from '../lib/hyundaiFilmCode.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,10 +8,11 @@ const require=createRequire(import.meta.url),swc=require('next/dist/build/swc');
 const {code}=swc.transformSync(fs.readFileSync(new URL('../app/admin/ActualMaterialEditor.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
 const all=(n,p)=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(c=>all(c,p)):[...(p(n)?[n]:[]),...all(n.props?.children,p)];
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
-test('catalog selection updates actual product identity while retaining the original record, quantity and cost',()=>{
+test('catalog selection updates actual product identity while retaining usage and preserving the recorded product identity',async()=>{
  let cursor=0;const slots=[];
  const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],n=>slots[i]=typeof n==='function'?n(slots[i]):n];}};
- const exports={};vm.runInNewContext(code,{exports,React,require:p=>p==='react'?React:{__esModule:true,default:p}});
+ const requests=[];
+ const exports={};vm.runInNewContext(code,{exports,React,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return Response.json({success:true});},require:p=>p==='react'?React:p.includes('hyundaiFilmCode')?{sameFilmProduct}:p.includes('supabase')?{supabase:{auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}}}:{__esModule:true,default:p}});
  const item={id:'m',brand:'현대&c',product_code:'Vm90',product_name:'보닥 메탈로즈골드',quantity:12,unit:'m',unit_price:15000,memo:'실제 사용 기록'};
  const render=()=>{cursor=0;return exports.default({siteId:'s',materials:[item]});};
  all(render(),n=>n.type==='button'&&text(n)==='수정')[0].props.onClick();
@@ -18,6 +20,11 @@ test('catalog selection updates actual product identity while retaining the orig
  assert.equal(picker().props.value.product_code,'Vm90');assert.equal(picker().props.disabled,false);
  picker().props.onChange({film_product_id:'catalog-vm90',brand:'현대보닥',product_code:'VM90',product_name:'메탈 로즈골드'});
  const saved=picker().props.value;
- assert.equal(saved.id,'m');assert.equal(saved.product_code,'VM90');assert.equal(saved.brand,'현대보닥');assert.equal(saved.product_name,'메탈 로즈골드');
+ assert.equal(saved.id,'m');assert.equal(saved.product_code,'Vm90');assert.equal(saved.brand,'현대&c');assert.equal(saved.product_name,'보닥 메탈로즈골드');
  assert.equal(saved.quantity,'12');assert.equal(saved.unit_price,'15000');assert.equal(saved.unit,'m');assert.equal(saved.memo,'실제 사용 기록');
+ const prices=all(render(),n=>n.type==='./ActualMaterialPricePicker')[0];
+ prices.props.onApply(11500,{key:'s|m|현대&c|Vm90|m',automatic:true,expected:'15000',purchase:{materialId:'m',version:'verified',optionId:'roll',unitPrice:11500,quantity:12}});
+ all(render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});
+ await new Promise(r=>setImmediate(r));
+ assert.equal(requests[0].url,'/api/admin/material-purchase-cost');assert.equal(requests[0].body.version,'verified');assert.equal(requests[0].body.optionId,'roll');
 });
