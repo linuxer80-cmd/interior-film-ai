@@ -34,3 +34,18 @@ test('API refuses missing auth, workers and disabled owners before reading stock
 test('API reads only owner company and returns named history without foreign rows',async()=>{
  const {GET}=api();const response=await GET(request(true));assert.equal(response.status,200);const body=await response.json();assert.equal(body.rows.length,1);assert.equal(body.rows[0].actor,'관리자 (관리자)');assert.equal(body.rows[0].roll,'R1');
 });
+const rollId='11111111-1111-4111-8111-111111111111';
+function rollApi(){
+ const reads=[];
+ const tables={profiles:[{id:'user',company_id:'co',role:'owner',is_active:true,name:'관리자'}],companies:[{id:'co',is_active:true}],film_stock_rolls:[{id:rollId,company_id:'co',label:'PW803-01'}],film_stock_events:[{id:'e',company_id:'co',roll_id:rollId,site_id:'s',actor:'worker',action:'return',after_qty:17,created_at:'2026-01-19T01:00:00Z'},{id:'other-roll',company_id:'co',roll_id:'other',after_qty:10,created_at:'2026-01-19T01:00:00Z'},{id:'foreign',company_id:'other',roll_id:rollId,after_qty:99,created_at:'2026-01-19T01:00:00Z'}],sites:[{id:'s',company_id:'co',site_name:'사용 현장'}],workers:[{id:'w',user_id:'worker',company_id:'co',name:'시공자'}]};
+ const db={auth:{getUser:async()=>({data:{user:{id:'user'}}})},from(table){const filters=[];reads.push(table);return{select(){return this;},eq(k,v){filters.push(r=>r[k]===v);return this;},in(k,v){filters.push(r=>v.includes(r[k]));return this;},gte(k,v){filters.push(r=>r[k]>=v);return this;},lt(k,v){filters.push(r=>r[k]<v);return this;},order(){return this;},limit(){return this;},range(){return this;},then(resolve){resolve({data:(tables[table]||[]).filter(r=>filters.every(f=>f(r)))});}};}};
+ return {reads,GET:new Function('createClient','stockHistoryRange','stockHistoryRows',source.replace(/^import .*;$/gm,'').replace(/^export /gm,'')+';return GET;')(()=>db,stockHistoryRange,stockHistoryRows)};
+}
+const rollRequest=params=>new Request('https://example.test/api/admin/stock-history?'+new URLSearchParams(params),{headers:{authorization:'Bearer test'}});
+test('roll detail includes older history with its site and worker; excludes other rolls and companies',async()=>{
+ const {GET,reads}=rollApi();const response=await GET(rollRequest({rollId}));assert.equal(response.status,200);const data=await response.json();assert.equal(data.rows.length,1);assert.equal(data.rows[0].site,'사용 현장');assert.equal(data.rows[0].actor,'시공자 (시공자)');assert.equal(data.rows[0].quantity,17);assert.equal(reads.includes('site_material_issues'),false);
+});
+test('roll lookup rejects invalid IDs, inaccessible rolls and invalid date filters',async()=>{
+ const {GET}=rollApi();for(const [params,status] of [[{rollId:'bad'},400],[{rollId:'22222222-2222-4222-8222-222222222222'},404],[{rollId,start:'bad',end:'bad'},400]])assert.equal((await GET(rollRequest(params))).status,status);
+ const response=await GET(rollRequest({rollId,start:'2026-10-19',end:'2026-10-19'}));assert.deepEqual((await response.json()).rows,[]);
+});

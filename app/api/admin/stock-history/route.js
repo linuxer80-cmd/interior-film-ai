@@ -17,13 +17,28 @@ export async function GET(request) {
     const company=await read(db.from('companies').select('id').eq('id',co).eq('is_active',true));
     if(!company.length)return json({error:'활성 업체를 확인해주세요.'},403);
     const params=new URL(request.url).searchParams;
+    const rollId=params.get('rollId');
+    if(rollId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rollId))return json({error:'롤 번호를 확인해주세요.'},400);
     let range;
-    try{range=stockHistoryRange(params.get('start'),params.get('end'));}catch(e){return json({error:e.message},400);}
+    if(!rollId||params.has('start')||params.has('end')) {
+      try{range=stockHistoryRange(params.get('start'),params.get('end'));}catch(e){return json({error:e.message},400);}
+    }
     const scoped=(table)=>db.from(table).select('*').eq('company_id',co);
+    if(rollId) {
+      const roll=await read(scoped('film_stock_rolls').eq('id',rollId).limit(1));
+      if(!roll.length)return json({error:'조회할 수 있는 재고 롤이 없습니다.'},404);
+    }
     // Bounded per source. Tell the UI to narrow the dates if any source reaches the limit.
-    const dated=(table,column)=>read(scoped(table).gte(column,range.from).lt(column,range.until).order(column,{ascending:false}).limit(500));
+    const dated=(table,column)=>{
+      let query=scoped(table);
+      if(range)query=query.gte(column,range.from).lt(column,range.until);
+      if(rollId)query=query.eq('roll_id',rollId);
+      return read(query.order(column,{ascending:false}).limit(500));
+    };
     const [events,issues,returns]=await Promise.all([
-      dated('film_stock_events','created_at'),dated('site_material_issues','created_at'),dated('site_material_returns','updated_at'),
+      dated('film_stock_events','created_at'),
+      rollId?Promise.resolve([]):dated('site_material_issues','created_at'),
+      rollId?Promise.resolve([]):dated('site_material_returns','updated_at'),
     ]);
     const ids=(rows,key)=>[...new Set(rows.map(r=>r[key]).filter(Boolean))];
     const materialIds=ids([...issues,...returns],'material_id');

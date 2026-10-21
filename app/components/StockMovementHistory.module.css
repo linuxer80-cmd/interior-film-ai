@@ -13,3 +13,5 @@
 .help { color:#65736a; font-size:14px; }
 .warning { background:#fff4e5; border:1px solid #e2bb7c; border-radius:12px; padding:14px; color:#874923; }
 @media(max-width:480px) { .filters { grid-template-columns:minmax(0,1fr); } }
+
+.sites { padding:14px; border-radius:12px; background:#edf3e9; overflow-wrap:anywhere; }

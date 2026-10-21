@@ -2,6 +2,7 @@
 import { normalizeFilmBrand } from "../../lib/filmBrand.mjs";
 
 import StockMovementHistory from "./StockMovementHistory";
+import RollMovementHistory from "./RollMovementHistory";
 import GuidedForm, {InputStep, InputFinal} from "./GuidedForm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -1523,6 +1524,8 @@ export default function FilmDealerInventory() {
                         ) : (
                           <p>기존 재고 · 입고단가 미등록</p>
                         )}
+
+                        <RollMovementHistory key={`${r.id}:${r.revision || r.remaining}:${r.status}`} rollId={r.id} />
 
                         {r.status === "available" && (
                           <button
