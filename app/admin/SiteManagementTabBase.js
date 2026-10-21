@@ -247,6 +247,7 @@ export default function SiteManagementTab(props) {
 
       <SiteRegisterModal
         open={registerOpen}
+        companyId={detailProps.companyId}
         onClose={() => setRegisterOpen(false)}
         createSite={createSite}
         loading={sitesLoading}

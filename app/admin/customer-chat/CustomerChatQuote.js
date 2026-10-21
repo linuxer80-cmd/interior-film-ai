@@ -77,6 +77,6 @@ export default function CustomerChatQuote({thread,onClose}){
    </>}
    </div>
  </section>
- <SiteRegisterModal open={register} loading={sitesLoading} createSite={async form=>{const result=await createSite({...form,status:'consulting'});if(result.success)created.current=result.site;return result;}} onClose={()=>{setRegister(false);if(created.current){setActiveDraft(null);setSite(created.current);created.current=null;}}}/>
+ <SiteRegisterModal companyId={companyId} open={register} loading={sitesLoading} createSite={async form=>{const result=await createSite(form);if(result.success)created.current=result.site;return result;}} onClose={()=>{setRegister(false);if(created.current){setActiveDraft(null);setSite(created.current);created.current=null;}}}/>
  </div>;
 }

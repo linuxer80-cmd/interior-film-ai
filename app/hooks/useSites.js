@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { registrationConsultation } from "../../lib/siteRegistration.mjs";
 import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
 import { saveConsultation } from "../../lib/saveConsultationClient";
 
@@ -537,6 +538,7 @@ export default function useSites({ companyId }) {
           contract_amount: toNumberOrNull(form.contract_amount),
           deposit_amount: toNumberOrNull(form.deposit_amount),
           source: form.source || "phone",
+          ...(form.registration_flow ? {customer_type:form.customer_type || "personal"} : {}),
 
           status: initialSiteStatus(form),
 
@@ -565,7 +567,24 @@ export default function useSites({ companyId }) {
         let savedMaterials = [];
         let merged = false;
 
-        if (form.consultation_quote_seed) {
+        if (form.registration_flow && form.existing_site_id) {
+          const addition=registrationConsultation(form);
+          if(!addition)throw Error("추가할 상담내용 또는 작업내용을 입력해주세요.");
+          const {data:existing,error:readError}=await supabase.from("sites").select("*").eq("id",form.existing_site_id).eq("company_id",companyId).single();
+          if(readError || !existing)throw Error("선택한 현장을 확인하지 못했습니다. 입력을 유지한 채 다시 확인해주세요.");
+          const marker=`[상담 추가 ${form.registration_request_id}]`;
+          if(String(existing.memo || "").includes(marker)) createdSite=existing;
+          else {
+            const memo=[existing.memo,marker,addition].filter(Boolean).join("\n\n");
+            let query=supabase.from("sites").update({memo,updated_at:new Date().toISOString()}).eq("id",existing.id).eq("company_id",companyId);
+            query=existing.updated_at == null ? query.is("updated_at",null) : query.eq("updated_at",existing.updated_at);
+            const {data:updated,error:updateError}=await query.select().maybeSingle();
+            if(updateError)throw updateError;
+            if(!updated)throw Error("다른 화면에서 현장이 변경됐습니다. 다시 저장하면 최신 내역에 상담을 추가합니다.");
+            createdSite=updated;
+          }
+          merged=true;
+        } else if (form.consultation_quote_seed && !form.registration_flow) {
           const result = await saveConsultation({
             ...insertData,
             work_dates: insertData.work_dates || [],
@@ -592,7 +611,7 @@ export default function useSites({ companyId }) {
           });
         }
 
-        const requestPhotos = Array.isArray(form.request_photos)
+        const requestPhotos = form.registration_flow && merged ? [] : Array.isArray(form.request_photos)
           ? form.request_photos
           : [];
 
@@ -605,7 +624,7 @@ export default function useSites({ companyId }) {
           ...existing,
           ...createdSite,
           site_workers: existing?.site_workers || [],
-          site_materials: savedMaterials,
+          site_materials: merged && form.registration_flow ? existing?.site_materials || [] : savedMaterials,
           site_photos: [
             ...(existing?.site_photos || []),
             ...savedPhotos,
@@ -635,7 +654,7 @@ export default function useSites({ companyId }) {
 
         setSitesMessage(
           merged
-            ? "✅ 기존 현장에 상담 내용과 견적 항목을 추가했습니다."
+            ? form.registration_flow ? "✅ 기존 현장에 상담을 추가했습니다. 기존 일정·금액은 유지했습니다." : "✅ 기존 현장에 상담 내용과 견적 항목을 추가했습니다."
             : createdSite.status === "consulting"
               ? "✅ 상담중 현장으로 등록되었습니다."
               : "✅ 현장 일정이 등록되었습니다."

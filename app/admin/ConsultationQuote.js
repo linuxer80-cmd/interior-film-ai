@@ -438,7 +438,7 @@ function AreaConsultationQuote({
 export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft }) {
   const [quoteType, setQuoteType] = useState("cost");
   const pending = useRef(false);
-  useEffect(() => { setQuoteType("cost"); pending.current = false; }, [siteId]);
+  useEffect(() => { const params=new URLSearchParams(window.location.search);setQuoteType(params.get("site")===String(siteId) && params.get("quoteType")==="area" ? "area" : "cost"); pending.current = false; }, [siteId]);
   const status = useCallback((value) => { pending.current = value; onDirtyChange?.(value); }, [onDirtyChange]);
   function selectType(type) {
     if (type === quoteType) return;
