@@ -274,6 +274,7 @@ function AreaConsultationQuote({
                       step={key === "quantity" ? "0.001" : "1"}
                       maxLength={2000}
                       value={row[key]}
+                      placeholder={key === "quantity" ? "수량 입력 (예: 1)" : key === "unit_price" ? "단가 입력" : ""}
                       onChange={(event) =>
                         change({
                           ...draft,
@@ -317,7 +318,7 @@ function AreaConsultationQuote({
                 items: [
                   ...draft.items,
                   Object.fromEntries(
-                    Object.keys(columns).map((key) => [key, ""])
+                    Object.keys(columns).map((key) => [key, key === "quantity" ? "1" : ""])
                   ),
                 ],
               })
@@ -352,6 +353,15 @@ function AreaConsultationQuote({
                 : `입력된 금액 소계 ${total.amount.toLocaleString("ko-KR")}원 · 미완성`}
             </strong>
           </p>
+
+          {!total.complete && <p role="status" style={{ color: "#b45309" }}>
+            {draft.items.map((row, index) => {
+              const missing = [["quantity", "수량"], ["unit_price", "단가"]]
+                .filter(([key]) => String(row[key] ?? "").trim() === "")
+                .map(([, label]) => label);
+              return missing.length ? `${index + 1}번 ${row.name || "항목"}: ${missing.join("·")} 입력 필요` : "";
+            }).filter(Boolean).join(" / ")}
+          </p>}
 
           <button type="button" onClick={save}>
             견적서 저장
