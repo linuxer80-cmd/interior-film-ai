@@ -5,7 +5,6 @@ import { koreanDay, monthDays, shiftMonth } from "../utils/workerCalendar";
 import { supabase } from "../../lib/supabase";
 import {loadMyWorkerSites} from "../utils/workerSites";
 import {combineAdminPersonalSites,isPersonalWorkDay,personalCalendarLabel} from "../../lib/adminPersonalSites.mjs";
-import AdminPersonalSiteModal from "./AdminPersonalSiteModal";
 import SiteRegisterModal from "./SiteRegisterModal";
 import SiteDetailModal from "./SiteDetailModal";
 import { matchesSite } from "../utils/siteSearch";
@@ -62,12 +61,11 @@ export default function SiteManagementTab(props) {
   const [personalSites, setPersonalSites] = useState([]);
   const [personalError, setPersonalError] = useState("");
   const [personalLoading, setPersonalLoading] = useState(true);
-  const [personalSite, setPersonalSite] = useState(null);
   const [personalAttempt, setPersonalAttempt] = useState(0);
   const personalRequest = useRef(0);
   useEffect(() => {
     let alive = true;
-    setPersonalSites([]);setPersonalSite(null);
+    setPersonalSites([]);
     async function refresh() {
       const version=++personalRequest.current;
       setPersonalLoading(true);
@@ -76,15 +74,14 @@ export default function SiteManagementTab(props) {
         if(alive&&version===personalRequest.current){
           const next=result.sites||[];
           setPersonalSites(next);setPersonalError("");
-          setPersonalSite(current=>current&&next.some(s=>(s.site_id||s.id)===current.site.id&&s.company_id===current.site.company_id)?current:null);
         }
-      } catch(e){if(alive&&version===personalRequest.current){setPersonalError(e.message);setPersonalSites([]);setPersonalSite(null);}}
+      } catch(e){if(alive&&version===personalRequest.current){setPersonalError(e.message);setPersonalSites([]);}}
       finally{if(alive&&version===personalRequest.current)setPersonalLoading(false);}
     }
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     void refresh();
     window.addEventListener('focus',resume);window.addEventListener('site-assignment-changed',resume);
-    const {data}=supabase.auth.onAuthStateChange(event=>{if(['SIGNED_IN','SIGNED_OUT','USER_UPDATED'].includes(event)){personalRequest.current++;setPersonalSites([]);setPersonalSite(null);setTimeout(()=>{if(alive)void refresh();},0);}});
+    const {data}=supabase.auth.onAuthStateChange(event=>{if(['SIGNED_IN','SIGNED_OUT','USER_UPDATED'].includes(event)){personalRequest.current++;setPersonalSites([]);setTimeout(()=>{if(alive)void refresh();},0);}});
     return()=>{alive=false;personalRequest.current++;window.removeEventListener('focus',resume);window.removeEventListener('site-assignment-changed',resume);data.subscription.unsubscribe();};
   },[detailProps.companyId,personalAttempt]);
   const combinedSites=useMemo(()=>combineAdminPersonalSites(sites,personalSites,detailProps.companyId),[sites,personalSites,detailProps.companyId]);
@@ -239,7 +236,7 @@ export default function SiteManagementTab(props) {
         {personalError && <div role="alert"><p>내 시공 일정 확인 필요 · {personalError}</p><button type="button" onClick={()=>setPersonalAttempt(v=>v+1)}>내 일정 다시 확인</button></div>}
         <SiteCalendar
           sites={filteredSites}
-          openSite={(site, day) => { if(site.personal_only){setPersonalSite({site,day:day?.date||null});return;} setChatDay(day || null); openSite(site); }}
+          openSite={(site, day) => { if(site.personal_only){window.location.href=`/worker/site/${encodeURIComponent(site.id)}`;return;} setChatDay(day || null); openSite(site); }}
           loading={sitesLoading}
           searching={Boolean(search.trim())}
           workers={detailProps.workers || []}
@@ -247,7 +244,6 @@ export default function SiteManagementTab(props) {
         />
       </section>
 
-      {personalSite && <AdminPersonalSiteModal key={personalSite.site.id} site={personalSite.site} day={personalSite.day} onClose={()=>setPersonalSite(null)} />}
 
       <SiteRegisterModal
         open={registerOpen}
@@ -418,7 +414,7 @@ function SiteCard({ site, onOpen, day, workers, refreshKey }) {
       </div>
 
       <div style={{ marginTop: 8, fontSize: 13, color: "#6e7b73", lineHeight: 1.6 }}>
-        {day || label} · {site.personal_only ? "내 시공 기능 열기 →" : day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
+        {day || label} · {site.personal_only ? "시공자 현장 열기 →" : day && crewError ? "배정 확인 필요" : day && !daily ? "배정 확인 중…" : `팀장 ${leaders.join(", ") || "미배정"} · 팀원 ${members.length}명`}
       </div>
       {!site.personal_only && (!day || daily) && !crewError && !leaders.length && site.status !== "cancelled" && (
         <span style={{ display: "inline-block", marginTop: 8, padding: "4px 7px", borderRadius: 6, fontSize: 12, background: "#fff2dd", color: "#925f25" }}>팀장 배정 필요</span>
