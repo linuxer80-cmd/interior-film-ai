@@ -54,6 +54,7 @@ export default function KakaoCallback() {
           throw Error("카카오 연결이 완료되지 않았습니다. 계정 연결 화면에서 다시 시도해주세요.");
         }
         window.history.replaceState(null, "", "/auth/kakao?mode=link&role=" + role);
+        sessionStorage.removeItem("film-kakao-link");
         if (active) setLinked(true);
         return;
       }
@@ -94,6 +95,7 @@ export default function KakaoCallback() {
       <h2>기존에 가입하셨나요?</h2>
       <p>이 카카오 계정에서 완료된 시공자 프로필을 찾지 못했습니다. 이메일로 가입한 적이 있다면 기존 계정으로 로그인한 뒤 개인설정에서 카카오를 연결해주세요.</p>
       <button type="button" disabled={switching} onClick={useExistingAccount} style={{padding:16,width:"100%"}}>기존 이메일 계정으로 로그인</button>
+      <p><Link href="/worker/forgot-password" data-ui-link="action">아이디 찾기 · 비밀번호 재설정</Link></p>
       <p>처음 가입하는 경우에만 새 프로필을 만들어주세요.</p>
       <Link href={newWorkerDestination} data-ui-link="action">처음 이용합니다 · 시공자 프로필 등록</Link>
     </section>}

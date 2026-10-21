@@ -9,6 +9,7 @@ export default function GoogleCallback() {
   const [error, setError] = useState("");
   const [linked, setLinked] = useState(false);
   const [needsCompany, setNeedsCompany] = useState(false);
+  const [newWorkerDestination, setNewWorkerDestination] = useState("");
   const [switching, setSwitching] = useState(false);
   async function useExistingAccount() {
     if (switching) return;
@@ -19,7 +20,7 @@ export default function GoogleCallback() {
       setSwitching(false);
       return;
     }
-    window.location.replace("/login");
+    window.location.replace(roleContext === "worker" ? "/worker/login" : "/login");
   }
   useEffect(() => {
     let active = true;
@@ -66,7 +67,12 @@ export default function GoogleCallback() {
         destination = "/dealer";
       } else if (role === "worker") {
         const completion = await workerProfileRequirements();
-        destination = completion.authenticated && completion.complete ? "/worker" : "/worker/account?required=1";
+        if (!completion.authenticated) throw Error("로그인 정보를 다시 확인해주세요.");
+        if (!completion.complete) {
+          if (active) setNewWorkerDestination("/worker/account?required=1");
+          return;
+        }
+        destination = "/worker";
       } else {
         const { data: companies, error: companyError } = await supabase.rpc("get_my_company");
         if (companyError) throw Error("업체 정보를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.");
@@ -85,9 +91,17 @@ export default function GoogleCallback() {
   }, []);
   return <main style={{ maxWidth: 480, margin: "80px auto", padding: 24 }}>
     <h1>구글 로그인</h1>
-    <p role={error ? "alert" : "status"}>{error || (linked ? "구글 연결이 완료되었습니다. 다음부터 구글로 로그인하면 기존 계정으로 접속합니다." : needsCompany ? "이 구글 계정에 연결된 업체가 없습니다. 기존 이메일 계정과 구글 계정은 다를 수 있습니다." : "계정 정보를 확인하고 있습니다…")}</p>
+    <p role={error ? "alert" : "status"}>{error || (linked ? "구글 연결이 완료되었습니다. 다음부터 구글로 로그인하면 기존 계정으로 접속합니다." : newWorkerDestination ? "기존 가입 여부를 확인해주세요." : needsCompany ? "이 구글 계정에 연결된 업체가 없습니다. 기존 이메일 계정과 구글 계정은 다를 수 있습니다." : "계정 정보를 확인하고 있습니다…")}</p>
     {linked && roleContext === "dealer" && <p><Link href="/dealer" data-ui-link="action">대리점 홈</Link></p>}
     {linked && roleContext !== "dealer" && <p><Link href="/admin" data-ui-link="action">관리자 홈</Link> · <Link href="/worker" data-ui-link="action">시공자 홈</Link></p>}
+    {newWorkerDestination && !error && <section>
+      <h2>기존에 가입하셨나요?</h2>
+      <p>이 구글 계정에서 완료된 시공자 프로필을 찾지 못했습니다. 이메일이나 카카오로 가입한 적이 있다면 기존 계정으로 로그인해주세요.</p>
+      <button type="button" disabled={switching} onClick={useExistingAccount} style={{ padding: 16, width: "100%" }}>기존 계정으로 로그인</button>
+      <p><Link href="/worker/forgot-password" data-ui-link="action">아이디 찾기 · 비밀번호 재설정</Link></p>
+      <p>기존 계정의 개인설정에서 구글을 연결하면 같은 현장과 일정을 이용할 수 있습니다.</p>
+      <Link href={newWorkerDestination} data-ui-link="action">처음 이용합니다 · 시공자 프로필 등록</Link>
+    </section>}
     {needsCompany && <section>
       <p>이미 가입하셨나요? 기존 이메일과 비밀번호로 로그인해주세요. 업체를 다시 만들 필요는 없습니다.</p>
       <button type="button" onClick={useExistingAccount} disabled={switching} style={{ width: "100%", padding: 16, marginBottom: 20 }}>{switching ? "계정 전환 중…" : "기존 이메일 계정으로 로그인"}</button>

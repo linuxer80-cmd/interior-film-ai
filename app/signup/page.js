@@ -19,6 +19,7 @@ export default function SignupPage() {
       setExistingUser(user || null);
       if (user) {
         setEmail(user.email || "");
+        setCompanyName(user.user_metadata?.company_name || "");
         setOwnerName(user.user_metadata?.name || user.user_metadata?.owner_name || "");
         setPhone(user.user_metadata?.phone || "");
       }
@@ -804,6 +805,10 @@ export default function SignupPage() {
             가입 완료
         ===================================================== */}
 
+        {!success && <aside style={{ padding: 16, marginBottom: 16, borderRadius: 12, background: "#eff6ff", lineHeight: 1.7 }}>
+          이미 가입한 업체가 있다면 새로 등록하기 전에 기존 계정을 확인해주세요. 로그인 방법이나 이메일이 달라지면 기존 현장이 보이지 않을 수 있습니다.
+          <p><Link href="/login" data-ui-link="action">기존 계정으로 로그인 · 비밀번호 찾기</Link></p>
+        </aside>}
         {success ? (
           <section
             style={{
@@ -1376,7 +1381,7 @@ export default function SignupPage() {
               입력할 필요가 없습니다.
             </div>
 
-            {existingUser ? <p role="status">현재 시공자 계정으로 업체를 등록합니다. 이메일과 비밀번호를 새로 만들 필요가 없습니다.</p> : <>
+            {existingUser ? <p role="status">현재 로그인한 계정으로 업체를 등록합니다. 이메일과 비밀번호를 새로 만들 필요가 없습니다.</p> : <>
             {/* 이메일 */}
 
             <FieldLabel>
