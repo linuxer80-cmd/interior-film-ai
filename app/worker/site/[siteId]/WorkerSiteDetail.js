@@ -11,6 +11,7 @@ import {
   loadMyWorkerSites,
   workerLoginUrl,
 } from "../../../utils/workerSites";
+import WorkerWorkGuide from "./WorkerWorkGuide";
 import WorkerSiteInfo from "./WorkerSiteInfo";
 import SiteExtraWork from "../../../components/SiteExtraWork";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
@@ -246,6 +247,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
   function chooseTab(id) {
     setVisited((previous) => ({ ...previous, [id]: true }));
     setTab(id);
+    if (id === "report") void loadReportStatus();
   }
 
   if (loading) {
@@ -441,6 +443,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
         >
 
 
+          <WorkerWorkGuide site={site} siteId={siteId} active={tab === "info"} reportStatus={reportStatus} reportLoading={reportLoading} reportError={reportError} onRetry={loadReportStatus} onNavigate={chooseTab} />
           <WorkerSiteInfo site={site} siteId={siteId} materials={materials} materialsMessage={materialsMessage} initialDate={initialDate} active={tab === "info"} />
           <details style={{ marginTop: 16 }}>
             <summary style={{ ...muted, cursor: "pointer", padding: "12px 0" }}>현장 변경·확인 이력</summary>
@@ -579,7 +582,8 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
               siteId={siteId}
               report={report}
               canSubmit={reportStatus?.canSubmit}
-              loading={reportLoading}
+              active={tab === "report"}
+              loading={reportLoading && !reportStatus}
               error={reportError}
               onRetry={loadReportStatus}
               onSubmitted={loadReportStatus}
@@ -629,6 +633,7 @@ function InfoRow({ label, value }) {
 }
 
 function ReportPanel({
+  active,
   canSubmit,
   site,
   siteId,
@@ -819,6 +824,7 @@ function ReportPanel({
         siteId={siteId}
         site={site}
         onSubmitted={onSubmitted}
+        active={active}
       />
     </>
   );

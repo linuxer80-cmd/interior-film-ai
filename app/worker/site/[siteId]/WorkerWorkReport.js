@@ -2,13 +2,14 @@
 
 import WorkReportForm from "../../../components/WorkReportForm";
 
-export default function WorkerWorkReport({ siteId, site, onSubmitted }) {
+export default function WorkerWorkReport({ siteId, site, onSubmitted, active = true }) {
   return (
     <WorkReportForm
       key={siteId}
       siteId={siteId}
       site={site}
       onSubmitted={onSubmitted}
+      active={active}
     />
   );
 }

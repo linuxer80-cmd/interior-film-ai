@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { reportOverview, firstReportStep } from "../../lib/workerWorkFlow.mjs";
 import SiteOperations from "./SiteOperations";
 import {
   reportRequest,
@@ -82,6 +83,8 @@ export default function WorkReportForm({
   useEffect(() => { setStep(0); }, [siteId]);
   const [form, setForm] = useState(null);
   const [context, setContext] = useState(null);
+  const [existingExpenses, setExistingExpenses] = useState(null);
+  const [expenseLookupError, setExpenseLookupError] = useState("");
   const [workers, setWorkers] = useState([]);
   const [ready, setReady] = useState(false);
   const [candidate, setCandidate] = useState(null);
@@ -161,7 +164,24 @@ export default function WorkReportForm({
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
-    const data = await reportRequest(`/api/report-support?siteId=${encodeURIComponent(siteId)}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const [support, expenses] = await Promise.allSettled([
+      reportRequest(`/api/report-support?siteId=${encodeURIComponent(siteId)}`, undefined, { signal: controller.signal }),
+      reportRequest(`/api/site-expenses?siteId=${encodeURIComponent(siteId)}`, undefined, { signal: controller.signal }),
+    ]);
+    clearTimeout(timer);
+    if (support.status === "rejected") throw support.reason;
+    const data = support.value;
+    if (mounted.current && sequence === refreshSequence.current) {
+      if (expenses.status === "fulfilled" && Array.isArray(expenses.value.expenses)) {
+        setExistingExpenses(expenses.value.expenses);
+        setExpenseLookupError("");
+      } else {
+        setExistingExpenses(null);
+        setExpenseLookupError("등록된 경비를 확인하지 못했습니다. 경비 화면에서 확인해주세요.");
+      }
+    }
     if (mounted.current && sequence === refreshSequence.current) {
       setContext(data);
     }
@@ -229,6 +249,7 @@ export default function WorkReportForm({
         }
 
         setForm(base);
+        setStep(firstReportStep(data, base));
 
         draftKey.current =
           `v1:${userId.current}:${siteId}:` +
@@ -370,7 +391,7 @@ export default function WorkReportForm({
       for (const m of data.operations.materials) {
         if (m.returned == null) {
           list.push({
-            label: `${m.code || m.name}: 반출·반입량 미확인`,
+            label: `${m.code || m.name}: ${Number(m.issued) > 0 ? "남은 자재의 반납량 확인" : "사용 여부 확인 (미사용은 반출·반납 0)"}`,
             target: "materials",
             id: m.id,
           });
@@ -520,6 +541,7 @@ export default function WorkReportForm({
       const missing = issues(latest);
 
       if (missing.length) {
+        jump(missing[0]);
         throw Error(`저장하지 못했습니다. 아래 ${missing.length}개 항목을 확인해주세요.`);
       }
 
@@ -574,10 +596,7 @@ export default function WorkReportForm({
 
       setProgress("완료보고 저장 완료");
 
-      if (success.statusWarning) {
-        setMessage(success.statusWarning);
-        return;
-      }
+      if (success.statusWarning) setProgress(`완료보고 저장 완료 · ${success.statusWarning}`);
 
       if (!owner) {
         try {
@@ -621,6 +640,7 @@ export default function WorkReportForm({
           style={button}
           onClick={() => {
             setForm(candidate.form);
+            setStep(firstReportStep(context, candidate.form));
             setCandidate(null);
             setReady(true);
           }}
@@ -655,6 +675,7 @@ export default function WorkReportForm({
   }
 
   const missing = issues();
+  const overview = reportOverview(context, form, existingExpenses);
   const unpricedMaterials = (context.operations.materials || []).filter(
     m => Number(m.used) > 0 && (context.missingPrices || []).includes(m.id)
   );
@@ -711,10 +732,11 @@ export default function WorkReportForm({
       <nav aria-label="완료보고 단계" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {["1. 사진", "2. 작업·사용량", "3. 최종 확인"].map((label,index) => <button key={label} type="button" disabled={disabled} aria-pressed={step === index} onClick={() => setStep(index)} style={{ ...button, flex: 1, background: step === index ? "#243648" : "white", color: step === index ? "white" : "#243648" }}>{label}</button>)}
       </nav>
+      <p role="status" style={{ fontSize: 13, color: "#53665a" }}>{draftMessage || "작성 내용은 이 기기에 임시저장됩니다."}</p>
       <section hidden={step !== 2} style={{ ...box, background: "#edf3e8" }}>
         <h3>{missing.length ? `확인할 항목 ${missing.length}건` : "제출 준비 완료 ✓"}</h3>
 
-        <p role="status">{draftMessage || "임시저장 준비 중"}</p>
+
         <details>
           <summary>임시저장 도움말</summary>
           <p style={{ fontSize: 12 }}>현재 기기·브라우저에 저장됩니다. 다른 기기에는 동기화되지 않으며, 브라우저 데이터를 삭제하면 사라집니다. 완료보고는 아래 제출 버튼을 눌러야 전달됩니다.</p>
@@ -817,6 +839,9 @@ export default function WorkReportForm({
           <SiteOperations
             siteId={siteId}
             mode="materials"
+            compact
+            easyMode
+            active={active && step === 1}
             reportEditable
             disabled={disabled}
             initialDraft={form.returns}
@@ -903,7 +928,9 @@ export default function WorkReportForm({
 
         <section style={box} hidden={step !== 1} data-section="expenses">
           <h3>완료보고 경비</h3>
-          <p>경비 메뉴에 이미 등록한 금액은 다시 입력하지 마세요. 기존 현장 경비는 유지됩니다.</p>
+          <p>경비 메뉴에 이미 등록한 금액은 자동으로 유지됩니다. 아래에는 아직 등록하지 않은 경비만 추가하세요.</p>
+          {overview.existingExpenses && <p>경비 메뉴에 등록된 내역 {overview.existingExpenses.length}건 · {won(overview.existingExpenseTotal)} (다시 입력할 필요 없음)</p>}
+          {expenseLookupError && <p role="alert">{expenseLookupError}</p>}
 
           {form.expenses.map((e, i) => (
             <div key={i} style={box}>
@@ -1036,7 +1063,22 @@ export default function WorkReportForm({
         </p>
       )}
 
-      {step === 2 && <section style={box}><h3>입력 내용 확인</h3><p>{form.work_summary || "시공 내용을 입력해주세요."}</p><p>새 사진 {form.photos.length}장 · 추가 경비 {form.expenses.length}건</p></section>}
+      {step === 2 && <section style={box} aria-label="완료보고 최종 확인">
+        <h3>등록된 내용 한 번에 확인</h3>
+        <p>이미 저장된 사진·자재·경비는 유지됩니다. 새로 추가한 내용만 함께 제출합니다.</p>
+        <p><strong>시공 내용</strong> · {form.work_summary || "미입력"}</p>
+        <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"content"})}>시공 내용 수정</button>
+        <p><strong>완료사진</strong> · 저장된 사진 {overview.savedAfter}장 / 새 완료사진 {overview.newAfter}장</p>
+        <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"photos"})}>{overview.savedAfter || overview.newAfter ? "사진 확인·추가" : "완료사진 추가"}</button>
+        <p><strong>자재 사용량</strong> · {overview.materials.length ? `${overview.materials.length}종 중 ${overview.unchecked.length ? `${overview.unchecked.length}종 반출·반납 확인 필요` : "모두 확인 완료"}` : "등록된 사용 필름 없음"}</p>
+        {overview.materials.map(material => <p key={material.id}>{material.code || material.name} · 반출 {material.issued || 0}{material.unit} / 반납 {material.returned == null ? "미확인" : `${material.returned}${material.unit}`} / 사용 {material.used == null ? "미확정" : `${material.used}${material.unit}`}</p>)}
+        <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"materials"})}>자재 확인·수정</button>
+        <p><strong>{owner ? "현장 경비" : "내가 등록한 경비"}</strong> · {overview.existingExpenses ? `${overview.existingExpenses.length}건 / ${won(overview.existingExpenseTotal)}` : "조회 확인 필요"}</p>
+        {expenseLookupError && <p role="alert">{expenseLookupError}</p>}
+        {overview.existingExpenses?.length > 0 && <details><summary style={{minHeight:44,cursor:"pointer"}}>이미 등록된 경비 보기</summary>{overview.existingExpenses.map(expense => <p key={expense.id}>{expense.expense_date} · {types[expense.expense_type] || "경비"} · {won(expense.amount)}{expense.description ? ` · ${expense.description}` : ""}</p>)}</details>}
+        <p>이 보고서에 입력한 경비 {form.expenses.length}건 · {won(newExpense + newMaterial)} (경비 메뉴 내역과 별도)</p>
+        <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"expenses"})}>추가 경비 확인·입력</button>
+      </section>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, position: "sticky", bottom: 0, padding: "12px 0", background: "white", zIndex: 2 }}>
         {step > 0 && <button type="button" disabled={disabled} style={button} onClick={() => setStep(n => n-1)}>이전</button>}
         {step < 2 && <button type="button" disabled={disabled} style={{ ...button, flex: 1 }} onClick={() => setStep(n => n+1)}>다음 단계 →</button>}

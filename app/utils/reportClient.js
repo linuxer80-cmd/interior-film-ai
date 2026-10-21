@@ -1,6 +1,6 @@
 import { supabase } from "../../lib/supabase";
 
-export async function reportRequest(path, body) {
+export async function reportRequest(path, body, options = {}) {
   const { data, error } = await supabase.auth.getSession();
 
   if (error || !data.session?.access_token) {
@@ -10,6 +10,7 @@ export async function reportRequest(path, body) {
   const response = await fetch(path, {
     method: body ? "POST" : "GET",
     cache: "no-store",
+    ...(options.signal ? { signal: options.signal } : {}),
     headers: {
       Authorization: `Bearer ${data.session.access_token}`,
       ...(body

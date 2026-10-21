@@ -1,4 +1,5 @@
 import test from "node:test";
+import * as workerWorkFlow from "../lib/workerWorkFlow.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
@@ -57,6 +58,8 @@ async function form({
   missingPrices = [],
   failUploadOnce = false,
   failSaveOnce = false,
+  existingExpenses = [],
+  statusWarning = "",
 } = {}) {
   let cursor = 0;
   const slots = [];
@@ -67,6 +70,7 @@ async function form({
   let mounted = false;
 
   const calls = [];
+  const payloads = [];
   const effects = [];
 
   let reportClient;
@@ -131,6 +135,8 @@ async function form({
     exports: {},
     React,
     FormData,
+    AbortController,
+    setTimeout, clearTimeout,
     crypto,
     window: {addEventListener(){},removeEventListener(){}},
     console: {
@@ -147,6 +153,7 @@ async function form({
       }
 
       if (path.includes("reportClient")) return reportClient;
+      if (path.includes("workerWorkFlow")) return workerWorkFlow;
       if (path.includes("SiteOperations") || path.includes("ToolIllustration")) {
         return () => null;
       }
@@ -169,6 +176,7 @@ async function form({
     },
 
     async fetch(url, options) {
+      if (url.includes("site-expenses?")) return {ok:true,json:async()=>({success:true,expenses:existingExpenses})};
       if (url.includes("report-support?")) return {ok:true,json:async()=>({operations:{materials:trackedMaterials,locked:false},afterCount:0,missingPrices})};
       if (url.includes("site-work-report?")) {
         return {
@@ -182,6 +190,7 @@ async function form({
       }
 
       const upload = url.endsWith("site-photos");
+      if (!upload) payloads.push(JSON.parse(options.body));
 
       calls.push(
         upload
@@ -204,6 +213,7 @@ async function form({
             : {
                 success: true,
                 count: 1,
+                ...(!upload && statusWarning ? {statusWarning} : {}),
               },
       };
     },
@@ -281,6 +291,7 @@ async function form({
 
   return {
     calls,
+    payloads,
     render,
     submit: () =>
       render().props.onSubmit({
@@ -377,4 +388,22 @@ test("missing tracked cost warns but still submits photos and report; usage chec
  await blocked.submit();
  assert.equal(blocked.completed(),0);
  assert.equal(blocked.calls.includes("report"),false);
+});
+
+ test("existing expense ledger is shown without being copied into the report payload", async () => {
+ const h = await form({existingExpenses:[{id:"existing",amount:9000,expense_type:"meal",expense_date:"2026-10-21",description:"기존 식비"}]});
+ assert.match(JSON.stringify(h.render()), /9,000원/);
+ await h.submit();
+ assert.equal(h.completed(),1);
+ assert.deepEqual(h.payloads[0].expenses,[]);
+ assert.ok(!JSON.stringify(h.payloads[0]).includes("existing"));
+});
+
+ test("a saved report with a status warning still completes the flow and cannot be resubmitted", async () => {
+ const h=await form({statusWarning:"현장 상태 갱신을 확인해주세요."});
+ await h.submit();
+ assert.equal(h.completed(),1);
+ assert.match(JSON.stringify(h.render()),/현장 상태 갱신/);
+ await h.submit();
+ assert.equal(h.calls.filter(call=>call==="report").length,1);
 });
