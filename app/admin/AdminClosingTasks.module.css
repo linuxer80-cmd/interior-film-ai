@@ -12,3 +12,11 @@
 .root a { display:inline-flex; align-items:center; text-decoration:none; }
 .root small { display:block; margin-top:12px; color:#65736a; font-size:12px; line-height:1.6; }
 .root :is(a,button):focus-visible { outline:2px solid #315c91; outline-offset:3px; }
+.toggle{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:52px;cursor:pointer;list-style:none;flex-wrap:wrap}
+.toggle::-webkit-details-marker{display:none}
+.toggle>span{font-size:13px;color:#315d49}
+.whenOpen{display:none}
+.root[open] .whenClosed{display:none}
+.root[open] .whenOpen{display:inline}
+.contents{padding-top:12px;border-top:1px solid #dfe4d7;margin-top:10px}
+.toggle:focus-visible{outline:2px solid #315c91;outline-offset:3px;border-radius:10px}

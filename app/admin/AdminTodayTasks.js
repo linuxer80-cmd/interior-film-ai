@@ -31,13 +31,13 @@ const dateLabel = (date) =>
     ? `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`
     : "일정 미정";
 
-export default function AdminTodayTasks({ companyId }) {
+export default function AdminTodayTasks({ companyId, embedded = false }) {
   return companyId ? (
-    <TaskPanel key={companyId} companyId={companyId} />
+    <TaskPanel key={companyId} companyId={companyId} embedded={embedded} />
   ) : null;
 }
 
-function TaskPanel({ companyId }) {
+function TaskPanel({ companyId, embedded }) {
   const [view, setView] = useState(defaults);
   const [ready, setReady] = useState(false);
   const [data, setData] = useState(null);
@@ -227,7 +227,7 @@ function TaskPanel({ companyId }) {
     >
       <header>
         <div>
-          <h2>보고서 · 오늘 할 일</h2>
+          {!embedded && <h2>보고서 · 오늘 할 일</h2>}
           <small>
             {view.tab === "tomorrow" ? data?.date : today} · 한국 시간
           </small>

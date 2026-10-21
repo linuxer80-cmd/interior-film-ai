@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import MaterialIssueStatus from "../components/MaterialIssueStatus";
+import AdminTodayDialog from "./AdminTodayDialog";
 
 export default function AdminHomeSummary({ companyId }) {
   const [data, setData] = useState(null);
@@ -11,6 +12,7 @@ export default function AdminHomeSummary({ companyId }) {
   const [prepareError, setPrepareError] = useState("");
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  const [todayOpen,setTodayOpen]=useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -21,8 +23,6 @@ export default function AdminHomeSummary({ companyId }) {
 
     setLoading(true);
     setError("");
-    setData(null);
-    setTomorrow(null);
     setPrepareError("");
 
     (async () => {
@@ -143,11 +143,11 @@ export default function AdminHomeSummary({ companyId }) {
       aria-busy={loading}
     >
       <header>
-        <h2>오늘 할 일</h2>
-        <a href="/admin/today" data-ui-link="action">전체 보기 ›</a>
+        <h2><button type="button" className="title-button" aria-haspopup="dialog" aria-expanded={todayOpen} onClick={()=>setTodayOpen(true)}>오늘 할 일</button></h2>
+        <button type="button" className="open-today" aria-haspopup="dialog" aria-expanded={todayOpen} onClick={()=>setTodayOpen(true)}>전체 보기 ›</button>
       </header>
 
-      {loading ? (
+      {loading && !data ? (
         <p role="status">오늘 업무를 확인하고 있습니다…</p>
       ) : error ? (
         <div role="alert">
@@ -163,9 +163,12 @@ export default function AdminHomeSummary({ companyId }) {
         <>
           <small>{data?.today} · 한국 시간</small>
 
-          <a
+          <button
+            type="button"
             className="counts"
-            href="/admin/today"
+            onClick={()=>setTodayOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={todayOpen}
             aria-label="오늘 현장과 검수 및 업무 상세 보기"
           >
             <span>
@@ -180,7 +183,7 @@ export default function AdminHomeSummary({ companyId }) {
               확인할 업무
               <strong>{due.length}건</strong>
             </span>
-          </a>
+          </button>
 
           {todaySites.length > 0 && (
             <ul className="today-sites" aria-label="오늘 시공 현장">
@@ -301,6 +304,7 @@ export default function AdminHomeSummary({ companyId }) {
         </div>
       )}
 
+      {todayOpen && <AdminTodayDialog companyId={companyId} onClose={()=>{setTodayOpen(false);setAttempt(n=>n+1);}} />}
       <style jsx>{`
         .summary {
           padding: 16px;
@@ -335,6 +339,7 @@ export default function AdminHomeSummary({ companyId }) {
           color: #716c63;
         }
         .counts {
+          width:100%;border:0;background:transparent;padding:0;cursor:pointer;
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 6px;
@@ -376,6 +381,8 @@ export default function AdminHomeSummary({ companyId }) {
           color: #243648;
           cursor: pointer;
         }
+        .title-button{font:inherit;font-weight:inherit;border:0;background:transparent;padding:0;min-height:44px;margin:0;text-align:left;color:inherit}
+        .open-today{margin:0;color:#315c91;background:#fffefa;white-space:nowrap}
         .prepare {
           margin-top: 12px;
           border-top: 1px solid #e8e2d9;
