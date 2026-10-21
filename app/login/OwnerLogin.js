@@ -13,6 +13,7 @@ export default function OwnerLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [needsCompany, setNeedsCompany] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [resetCompanyName, setResetCompanyName] = useState("");
 
@@ -74,129 +75,25 @@ export default function OwnerLogin() {
       };
     }
 
-    /*
-     * 2. 아직 업체에 연결되지 않은 신규 가입자라면
-     * Auth metadata에서 가입 정보를 읽는다.
-     */
-    const metadata = user.user_metadata || {};
+    // Login must never create a company from old signup metadata.
+    // Only explicit registration may create a new company.
+    return { needsRegistration: true };
+  }
 
-    const companyName = String(
-      metadata.company_name || ""
-    ).trim();
-
-    const ownerName = String(
-      metadata.owner_name || ""
-    ).trim();
-
-    const phone = String(
-      metadata.phone || ""
-    ).trim();
-
-    const companySlug = String(
-      metadata.company_slug || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    /*
-     * 회원가입 정보가 없는 일반 계정이라면
-     * 자동으로 회사를 만들면 안 된다.
-     */
-    if (!companyName) return { needsRegistration: true };
-
-    /*
-     * 3. 신규 업체 생성
-     */
-    const {
-      data: companyId,
-      error: companyError,
-    } = await supabase.rpc(
-      "create_my_company",
-      {
-        p_company_name: companyName,
-        p_slug: companySlug,
-        p_owner_name: ownerName || null,
-        p_phone: phone || null,
-      }
-    );
-
-    if (companyError) {
-      const retryCompany =
-        await getMyCompany();
-
-      if (retryCompany?.company_id) {
-        if (
-          retryCompany.is_active ===
-          false
-        ) {
-          throw new Error(
-            "현재 사용이 중지된 업체 계정입니다."
-          );
-        }
-
-        return {
-          companyId:
-            retryCompany.company_id,
-
-          companyName:
-            retryCompany.company_name,
-
-          companySlug:
-            retryCompany.company_slug,
-
-          created:
-            false,
-        };
-      }
-
-      throw companyError;
+  async function switchAccount() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) throw error;
+      setNeedsCompany(false);
+      setPassword("");
+      setMessage("");
+    } catch {
+      setMessage("계정 전환에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setLoading(false);
     }
-
-    /*
-     * 회사 연결 상태 다시 확인
-     */
-    const createdCompany =
-      await getMyCompany();
-
-    if (createdCompany?.company_id) {
-      if (
-        createdCompany.is_active ===
-        false
-      ) {
-        throw new Error(
-          "현재 사용이 중지된 업체 계정입니다."
-        );
-      }
-
-      return {
-        companyId:
-          createdCompany.company_id,
-
-        companyName:
-          createdCompany.company_name ||
-          companyName,
-
-        companySlug:
-          createdCompany.company_slug ||
-          companySlug,
-
-        created:
-          true,
-      };
-    }
-
-    if (!companyId) {
-      throw new Error(
-        "업체 정보를 생성하지 못했습니다."
-      );
-    }
-
-    return {
-      companyId,
-      companyName,
-      companySlug,
-      created: true,
-    };
   }
 
   /* =========================================================
@@ -262,7 +159,7 @@ export default function OwnerLogin() {
         await ensureCompany(user);
 
       if (result?.needsRegistration) {
-        window.location.assign("/signup?existing=1");
+        setNeedsCompany(true);
         return;
       }
 
@@ -564,6 +461,7 @@ export default function OwnerLogin() {
     setForgotMode(
       false
     );
+    setNeedsCompany(false);
 
     setResetCompanyName(
       ""
@@ -689,7 +587,16 @@ export default function OwnerLogin() {
             기존 로그인 화면
         ===================================================== */}
 
-        {!forgotMode && (
+        {needsCompany && <section role="status" style={{ padding: 18, borderRadius: 18, background: "white", marginBottom: 16 }}>
+          <h2>기존에 가입하셨나요?</h2>
+          <p>현재 계정에 연결된 관리자 업체를 찾지 못했습니다. 다른 이메일·카카오·구글로 가입했다면 그 계정으로 로그인해주세요.</p>
+          <button type="button" onClick={switchAccount} disabled={loading} style={{ padding: 14, width: "100%" }}>기존 계정으로 다시 로그인</button>
+          <button type="button" onClick={openForgotPassword} disabled={loading} style={{ padding: 14, marginTop: 10 }}>비밀번호 찾기</button>
+          <p>처음 업체를 등록하는 경우에만 진행해주세요.</p>
+          <Link href="/signup?existing=1" data-ui-link="action">새 업체 등록</Link>
+        </section>}
+
+        {!forgotMode && !needsCompany && (
           <form
             onSubmit={
               handleLogin
@@ -916,6 +823,7 @@ export default function OwnerLogin() {
                 업체 회원가입
               </Link>
             </div>
+          <p style={{ fontSize: 13, lineHeight: 1.7, color: "#64748b" }}>이미 가입하셨다면 기존에 사용한 방법으로 로그인해주세요. 카카오·구글은 기존 계정으로 로그인한 뒤 계정 연결에서 추가할 수 있습니다.</p>
           <GoogleLoginButton disabled={loading} />
           <KakaoLoginButton disabled={loading} />
           </form>

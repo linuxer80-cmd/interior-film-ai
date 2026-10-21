@@ -310,6 +310,7 @@ export default function WorkerLogin() {
             <br />
             소속 회사 관리자에게 문의해주세요.
           </p>
+        <p style={{ fontSize: 13, lineHeight: 1.7, color: "#64748b" }}>이미 가입하셨다면 기존에 사용한 방법으로 로그인해주세요. 현장이 보이지 않으면 새로 가입하기 전에 위 아이디 찾기를 이용해주세요. 기존 계정의 개인설정에서 카카오·구글을 연결할 수 있습니다.</p>
         <GoogleLoginButton role="worker" disabled={loading} />
         <KakaoLoginButton role="worker" disabled={loading} />
           </form>
