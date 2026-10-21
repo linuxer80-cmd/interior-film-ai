@@ -300,8 +300,10 @@ export default function CompletionEstimate({
       <h3 style={{ margin: "0 0 8px" }}>인건비·자재비 견적서</h3>
 
       <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
-        자동으로 채워진 수량과 청구 단가를 확인하고 저장하세요. 필름은 인테리어업자 판매단가 기준입니다.
+        현장 내역을 불러온 뒤 관리자가 제품·사용량·공수·청구 단가·금액을 수정할 수 있습니다. 필름의 최초 단가는 인테리어업자 판매단가 기준입니다.
       </p>
+
+      <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>수정 내용은 이 견적서에만 저장됩니다. 완료보고·재고·실제 원가는 변경되지 않습니다. 금액을 직접 입력하면 단가는 비워지고 입력한 금액이 적용됩니다.</p>
 
       {initialChatDraft && draft && !chatApplied.current && !busy && <button type="button" style={button} onClick={()=>{
         if(!window.confirm("현재 견적 내용 대신 채팅 초안을 불러올까요? 저장하기 전에는 기존 저장본이 변경되지 않습니다."))return;
@@ -440,14 +442,7 @@ export default function CompletionEstimate({
                   return <div key={category}>
 
                 {draft.items.map((row, index) =>
-                  row.category !== category ? null : category === "meal" ? (
-                    <div key={index} style={{marginBottom:12}}>
-                      <label>식대 합계 (원)
-                        <input style={input} type="number" min="0" max="1000000000" step="1"
-                          placeholder="미입력 · 필요하면 직접 입력" value={row.amount} onChange={event => edit(index, "amount", event.target.value)} />
-                      </label>
-                    </div>
-                  ) : (
+                  row.category !== category ? null : (
                     <div
                       key={index}
                       style={{
@@ -458,7 +453,7 @@ export default function CompletionEstimate({
                       }}
                     >
                       <input aria-label="항목명" style={{...input,fontWeight:700,border:0,padding:"6px 0"}} maxLength={500} value={row.name} placeholder="항목명을 입력하세요" onChange={event=>edit(index,"name",event.target.value)} />
-                      {["film","labor"].includes(category) ? <>
+                      {<>
                       <div
                         style={{
                           display: "grid",
@@ -468,7 +463,7 @@ export default function CompletionEstimate({
                         }}
                       >
                         <label>
-                          수량 ({row.unit || "개"})
+                          {category === "film" ? "청구 사용량" : category === "labor" ? "청구 공수" : "수량"} ({row.unit || "개"})
                           <input
                             style={input}
                             type="number"
@@ -492,12 +487,10 @@ export default function CompletionEstimate({
                           <input style={input} type="number" min="0" max="1000000000" step="any" value={row.unit_price ?? ""} placeholder="청구 단가" onChange={event=>edit(index,"unit_price",event.target.value === "" ? null : event.target.value)} />
                         </label>
                       </div>
-                      <p style={{margin:"8px 0",textAlign:"right"}}>금액 <strong>{won(row.amount)}</strong></p>
-                      </> : <label>청구 금액 (원)<input style={input} type="number" min="0" max="1000000000" step="1" value={row.amount} onChange={event=>edit(index,"amount",event.target.value)} /></label>}
-                      <details style={{marginTop:8}}><summary style={{cursor:"pointer",padding:"8px 0"}}>금액·단위 수정 / 삭제</summary>
+                      </>}
                       <label>단위<input style={input} maxLength={20} value={row.unit} onChange={event=>edit(index,"unit",event.target.value)} /></label>
                       <label>
-                        금액 (원)
+                        청구 금액 (원)
                         <input
                           style={{ ...input, marginTop: 6 }}
                           type="number"
@@ -513,6 +506,7 @@ export default function CompletionEstimate({
                       </label>
 
 
+                      <details style={{marginTop:8}}><summary style={{cursor:"pointer",padding:"8px 0"}}>분류 변경 / 항목 삭제</summary>
                       <label>
                         분류
                         <select
