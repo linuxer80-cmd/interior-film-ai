@@ -463,6 +463,7 @@ export default function SiteDetailModal({
           >
             <SiteBasicInfo
               key={site.id}
+              onCustomerLinked={reloadSites}
               editRequest={basicEditRequest.siteId === site.id ? basicEditRequest.version : 0}
               site={site}
               updateSiteBasicInfo={updateSiteBasicInfo}

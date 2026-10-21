@@ -450,7 +450,7 @@ function ClientFilter({ clients, value, onChange, disabled }) {
   </details>;
 }
 
-export default function TradeClients({ siteId, onScope }) {
+export default function TradeClients({ siteId, onScope, onLinked }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -487,6 +487,8 @@ export default function TradeClients({ siteId, onScope }) {
   const alive = useRef(false);
   const callback = useRef(onScope);
   callback.current = onScope;
+  const linkedCallback = useRef(onLinked);
+  linkedCallback.current = onLinked;
 
   async function load() {
     try {
@@ -563,6 +565,8 @@ export default function TradeClients({ siteId, onScope }) {
         await load();
 
         if (body.action === "link") {
+          // A refresh failure must not turn a saved link into a failed transaction.
+          Promise.resolve().then(() => linkedCallback.current?.()).catch(() => {});
           setLinkMessage(
             "저장했습니다. 이 현장의 거래처 지정이 반영되었습니다."
           );
@@ -589,6 +593,7 @@ export default function TradeClients({ siteId, onScope }) {
   const clients = data?.clients || [];
   const contacts = data?.contacts || [];
   const sites = data?.sites || [];
+  const linkedSite = sites.find(item => item.id === linkSite);
 
   const clientRows = sites.filter((site) =>
     client === "all"
@@ -1061,6 +1066,10 @@ export default function TradeClients({ siteId, onScope }) {
             style={{ scrollMarginTop: 120 }}
           >
             <h4>거래처 지정</h4>
+            {siteId && linkedSite && <p aria-label="현재 연결된 거래처" style={{ padding: 12, borderRadius: 10, background: "#edf3ec", color: "#285340" }}>
+              현재 연결: {linkedSite.client_name || (linkedSite.client_id ? clients.find(item => item.id === linkedSite.client_id)?.name || "거래처 확인 필요" : "개인 고객")}
+              {linkedSite.contact_id && ` · 담당자 ${contacts.find(item => item.id === linkedSite.contact_id)?.name || "확인 필요"}`}
+            </p>}
 
             {!siteId ? (
               <SearchChoice

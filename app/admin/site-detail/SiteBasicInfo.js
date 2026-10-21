@@ -1,4 +1,5 @@
 "use client";
+import TradeClients from "../../components/TradeClients";
 import SiteDirections from "../../worker/SiteDirections";
 
 import {
@@ -44,6 +45,7 @@ export default function SiteBasicInfo({
   updateSiteBasicInfo,
   materialSummary,
   editRequest = 0,
+  onCustomerLinked,
 }) {
   const [
     editing,
@@ -516,6 +518,8 @@ export default function SiteBasicInfo({
           />
         )}
 
+        <details style={{ margin: "14px 0" }}><summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분 · 거래처 연결</summary><TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} /></details>
+
         <DetailRow
           label="고객"
           value={
@@ -648,6 +652,8 @@ export default function SiteBasicInfo({
         현장정보 수정
       </div>
 
+      <TradeClients key={site.id} siteId={site.id} onLinked={onCustomerLinked} />
+      <p style={{ color: "#65766b", fontSize: 13 }}>거래처 연결은 위의 ‘거래처 지정 저장’, 아래 기본정보는 ‘저장’으로 각각 반영합니다.</p>
       <form
         onSubmit={
           saveBasicInfo
