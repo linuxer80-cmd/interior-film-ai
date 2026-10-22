@@ -530,6 +530,7 @@ export default function SiteDetailModal({
               onRequestDiscard={(id, proceed) => requestLeave(proceed, [id])}
               editRequest={basicEditRequest.siteId === site.id ? basicEditRequest.version : 0}
               site={site}
+              onEditSchedule={() => choosePreparationStep("dates")}
               updateSiteBasicInfo={updateSiteBasicInfo}
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />

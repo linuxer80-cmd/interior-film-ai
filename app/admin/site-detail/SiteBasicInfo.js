@@ -48,6 +48,7 @@ export default function SiteBasicInfo({
   site,
   updateSiteBasicInfo,
   materialSummary,
+  onEditSchedule,
   editRequest = 0,
   onDraftState,
   onRequestDiscard,
@@ -299,8 +300,7 @@ export default function SiteBasicInfo({
      조회 화면
   ======================================================= */
 
-  if (!editing) {
-    const workDates = Array.isArray(site.work_dates)
+  const workDates = Array.isArray(site.work_dates)
       ? [...new Set(site.work_dates.filter(Boolean))].sort()
       : [];
     const scheduleLabel = workDates.length
@@ -308,6 +308,7 @@ export default function SiteBasicInfo({
       : site.schedule_start
         ? `${site.schedule_start}${site.schedule_end && site.schedule_end !== site.schedule_start ? ` ~ ${site.schedule_end}` : ""}`
         : site.schedule_date || "미정";
+  if (!editing) {
     return (
       <section
         style={{
@@ -374,7 +375,7 @@ export default function SiteBasicInfo({
           />
         )}
 
-        <DetailRow label="시공일" value={scheduleLabel} />
+        <DetailRow label="시공일" value={<><span>{scheduleLabel}</span>{onEditSchedule && <button type="button" onClick={onEditSchedule} style={{...inputStyle,marginTop:8,color:"#285340",fontWeight:800,cursor:"pointer"}}>시공 일정 변경 →</button>}</>} />
 
         <DetailRow
           label="고객"
@@ -514,6 +515,12 @@ export default function SiteBasicInfo({
 
       <p style={{ color: "#65766b", fontSize: 13 }}>이 영역은 ‘기본정보 저장’으로 저장합니다. 거래처는 별도의 ‘거래처 연결’ 영역에서 저장합니다.</p>
       <p role="status" style={{ color: "#315d49", fontSize: 13 }}>{saving ? "기본정보 저장 중…" : dirty ? "기본정보 · 저장하지 않은 변경이 있습니다." : "기본정보 · 변경 사항 없음"}</p>
+      {onEditSchedule && <div style={{padding:14,margin:"14px 0",border:"1px solid #d9e2d8",borderRadius:14,background:"#eef4ec"}}>
+        <strong style={{display:"block",color:"#285340"}}>시공 일정</strong>
+        <p style={{margin:"8px 0",lineHeight:1.7}}>{scheduleLabel}</p>
+        <button type="button" onClick={onEditSchedule} disabled={saving} style={{...inputStyle,color:"#285340",fontWeight:800,cursor:"pointer"}}>시공 일정 변경 →</button>
+        <p style={{margin:"8px 0 0",fontSize:13,color:"#53665a"}}>날짜 선택 화면에서 시공일을 추가·변경·삭제할 수 있습니다. 기본정보를 수정했다면 먼저 저장해주세요.</p>
+      </div>}
       <form
         onSubmit={
           saveBasicInfo
