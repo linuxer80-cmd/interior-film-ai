@@ -50,3 +50,16 @@ test('schema preserves source photo and legacy price, atomically revisions per-t
 test('anonymous and ordinary accounts cannot read, change or call classification persistence',async()=>{
  const {db}=await fixture();try{for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(db.query('select * from photo_case_management'),/permission/);await assert.rejects(save(db,0),/permission/);await assert.rejects(db.query('select * from photo_case_classifications'),/permission/);await db.exec('reset role');}}finally{await db.close();}
 });
+
+test('kitchen refrigerator cabinets merge into the main sink without duplicating prices or changing standalone cabinets',async()=>{
+ const {mergeKitchenTargets}=await import('../lib/photoHierarchy.mjs');
+ const sink={...target(),part:'싱크대',kind:'일반 싱크대',components:['상부장','하부장'],price:500000};
+ const cabinet={...target(),id:other,part:'냉장고장',kind:'냉장고장',components:['측판'],price:null};
+ const island={...target(),id:photo,part:'싱크대',kind:'아일랜드',price:null};
+ const result=mergeKitchenTargets([island,sink,cabinet]);
+ assert.equal(result.length,2);assert.equal(result[0].kind,'아일랜드');
+ assert.equal(result[1].kind,'냉장고장 결합형 싱크대');assert.equal(result[1].price,500000);
+ assert.ok(result[1].components.includes('냉장고장'));
+ assert.deepEqual(mergeKitchenTargets([cabinet]),[cabinet]);
+ assert.throws(()=>mergeKitchenTargets([sink,{...cabinet,price:200000}]),/별도 가격/);
+});

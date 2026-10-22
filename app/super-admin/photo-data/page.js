@@ -77,7 +77,7 @@ export default function PhotoData(){
  return <main className={styles.page}>
   <Link href="/super-admin">‹ 슈퍼관리자</Link>
   <header className={styles.header}><div><p className={styles.eyebrow}>사진 견적 · 데이터 관리</p><h1>사진 분류·가격 관리</h1><p>공간 → 시공 대상 → 세부 종류 → 모양·구조 → 파손 정도 → 구성 부위</p></div><span className={styles.badge}>6단계 분류</span></header>
-  <p className={styles.notice}>기본 목록에는 미분류 사진만 표시합니다. 분류를 저장한 사진은 목록에서 빠지며, ‘검토 대기’ 또는 ‘검토 완료’에서 다시 확인할 수 있습니다. 기존 시공 데이터 사진을 개별 검토합니다. 현장 묶기·전후 짝 맞추기는 필수가 아닙니다. 가격은 사진 속 대상별로 입력하며 AI가 가격을 임의로 채우지 않습니다.</p>
+  <p className={styles.notice}>기본 목록에는 미분류 사진만 표시합니다. 분류를 저장한 사진은 목록에서 빠지며, ‘검토 대기’ 또는 ‘검토 완료’에서 다시 확인할 수 있습니다. 싱크대와 함께 있는 냉장고장은 싱크대의 구성 부위에 포함합니다. 냉장고장만 별도로 등록할 때는 독립 대상으로 입력합니다. 기존 시공 데이터 사진을 개별 검토합니다. 현장 묶기·전후 짝 맞추기는 필수가 아닙니다. 가격은 사진 속 대상별로 입력하며 AI가 가격을 임의로 채우지 않습니다.</p>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.message}>{message}</p>}
   {setup&&<section className={styles.notice}><h2>데이터 관리 설정이 필요합니다</h2><p>아래 SQL을 Supabase SQL 편집기에 실행한 뒤 다시 불러오세요. 기존 사진·가격을 삭제하지 않습니다.</p><a href={SQL_URL} target="_blank" rel="noreferrer">설정 SQL 열기</a><button type="button" onClick={()=>setRefresh(n=>n+1)}>설정 후 다시 불러오기</button></section>}
   {allowed&&<>

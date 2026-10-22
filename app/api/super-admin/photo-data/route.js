@@ -55,7 +55,7 @@ async function propose(db,photo) {
 4 shapes는 모양·배치·표면구조·개폐방식의 짧은 한국어 태그 배열.
 5 damage: ${JSON.stringify(DAMAGES)} 중 하나. 사진에서 보이지 않으면 확인 필요, 손상이 눈에 띄지 않으면 파손 미관찰. '파손 없음(관리자 확인)'은 사용하지 말것. 시공 후 사진에서 시공 전 파손을 추측하지 말것.
 6 components는 보이는 구성부위의 한국어 배열. 문과 문틀이 함께 보이면 문·문틀 세트로 묶고 문짝·문틀을 별도 중복 등록하지 말것. 격자살 등 추가특징은 허용.
-싱크대와 냉장고장은 별개 대상. 냉장고장과 붙박이장을 구분. 금액은 추정하거나 기존가격을 여러 대상에 배분하지 말것. 크기·수량·시공범위를 창작하지 말것. 공간과 방화 성능 등은 불확실하면 확인 필요로 기록. 주거 엘리베이터를 무조건 상업공간으로 판단하지 말것.
+싱크대와 함께 보이는 냉장고장은 주 싱크대의 구성 부위로 포함하고 하나의 대상으로 기록한다. 이 경우 kind는 냉장고장 결합형 싱크대, components에 냉장고장을 포함한다. 냉장고장을 별도 대상으로 중복 등록하지 않는다. 싱크대 없이 냉장고장만 촬영한 사례는 냉장고장 독립 대상으로 유지한다. 냉장고장과 붙박이장을 구분. 금액은 추정하거나 기존가격을 여러 대상에 배분하지 말것. 크기·수량·시공범위를 창작하지 말것. 공간과 방화 성능 등은 불확실하면 확인 필요로 기록. 주거 엘리베이터를 무조건 상업공간으로 판단하지 말것.
 현재 사진 상태: ${STAGES[photo.photo_stage]||'미확인'}. 이는 촬영상태이며 보수 전 상태의 증거가 아니다.
 JSON만 반환: {"targets":[{"space":"주거공간","part":"문","kind":"방문","shapes":["평판형","여닫이"],"damage":"파손 미관찰","components":["문·문틀 세트"],"notes":"판단 이유와 미확인 사항"}]} 최대 20대상.`;
  const res=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:AbortSignal.timeout(45000),headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.PHOTO_CLASSIFICATION_MODEL||'gpt-5.6-luna',max_output_tokens:6000,input:[{role:'user',content:[{type:'input_text',text:instruction},{type:'input_image',image_url:signed.url}]}],text:{format:{type:'json_object'}}})});
