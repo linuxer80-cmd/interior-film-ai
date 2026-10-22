@@ -518,10 +518,10 @@ export default function SuperAdminPage() {
               />
 
               <MenuCard
-                href="/super-admin/manual-cases"
+                href="/super-admin/photo-data"
                 kind="home"
-                title="사진 폴더 분류"
-                description="AI 없이 사진 체크 · 분류 · 가격 입력"
+                title="사진 분류·가격 관리"
+                description="기존 사진 재분류 · 6단계 분류 · 대상별 가격 입력"
               />
 
               <MenuCard

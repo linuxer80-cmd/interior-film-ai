@@ -20,6 +20,7 @@ const features = {
   "/api/embedding": "embedding",
   "/api/analyze-work-structure": "structure_analysis",
   "/api/super-admin/reclassify-doors": "structure_analysis",
+  "/api/super-admin/photo-data": "structure_analysis",
 };
 
 const publicPaths = new Set([
@@ -70,6 +71,11 @@ export async function proxy(request) {
 
     // Listing existing cases makes no AI call; route still verifies super-admin access.
     if (path === "/api/super-admin/reclassify-doors" && body && !body.work_id) {
+      return NextResponse.next({ request: { headers } });
+    }
+
+    // Manual classification and price saves do not call AI.
+    if (path === "/api/super-admin/photo-data" && body?.action !== "analyze") {
       return NextResponse.next({ request: { headers } });
     }
 
