@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import {PGlite} from '@electric-sql/pglite';
+const old=fs.readFileSync(new URL('../database/worker_relationships.sql',import.meta.url),'utf8');const start=old.indexOf('create or replace function app_private.capture_worker_assignment_wage()');const functionSql=old.slice(start,old.indexOf('revoke all on function app_private.capture_worker_assignment_wage()',start));
+const patch=fs.readFileSync(new URL('../database/allow_pending_assignment_wage.sql',import.meta.url),'utf8');
+const co='11111111-1111-4111-8111-111111111111',sid='22222222-2222-4222-8222-222222222222',wid='33333333-3333-4333-8333-333333333333',uid='44444444-4444-4444-8444-444444444444';
+test('missing profile/wage allows assignment, valid wage snapshots later, confirmed rates stay unchanged',async()=>{const db=new PGlite();try{
+await db.exec(`create schema app_private;create schema auth;create function auth.uid() returns uuid language sql as $$select null::uuid$$;
+create table profiles(id uuid,company_id uuid,role text,is_active boolean);create table companies(id uuid,is_active boolean);
+create table sites(id uuid,company_id uuid);create table workers(id uuid,company_id uuid,user_id uuid,is_active boolean);
+create table worker_relationships(worker_id uuid,company_id uuid,relationship_type text,ended_at timestamptz);
+create table labor_profiles(user_id uuid,daily_wage numeric);
+create table worker_assignment_wages(company_id uuid,worker_id uuid,site_id uuid,work_date date,daily_wage numeric,primary key(company_id,worker_id,site_id,work_date));
+create table site_daily_assignments(company_id uuid,worker_id uuid,site_id uuid,work_date date);
+insert into sites values('${sid}','${co}');insert into workers values('${wid}','${co}','${uid}',true);insert into worker_relationships values('${wid}','${co}','freelancer',null);`);
+await db.exec(functionSql);await db.exec(`create trigger capture_worker_assignment_wage after insert or update on site_daily_assignments for each row execute function app_private.capture_worker_assignment_wage();`);
+const save=()=>db.exec(`insert into site_daily_assignments values('${co}','${wid}','${sid}','2026-10-23')`);
+await assert.rejects(save,/등록 일당/);await db.exec(patch);await db.exec(patch);await save();assert.equal((await db.query('select * from site_daily_assignments')).rows.length,1);assert.equal((await db.query('select * from worker_assignment_wages')).rows.length,0);
+await db.exec(`insert into labor_profiles values('${uid}',0)`);await save();assert.equal((await db.query('select * from worker_assignment_wages')).rows.length,0);
+await db.exec('update labor_profiles set daily_wage=250000');await save();assert.equal(Number((await db.query('select daily_wage from worker_assignment_wages')).rows[0].daily_wage),250000);
+await db.exec('update labor_profiles set daily_wage=300000');await save();assert.equal(Number((await db.query('select daily_wage from worker_assignment_wages')).rows[0].daily_wage),250000);
+await db.exec(`create or replace function auth.uid() returns uuid language sql as $$select '${uid}'::uuid$$`);await assert.rejects(save,/업체 관리자/);
+}finally{await db.close();}});

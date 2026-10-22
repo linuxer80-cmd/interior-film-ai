@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {usePathname,useRouter} from "next/navigation";
+import {supabase} from "../../lib/supabase";
 import {workerProfileRequirements} from "../utils/workerProfileRequirements";
 
 export default function WorkerProfileReminder(){
@@ -20,9 +21,16 @@ export default function WorkerProfileReminder(){
    }catch{ /* A profile-check outage must not block assigned sites. */ }
   }
   check();
+  let authTimer;
+  const {data:authListener}=supabase.auth.onAuthStateChange((event)=>{
+   if(event==="SIGNED_OUT"){dismissed.current=false;setMissing([]);}
+   if(event==="SIGNED_IN"){
+    clearTimeout(authTimer);authTimer=setTimeout(()=>{if(active)check();},0);
+   }
+  });
   const refresh=()=>{if(document.visibilityState==="visible")check();};
   window.addEventListener("focus",refresh);
-  return()=>{active=false;window.removeEventListener("focus",refresh);};
+  return()=>{active=false;clearTimeout(authTimer);authListener.subscription.unsubscribe();window.removeEventListener("focus",refresh);};
  },[pathname,excluded]);
  useEffect(()=>{
   const element=dialog.current;
