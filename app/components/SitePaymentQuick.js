@@ -51,12 +51,13 @@ export function fullPaymentRequest(site, paidOn) {
   if (!site || site.status === "cancelled" || !(Number(site.contract_amount) > 0)) return null;
   const remaining = Number(site.outstanding);
   if (site.confirmed && (!Number.isFinite(remaining) || remaining <= 0)) return null;
-  if (site.status === "completed") {
-    return { action: "settle", values: { contractAmount: site.contract_amount } };
-  }
+  if (!site.confirmed) return { action: "initialize", values: {
+    amount: String(site.contract_amount), paidOn,
+    direction: "payment", phase: "balance", method: "other",
+    memo: "전액 입금 · 기존 누적 입금액 확인",
+  } };
   // Ongoing work can be paid in full without marking the construction complete.
   // Reuse the existing revision-checked, idempotent payment ledger operation.
-  if (!site.confirmed) return null;
   return { action: "add", values: {
     amount: String(remaining), paidOn, direction: "payment", phase: "balance",
     method: "other", memo: "미수금 전액 입금",
@@ -82,6 +83,7 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
   const [profitOpen,setProfitOpen] = useState(false);
   const [loadAttempt,setLoadAttempt] = useState(0);
 
+  const paymentForm = useRef(null);
   const pending = useRef(null);
   const lock = useRef(false);
   const alive = useRef(false);
@@ -167,6 +169,10 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
     }
   }
 
+  useEffect(() => {
+    if (form) paymentForm.current?.scrollIntoView({block:"start",behavior:"smooth"});
+  }, [form,review]);
+
   const disabled = busy || retry;
   const fullPayment = fullPaymentRequest(site, koreanDay());
   const next = paymentState(site,koreanDay());
@@ -189,37 +195,33 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
             <p>입금 예정일 · {site.due_date || "미정"}</p>
             <p className="hint">등록된 기준금액입니다. 부가세 포함·제외 기준을 확인해주세요.</p>
           </div>
-          <div className="next-task"><h4>다음 할 일</h4><p>{next.text}</p>
+          <div className="next-task"><h4>다음 할 일</h4><p>{form === "full" ? "아래 자동 입력된 전액과 거래일을 확인하고 저장해주세요." : next.text}</p>
             <button type="button" disabled={disabled || site.status === "cancelled"} aria-expanded={dueEditing} onClick={()=>setDueEditing(!dueEditing)}>입금 예정일 변경</button>
             {dueEditing && <div><label>입금 예정일<input type="date" value={due} disabled={disabled} onChange={event=>setDue(event.target.value)} /></label><button type="button" disabled={disabled} onClick={()=>save("due",{dueDate:due})}>예정일 저장</button><button type="button" disabled={disabled} onClick={()=>{setDue(site.due_date||"");setDueEditing(false);}}>취소</button></div>}
           </div>
 
-          {!site.confirmed && (
+          {!site.confirmed && form !== "full" && (
             <p>
               기존 입금액이 미확인입니다.
               일부 입금을 기록하려면 기존에 받은 총액부터 확인해주세요.
             </p>
           )}
 
-          {!site.confirmed && site.status !== "completed" && site.status !== "cancelled" && (
-            <p>전액입금 처리 전 ‘기존 입금액 확인’에서 지금까지 받은 금액을 입력해주세요. 받은 금액이 없으면 0원을 입력하세요.</p>
-          )}
+          {!site.confirmed && form !== "full" && fullPayment && <p>전액을 받았다면 ‘전액 입금 등록’으로 기준금액 전체를 한 번에 확인할 수 있습니다.</p>}
           {site.contract_amount == null ? <p>계약금액을 입력하거나 완료보고서 검수를 승인하면 기준금액이 반영됩니다.</p> : Number(site.contract_amount) === 0 ? <p>확정 금액이 0원입니다. 별도 입금은 필요하지 않으며 기존 입금액은 확인해주세요.</p> : null}
           <div className="buttons">
             <button disabled={disabled || site.status === "cancelled" || (site.confirmed && !(Number(site.outstanding)>0))} onClick={() => {
               setForm(site.confirmed ? "payment" : "initial"); setAmount(""); setMemo("");setVoidEntry(null);setPaidOn(koreanDay()); setReview(false); setSuccess("");
             }}>{site.confirmed ? "입금 등록" : "기존 입금액 확인"}</button>
             <button disabled={disabled || !fullPayment} onClick={() => {
-              if (site.confirmed) {
-                setForm("payment"); setAmount(String(site.outstanding));setMemo("");setVoidEntry(null); setPaidOn(koreanDay()); setPhaseLabel("잔금"); setReview(true); setSuccess("");
-              } else if (confirm(`기준금액 ${paymentWon(site.contract_amount)} 전액을 받았나요? 누적 입금액을 이 금액으로 기록합니다.`)) {
-                save(fullPayment.action, fullPayment.values);
-              }
-            }}>{site.confirmed && Number(site.outstanding) === 0 ? "입금 완료" : "남은 금액 전액 등록"}</button>
+              setForm("full"); setAmount(fullPayment.values.amount); setMemo("");
+              setVoidEntry(null); setPaidOn(koreanDay()); setPhaseLabel("잔금");
+              setReview(true); setSuccess(""); setError("");
+            }}>{site.confirmed && Number(site.outstanding) === 0 ? "입금 완료" : site.confirmed ? "남은 금액 전액 등록" : "전액 입금 등록"}</button>
           </div>
 
           {form && (
-            <form
+            <form ref={paymentForm} style={{scrollMarginTop:12}}
               onSubmit={event => {
                 event.preventDefault();
 
@@ -235,6 +237,15 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
                 if (form === "payment" && site.outstanding != null && Number(amount)>Number(site.outstanding)) {setError("남은 수금액보다 큰 금액입니다. 계약금액과 입금 내역을 확인해주세요.");return;}
 
                 if (!review) { setReview(true); return; }
+                if (form === "full") {
+                  const request = fullPaymentRequest(site, paidOn);
+                  if (!request || String(request.values.amount) !== amount) {
+                    setError("기준금액이나 미수금이 변경됐습니다. 전액 입금을 다시 선택해주세요.");
+                    return;
+                  }
+                  save(request.action, request.values);
+                  return;
+                }
                 save(form === "initial" ? "initialize" : "add", {
                   amount,
                   paidOn,
@@ -245,9 +256,9 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
                 });
               }}
             >
-              <h4>{form === "initial" ? "기존 입금액 확인" : form === "refund" ? "환불 기록" : "입금 등록"}</h4>
+              <h4>{form === "full" ? "전액 입금 확인" : form === "initial" ? "기존 입금액 확인" : form === "refund" ? "환불 기록" : "입금 등록"}</h4>
               <label>
-                {form === "initial"
+                {form === "full" ? "전액 입금액 (자동 입력)" : form === "initial"
                   ? "지금까지 받은 총액 (없으면 0)"
                   : form === "refund"
                     ? "이번 환불액"
@@ -271,18 +282,18 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
                   type="date"
                   required
                   max={koreanDay()}
-                  min={form === "initial" ? undefined : site.opening_date}
-                  disabled={disabled || review}
+                  min={form === "initial" || (form === "full" && !site.confirmed) ? undefined : site.opening_date}
+                  disabled={disabled || (review && form !== "full")}
                   value={paidOn}
                   onChange={event => setPaidOn(event.target.value)}
                 />
               </label>
 
               {form === "payment" && <label>입금 구분<select disabled={disabled || review} value={phaseLabel} onChange={e => setPhaseLabel(e.target.value)}><option>계약금</option><option>중도금</option><option>잔금</option></select></label>}
-              <label>메모 · 선택<input type="text" value={memo} maxLength={500} disabled={disabled || review} onChange={event=>setMemo(event.target.value)} placeholder="예: 고객명·추가 입금 내용" /></label>
-              {review && <div className="confirmation" role="status"><b>{paymentWon(amount)} · {paidOn}</b><p>{form === "refund" ? "실제로 돌려준 금액을 기록합니다." : form === "initial" ? "기존에 받은 누적 금액으로 기록합니다." : `${phaseLabel}으로 기록합니다.`}</p>{site.contract_amount != null && <p>등록 후 남은 금액 · {paymentWon(Number(site.contract_amount) - (form === "initial" ? Number(amount) : Number(site.paid) + (form === "refund" ? -Number(amount) : Number(amount))))}</p>}</div>}
+              {form !== "full" && <label>메모 · 선택<input type="text" value={memo} maxLength={500} disabled={disabled || review} onChange={event=>setMemo(event.target.value)} placeholder="예: 고객명·추가 입금 내용" /></label>}
+              {review && <div className="confirmation" role="status"><b>{paymentWon(amount)} · {paidOn}</b><p>{form === "refund" ? "실제로 돌려준 금액을 기록합니다." : form === "full" ? (site.confirmed ? "남은 미수금 전액을 추가 입금으로 기록합니다." : "기준금액 전체를 지금까지 받은 누적 입금액으로 확정합니다. 기존 입금액을 다시 입력할 필요가 없습니다.") : form === "initial" ? "기존에 받은 누적 금액으로 기록합니다." : `${phaseLabel}으로 기록합니다.`}</p>{site.contract_amount != null && <p>등록 후 남은 금액 · {paymentWon(Number(site.contract_amount) - (form === "initial" || (form === "full" && !site.confirmed) ? Number(amount) : Number(site.paid) + (form === "refund" ? -Number(amount) : Number(amount))))}</p>}</div>}
               <button disabled={disabled}>{review ? "확인하고 저장" : "입력 내용 확인"}</button>
-              {review && <button type="button" disabled={disabled} onClick={() => setReview(false)}>다시 수정</button>}
+              {review && form !== "full" && <button type="button" disabled={disabled} onClick={() => setReview(false)}>다시 수정</button>}
               <button
                 type="button"
                 disabled={disabled}

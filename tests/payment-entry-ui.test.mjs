@@ -16,7 +16,7 @@ async function fixture({entries=[],siteValues={},failOnce=false}={}){
  const render=()=>{cursor=0;return exports.default({siteId:'site-1'});};render();mounted=true;effects.forEach(fn=>fn());await new Promise(r=>setImmediate(r));
  return{render,writes,exports,site,draft:()=>draft,button:label=>all(render(),n=>n.type==='button'&&text(n).trim()===label)[0]};
 }
-test('full remaining amount requires review before write and preserves ongoing status',async()=>{const f=await fixture();f.button('남은 금액 전액 등록').props.onClick();assert.equal(f.writes.length,0);f.render();assert.equal(f.draft().dirty,true);assert.ok(text(f.render()).includes('등록 후 남은 금액'));await all(f.render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(f.writes.length,1);assert.equal(f.writes[0].action,'add');assert.equal(f.writes[0].amount,'1000000');assert.equal(f.writes[0].revision,2);assert.equal(f.writes[0].memo,'잔금 입금');assert.equal(f.site.status,'scheduled');});
+test('full remaining amount requires review before write and preserves ongoing status',async()=>{const f=await fixture();f.button('남은 금액 전액 등록').props.onClick();assert.equal(f.writes.length,0);f.render();assert.equal(f.draft().dirty,true);assert.ok(text(f.render()).includes('등록 후 남은 금액'));await all(f.render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(f.writes.length,1);assert.equal(f.writes[0].action,'add');assert.equal(f.writes[0].amount,'1000000');assert.equal(f.writes[0].revision,2);assert.equal(f.writes[0].memo,'미수금 전액 입금');assert.equal(f.site.status,'scheduled');});
 test('partial payment requires a separate confirmation step',async()=>{const f=await fixture();f.button('입금 등록').props.onClick();all(f.render(),n=>n.type==='input'&&n.props.type==='number')[0].props.onChange({target:{value:'200000'}});await all(f.render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});assert.equal(f.writes.length,0);assert.ok(f.button('확인하고 저장'));await all(f.render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(f.writes.length,1);assert.equal(f.writes[0].amount,'200000');});
 
 test('record cancellation requires an inline reason and never changes the construction status',async()=>{
@@ -40,4 +40,22 @@ test('payment review rejects excessive amounts and invalid dates before any writ
  assert.match(text(f.render()),/남은 수금액보다/);assert.equal(f.writes.length,0);
  amount().props.onChange({target:{value:'100000'}});all(f.render(),n=>n.type==='input'&&n.props.type==='date')[0].props.onChange({target:{value:'2026-02-30'}});
  all(f.render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});assert.match(text(f.render()),/실제 거래일/);assert.equal(f.writes.length,0);
+});
+
+for (const status of ['completed','scheduled']) {
+ test(`full payment initializes the cumulative amount once without asking for an opening amount (${status})`,async()=>{
+  const f=await fixture({siteValues:{status,confirmed:false,contract_amount:462000,paid:null,outstanding:null,opening_date:null}});
+  const full=f.button('전액 입금 등록');assert.equal(full.props.disabled,false);full.props.onClick();
+  assert.equal(f.writes.length,0);
+  const tree=f.render();assert.match(text(tree),/전액 입금 확인/);assert.match(text(tree),/기존 입금액을 다시 입력할 필요가 없습니다/);
+  const amount=all(tree,n=>n.type==='input'&&n.props.type==='number')[0];assert.equal(amount.props.value,'462000');assert.equal(amount.props.disabled,true);
+  const submit=all(tree,n=>n.type==='form')[0].props.onSubmit;
+  submit({preventDefault(){}});submit({preventDefault(){}});await new Promise(r=>setImmediate(r));
+  assert.equal(f.writes.length,1);assert.equal(f.writes[0].action,'initialize');assert.equal(f.writes[0].amount,'462000');assert.equal(f.writes[0].paidOn,'2026-10-21');assert.equal(f.writes[0].revision,2);
+  assert.equal(f.site.status,status);
+ });
+}
+test('closing a full payment review does not record an actual payment',async()=>{
+ const f=await fixture({siteValues:{status:'completed',confirmed:false,paid:null,outstanding:null}});
+ f.button('전액 입금 등록').props.onClick();f.button('닫기').props.onClick();assert.equal(f.writes.length,0);assert.equal(all(f.render(),n=>n.type==='form').length,0);
 });
