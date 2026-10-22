@@ -38,7 +38,7 @@ function TargetEditor({target:t,onChange,onRemove,index,legacyPrice}){
  </article>;
 }
 export default function PhotoData(){
- const [allowed,setAllowed]=useState(false),[companies,setCompanies]=useState([]),[company,setCompany]=useState(''),[status,setStatus]=useState('all'),[part,setPart]=useState(''),[page,setPage]=useState(1),[data,setData]=useState(null),[loading,setLoading]=useState(false),[refresh,setRefresh]=useState(0),[error,setError]=useState(''),[setup,setSetup]=useState(false),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState(null),[draft,setDraft]=useState(null);
+ const [allowed,setAllowed]=useState(false),[companies,setCompanies]=useState([]),[company,setCompany]=useState(''),[status,setStatus]=useState('unclassified'),[part,setPart]=useState(''),[page,setPage]=useState(1),[data,setData]=useState(null),[loading,setLoading]=useState(false),[refresh,setRefresh]=useState(0),[error,setError]=useState(''),[setup,setSetup]=useState(false),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState(null),[draft,setDraft]=useState(null);
  const baseline=useRef(''),dialog=useRef(null),working=useRef(false),stop=useRef(false),alive=useRef(true);
  const dirty=!!draft&&JSON.stringify(draft)!==baseline.current;
  useEffect(()=>{alive.current=true;let active=true;(async()=>{try{
@@ -47,7 +47,7 @@ export default function PhotoData(){
   const {data:c,error:ce}=await supabase.rpc('super_admin_get_companies');if(ce)throw ce;if(active){setCompanies(c||[]);setAllowed(true);}
  }catch(e){if(active)setError(e.message);}})();return()=>{active=false;alive.current=false;stop.current=true;};},[]);
  useEffect(()=>{if(!allowed)return;const controller=new AbortController();let current=true;setLoading(true);setError('');
- api({company,status,part,page:String(page)},null,controller.signal).then(v=>{if(current){setData(v);setSetup(false);}}).catch(e=>{if(current&&e.name!=='AbortError'){setError(e.message);setSetup(!!e.setup);setData(null);}}).finally(()=>{if(current)setLoading(false);});
+ api({company,status,part,page:String(page)},null,controller.signal).then(v=>{if(current){setData(v);setSetup(false);const lastPage=Math.max(1,Math.ceil(v.count/12));if(page>lastPage)setPage(lastPage);}}).catch(e=>{if(current&&e.name!=='AbortError'){setError(e.message);setSetup(!!e.setup);setData(null);}}).finally(()=>{if(current)setLoading(false);});
  return()=>{current=false;controller.abort();};},[allowed,company,status,part,page,refresh]);
  useEffect(()=>{const d=dialog.current;if(draft&&!d?.open)d?.showModal();if(!draft&&d?.open)d.close();},[draft]);
  useEffect(()=>{if(!dirty&&!busy)return;const warn=e=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty,busy]);
@@ -57,7 +57,7 @@ export default function PhotoData(){
   if(working.current)return;let targets;try{targets=validateTargets(draft.targets.map(t=>({...t,shapes:(t.shapesInput??t.shapes.join(',')).split(',').map(x=>x.trim()).filter(Boolean),components:(t.componentsInput??t.components.join(',')).split(',').map(x=>x.trim()).filter(Boolean)})),{reviewed:nextStatus==='reviewed'});}catch(e){setError(e.message);return;}
   working.current=true;setBusy(true);setError('');
   try{const {saved}=await api(null,{action:'save',photoId:selected.id,revision:selected.revision,...draft,targets,status:nextStatus});if(!alive.current)return;
-   const next={photoStage:saved.photo_stage,targets:saved.targets};baseline.current=JSON.stringify(next);setDraft(next);setSelected(p=>({...p,...saved,id:p.id,review_status:saved.review_status}));setRefresh(n=>n+1);setMessage(nextStatus==='reviewed'?'분류 검토를 완료했습니다. 입력한 대상별 가격을 저장했습니다.':'저장했습니다. 원본 사진과 기존 시공가격은 유지됩니다.');
+   const next={photoStage:saved.photo_stage,targets:saved.targets};baseline.current=JSON.stringify(next);if(status==='unclassified'){setDraft(null);setSelected(null);}else{setDraft(next);setSelected(p=>({...p,...saved,id:p.id,review_status:saved.review_status}));}setRefresh(n=>n+1);setMessage(nextStatus==='reviewed'?'분류 검토를 완료했습니다. 입력한 대상별 가격을 저장했습니다.':'저장했습니다. 원본 사진과 기존 시공가격은 유지됩니다.');
   }catch(e){if(alive.current){setError(e.message);setSetup(!!e.setup);}}finally{working.current=false;if(alive.current)setBusy(false);}
  }
  async function analyzePhotos(mode,photo){
@@ -77,7 +77,7 @@ export default function PhotoData(){
  return <main className={styles.page}>
   <Link href="/super-admin">‹ 슈퍼관리자</Link>
   <header className={styles.header}><div><p className={styles.eyebrow}>사진 견적 · 데이터 관리</p><h1>사진 분류·가격 관리</h1><p>공간 → 시공 대상 → 세부 종류 → 모양·구조 → 파손 정도 → 구성 부위</p></div><span className={styles.badge}>6단계 분류</span></header>
-  <p className={styles.notice}>기존 시공 데이터 사진을 개별 검토합니다. 현장 묶기·전후 짝 맞추기는 필수가 아닙니다. 가격은 사진 속 대상별로 입력하며 AI가 가격을 임의로 채우지 않습니다.</p>
+  <p className={styles.notice}>기본 목록에는 미분류 사진만 표시합니다. 분류를 저장한 사진은 목록에서 빠지며, ‘검토 대기’ 또는 ‘검토 완료’에서 다시 확인할 수 있습니다. 기존 시공 데이터 사진을 개별 검토합니다. 현장 묶기·전후 짝 맞추기는 필수가 아닙니다. 가격은 사진 속 대상별로 입력하며 AI가 가격을 임의로 채우지 않습니다.</p>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.message}>{message}</p>}
   {setup&&<section className={styles.notice}><h2>데이터 관리 설정이 필요합니다</h2><p>아래 SQL을 Supabase SQL 편집기에 실행한 뒤 다시 불러오세요. 기존 사진·가격을 삭제하지 않습니다.</p><a href={SQL_URL} target="_blank" rel="noreferrer">설정 SQL 열기</a><button type="button" onClick={()=>setRefresh(n=>n+1)}>설정 후 다시 불러오기</button></section>}
   {allowed&&<>
@@ -92,7 +92,7 @@ export default function PhotoData(){
    {loading?<p role="status">사진 목록을 불러오는 중…</p>:<><div className={styles.grid}>{(data?.photos||[]).map(p=><article key={p.id} className={styles.card}>
     <button className={styles.imageButton} onClick={()=>openPhoto(p)} disabled={busy}>{p.url?<img src={p.url} alt={p.sub_category||p.category||'등록된 시공 사진'} loading="lazy"/>:<span>사진을 불러올 수 없습니다. 분류 정보는 열 수 있습니다.</span>}</button>
     <div className={styles.cardBody}><div className={styles.row}><span className={styles.badge}>{STATUS[p.review_status]}</span><span>{STAGES[p.photo_stage]}</span></div><h2>{p.category||'분류 미입력'}</h2><p>{p.targets.length? p.targets.map(t=>`${t.part} · ${won(t.price)}`).join(' / '):'6단계 분류를 시작해주세요.'}</p><small>기존 사례 가격 {won(p.legacy_price)} · 대상 연결 확인 필요</small><div className={styles.row}><button disabled={busy} onClick={()=>openPhoto(p)}>분류·가격 입력</button>{p.review_status==='unclassified'&&<button disabled={busy||!p.url} onClick={()=>analyzePhotos('one',p)}>AI 분류 제안</button>}</div></div>
-   </article>)}</div>{data&&!data.photos.length&&<p>해당 조건의 사진이 없습니다.</p>}</>}
+   </article>)}</div>{data&&!data.photos.length&&<p>{status==='unclassified'?'미분류 사진이 없습니다. 저장된 분류는 검토 대기·검토 완료에서 확인해주세요.':'해당 조건의 사진이 없습니다.'}</p>}</>}
    <nav className={styles.pagination} aria-label="사진 목록 페이지"><button disabled={busy||loading||page===1} onClick={()=>setPage(n=>n-1)}>이전</button><span>{page} / {Math.max(1,Math.ceil((data?.count||0)/12))} · {data?.count||0}장</span><button disabled={busy||loading||page*12>=(data?.count||0)} onClick={()=>setPage(n=>n+1)}>다음</button></nav>
   </>}
   <dialog ref={dialog} className={styles.dialog} onCancel={e=>{e.preventDefault();close();}} aria-label="사진 분류·가격 편집">
