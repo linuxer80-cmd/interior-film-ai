@@ -21,6 +21,7 @@ const features = {
   "/api/analyze-work-structure": "structure_analysis",
   "/api/super-admin/reclassify-doors": "structure_analysis",
   "/api/super-admin/photo-data": "structure_analysis",
+  "/api/admin/photo-data": "structure_analysis",
 };
 
 const publicPaths = new Set([
@@ -75,7 +76,7 @@ export async function proxy(request) {
     }
 
     // Manual classification and price saves do not call AI.
-    if (path === "/api/super-admin/photo-data" && body?.action !== "analyze") {
+    if (["/api/super-admin/photo-data", "/api/admin/photo-data"].includes(path) && (isMultipart ? body?.get("action") : body?.action) !== "analyze") {
       return NextResponse.next({ request: { headers } });
     }
 

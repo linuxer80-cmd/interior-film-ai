@@ -36,6 +36,7 @@ import {
 } from "./adminConstants";
 
 export default function AdminPage() {
+  const photoRegistrationRef=useRef({pending:false,busy:false});
   /* =========================================================
      화면 공통 상태
   ========================================================= */
@@ -375,6 +376,11 @@ export default function AdminPage() {
   ========================================================= */
 
   function changeTab(tab) {
+    if(activeTabRef.current==='register'&&tab!=='register'&&photoRegistrationRef.current.pending){
+      if(photoRegistrationRef.current.busy){window.alert('사진 분류·저장 중입니다. 완료 후 이동해주세요.');return;}
+      if(!window.confirm('아직 저장하지 않은 사진이 있습니다. 등록을 중단하고 이동할까요?'))return;
+      photoRegistrationRef.current={pending:false,busy:false};
+    }
     const destination = new URL(window.location.href);
     destination.searchParams.set("tab", tab);
 
@@ -788,6 +794,8 @@ export default function AdminPage() {
 
       {activeTab === "register" && (
         <RegisterTab
+          loadJobs={()=>loadJobs(1,jobSearchApplied)}
+          onPendingChange={(pending,busy)=>{photoRegistrationRef.current={pending,busy};}}
           suggestClassification={registerHook.suggestClassification}
           caseProfile={registerHook.caseProfile}
           setCaseProfile={registerHook.setCaseProfile}

@@ -1,4 +1,5 @@
 "use client";
+import PhotoHierarchyRegister from './PhotoHierarchyRegister';
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mergeProfiles } from "../../lib/caseClassification.mjs";
@@ -21,7 +22,7 @@ function siteHint(photo) {
   return latitude === "" ? date : `${date} · 위치 ${latitude}, ${longitude}`;
 }
 
-export default function QuickRegisterTab({ companyId, loadJobs, superAdmin = false, onPendingChange }) {
+function LegacyQuickRegisterTab({ companyId, loadJobs, superAdmin = false, onPendingChange }) {
   const [photos, setPhotos] = useState([]);
   const [prices, setPrices] = useState({});
   const [siteNames, setSiteNames] = useState({});
@@ -328,3 +329,5 @@ export default function QuickRegisterTab({ companyId, loadJobs, superAdmin = fal
     {message && <p role="status" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message}</p>}
   </section>;
 }
+
+export default function QuickRegisterTab(props){return props.superAdmin?<LegacyQuickRegisterTab {...props}/>:<PhotoHierarchyRegister loadJobs={props.loadJobs} onPendingChange={props.onPendingChange}/>;}

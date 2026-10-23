@@ -1,3 +1,4 @@
+import PhotoHierarchyRegister from './PhotoHierarchyRegister';
 import CaseClassificationFields from "../components/CaseClassificationFields";
 import GuidedForm, {InputStep, InputFinal} from "../components/GuidedForm";
 import ui from "./AdminUi.module.css";
@@ -10,6 +11,7 @@ import {
 } from "./adminStyles";
 
 export default function RegisterTab({
+  loadJobs, onPendingChange,
   caseProfile, setCaseProfile, suggestClassification,
   category,
   setCategory,
@@ -34,159 +36,7 @@ export default function RegisterTab({
 }) {
   return (
     <>
-      <section style={sectionStyle}>
-        <div className={ui.sectionHeading}>
-          <h2>시공 등록</h2>
-          <a className={ui.secondary} href="/admin/bulk-register" data-ui-link="action">시공 데이터 대량 등록</a>
-        </div>
-        <p className={ui.help}>여러 현장 사진을 한꺼번에 올리려면 대량 등록에서 자동 분류 후 가격을 입력하세요.</p>
-        <div className={ui.singleForm}>
-          <h3 className={ui.singleTitle}>시공 1건 등록</h3>
-        </div>
-
-        <GuidedForm titles={["시공 전후 사진", "시공 내용", "금액·메모"]} busy={loading} onSubmit={event=>{event.preventDefault();handleSave();}}><InputStep index={0}>
-        <label style={labelStyle}>
-          시공 전 사진
-        </label>
-
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) =>
-            setBeforeImages(
-              Array.from(
-                event.target.files || []
-              )
-            )
-          }
-          style={{
-            ...inputStyle,
-            marginBottom: "8px",
-          }}
-        />
-
-        <div style={countStyle}>
-          선택 {beforeImages.length}장
-        </div>
-
-        <label style={labelStyle}>
-          시공 후 사진
-        </label>
-
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) =>
-            setAfterImages(
-              Array.from(
-                event.target.files || []
-              )
-            )
-          }
-          style={{
-            ...inputStyle,
-            marginBottom: "8px",
-          }}
-        />
-
-        <div style={countStyle}>
-          선택 {afterImages.length}장
-        </div>
-
-        </InputStep><InputStep index={1}><button type="button" disabled={loading} onClick={suggestClassification} style={secondaryButtonStyle}>사진으로 세부 분류 제안</button><CaseClassificationFields value={caseProfile} onChange={value => { setCaseProfile(value); if(value.part !== "확인 필요") setCategory(value.part); }} disabled={loading} /><label style={labelStyle}>
-          시공 부위
-        </label>
-
-        <input
-          value={category}
-          onChange={(event) =>
-            setCategory(event.target.value)
-          }
-          placeholder="예: 문·문틀, 싱크대, 중문"
-          style={{
-            ...inputStyle,
-            marginBottom: "12px",
-          }}
-        />
-
-        <label style={labelStyle}>
-          사용 자재
-        </label>
-
-        <input
-          value={material}
-          onChange={(event) =>
-            setMaterial(event.target.value)
-          }
-          placeholder="예: 현대 L&C GS245"
-          style={{
-            ...inputStyle,
-            marginBottom: "12px",
-          }}
-        />
-
-        </InputStep><InputStep index={2}>
-        <label style={labelStyle}>
-          실제 시공금액
-        </label>
-
-        <input
-          value={actualCost}
-          onChange={(event) =>
-            setActualCost(event.target.value)
-          }
-          inputMode="numeric"
-          placeholder="예: 180000"
-          style={{
-            ...inputStyle,
-            marginBottom: "12px",
-          }}
-        />
-
-        <label style={labelStyle}>
-          메모
-        </label>
-
-        <textarea
-          value={memo}
-          onChange={(event) =>
-            setMemo(event.target.value)
-          }
-          placeholder="특이사항"
-          rows={4}
-          style={{
-            ...inputStyle,
-            resize: "vertical",
-            marginBottom: "14px",
-          }}
-        />
-
-        </InputStep><InputFinal><button
-          type="submit"
-          disabled={loading}
-          style={primaryButtonStyle}
-        >
-          {loading
-            ? "AI 분석 + 저장 중..."
-            : "확인 완료 · 시공사례 저장"}
-        </button></InputFinal></GuidedForm>
-      </section>
-
-      {message && (
-        <pre
-          style={{
-            whiteSpace: "pre-wrap",
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: "12px",
-            padding: "14px",
-          }}
-        >
-          {message}
-        </pre>
-      )}
+      <PhotoHierarchyRegister loadJobs={loadJobs} onPendingChange={onPendingChange} />
 
       <details className={ui.more}>
         <summary>AI 검색 설정</summary>
