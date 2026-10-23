@@ -67,7 +67,7 @@ export default function PhotoData(){
     saved=latest;
    }
    if(!alive.current)return;
-   const next={photoStage:saved.photo_stage,targets:saved.targets};baseline.current=JSON.stringify(next);if(nextStatus==='reviewed'||status==='unclassified'){setDraft(null);setSelected(null);if(nextStatus==='reviewed'){setData(d=>d?{...d,photos:d.photos.filter(p=>p.id!==selected.id)}:d);if(!['unclassified','draft'].includes(status)){setStatus('draft');setPage(1);}}}else{setDraft(next);setSelected(p=>({...p,...saved,id:p.id,review_status:saved.review_status}));}setRefresh(n=>n+1);setMessage(nextStatus==='reviewed'?'검토와 가격 저장을 완료했습니다. 남은 작업 목록에서 계속 진행해주세요.':'저장했습니다. 원본 사진과 기존 시공가격은 유지됩니다.');
+   const next={photoStage:saved.photo_stage,targets:saved.targets};baseline.current=JSON.stringify(next);if(['reviewed','excluded'].includes(nextStatus)||status==='unclassified'){setDraft(null);setSelected(null);if(['reviewed','excluded'].includes(nextStatus)){setData(d=>d?{...d,photos:d.photos.filter(p=>p.id!==selected.id)}:d);if(!['unclassified','draft'].includes(status)){setStatus('draft');setPage(1);}}}else{setDraft(next);setSelected(p=>({...p,...saved,id:p.id,review_status:saved.review_status}));}setRefresh(n=>n+1);setMessage(nextStatus==='reviewed'?'검토와 가격 저장을 완료했습니다. 남은 작업 목록에서 계속 진행해주세요.':nextStatus==='excluded'?'검색 제외로 저장했습니다. 남은 작업 목록에서 계속 진행해주세요.':'저장했습니다. 원본 사진과 기존 시공가격은 유지됩니다.');
   }catch(e){if(alive.current){setError(e.message);setSetup(!!e.setup);}}finally{working.current=false;if(alive.current)setBusy(false);}
  }
  async function analyzePhotos(mode,photo){
