@@ -8,9 +8,11 @@ const STATUS={unclassified:'미분류',draft:'검토 대기',reviewed:'검토 �
 const SQL_URL='https://raw.githubusercontent.com/linuxer80-cmd/interior-film-ai/main/database/photo_hierarchy_management.sql';
 const won=n=>n==null?'미입력':`${Number(n).toLocaleString('ko-KR')}원`;
 async function api(params,body,signal){
+ try{
  const {data:{session}}=await supabase.auth.getSession();if(!session)throw Error('로그인이 필요합니다.');
  const r=await fetch('/api/super-admin/photo-data'+(body?'':`?${new URLSearchParams(params)}`),{method:body?'POST':'GET',cache:'no-store',signal,headers:{Authorization:`Bearer ${session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const v=await r.json();if(!r.ok)throw Object.assign(Error(v.error||'처리하지 못했습니다.'),{setup:v.setupRequired,status:r.status});return v;
+ }catch(e){if(e.name==='AbortError')throw e;if(e instanceof TypeError)throw Object.assign(Error(body?'통신이 끊겨 저장 결과를 확인하지 못했습니다. 입력 내용은 유지됩니다. 연결을 확인한 뒤 다시 저장해주세요.':'서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 불러와주세요.'),{network:true});throw e;}
 }
 function TargetEditor({target:t,onChange,onRemove,index,legacyPrice}){
  const patch=p=>onChange({...t,...p});
@@ -54,9 +56,17 @@ export default function PhotoData(){
  function openPhoto(p){setSelected(p);const next={photoStage:p.photo_stage,targets:structuredClone(p.targets||[])};baseline.current=JSON.stringify(next);setDraft(next);setError('');setMessage('');}
  function close(){if(working.current)return;if(dirty&&!window.confirm('저장하지 않은 분류·가격이 있습니다. 변경을 버리고 닫을까요?'))return;setDraft(null);setSelected(null);}
  async function save(nextStatus){
-  if(working.current)return;let targets;try{targets=validateTargets(draft.targets.map(t=>({...t,shapes:(t.shapesInput??t.shapes.join(',')).split(',').map(x=>x.trim()).filter(Boolean),components:(t.componentsInput??t.components.join(',')).split(',').map(x=>x.trim()).filter(Boolean)})),{reviewed:nextStatus==='reviewed'});}catch(e){setError(e.message);return;}
+  if(working.current)return;setMessage('');let targets;try{targets=validateTargets(draft.targets.map(t=>({...t,shapes:(t.shapesInput??t.shapes.join(',')).split(',').map(x=>x.trim()).filter(Boolean),components:(t.componentsInput??t.components.join(',')).split(',').map(x=>x.trim()).filter(Boolean)})),{reviewed:nextStatus==='reviewed'});}catch(e){setError(e.message);return;}
   working.current=true;setBusy(true);setError('');
-  try{const {saved}=await api(null,{action:'save',photoId:selected.id,revision:selected.revision,...draft,targets,status:nextStatus});if(!alive.current)return;
+  try{let saved;
+   try{({saved}=await api(null,{action:'save',photoId:selected.id,revision:selected.revision,...draft,targets,status:nextStatus}));}
+   catch(e){if(!e.network)throw e;
+    // Read back an uncertain write instead of repeating a POST that may have succeeded.
+    let latest;try{latest=(await api({photoId:selected.id})).photo;}catch{throw e;}
+    if(!latest||latest.revision!==selected.revision+1||latest.review_status!==nextStatus||latest.photo_stage!==draft.photoStage||JSON.stringify(validateTargets(latest.targets))!==JSON.stringify(targets))throw e;
+    saved=latest;
+   }
+   if(!alive.current)return;
    const next={photoStage:saved.photo_stage,targets:saved.targets};baseline.current=JSON.stringify(next);if(status==='unclassified'){setDraft(null);setSelected(null);}else{setDraft(next);setSelected(p=>({...p,...saved,id:p.id,review_status:saved.review_status}));}setRefresh(n=>n+1);setMessage(nextStatus==='reviewed'?'분류 검토를 완료했습니다. 입력한 대상별 가격을 저장했습니다.':'저장했습니다. 원본 사진과 기존 시공가격은 유지됩니다.');
   }catch(e){if(alive.current){setError(e.message);setSetup(!!e.setup);}}finally{working.current=false;if(alive.current)setBusy(false);}
  }

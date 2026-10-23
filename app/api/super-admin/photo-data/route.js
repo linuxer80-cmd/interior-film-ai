@@ -35,6 +35,13 @@ async function withUrls(db,rows){
 export async function GET(request){
  try{
   const {db}=await context(request),p=new URL(request.url).searchParams;
+  const photoId=p.get('photoId');
+  if(photoId){
+   if(!uuid(photoId))throw fail('사진 식별자를 확인해주세요.');
+   const {data:photo,error}=await db.from('photo_case_management').select('id,revision,targets,photo_stage,review_status').eq('id',photoId).maybeSingle();check(error);
+   if(!photo)throw fail('사진을 찾을 수 없습니다.',404);
+   return reply({photo});
+  }
   const company=p.get('company')||'',status=p.get('status')||'all',page=Number(p.get('page')||1),part=p.get('part')||'';
   if((company&&!uuid(company))||!['all','unclassified','draft','reviewed','excluded','unpriced'].includes(status)||!Number.isInteger(page)||page<1||page>100000||(part&&!Object.hasOwn(TARGETS,part)))throw fail('조회 조건을 확인해주세요.');
   const base=()=>{let q=db.from('photo_case_management');return q;};

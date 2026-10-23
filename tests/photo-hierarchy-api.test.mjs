@@ -43,3 +43,12 @@ test('quota proxy counts AI analysis only, not manual classification or price sa
   assert.equal(calls,action==='save'?0:1);
  }
 });
+
+test('uncertain save readback requires super-admin access and never repeats a write or AI call',async()=>{
+ const request=()=>new Request(`https://app.test/api/super-admin/photo-data?photoId=${id}`,{headers:{authorization:'Bearer token'}});
+ const f=fixture({revision:1,photo:{review_status:'reviewed'}});
+ const response=await f.GET(request());assert.equal(response.status,200);
+ const body=await response.json();assert.equal(body.photo.id,id);assert.equal(body.photo.revision,1);assert.equal(body.photo.review_status,'reviewed');
+ assert.equal(f.rpc.length,0);assert.equal(f.fetches.length,0);
+ const denied=fixture({admin:false});assert.equal((await denied.GET(request())).status,403);assert.deepEqual(denied.tables,['super_admins']);
+});
