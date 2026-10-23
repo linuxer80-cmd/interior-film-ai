@@ -268,7 +268,7 @@ export default function EstimateResult({
                           "#1d4ed8",
                       }}
                     >
-                      {item.hierarchy_matched ? `분류 일치도 ${item.classification_similarity}% · ${item.hierarchy_level}단계` : "구조·범위 비교 완료"}
+                      {bestMatch.hierarchy_matched ? `분류 일치도 ${bestMatch.classification_similarity}% · ${bestMatch.hierarchy_level}단계` : "구조·범위 비교 완료"}
                     </div>
                   </div>
 
