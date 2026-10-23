@@ -42,10 +42,9 @@ export default function PhotoHierarchyRegister({loadJobs,onPendingChange}){
   }catch(e){setMessage(`${done}장 완료 후 중단: ${e.message}`);}finally{working.current=false;setBusy(false);}
  }
  return <section className={styles.page}>
-  <h2>시공 데이터 등록 · 6단계 분류</h2>
-  <p className={styles.notice}>사진마다 공간 → 시공 대상 → 세부 종류 → 모양·구조 → 파손 정도 → 구성 부위를 등록합니다. 한 사진의 여러 대상에는 가격을 각각 입력합니다. 싱크대와 함께 있는 냉장고장은 싱크대에 포함합니다.</p>
+  <h2>시공 데이터 등록</h2>
   <label>사진 추가 · 최대 100장<input type="file" accept="image/*" multiple disabled={busy} onChange={choose}/></label>
-  <p className={styles.hint}>시공 전·후 어느 사진이든 등록할 수 있습니다. 사진별 저장이 끝나면 작업 목록에서 빠집니다. 가격은 미입력으로 저장할 수 있으며, AI는 가격을 추정하지 않습니다.</p>
+  <p className={styles.hint}>사진을 추가하고 시공 대상과 가격을 확인해주세요. 가격은 나중에 입력할 수 있습니다.</p>
   {message&&<p role="status" className={styles.notice}>{message}</p>}
   {!!photos.length&&<div className={styles.toolbar}><button disabled={busy} onClick={()=>run('analyze')}>미분류 사진 AI 분류</button><button disabled={busy||photos.some(p=>!p.targets.length)} onClick={()=>run('save')}>전체 검토 완료 · 저장</button><span>남은 사진 {photos.length}장</span></div>}
   <div className={styles.grid}>{photos.map(p=><article key={p.id} className={styles.card}><button disabled={busy} className={styles.imageButton} onClick={()=>setSelected(p.id)}><img src={p.url} alt={p.name}/></button><div className={styles.cardBody}><strong>{p.name}</strong><p>{p.targets.length?`${p.targets.length}개 대상 · 가격 ${p.targets.filter(t=>t.price!=null).length}개 입력`:'미분류'}</p><button disabled={busy} onClick={()=>setSelected(p.id)}>분류·가격 입력</button><button disabled={busy} onClick={()=>remove(p)}>등록 목록에서 제거</button></div></article>)}</div>
