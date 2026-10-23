@@ -816,12 +816,10 @@ export default function CustomerEstimatePage({
           >
             <div className={styles.screenHeader}>
               <h1>
-                {loading ? "AI가 사진을 분석하고 있어요" : "사진 분석을 완료하지 못했어요"}
+                {loading ? "사진을 분석하고 있습니다" : "사진 분석을 완료하지 못했어요"}
               </h1>
 
-              <p>
-                {loading ? "사진에서 시공 부위를 확인하고 기존 시공 데이터와 비교 중입니다." : "아래 안내를 확인한 후 다시 시도해주세요."}
-              </p>
+              {!loading && <p>아래 안내를 확인한 후 다시 시도해주세요.</p>}
             </div>
 
             {loading && <div className={styles.analysisVisual}>
@@ -831,29 +829,8 @@ export default function CustomerEstimatePage({
             </div>
 
             }
-            <div className={styles.analysisList}>
-              <div className={styles.analysisDone}>
-                <span>✓</span>
-                이미지 확인 완료
-              </div>
 
-              <div className={styles.analysisActive}>
-                <span>{loading ? "○" : "!"}</span>
-                {loading ? "시공 부위 분석 중..." : "시공 부위 분석 중단"}
-              </div>
-
-              <div>
-                <span>○</span>
-                유사 시공 데이터 검색
-              </div>
-
-              <div>
-                <span>○</span>
-                예상 견적 계산
-              </div>
-            </div>
-
-            <div className={styles.analysisInfo}>
+            {!loading && <div className={styles.analysisInfo}>
               <span role="status">
                 {message || "사진을 분석하고 있습니다."}
               </span>
@@ -870,20 +847,10 @@ export default function CustomerEstimatePage({
                   사진 확인하고 다시 시도
                 </button>
               )}
-            </div>
+            </div>}
           </section>
         )}
 
-        {screen === SCREEN.ANALYZING && groups.length > 0 && (
-          <section aria-label="완료된 부위별 견적" style={{ padding: 20 }}>
-            <h2>먼저 확인된 견적</h2>
-            <p>나머지 부위를 확인하고 있습니다. 전체 합계는 모두 완료된 뒤 표시됩니다.</p>
-            {groups.map(group => <div key={group.key} style={{ padding: 16, marginBottom: 10, borderRadius: 14, background: "#fff" }}>
-              <strong>{group.subCategory || group.category}</strong>
-              <p>{group.estimate ? `${Number(group.estimate.average).toLocaleString("ko-KR")}원` : "금액 확인 필요"}</p>
-            </div>)}
-          </section>
-        )}
 
         {screen === SCREEN.RESULT && (
           <section className={styles.contentScreen}>

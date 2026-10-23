@@ -15,6 +15,7 @@ test('priced hierarchy and legacy results render the best match and all case bad
  for(const hierarchy of [true,false]){
  const match={work_item_id:'work',actual_cost:250000,visual_rank:1,classification_similarity:80,hierarchy_level:5,...(hierarchy?{hierarchy_matched:true}:{visual_verified:true})};
  const html=renderToStaticMarkup(React.createElement(Component,{imageCount:1,groups:[{key:'shoe',category:'신발장',subCategory:'일반 신발장',photos:[],similarItems:[match],estimate:{min:250000,max:250000,average:250000,count:1}}]}));
+ assert.doesNotMatch(html,/단계|유사사례 선정 이유|분류 특징을 비교/);
  assert.match(html,/250,000/);assert.match(html,hierarchy?/분류 일치도 80%/ : /구조·범위 비교 완료/);
  }
 });

@@ -204,11 +204,6 @@ export default function EstimateResult({
               </div>
 
               {/* ============================= */}
-              {group.hierarchyTarget && <div style={{fontSize:13,lineHeight:1.7,color:'#475569',marginTop:12}}>
-                <div>{group.hierarchyTarget.space} → {group.hierarchyTarget.part} → {group.hierarchyTarget.kind}</div>
-                <div>구조: {group.hierarchyTarget.shapes.join(' · ') || '확인 필요'} / 상태: {group.hierarchyTarget.damage}</div>
-                <div>구성: {group.hierarchyTarget.components.join(' · ') || '확인 필요'}</div>
-              </div>}
               {/* 가장 유사한 실제 시공 견적 */}
               {/* ============================= */}
 
@@ -249,7 +244,7 @@ export default function EstimateResult({
                           "#1d4ed8",
                       }}
                     >
-                      {group.hierarchyTarget ? "분류가 유사한 사례의 등록 금액" : "사진으로 비교한 실제 시공금액"}
+                      {group.hierarchyTarget ? "유사사례 시공금액" : "사진으로 비교한 실제 시공금액"}
                     </div>
 
                     <div
@@ -268,7 +263,7 @@ export default function EstimateResult({
                           "#1d4ed8",
                       }}
                     >
-                      {bestMatch.hierarchy_matched ? `분류 일치도 ${bestMatch.classification_similarity}% · ${bestMatch.hierarchy_level}단계` : "구조·범위 비교 완료"}
+                      {bestMatch.hierarchy_matched ? `분류 일치도 ${bestMatch.classification_similarity}%` : "구조·범위 비교 완료"}
                     </div>
                   </div>
 
@@ -291,19 +286,6 @@ export default function EstimateResult({
                     원
                   </div>
 
-                  <div
-                    style={{
-                      marginTop:
-                        "7px",
-                      fontSize:
-                        "13px",
-                      lineHeight: 1.6,
-                      color:
-                        "#6b7280",
-                    }}
-                  >
-                    {bestMatch.match_reason || "시공 범위와 구조를 비교한 과거 사례의 금액입니다."}
-                  </div>
                 </div>
               )}
 
@@ -547,7 +529,6 @@ export default function EstimateResult({
                           </div>
                         )}
 
-                        {item.hierarchy_matched && <p style={{fontSize:12,color:"#64748b"}}>분류 특징을 비교한 참고 사례입니다. 사진의 시각적 유사도나 견적 정확도 %가 아닙니다.</p>}
                         {/* 전/후 사진 */}
 
                         <div
@@ -570,15 +551,6 @@ export default function EstimateResult({
                           ))}
                         </div>
 
-                        {(item.match_reason || item.differences?.length > 0) && (
-                          <details style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: "10px 12px" }}>
-                            <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#334155" }}>
-                              유사사례 선정 이유 보기
-                            </summary>
-                            {item.match_reason && <p style={{ fontSize: 13, lineHeight: 1.6, color: "#475569", marginBottom: 6 }}>{item.match_reason}</p>}
-                            {!!item.differences?.length && <p style={{ fontSize: 12, lineHeight: 1.6, color: "#64748b", marginBottom: 0 }}>차이점: {item.differences.join(" · ")}</p>}
-                          </details>
-                        )}
                         {/* 실제 금액 / 비교 결과 */}
 
                         <div
@@ -631,7 +603,7 @@ export default function EstimateResult({
                                 "12px",
                             }}
                           >
-                            {item.hierarchy_matched ? `분류 일치도 ${item.classification_similarity}% · ${item.hierarchy_level}단계` : "구조·범위 비교 완료"}
+                            {item.hierarchy_matched ? `분류 일치도 ${item.classification_similarity}%` : "구조·범위 비교 완료"}
                           </div>
                         </div>
                       </div>
