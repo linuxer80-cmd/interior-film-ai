@@ -1,5 +1,7 @@
 "use client";
 
+import { hierarchyGroups } from "../../lib/hierarchyEstimate.mjs";
+
 import { mergeProfiles } from "../../lib/caseClassification.mjs";
 
 import { useRef, useState } from "react";
@@ -575,6 +577,7 @@ export default function useEstimate({
     const form = new FormData();
     form.append("company_slug", normalizedCompanySlug);
     images.forEach((photo) => form.append("images", photo.file));
+    form.append("target_choices", JSON.stringify(images.map(p=>p.targetChoice||"")));
     const response = await fetch("/api/estimate-analyze", { method: "POST", body: form });
     const result = await readJsonSafely(response);
     if (!response.ok || !result?.success || !Array.isArray(result.photos) || result.photos.length !== images.length ||
@@ -583,10 +586,11 @@ export default function useEstimate({
       throw new Error(result?.error || "사진 분석 결과가 불완전합니다.");
     }
     const analyses = new Map(result.photos.map((photo) => [photo.index, photo.analysis]));
-    return mergeDoorViews(images.map((photo, index) => ({ ...photo,
-      analysis: applyEstimateTarget(analyses.get(index), photo.targetChoice),
+    const photos = images.map((photo, index) => ({ ...photo,
+      analysis: analyses.get(index)?.hierarchy_targets ? analyses.get(index) : applyEstimateTarget(analyses.get(index), photo.targetChoice),
       analysisIndex: index, analysisTotal: images.length, analysisRecordId: result.analysis_id || null,
-    })));
+    }));
+    return photos.every(p=>p.analysis.hierarchy_targets) ? photos : mergeDoorViews(photos);
   }
 
   /*
@@ -596,6 +600,7 @@ export default function useEstimate({
    */
 
   async function getSignedImageUrl(item, side) {
+    if (side === "reference" && item.hierarchy_matched && item.referenceUrl) return {url:item.referenceUrl,status:"ready"};
     if (!normalizedCompanySlug) return { url: null, status: "error" };
     const path = item[`${side}_path`];
     if (!item.work_item_id && !path) return { url: null, status: "missing" };
@@ -685,6 +690,7 @@ export default function useEstimate({
     [...group.photos].sort((a, b) => Number(b.analysis?.view_completeness === "full") - Number(a.analysis?.view_completeness === "full")).slice(0, 2).forEach((photo) => form.append("images", photo.file));
     form.append("metadata", JSON.stringify({
       company_slug: normalizedCompanySlug, text: searchText,
+      hierarchy_target_id: group.hierarchyTarget?.id || null,
       case_profile: mergeProfiles(group.photos.map(photo => photo.analysis?.case_profile)),
       category: group.category || null, sub_category: group.subCategory || null,
       construction_scope: group.scope, analysis_id: group.photos[0]?.analysisRecordId || null, photo_indices: group.photos.map((photo) => photo.analysisIndex), match_threshold: MATCH_THRESHOLD, match_count: 50,
@@ -1179,7 +1185,7 @@ export default function useEstimate({
        */
 
       setMessage(
-        `사진 ${images.length}장의 시공 부위와 같은 문 여부를 비교하고 있습니다...`
+        `사진 ${images.length}장의 대상을 6단계로 분류하고 있습니다...`
       );
 
       const analyzedPhotos = await analyzePhotos();
@@ -1195,7 +1201,7 @@ export default function useEstimate({
         "사진별 시공 대상을 확인하고 있습니다..."
       );
 
-      const baseGroups = buildEstimatePhotoGroups(analyzedPhotos);
+      const baseGroups = analyzedPhotos.every(p=>p.analysis.hierarchy_targets) ? hierarchyGroups(analyzedPhotos) : buildEstimatePhotoGroups(analyzedPhotos);
       markStage("grouping");
 
       /*

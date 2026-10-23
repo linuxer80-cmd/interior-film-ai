@@ -1,3 +1,4 @@
+import { searchEstimateHierarchy } from "../../../lib/server/searchEstimateHierarchy";
 import { cachedEmbedding } from "../../../lib/embeddingCache";
 import { NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -796,6 +797,8 @@ export async function POST(
      * =====================================================
      */
 
+    if (body?.hierarchy_target_id) return NextResponse.json(await searchEstimateHierarchy({supabase,company,body}));
+
     const startedAt = Date.now();
     const embedding =
       await cachedEmbedding({ companyId: company.id, model: EMBEDDING_MODEL, text, load: () => createEmbedding(text) });
@@ -1034,7 +1037,7 @@ export async function POST(
           "유사 시공사례 견적 처리 중 오류가 발생했습니다.",
       },
       {
-        status: 500,
+        status: error.status || 500,
       }
     );
   }
