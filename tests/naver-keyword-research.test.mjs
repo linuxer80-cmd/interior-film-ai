@@ -20,6 +20,8 @@ function mock({failure=false,wrong=false,malformed=false}={}){
  const u=new URL(url);calls.push({url,options});assert.equal(options.method,'GET');assert.equal(options.headers['X-Signature'],createHmac('sha256',creds.secretKey).update(`${options.headers['X-Timestamp']}.GET.${u.pathname}`).digest('base64'));
  if(u.pathname==='/keywordstool')return failure?new Response('secret-private-provider-error',{status:403}):Response.json(malformed?{}:{keywordList:[raw]});
  if(u.pathname.startsWith('/ncc/adgroups/'))return Response.json({customerId:wrong?9:1051808,nccAdgroupId:'grp-one',adgroupType:'WEB_SITE',name:'지역 시공'});
+ if(u.pathname==='/ncc/campaigns')return Response.json([{nccCampaignId:'cmp-one',campaignTp:'WEB_SITE'}]);
+ if(u.pathname==='/ncc/adgroups')return Response.json([{customerId:wrong?9:1051808,nccCampaignId:'cmp-one',nccAdgroupId:'grp-one',adgroupType:'WEB_SITE',name:'지역 시공'}]);
  if(u.pathname==='/ncc/keywords')return Response.json([{nccAdgroupId:'grp-one',nccKeywordId:'nkw-one',keyword:'인천필름시공'}]);
  if(u.pathname==='/stats')return Response.json({data:[{id:'nkw-one',impCnt:100,clkCnt:10}]});
  throw Error('unexpected endpoint');
@@ -37,14 +39,13 @@ test('wrong accounts, malformed data and provider errors cannot return fabricate
  await assert.rejects(()=>researchNaverKeywords({...creds,customerId:'9'},{query:'인천필름시공',groupId:'grp-one'},period));
 });
 
-test('market research works without a group and never claims unverified registration or loads group stats',async()=>{
- const calls=[];
- const result=await researchNaverKeywords(creds,{query:'인천인테리어'},period,async(url,options)=>{
-  calls.push({url,options});assert.equal(new URL(url).pathname,'/keywordstool');
-  return Response.json({keywordList:[raw]});
- });
- assert.equal(calls.length,1);assert.equal(result.groupId,null);assert.equal(result.groupName,null);
- assert.equal(result.rows[0].registered,null);assert.equal(result.rows[0].actual,null);assert.equal(result.rows[0].mobileSearches,250);
+test('research without a target group checks registration across the account without loading stats',async()=>{
+ const m=mock();
+ const result=await researchNaverKeywords(creds,{query:'인천인테리어'},period,m.fetcher);
+ assert.equal(result.groupId,null);assert.equal(result.groupName,null);
+ assert.equal(result.rows[0].registered,true);assert.equal(result.rows[0].registeredGroups[0].name,'지역 시공');
+ assert.equal(result.rows[0].actual,null);assert.equal(result.rows[0].mobileSearches,250);
+ assert.ok(m.calls.every(c=>new URL(c.url).pathname!=='/stats'));
 });
 test('optional group still rejects invalid group ids before any provider call',async()=>{
  let calls=0;

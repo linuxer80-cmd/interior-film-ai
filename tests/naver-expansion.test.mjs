@@ -9,6 +9,7 @@ const campaign={nccCampaignId:'cmp-one',customerId:1051808,campaignTp:'WEB_SITE'
 function mock({budget=30000,count=1,wrong=false,failPost=false}={}){
  const calls=[];return {calls,fetcher:async(url,options)=>{const u=new URL(url);calls.push({url,options});
  if(u.pathname==='/ncc/adgroups/grp-one')return Response.json({...group,...(wrong?{customerId:9}:{})});
+ if(u.pathname==='/ncc/adgroups')return Response.json([group]);
  if(u.pathname==='/ncc/campaigns')return Response.json([{...campaign,dailyBudget:budget}]);
  if(options.method==='POST'){
   assert.equal(options.headers['X-Signature'],createHmac('sha256',creds.secretKey).update(`${options.headers['X-Timestamp']}.POST./ncc/keywords`).digest('base64'));
