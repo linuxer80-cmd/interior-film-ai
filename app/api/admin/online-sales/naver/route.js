@@ -1,6 +1,6 @@
 import {marketingAdmin,marketingJson,marketingError,connectionRow,publicConnection,withMarketingLock} from '../../../../../lib/onlineSalesServer';
 import {naverCredentials} from '../../../../../lib/naverAds.mjs';
-import {syncNaver,naverKeywords,naverExpand} from '../../../../../lib/naverSalesServer';
+import {syncNaver,naverKeywords,naverExpand,naverResearch} from '../../../../../lib/naverSalesServer';
 import {MARKETING_COMPANY_ID} from '../../../../../lib/onlineSales.mjs';
 export const runtime='nodejs';
 export const maxDuration=60;
@@ -14,6 +14,7 @@ export async function POST(request){
     if(Number(request.headers.get('content-length'))>16000)return marketingJson({error:'요청이 너무 큽니다.'},413);
     const body=await request.json();
     if(body.action==='connect')return marketingJson(await syncNaver(db,naverCredentials(body)));
+    if(body.action==='relatedKeywords')return marketingJson(await naverResearch(db,body));
     if(body.action==='previewExpansion')return marketingJson(await naverExpand(db,body));
     if(body.action==='addKeywords')return marketingJson(await naverExpand(db,body,true));
     if(body.action==='sync')return marketingJson(await syncNaver(db));
