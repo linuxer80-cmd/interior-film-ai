@@ -11,10 +11,13 @@
     {
       "path": "/api/worker/report-reminders",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/marketing/daily",
+      "schedule": "0 0 * * *"
     }
   ],
   "regions": [
     "hnd1"
   ]
 }
-
