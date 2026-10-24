@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {supabase} from '../../../lib/supabase';
+import NaverExpansion from './NaverExpansion';
 import styles from './sales.module.css';
 const fmt=(v,suffix='')=>v==null?'미제공':`${Number(v).toLocaleString('ko-KR',{maximumFractionDigits:0})}${suffix}`;
 const percent=v=>v==null?'미제공':`${Number(v).toFixed(2)}%`;
@@ -66,6 +67,7 @@ export default function NaverSales(){
         {!rows.length&&<p>조건에 맞는 키워드가 없습니다.</p>}<div className={styles.actions}><button className={styles.secondary} disabled={page===0} onClick={()=>setPage(p=>p-1)}>이전</button><span>{page+1} / {Math.max(1,Math.ceil(rows.length/50))}</span><button className={styles.secondary} disabled={(page+1)*50>=rows.length} onClick={()=>setPage(p=>p+1)}>다음</button></div></>}
       </section>
     </>}
-    <section className={styles.card}><h2>관리 범위</h2><p>현재는 계정 연결, 성과 조회, 키워드 점검을 지원합니다. 입찰가·예산·광고 상태를 자동으로 변경하지 않습니다. 기본 입찰가에는 기기·타겟 가중치가 반영되지 않을 수 있습니다.</p><p>API 키의 권한과 실제 데이터를 확인한 뒤 광고 수정 기능을 추가할 수 있습니다.</p></section>
+    {state.connected&&snapshot&&<NaverExpansion groups={snapshot.groups} api={api}/>}
+    <section className={styles.card}><h2>관리 범위</h2><p>계정 연결, 성과 조회, 키워드 점검과 중복 제외 키워드 추가를 지원합니다. 입찰가·예산·광고 상태를 자동으로 변경하지 않습니다. 기본 입찰가에는 기기·타겟 가중치가 반영되지 않을 수 있습니다.</p><p>신규 키워드는 개별 입찰가 70~300원으로 등록하며, 캠페인 예산 합계가 30,000원을 초과하면 등록을 중단합니다.</p></section>
   </section>;
 }
