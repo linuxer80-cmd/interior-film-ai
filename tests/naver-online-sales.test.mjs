@@ -37,10 +37,10 @@ test('report uses explicit KST range, GET only, and totals never double count gr
   if(u.pathname==='/ncc/campaigns'){assert.equal(u.searchParams.has('selector'),false);return Response.json([campaign]);}
   if(u.pathname==='/ncc/adgroups')return Response.json([group]);
   assert.equal(u.pathname,'/stats');assert.equal(u.searchParams.get('timeIncrement'),'allDays');assert.deepEqual(JSON.parse(u.searchParams.get('timeRange')),{since:period.start,until:period.end});
-  return Response.json({data:[row('cmp-one'),row('grp-one')]});
+  const ids=u.searchParams.get('ids').split(',');assert.equal(new Set(ids.map(id=>id.split('-')[0])).size,1);return Response.json({data:ids.map(row)});
  };
  const result=await loadNaverReport(creds,period,fetcher);
- assert.equal(result.totals.cost,2500);assert.equal(result.groups[0].cost,2500);assert.equal(result.totals.ctr,5);assert.equal(result.totals.cpc,500);assert.equal(urls.length,3);
+ assert.equal(result.totals.cost,2500);assert.equal(result.groups[0].cost,2500);assert.equal(result.totals.ctr,5);assert.equal(result.totals.cpc,500);assert.equal(urls.length,4);
  assert.ok(!JSON.stringify(result).includes(creds.apiKey));
 });
 test('missing stats remain unknown and do not fabricate zero-cost or rank data',async()=>{
