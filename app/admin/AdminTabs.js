@@ -162,7 +162,7 @@ export default function AdminTabs({
             className="film-admin-menu-grid"
             aria-label="관리자 업무 메뉴"
           >
-            {marketingCompany === companyId && companyId && <a href="/admin/online-sales"><ToolIllustration kind="report" size="100%" className="photo-menu-art"/><span><strong>온라인 영업관리</strong><small>기분좋은공간 광고 현황 · 당근 연결</small></span></a>}
+            {marketingCompany === companyId && companyId && <a href="/admin/online-sales"><ToolIllustration kind="report" size="100%" className="photo-menu-art"/><span><strong>온라인 영업관리</strong><small>기분좋은공간 · 네이버·당근 광고</small></span></a>}
             {orderedMenus.map(menu => {
               const content = (
                 <>
