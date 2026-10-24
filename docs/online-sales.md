@@ -13,7 +13,7 @@
 
 ## 네이버 검색광고
 
-- Naver tab supports fixed Customer ID `2149941`. GET-only adapter: official `/ncc/campaigns`, `/ncc/adgroups`, `/ncc/keywords`, `/stats`. No live ad writes, budget changes or assumed rank guarantees.
+- Naver tab supports fixed API Customer ID `1051808` (web advertising account `2149941`). GET-only adapter: official `/ncc/campaigns`, `/ncc/adgroups`, `/ncc/keywords`, `/stats`. No live ad writes, budget changes or assumed rank guarantees.
 - `database/online_sales_naver.sql` extends the existing platform constraint and seeds a separate Naver row, retaining all RLS/grant restrictions. Separate company/platform/account AAD + HKDF context prevents credentials being reused across platforms. Existing Daangn v1 ciphertext remains compatible.
 - Credentials entered in app: Customer ID, access license, secret. HMAC SHA256 signs `timestamp.GET.path` (no query string) and sends X-Timestamp, X-API-KEY, X-Customer, X-Signature. Secrets never returned or logged.
 - Sources checked 2026-10-24: https://ads.naver.com/help/faq/991 ; official spec `https://naver.github.io/searchad-apidoc/assets/json/ncc-heroes-ncc.json` and `ncc-report.json`; official Python signature sample.
@@ -21,3 +21,6 @@
 - Keyword queries are on-demand per group (up to 3,000), grouped base bids displayed including useGroupBidAmt. Filter zero-click impressions; sort click/impression/cost/CPC/rank; page 50 rows. No fabricated default sample data.
 - Existing 09:00 KST cron independently refreshes both platforms; one failure does not suppress the other. Cron runtime 120 seconds. Per-platform DB leases and 60-second cooldown apply; GET connection state does not call provider.
 - Live connection remains pending until the user supplies keys in the password inputs and API validation succeeds. No keys are committed or pasted into chat.
+
+### API identity verification
+On 2026-10-24 the signed-in NAVER API management screen under web account 2149941 explicitly displayed CUSTOMER_ID=1051808. Use the API Customer ID for X-Customer/signature requests; the web account ID is not substituted. Existing API enrollment was present; no keys were regenerated.

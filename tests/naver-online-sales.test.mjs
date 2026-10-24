@@ -4,25 +4,26 @@ import {createHmac,createCipheriv,hkdfSync} from 'node:crypto';
 import {naverCredentials,naverHeaders,loadNaverReport,loadNaverKeywords,statMetrics} from '../lib/naverAds.mjs';
 import {sealKey,openKey} from '../lib/onlineSalesCrypto.mjs';
 import {MARKETING_COMPANY_ID} from '../lib/onlineSales.mjs';
-const creds={customerId:'2149941',apiKey:'test-access-license',secretKey:'test-secret-key'},period={start:'2026-10-17',end:'2026-10-23'};
-const campaign={nccCampaignId:'cmp-one',customerId:2149941,campaignTp:'WEB_SITE',name:'필름쟁이',useDailyBudget:true,dailyBudget:30000};
-const group={nccAdgroupId:'grp-one',nccCampaignId:'cmp-one',customerId:2149941,adgroupType:'WEB_SITE',name:'인천 필름',bidAmt:400};
+const creds={customerId:'1051808',apiKey:'test-access-license',secretKey:'test-secret-key'},period={start:'2026-10-17',end:'2026-10-23'};
+const campaign={nccCampaignId:'cmp-one',customerId:1051808,campaignTp:'WEB_SITE',name:'필름쟁이',useDailyBudget:true,dailyBudget:30000};
+const group={nccAdgroupId:'grp-one',nccCampaignId:'cmp-one',customerId:1051808,adgroupType:'WEB_SITE',name:'인천 필름',bidAmt:400};
 const row=id=>({id,impCnt:100,clkCnt:5,salesAmt:2500,avgRnk:3.2});
 test('Naver credentials fixed account, header injection rejected, HMAC matches official algorithm',()=>{
  assert.deepEqual(naverCredentials(creds),creds);
  assert.throws(()=>naverCredentials({...creds,customerId:'123'}));
+ assert.throws(()=>naverCredentials({...creds,customerId:'2149941'}));
  assert.throws(()=>naverCredentials({...creds,apiKey:'license\r\nx-test:value'}));
  const h=naverHeaders(creds,'/ncc/campaigns','123456789');
  assert.equal(h['X-Signature'],createHmac('sha256',creds.secretKey).update('123456789.GET./ncc/campaigns').digest('base64'));
- assert.equal(h['X-Customer'],'2149941');assert.ok(!Object.values(h).includes(creds.secretKey));
+ assert.equal(h['X-Customer'],'1051808');assert.ok(!Object.values(h).includes(creds.secretKey));
 });
 test('platform-bound ciphertext preserves legacy Daangn and rejects cross-account/platform or tamper',()=>{
  process.env.MARKETING_TOKEN_ENCRYPTION_KEY='test-root-with-at-least-32-characters';
- const encrypted=sealKey(JSON.stringify(creds),'2149941','naver');
- assert.deepEqual(JSON.parse(openKey(encrypted,'2149941','naver')),creds);
- assert.throws(()=>openKey(encrypted,'2149941','daangn'));
+ const encrypted=sealKey(JSON.stringify(creds),'1051808','naver');
+ assert.deepEqual(JSON.parse(openKey(encrypted,'1051808','naver')),creds);
+ assert.throws(()=>openKey(encrypted,'1051808','daangn'));
  assert.throws(()=>openKey(encrypted,'3136168','naver'));
- const parts=encrypted.split('.');const body=Buffer.from(parts[3],'base64url');body[0]^=1;parts[3]=body.toString('base64url');assert.throws(()=>openKey(parts.join('.'),'2149941','naver'));
+ const parts=encrypted.split('.');const body=Buffer.from(parts[3],'base64url');body[0]^=1;parts[3]=body.toString('base64url');assert.throws(()=>openKey(parts.join('.'),'1051808','naver'));
  const iv=Buffer.alloc(12,2),key=Buffer.from(hkdfSync('sha256',process.env.MARKETING_TOKEN_ENCRYPTION_KEY,'filmjang-online-sales-v1','daangn-api-key',32));
  const old=createCipheriv('aes-256-gcm',key,iv);old.setAAD(Buffer.from(`${MARKETING_COMPANY_ID}:daangn:3136168`));
  const oldBody=Buffer.concat([old.update('old-daangn-secret'),old.final()]);
@@ -56,7 +57,7 @@ test('keywords paginate a full 1000-item page, batch 100 ids and reflect group b
   if(u.pathname==='/ncc/adgroups/grp-one')return Response.json(group);
   if(u.pathname==='/ncc/keywords'){
    keywordRequests++;
-   if(keywordRequests===1)return Response.json(Array.from({length:1000},(_,i)=>({nccKeywordId:`kw-${i}`,nccAdgroupId:'grp-one',customerId:2149941,keyword:`인천필름${i}`,useGroupBidAmt:true,bidAmt:70})));
+   if(keywordRequests===1)return Response.json(Array.from({length:1000},(_,i)=>({nccKeywordId:`kw-${i}`,nccAdgroupId:'grp-one',customerId:1051808,keyword:`인천필름${i}`,useGroupBidAmt:true,bidAmt:70})));
    assert.equal(u.searchParams.get('baseSearchId'),'kw-999');assert.equal(u.searchParams.get('selector'),'NEXT');return Response.json([{nccKeywordId:'kw-last',nccAdgroupId:'grp-one',keyword:'부천필름',useGroupBidAmt:false,bidAmt:500}]);
   }
   statRequests++;const ids=u.searchParams.get('ids').split(',');assert.ok(ids.length<=100);return Response.json({data:ids.map(row)});

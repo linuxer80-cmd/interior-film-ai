@@ -36,11 +36,11 @@ export default function NaverSales(){
   return <section aria-label='네이버 광고 관리'>
     <section className={styles.card}>
       <div className={styles.row}><div><span className={styles.naverBadge}>네이버 검색광고</span><h2>{state.connected?'기분좋은공간 파워링크':'네이버 광고계정 연결'}</h2></div><span>{state.connected?'API 연결됨':'연결 전'}</span></div>
-      <p>광고계정 2149941 · 운영 기준 일예산 30,000원</p>
+      <p>광고 화면 계정 2149941 · API 고객번호 1051808 · 운영 기준 일예산 30,000원</p>
       <p>연결된 계정의 파워링크 성과와 등록 키워드를 확인합니다.</p>
       {state.connected&&<><p>마지막 성공 조회: {when(state.lastSyncedAt)}</p><p>매일 오전 9시 자동 조회 · 전일까지 최근 7일 · 한국 시간</p><div className={styles.actions}><button disabled={busy} onClick={()=>act({action:'sync'})}>{busy?'처리 중…':'지금 새로고침'}</button><button className={styles.secondary} disabled={busy} onClick={()=>setSettings(v=>!v)}>{settings?'설정 닫기':'연결 설정'}</button></div></>}
-      {(!state.connected||settings)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();act({action:'connect',customerId:'2149941',apiKey,secretKey});}}>
-        <label>Customer ID<input value='2149941' readOnly/></label>
+      {(!state.connected||settings)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();act({action:'connect',customerId:'1051808',apiKey,secretKey});}}>
+        <label>API Customer ID<input value='1051808' readOnly/></label>
         <label>액세스라이선스<input type='password' autoComplete='off' minLength={8} maxLength={4096} required disabled={busy} value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder='API 사용 관리에서 발급받은 액세스라이선스'/></label>
         <label>비밀키<input type='password' autoComplete='off' minLength={8} maxLength={4096} required disabled={busy} value={secretKey} onChange={e=>setSecretKey(e.target.value)} placeholder='API 사용 관리에서 발급받은 비밀키'/></label>
         <p className={styles.hint}>인증정보는 서버에 암호화해 보관하고 다시 표시하지 않습니다. 실제 조회가 성공한 뒤 연결을 저장합니다. 키를 채팅으로 보내지 마세요.</p>
