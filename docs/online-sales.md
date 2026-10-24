@@ -24,3 +24,6 @@
 
 ### API identity verification
 On 2026-10-24 the signed-in NAVER API management screen under web account 2149941 explicitly displayed CUSTOMER_ID=1051808. Use the API Customer ID for X-Customer/signature requests; the web account ID is not substituted. Existing API enrollment was present; no keys were regenerated.
+
+### Stats entity kinds
+NAVER returns HTTP 400 / code 11001 for mixed campaign/adgroup/keyword IDs in a single /stats request. Batch by entity kind, then by 100 IDs. Official maintainer clarification: https://github.com/naver/searchad-apidoc/issues/996#issuecomment-2415590044 . Verified by a regression test that rejects mixed kinds.
