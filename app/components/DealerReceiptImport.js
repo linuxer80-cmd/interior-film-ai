@@ -823,8 +823,14 @@ export default function DealerReceiptImport({
     try {
       // Validate every row before any inventory write.
       const jobs = pending.flatMap(row=>{
-        try { return buildRowJobs(row); }
-        catch (error) { throw new Error((row.code || "제품번호 미확인") + ": " + error.message); }
+        try {
+          const resolved = suggestReceiptReturn(row, data?.stock?.rolls, data?.purchases, dealerId);
+          return buildRowJobs(resolved);
+        } catch (error) {
+          setActiveRowId(row.id);
+          setEditingRows(true);
+          throw new Error((row.code || "제품번호 미확인") + ": " + error.message);
+        }
       });
       const returned = jobs.filter(job=>job.action==="supplier_return").map(job=>job.rollId);
       if (new Set(returned).size !== returned.length) throw new Error("같은 보관 롤이 여러 반납 품목에 선택되어 있습니다. 수정하기에서 확인해주세요.");
@@ -1246,6 +1252,10 @@ export default function DealerReceiptImport({
                 {row.action ===
                   "supplier_return" && (
                   <>
+                    <p className="notice">
+                      영수증 반납량: {row.totalM !== "" && row.totalM != null ? `${row.totalM}m` : "확인 필요"}
+                      {candidates.length === 1 && ` / 연결 가능한 재고: ${candidates[0].product_code} ${candidates[0].remaining}m`}
+                    </p>
                     <p>
                       같은 대리점·제품·방염
                       구분의 보관 롤을
@@ -1255,10 +1265,8 @@ export default function DealerReceiptImport({
 
                     {!candidates.length && (
                       <p>
-                        일치하는 보관 롤이
-                        없습니다. 대리점,
-                        제품번호와 방염 구분을
-                        확인해주세요.
+                        선택한 거래처의 제품·방염 구분과 일치하는 보관 롤이 없습니다.
+                        거래처와 영수증에 인식된 브랜드·제품번호·방염 구분을 확인해주세요.
                       </p>
                     )}
 
