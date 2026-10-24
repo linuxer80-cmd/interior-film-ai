@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { matchesReceiptReturn as matchesReturn, suggestReceiptReturn } from "../../lib/receiptReturnMatch.mjs";
 import { receiptRollDefaults } from "../../lib/receiptRollDefaults.mjs";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
@@ -47,35 +48,6 @@ function applyCodeType(row, brand = row.brand) {
   };
 }
 
-function matchesReturn(row, roll, purchase, dealerId) {
-  if (
-    roll.status !== "available" ||
-    !purchase ||
-    purchase.dealer_id !== dealerId ||
-    !receiptMatchesProduct(row, roll)
-  ) {
-    return false;
-  }
-
-  const receiptType = resolveFilmType(
-    roll.brand,
-    row.code,
-    row.priceType
-  );
-
-  const stockType = resolveFilmType(
-    roll.brand,
-    roll.product_code,
-    purchase.price_type
-  );
-
-  return (
-    !receiptType.conflict &&
-    !stockType.conflict &&
-    receiptType.resolvedType !== "unknown" &&
-    receiptType.resolvedType === stockType.resolvedType
-  );
-}
 
 async function preparePhoto(file) {
   if (!file || file.size > 20000000) {
@@ -188,6 +160,12 @@ export default function DealerReceiptImport({
   const batchRef = useRef(null);
   const account = useRef("");
   const alive = useRef(false);
+
+  useEffect(() => {
+    if (busy || batch || !data || !dealerId) return;
+    const next = rows.map(row => suggestReceiptReturn(row, data.stock?.rolls, data.purchases, dealerId));
+    if (next.some((row,index) => row !== rows[index])) setRows(next);
+  }, [rows, data, dealerId, busy, batch]);
 
   function persist(value) {
     if (!storageKey.current) {
@@ -741,7 +719,7 @@ export default function DealerReceiptImport({
           rolls.length !== row.rollIds.length
         ) {
           throw new Error(
-            "반납할 보관 롤을 선택해주세요."
+            "수정하기에서 같은 거래처·제품·방염 구분의 반납 롤을 선택해주세요."
           );
         }
 
@@ -956,6 +934,7 @@ export default function DealerReceiptImport({
                   current.map(row => ({
                     ...row,
                     rollIds: [],
+                    returnSelectionTouched: false,
                   }))
                 );
               }}
@@ -987,6 +966,8 @@ export default function DealerReceiptImport({
                   <td style={{padding:"12px 4px",borderBottom:"1px solid #dbe2ea"}}>
                     <strong>{row.product?.brand || row.brand} {row.code}</strong><br/>
                     {typeNames[row.priceType]} · {row.action==="receive"?"입고":row.action==="supplier_return"?"반납":"거래 확인 필요"}
+                    {filmCodeInfo(row.product?.brand || row.brand,row.code).baseCode !== normalizeFilmCode(row.code) && <p>재고 코드 {filmCodeInfo(row.product?.brand || row.brand,row.code).baseCode} · {typeNames[row.priceType]}</p>}
+                    {row.returnAutoMatched && <p>같은 거래처·제품·방염 구분·잔량의 보관 롤을 연결했습니다.</p>}
                     {row.done&&" · 저장 완료"}
                     {row.action==="receive"&&!row.product&&<p className="error">등록 제품 연결 필요</p>}
                     {row.quantityNote&&<p>{row.quantityNote}</p>}
@@ -1305,6 +1286,8 @@ export default function DealerReceiptImport({
                             )}
                             onChange={event =>
                               update(row.id, {
+                                returnSelectionTouched: true,
+                                returnAutoMatched: false,
                                 rollIds: event
                                   .target.checked
                                   ? [
