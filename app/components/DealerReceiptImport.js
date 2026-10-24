@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { matchesReceiptReturn as matchesReturn, suggestReceiptReturn } from "../../lib/receiptReturnMatch.mjs";
+import { matchesReceiptReturn as matchesReturn, suggestReceiptReturn, allocateReceiptReturn } from "../../lib/receiptReturnMatch.mjs";
 import { receiptRollDefaults } from "../../lib/receiptRollDefaults.mjs";
 import { supabase } from "../../lib/supabase";
 import { reportRequest } from "../utils/reportClient";
@@ -739,20 +739,7 @@ export default function DealerReceiptImport({
           );
         }
 
-        const total = rolls.reduce(
-          (sum, roll) =>
-            sum + Number(roll.remaining),
-          0
-        );
-
-        if (
-          !positive(row.totalM) ||
-          !close(total, row.totalM)
-        ) {
-          throw new Error(
-            `선택한 롤 잔량은 ${total}m입니다. 영수증 반납 길이와 일치해야 합니다.`
-          );
-        }
+        const allocations = allocateReceiptReturn(row, rolls);
 
         if (
           row.rollCount !== "" &&
@@ -794,8 +781,10 @@ export default function DealerReceiptImport({
           );
         }
 
-        jobs = rolls.map(roll => ({
+        jobs = allocations.map(({roll,returnLength}) => ({
           action: "supplier_return",
+          dealerId,
+          returnLength,
           requestId: crypto.randomUUID(),
           rollId: roll.id,
           revision: roll.revision,
@@ -973,7 +962,7 @@ export default function DealerReceiptImport({
                     <strong>{row.product?.brand || row.brand} {row.code}</strong><br/>
                     {typeNames[row.priceType]} · {row.action==="receive"?"입고":row.action==="supplier_return"?"반납":"거래 확인 필요"}
                     {filmCodeInfo(row.product?.brand || row.brand,row.code).baseCode !== normalizeFilmCode(row.code) && <p>재고 코드 {filmCodeInfo(row.product?.brand || row.brand,row.code).baseCode} · {typeNames[row.priceType]}</p>}
-                    {row.returnAutoMatched && <p>같은 거래처·제품·방염 구분·잔량의 보관 롤을 연결했습니다.</p>}
+                    {row.returnAutoMatched && <p>같은 거래처·제품·방염 구분의 보관 롤을 연결했습니다. 영수증 수량만 반납합니다.</p>}
                     {row.done&&" · 저장 완료"}
                     {row.action==="receive"&&!row.product&&<p className="error">등록 제품 연결 필요</p>}
                     {row.quantityNote&&<p>{row.quantityNote}</p>}
@@ -985,8 +974,8 @@ export default function DealerReceiptImport({
               </table>
             </div>
             <p>입고 공급가는 영수증 금액이 아닌, 선택한 거래처에 등록된 필름 코드별·방염 구분별 공급가로 저장합니다.</p>
-            <h3>입고 물량이 맞습니까?</h3>
-            <p>반납 품목이 있으면 선택한 보관 롤도 함께 반납 처리합니다.</p>
+            <h3>입고·반납 물량이 맞습니까?</h3>
+            <p>반납 품목은 선택한 창고 롤에서 영수증 수량만큼 차감하고 남은 수량은 보관합니다.</p>
             {error&&<p className="error" role="alert">{error}</p>}
             {message&&<p role="status">{message}</p>}
             <button type="button" disabled={rows.every(row=>row.done)} onClick={saveAllRows}>
@@ -1259,8 +1248,7 @@ export default function DealerReceiptImport({
                     <p>
                       같은 대리점·제품·방염
                       구분의 보관 롤을
-                      선택하세요. 남은 물량
-                      전체를 반납합니다.
+                      선택하세요. 영수증의 반납 길이만큼 창고 잔량에서 차감합니다.
                     </p>
 
                     {!candidates.length && (
