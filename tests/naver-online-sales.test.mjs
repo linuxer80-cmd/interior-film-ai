@@ -34,7 +34,7 @@ test('report uses explicit KST range, GET only, and totals never double count gr
  const urls=[];
  const fetcher=async(url,options)=>{
   const u=new URL(url);urls.push(u);assert.equal(options.method,'GET');assert.equal(options.redirect,'error');
-  if(u.pathname==='/ncc/campaigns')return Response.json([campaign]);
+  if(u.pathname==='/ncc/campaigns'){assert.equal(u.searchParams.has('selector'),false);return Response.json([campaign]);}
   if(u.pathname==='/ncc/adgroups')return Response.json([group]);
   assert.equal(u.pathname,'/stats');assert.equal(u.searchParams.get('timeIncrement'),'allDays');assert.deepEqual(JSON.parse(u.searchParams.get('timeRange')),{since:period.start,until:period.end});
   return Response.json({data:[row('cmp-one'),row('grp-one')]});
