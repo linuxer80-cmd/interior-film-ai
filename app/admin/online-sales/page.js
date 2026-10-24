@@ -2,9 +2,11 @@
 import {useCallback,useEffect,useState} from 'react';
 import {supabase} from '../../../lib/supabase';
 import styles from './sales.module.css';
+import NaverSales from './NaverSales';
 const number=value=>Number(value||0).toLocaleString('ko-KR',{maximumFractionDigits:0});
 const date=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'아직 조회하지 않았어요';
 export default function OnlineSalesPage() {
+  const [platform,setPlatform]=useState('naver');
   const [state,setState]=useState(null),[ready,setReady]=useState(false),[allowed,setAllowed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [advertiserId,setAdvertiserId]=useState(''),[apiKey,setApiKey]=useState(''),[settings,setSettings]=useState(false);
   const api=useCallback(async body=>{
@@ -35,6 +37,8 @@ export default function OnlineSalesPage() {
     <a href='/admin' data-ui-link='action'>← 관리자 홈</a>
     <header className={styles.header}><p>필름장이 전용 · 기분좋은공간</p><h1>온라인 영업관리</h1><p>광고 현황을 확인하고 다음 영업을 준비하세요.</p></header>
     {!ready?<p role='status'>이용 권한을 확인하고 있어요…</p>:!allowed?<section className={styles.card}><h2>필름장이 관리자 전용입니다</h2><p role='alert'>{error}</p><a href='/admin' data-ui-link='action'>관리자 로그인으로 돌아가기</a></section>:<>
+      <nav className={styles.platforms} aria-label='광고 플랫폼 선택'><button type='button' aria-pressed={platform==='naver'} onClick={()=>setPlatform('naver')}>네이버 광고</button><button type='button' aria-pressed={platform==='daangn'} onClick={()=>setPlatform('daangn')}>당근 광고</button></nav>
+      {platform==='naver'?<NaverSales/>:<>
       <section className={styles.card}>
         <div className={styles.row}><div><span className={styles.badge}>당근 광고</span><h2>{state.connected?'연결된 광고 현황':'당근 광고를 연결해보세요'}</h2></div><span>{state.connected?'API 연결됨':'연결 전'}</span></div>
         <p>{state.connected?`광고주 ID ${state.advertiserId}`:'당근에서 발급받은 API 키로 실제 광고 성과를 가져옵니다.'}</p>
@@ -55,7 +59,8 @@ export default function OnlineSalesPage() {
         <section className={styles.card}><h2>이번 점검</h2><ul>{snapshot.notes.map((note,i)=><li key={i}>{note}</li>)}</ul></section>
         <section className={styles.card}><h2>캠페인별 성과</h2>{!snapshot.campaigns.length?<p>현재 API에서 조회된 캠페인이 없습니다.</p>:snapshot.campaigns.map(c=><article className={styles.campaign} key={c.id}><div className={styles.row}><strong>{c.title}</strong><span>{c.liveStatus==='ON'?'설정 켜짐':c.liveStatus==='OFF'?'설정 꺼짐':c.liveStatus}</span></div><p>플랫폼 상태: {({NORMAL:'정상',UNAVAILABLE:'집행 불가',OFF:'꺼짐',DELETED:'삭제됨',BUDGET_EXCEEDED:'예산 초과'})[c.status]||c.status||'미제공'}</p><p>노출 {number(c.impressions)} · 클릭 {number(c.clicks)} · 클릭률 {c.ctr.toFixed(2)}%</p><strong>광고비 {number(c.cost)}원</strong></article>)}</section>
       </>}
-      <section className={styles.card}><h2>연결 범위</h2><p>현재는 광고 성과 조회와 매일 점검을 지원합니다. 광고 예산·소재 변경, 소식 게시, 고객 채팅 발송은 실행하지 않습니다.</p><p>간편모드 등 일부 광고가 조회 대상에서 제외될 수 있습니다. 당근 화면과 첫 집계를 비교해주세요. 네이버·숨고 연결과 상담·계약 성과 연동은 다음 단계입니다.</p></section>
+      <section className={styles.card}><h2>연결 범위</h2><p>현재는 광고 성과 조회와 매일 점검을 지원합니다. 광고 예산·소재 변경, 소식 게시, 고객 채팅 발송은 실행하지 않습니다.</p><p>간편모드 등 일부 광고가 조회 대상에서 제외될 수 있습니다. 당근 화면과 첫 집계를 비교해주세요. 네이버 광고는 상단 네이버 탭에서 관리하세요. 숨고와 상담·계약 성과 연동은 다음 단계입니다.</p></section>
+      </>}
     </>}
   </main>;
 }
