@@ -36,3 +36,18 @@ test('wrong accounts, malformed data and provider errors cannot return fabricate
  }
  await assert.rejects(()=>researchNaverKeywords({...creds,customerId:'9'},{query:'인천필름시공',groupId:'grp-one'},period));
 });
+
+test('market research works without a group and never claims unverified registration or loads group stats',async()=>{
+ const calls=[];
+ const result=await researchNaverKeywords(creds,{query:'인천인테리어'},period,async(url,options)=>{
+  calls.push({url,options});assert.equal(new URL(url).pathname,'/keywordstool');
+  return Response.json({keywordList:[raw]});
+ });
+ assert.equal(calls.length,1);assert.equal(result.groupId,null);assert.equal(result.groupName,null);
+ assert.equal(result.rows[0].registered,null);assert.equal(result.rows[0].actual,null);assert.equal(result.rows[0].mobileSearches,250);
+});
+test('optional group still rejects invalid group ids before any provider call',async()=>{
+ let calls=0;
+ await assert.rejects(()=>researchNaverKeywords(creds,{query:'인천필름시공',groupId:'bad'},period,async()=>{calls++;}));
+ assert.equal(calls,0);
+});

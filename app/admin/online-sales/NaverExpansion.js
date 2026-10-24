@@ -13,11 +13,13 @@ export default function NaverExpansion({groups,api}){
  }
  const selected=text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
  return <section className={styles.card}><h2>키워드 찾고 등록하기</h2><p className={styles.hint}>검색 → 수치 비교 → 선택 → 등록</p>
+ <NaverKeywordFinder key={revision} groupId={groupId} api={api} busy={busy} selected={selected} onSelect={values=>{setText(values.join('\n'));reset();}}/>
+ <h3>등록 설정</h3>
  <div className={styles.filters}>
- <label>등록할 광고그룹<select required disabled={busy} value={groupId} onChange={e=>{setGroupId(e.target.value);reset();}}><option value=''>광고그룹 선택</option>{groups.filter(g=>!g.userLock&&g.status!=='DELETED').map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
+ <label>등록할 광고그룹 (등록 시 필수)<select required disabled={busy} value={groupId} onChange={e=>{setGroupId(e.target.value);reset();}}><option value=''>광고그룹 선택</option>{groups.filter(g=>!g.userLock&&g.status!=='DELETED').map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
  <label>신규 키워드 입찰가 (원)<input type='number' min='70' max='300' step='10' required disabled={busy} value={bidAmt} onChange={e=>{setBidAmt(e.target.value);reset();}}/></label>
  </div>
- <NaverKeywordFinder key={`${groupId}:${revision}`} groupId={groupId} api={api} busy={busy} selected={selected} onSelect={values=>{setText(values.join('\n'));reset();}}/>
+ {!groupId&&<p className={styles.hint}>검색은 바로 할 수 있습니다. 키워드를 선택한 뒤 등록할 광고그룹을 지정해주세요.</p>}
  <details className={styles.fold}><summary>직접 입력 / 지역 추천어</summary><button type='button' className={styles.secondary} disabled={busy} onClick={()=>{setText(expansionSuggestions().join('\n'));reset();}}>인천·부천·일산 추천어 채우기</button>
  <label>추가할 키워드 (한 줄에 하나 · 최대 100개)<textarea rows={9} maxLength={3000} required disabled={busy} value={text} onChange={e=>{setText(e.target.value);reset();}}/></label>
  </details><div className={styles.selectionBar}><strong>선택 {selected.length} / 100개</strong><button type='button' disabled={busy||!groupId||!selected.length||selected.length>100} onClick={()=>run(false)}>{busy?'확인 중…':'등록 미리보기'}</button>{selected.length>0&&<button type='button' className={styles.secondary} disabled={busy} onClick={()=>{setText('');reset();}}>선택 비우기</button>}</div>
