@@ -27,3 +27,6 @@ On 2026-10-24 the signed-in NAVER API management screen under web account 214994
 
 ### Stats entity kinds
 NAVER returns HTTP 400 / code 11001 for mixed campaign/adgroup/keyword IDs in a single /stats request. Batch by entity kind, then by 100 IDs. Official maintainer clarification: https://github.com/naver/searchad-apidoc/issues/996#issuecomment-2415590044 . Verified by a regression test that rejects mixed kinds.
+
+### Partial campaign totals
+Show the subtotal for campaigns with all three reported metrics (impressions, clicks, VAT-inclusive cost), along with reported/missing campaign counts. Never convert unavailable campaigns to zero. GET normalizes earlier stored snapshots without calling NAVER or changing credentials, so existing connections immediately show the corrected subtotal on reload. Connected settings display saved-key status; replacement fields are opened only by an explicit change-key action.

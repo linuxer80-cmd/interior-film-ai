@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac,createCipheriv,hkdfSync} from 'node:crypto';
-import {naverCredentials,naverHeaders,loadNaverReport,loadNaverKeywords,statMetrics} from '../lib/naverAds.mjs';
+import {naverCredentials,naverHeaders,loadNaverReport,loadNaverKeywords,statMetrics,normalizeNaverSnapshot} from '../lib/naverAds.mjs';
 import {sealKey,openKey} from '../lib/onlineSalesCrypto.mjs';
 import {MARKETING_COMPANY_ID} from '../lib/onlineSales.mjs';
 const creds={customerId:'1051808',apiKey:'test-access-license',secretKey:'test-secret-key'},period={start:'2026-10-17',end:'2026-10-23'};
@@ -78,4 +78,17 @@ test('provider failures never return raw body or secrets; 429 has no automatic r
   await assert.rejects(()=>loadNaverReport(creds,period,async()=>{calls++;return new Response('test-secret-key',{status});}),e=>!e.message.includes('test-secret-key')&&(status!==429||e.status===429));
   assert.equal(calls,1);
  }
+});
+
+test('partial campaigns show reported subtotal; unavailable campaigns stay excluded and unchanged',()=>{
+ const snapshot={campaigns:[{id:'cmp-active',impressions:9897,clicks:212,cost:157993},{id:'cmp-paused',impressions:null,clicks:null,cost:null},{id:'cmp-small',impressions:23,clicks:0,cost:0}],totals:{cost:null},complete:false,notes:['일부 성과가 제공되지 않아 전체 합계를 표시하지 않았습니다.','파워링크만 집계합니다.']};
+ const before=structuredClone(snapshot),result=normalizeNaverSnapshot(snapshot);
+ assert.deepEqual(snapshot,before);
+ assert.equal(result.totals.cost,157993);assert.equal(result.totals.impressions,9920);assert.equal(result.totals.clicks,212);
+ assert.equal(result.totals.cpc,157993/212);assert.equal(result.complete,false);
+ assert.deepEqual(result.coverage,{total:3,reported:2,missing:1});
+ assert.equal(result.campaigns[1].cost,null);assert.match(result.notes[0],/0으로 계산하지/);
+ assert.deepEqual(normalizeNaverSnapshot(result),result);
+ assert.equal(normalizeNaverSnapshot({campaigns:[{cost:null}]}).totals.cost,null);
+ assert.equal(normalizeNaverSnapshot({campaigns:[]}).totals.cost,0);
 });
