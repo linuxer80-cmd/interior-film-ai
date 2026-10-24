@@ -101,6 +101,20 @@ export default function AdminTabs({
 }) {
   const { orderedMenus, record } = usePersonalMenus(menus, `admin:${companyId || "none"}`, activeTab === "today" && !secondaryOnly);
   const calendarConnectionId = useId();
+  const [marketingCompany, setMarketingCompany] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setMarketingCompany(null);
+    if (!companyId || secondaryOnly) return;
+    supabase.auth.getSession().then(async ({data}) => {
+      const token = data?.session?.access_token;
+      if (!token) return;
+      const response = await fetch('/api/admin/online-sales?access=1', {headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+      const result = await response.json();
+      if (live && response.ok && result.allowed && result.companyId === companyId) setMarketingCompany(companyId);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [companyId, secondaryOnly]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [orderPreview, setOrderPreview] = useState(false);
   const closeMore = useAdminOverlayBack(moreOpen, () => setMoreOpen(false), () => true, 900);
@@ -148,6 +162,7 @@ export default function AdminTabs({
             className="film-admin-menu-grid"
             aria-label="관리자 업무 메뉴"
           >
+            {marketingCompany === companyId && companyId && <a href="/admin/online-sales"><ToolIllustration kind="report" size="100%" className="photo-menu-art"/><span><strong>온라인 영업관리</strong><small>기분좋은공간 광고 현황 · 당근 연결</small></span></a>}
             {orderedMenus.map(menu => {
               const content = (
                 <>
