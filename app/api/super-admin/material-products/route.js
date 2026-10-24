@@ -1,3 +1,4 @@
+import { normalizeProductAliases } from "../../../../lib/productAliases.mjs";
 import { filmBrandAliases, normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -179,6 +180,7 @@ function normalizeChanges(requestedChanges) {
   }
 
   const changes = {};
+  if(Object.hasOwn(requestedChanges,"aliases")) changes.aliases=normalizeProductAliases(requestedChanges.aliases);
 
   if (
     Object.prototype.hasOwnProperty.call(
@@ -564,6 +566,7 @@ export async function PATCH(request) {
       body?.changes,
     );
 
+    if(Object.hasOwn(changes,"aliases") && (scope!=="selected" || productIds.length!==1)) return NextResponse.json({ok:false,error:"별칭은 제품을 하나씩 선택해 저장해주세요."},{status:400});
     let targetQuery = auth.supabase
       .from("film_products")
       .select(

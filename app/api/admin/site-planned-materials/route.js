@@ -252,6 +252,11 @@ async function handle(request) {
         products.some(p=>p.id===previous.film_product_id)) values.film_product_id = previous.film_product_id;
       else if (products.length === 1) values.film_product_id = products[0].id;
 
+      // An exact approved alias is saved as the canonical code, never as a second product.
+      if(values.film_product_id){
+        const linked=products.find(p=>p.id===values.film_product_id);
+        if(linked && !products.some(p=>filmCodeInfo(values.brand,values.product_code).baseCode===p.product_code)) values.product_code=linked.product_code;
+      }
     }
 
     if (values && values.unit_price == null) {

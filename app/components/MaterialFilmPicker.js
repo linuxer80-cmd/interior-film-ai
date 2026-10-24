@@ -1,4 +1,5 @@
 "use client";
+import { receiptMatchesProduct, filmCodeInfo } from "../../lib/hyundaiFilmCode";
 import { normalizeFilmBrand } from "../../lib/filmBrand.mjs";
 
 import { useEffect, useId, useState } from "react";
@@ -43,9 +44,9 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
   const control = { width: "100%", boxSizing: "border-box", padding: 12, border: "1px solid #cbd5e1", borderRadius: 10, background: "#fff", color: "#111827", fontSize: 16 };
 
   return <div style={{ minWidth: 0 }}>
-    <label htmlFor={inputId} style={{ display: "block", fontWeight: 700, marginBottom: 7 }}>{showImages ? "제품번호 · 샘플 검색" : "제품번호 검색"}</label>
+    <label htmlFor={inputId} style={{ display: "block", fontWeight: 700, marginBottom: 7 }}>{showImages ? "제품번호·이름 · 샘플 검색" : "제품번호 검색"}</label>
     <input id={inputId} style={control} disabled={disabled} value={value.product_code || ""}
-      placeholder="예: S115, 115, PX449" maxLength={60} autoComplete="off"
+      placeholder="예: S115, PX449, 메탈로즈골드" maxLength={60} autoComplete="off"
       onFocus={() => setOpen(true)}
       onChange={event => {
         setChosen(null); setOpen(true); setResults({ query: "", products: [] });
@@ -60,7 +61,8 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
         {products.map(product => <button key={product.id} type="button" disabled={disabled}
           aria-label={`${product.brand} ${product.product_code} ${product.product_name || ""} 선택`}
           onClick={() => {
-            const prefix = /^[GF][A-Z]/i.test(query) ? query[0].toUpperCase() : "";
+            const info=filmCodeInfo(product.brand,query);
+            const prefix = info.priceType!=="unknown" && receiptMatchesProduct({brand:product.brand,code:query},product) ? query[0].toUpperCase() : "";
             onChange({ film_product_id: product.id, brand: normalizeFilmBrand(product.brand), product_code: prefix + product.product_code, product_name: product.product_name || "" });
             setChosen(product); setOpen(false);
           }}

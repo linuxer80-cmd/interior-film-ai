@@ -70,6 +70,7 @@ export default function SuperAdminMaterialsPage() {
   const [stockFilter, setStockFilter] = useState("all");
 
   const [selectedIds, setSelectedIds] = useState([]);
+  const [aliasInputs,setAliasInputs]=useState({});
   const [priceInputs, setPriceInputs] = useState({});
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkMinimumOrder, setBulkMinimumOrder] = useState("1");
@@ -164,6 +165,7 @@ export default function SuperAdminMaterialsPage() {
         const nextProducts = result.products || [];
 
         setProducts(nextProducts);
+        setAliasInputs(Object.fromEntries(nextProducts.map(p=>[p.id,(p.aliases||[]).join(", ")])));
         setBrands(result.brands || []);
         setStats(result.stats || {});
         setPagination(
@@ -761,6 +763,14 @@ export default function SuperAdminMaterialsPage() {
                       </div>
                     </div>
 
+                    <details style={styles.setting}>
+                      <summary style={styles.summary}>제품 별칭 관리{product.aliases?.length ? ` · ${product.aliases.join(", ")}` : ""}</summary>
+                      <label style={styles.help}>현장에서 부르는 이름 (쉼표로 구분)
+                        <input style={styles.input} disabled={busy} value={aliasInputs[product.id]??""} placeholder="예: 메탈로즈골드, 보닥 메탈로즈골드" onChange={e=>setAliasInputs(v=>({...v,[product.id]:e.target.value}))}/>
+                      </label>
+                      <p style={styles.help}>별칭으로 검색해도 {product.product_code} 제품으로 연결됩니다. 제품번호·방염 구분·기존 재고는 변경하지 않습니다.</p>
+                      <button type="button" style={styles.button} disabled={busy} onClick={()=>handleRowChange(product,{aliases:(aliasInputs[product.id]||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)})}>별칭 저장</button>
+                    </details>
                     <div style={styles.setting}>
                       <div style={styles.priceHeader}>
                         <strong style={styles.smallTitle}>

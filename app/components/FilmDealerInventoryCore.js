@@ -471,7 +471,7 @@ export default function FilmDealerInventory() {
         `${r.brand} ${brandLabel(r.brand)} ${r.product_code} ` +
         `${r.supplier} ${r.location} ` +
         `${r.site_name || ""} ` +
-        `${purchases.get(r.id)?.product_name || ""}`
+        `${purchases.get(r.id)?.product_name || ""} ${(purchases.get(r.id)?.aliases||[]).join(" ")}`
       ).includes(q)
   );
 

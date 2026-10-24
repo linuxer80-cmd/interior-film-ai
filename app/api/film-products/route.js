@@ -70,6 +70,7 @@ function makePublicProduct(row) {
     brand: normalizeFilmBrand(row.brand),
     product_code: row.product_code,
     product_name: row.product_name,
+    aliases: row.aliases || [],
 
     category_key: row.category_key,
     pattern_line: row.pattern_line,
@@ -110,6 +111,7 @@ async function loadAllActiveProducts(
     "brand",
     "product_code",
     "product_name",
+    "aliases",
     "category_key",
     "pattern_line",
     "color_family",

@@ -79,7 +79,7 @@ async function handle(request) {
     if (body.action === "register_product") {
       const products = await matchingFilmProducts(db,body.brand,String(body.productCode || "").trim());
       if(products.length>1)return reply({error:"동일 브랜드·제품번호의 기존 제품이 여러 개입니다. 검색 결과에서 사용할 제품을 선택해주세요."},409);
-      if(products.length===1)body.brand=products[0].brand;
+      if(products.length===1){body.brand=products[0].brand;if(products[0].aliases)body.productCode=products[0].product_code;}
     }
 
     const result =
@@ -114,6 +114,23 @@ async function handle(request) {
       throw result.error;
     }
 
+    if(body.action === "search"){
+      const aliasSearch=await db.rpc("search_film_catalog",{p_query:String(body.query||"").trim()});
+      if(aliasSearch.error)throw aliasSearch.error;
+      const products=new Map((result.data?.products||[]).map(p=>[p.id,p]));
+      for(const p of aliasSearch.data||[])products.set(p.id,{...(products.get(p.id)||{}),...p});
+      result.data={...result.data,products:[...products.values()]};
+    }
+    if(["get","receive","supplier_return"].includes(body.action) && result.data?.purchases?.length){
+      const ids=[...new Set(result.data.purchases.map(p=>p.product_id).filter(Boolean))];
+      const aliases=new Map();
+      for(let offset=0;offset<ids.length;offset+=200){
+        const r=await db.from("film_products").select("id,aliases").in("id",ids.slice(offset,offset+200));
+        if(r.error)throw r.error;
+        for(const p of r.data||[])aliases.set(p.id,p.aliases||[]);
+      }
+      result.data={...result.data,purchases:result.data.purchases.map(p=>({...p,aliases:aliases.get(p.product_id)||[]}))};
+    }
     return reply(result.data);
   } catch (error) {
     console.error("film-dealers", error.code || "request failed");
