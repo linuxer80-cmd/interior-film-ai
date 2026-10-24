@@ -19,7 +19,11 @@ test('report adapter paginates, batches 50 ids and never calls ad mutation endpo
  const calls=[];const campaigns=Array.from({length:51},(_,i)=>({id:String(i+1),title:`캠페인 ${i}`,advertiserId:'123'}));
  const fetcher=async(url,options)=>{
   calls.push([url,options]);
-  if(url.includes('/campaigns'))return Response.json({campaigns: url.includes('pageNumber=0')?campaigns.slice(0,50):campaigns.slice(50),pagination:{totalPageCount:2}});
+  if(url.includes('/campaigns')){
+   const page=Number(new URL(url).searchParams.get('pageNumber'));
+   assert.ok(page>=1,'Karrot rejects page zero');
+   return Response.json({campaigns:page===1?campaigns.slice(0,50):campaigns.slice(50),pagination:{totalPageCount:2}});
+  }
   const body=JSON.parse(options.body);
   assert.equal(body.analysisItem,'Campaign');assert.ok(body.ids.length<=50);assert.match(body.startDateTime,/\+09:00$/);
   return Response.json({performances:body.ids.map(id=>({id,impression:100,click:2,cost:'1200'}))});
