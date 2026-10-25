@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
+import {ALIMTALK_UNIT_PRICE,ALIMTALK_PACKAGES} from '../../lib/alimtalkPricing.mjs';
 import {supabase} from '../../lib/supabase';
 const labels={reserved:'접수 확인 중',requested:'발송 요청됨',unknown:'결과 확인 필요',success:'발송 완료',failed:'발송 실패',rejected:'접수 거절',canceled:'발송 취소'};
 const date=value=>new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
@@ -43,6 +44,7 @@ export default function SiteAlimtalk({siteId,active=true,blocked=false}){
         <p><strong>{data.customerName||'고객명 미입력'}</strong> · {data.to||'유효한 휴대폰 번호 없음'}</p>
         <p>첫 시공일 전날 낮 12~1시에 고객에게 자동 안내합니다. {data.unlimited?'운영 업체는 충전 없이 이용합니다.':'발송 시 1회가 사용됩니다.'}</p>
         <p>알림톡 잔여 <strong>{data.unlimited?'무제한':data.availableCount.toLocaleString('ko-KR')+'회'}</strong></p>
+        {!data.unlimited&&<details><summary>알림톡 충전 안내 · 1건 {ALIMTALK_UNIT_PRICE}원</summary><p>충전 금액은 결제 총액 기준입니다. 발송마다 1회를 사용하며 실패가 확정되면 복구됩니다.</p><ul>{ALIMTALK_PACKAGES.map(pack=><li key={pack.quantity}>{pack.quantity.toLocaleString('ko-KR')}건 · {pack.amount.toLocaleString('ko-KR')}원</li>)}</ul><p>고객지원에 충전할 횟수와 업체명을 알려주세요. 안내받은 계좌로 입금한 후 확인이 완료되면 횟수가 반영됩니다.</p><a href="/support">입금·충전 문의 →</a></details>}
         <pre aria-label="고객 알림톡 메시지 미리보기">{data.text}</pre>
         {data.reasons.length>0&&<ul className="notice">{data.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>}
         {data.syncWarning&&<p>{data.syncWarning}</p>}

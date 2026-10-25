@@ -1,3 +1,4 @@
+import {alimtalkChargeAmount} from '../../../../lib/alimtalkPricing.mjs';
 import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import {privateAuth,privateJson as json,uuid} from '../../../../lib/workerPrivate';
 import {refreshDeliveries,settle,solapiConfig,solapiRequest} from '../../../../lib/siteAlimtalk.mjs';
@@ -45,7 +46,11 @@ export async function POST(request){
       if(result.error)throw result.error;return json({success:true});
     }
     if(body.action==='grant'&&uuid(body.operationId)&&Number.isInteger(body.quantity)&&body.quantity>0&&body.quantity<=1000000&&typeof body.reason==='string'&&body.reason.trim().length>=3&&body.reason.length<=500){
-      const result=await db.rpc('grant_alimtalk_credits',{p_id:body.operationId,p_company:body.companyId,p_quantity:body.quantity,p_reason:body.reason.trim(),p_actor:user.id});
+      const amount=alimtalkChargeAmount(body.quantity);
+      if(!['paid','grant'].includes(body.creditType)||body.creditType==='paid'&&body.paidAmount!==amount)return json({error:'충전 구분과 건당 30원 기준 입금액을 확인해주세요.'},400);
+      const note=(body.creditType==='paid'?'입금 충전 '+amount+'원 / '+body.quantity+'건 · ':'별도 지급 · ')+body.reason.trim();
+      if(note.length>500)return json({error:'지급 사유를 조금 줄여주세요.'},400);
+      const result=await db.rpc('grant_alimtalk_credits',{p_id:body.operationId,p_company:body.companyId,p_quantity:body.quantity,p_reason:note,p_actor:user.id});
       if(result.error)throw result.error;return json({success:true,...result.data});
     }
     if(body.action==='reconcile'&&uuid(body.deliveryId)&&typeof body.receiptId==='string'&&/^M[A-Za-z0-9]{10,100}$/.test(body.receiptId)){
