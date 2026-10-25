@@ -112,6 +112,29 @@ export default function CustomerPageAdmin() {
   const [cases, setCases] = useState([]);
   const [draft, setDraft] = useState(emptyCase);
   const [previews, setPreviews] = useState({});
+  const [restoredCompany,setRestoredCompany]=useState(null);
+  const uploadLock=useRef(false);
+  useEffect(()=>{
+    if(!companyId)return;
+    try{
+      const raw=sessionStorage.getItem('showcase-case:'+companyId);
+      if(raw){
+        const saved=JSON.parse(raw);
+        const restored={...emptyCase};
+        for(const key of Object.keys(emptyCase)){
+          if(['before_paths','after_paths'].includes(key))restored[key]=Array.isArray(saved[key])?saved[key].filter(path=>typeof path==='string'&&path.startsWith(companyId+'/')).slice(0,4):[];
+          else if(typeof saved[key]===typeof emptyCase[key])restored[key]=saved[key];
+        }
+        if(typeof saved.id==='string')restored.id=saved.id;
+        setDraft(restored);
+      }
+    }catch{}
+    setRestoredCompany(companyId);
+  },[companyId]);
+  useEffect(()=>{
+    if(restoredCompany!==companyId||!companyId)return;
+    try{sessionStorage.setItem('showcase-case:'+companyId,JSON.stringify(draft));}catch{}
+  },[draft,companyId,restoredCompany]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
@@ -297,9 +320,9 @@ export default function CustomerPageAdmin() {
 
   async function uploadPhotos(event, key) {
     const files = [...(event.target.files || [])];
-    event.target.value = "";
+    const input=event.target;
 
-    if (!files.length || !ready || busy) {
+    if (!files.length || !ready || busy || uploadLock.current) {
       return;
     }
 
@@ -327,7 +350,9 @@ export default function CustomerPageAdmin() {
       return;
     }
 
+    uploadLock.current=true;
     setBusy(true);
+    setMessage("사진을 업로드하고 있습니다. 완료될 때까지 기다려주세요.");
     const uploaded = [];
 
     try {
@@ -353,6 +378,7 @@ export default function CustomerPageAdmin() {
         }
 
         uploaded.push(path);
+        setDraft(value=>({...value,[key]:[...value[key],path]}));
       }
 
       setMessage(
@@ -363,13 +389,8 @@ export default function CustomerPageAdmin() {
         `사진 업로드 실패: ${error.message}. 업로드된 사진은 아래에 유지됩니다.`
       );
     } finally {
-      if (uploaded.length) {
-        setDraft((value) => ({
-          ...value,
-          [key]: [...value[key], ...uploaded],
-        }));
-      }
-
+      if(uploaded.length===files.length)input.value="";
+      uploadLock.current=false;
       setBusy(false);
     }
   }
@@ -377,7 +398,7 @@ export default function CustomerPageAdmin() {
   async function saveCase(event) {
     event.preventDefault();
 
-    if (!ready || busy) {
+    if (!ready || busy || uploadLock.current) {
       return;
     }
 
@@ -489,7 +510,7 @@ export default function CustomerPageAdmin() {
       <div hidden={view!=="profile"}>
       <GuidedForm
         titles={["사업자 정보","상담 연락처·지역","블로그·플레이스","업체 소개·서비스","공개 설정"]}
-        onSubmit={saveProfile} busy={!ready || busy}
+        onSubmit={saveProfile} busy={!ready || busy || restoredCompany!==companyId}
         validateStep={index => {
           if(index===0 && profile.is_published && !profile.business_name.trim()) return "공개하려면 상호를 입력해주세요.";
           if(index===2 && ["blog_url","place_url"].some(key=>profile[key]&&!safeHttpUrl(profile[key]))) return "링크는 http 또는 https 주소로 입력해주세요.";
@@ -600,7 +621,7 @@ export default function CustomerPageAdmin() {
       <div hidden={view!=="case"}>
       <GuidedForm key={caseVersion} onSubmit={saveCase} className={styles.panel}
         titles={["사례 제목·지역","필름·작업 내용","시공 전 사진","완료 사진","공개 설정"]}
-        busy={!ready || busy}
+        busy={!ready || busy || restoredCompany!==companyId}
         validateStep={index => {
           if(index===0&&!draft.title.trim()) return "사례 제목을 입력해주세요.";
           if(index===1&&!draft.description.trim()) return "실제 작업 내용을 입력해주세요.";
@@ -726,6 +747,8 @@ export default function CustomerPageAdmin() {
                 />
               </label>
 
+              <p role="status" aria-live="polite">{busy?'사진 처리 중…':message}</p>
+              <p>첨부 완료 {draft[key].length}장 · 사진은 업로드 완료 후 아래 목록에 표시됩니다.</p>
               <div className={styles.photos}>
                 {draft[key].map((path, index) => (
                   <div key={path}>
