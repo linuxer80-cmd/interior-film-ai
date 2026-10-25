@@ -14,3 +14,6 @@
 
 검증: `node --test tests/site-alimtalk*.test.mjs`; `npm run build`.
 공식 문서: https://solapi.com/developers/api/messages-ata , https://solapi.com/developers/api/messages , https://solapi.com/developers/api/msg-getList , https://solapi.com/developers/api/authentication-api-key
+
+## 고객 전날 자동 안내
+매일 한국시간 12~13시 사이 `/api/alimtalk/customer-reminders`가 첫 시공일이 다음 날인 현장을 조회한다. Hobby Cron은 해당 시간대 안에서 실행되므로 정확한 12시 정각은 보장되지 않는다. 기존 고객 일정 템플릿을 재사용하고, 업체 알림톡 활성화·잔여 횟수·템플릿 승인이 필요하다. 취소/완료 현장은 제외하고 고객 휴대폰, 현장 정보와 업체 연락처 누락 시 발송하지 않는다. 수동 일정 안내와 별도로 현장/첫 시공일마다 한 번만 예약하며, 실패·불명 상태도 자동 재시도하지 않는다. 실패 확정 시 횟수는 복구된다. 당일 등록/일정 변경이 실행 시각 이후라면 다음 날을 위한 추가 실행은 없다.

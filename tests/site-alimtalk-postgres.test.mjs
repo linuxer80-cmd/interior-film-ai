@@ -35,3 +35,17 @@ test('stale preview, disabled wallet and insufficient credit block without creat
  await assert.rejects(db.query('select grant_alimtalk_credits($1,$2,10,$3,$4)',[first,co,'금액 오류',worker]),e=>e.code==='42501');
  }finally{await db.close();}
 });
+
+test('automatic reminder reserves once per first date, independently of manual sends, with service-only permissions',async()=>{
+ const db=await setup();try{
+ await db.exec('alter table sites add column work_dates date[],add column schedule_start timestamptz,add column schedule_date date;');
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261025021023_customer_day_before_alimtalk.sql',import.meta.url),'utf8'));
+ await db.exec("update sites set work_dates=array[((now() at time zone 'Asia/Seoul')::date+1),((now() at time zone 'Asia/Seoul')::date+2)]");
+ const call=(id,hash='b'.repeat(64))=>db.query("select reserve_customer_reminder($1,$2,$3,(now() at time zone 'Asia/Seoul')::date+1,'010-****-5678','test',$4) result",[id,co,site,hash]);
+ await reserve(db);assert.equal((await call(next)).rows[0].result.accepted,true);assert.equal(await count(db),0);
+ await db.query("select settle_alimtalk($1,'failed',null,'4040')",[next]);assert.equal(await count(db),1);
+ assert.equal((await call('40000000-0000-4000-8000-000000000003','c'.repeat(64))).rows[0].result.reason,'duplicate');assert.equal(await count(db),1);
+ await db.exec("update sites set status='cancelled'");assert.equal((await call(next)).rows[0].result.reason,'inactive');
+ assert.equal((await db.query("select has_function_privilege('authenticated','reserve_customer_reminder(uuid,uuid,uuid,date,text,text,text)','execute') allowed")).rows[0].allowed,false);
+ }finally{await db.close();}
+});

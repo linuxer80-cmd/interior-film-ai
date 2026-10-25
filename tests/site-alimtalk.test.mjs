@@ -56,3 +56,13 @@ test('only final ATA receipts settle; pending and missing receipts stay reserved
   await refreshDeliveries(db,rows,config,async()=>Response.json({messageList:{M1:{type:'ATA',status:'COMPLETE',statusCode:'4000'},M2:{type:'ATA',status:'COMPLETE',statusCode:'4040'},M3:{type:'ATA',status:'SENDING',statusCode:'2000'}}}));
   assert.deepEqual(db.calls.map(c=>[c.args.p_id,c.args.p_status]),[['a','success'],['b','failed']]);
 });
+
+test('reminder uses separate atomic reservation and stable identity across phone changes',async()=>{
+ const ids=[];
+ for(const to of ['01012345678','01099998888']){
+  const calls=[],db={rpc:async(name,args)=>{calls.push({name,args});return {data:{accepted:true}};}},p=provider();
+  await dispatchSiteMessage({db,site,company,message:{...message,kind:'customer_reminder',to},config,reminderDate:'2026-10-26',fetcher:p.fetcher});
+  assert.equal(calls[0].name,'reserve_customer_reminder');assert.equal(calls[0].args.p_work_date,'2026-10-26');ids.push(calls[0].args.p_id);
+ }
+ assert.equal(ids[0],ids[1]);
+});
