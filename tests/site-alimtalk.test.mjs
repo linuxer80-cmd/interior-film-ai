@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {buildSiteMessage,workDates,phoneNumber,authHeader,dispatchSiteMessage,providerResult,refreshDeliveries} from '../lib/siteAlimtalk.mjs';
+import {approvedTemplate,solapiConfig,buildSiteMessage,workDates,phoneNumber,authHeader,dispatchSiteMessage,providerResult,refreshDeliveries} from '../lib/siteAlimtalk.mjs';
 const site={id:'30000000-0000-4000-8000-000000000001',site_name:'테스트 현장',customer_name:'테스트 고객',customer_phone:'010-1234-5678',address:'테스트 주소',address_detail:'테스트 동',status:'scheduled',work_dates:['2026-10-28','2026-10-26','2026-10-28']};
 const company={id:'10000000-0000-4000-8000-000000000001',company_name:'테스트 업체',phone:'02-123-4567'};
 const config={apiKey:'test-key',secret:'test-secret',pfId:'test-pf',templateId:'test-template'};
@@ -79,4 +79,11 @@ test('change event identity is reserved atomically and a retry never reaches the
  const args={db,site,company,message:{...message,kind:'worker_schedule_changed'},workerId:'worker',changeEventId:'alert-id',config,fetcher:p.fetcher};
  assert.equal((await dispatchSiteMessage(args)).status,'requested');assert.equal((await dispatchSiteMessage(args)).status,'blocked');
  assert.equal(calls[0].name,'reserve_worker_change_alert');assert.equal(calls[0].args.p_event,'alert-id');assert.equal(p.calls.filter(c=>c.url.includes('/send-many/')).length,1);
+});
+
+test('template lookup distinguishes rejected authentication from pending approval without exposing secrets',async()=>{
+ const denied=await approvedTemplate(config,async()=>Response.json({errorCode:'SignatureDoesNotMatch',errorMessage:'private provider details'},{status:403}));
+ assert.match(denied.reason,/SignatureDoesNotMatch/);assert.ok(!denied.reason.includes('private provider details'));
+ const pending=await approvedTemplate(config,async()=>Response.json([]));assert.match(pending.reason,/템플릿 승인/);
+ const trimmed=solapiConfig('site_assigned',{SOLAPI_API_KEY:' key\n',SOLAPI_API_SECRET:' secret\n'});assert.equal(trimmed.apiKey,'key');assert.equal(trimmed.secret,'secret');
 });
