@@ -64,3 +64,28 @@ test('operator messages need no credits, preserve duplicate protection and never
  assert.equal((await db.query('select available_count from alimtalk_accounts where company_id=$1',[op])).rows[0].available_count,0);
  }finally{await db.close();}
 });
+test('worker day-before reminders validate current assignments, deduplicate and honor operator exemption',async()=>{
+ const db=await setup(),b='20000000-0000-4000-8000-000000000003',op='2ddfe3d9-4411-4991-ae35-5b876be411bc';try{
+ await db.exec('alter table sites add column work_dates date[],add column schedule_start timestamptz,add column schedule_end timestamptz,add column schedule_date date;create table site_daily_assignments(id uuid,company_id uuid,site_id uuid,worker_id uuid,work_date date);create table site_workers(id uuid,company_id uuid,site_id uuid,worker_id uuid);');
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261025021023_customer_day_before_alimtalk.sql',import.meta.url),'utf8'));
+ await db.query('insert into companies values($1,true)',[op]);
+ await db.exec((await fs.readFile(new URL('../supabase/migrations/20261025021846_operator_company_unlimited.sql',import.meta.url),'utf8')).split('-- Prevent future plan')[0]);
+ await db.exec(await fs.readFile(new URL('../database/worker_alimtalk_reminders.sql',import.meta.url),'utf8'));
+ await db.query('insert into workers values($1,$2,true),($3,$2,true)',[worker,co,b]);
+ await db.exec("update sites set work_dates=array[(now() at time zone 'Asia/Seoul')::date+1,(now() at time zone 'Asia/Seoul')::date+2]");
+ await db.query("insert into site_daily_assignments values($1,$2,$3,$4,(now() at time zone 'Asia/Seoul')::date+1),($5,$2,$3,$6,(now() at time zone 'Asia/Seoul')::date+1)",[first,co,site,worker,next,b]);
+ const call=(id,w=worker,c=co)=>db.query("select reserve_worker_reminder($1,$2,$3,$4,(now() at time zone 'Asia/Seoul')::date+1,'mask','template',$5) result",[id,c,site,w,'f'.repeat(64)]);
+ assert.equal((await call(first)).rows[0].result.accepted,true);assert.equal(await count(db),1);
+ assert.equal((await call(next)).rows[0].result.reason,'duplicate');assert.equal(await count(db),1);
+ await db.exec("update sites set status='cancelled'");assert.equal((await call(next,b)).rows[0].result.reason,'inactive');await db.exec("update sites set status='scheduled'");
+ await db.query('delete from site_daily_assignments where worker_id=$1',[b]);assert.equal((await call(next,b)).rows[0].result.reason,'stale');
+ // Existing date-specific assignments prevent a site-wide legacy record from reviving a removed assignment.
+ await db.query('insert into site_workers values($1,$2,$3,$4)',[next,co,site,b]);assert.equal((await call(next,b)).rows[0].result.reason,'stale');
+ await db.exec('delete from site_daily_assignments');assert.equal((await call(next,b)).rows[0].result.accepted,true);assert.equal(await count(db),0);
+ await db.query("select settle_alimtalk($1,'failed',null,'4040')",[next]);await db.query("select settle_alimtalk($1,'failed',null,'4040')",[next]);assert.equal(await count(db),1);
+ await db.query('update sites set company_id=$1',[op]);await db.query('update workers set company_id=$1',[op]);await db.query('update site_workers set company_id=$1',[op]);
+ const freeId='40000000-0000-4000-8000-000000000009';assert.equal((await call(freeId,b,op)).rows[0].result.accepted,true);
+ await db.query("select settle_alimtalk($1,'failed',null,'4040')",[freeId]);assert.equal((await db.query('select available_count from alimtalk_accounts where company_id=$1',[op])).rows[0].available_count,0);
+ assert.equal((await db.query("select has_function_privilege('authenticated','reserve_worker_reminder(uuid,uuid,uuid,uuid,date,text,text,text)','execute') allowed")).rows[0].allowed,false);
+ }finally{await db.close();}
+});

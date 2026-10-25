@@ -48,7 +48,7 @@ export default function SiteAlimtalk({siteId,active=true,blocked=false}){
         {data.syncWarning&&<p>{data.syncWarning}</p>}
         {data.latestId&&<label className="confirm"><input type="checkbox" checked={resend} onChange={e=>setResend(e.target.checked)} disabled={busy}/><span>이전에 보낸 안내가 있습니다. 이력과 번호를 확인했으며 1회를 사용해 다시 보냅니다.</span></label>}
         <button className="send" type="button" disabled={busy||blocked||!data.ready||Boolean(data.latestId&&!resend)} onClick={send}>{busy?'처리 중…':data.latestId?'알림톡 재발송 · 1회 사용':'알림톡 발송 · 1회 사용'}</button>
-        {data.history.length>0&&<details><summary>발송 이력 {data.history.length}건</summary><ul>{data.history.map(row=><li key={row.id}>{date(row.created_at)} · {row.kind==='customer_reminder'?'고객 전날 안내':row.kind==='customer_schedule'?'고객 일정':'시공자 배정'} · {row.recipient_mask}<br/>{labels[row.status]||row.status}{row.accounting==='refunded'&&!row.credit_exempt?' · 1회 복구':''}{row.error_code?' · 코드 '+row.error_code:''}</li>)}</ul></details>}
+        {data.history.length>0&&<details><summary>발송 이력 {data.history.length}건</summary><ul>{data.history.map(row=><li key={row.id}>{date(row.created_at)} · {row.kind==='worker_reminder'?'시공자 전날 안내':row.kind==='customer_reminder'?'고객 전날 안내':row.kind==='customer_schedule'?'고객 일정':'시공자 배정'} · {row.recipient_mask}<br/>{labels[row.status]||row.status}{row.accounting==='refunded'&&!row.credit_exempt?' · 1회 복구':''}{row.error_code?' · 코드 '+row.error_code:''}</li>)}</ul></details>}
       </>}
       <button type="button" disabled={busy} onClick={load}>정보·발송 결과 새로고침</button>
     </div>}

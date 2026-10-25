@@ -66,3 +66,10 @@ test('reminder uses separate atomic reservation and stable identity across phone
  }
  assert.equal(ids[0],ids[1]);
 });
+test('worker reminder reservation is separate from immediate assignment and customer reminders',async()=>{
+ const ids=[];for(const workerId of ['worker-a','worker-b']){
+  const calls=[],db={rpc:async(name,args)=>{calls.push({name,args});return {data:{accepted:true}};}},p=provider();
+  const result=await dispatchSiteMessage({db,site,company,message:{...message,kind:'worker_reminder'},workerId,config,reminderDate:'2026-10-26',fetcher:p.fetcher});
+  assert.equal(result.status,'requested');assert.equal(calls[0].name,'reserve_worker_reminder');assert.equal(calls[0].args.p_worker,workerId);ids.push(calls[0].args.p_id);
+ }assert.notEqual(ids[0],ids[1]);
+});
