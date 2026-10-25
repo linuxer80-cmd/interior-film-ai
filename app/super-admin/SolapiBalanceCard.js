@@ -11,7 +11,7 @@ export default function SolapiBalanceCard(){
   try{
    const session=await supabase.auth.getSession();if(!session.data?.session)throw Error('슈퍼관리자로 로그인해주세요.');
    const response=await fetch('/api/super-admin/solapi-balance',{headers:{Authorization:'Bearer '+session.data.session.access_token},cache:'no-store'});
-   const result=await response.json();if(!response.ok||!result.available)throw Error(result.error||'잔액을 조회하지 못했습니다.');setData(result);
+   const result=await response.json();if(!response.ok||!result.available)throw Error((result.error||'잔액을 조회하지 못했습니다.')+(result.code?' ('+result.code+')':''));setData(result);
   }catch(e){setData(null);setError(e.message||'잔액을 조회하지 못했습니다.');}finally{lock.current=false;setBusy(false);}
  },[]);
  useEffect(()=>{load();const refresh=()=>{if(document.visibilityState==='visible')load();};window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};},[load]);
