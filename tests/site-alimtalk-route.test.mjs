@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {alimtalkCompany} from '../lib/alimtalkCompany.mjs';
 import {buildSiteMessage} from '../lib/siteAlimtalk.mjs';
 const site={id:'30000000-0000-4000-8000-000000000001',company_id:'10000000-0000-4000-8000-000000000001',site_name:'테스트',customer_name:'고객',customer_phone:'01012345678',address:'주소',work_dates:['2026-10-26'],status:'scheduled'};
 const company={id:site.company_id,company_name:'업체',phone:'0212345678'};
@@ -10,7 +11,7 @@ function fixture({unauthorized=false,foreign=false}={}){
  const sends=[];
  const db={from(table){const checks=[];const q={select(){return q;},eq(k,v){checks.push([k,v]);return q;},maybeSingle:async()=>({data:table==='sites'?(!foreign&&checks.some(([k,v])=>k==='company_id'&&v===site.company_id)?site:null):company}),single:async()=>({data:company})};return q;}};
  const context=vm.createContext({Request,Response,URL,console:{error(){}},json:(data,status=200)=>Response.json(data,{status}),uuid:value=>typeof value==='string'&&/^[a-f0-9-]{36}$/i.test(value),
-  privateAuth:async()=>unauthorized?{error:'로그인 필요',status:401}:{db,companyId:company.id,user:{id:'owner'}},buildSiteMessage,
+  privateAuth:async()=>unauthorized?{error:'로그인 필요',status:401}:{db,companyId:company.id,user:{id:'owner'}},buildSiteMessage,alimtalkCompany,
   dispatchSiteMessage:async args=>{sends.push(args);return {status:'requested'};}});
  vm.runInContext(source+'\nglobalThis.post=POST;',context);
  const payload={siteId:site.id,contentHash:buildSiteMessage(site,company).contentHash,latestId:null,operationId:'40000000-0000-4000-8000-000000000001'};

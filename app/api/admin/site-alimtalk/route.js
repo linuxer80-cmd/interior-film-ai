@@ -1,3 +1,4 @@
+import {alimtalkCompany} from '../../../../lib/alimtalkCompany.mjs';
 import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import { privateAuth, privateJson as json, uuid } from '../../../../lib/workerPrivate';
 import { approvedTemplate,buildSiteMessage,dispatchSiteMessage,refreshDeliveries,solapiConfig,templateMatches } from '../../../../lib/siteAlimtalk.mjs';
@@ -14,7 +15,7 @@ async function context(request,siteId){
   ]);
   if(site.error||company.error)throw site.error||company.error;
   if(!site.data)throw Object.assign(Error('현장을 찾을 수 없습니다.'),{status:404});
-  return {...auth,site:site.data,company:company.data};
+  return {...auth,site:site.data,company:await alimtalkCompany(auth.db,company.data)};
 }
 async function history(db,companyId,siteId){
   const result=await db.from('alimtalk_deliveries').select('id,kind,recipient_mask,status,accounting,credit_exempt,error_code,created_at,receipt_id,content_hash')
