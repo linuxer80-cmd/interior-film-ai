@@ -16,6 +16,7 @@ import UnsavedChangesDialog from "./UnsavedChangesDialog";
 import TradeClients from "../components/TradeClients";
 import SiteNextActions from "./SiteNextActions";
 import SiteBasicInfo from "./site-detail/SiteBasicInfo";
+import SiteAlimtalk from "./SiteAlimtalk";
 import SiteScheduleEditor from "./site-detail/SiteScheduleEditor";
 import SiteStatusControl from "./site-detail/SiteStatusControl";
 import SiteExpenses from "../components/SiteExpenses";
@@ -122,6 +123,7 @@ export default function SiteDetailModal({
   const [reviewStatus, setReviewStatus] = useState(null);
 
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [basicBusy, setBasicBusy] = useState(false);
   const drafts = useRef(createSiteDrafts());
   const [leaveRequest, setLeaveRequest] = useState(null);
   const leaveRef = useRef(null);
@@ -530,11 +532,13 @@ export default function SiteDetailModal({
               onRequestDiscard={(id, proceed) => requestLeave(proceed, [id])}
               editRequest={basicEditRequest.siteId === site.id ? basicEditRequest.version : 0}
               site={site}
+              onEditingChange={setBasicBusy}
               onEditSchedule={() => choosePreparationStep("dates")}
               updateSiteBasicInfo={updateSiteBasicInfo}
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+            <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
           </section>
 
           <section hidden={menu !== "info"} aria-label="현장 거래처 연결">

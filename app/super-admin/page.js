@@ -516,6 +516,7 @@ export default function SuperAdminPage() {
                 title="결제 관리"
                 description="결제 내역 확인"
               />
+              <MenuCard href="/super-admin/alimtalk" kind="report" title="알림톡 관리" description="업체별 충전 횟수·사용 설정·발송 결과" />
 
               <MenuCard
                 href="/super-admin/photo-data"

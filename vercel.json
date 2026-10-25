@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/alimtalk/reconcile",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/labor-market/maintenance",
       "schedule": "5 15 * * *"
     },
