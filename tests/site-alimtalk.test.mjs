@@ -24,7 +24,7 @@ test('actual site values, non-contiguous dates, detail address and customer phon
 });
 test('missing fields and unsafe telephone values block sends',async()=>{
   assert.equal(phoneNumber('+82 10-1234-5678'),'01012345678');assert.equal(phoneNumber('01012345678<script>'),'');
-  const broken=buildSiteMessage({...site,customer_name:'',customer_phone:'112'},company);assert.ok(broken.missing.includes('고객명'));
+  const broken=buildSiteMessage({...site,customer_name:'',customer_phone:'112'},company);assert.ok(!broken.missing.includes('고객명'));assert.ok(broken.missing.includes('고객 휴대폰 번호'));
   const result=await dispatchSiteMessage({message:broken});assert.equal(result.status,'blocked');
   assert.ok(buildSiteMessage({...site,status:'cancelled'},company).missing.length);
 });
@@ -86,4 +86,10 @@ test('template lookup distinguishes rejected authentication from pending approva
  assert.match(denied.reason,/SignatureDoesNotMatch/);assert.ok(!denied.reason.includes('private provider details'));
  const pending=await approvedTemplate(config,async()=>Response.json([]));assert.match(pending.reason,/템플릿 승인/);
  const trimmed=solapiConfig('site_assigned',{SOLAPI_API_KEY:' key\n',SOLAPI_API_SECRET:' secret\n'});assert.equal(trimmed.apiKey,'key');assert.equal(trimmed.secret,'secret');
+});
+
+test('customer name falls back to site name only when blank',()=>{
+ for(const customer_name of [null,'','  ']){const result=buildSiteMessage({...site,customer_name},company);assert.equal(result.variables['#{고객명}'],site.site_name);assert.ok(!result.missing.includes('고객명'));assert.match(result.text,/테스트 현장님/);}
+ assert.equal(buildSiteMessage(site,company).variables['#{고객명}'],site.customer_name);
+ assert.ok(buildSiteMessage({...site,customer_name:' ',site_name:' '},company).missing.includes('고객명'));
 });
