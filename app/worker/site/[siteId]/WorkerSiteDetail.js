@@ -13,6 +13,7 @@ import {
 } from "../../../utils/workerSites";
 import WorkerWorkGuide from "./WorkerWorkGuide";
 import WorkerSiteInfo from "./WorkerSiteInfo";
+import WorkerTeam from "./WorkerTeam";
 import SiteExtraWork from "../../../components/SiteExtraWork";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import SiteOperations from "../../../components/SiteOperations";
@@ -22,6 +23,7 @@ import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
 
 const menus = [
   { id: "info", label: "현장정보", kind: "home" },
+  { id: "chat", label: "팀 채팅", kind: "home" },
   { id: "film", label: "자재·재단", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
   { id: "extra", label: "추가 작업", kind: "report" },
@@ -111,7 +113,9 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
   const siteId = embeddedSiteId || routeSiteId;
   const searchParams = useSearchParams();
 
-  const requestedSection = initialSection && menus.some(menu => menu.id === initialSection) ? initialSection : menus.some(
+  const teamDate = initialDate || searchParams.get("teamDate");
+  const legacyChatLink = !initialSection && searchParams.get("section") === "info" && Boolean(teamDate);
+  const requestedSection = legacyChatLink ? "chat" : initialSection && menus.some(menu => menu.id === initialSection) ? initialSection : menus.some(
     (menu) => menu.id === searchParams.get("section")
   )
     ? searchParams.get("section")
@@ -452,6 +456,8 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
           </details>
 
         </section>
+
+        <section id="site-panel-chat" hidden={tab !== "chat"} aria-label="현장 팀 채팅"><WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} initialDate={teamDate} initialChat active={tab === "chat"} /></section>
 
         <section id="site-panel-extra" hidden={tab !== "extra"} aria-label="추가 작업 요청"><SiteExtraWork key={siteId} siteId={siteId} active={tab === "extra"} /></section>
 
