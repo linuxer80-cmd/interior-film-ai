@@ -114,6 +114,7 @@ export default function CustomerPageAdmin() {
   const [previews, setPreviews] = useState({});
   const [restoredCompany,setRestoredCompany]=useState(null);
   const uploadLock=useRef(false);
+  const [photoStatus,setPhotoStatus]=useState({});
   useEffect(()=>{
     if(!companyId)return;
     try{
@@ -321,15 +322,15 @@ export default function CustomerPageAdmin() {
   async function uploadPhotos(event, key) {
     const files = [...(event.target.files || [])];
     const input=event.target;
+    setPhotoStatus(value=>({...value,[key]:''}));
 
     if (!files.length || !ready || busy || uploadLock.current) {
       return;
     }
 
     if (files.length + draft[key].length > 4) {
-      setMessage(
-        "시공 전·후 사진은 각각 최대 4장입니다."
-      );
+      setPhotoStatus(value=>({...value,[key]:'시공 전·후 사진은 각각 최대 4장입니다.'}));
+      setMessage("시공 전·후 사진은 각각 최대 4장입니다.");
       return;
     }
 
@@ -344,12 +345,12 @@ export default function CustomerPageAdmin() {
           file.size > 5 * 1024 * 1024
       )
     ) {
-      setMessage(
-        "사진은 JPG·PNG·WEBP, 장당 5MB 이하로 선택해주세요."
-      );
+      setPhotoStatus(value=>({...value,[key]:'사진은 JPG·PNG·WEBP, 장당 5MB 이하로 선택해주세요.'}));
+      setMessage("사진은 JPG·PNG·WEBP, 장당 5MB 이하로 선택해주세요.");
       return;
     }
 
+    setPhotoStatus(value=>({...value,[key]:'사진 업로드 중…'}));
     uploadLock.current=true;
     setBusy(true);
     setMessage("사진을 업로드하고 있습니다. 완료될 때까지 기다려주세요.");
@@ -381,10 +382,10 @@ export default function CustomerPageAdmin() {
         setDraft(value=>({...value,[key]:[...value[key],path]}));
       }
 
-      setMessage(
-        "사진을 준비했습니다. 사례 저장을 눌러야 등록됩니다."
-      );
+      setPhotoStatus(value=>({...value,[key]:`${uploaded.length}장 첨부 완료. 마지막 단계에서 사례를 저장해주세요.`}));
+      setMessage("사진을 준비했습니다. 사례 저장을 눌러야 등록됩니다.");
     } catch (error) {
+      setPhotoStatus(value=>({...value,[key]:`사진 업로드 실패: ${error.message}`}));
       setMessage(
         `사진 업로드 실패: ${error.message}. 업로드된 사진은 아래에 유지됩니다.`
       );
@@ -451,6 +452,7 @@ export default function CustomerPageAdmin() {
       );
 
       setDraft(emptyCase);
+      setPhotoStatus({});
       setCaseVersion(value => value + 1);
       openView("list");
 
@@ -620,12 +622,12 @@ export default function CustomerPageAdmin() {
 
       <div hidden={view!=="case"}>
       <GuidedForm key={caseVersion} onSubmit={saveCase} className={styles.panel}
-        titles={["사례 제목·지역","필름·작업 내용","시공 전 사진","완료 사진","공개 설정"]}
+        titles={["사례 제목·지역","필름·작업 내용","사진 첨부","공개 설정"]}
         busy={!ready || busy || restoredCompany!==companyId}
         validateStep={index => {
           if(index===0&&!draft.title.trim()) return "사례 제목을 입력해주세요.";
           if(index===1&&!draft.description.trim()) return "실제 작업 내용을 입력해주세요.";
-          if(index===3&&!draft.after_paths.length) return "완료 사진을 한 장 이상 등록해주세요.";
+          if(index===2&&!draft.after_paths.length) return "완료 사진을 한 장 이상 등록해주세요.";
         }}
         review={<p>시공 전 사진 {draft.before_paths.length}장 · 완료 사진 {draft.after_paths.length}장</p>}
       >
@@ -726,13 +728,10 @@ export default function CustomerPageAdmin() {
 
           </InputStep>
           {[
-            ["before_paths", "시공 전 사진 (선택)"],
-            [
-              "after_paths",
-              "완료 사진 (첫 사진이 대표 사진)",
-            ],
+            ["after_paths", "완료 사진 (필수 · 첫 사진이 대표 사진)"],
+            ["before_paths", "시공 전 사진 (선택 · 없어도 됩니다)"],
           ].map(([key, label]) => (
-            <InputStep index={key==="before_paths"?2:3} key={key}>
+            <InputStep index={2} key={key}>
             <div className={styles.upload}>
               <label>
                 {label}
@@ -747,7 +746,7 @@ export default function CustomerPageAdmin() {
                 />
               </label>
 
-              <p role="status" aria-live="polite">{busy?'사진 처리 중…':message}</p>
+              <p role="status" aria-live="polite">{photoStatus[key]||''}</p>
               <p>첨부 완료 {draft[key].length}장 · 사진은 업로드 완료 후 아래 목록에 표시됩니다.</p>
               <div className={styles.photos}>
                 {draft[key].map((path, index) => (
@@ -780,6 +779,7 @@ export default function CustomerPageAdmin() {
                       선택 해제
                     </button>
 
+                    {key==='before_paths'&&draft.after_paths.length<4&&<button type="button" onClick={()=>setDraft(value=>({...value,before_paths:value.before_paths.filter(item=>item!==path),after_paths:[...value.after_paths,path]}))}>완료 사진으로 이동</button>}
                     {index > 0 && (
                       <button
                         type="button"
@@ -806,7 +806,7 @@ export default function CustomerPageAdmin() {
             </InputStep>
           ))}
 
-          <InputStep index={4}>
+          <InputStep index={3}>
           <label>
             노출 순서 (작은 숫자부터)
 
