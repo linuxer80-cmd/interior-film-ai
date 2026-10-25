@@ -25,7 +25,7 @@ export default function WorkerTeam({siteId,dates,active,initialChat=false,initia
    if(document.hidden)return;
    const ids=[...batch.ids].slice(0,100);if(!ids.length)return;
    ids.forEach(id=>{batch.ids.delete(id);batch.sent.add(id);});
-   try{await request({method:'PATCH',body:JSON.stringify({messageIds:ids})});if(readBatch.current===batch)setReadError('');}
+   try{await request({method:'PATCH',body:JSON.stringify({messageIds:ids})});if(readBatch.current===batch)setReadError('');window.dispatchEvent(new Event('team-chat-read')); }
    catch(e){ids.forEach(id=>batch.sent.delete(id));if(readBatch.current===batch)setReadError(e.message || '읽음 상태를 저장하지 못했습니다.');}
   },250);
  },[endpoint,active,chat]);

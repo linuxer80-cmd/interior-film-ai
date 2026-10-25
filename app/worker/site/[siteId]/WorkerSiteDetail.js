@@ -14,6 +14,7 @@ import {
 import WorkerWorkGuide from "./WorkerWorkGuide";
 import WorkerSiteInfo from "./WorkerSiteInfo";
 import WorkerTeam from "./WorkerTeam";
+import useTeamUnread from "./useTeamUnread";
 import SiteExtraWork from "../../../components/SiteExtraWork";
 import WorkerRequestPhotos from "./WorkerRequestPhotos";
 import SiteOperations from "../../../components/SiteOperations";
@@ -23,12 +24,12 @@ import SiteCuttingMaterials from "../../cutting/SiteCuttingMaterials";
 
 const menus = [
   { id: "info", label: "현장정보", kind: "home" },
-  { id: "chat", label: "팀 채팅", kind: "home" },
   { id: "film", label: "자재·재단", kind: "film" },
   { id: "photos", label: "요청사진", kind: "camera" },
   { id: "extra", label: "추가 작업", kind: "report" },
   { id: "expenses", label: "경비", kind: "money" },
   { id: "report", label: "완료보고", kind: "report" },
+  { id: "chat", label: "팀 채팅", kind: "home" },
 ];
 
 const card = {
@@ -113,6 +114,8 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
   const siteId = embeddedSiteId || routeSiteId;
   const searchParams = useSearchParams();
 
+  const unread = useTeamUnread(siteId);
+  const [conversationDate, setConversationDate] = useState(null);
   const teamDate = initialDate || searchParams.get("teamDate");
   const legacyChatLink = !initialSection && searchParams.get("section") === "info" && Boolean(teamDate);
   const requestedSection = legacyChatLink ? "chat" : initialSection && menus.some(menu => menu.id === initialSection) ? initialSection : menus.some(
@@ -394,19 +397,19 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
               <button
                 key={menu.id}
                 type="button"
-                aria-pressed={menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id}
+                aria-pressed={menu.id === "photos" ? !["info", "film", "chat"].includes(tab) : tab === menu.id}
                 aria-controls={`site-panel-${menu.id}`}
                 onClick={() => chooseTab(menu.id)}
                 style={{
                   border:
-                    (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id)
+                    (menu.id === "photos" ? !["info", "film", "chat"].includes(tab) : tab === menu.id)
                       ? "1px solid #81b4f7"
                       : "1px solid #e2e8f0",
                   borderRadius: 10,
                   minHeight: 44,
                   padding: "8px 2px",
-                  background: (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id) ? "#edf3ec" : "#fffef9",
-                  color: (menu.id === "photos" ? !["info", "film"].includes(tab) : tab === menu.id) ? "#285340" : "#53665a",
+                  background: (menu.id === "photos" ? !["info", "film", "chat"].includes(tab) : tab === menu.id) ? "#edf3ec" : "#fffef9",
+                  color: (menu.id === "photos" ? !["info", "film", "chat"].includes(tab) : tab === menu.id) ? "#285340" : "#53665a",
                   fontSize: 12,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -428,8 +431,11 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
               </button>
             ))}
           </nav>
-          {!["info", "film"].includes(tab) && <nav aria-label="사진과 보고 세부 메뉴" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4, marginTop: 8 }}>
-            {menus.slice(2).map(menu => <button type="button" key={menu.id} aria-pressed={tab === menu.id} aria-controls={`site-panel-${menu.id}`} onClick={() => chooseTab(menu.id)} style={{ ...action, padding: "8px 2px", fontSize: 12, background: tab === menu.id ? "#edf3ec" : "#fffef9" }}>{menu.label}{menu.id === "report" && reportLabel && <small style={{ display: "block" }}>{reportLabel}</small>}</button>)}
+          <button type="button" onClick={() => { setConversationDate(unread.date || teamDate); chooseTab("chat"); }} aria-controls="site-panel-chat" style={{...action,width:"100%",marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>팀원과 채팅</span><span aria-live="polite" style={{background:unread.count>0?"#b42318":"#edf3ec",color:unread.count>0?"#fff":"#285340",borderRadius:20,padding:"4px 10px"}}>{unread.error ? "확인 필요" : unread.count === null ? "확인 중" : `안 읽은 채팅 ${unread.count}개`}</span>
+          </button>
+          {!["info", "film", "chat"].includes(tab) && <nav aria-label="사진과 보고 세부 메뉴" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4, marginTop: 8 }}>
+            {menus.slice(2).filter(menu => menu.id !== "chat").map(menu => <button type="button" key={menu.id} aria-pressed={tab === menu.id} aria-controls={`site-panel-${menu.id}`} onClick={() => chooseTab(menu.id)} style={{ ...action, padding: "8px 2px", fontSize: 12, background: tab === menu.id ? "#edf3ec" : "#fffef9" }}>{menu.label}{menu.id === "report" && reportLabel && <small style={{ display: "block" }}>{reportLabel}</small>}</button>)}
           </nav>}
         </div>
       </header>
@@ -457,7 +463,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
 
         </section>
 
-        <section id="site-panel-chat" hidden={tab !== "chat"} aria-label="현장 팀 채팅"><WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} initialDate={teamDate} initialChat active={tab === "chat"} /></section>
+        <section id="site-panel-chat" hidden={tab !== "chat"} aria-label="현장 팀 채팅"><WorkerTeam key={siteId} siteId={siteId} dates={site.assigned_dates} initialDate={conversationDate || teamDate} initialChat active={tab === "chat"} /></section>
 
         <section id="site-panel-extra" hidden={tab !== "extra"} aria-label="추가 작업 요청"><SiteExtraWork key={siteId} siteId={siteId} active={tab === "extra"} /></section>
 
