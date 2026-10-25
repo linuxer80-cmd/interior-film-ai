@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import NaverRankPanel from './NaverRankPanel';
 import styles from './sales.module.css';
-export default function NaverBidEditor({keyword,busy,onCancel,onSave,rankDetails}){
+export default function NaverBidEditor({keyword,busy,saving,onCancel,onSave,rankDetails}){
  const input=useRef(null),[amount,setAmount]=useState(String(keyword.bidAmt));
  useEffect(()=>{setAmount(String(keyword.bidAmt));input.current?.focus();},[keyword.id,keyword.bidAmt]);
  const delta=Math.max(10,Math.floor(keyword.bidAmt*0.1/10)*10),min=Math.max(70,keyword.bidAmt-delta),max=Math.min(100000,keyword.bidAmt+delta),value=Number(amount);
@@ -15,6 +15,6 @@ export default function NaverBidEditor({keyword,busy,onCancel,onSave,rankDetails
   {keyword.useGroupBidAmt&&<p>저장하면 이 키워드는 그룹 입찰가 대신 개별 입찰가를 사용합니다.</p>}
   <NaverRankPanel details={rankDetails} proposedBid={valid?value:keyword.bidAmt}/>
   <p aria-live='polite'>변경: {keyword.bidAmt.toLocaleString('ko-KR')}원 → {valid?value.toLocaleString('ko-KR')+'원':'입력값을 확인해주세요'}</p>
-  <div className={styles.actions}><button disabled={busy||!valid}>{busy?'저장 및 재확인 중…':'입찰가 저장 및 확인'}</button><button type='button' className={styles.secondary} disabled={busy} onClick={onCancel}>취소</button></div>
+  <div className={styles.actions}><button disabled={busy||!valid}>{busy?(saving?'저장 및 재확인 중…':'순위 조회 중…'):'입찰가 저장 및 확인'}</button><button type='button' className={styles.secondary} disabled={busy} onClick={onCancel}>취소</button></div>
  </form>;
 }

@@ -12,6 +12,7 @@ const status=row=>row.userLock?'직접 중지':({ELIGIBLE:'운영 가능',PAUSED
 export default function NaverSales(){
   const [state,setState]=useState(null),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[view,setView]=useState('keywords');
   const [apiKey,setApiKey]=useState(''),[secretKey,setSecretKey]=useState(''),[replaceKeys,setReplaceKeys]=useState(false);
+  const [pendingAction,setPendingAction]=useState('');
   const [bidTarget,setBidTarget]=useState(null),[rankResult,setRankResult]=useState(null);
   const [groupId,setGroupId]=useState('__top__'),[keywords,setKeywords]=useState(null),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[sort,setSort]=useState('clicks'),[page,setPage]=useState(0);
   const api=useCallback(async body=>{
@@ -22,7 +23,7 @@ export default function NaverSales(){
   },[]);
   useEffect(()=>{let live=true;async function load(){try{const value=await api();if(!live)return;setState(value);setReady(true);if(value.connected){setBusy(true);try{const result=await api({action:'topKeywords'});if(live){setKeywords(result);setSort('clicks');}}catch(e){if(live)setError(e.message);}finally{if(live)setBusy(false);}}}catch(e){if(live){setError(e.message);setReady(true);}}}load();return()=>{live=false;};},[api]);
   async function act(body){
-    setBusy(true);setError('');setNotice('');
+    setPendingAction(body.action);setBusy(true);setError('');setNotice('');
     try{
       const result=await api(body);
       if(body.action==='rankDetails'){setRankResult(result);setBidTarget(current=>current?.id===result.keywordId?{...current,bidAmt:result.bidAmt,useGroupBidAmt:result.useGroupBidAmt}:current);setKeywords(current=>current?{...current,keywords:current.keywords.map(k=>k.id===result.keywordId?{...k,recent:result.recent,bidAmt:result.bidAmt,useGroupBidAmt:result.useGroupBidAmt}:k)}:current);}
@@ -36,7 +37,7 @@ export default function NaverSales(){
       else if(body.action==='keywords'||body.action==='topKeywords'){setRankResult(null);setBidTarget(null);setSort('clicks');setKeywords(result);setQuery('');setFilter('all');setPage(0);setNotice(body.action==='topKeywords'?'성과가 확인된 그룹에서 클릭 상위 키워드를 가져왔습니다.':'선택한 광고그룹의 키워드를 가져왔습니다.');}
       else{setState(result);setKeywords(null);setReplaceKeys(false);setGroupId('');setNotice(body.action==='disconnect'?'앱 연결을 해제하고 자동 조회를 중단했습니다. 네이버 광고 집행은 계속됩니다.':body.action==='connect'?'네이버 인증과 성과 조회를 확인하고 연결을 저장했습니다.':'최근 성과를 가져왔습니다.');}
     }catch(e){setError(e.message);if(body.action==='keywords'||body.action==='topKeywords'||body.action==='updateBid'){setKeywords(null);setBidTarget(null);}}
-    finally{setApiKey('');setSecretKey('');setBusy(false);}
+    finally{setApiKey('');setSecretKey('');setBusy(false);setPendingAction('');}
   }
   const rows=useMemo(()=>{
     const list=(keywords?.keywords||[]).filter(k=>(!query||k.keyword?.includes(query.trim()))&&(filter==='all'||filter==='noClicks'&&k.impressions>0&&k.clicks===0||filter==='paused'&&k.userLock));
@@ -77,7 +78,7 @@ export default function NaverSales(){
           <label>높은 순 정렬<select value={sort} onChange={e=>{setSort(e.target.value);setPage(0);}}><option value='clicks'>클릭수</option><option value='impressions'>노출수</option><option value='cost'>광고비</option><option value='cpc'>클릭당 비용</option><option value='averageRank'>평균 노출순위 숫자</option></select></label>
         </div><p>검색 결과 {rows.length}개 · 평균 노출순위는 집계 기간의 제공 지면 기준이며 현재 실시간 순위가 아닙니다.</p>
         {!bidTarget&&rankResult&&<NaverRankPanel details={rankResult} previousBid={rankResult.previousBidAmt}/>}
-        {bidTarget&&<NaverBidEditor key={bidTarget.id} keyword={bidTarget} rankDetails={rankResult?.keywordId===bidTarget.id?rankResult:null} busy={busy} onCancel={()=>setBidTarget(null)} onSave={bidAmt=>act({action:'updateBid',keywordId:bidTarget.id,groupId:bidTarget.groupId||keywords.groupId,bidAmt,expectedBidAmt:bidTarget.bidAmt,expectedUseGroupBidAmt:bidTarget.useGroupBidAmt})}/>}
+        {bidTarget&&<NaverBidEditor key={bidTarget.id} keyword={bidTarget} rankDetails={rankResult?.keywordId===bidTarget.id?rankResult:null} busy={busy} saving={pendingAction==='updateBid'} onCancel={()=>setBidTarget(null)} onSave={bidAmt=>act({action:'updateBid',keywordId:bidTarget.id,groupId:bidTarget.groupId||keywords.groupId,bidAmt,expectedBidAmt:bidTarget.bidAmt,expectedUseGroupBidAmt:bidTarget.useGroupBidAmt})}/>}
         <div className={styles.tableWrap}><table className={styles.table}><caption>키워드별 최근 7일 성과 · {keywords.period.start} ~ {keywords.period.end}</caption><thead><tr>{['키워드','상태','기본 입찰가','최근 순위 (모바일·PC)','노출','클릭','광고비','클릭률','평균 노출순위'].map(h=><th key={h} scope='col'>{h}</th>)}</tr></thead><tbody>{rows.slice(page*50,(page+1)*50).map(k=><tr key={k.id}><th scope='row'>{k.keyword}{k.groupName&&<small>{k.groupName}</small>}</th><td>{status(k)}<small>심사: {({APPROVED:'승인',ELIGIBLE:'적격',DENIED:'반려',UNDER_REVIEW:'심사 중',PENDING:'대기'})[k.inspectStatus]||k.inspectStatus||'미제공'}</small></td><td>{fmt(k.bidAmt,'원')}<small>{k.useGroupBidAmt?'그룹 입찰가':'개별 입찰가'}</small><button type='button' className={styles.secondary} disabled={busy||k.status==='DELETED'} aria-label={`${k.keyword} 입찰 수정`} onClick={()=>{setBidTarget(k);setRankResult(null);act({action:'rankDetails',keywordId:k.id,groupId:k.groupId||keywords.groupId});}}>입찰 수정·순위 비교</button></td><td><RecentRank recent={k.recent}/><small>오늘 조회 기준</small></td><td>{fmt(k.impressions)}</td><td>{fmt(k.clicks)}</td><td>{fmt(k.cost,'원')}</td><td>{percent(k.ctr)}</td><td>{k.averageRank==null?'미제공':`${k.averageRank.toFixed(1)}위`}</td></tr>)}</tbody></table></div>
         {!rows.length&&<p>조건에 맞는 키워드가 없습니다.</p>}<div className={styles.actions}><button className={styles.secondary} disabled={page===0} onClick={()=>setPage(p=>p-1)}>이전</button><span>{page+1} / {Math.max(1,Math.ceil(rows.length/50))}</span><button className={styles.secondary} disabled={(page+1)*50>=rows.length} onClick={()=>setPage(p=>p+1)}>다음</button></div></>}
       </section>}
