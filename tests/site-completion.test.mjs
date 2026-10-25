@@ -42,7 +42,7 @@ function api({ tables = {}, errors = {}, invalid = false, race = false, workerRo
     },
   };
   const response = { json: (body, options = {}) => ({ body: clean(body), status: options.status || 200, ...options }) };
-  const ctx = vm.createContext({ resolveWorkerSite, syncAfterReport: async () => '', console: { error() {} }, createClient: () => client, NextResponse: response, Response: response,
+  const ctx = vm.createContext({ after:fn=>{},notifyWorkerChangeAlerts:async()=>{},resolveWorkerSite, syncAfterReport: async () => '', console: { error() {} }, createClient: () => client, NextResponse: response, Response: response,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     recordSave: (value) => { saves.push(clean(value)); return { id: 'report' }; },
   });

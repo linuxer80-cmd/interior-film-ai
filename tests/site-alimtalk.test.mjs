@@ -73,3 +73,10 @@ test('worker reminder reservation is separate from immediate assignment and cust
   assert.equal(result.status,'requested');assert.equal(calls[0].name,'reserve_worker_reminder');assert.equal(calls[0].args.p_worker,workerId);ids.push(calls[0].args.p_id);
  }assert.notEqual(ids[0],ids[1]);
 });
+test('change event identity is reserved atomically and a retry never reaches the provider',async()=>{
+ const p=provider(),calls=[];let accepted=true;
+ const db={rpc:async(name,args)=>{calls.push({name,args});if(name==='reserve_worker_change_alert'){const result={data:{accepted,reason:'duplicate'}};accepted=false;return result;}return {data:{found:true}};}};
+ const args={db,site,company,message:{...message,kind:'worker_schedule_changed'},workerId:'worker',changeEventId:'alert-id',config,fetcher:p.fetcher};
+ assert.equal((await dispatchSiteMessage(args)).status,'requested');assert.equal((await dispatchSiteMessage(args)).status,'blocked');
+ assert.equal(calls[0].name,'reserve_worker_change_alert');assert.equal(calls[0].args.p_event,'alert-id');assert.equal(p.calls.filter(c=>c.url.includes('/send-many/')).length,1);
+});

@@ -945,6 +945,11 @@ export default function useSites({ companyId }) {
             : previous
         );
 
+        // The database captured the committed before/after assignment; this only starts delivery.
+        try {
+          const {data:session}=await supabase.auth.getSession();const token=session?.session?.access_token;
+          if(token)await fetch('/api/admin/worker-assignment-alerts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({siteId})});
+        }catch { /* The daily outbox sweep retains delivery if this request is interrupted. */ }
         setSitesMessage("✅ 시공 일정이 저장되었습니다.");
 
         return {

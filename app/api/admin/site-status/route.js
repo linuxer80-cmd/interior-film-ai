@@ -1,6 +1,9 @@
+import {after} from 'next/server';
+import {notifyWorkerChangeAlerts} from '../../../../lib/workerChangeAlimtalk.mjs';
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const maxDuration=300;
 const statuses = new Set(["consulting", "scheduled", "in_progress", "completed", "cancelled"]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", Vary: "Authorization" } });
@@ -40,6 +43,7 @@ export async function POST(request) {
       .select("id,status,updated_at").maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return json({ error: "현장 상태가 변경되었습니다. 현장 목록을 새로고침한 후 다시 확인해주세요." }, 409);
+    after(()=>notifyWorkerChangeAlerts(db,companyId,siteId,userData.user.id));
     return json({ success: true, site: updated });
   } catch (error) {
     console.error("admin site-status", error?.code || error?.message);

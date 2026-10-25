@@ -1,3 +1,4 @@
+import {notifyWorkerChangeAlerts} from '../../../lib/workerChangeAlimtalk.mjs';
 import { createClient } from "@supabase/supabase-js";
 import { notifyAssignedWorkers } from "../../../lib/siteAssignmentAlimtalk.mjs";
 import { after } from "next/server";
@@ -664,10 +665,11 @@ export async function POST(request) {
       console.error("배정 변경 알림 기록 오류",error);
     }
 
+    after(()=>notifyWorkerChangeAlerts(db,profile.company_id,siteId,auth.user.id));
     if (newRows.length) after(async () => {
       let warning;
       try {
-        warning = await notifyAssignedWorkers({db,companyId:profile.company_id,siteId,actorId:auth.user.id,newRows});
+        warning = await notifyAssignedWorkers({db,companyId:profile.company_id,siteId,actorId:auth.user.id,newRows:newRows.filter(row=>!current.some(old=>old.worker_id===row.worker_id))});
       } catch (error) {
         console.error('시공자 알림톡 처리 오류',error.code||'request_failed');
         warning = '시공자 알림톡을 처리하지 못했습니다. 배정은 저장되어 있습니다.';

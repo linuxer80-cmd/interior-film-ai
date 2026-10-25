@@ -89,3 +89,38 @@ test('worker day-before reminders validate current assignments, deduplicate and 
  assert.equal((await db.query("select has_function_privilege('authenticated','reserve_worker_reminder(uuid,uuid,uuid,uuid,date,text,text,text)','execute') allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });
+async function alertSetup(){
+ const db=await setup();
+ await db.exec('alter table sites add column work_dates date[],add column schedule_start timestamptz,add column schedule_end timestamptz,add column schedule_date date;create table site_daily_assignments(id uuid primary key,company_id uuid,site_id uuid,worker_id uuid,work_date date,role text);create table site_workers(id uuid primary key,company_id uuid,site_id uuid,worker_id uuid,role text);');
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261025021023_customer_day_before_alimtalk.sql',import.meta.url),'utf8'));
+ await db.query('insert into companies values($1,true)',['2ddfe3d9-4411-4991-ae35-5b876be411bc']);
+ await db.exec((await fs.readFile(new URL('../supabase/migrations/20261025021846_operator_company_unlimited.sql',import.meta.url),'utf8')).split('-- Prevent future plan')[0]);
+ await db.query('insert into workers values($1,$2,true)',[worker,co]);
+ await db.exec("update sites set work_dates=array[current_date+1,current_date+2,current_date+3];");
+ await db.query("insert into site_daily_assignments values($1,$2,$3,$4,current_date+1,'leader'),($5,$2,$3,$4,current_date+3,'member')",[first,co,site,worker,next]);
+ await db.exec(await fs.readFile(new URL('../database/worker_assignment_change_alimtalk.sql',import.meta.url),'utf8'));
+ return db;
+}
+const alerts=async db=>(await db.query('select * from worker_assignment_alerts order by created_at,id')).rows;
+test('committed date changes enqueue one event; transient replacement, role changes and rollback never notify',async()=>{
+ const db=await alertSetup();try{
+ await db.exec("begin;delete from site_daily_assignments where work_date=current_date+1;insert into site_daily_assignments values('40000000-0000-4000-8000-000000000005','"+co+"','"+site+"','"+worker+"',current_date+1,'member');commit;");assert.equal((await alerts(db)).length,0);
+ await db.exec("update site_daily_assignments set role='leader'");assert.equal((await alerts(db)).length,0);
+ await db.exec('begin;update site_daily_assignments set work_date=current_date+2 where work_date=current_date+1;rollback;');assert.equal((await alerts(db)).length,0);
+ await db.exec('update site_daily_assignments set work_date=current_date+2 where work_date=current_date+1;');
+ let rows=await alerts(db);assert.equal(rows.length,1);assert.equal(rows[0].kind,'worker_schedule_changed');assert.equal(rows[0].old_dates.length,2);assert.equal(rows[0].new_dates.length,2);
+ await db.exec('delete from site_daily_assignments where work_date=current_date+2;');rows=await alerts(db);assert.equal(rows.find(r=>r.kind==='worker_schedule_changed').status,'superseded');const cancel=rows.find(r=>r.kind==='worker_canceled');assert.equal(cancel.removed_dates.length,1);assert.equal(cancel.new_dates.length,1);
+ }finally{await db.close();}
+});
+test('site cancellation enqueues once, completion does not cancel and event reservation cannot double-charge',async()=>{
+ const db=await alertSetup();try{
+ await db.exec("begin;update sites set status='cancelled';update sites set status='scheduled';commit;");assert.equal((await alerts(db)).length,0);
+ await db.exec("update sites set status='cancelled'");const event=(await alerts(db))[0];assert.equal(event.kind,'worker_canceled');assert.equal(event.removed_dates.length,2);assert.deepEqual(event.new_dates,[]);
+ const call=()=>db.query("select reserve_worker_change_alert($1,$2,'mask','template',$3) result",[event.id,first,'a'.repeat(64)]);
+ assert.equal((await call()).rows[0].result.accepted,true);assert.equal((await call()).rows[0].result.reason,'duplicate');assert.equal(await count(db),1);
+ await db.query("select settle_alimtalk($1,'failed',null,'4040')",[first]);await db.query("select settle_alimtalk($1,'failed',null,'4040')",[first]);assert.equal(await count(db),2);
+ await db.exec("update sites set status='scheduled';delete from worker_assignment_alerts where status='pending';update sites set status='completed';");assert.equal((await alerts(db)).filter(r=>r.status==='pending').length,0);
+ assert.equal((await db.query("select has_table_privilege('authenticated','worker_assignment_alerts','select') allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select has_function_privilege('anon','reserve_worker_change_alert(uuid,uuid,text,text,text)','execute') allowed")).rows[0].allowed,false);
+ }finally{await db.close();}
+});
