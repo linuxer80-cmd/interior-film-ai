@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
+import SolapiBalanceCard from '../SolapiBalanceCard';
 import {supabase} from '../../../lib/supabase';
 const labels={reserved:'접수 확인 중',requested:'발송 요청됨',unknown:'결과 확인 필요',success:'발송 완료',failed:'실패',rejected:'접수 거절',canceled:'취소'};
 export default function AlimtalkAdmin(){
@@ -18,6 +19,7 @@ export default function AlimtalkAdmin(){
     catch(e){setMessage(e.message);}finally{lock.current=false;setBusy(false);}
   }
   return <main><a href="/super-admin">← 슈퍼관리자</a><h1>알림톡 운영 관리</h1><p>업체별 사용 여부·충전 횟수·발송 결과를 관리합니다. 이 화면은 결제를 실행하지 않습니다.</p>
+    <SolapiBalanceCard />
     <label>업체<select value={companyId} disabled={busy} onChange={e=>{setCompanyId(e.target.value);setConfirm(false);operation.current=null;load(e.target.value);}}><option value="">업체 선택</option>{data?.companies?.map(c=><option key={c.id} value={c.id}>{c.company_name}{!c.is_active?' · 비활성':''}</option>)}</select></label>
     {busy&&<p role="status">처리 중…</p>}{message&&<p role="status">{message}</p>}
     {companyId&&data?.account&&<>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import SolapiBalanceCard from './SolapiBalanceCard';
 import AnnouncementEditor from "./AnnouncementEditor";
 import LandingStats from "./LandingStats";
 import ToolIllustration from "../components/ui/ToolIllustration";
@@ -432,6 +433,8 @@ export default function SuperAdminPage() {
           ‹ 슈퍼관리자 홈
         </a>
       )}
+
+      {activeView === "home" && <SolapiBalanceCard />}
 
       {activeView === "home" && (
         <nav aria-label="슈퍼관리자 메뉴">
