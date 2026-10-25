@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../../lib/operatorCompany.mjs';
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
@@ -354,6 +355,7 @@ async function getStorageLimit({
   company,
   context,
 }) {
+  if(company?.is_active!==false&&isOperatorCompany(company?.id))return {ok:true,unlimited:true,limitMb:0,planCode:company.subscription_plan,planName:'운영자 무제한'};
   try {
     const planCode =
       String(

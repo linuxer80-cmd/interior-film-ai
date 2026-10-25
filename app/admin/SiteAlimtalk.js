@@ -36,19 +36,19 @@ export default function SiteAlimtalk({siteId,active=true,blocked=false}){
     <button className="open" type="button" disabled={busy||blocked} aria-expanded={open} onClick={()=>{if(open)setOpen(false);else{setOpen(true);load();}}}>고객 알림톡 보내기 {open?'−':'＋'}</button>
     {blocked&&<p>현장 기본정보를 저장한 후 알림톡을 확인해주세요.</p>}
     {open&&<div ref={panel} tabIndex={-1} className="panel">
-      <h3>시공 일정 안내</h3><p>현장에 저장된 고객 번호로 발송합니다. 발송 1건당 충전 횟수 1회를 사용합니다.</p>
+      <h3>시공 일정 안내</h3><p>현장에 저장된 고객 번호로 발송합니다. {data?.unlimited?'운영 업체는 충전 없이 이용합니다.':'발송 1건당 충전 횟수 1회를 사용합니다.'}</p>
       {busy&&<p role="status">{data?'발송을 요청하고 있습니다…':'최신 정보와 발송 상태를 확인하고 있습니다…'}</p>}
       {notice&&<p role="status" className="notice">{notice}</p>}
       {data&&<>
         <p><strong>{data.customerName||'고객명 미입력'}</strong> · {data.to||'유효한 휴대폰 번호 없음'}</p>
-        <p>첫 시공일 전날 낮 12~1시에 고객에게 자동 안내합니다. 발송 시 1회가 사용됩니다.</p>
-        <p>알림톡 잔여 <strong>{data.availableCount.toLocaleString('ko-KR')}회</strong></p>
+        <p>첫 시공일 전날 낮 12~1시에 고객에게 자동 안내합니다. {data.unlimited?'운영 업체는 충전 없이 이용합니다.':'발송 시 1회가 사용됩니다.'}</p>
+        <p>알림톡 잔여 <strong>{data.unlimited?'무제한':data.availableCount.toLocaleString('ko-KR')+'회'}</strong></p>
         <pre aria-label="고객 알림톡 메시지 미리보기">{data.text}</pre>
         {data.reasons.length>0&&<ul className="notice">{data.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>}
         {data.syncWarning&&<p>{data.syncWarning}</p>}
         {data.latestId&&<label className="confirm"><input type="checkbox" checked={resend} onChange={e=>setResend(e.target.checked)} disabled={busy}/><span>이전에 보낸 안내가 있습니다. 이력과 번호를 확인했으며 1회를 사용해 다시 보냅니다.</span></label>}
         <button className="send" type="button" disabled={busy||blocked||!data.ready||Boolean(data.latestId&&!resend)} onClick={send}>{busy?'처리 중…':data.latestId?'알림톡 재발송 · 1회 사용':'알림톡 발송 · 1회 사용'}</button>
-        {data.history.length>0&&<details><summary>발송 이력 {data.history.length}건</summary><ul>{data.history.map(row=><li key={row.id}>{date(row.created_at)} · {row.kind==='customer_reminder'?'고객 전날 안내':row.kind==='customer_schedule'?'고객 일정':'시공자 배정'} · {row.recipient_mask}<br/>{labels[row.status]||row.status}{row.accounting==='refunded'?' · 1회 복구':''}{row.error_code?' · 코드 '+row.error_code:''}</li>)}</ul></details>}
+        {data.history.length>0&&<details><summary>발송 이력 {data.history.length}건</summary><ul>{data.history.map(row=><li key={row.id}>{date(row.created_at)} · {row.kind==='customer_reminder'?'고객 전날 안내':row.kind==='customer_schedule'?'고객 일정':'시공자 배정'} · {row.recipient_mask}<br/>{labels[row.status]||row.status}{row.accounting==='refunded'&&!row.credit_exempt?' · 1회 복구':''}{row.error_code?' · 코드 '+row.error_code:''}</li>)}</ul></details>}
       </>}
       <button type="button" disabled={busy} onClick={load}>정보·발송 결과 새로고침</button>
     </div>}

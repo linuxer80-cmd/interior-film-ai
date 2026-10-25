@@ -49,3 +49,18 @@ test('automatic reminder reserves once per first date, independently of manual s
  assert.equal((await db.query("select has_function_privilege('authenticated','reserve_customer_reminder(uuid,uuid,uuid,date,text,text,text)','execute') allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });
+
+test('operator messages need no credits, preserve duplicate protection and never create refund credits',async()=>{
+ const db=await setup(),op='2ddfe3d9-4411-4991-ae35-5b876be411bc';try{
+ await db.query('insert into companies values($1,true)',[op]);await db.query('update profiles set company_id=$1 where id=$2',[op,owner]);await db.query('update sites set company_id=$1',[op]);
+ await db.exec('alter table sites add column work_dates date[],add column schedule_start timestamptz,add column schedule_date date;');
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261025021023_customer_day_before_alimtalk.sql',import.meta.url),'utf8'));
+ const migration=await fs.readFile(new URL('../supabase/migrations/20261025021846_operator_company_unlimited.sql',import.meta.url),'utf8');await db.exec(migration.split('-- Prevent future plan')[0]);
+ const r=await reserve(db,first,owner,op);assert.equal(r.rows[0].result.accepted,true);assert.equal((await reserve(db,first,owner,op)).rows[0].result.reason,'duplicate');
+ await db.query("select settle_alimtalk($1,'failed',null,'4040')",[first]);await db.query("select settle_alimtalk($1,'failed',null,'4040')",[first]);
+ assert.equal((await db.query('select available_count from alimtalk_accounts where company_id=$1',[op])).rows[0].available_count,0);
+ await db.exec("update sites set work_dates=array[(now() at time zone 'Asia/Seoul')::date+1]");
+ assert.equal((await db.query("select reserve_customer_reminder($1,$2,$3,(now() at time zone 'Asia/Seoul')::date+1,'mask','template',$4) result",[next,op,site,'a'.repeat(64)])).rows[0].result.accepted,true);
+ assert.equal((await db.query('select available_count from alimtalk_accounts where company_id=$1',[op])).rows[0].available_count,0);
+ }finally{await db.close();}
+});

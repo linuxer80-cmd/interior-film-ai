@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import {privateAuth,privateJson as json,uuid} from '../../../../lib/workerPrivate';
 import {refreshDeliveries,settle,solapiConfig,solapiRequest} from '../../../../lib/siteAlimtalk.mjs';
 export const runtime='nodejs';
@@ -19,17 +20,17 @@ export async function GET(request){
     const companies=await db.from('companies').select('id,company_name,is_active').order('company_name').limit(1000);
     if(companies.error)throw companies.error;
     if(!companyId)return json({companies:companies.data});
-    let deliveries=await db.from('alimtalk_deliveries').select('id,site_id,kind,recipient_mask,status,accounting,receipt_id,error_code,created_at').eq('company_id',companyId).order('created_at',{ascending:false}).limit(50);
+    let deliveries=await db.from('alimtalk_deliveries').select('id,site_id,kind,recipient_mask,status,accounting,credit_exempt,receipt_id,error_code,created_at').eq('company_id',companyId).order('created_at',{ascending:false}).limit(50);
     if(deliveries.error)throw deliveries.error;
     let syncWarning=null;
     try{await refreshDeliveries(db,deliveries.data);}catch{syncWarning='일부 발송 결과 갱신이 지연됩니다.';}
     const [account,entries,latest]=await Promise.all([
       db.from('alimtalk_accounts').select('enabled,available_count').eq('company_id',companyId).maybeSingle(),
       db.from('alimtalk_credit_entries').select('id,quantity,reason,created_at').eq('company_id',companyId).order('created_at',{ascending:false}).limit(20),
-      db.from('alimtalk_deliveries').select('id,site_id,kind,recipient_mask,status,accounting,receipt_id,error_code,created_at').eq('company_id',companyId).order('created_at',{ascending:false}).limit(50),
+      db.from('alimtalk_deliveries').select('id,site_id,kind,recipient_mask,status,accounting,credit_exempt,receipt_id,error_code,created_at').eq('company_id',companyId).order('created_at',{ascending:false}).limit(50),
     ]);
     if(account.error||entries.error||latest.error)throw account.error||entries.error||latest.error;
-    return json({companies:companies.data,account:account.data||{enabled:false,available_count:0},entries:entries.data,deliveries:latest.data,syncWarning});
+    return json({companies:companies.data,account:{...(account.data||{enabled:false,available_count:0}),unlimited:isOperatorCompany(companyId)},entries:entries.data,deliveries:latest.data,syncWarning});
   }catch(error){return failure(error);}
 }
 export async function POST(request){

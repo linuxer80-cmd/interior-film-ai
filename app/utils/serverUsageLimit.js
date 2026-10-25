@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../lib/operatorCompany.mjs';
 import { reserveBadgeAllowance } from "../../lib/aiQuota";
 import { createClient } from "@supabase/supabase-js";
 
@@ -445,6 +446,8 @@ export async function checkUsageLimit({
           `지원하지 않는 사용량 종류입니다: ${eventType}`,
       };
     }
+
+    if(company.is_active!==false&&isOperatorCompany(company.id))return {ok:true,unlimited:true,eventType,planCode:company.subscription_plan,planName:'운영자 무제한',limit:0,used:0,remaining:null,usagePeriod:'monthly'};
 
     const supabase =
       providedSupabase ||

@@ -1125,6 +1125,8 @@ export default function BillingPage() {
   }
 
 
+  if(currentPlan?.plan_name==='운영자 무제한')return <main style={{maxWidth:700,margin:'0 auto',padding:24}}><a href='/admin'>← 관리자 홈</a><h1>운영자 무제한</h1><p>필름장이는 카드결제 없이 모든 기능과 알림톡을 무제한으로 이용합니다.</p><p>카드 등록과 알림톡 충전이 필요하지 않습니다.</p></main>;
+
   const currentCode =
     normalizePlanCode(
       currentPlan

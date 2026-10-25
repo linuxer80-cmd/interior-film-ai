@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -352,6 +353,8 @@ export async function POST(
      * 4. 업체
      * =====================================================
      */
+
+    if(isOperatorCompany(profile.company_id))return NextResponse.json({ok:false,error:'운영 업체는 결제 없이 무제한 이용합니다.'},{status:409});
 
     const {
       data: company,

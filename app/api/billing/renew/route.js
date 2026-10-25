@@ -1,3 +1,4 @@
+import {isOperatorCompany,OPERATOR_COMPANY_ID} from '../../../../lib/operatorCompany.mjs';
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { payWithTossBillingKey } from "../../../utils/tossBilling";
@@ -1512,6 +1513,8 @@ async function renewOneSubscription({
   subscription,
   dryRun,
 }) {
+  if(isOperatorCompany(subscription.company_id))return {ok:true,skipped:true,reason:'operator_unlimited',companyId:subscription.company_id};
+
   let company = null;
   let plan = null;
   let paymentRow = null;
@@ -2401,6 +2404,7 @@ async function getDueActiveSubscriptions(
         "is",
         null,
       )
+      .neq("company_id",OPERATOR_COMPANY_ID)
       .lte(
         "next_billing_at",
         now.toISOString(),

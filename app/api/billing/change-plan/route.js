@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -37,6 +38,7 @@ export async function POST(request) {
   try {
     const ctx = await context(request);
     if (ctx.error) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if(isOperatorCompany(ctx.companyId))return NextResponse.json({ok:false,error:'운영 업체는 결제 없이 무제한 이용합니다.'},{status:409});
     const { plan_code } = await request.json();
     const requested = String(plan_code || "").trim().toLowerCase();
     const { data: sub, error: subError } = await ctx.admin.from("subscriptions")

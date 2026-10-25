@@ -1,3 +1,4 @@
+import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 import { privateAuth, privateJson as json, uuid } from '../../../../lib/workerPrivate';
 import { approvedTemplate,buildSiteMessage,dispatchSiteMessage,refreshDeliveries,solapiConfig,templateMatches } from '../../../../lib/siteAlimtalk.mjs';
 export const runtime='nodejs';
@@ -16,7 +17,7 @@ async function context(request,siteId){
   return {...auth,site:site.data,company:company.data};
 }
 async function history(db,companyId,siteId){
-  const result=await db.from('alimtalk_deliveries').select('id,kind,recipient_mask,status,accounting,error_code,created_at,receipt_id,content_hash')
+  const result=await db.from('alimtalk_deliveries').select('id,kind,recipient_mask,status,accounting,credit_exempt,error_code,created_at,receipt_id,content_hash')
     .eq('company_id',companyId).eq('site_id',siteId).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(20);
   if(result.error)throw result.error;return result.data||[];
 }
@@ -41,11 +42,11 @@ export async function GET(request){
     if(!approval.ready)reasons.push(approval.reason);
     else if(!matching)reasons.push('솔라피 템플릿 내용과 앱 안내문이 다릅니다.');
     if(!account.data?.enabled)reasons.push('업체 알림톡 사용 설정이 필요합니다.');
-    if(!(account.data?.available_count>0))reasons.push('알림톡 충전이 필요합니다.');
+    if(!isOperatorCompany(companyId)&&!(account.data?.available_count>0))reasons.push('알림톡 충전이 필요합니다.');
     const latest=rows.find(row=>row.kind==='customer_schedule')||null;
     if(latest&&['reserved','requested','unknown'].includes(latest.status))reasons.push('기존 고객 알림톡의 처리 결과를 확인해주세요.');
     return json({to:message.to,customerName:site.customer_name,text:message.text,contentHash:message.contentHash,
-      availableCount:account.data?.available_count||0,enabled:account.data?.enabled===true,ready:reasons.length===0,reasons,
+      unlimited:isOperatorCompany(companyId),availableCount:account.data?.available_count||0,enabled:account.data?.enabled===true,ready:reasons.length===0,reasons,
       latestId:latest?.id||null,history:rows.map(({receipt_id,content_hash,...row})=>row),syncWarning});
   }catch(error){return fail(error);}
 }
