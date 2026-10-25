@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { notifyAssignedWorkers } from "../../../lib/siteAssignmentAlimtalk.mjs";
+import { after } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const reply = (body, status = 200) =>
   Response.json(body, {
@@ -661,6 +664,21 @@ export async function POST(request) {
       console.error("배정 변경 알림 기록 오류",error);
     }
 
+    if (newRows.length) after(async () => {
+      let warning;
+      try {
+        warning = await notifyAssignedWorkers({db,companyId:profile.company_id,siteId,actorId:auth.user.id,newRows});
+      } catch (error) {
+        console.error('시공자 알림톡 처리 오류',error.code||'request_failed');
+        warning = '시공자 알림톡을 처리하지 못했습니다. 배정은 저장되어 있습니다.';
+      }
+      if (warning) {
+        const notice=await db.from('notifications').insert({company_id:profile.company_id,recipient_type:'company_admin',recipient_user_id:auth.user.id,
+          type:'site_assignment',priority:'warning',title:'시공자 알림톡 확인 필요',message:warning.slice(0,900),link:'/admin?tab=sites&site='+siteId,
+          reference_type:'site_assignment',reference_id:siteId,is_read:false,push_sent:false});
+        if(notice.error)console.error('알림톡 결과 알림 기록 오류',notice.error.code);
+      }
+    });
     return reply({ success: true, warnings, pendingWages, notificationWarning, message:pendingWages.length?"배정 완료 · 프리랜서 일당 미확정 건이 있습니다.":"배정 완료" });
   } catch (error) {
     console.error("날짜별 배정 저장 오류:", error);

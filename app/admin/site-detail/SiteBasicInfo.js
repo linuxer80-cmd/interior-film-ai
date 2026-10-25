@@ -52,6 +52,7 @@ export default function SiteBasicInfo({
   editRequest = 0,
   onDraftState,
   onRequestDiscard,
+  onEditingChange,
 }) {
   const [
     editing,
@@ -92,6 +93,7 @@ export default function SiteBasicInfo({
 
   const baseline = useRef(basicDraft(site));
   const dirty = editing && JSON.stringify(form) !== JSON.stringify(baseline.current);
+  useEffect(() => { onEditingChange?.(editing || saving); return () => onEditingChange?.(false); }, [editing, saving, onEditingChange]);
   useSiteDraft(onDraftState, "basic", {
     label: "현장 기본정보", dirty, pending: saving, discard: cancelEditing,
   });
