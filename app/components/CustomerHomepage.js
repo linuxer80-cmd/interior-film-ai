@@ -23,7 +23,7 @@ export default async function CustomerHomepage({ slug }) {
       initialCompany={homepage?.company || null}
       initialSettings={homepage?.settings || null}
       publicProfile={homepage?.profile || null}
-      brandHero={homepage?.profile ? <CustomerDesignHero designId={homepage.profile.design_id} name={homepage.profile.business_name || homepage.company.company_name} introduction={homepage.profile.introduction} region={homepage.profile.regions} image={homepage.cases?.[0]?.after?.[0]} logo={homepage.company.logo_url} /> : null}
+      brandHero={homepage?.profile ? <CustomerDesignHero designId={homepage.profile.design_id} name={homepage.profile.business_name || homepage.company.company_name} introduction={homepage.profile.introduction} region={homepage.profile.regions} image={homepage.cases?.[0]?.after?.[0]} beforeImage={homepage.cases?.[0]?.before?.[0]} caseTitle={homepage.cases?.[0]?.title} logo={homepage.company.logo_url} /> : null}
       homepageContent={
         <CompanyHomepageContent homepage={homepage} />
       }

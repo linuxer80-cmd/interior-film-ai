@@ -63,7 +63,7 @@
 
 .case summary strong,
 .case summary small,
-.case summary span {
+.case summary > span {
   display: block;
   margin: 10px 12px;
   overflow-wrap: anywhere;
@@ -79,7 +79,7 @@
   font-size: 12px;
 }
 
-.case summary span {
+.case summary > span {
   color: #1765cd;
   font-size: 12px;
   font-weight: 700;
@@ -224,7 +224,7 @@
 .content{background:var(--customer-bg,#fcf9f2);color:var(--customer-text,#173456)}
 .content p,.content small{color:var(--customer-muted,#607086)}
 .content .case{background:var(--customer-surface,#fff);border-color:var(--customer-muted,#dfe7ef)}
-.content .case summary span{color:var(--customer-accent,#1765cd)}
+.content .case summary > span{color:var(--customer-accent,#1765cd)}
 .content[data-layout=wide] .cases,.content[data-layout=story] .cases{grid-template-columns:1fr}
 .content[data-layout=wide] .case summary>img{height:auto;aspect-ratio:16/10}
 .content[data-layout=story] .case summary>img{height:auto;aspect-ratio:3/4}
@@ -234,3 +234,5 @@
 
 .content .services article{background:var(--customer-surface,#fff);color:var(--customer-text,#173456)}
 .content a{color:var(--customer-accent,#1765cd)}
+
+@media (max-width: 600px) { .cases { grid-template-columns: 1fr; } }

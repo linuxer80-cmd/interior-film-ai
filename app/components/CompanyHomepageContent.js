@@ -1,3 +1,4 @@
+import ShowcasePhotos from './ShowcasePhotos';
 import {designVars,getCustomerDesign} from "../../lib/customerPageDesigns.mjs";
 import styles from "./CompanyHomepageContent.module.css";
 import {
@@ -49,11 +50,7 @@ export default function CompanyHomepageContent({ homepage }) {
             {cases.map((item) => (
               <details className={styles.case} key={item.id}>
                 <summary>
-                  <img
-                    src={item.after[0]}
-                    alt={`${item.title} 완료 사진`}
-                    loading="lazy"
-                  />
+                  <ShowcasePhotos before={item.before.slice(0,1)} after={item.after.slice(0,1)} title={item.title} />
 
                   <strong>{item.title}</strong>
 
@@ -73,35 +70,7 @@ export default function CompanyHomepageContent({ homepage }) {
                     <p>사용 필름: {item.film}</p>
                   )}
 
-                  {item.before.length > 0 && (
-                    <>
-                      <h3>시공 전</h3>
-
-                      <div className={styles.photos}>
-                        {item.before.map((url, i) => (
-                          <img
-                            key={url}
-                            src={url}
-                            alt={`${item.title} 시공 전 ${i + 1}`}
-                            loading="lazy"
-                          />
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  <h3>시공 후</h3>
-
-                  <div className={styles.photos}>
-                    {item.after.map((url, i) => (
-                      <img
-                        key={url}
-                        src={url}
-                        alt={`${item.title} 시공 후 ${i + 1}`}
-                        loading="lazy"
-                      />
-                    ))}
-                  </div>
+                  <ShowcasePhotos before={item.before} after={item.after} title={item.title} />
                 </div>
               </details>
             ))}
