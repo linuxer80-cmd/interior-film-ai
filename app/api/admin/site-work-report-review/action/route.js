@@ -1,3 +1,4 @@
+import {notifyCustomerCompletion} from '../../../../../lib/customerCompletion.mjs';
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -210,9 +211,11 @@ export async function POST(request) {
       }, { status: 409 });
     }
 
+    const customerAlimtalk = action === 'approve' ? await notifyCustomerCompletion(supabase,companyId,siteId,user.id) : null;
     return NextResponse.json({
       success: true,
       action,
+      customerAlimtalk,
       site: {
         id: site.id, siteName: site.site_name, customerName: site.customer_name,
       },
@@ -226,7 +229,7 @@ export async function POST(request) {
       },
       aiRegistered: false,
       message: action === "approve"
-        ? "검수 승인이 저장되었습니다. 아직 AI 견적자료에는 등록되지 않았습니다."
+        ? "검수 승인이 저장되었습니다. 아직 AI 견적자료에는 등록되지 않았습니다. " + (customerAlimtalk?.reason || "")
         : "보완 요청이 저장되었습니다. 시공자가 내용을 수정하여 다시 제출할 수 있습니다.",
     });
   } catch (error) {
