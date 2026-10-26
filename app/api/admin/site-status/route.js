@@ -1,3 +1,4 @@
+import {notifyCustomerConfirmation} from '../../../../lib/customerConfirmation.mjs';
 import {after} from 'next/server';
 import {notifyWorkerChangeAlerts} from '../../../../lib/workerChangeAlimtalk.mjs';
 import { createClient } from "@supabase/supabase-js";
@@ -43,6 +44,7 @@ export async function POST(request) {
       .select("id,status,updated_at").maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return json({ error: "현장 상태가 변경되었습니다. 현장 목록을 새로고침한 후 다시 확인해주세요." }, 409);
+    if(status === "scheduled") after(()=>notifyCustomerConfirmation(db,companyId,siteId,userData.user.id));
     after(()=>notifyWorkerChangeAlerts(db,companyId,siteId,userData.user.id));
     return json({ success: true, site: updated });
   } catch (error) {

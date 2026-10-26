@@ -660,6 +660,14 @@ export default function useSites({ companyId }) {
               : "✅ 현장 일정이 등록되었습니다."
         );
 
+        if (!merged && createdSite.status === "scheduled") {
+          try {
+            const {data:session}=await supabase.auth.getSession();
+            const token=session?.session?.access_token;
+            if(token)await fetch('/api/admin/worker-assignment-alerts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({siteId:createdSite.id})});
+          } catch { /* Site is saved; the owner can check and send from the site detail. */ }
+        }
+
         return {
           success: true,
           site: {

@@ -1,3 +1,4 @@
+import {notifyCustomerConfirmation} from '../../../lib/customerConfirmation.mjs';
 import {notifyWorkerChangeAlerts} from '../../../lib/workerChangeAlimtalk.mjs';
 import { createClient } from "@supabase/supabase-js";
 import { notifyAssignedWorkers } from "../../../lib/siteAssignmentAlimtalk.mjs";
@@ -665,6 +666,7 @@ export async function POST(request) {
       console.error("배정 변경 알림 기록 오류",error);
     }
 
+    after(()=>notifyCustomerConfirmation(db,profile.company_id,siteId,auth.user.id));
     after(()=>notifyWorkerChangeAlerts(db,profile.company_id,siteId,auth.user.id));
     if (newRows.length) after(async () => {
       let warning;
