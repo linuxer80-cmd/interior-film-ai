@@ -540,9 +540,14 @@ export default function SiteDetailModal({
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+            <details key={"customer-notices-" + site.id} style={{ margin: "12px 0" }}>
+              <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>
+                고객 안내·알림톡
+              </summary>
             <CustomerStageAlimtalk siteStatus={site.status} key={"completion-"+site.id+site.status} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <CustomerPortalLink key={"portal-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
+            </details>
           </section>
 
           <section hidden={menu !== "info"} aria-label="현장 거래처 연결">
