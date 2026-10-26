@@ -89,6 +89,7 @@ export default function SiteRegisterModal({
 
   const lock = useRef(false);
   const checkLock = useRef(false);
+  const screenshotApplyRef = useRef(null);
   const pendingLink = useRef(null);
 
   const previews = useMemo(
@@ -160,6 +161,7 @@ export default function SiteRegisterModal({
     if (blocked || checkLock.current) return;
     setMessage("");
     if (step === 0) {
+      if (inputMode === "screenshot" && screenshotApplyRef.current && !screenshotApplyRef.current()) return;
       if (!form.work_description.trim() && consultationText.trim()) field("work_description",consultationText.trim());
       setStep(1);return;
     }
@@ -539,7 +541,7 @@ export default function SiteRegisterModal({
             </div>
             <p className="intro">{inputMode === "direct" ? "아는 정보부터 입력하세요. 나머지는 나중에 추가할 수 있어요." : "AI로 입력한 내용은 저장 전에 직접 확인해주세요."}</p>
             <div hidden={inputMode !== "screenshot"}>
-              <ScreenshotSiteInput onApply={(data) => applyAnalysis(data, "screenshot")}
+              <ScreenshotSiteInput applyPendingRef={screenshotApplyRef} onApply={(data) => applyAnalysis(data, "screenshot")}
                 disabled={busy || loading || callBusy || !!saved} onBusyChange={setScreenshotBusy} />
             </div>
             <div hidden={inputMode !== "call"}>

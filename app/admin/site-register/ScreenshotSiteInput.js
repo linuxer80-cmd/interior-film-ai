@@ -85,6 +85,7 @@ export default function ScreenshotSiteInput({
   disabled = false,
   onApply,
   onBusyChange,
+  applyPendingRef,
 }) {
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -280,7 +281,7 @@ export default function ScreenshotSiteInput({
       disabled ||
       lock.current
     ) {
-      return;
+      return false;
     }
 
     const days = dates.split(/[,\s]+/).filter(Boolean);
@@ -289,7 +290,7 @@ export default function ScreenshotSiteInput({
       setError(
         "시공일을 YYYY-MM-DD 형식으로 입력해주세요. 여러 날짜는 쉼표로 구분합니다."
       );
-      return;
+      return false;
     }
 
     for (const key of ["contract_amount", "deposit_amount"]) {
@@ -304,7 +305,7 @@ export default function ScreenshotSiteInput({
         setError(
           "금액은 원 단위의 0 이상 정수로 입력해주세요."
         );
-        return;
+        return false;
       }
     }
 
@@ -322,7 +323,15 @@ export default function ScreenshotSiteInput({
     setMessage(
       "등록창에 반영했습니다. 아래 내용과 날짜를 확인한 뒤 현장 등록을 눌러주세요."
     );
+    return true;
   }
+
+  // The wizard's Next action must commit the latest reviewed extraction too.
+  useEffect(() => {
+    if (!applyPendingRef) return;
+    applyPendingRef.current = draft ? apply : null;
+    return () => { applyPendingRef.current = null; };
+  });
 
   return (
     <section className="screenshot-input" aria-busy={busy}>
@@ -427,7 +436,7 @@ export default function ScreenshotSiteInput({
           <h4>분석 결과 확인</h4>
 
           <p>
-            이미 입력한 일반 항목은 유지하고 빈칸만 채웁니다.
+            다음을 누르면 분석 결과가 현장정보에 반영됩니다. 이미 입력한 일반 항목은 유지하고 빈칸만 채웁니다.
             시공일과 자재는 추가됩니다.
           </p>
 
