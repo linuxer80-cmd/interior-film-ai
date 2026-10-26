@@ -57,10 +57,8 @@ const STATUS_INFO = {
 
 const MENU_GROUPS = [
   { id: "info", label: "현장정보", items: [{id:"info",label:"기본정보"},{id:"chat",label:"현장 채팅"}] },
-  { id: "quote", label: "견적서", items: [{id:"quote",label:"견적서 작성"},{id:"extra",label:"추가작업"}] },
-  { id: "schedule", label: "일정·자재", items: [{id:"schedule",label:"일정·시공자 배정"},{id:"materials",label:"자재·반출·반납·재단"}] },
-  { id: "report", label: "사진·완료보고", items: [{id:"report",label:"사진·보고서·검수"},{id:"expenses",label:"경비"}] },
-  { id: "settlement", label: "정산", items: [{id:"settlement",label:"입금·미수금"}] },
+  { id: "operations", label: "작업·사진", items: [{id:"operations",label:"작업 현황"},{id:"schedule",label:"일정·시공자"},{id:"materials",label:"자재·반출·반납·재단"},{id:"report",label:"사진·완료보고"},{id:"expenses",label:"경비"},{id:"extra",label:"추가작업"}] },
+  { id: "settlement", label: "정산", items: [{id:"settlement",label:"입금·미수금"},{id:"quote",label:"견적서"}] },
 ];
 
 const SECTION_MENU = {
@@ -113,6 +111,7 @@ export default function SiteDetailModal({
   const [materialFollowup,setMaterialFollowup]=useState(null);
   const materialPriceDetails=useRef(null);
   const tradeLinkDetails=useRef(null);
+  const extrasDetails=useRef(null);
   const [menu, setMenu] = useState("info");
   const [preparationStep, setPreparationStep] = useState("dates");
   useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
@@ -266,6 +265,7 @@ export default function SiteDetailModal({
 
   function openTradeLink() {
     chooseMenu("info",()=>{
+      if(extrasDetails.current)extrasDetails.current.open=true;
       if(tradeLinkDetails.current)tradeLinkDetails.current.open=true;
       requestAnimationFrame(()=>{
         tradeLinkDetails.current?.scrollIntoView({block:"start",behavior:"smooth"});
@@ -366,14 +366,6 @@ export default function SiteDetailModal({
 
   const activeGroup = MENU_GROUPS.find(group => group.items.some(item => item.id === menu)) || MENU_GROUPS[0];
 
-  function renderMenuButton(item) {
-    const selected = menu === item.id;
-    return <button key={item.id} type="button" aria-pressed={selected}
-      aria-controls={`admin-site-panel-${item.id}`} onClick={() => chooseMenu(item.id)}
-      style={{ ...actionStyle, padding: "10px 6px", background: selected ? "#285340" : "#fffefa", color: selected ? "#ffffff" : "#465b4e" }}>
-      {item.label}{item.id === "report" && reviewLabel && <small style={{ display: "block", marginTop: 3 }}>{reviewLabel}</small>}
-    </button>;
-  }
 
   return (
     <div
@@ -442,12 +434,6 @@ export default function SiteDetailModal({
                 {site.site_name || site.customer_name || "현장명 미정"}
               </h2>
 
-              <button type="button" disabled={reportSaving} style={{ ...actionStyle, background: "#285340", color: "#fffef9", minHeight: 44, marginRight: 8, marginBottom: 6 }} onClick={() => {
-                chooseMenu("info", () => {
-                  setBasicEditRequest(value => ({ siteId: site.id, version: value.version + 1 }));
-                  requestAnimationFrame(() => { if (scrollBody.current) scrollBody.current.scrollTop = 0; });
-                });
-              }}>현장정보 수정</button>
               <span
                 style={{
                   display: "inline-block",
@@ -501,15 +487,7 @@ export default function SiteDetailModal({
                 {group.label}
               </button>)}
             </div>
-            {activeGroup.id === "schedule" ? <div aria-label="시공 준비 단계" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,marginTop:8}}>
-              {[["dates","1. 날짜"],["team","2. 시공자"],["materials","3. 자재"]].map(([step,label]) => {
-                const selected = menu === "materials" ? step === "materials" : step === preparationStep;
-                return <button key={step} type="button" aria-pressed={selected} onClick={() => choosePreparationStep(step)} style={{...actionStyle,padding:"10px 4px",background:selected ? "#edf3e8" : "#fffefa"}}>{label}</button>;
-              })}
-            </div> : activeGroup.items.length > 1 && <div aria-label={`${activeGroup.label} 세부 업무`} style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-              {activeGroup.items.map(renderMenuButton)}
-            </div>}
-            {activeGroup.id === "schedule" && <a href={`/jobs?site=${encodeURIComponent(site.id)}`} data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,color:"#315d49"}}>이 현장 시공자 구인 →</a>}
+
           </nav>
         </header>
 
@@ -523,6 +501,13 @@ export default function SiteDetailModal({
               "4px 14px calc(18px + env(safe-area-inset-bottom))",
           }}
         >
+          {menu !== activeGroup.id && <button type="button" style={{...actionStyle, border:0, background:"transparent", margin:"8px 0"}} onClick={() => chooseMenu(activeGroup.id)}>← {activeGroup.label}</button>}
+          <section hidden={menu !== "operations"} aria-label="작업 현황" style={{padding:"16px 0"}}>
+            <h3 style={{margin:"0 0 12px"}}>작업·사진</h3>
+            {MENU_GROUPS[1].items.filter(item=>item.id!=="operations").map(item=><button key={item.id} type="button" onClick={()=>item.id==="schedule" ? choosePreparationStep("dates") : chooseMenu(item.id)} style={{...actionStyle,display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",border:0,borderBottom:"1px solid #dfe4d7",borderRadius:0,background:"transparent",textAlign:"left",padding:"18px 2px"}}><span>{item.label}</span><span aria-hidden="true">→</span></button>)}
+            <a href={`/jobs?site=${encodeURIComponent(site.id)}`} data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,marginTop:14,color:"#315d49"}}>이 현장 시공자 구인 →</a>
+          </section>
+          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={openNextAction} primaryOnly />
           <section
             id="admin-site-panel-info"
             aria-label="현장 기본정보"
@@ -537,9 +522,10 @@ export default function SiteDetailModal({
               onEditingChange={setBasicBusy}
               onEditSchedule={() => choosePreparationStep("dates")}
               updateSiteBasicInfo={updateSiteBasicInfo}
-              materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+            <details ref={extrasDetails} key={"site-extras-" + site.id} style={{ margin:"12px 0" }}>
+              <summary style={{minHeight:44,padding:"10px 0",cursor:"pointer",fontWeight:800}}>추가 기능</summary>
             <details key={"customer-notices-" + site.id} style={{ margin: "12px 0" }}>
               <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>
                 고객 안내·알림톡
@@ -548,7 +534,6 @@ export default function SiteDetailModal({
             <CustomerPortalLink key={"portal-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             </details>
-          </section>
 
           <section hidden={menu !== "info"} aria-label="현장 거래처 연결">
             <details key={site.id} ref={tradeLinkDetails} style={{ margin: "12px 0",scrollMarginTop:12 }}>
@@ -558,24 +543,18 @@ export default function SiteDetailModal({
             </details>
           </section>
 
-          <SiteNextActions key={site.id} site={site} companyId={companyId} active={menu === "info"} onNavigate={openNextAction} />
-
-
-
-          <section aria-label="현장 변경 내역" hidden={menu !== "info"}>
-
-            <SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact />
-            <button type="button" style={{...actionStyle,width:"100%",marginBottom:12}} onClick={() => chooseMenu("chat")}>현장 팀 채팅 참여{initialTeamDate ? ` · ${initialTeamDate}` : ""} →</button>
-            <p style={{fontSize:13,color:"#64748b"}}>시공 배정이 없어도 본인 업체의 날짜별 현장 채팅에 참여할 수 있습니다.</p>
 
 
 
 
+          <details style={{margin:"12px 0"}}><summary style={{minHeight:44,padding:"10px 0",cursor:"pointer"}}>현장 변경 내역</summary><SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact /></details>
+            </details>
+            <button type="button" style={{...actionStyle,width:"100%",margin:"12px 0"}} onClick={() => chooseMenu("chat")}>현장 채팅 →</button>
           </section>
           <section id="admin-site-panel-chat" hidden={menu !== "chat"} aria-label="현장 팀 채팅"><AdminSiteTeam key={site.id} siteId={site.id} initialDate={initialTeamDate} active={menu === "chat"} /></section>
           <section id="admin-site-panel-extra" hidden={menu !== "extra"} aria-label="추가 작업 승인"><SiteExtraWork key={site.id} siteId={site.id} active={menu === "extra"} onChanged={reloadSites} /></section>
           <section id="admin-site-panel-settlement" aria-label="현장 상태와 수금" hidden={menu !== "settlement"}>
-            <p style={{fontSize:14,lineHeight:1.6}}>고객 입금·미수금과 이 현장의 실제 비용·수익을 확인하세요.</p>
+            <button type="button" style={{...actionStyle,width:"100%",display:"flex",justifyContent:"space-between",margin:"14px 0"}} onClick={()=>chooseMenu("quote")}><span>견적서 작성·확인</span><span aria-hidden="true">→</span></button>
             <a href="/admin?tab=profit" data-ui-link="action" style={{...actionStyle,display:"inline-flex",alignItems:"center",textDecoration:"none"}} onClick={event => {
               event.preventDefault();
               requestLeave(() => { window.location.href = "/admin?tab=profit"; }, undefined, true);
@@ -630,6 +609,7 @@ export default function SiteDetailModal({
               aria-label="일정과 시공자 배정"
               hidden={menu !== "schedule"}
             >
+              <div style={{display:"flex",gap:8,margin:"12px 0"}}>{[["dates","시공일"],["team","시공자 배정"]].map(([step,label])=><button type="button" key={step} aria-pressed={preparationStep===step} style={{...actionStyle,flex:1,background:preparationStep===step?"#edf3e8":"#fffefa"}} onClick={()=>choosePreparationStep(step)}>{label}</button>)}</div>
               <p style={{fontSize:13,color:"#53665a",lineHeight:1.7}}>
                 {preparationStep === "dates" ? "시공하는 날짜를 먼저 저장하세요. 시공자는 나중에 배정해도 됩니다." : "날짜별 팀장과 팀원을 정하세요. 같은 팀을 여러 날짜에 적용한 뒤 필요한 날짜만 바꿀 수 있습니다."}
               </p>

@@ -6,7 +6,7 @@ import { siteClosure } from "../../lib/siteClosure.mjs";
 import { siteNextActions } from "../../lib/siteNextActions.mjs";
 import { koreanDay } from "../utils/workerCalendar";
 
-export default function SiteNextActions({ site, companyId, active, onNavigate }) {
+export default function SiteNextActions({ site, companyId, active, onNavigate, primaryOnly = false }) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({ loading: true, errors: [], snapshot: {} });
 
@@ -117,8 +117,9 @@ export default function SiteNextActions({ site, companyId, active, onNavigate })
   return <section aria-label={closure?"마무리 확인":"다음 할 일"} aria-busy={state.loading} className="next-actions">
     <div className="heading"><h3>{closure?"마무리 확인":"다음 할 일"}</h3><button type="button" disabled={state.loading} onClick={() => setAttempt(value => value + 1)}>새로고침</button></div>
     {state.loading ? <p role="status">실제 업무 상태를 확인하고 있습니다…</p> : <>
-      {!closure && state.snapshot.material?.status === "recorded" && <p role="status"><strong>등록 자재 {state.snapshot.material.materialCount}종 모두 반출 기록 있음</strong><br/>{state.snapshot.material.materials?.filter(row=>Number(row.issued)>0).map(row=>`${row.brand || ""} ${row.code || ""} · ${row.issued}${row.unit || "m"}`).join(" / ")}</p>}
-      {actions.map(action => <div className="action" key={action.id}><p>{action.message}</p>{action.detail&&<p style={{whiteSpace:"pre-wrap"}}>{action.detail}</p>}<button type="button" onClick={() => onNavigate(action.menu, action)}>{action.label} →</button></div>)}
+      {!primaryOnly && !closure && state.snapshot.material?.status === "recorded" && <p role="status"><strong>등록 자재 {state.snapshot.material.materialCount}종 모두 반출 기록 있음</strong><br/>{state.snapshot.material.materials?.filter(row=>Number(row.issued)>0).map(row=>`${row.brand || ""} ${row.code || ""} · ${row.issued}${row.unit || "m"}`).join(" / ")}</p>}
+      {(primaryOnly ? actions.slice(0,1) : actions).map(action => <div className="action" key={action.id}><p>{action.message}</p>{!primaryOnly&&action.detail&&<p style={{whiteSpace:"pre-wrap"}}>{action.detail}</p>}<button type="button" onClick={() => onNavigate(action.menu, action)}>{action.label} →</button></div>)}
+      {primaryOnly && actions.length > 1 && <details><summary style={{minHeight:44,padding:"10px 0",cursor:"pointer"}}>다른 할 일 {actions.length - 1}개</summary>{actions.slice(1).map(action=><div className="action" key={action.id}><p>{action.message}</p><button type="button" onClick={()=>onNavigate(action.menu,action)}>{action.label} →</button></div>)}</details>}
       {state.errors.length > 0 && <div role="alert"><p>{state.errors.join(" ")}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 확인</button></div>}
       {closure?.unknown.length>0&&<p role="alert">{closure.unknown.join(" · ")} 확인이 필요합니다. 새로고침하거나 해당 메뉴에서 내역을 확인해주세요.</p>}
       {closure?.complete&&<p role="status"><strong>현장 정리 완료 ✓</strong><br/>현재 기록상 미수금·미반납 롤·자재 단가 미입력이 없습니다.</p>}
