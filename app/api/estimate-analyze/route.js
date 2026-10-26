@@ -1,3 +1,4 @@
+import {resolvePortal} from '../../../lib/customerPortal.mjs';
 import { NextResponse } from "next/server";
 import { getUsageAdminSupabase, checkUsageLimit, makeUsageLimitError } from "../../utils/serverUsageLimit";
 import { ESTIMATE_ANALYSIS_MODEL } from "../../../lib/estimatePhotoAnalysis";
@@ -10,6 +11,8 @@ export async function POST(request) {
   try {
     const form = await request.formData();
     const slug = String(form.get("company_slug") || "").trim().toLowerCase();
+    const customerToken=form.get('customer_token');
+    if(customerToken){const portal=await resolvePortal(customerToken);if(!portal||portal.company.slug!==slug)return NextResponse.json({error:'고객 링크가 만료되었습니다. 업체에 새 링크를 요청해주세요.'},{status:403});}
     const files = form.getAll("images");
     let targetChoices;
     try { targetChoices=JSON.parse(String(form.get("target_choices")||"[]")); } catch { return NextResponse.json({error:"시공 대상 선택을 확인해주세요."},{status:400}); }

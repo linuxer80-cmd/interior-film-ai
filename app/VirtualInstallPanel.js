@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import FilmColorPicker from "./FilmColorPicker";
+import {virtualPhotoScope} from "../lib/virtualPhotoScope.mjs";
 
 const TARGET_TYPES = [
   { key: "elevator_interior", label: "엘리베이터 내부 벽면" },
@@ -234,6 +235,7 @@ function getMatchedAnalysis(image, groups) {
     .join(" ");
 
   return {
+    structured: image?.analysis || matched.find(({photo})=>photo?.analysis?.hierarchy_targets)?.photo.analysis,
     photoText,
     groupText,
     allText: `${photoText} ${groupText}`,
@@ -500,13 +502,13 @@ export default function VirtualInstallPanel({
     [selectedImage, groups]
   );
 
-  const detectedType =
-    detectType(analysis.photoText) ||
-    detectType(analysis.groupText);
+  const scope = useMemo(()=>virtualPhotoScope(analysis.structured),[analysis.structured]);
+  const availableTypes = scope === null ? TARGET_TYPES : TARGET_TYPES.filter(type=>scope.some(item=>item.key===type.key));
+  const detectedType = scope === null ? (detectType(analysis.photoText) || detectType(analysis.groupText)) : (scope[0]?.key || "");
 
   const targetAreas = useMemo(
-    () => getTargetAreas(targetType, analysis),
-    [targetType, analysis]
+    () => scope === null ? getTargetAreas(targetType, analysis) : (scope.find(item=>item.key===targetType)?.areas || []),
+    [targetType, analysis, scope]
   );
 
   const includedAreas = targetAreas.filter(
@@ -800,7 +802,7 @@ export default function VirtualInstallPanel({
             사진에 보이는 시공 부위를 선택하세요
           </option>
 
-          {TARGET_TYPES.map((item) => (
+          {availableTypes.map((item) => (
             <option key={item.key} value={item.key}>
               {item.label}
             </option>
@@ -809,8 +811,7 @@ export default function VirtualInstallPanel({
       </label>
 
       <p className="virtual-sub">
-        자동판정이 틀리면 직접 수정하세요.
-        원본에 없는 부위를 선택하지 마세요.
+        {scope === null ? "사진에 보이는 부위를 선택해주세요." : availableTypes.length ? "사진에서 확인된 시공 대상입니다. 적용할 구성 부위를 확인해주세요." : "시공 부위를 확인하지 못했습니다. 대상이 잘 보이는 사진으로 다시 분석해주세요."}
       </p>
 
       {targetType && (

@@ -424,7 +424,7 @@ function getTargetPrompt(targetType) {
     fridge_cabinet: [
       "The target is the EXISTING REFRIGERATOR CABINET OR ENCLOSURE ONLY.",
       "Apply film to all existing exposed refrigerator-enclosure doors, surrounding side/end panels, overhead storage, fixed face frames, filler strips, top/bottom trims and plinths. Do not omit narrow white frame strips or side panels. Preserve all frame thicknesses, openings and seams.",
-      "Preserve the refrigerator and all appliances unchanged.",
+      "Before editing, locate BOTH left and right exposed side/end panels, including the broad vertical panel facing the camera beside an empty refrigerator opening. Such cabinet panels are target surfaces even when white and plain; do not mistake them for room walls. Refinish every visible plane and narrow edge of these existing panels with the same assigned film, together with the overhead doors and frames. Keep the appliance opening EMPTY if empty. Preserve the refrigerator and all appliances unchanged.",
       "Preserve cabinet dimensions, divisions, gaps, handles and hardware.",
       "Never create a room door, doorway or frame.",
     ],
@@ -453,7 +453,7 @@ function getAreaInstruction(key, label) {
     kitchen_lower:
       "Apply this film to the complete existing lower-cabinet zone: doors, drawers, fixed frames, narrow vertical stiles, rails, corner and filler panels, exposed side/end panels, finishing trims, plinths and toe kicks. Include narrow white supports and end panels belonging to these cabinets. Exclude the countertop, appliances and separately assigned refrigerator/tall/pantry/island zones. Preserve exact frame thickness and gaps. If absent, do nothing.",
     fridge_cabinet:
-      "Apply this film to the entire existing refrigerator cabinet/enclosure: surrounding side/end panels, overhead cupboard doors, fixed frames, fillers, top finishing strips, rails, plinths and exposed trims. This zone is separate from ordinary upper and lower cabinets, even where it touches them. Preserve the refrigerator appliance, openings, dimensions and frame thickness. If the cabinet is absent, do nothing.",
+      "Apply this film to the entire existing refrigerator cabinet/enclosure: surrounding side/end panels, overhead cupboard doors, fixed frames, fillers, top finishing strips, rails, plinths and exposed trims. Include the broad exposed vertical side/end panel facing the camera beside the appliance recess; never leave it in the original color while recoloring only the overhead doors. This zone is separate from ordinary upper and lower cabinets, even where it touches them. Preserve the refrigerator appliance, openings, dimensions and frame thickness. If the cabinet is absent, do nothing.",
     tall_cabinet:
       "Apply this film only to the existing tall cabinet fronts and film-finished panels. If absent, do nothing.",
     pantry_cabinet:
