@@ -46,8 +46,8 @@ export default function CustomerVirtualInstall({token,company,remaining}){
     <button type="button" className={styles.secondary} disabled={analyzing} onClick={()=>cameraInput.current?.click()}>사진 찍기</button>
     <button type="button" className={styles.secondary} disabled={analyzing} onClick={()=>fileInput.current?.click()}>사진·파일 선택</button>
   </div>
-  <input ref={cameraInput} aria-label="카메라로 사진 찍기" type="file" accept="image/*" capture="environment" hidden onChange={upload}/>
-  <input ref={fileInput} aria-label="저장된 사진 파일 선택" type="file" accept="image/*" hidden onChange={upload}/>
+  <input ref={cameraInput} aria-label="카메라로 사진 찍기" type="file" accept="image/*" capture="environment" hidden style={{display:"none"}} onChange={upload}/>
+  <input ref={fileInput} aria-label="저장된 사진 파일 선택" type="file" accept="image/*" hidden style={{display:"none"}} onChange={upload}/>
   {images[0]&&<p className={styles.muted}>선택한 사진: {images[0].file.name}</p>}{message&&<p role="status">{message}</p>}
   {images[0]&&<img className={styles.photo} src={images[0].preview} alt="선택한 우리 집 사진"/>}
   {images.length>0&&!images[0].analysis&&<button type="button" className={styles.primary} disabled={analyzing} onClick={analyze}>{analyzing?'사진을 분석하고 있습니다':'사진 속 시공 부위 확인하기'}</button>}
