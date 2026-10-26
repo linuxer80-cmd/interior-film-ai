@@ -1,15 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
-import {sameFilmProduct,filmCodeInfo} from '../lib/hyundaiFilmCode.js';
+import {sameFilmProduct,filmCodeInfo,resolveFilmType} from '../lib/hyundaiFilmCode.js';
 const source=fs.readFileSync(new URL('../app/api/admin/material-price-options/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
 const co='co',site='11111111-1111-4111-8111-111111111111',material='22222222-2222-4222-8222-222222222222';
-function fixture({existing=false,foreign=false,rollError=false}={}){
+function fixture({existing=false,foreign=false,rollError=false,priceType=''}={}){
  let rpcCalls=0;const reads=[];
  const tables={sites:[{id:site,company_id:foreign?'foreign':co}],site_materials:[{id:material,site_id:site,company_id:co,material_type:'actual',brand:'현대보닥',product_code:'VM90',unit:'m'}],film_dealer_prices:[{id:'a',company_id:co,product_id:'p',dealer_id:'d',price_type:'fire',unit_price:11500},{id:'b',company_id:co,product_id:'p',dealer_id:'d',price_type:'non_fire',unit_price:10500},{id:'foreign-price',company_id:'foreign',product_id:'p',dealer_id:'d',price_type:'fire',unit_price:1}],film_dealers:[{id:'d',company_id:co,name:'대리점'}]};
  const db={from(table){const filters=[];const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},maybeSingle(){q.single=true;return q},then(resolve){reads.push(table);const rows=tables[table].filter(r=>filters.every(f=>f(r)));return Promise.resolve({data:q.single?rows[0]||null:rows}).then(resolve)}};return q;},rpc:async()=>{rpcCalls++;return rollError?{error:{code:'22023',message:'롤 입고단가 확인 필요'}}:{data:{options:[{id:'roll',label:'롤 실제원가',unitPrice:12000}],unit:'m'}};}};
- const GET=new Function('privateAuth','json','uuid','matchingFilmProducts','sameFilmProduct','filmCodeInfo','Response',source+';return GET;')(async()=>({db,user:{id:'owner'},companyId:co}),(data,status=200)=>Response.json(data,{status}),v=>[site,material].includes(v),async()=>[{id:'p'}],sameFilmProduct,filmCodeInfo,Response);
- return{get:async()=>{const r=await GET(new Request(`https://app.test?siteId=${site}&brand=현대보닥&code=VM90${existing?'&materialId='+material:''}`));return{status:r.status,...await r.json()};},reads,rpcCalls:()=>rpcCalls};
+ const GET=new Function('privateAuth','json','uuid','matchingFilmProducts','sameFilmProduct','filmCodeInfo','resolveFilmType','Response',source+';return GET;')(async()=>({db,user:{id:'owner'},companyId:co}),(data,status=200)=>Response.json(data,{status}),v=>[site,material].includes(v),async()=>[{id:'p'}],sameFilmProduct,filmCodeInfo,resolveFilmType,Response);
+ return{get:async()=>{const r=await GET(new Request(`https://app.test?siteId=${site}&brand=현대보닥&code=VM90&priceType=${priceType}${existing?'&materialId='+material:''}`));return{status:r.status,...await r.json()};},reads,rpcCalls:()=>rpcCalls};
 }
 test('stored actual material uses its scoped roll cost before dealer prices',async()=>{const h=fixture({existing:true});const r=await h.get();assert.equal(r.options[0].unitPrice,12000);assert.equal(h.rpcCalls(),1);assert.equal(h.reads.includes('film_dealer_prices'),false);});
 test('dealer variants remain separate and another company price is excluded',async()=>{const r=await fixture().get();assert.equal(r.options.length,2);assert.deepEqual(r.options.map(p=>p.unitPrice),[11500,10500]);});
 test('unready roll cost is explained instead of silently falling back to dealer price',async()=>{const h=fixture({existing:true,rollError:true});const r=await h.get();assert.equal(r.options.length,0);assert.match(r.message,/입고단가/);assert.equal(h.reads.includes('film_dealer_prices'),false);});
 test('foreign site cannot expose cost data',async()=>{const h=fixture({foreign:true});assert.equal((await h.get()).status,404);assert.equal(h.reads.includes('film_dealer_prices'),false);});
+
+test('explicit variant only offers matching company purchase prices',async()=>{const r=await fixture({priceType:'non_fire'}).get();assert.equal(r.status,200);assert.deepEqual(r.options.map(p=>p.unitPrice),[10500]);});

@@ -25,32 +25,32 @@ function fixture(siteValues={}){
   return {render,button,component};
 }
 test('preparation navigation separates dates, team and materials and guards unsaved schedule changes',()=>{
-  const h=fixture();h.button('일정·자재').props.onClick();
-  assert.equal(h.button('1. 날짜').props['aria-pressed'],true);
+  const h=fixture();h.button('작업·사진').props.onClick();h.button('일정·시공자→').props.onClick();
+  assert.equal(h.button('시공일').props['aria-pressed'],true);
   let dirty=true;
   h.component('SiteScheduleEditor').props.onDraftState('schedule',()=>({label:'시공 날짜',dirty,pending:false,discard:()=>{dirty=false;}}));
   h.button('다음 · 시공자 배정 →').props.onClick();
-  assert.equal(h.button('1. 날짜').props['aria-pressed'],true);
+  assert.equal(h.button('시공일').props['aria-pressed'],true);
   const dialog=h.component('UnsavedChangesDialog');
   assert.deepEqual([...dialog.props.request.labels],['시공 날짜']);
   dialog.props.onContinue();
   dirty=false;h.button('다음 · 시공자 배정 →').props.onClick();
-  assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+  assert.equal(h.button('시공자 배정').props['aria-pressed'],true);
   const dateContainer=all(h.render(),node=>node.props?.['aria-label']==='시공 일정')[0];
   assert.equal(dateContainer.props.hidden,true);
   h.button('다음 · 자재 준비 →').props.onClick();
-  assert.equal(h.button('3. 자재').props['aria-pressed'],true);
+  assert.equal(all(h.render(),n=>n.props?.id==='admin-site-panel-materials')[0].props.hidden,false);
   h.button('← 시공자 배정 확인').props.onClick();
-  assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+  assert.equal(h.button('시공자 배정').props['aria-pressed'],true);
 });
 
 test('assignment shortcuts open crew directly when dates exist and retain date setup when missing',()=>{
  const h=fixture();h.component('SiteNextActions').props.onNavigate('schedule',{id:'assignment'});
- assert.equal(h.button('2. 시공자').props['aria-pressed'],true);
+ assert.equal(h.button('시공자 배정').props['aria-pressed'],true);
  const undated=fixture({work_dates:[]});undated.component('SiteNextActions').props.onNavigate('schedule',{id:'assignment'});
- assert.equal(undated.button('1. 날짜').props['aria-pressed'],true);
+ assert.equal(undated.button('시공일').props['aria-pressed'],true);
  h.component('SiteNextActions').props.onNavigate('schedule',{id:'date'});
- assert.equal(h.button('1. 날짜').props['aria-pressed'],true);
+ assert.equal(h.button('시공일').props['aria-pressed'],true);
 });
 
 test('trade editing has one input location and settlement change navigation protects payment drafts',()=>{

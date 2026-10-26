@@ -1,3 +1,4 @@
+import {workerReimbursements} from '../lib/workerReimbursements.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -84,14 +85,14 @@ function api({ tables = {}, errors = {}, invalid = false } = {}) {
       const q = {
         select(s) { fields = s.split(','); return q; }, eq(k, v) { filters.push((r) => r[k] === v); return q; },
         gte(k, v) { filters.push(r => r[k] >= v); return q; }, lte(k, v) { filters.push(r => r[k] <= v); return q; }, lt(k, v) { filters.push(r => r[k] < v); return q; },
-        in(k, vs) { filters.push((r) => vs.includes(r[k])); return q; }, order() { return q; },
+        is(k,v) { filters.push(r=>r[k]===v);return q; },not(k,op,v) { filters.push(r=>r[k]!==v);return q; },in(k, vs) { filters.push((r) => vs.includes(r[k])); return q; }, order() { return q; },
         range(a, b) { start = a; end = b; return q; }, maybeSingle: async () => result(true),
         then(resolve, reject) { return Promise.resolve(result()).then(resolve, reject); },
       }; return q;
     },
   };
   const FixedDate = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-30T12:00:00Z'])); } };
-  const ctx = vm.createContext({ contractWage, loadLaborContracts, URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
+  const ctx = vm.createContext({ workerReimbursements, contractWage, loadLaborContracts, URL, Intl, Date: FixedDate, console: { error() {} }, createClient: () => client,
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test' } },
     Response: { json: (body, options) => ({ body: clean(body), ...options }) },
   });
@@ -133,7 +134,7 @@ test('monthly API paginates assignments and reports read failures instead of zer
 
 function workerCrud() {
   const writes = [];
-  const q = { insert(value) { writes.push({ action: 'insert', value: clean(value) }); return q; }, update(value) { writes.push({ action: 'update', value: clean(value) }); return q; }, select() { return q; }, eq() { return q; }, single: async () => ({ data: { id: 'w', ...writes.at(-1).value } }) };
+  const q = { insert(value) { writes.push({ action: 'insert', value: clean(value) }); return q; }, update(value) { writes.push({ action: 'update', value: clean(value) }); return q; }, select() { return q; }, eq() { return q; }, is() { return Promise.resolve({data:[],error:null}); }, single: async () => ({ data: { id: 'w', ...writes.at(-1).value } }) };
   const ctx = vm.createContext({ console, Intl, useCallback: (fn) => fn, useState: (value) => [value, () => {}], supabase: { from: () => q } });
   vm.runInContext(helpers + '\n' + source('../app/admin/hooks/useWorkers.js').replace('default function useWorkers', 'function useWorkers') + '\nglobalThis.hook = useWorkers({companyId:"a"});', ctx);
   return { writes, hook: ctx.hook };

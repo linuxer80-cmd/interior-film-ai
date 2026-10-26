@@ -23,7 +23,7 @@ test('catalog selection updates actual product identity while retaining usage an
  assert.equal(saved.id,'m');assert.equal(saved.product_code,'Vm90');assert.equal(saved.brand,'현대&c');assert.equal(saved.product_name,'보닥 메탈로즈골드');
  assert.equal(saved.quantity,'12');assert.equal(saved.unit_price,'15000');assert.equal(saved.unit,'m');assert.equal(saved.memo,'실제 사용 기록');
  const prices=all(render(),n=>n.type==='./ActualMaterialPricePicker')[0];
- prices.props.onApply(11500,{key:'s|m|현대&c|Vm90|m',automatic:true,expected:'15000',purchase:{materialId:'m',version:'verified',optionId:'roll',unitPrice:11500,quantity:12}});
+ prices.props.onApply(11500,{key:'s|m|현대&c|Vm90|m|',automatic:true,expected:'15000',purchase:{materialId:'m',version:'verified',optionId:'roll',unitPrice:11500,quantity:12}});
  all(render(),n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});
  await new Promise(r=>setImmediate(r));
  assert.equal(requests[0].url,'/api/admin/material-purchase-cost');assert.equal(requests[0].body.version,'verified');assert.equal(requests[0].body.optionId,'roll');

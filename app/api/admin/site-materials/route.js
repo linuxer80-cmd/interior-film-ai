@@ -1,4 +1,5 @@
-import { sameFilmProduct } from "../../../../lib/hyundaiFilmCode";
+import { sameFilmProduct, resolveFilmType } from "../../../../lib/hyundaiFilmCode";
+import { matchingFilmProducts } from "../../../../lib/matchingFilmProducts.mjs";
 import { normalizeFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
@@ -30,6 +31,18 @@ async function handle(request) {
       const quantity = Number(body.quantity), unitPrice = Number(body.unit_price);
       if (!(text("product_code", 100) || text("product_name", 200)) || body.quantity === "" || body.quantity == null || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000 || body.unit_price === "" || body.unit_price == null || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000000 || !Number.isSafeInteger(Math.round(quantity * unitPrice))) return json({ error: "제품명 또는 코드를 입력하고 사용량과 단가를 확인해주세요." }, 400);
       values = { brand: normalizeFilmBrand(text("brand", 100)), product_code: text("product_code", 100), product_name: text("product_name", 200), quantity, unit: text("unit", 20) || "m", unit_price: unitPrice, total_price: Math.round(quantity * unitPrice), memo: text("memo", 1000), updated_at: new Date().toISOString() };
+      if (body.price_type != null && body.price_type !== "") {
+        if (!["fire","non_fire"].includes(body.price_type) || resolveFilmType(values.brand,values.product_code,body.price_type).conflict) return json({error:"제품과 방염·비방염 구분을 확인해주세요."},400);
+        values.price_type=body.price_type;
+      }
+      if (Object.hasOwn(body,"film_product_id")) {
+        values.film_product_id=null;
+        if(body.film_product_id){
+          const matches=await matchingFilmProducts(db,values.brand,values.product_code);
+          if(!uuid(body.film_product_id) || !matches.some(p=>p.id===body.film_product_id))return json({error:"선택한 제품과 코드가 다릅니다. 제품을 다시 선택해주세요."},400);
+          values.film_product_id=body.film_product_id;
+        }
+      }
     }
     let query;
     if (request.method === "POST") query = db.from("site_materials").insert({ ...values, company_id: profile.company_id, site_id: site.id, material_type: "actual", created_by: user.id });
@@ -40,7 +53,7 @@ async function handle(request) {
     const { data, error } = await query.select("id").maybeSingle();
     if (error) {
       if (request.method === "PATCH" && ((error.code === "P0001" && String(error.message).includes("반출·반입 관리 현장")) || (error.code === "22023" && String(error.message).includes("롤별 반입량과 입고단가")))) {
-        const originalResult=await db.from("site_materials").select("id,brand,product_code,product_name,quantity,unit,memo,updated_at").eq("id",body.id).eq("site_id",site.id).eq("company_id",profile.company_id).eq("material_type","actual").maybeSingle();
+        const originalResult=await db.from("site_materials").select("id,brand,product_code,product_name,quantity,unit,memo,updated_at,price_type,film_product_id").eq("id",body.id).eq("site_id",site.id).eq("company_id",profile.company_id).eq("material_type","actual").maybeSingle();
         if(originalResult.error)throw originalResult.error;
         const original=originalResult.data;
         if(!original)return json({error:"자재가 변경됐습니다. 새로고침해주세요."},409);
@@ -48,8 +61,9 @@ async function handle(request) {
         const sameQuantity=Number(original.quantity)===Number(body.quantity);
         const sameUnit=String(original.unit||"").trim()===String(body.unit||"").trim();
         const sameMemo=String(original.memo||"").trim()===String(body.memo||"").trim();
-        if(!sameProduct||!sameQuantity||!sameUnit||!sameMemo){
-          const changes=[!sameProduct&&"제품",!sameQuantity&&"사용량",!sameUnit&&"단위",!sameMemo&&"메모"].filter(Boolean);
+        const sameType=!values.price_type || values.price_type===original.price_type;
+        if(!sameProduct||!sameQuantity||!sameUnit||!sameMemo||!sameType){
+          const changes=[!sameProduct&&"제품",!sameQuantity&&"사용량",!sameUnit&&"단위",!sameMemo&&"메모",!sameType&&"방염 구분"].filter(Boolean);
           return json({error:`반출·반입 정산 기록과 ${changes.join("·")}가 다릅니다. 기존 자재의 단가만 저장할 수 있습니다.`,priceOnlyMaterial:original},409);
         }
         // Catalog aliases and display names must not turn a price edit into a product edit.

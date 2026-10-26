@@ -47,7 +47,7 @@ function harness(initialPhotos = [], initialPrices = {}, options = {}) {
     '../utils/quickRegisterCategories': categories, '../utils/quickRegisterGroups': groups,
     './quickRegisterFiles': { prepareBulkPhoto: async file => { calls.prepared.push(file.name); return options.prepare ? options.prepare(file) : { file, name: file.name, imageHash: 'prepared-hash', fileError: '' }; } },
     '../../lib/supabase': { supabase: client }, './adminConstants': { PROJECT_ID: 'project' },
-    './aiUtils': { createEmbedding: async () => null }, './adminStyles': { inputStyle: {}, primaryButtonStyle: {}, sectionStyle: {} },
+    './PhotoHierarchyRegister': { default:()=>null }, './aiUtils': { createEmbedding: async () => null }, './adminStyles': { inputStyle: {}, primaryButtonStyle: {}, sectionStyle: {} },
   };
   const context = {
     exports: {}, require: name => { assert.ok(modules[name], `unexpected module ${name}`); return modules[name]; }, React,
@@ -56,11 +56,11 @@ function harness(initialPhotos = [], initialPrices = {}, options = {}) {
     FormData: class { append() {} },
     fetch: async () => ({ ok: true, json: async () => ({ photos: options.results || [] }) }),
   };
-  vm.createContext(context); vm.runInContext(code, context);
+  vm.createContext(context); vm.runInContext(code+'\nexports.legacy=LegacyQuickRegisterTab;', context);
   const visit = (node, fn) => { if (Array.isArray(node)) return node.forEach(n => visit(n, fn)); if (!node || typeof node !== 'object') return; fn(node); visit(node.props?.children, fn); };
   function render() {
     index = 0; effects = [];
-    tree = context.exports.default({ companyId: 'company', loadJobs: async () => {} });
+    tree = context.exports.legacy({ companyId: 'company', loadJobs: async () => {} });
     function mount(node, parent = null) {
       if (Array.isArray(node)) return node.forEach(n => mount(n, parent));
       if (!node || typeof node !== 'object') return;

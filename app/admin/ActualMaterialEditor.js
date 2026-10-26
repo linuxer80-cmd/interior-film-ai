@@ -14,6 +14,7 @@ const empty = {
   quantity: "",
   unit: "m",
   unit_price: "",
+  price_type: "",
   memo: "",
 };
 
@@ -71,7 +72,7 @@ export default function ActualMaterialEditor({
 
       const original=materials.find(row=>row.id===item.id);
       const purchase=item._purchaseCost;
-      const applyPurchase=method==="PATCH"&&purchase&&original&&Number(item.unit_price)===Number(purchase.unitPrice)&&Number(item.quantity)===Number(purchase.quantity)&&["brand","product_code","product_name","quantity","unit","memo"].every(key=>String(item[key]??"")===String(original[key]??""));
+      const applyPurchase=method==="PATCH"&&purchase&&original&&Number(item.unit_price)===Number(purchase.unitPrice)&&Number(item.quantity)===Number(purchase.quantity)&&["brand","product_code","product_name","quantity","unit","memo","price_type"].every(key=>String(item[key]??"")===String(original[key]??""));
       const response = await fetch(
         applyPurchase?"/api/admin/material-purchase-cost":"/api/admin/site-materials",
         {
@@ -263,6 +264,14 @@ export default function ActualMaterialEditor({
             {draft.id ? "사용 자재 수정" : "사용 자재 추가"}
           </strong>
 
+          <label>방염 구분
+            <select style={field} value={draft.price_type || ""} disabled={busy}
+              required={!draft.id} onChange={event=>setDraft({...draft,price_type:event.target.value,unit_price:"",_purchaseCost:null})}>
+              <option value="">방염·비방염 선택</option>
+              <option value="non_fire">비방염</option><option value="fire">방염</option>
+            </select>
+          </label>
+
           {[
             ["brand", "브랜드"],
             ["product_code", "제품 코드"],
@@ -336,7 +345,7 @@ export default function ActualMaterialEditor({
           <ActualMaterialPricePicker siteId={siteId} value={draft} disabled={busy} onPending={setPriceLoading}
             onApply={(price,context)=>setDraft(current=>{
               if(!current)return current;
-              const key=[siteId,current.id||"",current.brand||"",current.product_code||"",current.unit||""].join("|");
+              const key=[siteId,current.id||"",current.brand||"",current.product_code||"",current.unit||"",current.price_type||""].join("|");
               if(key!==context.key || (context.automatic && current.unit_price!==context.expected))return current;
               return {...current,unit_price:String(price),_purchaseCost:context.purchase||null};
             })}/>

@@ -29,8 +29,8 @@ test('GET creates separate automatic films without changing saved document',asyn
  assert.deepEqual(r.body.saved.items,[]);assert.equal(r.body.saved.version,1);
  assert.deepEqual(h.writes,[]);
 });
-test('failed material fetch preserves saved quote and disables reset',async()=>{
+test('failed material fetch preserves saved quote and returns an empty editable draft with warning',async()=>{
  const h=api({rpcFails:true});const r=await h.get();assert.equal(r.status,200);
- assert.equal(r.body.automatic,null);assert.equal(r.body.saved.version,1);
+ assert.deepEqual(r.body.automatic.items,[]);assert.equal(r.body.saved.version,1);
  assert.match(r.body.warning,/불러오지 못했습니다/);assert.deepEqual(h.writes,[]);
 });

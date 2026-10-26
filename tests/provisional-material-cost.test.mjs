@@ -51,3 +51,18 @@ test('profit API sums actual plus provisional once and retains company-scoped re
  result=await get();assert.equal(result.sites[0].materialPending,true);assert.equal(result.sites[0].profitIsEstimated,true);assert.equal(result.breakdown.material[0].pricePending,true);
  assert.ok(reads.filter(r=>r.name==='film_stock_trips').every(r=>r.count>=2));
 });
+
+test('removed planned materials never mark profit provisional',()=>{
+ assert.deepEqual(costs([material('a','A',100,{removed_at:'2026-10-26'})],[trip('a',10,10)]),[]);
+});
+test('confirmed manual and report wages replace missing automatic wages including pending status',()=>{
+ const text=fs.readFileSync(new URL('../app/api/admin/profit/route.js',import.meta.url),'utf8');
+ const source=text.slice(text.indexOf('function resolveLabor('),text.indexOf('/*\n * 계약금액'));
+ const resolve=new Function('REPORT_LABOR','PREFIX','TYPES','money','rateValue',source+';return resolveLabor;')('완료보고/인건비:','수익관리/',{labor:'인건비'},Number,v=>v==null?null:Number(v));
+ const people=new Map([['w',{id:'w',name:'김시공'}]]);
+ const automated=[{workerId:'w',name:'김시공',pending:2,amount:0,base:0,allowance:0,days:2,leaderDays:0,memberDays:2}];
+ let rows=resolve({},automated,[],people);assert.equal(rows[0].pending,2);
+ rows=resolve({},automated,[{description:'수익관리/인건비:김시공 2일',amount:400000}],people);assert.equal(rows.length,1);assert.equal(rows[0].amount,400000);assert.equal(rows.reduce((s,r)=>s+(r.pending||0),0),0);
+ rows=resolve({},automated,[{description:'완료보고/인건비:'+JSON.stringify({workerId:'w',name:'김시공',days:2,dailyWage:200000,allowance:0}),amount:400000}],people);assert.equal(rows.length,1);assert.equal(rows[0].amount,400000);assert.equal(rows.reduce((s,r)=>s+(r.pending||0),0),0);
+ rows=resolve({},automated,[{description:'수익관리/인건비:전체 인건비 확정',amount:350000}],people);assert.equal(rows.length,1);assert.equal(rows[0].amount,350000);assert.equal(rows.reduce((s,r)=>s+(r.pending||0),0),0);
+});

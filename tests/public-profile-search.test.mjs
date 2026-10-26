@@ -10,8 +10,8 @@ const rows=[
  {user_id:'four',name:'과거일정',published:true,worker_directory_consent:{visible:true},seeking:true,available_dates:['2020-01-01']}
 ];
 function fixture(manager=true){
- const db={rpc:async()=>({data:null}),from(table){let data=table==='labor_profiles'?rows:[];const q={
- select(){return q;},eq(k,v){data=data.filter(r=>(k==='worker_directory_consent.visible'?r.worker_directory_consent?.visible:r[k])===v);return q;},neq(){return q;},gte(){return q;},order(){return q;},range(){return q;},limit(){return q;},
+ const db={rpc:async(name,args)=>{if(name!=='worker_directory_action')return {data:null};assert.equal(args.p_actor,'owner');const q=args.p_body;return {data:{profiles:rows.filter(r=>r.worker_directory_consent.visible&&(!q.query||r.name.includes(q.query))&&(!q.date||r.available_dates.includes(q.date))).map(({worker_directory_consent,...r})=>r)}}},from(table){let data=table==='labor_profiles'?rows:[];const q={
+ select(){return q;},in(k,vs){data=data.filter(r=>vs.includes(r[k]));return q;},eq(k,v){data=data.filter(r=>(k==='worker_directory_consent.visible'?r.worker_directory_consent?.visible:r[k])===v);return q;},neq(){return q;},gte(){return q;},order(){return q;},range(){return q;},limit(){return q;},
  ilike(k,v){data=data.filter(r=>r[k]?.includes(v.slice(1,-1)));return q;},contains(k,v){data=data.filter(r=>v.every(x=>r[k]?.includes(x)));return q;},
  maybeSingle:async()=>({data:data[0]||null}),then(resolve,reject){return Promise.resolve({data}).then(resolve,reject);}};return q;}};
  const ctx=vm.createContext({URL,Response,console,db,publicProfileFields:'public fields',dayInKorea:()=> '2026-10-16',dispatchLaborNotifications:async()=>{},directoryBadges:async(_,r)=>r,companyJobBadges:async(_,r)=>r,attachAssignmentState:async()=>{},json:(b,s=200)=>Response.json(b,{status:s}),fail:(m,s=400)=>Object.assign(Error(m),{status:s})});
@@ -27,20 +27,20 @@ test('name search finds a non-seeking public worker',async()=>{
 test('explicit work date still limits results to matching availability',async()=>{
  assert.deepEqual((await fixture()('?date=2026-10-20')).map(p=>p.user_id),['two']);
 });
-test('worker view does not fetch the directory until requested',async()=>{
+test('worker view cannot fetch the owner directory',async()=>{
  assert.deepEqual(await fixture(false)(''),[]);
 });
 
-test('worker directory shows only public profiles including non-seeking workers',async()=>{
- assert.deepEqual((await fixture(false)('?directory=1')).map(p=>p.user_id),['one','two','four']);
+test('worker cannot read owner directory through query flag',async()=>{
+ assert.deepEqual((await fixture(false)('?directory=1')).map(p=>p.user_id),[]);
 });
-test('worker directory supports name and date filters',async()=>{
- assert.deepEqual((await fixture(false)('?directory=1&name='+encodeURIComponent('황인원'))).map(p=>p.user_id),['one']);
- assert.deepEqual((await fixture(false)('?directory=1&date=2026-10-20')).map(p=>p.user_id),['two']);
+test('worker query filters cannot bypass owner directory access',async()=>{
+ assert.deepEqual((await fixture(false)('?directory=1&name='+encodeURIComponent('황인원'))).map(p=>p.user_id),[]);
+ assert.deepEqual((await fixture(false)('?directory=1&date=2026-10-20')).map(p=>p.user_id),[]);
 });
 
 test('empty search values return every consented profile without availability requirements',async()=>{
- const result=await fixture(false)('?directory=1&name=&region=&date=&wage=&experience=');
+ const result=await fixture()('?directory=1&name=&region=&date=&wage=&experience=');
  assert.deepEqual(result.map(p=>p.user_id),['one','two','four']);
  assert.ok(result.every(p=>!('worker_directory_consent' in p)));
 });

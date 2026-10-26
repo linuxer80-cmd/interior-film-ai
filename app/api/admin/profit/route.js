@@ -364,6 +364,7 @@ function resolveLabor(site, automated, expenses, people) {
           workerId: row.workerId,
           days: row.days,
           rateDays: row.rateDays,
+          pending: row.pending,
           name: row.name,
           amount: row.amount,
           description:
@@ -465,7 +466,7 @@ export async function GET(request) {
           db
             .from("site_materials")
             .select(
-              "id,company_id,site_id,material_type,brand,product_code,product_name,quantity,unit,unit_price,total_price,price_type",
+              "id,company_id,site_id,removed_at,material_type,brand,product_code,product_name,quantity,unit,unit_price,total_price,price_type",
             )
             .eq("company_id", companyId)
             .in("site_id", ids)
@@ -807,12 +808,12 @@ export async function GET(request) {
         materialProvisional: provisionalRows.length > 0,
         materialPending: actualPricePending || provisionalRows.some(row => row.quantityPending || row.pricePending),
         entries,
-        laborPending: automated.reduce(
-          (sum, row) => sum + row.pending,
+        laborPending: laborRows.reduce(
+          (sum, row) => sum + (row.pending || 0),
           0,
         ),
-        profitIsEstimated: actualPricePending || automated.some(row => row.pending > 0) || provisionalRows.length > 0,
-        profitWarning: automated.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
+        profitIsEstimated: actualPricePending || laborRows.some(row => row.pending > 0) || provisionalRows.length > 0,
+        profitWarning: laborRows.some(row => row.pending > 0) ? '미확정 인건비가 있어 표시 수익은 잠정치입니다.' : null,
         missingContract: revenueInfo.missingContract,
         revenueSource: revenueInfo.revenueSource,
       };

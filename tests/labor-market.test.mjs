@@ -55,6 +55,7 @@ const baseJob = {
 
 function fixture(userId = owner, manager = true, proposals = false, searchProfiles = null) {
   const tables = {
+    workers: [],
     profiles: [
       {
         id: userId,
@@ -203,7 +204,7 @@ function fixture(userId = owner, manager = true, proposals = false, searchProfil
 
     async rpc(name, args) {
       rpc.push({ name, args });
-      if(name==='worker_directory_action'&&searchProfiles!==null)return {data:{profiles:searchProfiles},error:null};
+      if(name==='worker_directory_action')return {data:{profiles:searchProfiles??tables.labor_profiles.filter(p=>p.published)},error:null};
       if(name==='labor_proposal_capabilities')return {data:proposals?{version:proposals===1?1:2}:null,error:null};
       return { data: null, error: null };
     },
@@ -317,7 +318,7 @@ test("employer cannot close another company job", async () => {
 });
 
 test("worker application ignores forged user id", async () => {
-  const f = fixture(worker, false);
+  const f = fixture(worker, false, 2);
 
   const response = await f.POST(
     post({

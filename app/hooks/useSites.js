@@ -7,6 +7,19 @@ import { registrationConsultation } from "../../lib/siteRegistration.mjs";
 import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
 import { saveConsultation } from "../../lib/saveConsultationClient";
 
+async function prepareRegistrationMaterials(materials) {
+  if (!materials.length) return [];
+  const {data,error}=await supabase.auth.getSession();
+  if(error || !data?.session?.access_token)throw Error("관리자로 다시 로그인해주세요.");
+  const response=await fetch('/api/admin/registration-materials',{
+    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session.access_token}`},
+    body:JSON.stringify({materials}),
+  });
+  const result=await response.json();
+  if(!response.ok || !Array.isArray(result.materials))throw Error(result.error || '자재 정보를 확인하지 못했습니다.');
+  return result.materials;
+}
+
 function makeSafeFileName(fileName = "photo.jpg") {
   const extension = fileName.includes(".")
     ? fileName.split(".").pop().toLowerCase()
@@ -464,16 +477,12 @@ export default function useSites({ companyId }) {
           const unitPrice =
             toNumberOrNull(material.unit_price);
 
-          let totalPrice =
-            toNumberOrNull(material.total_price);
-
-          if (totalPrice === null && unitPrice !== null) {
-            totalPrice = quantity * unitPrice;
-          }
+          const totalPrice = unitPrice === null ? null : Math.round(quantity * unitPrice);
 
           return {
             company_id: companyId,
             site_id: siteId,
+            material_type: "planned",
             price_type: material.price_type,
             film_product_id: material.film_product_id || null,
             brand: material.brand?.trim() || null,
@@ -599,6 +608,7 @@ export default function useSites({ companyId }) {
           savedMaterials = result.materials || [];
           merged = Boolean(result.merged);
         } else {
+          const preparedMaterials = await prepareRegistrationMaterials(materials);
           const { data, error } = await supabase
             .from("sites")
             .insert(insertData)
@@ -611,7 +621,7 @@ export default function useSites({ companyId }) {
 
           savedMaterials = await saveSiteMaterials({
             siteId: createdSite.id,
-            materials,
+            materials: preparedMaterials,
           });
         }
 

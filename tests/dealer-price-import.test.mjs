@@ -35,8 +35,8 @@ test('B2B quote uses selling price without mutating purchase data',()=>{
  assert.equal(result[0].unitPrice,15000);assert.equal(rows[0].unitPrice,6500);assert.equal(result[0].used,5.7);
 });
 test('unknown fire type with differing prices stays unresolved; zero selling price valid',()=>{
- const rows=[{id:'m',brand:'영림',code:'PS160',unit:'m',unitPrice:6500}];
- const products=[p('p','PS160')];
+ const rows=[{id:'m',brand:'현대보닥',code:'ZX103',unit:'m',unitPrice:6500}];
+ const products=[p('p','ZX103','현대보닥')];
  const prices=[{product_id:'p',price_type:'fire',interior_price:12000},{product_id:'p',price_type:'non_fire',interior_price:0}];
  assert.equal(sellingMaterialPrices(rows,[],products,prices)[0].unitPrice,null);
  assert.equal(sellingMaterialPrices(rows,[{id:'m',price_type:'non_fire'}],products,prices)[0].unitPrice,0);

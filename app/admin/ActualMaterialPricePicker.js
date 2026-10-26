@@ -5,7 +5,7 @@ export default function ActualMaterialPricePicker({siteId,value,onApply,onPendin
  const [state,setState]=useState({key:'',loading:false,options:[],message:'',error:''});
  const [attempt,setAttempt]=useState(0),[chosen,setChosen]=useState('');
  const callbacks=useRef({onApply,onPending});callbacks.current={onApply,onPending};
- const key=[siteId,value.id||'',value.brand||'',value.product_code||'',value.unit||''].join('|');
+ const key=[siteId,value.id||'',value.brand||'',value.product_code||'',value.unit||'',value.price_type||''].join('|');
  useEffect(()=>{
   setChosen('');setState({key,loading:false,options:[],message:'',error:''});
   if(!value.brand||String(value.product_code||'').trim().length<2||disabled)return;
@@ -16,7 +16,7 @@ export default function ActualMaterialPricePicker({siteId,value,onApply,onPendin
   const timer=setTimeout(()=>{controller.abort();setState({key,loading:false,options:[],message:'',error:'단가 조회 시간이 초과됐습니다. 다시 조회해주세요.'});callbacks.current.onPending?.(false);},15000);
   (async()=>{try{
    const {data,error}=await supabase.auth.getSession();if(error||!data?.session)throw Error('관리자로 다시 로그인해주세요.');
-   const q=new URLSearchParams({siteId,brand:value.brand,code:value.product_code,...(value.id?{materialId:value.id}:{})});
+   const q=new URLSearchParams({siteId,brand:value.brand,code:value.product_code,priceType:value.price_type||'',...(value.id?{materialId:value.id}:{})});
    const response=await fetch('/api/admin/material-price-options?'+q,{headers:{Authorization:`Bearer ${data.session.access_token}`},cache:'no-store',signal:controller.signal});
    const result=await response.json();if(!response.ok)throw Error(result.error||'단가 조회 실패');
    if(controller.signal.aborted)return;

@@ -10,7 +10,7 @@ test('report costs seed editable material quantities, unique crew and person day
  const before = JSON.stringify(breakdown);
  const doc = completionSeed({site_name:'현장',address:'주소',address_detail:'101호'}, {company_name:'업체'},breakdown);
  assert.equal(doc.header.crew_count,'2'); assert.equal(doc.header.person_days,'3');
- assert.equal(doc.items[0].quantity,12.5); assert.equal(doc.items[1].unit,'공수'); assert.equal(doc.items[2].unit,'시간'); assert.equal(doc.items.at(-1).category,'meal'); assert.equal(JSON.stringify(breakdown),before);
+ assert.equal(doc.items[0].quantity,12.5); assert.equal(doc.items[1].unit,'식'); assert.equal(doc.items[1].amount,640000); assert.equal(doc.items.filter(r=>r.category==='labor').length,1); assert.equal(doc.items.at(-1).category,'meal'); assert.equal(JSON.stringify(breakdown),before);
 });
 test('quantity/price recalculate; direct amounts and clearing unit price retain intended totals',()=>{
  const row={quantity:2,amount:101}; assert.equal(editCompletionItem(row,'quantity',3).amount,101);
