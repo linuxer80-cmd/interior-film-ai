@@ -17,6 +17,7 @@ import ScreenshotSiteInput from "./site-register/ScreenshotSiteInput";
 import { supabase } from "../../lib/supabase";
 import { registrationStatus as getRegistrationStatus, similarRegistrationSites } from "../../lib/siteRegistration.mjs";
 import { tradeApi } from "../components/TradeClients";
+import { mergeRegistrationMaterials, registrationCustomerFields } from "../../lib/registrationInputs.mjs";
 
 const registrationSteps = ["상담내용", "현장정보", "확인·저장"];
 
@@ -197,11 +198,7 @@ export default function SiteRegisterModal({
   function choose(next) {
     setCustomer(next);
 
-    setForm((previous) => ({
-      ...previous,
-      customer_name: next.name,
-      customer_phone: next.phone,
-    }));
+    setForm((previous) => registrationCustomerFields(previous, next));
   }
 
   function applyAnalysis(data, origin = "call") {
@@ -285,9 +282,8 @@ export default function SiteRegisterModal({
     });
 
     if (Array.isArray(data.materials)) {
-      setMaterials((previous) => [
-        ...previous,
-        ...data.materials
+      setMaterials((previous) => mergeRegistrationMaterials(previous,
+        data.materials
           .filter((item) =>
             item && typeof item === "object"
           )
@@ -305,14 +301,10 @@ export default function SiteRegisterModal({
                 .map((key) => [key, String(item[key])])
             ),
           })),
-      ]);
+      ));
     }
 
-    setMessage(
-      origin === "screenshot"
-        ? "입력 내용을 확인하고 현장 상태를 선택해주세요. 견적서 초안은 현장 상세의 상담 견적서에서 확인하고 가격을 직접 입력하세요."
-        : "입력 내용을 확인하고 현장 상태를 선택해주세요. 견적서 초안은 현장 상세에서 확인하세요."
-    );
+    setMessage("분석 내용을 반영했습니다. 현장정보를 확인해주세요.");
   }
 
   async function finishLink() {
@@ -541,7 +533,7 @@ export default function SiteRegisterModal({
                   onClick={() => setInputMode(value)}>{label}</button>
               ))}
             </div>
-            <p className="intro">{inputMode === "direct" ? "아는 정보부터 입력하세요. 나머지는 나중에 추가할 수 있어요." : "AI로 입력한 내용은 저장 전에 직접 확인해주세요."}</p>
+            <p className="intro">{inputMode === "direct" ? "아는 내용만 적어주세요." : "분석 후 현장정보를 확인하세요."}</p>
             <div hidden={inputMode !== "screenshot"}>
               <ScreenshotSiteInput applyPendingRef={screenshotApplyRef} onApply={(data) => applyAnalysis(data, "screenshot")}
                 disabled={busy || loading || callBusy || !!saved} onBusyChange={setScreenshotBusy} />
@@ -551,8 +543,11 @@ export default function SiteRegisterModal({
                 disabled={busy || loading || screenshotBusy || !!saved} onBusyChange={setCallBusy} />
             </div>
 
-<label>상담내용 (선택)<textarea rows={4} placeholder="전화로 상담한 내용이나 문자 내용을 적어주세요." value={consultationText} onChange={event=>setConsultationText(event.target.value)} /></label>
-            <p className="intro">주소·전화번호·시공내용은 분석 결과에 있는 정보만 채웁니다. 없는 정보는 직접 확인해주세요.</p>
+            {inputMode === "direct" ? (
+              <label>상담내용 (선택)<textarea rows={4} placeholder="예: 방문 3개, 싱크대 필름 시공 문의" value={consultationText} onChange={event=>setConsultationText(event.target.value)} /></label>
+            ) : (
+              <details><summary>추가 상담 메모 (선택)</summary><label>추가 내용<textarea rows={3} value={consultationText} onChange={event=>setConsultationText(event.target.value)} placeholder="분석한 내용 외에 추가할 사항" /></label></details>
+            )}
             </div>
             <div hidden={step !== 1}>
             <section data-registration-edit="site" tabIndex={-1} style={{scrollMarginTop:100}}>
@@ -561,15 +556,14 @@ export default function SiteRegisterModal({
             </section>
 
 
-              <p className="intro">고객 정보는 선택 사항입니다. 나중에 입력해도 됩니다.</p>
-              <section data-registration-edit="customer" tabIndex={-1} style={{scrollMarginTop:100}}><h3>고객 · 상세주소</h3>
+              <section data-registration-edit="customer" tabIndex={-1} style={{scrollMarginTop:100}}><h3>고객 · 상세주소 (선택)</h3>
               <div className="site-register-grid">
                 {inputs([["address_detail", "상세주소"], ["region", "지역"]])}
               </div>
               <CustomerChoice value={customer} onChange={choose} disabled={blocked || !!saved} />
-              <div className="site-register-grid">
+              {customer.type === "business" ? (customer.clientId && <p role="status">{form.customer_name} · {form.customer_phone || "거래처 연락처 미등록"}</p>) : <div className="site-register-grid">
                 {inputs([["customer_name", customer.type === "business" ? "업체명" : "고객명"], ["customer_phone", "연락처", "tel"]])}
-              </div>
+              </div>}
               </section>
 
             <section data-registration-edit="work" tabIndex={-1} style={{scrollMarginTop:100}}>
@@ -589,7 +583,7 @@ export default function SiteRegisterModal({
               </label>
             </section>
 
-            <section>
+            <details className="registration-optional"><summary>현장 메모 (선택)</summary>
               <label>
                 메모
                 <textarea
@@ -600,7 +594,7 @@ export default function SiteRegisterModal({
                   }
                 />
               </label>
-            </section>
+            </details>
             <details className="registration-optional"><summary>추가 정보 입력 · 자재·사진·금액</summary>
 
             <section data-registration-edit="materials" tabIndex={-1} style={{scrollMarginTop:100}}>
@@ -643,6 +637,9 @@ export default function SiteRegisterModal({
                       row.local_id === item.local_id ? { ...row, ...patch } : row))} />
 
                   <label>방염 구분 (필수)<select required value={item.price_type || ""} onChange={event => setMaterials(previous => previous.map(row => row.local_id === item.local_id ? {...row, price_type:event.target.value, unit_price:""} : row))}><option value="">선택해주세요</option><option value="fire">방염</option><option value="non_fire">비방염</option></select></label>
+                  <details key={item.film_product_id || "manual"} open={!item.film_product_id}>
+                  <summary>제품 정보·단가·메모 수정</summary>
+                  <p className="intro">단가는 비워두면 등록된 매입단가를 적용합니다.</p>
                   {[
                     ["brand", "브랜드"],
                     ["product_name", "제품명 / 색상"],
@@ -699,6 +696,7 @@ export default function SiteRegisterModal({
                       <option value="ea">개</option>
                     </select>
                   </label>
+                  </details>
                 </div>
               ))}
             </section>
@@ -797,12 +795,12 @@ export default function SiteRegisterModal({
             {analysisConflicts.length>0 && <section><h3>상담 분석 내용이 기존 입력과 다릅니다</h3><p>기존 입력을 유지했습니다. 바꿀 항목만 선택해주세요.</p>{analysisConflicts.map(item=><div className="review-row" key={item.key}><p>{item.before} → {item.after}</p><button type="button" onClick={()=>{field(item.key,item.after);setAnalysisConflicts(rows=>rows.filter(row=>row.key!==item.key));}}>분석값 적용</button></div>)}</section>}
             </div>
             <div hidden={step !== 2}>
-              {candidates.length>0 && <section><h3>같은 현장인지 확인해주세요</h3><p className="intro">선택한 기존 현장에는 상담내용만 추가합니다. 고객정보·일정·금액·자재·사진은 그대로 유지합니다.</p>{candidates.map(candidate=><button className="duplicate-option" type="button" key={candidate.id} aria-pressed={duplicateChoice===candidate.id} onClick={()=>setDuplicateChoice(candidate.id)}>{candidate.site_name || candidate.customer_name} · {[candidate.address,candidate.address_detail].filter(Boolean).join(" ")}<br/>이 현장에 상담 추가</button>)}<button className="duplicate-option" type="button" aria-pressed={duplicateChoice==="new"} onClick={()=>setDuplicateChoice("new")}>별도 공사입니다 · 새 현장으로 등록</button></section>}
+              {candidates.length>0 && <section><h3>같은 현장인지 확인해주세요</h3><p className="intro">같은 현장이면 기존 정보에 상담만 추가합니다.</p>{candidates.map(candidate=><button className="duplicate-option" type="button" key={candidate.id} aria-pressed={duplicateChoice===candidate.id} onClick={()=>setDuplicateChoice(candidate.id)}>{candidate.site_name || candidate.customer_name} · {[candidate.address,candidate.address_detail].filter(Boolean).join(" ")}<br/>이 현장에 상담 추가</button>)}<button className="duplicate-option" type="button" aria-pressed={duplicateChoice==="new"} onClick={()=>setDuplicateChoice("new")}>별도 공사입니다 · 새 현장으로 등록</button></section>}
               {(!duplicateChoice || duplicateChoice==="new") && <section data-registration-edit="dates" tabIndex={-1} style={{scrollMarginTop:100}}><h3>어떤 상태로 저장할까요?</h3><div className="input-methods"><button type="button" aria-pressed={!confirmed} onClick={()=>{setConfirmed(false);setNextAction("quote");}}>상담중</button><button type="button" aria-pressed={confirmed} onClick={()=>{setConfirmed(true);setNextAction("schedule");}}>시공확정</button></div>{confirmed && <><WorkDatePicker value={form.work_dates} onChange={value=>field("work_dates",value)} disabled={blocked || !!saved}/><p className="intro">날짜 미정이면 상담중으로 저장하고 ‘시공 확정·일정 조율 중’ 메모를 남깁니다.</p></>}<label>저장 후 할 일<select value={nextAction} onChange={event=>setNextAction(event.target.value)}><option value="quote">부위별 견적서 작성</option><option value="schedule">일정·시공자 배정</option><option value="info">현장 보기</option></select></label></section>}
 
-              {duplicateChoice && duplicateChoice!=="new" ? <section><h3>상담 추가 내용</h3><p style={{whiteSpace:"pre-wrap"}}>{[consultationText,form.work_description,form.memo].filter(Boolean).join("\n") || consultation?.items?.map(row=>[row.name,row.detail].filter(Boolean).join(" · ")).join("\n") || "추가할 내용이 없습니다. 이전 단계에서 입력해주세요."}</p><p>기존 현장의 고객정보·일정·금액·자재·사진은 변경하지 않습니다.</p></section> : <section>
-                <h3>입력한 내용이 맞습니까?</h3>
-                <p className="intro">아래 내용을 확인한 뒤 현장을 저장하세요.</p>
+              {duplicateChoice && duplicateChoice!=="new" ? <section><h3>상담 추가 내용</h3><p style={{whiteSpace:"pre-wrap"}}>{[consultationText,form.work_description,form.memo].filter(Boolean).join("\n") || consultation?.items?.map(row=>[row.name,row.detail].filter(Boolean).join(" · ")).join("\n") || "추가할 내용이 없습니다. 이전 단계에서 입력해주세요."}</p><p>기존 현장 정보는 유지됩니다.</p></section> : <section>
+                <h3>저장 전 확인</h3>
+
                 {[
                   ["현장·주소", [form.site_name, form.address, form.address_detail, form.region].filter(Boolean).join(" · "), "site"],
                   ["시공 날짜", confirmed && form.work_dates.length ? form.work_dates.join(", ") : "일정 미정", "dates"],
@@ -845,7 +843,7 @@ export default function SiteRegisterModal({
           <footer>
             <div className="save-summary"><strong>{duplicateChoice && duplicateChoice!=="new" ? "기존 현장에 상담 추가" : registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{confirmed && form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
             {step > 0 && !saved && <button type="button" disabled={blocked} onClick={()=>{setMessage("");setStep(current=>current-1);}}>이전</button>}
-            {step === 1 && <p className="intro">고객·작업내용·자재·사진·금액은 선택 항목입니다. 현장명과 주소는 입력해주세요.</p>}
+            {step === 1 && <p className="intro">필수: 현장명·주소</p>}
             {step === 2 && confirmed && !form.work_dates.length && <p className="intro">날짜 미정으로 저장할 수 있습니다. 일정은 현장 상세에서 나중에 정해주세요.</p>}
             {(!saved || pendingLink.current) && (
               <button type="submit" disabled={blocked}>

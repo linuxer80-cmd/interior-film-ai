@@ -52,7 +52,7 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
         setChosen(null); setOpen(true); setResults({ query: "", products: [] });
         onChange({ product_code: event.target.value, film_product_id: null, brand: "", product_name: "" });
       }} />
-    <small style={{ display: "block", marginTop: 6, color: "#64748b" }}>{showImages ? "두 글자 이상 입력하고 샘플을 선택하세요. 브랜드·제품명이 자동 입력됩니다." : "제품번호를 두 글자 이상 입력하고 주문할 자재를 선택하세요."}</small>
+    {!value.film_product_id && <small style={{ display: "block", marginTop: 6, color: "#64748b" }}>{showImages ? "두 글자 이상 검색 → 제품 선택" : "제품번호로 검색 후 선택하세요."}</small>}
     {open && query.length >= 2 && <div style={{ marginTop: 10 }}>
       {loading && <p role="status">{showImages ? "샘플 검색 중…" : "제품 검색 중…"}</p>}
       {error && <div role="alert">{error} <button type="button" disabled={disabled} onClick={() => setRetry(n => n + 1)}>다시 검색</button></div>}

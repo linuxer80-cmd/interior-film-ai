@@ -157,8 +157,7 @@ export default function CustomerChoice({
               </label>
 
               <p>
-                담당자를 선택하면 담당자 연락처를 사용합니다.
-                현장 주소는 아래에 별도로 입력하세요.
+                선택한 업체·담당자의 연락처가 자동 입력됩니다.
               </p>
 
               <a

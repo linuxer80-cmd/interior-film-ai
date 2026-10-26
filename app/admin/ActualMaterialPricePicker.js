@@ -9,7 +9,7 @@ export default function ActualMaterialPricePicker({siteId,value,onApply,onPendin
  useEffect(()=>{
   setChosen('');setState({key,loading:false,options:[],message:'',error:''});
   if(!value.brand||String(value.product_code||'').trim().length<2||disabled)return;
-  if(!['m','미터'].includes(String(value.unit||'').trim().toLowerCase())){setState({key,loading:false,options:[],message:'자동 매입단가는 미터 단위입니다. 현재 단위에 맞는 단가를 직접 입력해주세요.',error:''});return;}
+  if(!['m','미터'].includes(String(value.unit||'').trim().toLowerCase())){setState({key,loading:false,options:[],message:'현재 단위의 단가를 직접 입력하세요. 자동 조회는 m 단위만 지원합니다.',error:''});return;}
   const controller=new AbortController();const expected=value.unit_price;
   callbacks.current.onPending?.(true);
   setState({key,loading:true,options:[],message:'',error:''});

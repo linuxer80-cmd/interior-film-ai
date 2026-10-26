@@ -91,6 +91,7 @@ export default function ScreenshotSiteInput({
   const [previews, setPreviews] = useState([]);
   const [referenceDate, setReferenceDate] = useState("");
   const [draft, setDraft] = useState(null);
+  const reviewFields = useRef(null);
   const [dates, setDates] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -287,6 +288,7 @@ export default function ScreenshotSiteInput({
     const days = dates.split(/[,\s]+/).filter(Boolean);
 
     if (days.some((date) => !validScreenshotDate(date))) {
+      if (reviewFields.current) reviewFields.current.open = true;
       setError(
         "시공일을 YYYY-MM-DD 형식으로 입력해주세요. 여러 날짜는 쉼표로 구분합니다."
       );
@@ -302,6 +304,7 @@ export default function ScreenshotSiteInput({
           Number(draft[key]) > 100000000000
         )
       ) {
+        if (reviewFields.current) reviewFields.current.open = true;
         setError(
           "금액은 원 단위의 0 이상 정수로 입력해주세요."
         );
@@ -321,7 +324,7 @@ export default function ScreenshotSiteInput({
     requestId.current = null;
     setError("");
     setMessage(
-      "등록창에 반영했습니다. 아래 내용과 날짜를 확인한 뒤 현장 등록을 눌러주세요."
+      "반영했습니다. 현장정보에서 수정할 수 있습니다."
     );
     return true;
   }
@@ -435,10 +438,10 @@ export default function ScreenshotSiteInput({
         <div className="review">
           <h4>분석 결과 확인</h4>
 
-          <p>
-            다음을 누르면 분석 결과가 현장정보에 반영됩니다. 이미 입력한 일반 항목은 유지하고 빈칸만 채웁니다.
-            시공일과 자재는 추가됩니다.
-          </p>
+          <p>다음을 누르면 빈칸을 채우고 시공일·자재를 추가합니다.</p>
+          <dl>
+            {[["현장", draft.site_name], ["주소", [draft.address, draft.address_detail].filter(Boolean).join(" ")], ["고객", [draft.customer_name, draft.customer_phone].filter(Boolean).join(" · ")], ["시공일", dates], ["자재", draft.materials.length ? `${draft.materials.length}종` : ""]].filter(([,value])=>value).map(([label,value])=><div key={label} style={{margin:"8px 0",overflowWrap:"anywhere"}}><dt style={{fontWeight:700}}>{label}</dt><dd style={{margin:0}}>{value}</dd></div>)}
+          </dl>
 
           {!!draft.warnings?.length && (
             <ul className="warning">
@@ -448,6 +451,8 @@ export default function ScreenshotSiteInput({
             </ul>
           )}
 
+          <details ref={reviewFields}>
+          <summary>분석 결과 수정</summary>
           {Object.entries(screenshotFields)
             .filter(([key]) => !key.endsWith("amount"))
             .map(([key, label]) => (
@@ -547,15 +552,16 @@ export default function ScreenshotSiteInput({
               </button>
             </div>
           ))}
+          </details>
 
-          <button
+          {!applyPendingRef && <button
             type="button"
             className="primary"
             disabled={disabled || busy}
             onClick={apply}
           >
-            확인한 내용을 등록창에 반영
-          </button>
+            분석 내용 반영
+          </button>}
 
           <button
             type="button"

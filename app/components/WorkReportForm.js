@@ -679,7 +679,7 @@ export default function WorkReportForm({
   if (submitted) {
     return <section role="status" style={{...box,background:"#edf3e8"}} aria-label="완료보고 제출 결과">
       <h3>{owner ? "완료보고를 저장했습니다" : "완료보고 제출됨 · 관리자 검수 대기"}</h3>
-      <p>{owner ? "현장에 저장된 보고서를 확인해주세요." : "관리자가 시공 내용·사진·자재·경비를 확인합니다. 보완 요청이 오면 이 현장에서 이어서 수정할 수 있습니다."}</p>
+      <p>{owner ? "현장에 저장된 보고서를 확인해주세요." : "관리자 확인 후 보완 요청이 오면 여기서 수정하세요."}</p>
       {progress && <p>{progress}</p>}
       {error && <p role="alert">{error}</p>}
     </section>;
@@ -745,7 +745,7 @@ export default function WorkReportForm({
       </nav>
       {step!==2&&<section style={{...box,background:'#edf3e8'}} aria-label="완료보고 준비 상태">
         <strong>{missing.length?`마무리할 항목 ${missing.length}건`:"제출 준비 완료"}</strong>
-        <p>이미 등록한 사진·자재 사용량·경비는 다시 입력하지 않아도 됩니다.</p>
+        <p>등록된 사진·자재·경비는 그대로 불러옵니다.</p>
         {missing.length > 0 && <details><summary style={{minHeight:44,cursor:"pointer"}}>확인할 항목 보기</summary>{missing.map((item,i)=><button key={i} type="button" disabled={disabled} style={{...button,margin:'4px',textAlign:'left'}} onClick={()=>jump(item)}>{item.label} →</button>)}</details>}
         {!missing.length&&<button type="button" style={button} disabled={disabled} onClick={()=>setStep(2)}>최종 확인하고 제출 →</button>}
       </section>}
@@ -873,18 +873,17 @@ export default function WorkReportForm({
           />
 
           {owner && (
-            <p>원가 단가는 상단의 자재 메뉴에서 수정하고 돌아온 뒤 ‘점검 새로고침’을 눌러주세요.</p>
+            <p>단가 수정: 자재 메뉴 → 점검 새로고침</p>
           )}
 
           {!tracked && (
             <div style={box}>
               <p>
-                관리자가 현장에 사용할 필름을 등록하면 이곳에서 반출·반입량을 입력할 수 있습니다.
+                사용 필름 등록 후 반출·반납을 입력할 수 있습니다.
               </p>
               {form.materials.length > 0 && (
                 <p>
-                  기존 보고서의 자재 내역은 보존됩니다. 변경하려면 관리자에게 사용 필름 등록을
-                  요청해주세요.
+                  기존 자재는 유지됩니다. 변경은 관리자에게 요청하세요.
                 </p>
               )}
             </div>
@@ -894,7 +893,7 @@ export default function WorkReportForm({
         {!owner && (
           <section style={box} hidden={step !== 1} data-section="labor">
             <h3>인건비</h3>
-            <p>직접 입력하지 않으면 기존 배정·일당 기준 자동 계산을 사용합니다.</p>
+            <p>배정·일당으로 자동 계산합니다. 변경할 때만 추가하세요.</p>
 
             {form.labor.map((r, i) => (
               <div key={i} style={box}>
@@ -950,8 +949,8 @@ export default function WorkReportForm({
 
         <section style={box} hidden={step !== 1} data-section="expenses">
           <h3>완료보고 경비</h3>
-          <p>경비 메뉴에 이미 등록한 금액은 자동으로 유지됩니다. 아래에는 아직 등록하지 않은 경비만 추가하세요.</p>
-          {overview.existingExpenses && <p>경비 메뉴에 등록된 내역 {overview.existingExpenses.length}건 · {won(overview.existingExpenseTotal)} (다시 입력할 필요 없음)</p>}
+          <p>등록하지 않은 경비만 추가하세요.</p>
+          {overview.existingExpenses && <p>경비 메뉴에 등록된 내역 {overview.existingExpenses.length}건 · {won(overview.existingExpenseTotal)} (자동 반영)</p>}
           {expenseLookupError && <p role="alert">{expenseLookupError}</p>}
 
           {form.expenses.map((e, i) => (
@@ -1027,8 +1026,7 @@ export default function WorkReportForm({
             </strong>
             <p>
               <small>
-                배정·일당과 현재 입력 기준 예상 금액입니다. 저장 시 서버에서 자재 사용량을 다시
-                확인합니다.
+                현재 입력 기준 예상 금액입니다. 저장 시 사용량을 다시 확인합니다.
               </small>
             </p>
           </section>
@@ -1039,7 +1037,7 @@ export default function WorkReportForm({
         <section hidden={step === 0} role="status" style={{ ...box, background: "#fff7ed", color: "#9a3412" }}>
           <strong>원가 단가 미입력 · 완료보고는 저장할 수 있습니다</strong>
           <p>{unpricedMaterials.map(m => m.code || m.name).join(", ")}</p>
-          <p>단가는 미입력 상태로 유지됩니다. 관리자가 현장 자재의 매입원가를 확인해 입력하면 자재비와 수익을 계산할 수 있습니다.</p>
+          <p>관리자가 단가를 입력하면 자재비·수익에 반영됩니다.</p>
         </section>
       )}
 
@@ -1087,7 +1085,7 @@ export default function WorkReportForm({
 
       {step === 2 && <section style={box} aria-label="완료보고 최종 확인">
         <h3>등록된 내용 한 번에 확인</h3>
-        <p>이미 저장된 사진·자재·경비는 유지됩니다. 새로 추가한 내용만 함께 제출합니다.</p>
+        <p>기존 내역과 추가한 내용을 함께 제출합니다.</p>
         <p><strong>시공 내용</strong> · {form.work_summary || "미입력"}</p>
         <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"content"})}>시공 내용 수정</button>
         <p><strong>완료사진</strong> · 저장된 사진 {overview.savedAfter}장 / 새 완료사진 {overview.newAfter}장</p>
@@ -1098,7 +1096,7 @@ export default function WorkReportForm({
         <p><strong>{owner ? "현장 경비" : "내가 등록한 경비"}</strong> · {overview.existingExpenses ? `${overview.existingExpenses.length}건 / ${won(overview.existingExpenseTotal)}` : "조회 확인 필요"}</p>
         {expenseLookupError && <p role="alert">{expenseLookupError}</p>}
         {overview.existingExpenses?.length > 0 && <details><summary style={{minHeight:44,cursor:"pointer"}}>이미 등록된 경비 보기</summary>{overview.existingExpenses.map(expense => <p key={expense.id}>{expense.expense_date} · {types[expense.expense_type] || "경비"} · {won(expense.amount)}{expense.description ? ` · ${expense.description}` : ""}</p>)}</details>}
-        <p>이 보고서에 입력한 경비 {form.expenses.length}건 · {won(newExpense + newMaterial)} (경비 메뉴 내역과 별도)</p>
+        <p>추가 경비 {form.expenses.length}건 · {won(newExpense + newMaterial)} (기존 경비 외)</p>
         <button type="button" style={button} disabled={disabled} onClick={() => jump({target:"expenses"})}>추가 경비 확인·입력</button>
       </section>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, position: "sticky", bottom: 0, padding: "12px 0", background: "white", zIndex: 2 }}>

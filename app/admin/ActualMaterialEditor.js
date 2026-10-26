@@ -272,15 +272,17 @@ export default function ActualMaterialEditor({
             </select>
           </label>
 
-          {[
-            ["brand", "브랜드"],
+          {[[
             ["product_code", "제품 코드"],
-            ["product_name", "제품명"],
             ["quantity", "실제 사용량"],
             ["unit", "단위 (m, 개, 롤 등)"],
             ["unit_price", "단가 (원 / 위 단위)"],
+          ], [
+            ["brand", "브랜드"],
+            ["product_name", "제품명"],
             ["memo", "메모"],
-          ].map(([key, label]) => key === "product_code" ? (
+          ]].map((fields, group) => {
+            const controls = fields.map(([key, label]) => key === "product_code" ? (
             <MaterialFilmPicker
               key={key}
               value={draft}
@@ -340,7 +342,14 @@ export default function ActualMaterialEditor({
                 }
               />
             </label>
-          ))}
+          ));
+            return group === 0 ? <div key="main" style={{display:"grid",gap:12}}>{controls}</div> : (
+              <details key={`extra-${draft.id || "new"}-${draft.film_product_id || "manual"}`} open={!draft.film_product_id}>
+                <summary style={{minHeight:44,cursor:"pointer"}}>제품 정보·메모 수정</summary>
+                <div style={{display:"grid",gap:12}}>{controls}</div>
+              </details>
+            );
+          })}
 
           <ActualMaterialPricePicker siteId={siteId} value={draft} disabled={busy} onPending={setPriceLoading}
             onApply={(price,context)=>setDraft(current=>{

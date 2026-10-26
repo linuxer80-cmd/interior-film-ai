@@ -566,16 +566,15 @@ function PlannedSiteMaterials({ site }) {
                 <option value="non_fire">비방염</option>
               </select>
             </label>
-            <small>현장에 사용할 구분을 선택하세요. G·F 코드와 다른 구분은 저장할 수 없습니다. 실제 반출 롤도 같은 구분이어야 합니다.</small>
+            <small>사용할 롤과 같은 방염 구분을 선택하세요.</small>
 
+            <details key={form.film_product_id || "manual"} open={!form.film_product_id}>
+            <summary>제품명 수정</summary>
             {field("product_name", "제품명", {
               placeholder: "예: 발렌블랑",
               maxLength: 200,
             })}
-
-            <small>
-              제품코드와 제품명 중 하나는 입력해주세요.
-            </small>
+            </details>
 
             <div
               style={{
@@ -594,8 +593,7 @@ function PlannedSiteMaterials({ site }) {
             <details>
               <summary>원가 단가 관리</summary>
               <p>
-                필름을 저장할 때 대리점 매입단가를 자동 적용합니다. 기존 입력 단가는 유지합니다.
-                매입단가는 시공자 화면에 표시하지 않습니다.
+                빈 단가는 저장 시 자동 적용됩니다. 직접 입력한 단가는 유지됩니다.
               </p>
               {field("unit_price", "원가 단가 (원)", {
                 type: "number",
@@ -607,7 +605,7 @@ function PlannedSiteMaterials({ site }) {
               })}
             </details>
 
-            <label
+            <details><summary>자재 메모 (선택)</summary><label
               style={{
                 display: "grid",
                 gap: 7,
@@ -629,6 +627,7 @@ function PlannedSiteMaterials({ site }) {
                 }
               />
             </label>
+            </details>
 
             <div style={{ display: "flex", gap: 10 }}>
               <button
