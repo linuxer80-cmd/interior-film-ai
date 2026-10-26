@@ -1,8 +1,8 @@
-// Run with PGLITE_MODULE pointing to an installed @electric-sql/pglite module.
+// Uses the installed PGlite dependency; PGLITE_MODULE can override it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const modulePath=process.env.PGLITE_MODULE;
+const modulePath=process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const {PGlite}=modulePath?await import(modulePath):{};
 const ids={company:'10000000-0000-4000-8000-000000000001',other:'10000000-0000-4000-8000-000000000002',owner:'20000000-0000-4000-8000-000000000001',worker:'20000000-0000-4000-8000-000000000002',foreign:'20000000-0000-4000-8000-000000000003',inactive:'20000000-0000-4000-8000-000000000004',site:'30000000-0000-4000-8000-000000000001'};
 async function setup(){const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key);

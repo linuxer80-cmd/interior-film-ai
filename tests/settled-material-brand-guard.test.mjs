@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const modulePath=process.env.PGLITE_MODULE;
+const modulePath=process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const {PGlite}=modulePath?await import(modulePath):{};
 const sql=await fs.readFile(new URL('../database/film_brand_normalization.sql',import.meta.url),'utf8');
 const site='11111111-1111-4111-8111-111111111111';

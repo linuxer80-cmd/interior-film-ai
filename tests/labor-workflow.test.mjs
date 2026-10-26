@@ -2,11 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-let PGlite;
-
-if (process.env.LABOR_PGLITE_PATH) {
-  ({ PGlite } = await import(process.env.LABOR_PGLITE_PATH));
-}
+const {PGlite} = await import(process.env.LABOR_PGLITE_PATH || "@electric-sql/pglite");
 
 const enabled = Boolean(PGlite);
 

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const path=process.env.PGLITE_MODULE;
+const path=process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const {PGlite}=path?await import(path):{};
 const sql=await fs.readFile(new URL('../database/film_brand_normalization.sql',import.meta.url),'utf8');
 test('migration preserves IDs, prices and conflicting catalog rows; new writes normalize',{skip:!path},async()=>{
  const db=new PGlite();try{
- await db.exec(`create role anon;create role authenticated;create role service_role;create table film_products(id int primary key,brand text,product_code text,price numeric,unique(brand,product_code));create table site_materials(id int primary key,brand text,quantity numeric,total_price numeric,film_product_id int references film_products(id));create table film_stock_rolls(id int primary key,brand text,remaining numeric);
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema app_private;create table film_products(id int primary key,brand text,product_code text,price numeric,unique(brand,product_code));create table site_materials(id int primary key,brand text,quantity numeric,total_price numeric,film_product_id int references film_products(id));create table film_stock_rolls(id int primary key,brand text,remaining numeric);
  insert into film_products values(1,'영림 인테리어필름','PS160',6500),(2,'현대','S115',7000),(3,'현대보닥','S115',8000);
  insert into site_materials values(1,'영림필름',83.2,540800,1),(2,'현대 & C',7,49000,2);
  insert into film_stock_rolls values(1,'현대L&C',10);`);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const modulePath=process.env.PGLITE_MODULE;
+const modulePath=process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const {PGlite}=modulePath?await import(modulePath):{};
 async function fixture(){const db=new PGlite();await db.exec(`
  create role anon;create role authenticated;create role service_role;create schema app_private;
