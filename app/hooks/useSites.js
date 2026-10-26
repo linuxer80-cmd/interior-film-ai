@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { prepareRequestPhoto } from "../../lib/heicPhoto.mjs";
 import { supabase } from "../../lib/supabase";
 import { registrationConsultation } from "../../lib/siteRegistration.mjs";
 import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
@@ -199,8 +200,9 @@ export default function useSites({ companyId }) {
 
       const uploadedRows = [];
 
-      for (const file of files) {
-        if (!file) continue;
+      for (const originalFile of files) {
+        if (!originalFile) continue;
+        const file = await prepareRequestPhoto(originalFile);
 
         const safeFileName = makeSafeFileName(file.name);
 

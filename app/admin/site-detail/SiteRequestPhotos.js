@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
+import CompatiblePhoto from "../../components/CompatiblePhoto";
+
 const PHOTO_BUCKET = "work-photos";
 const SIGNED_URL_SECONDS = 1800;
 
@@ -156,7 +158,7 @@ export default function SiteRequestPhotos({
     const files = Array.from(
       event.target.files || [],
     ).filter((file) =>
-      file?.type?.startsWith("image/"),
+      file?.type?.startsWith("image/") || /\.(heic|heif)$/i.test(file?.name || ""),
     );
 
     event.target.value = "";
@@ -609,32 +611,12 @@ function PhotoCard({
     >
       {/* 사진 확대 */}
 
-      <a
-        href={photo.signed_url}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-        }}
-      >
-        <img
-          src={photo.signed_url}
-          alt={`시공 요청사진 ${
-            index + 1
-          }`}
-          loading="lazy"
-          style={{
-            width: "100%",
-            height: "100%",
-
-            objectFit: "cover",
-
-            display: "block",
-          }}
-        />
-      </a>
+      <CompatiblePhoto
+        src={photo.signed_url}
+        storagePath={photo.storage_path}
+        alt={`시공 요청사진 ${index + 1}`}
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
 
       {/* 사진 번호 */}
 
