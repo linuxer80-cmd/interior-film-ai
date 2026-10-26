@@ -41,8 +41,9 @@ function hasAmount(value) {
    현장 기본정보
 ========================================================= */
 
-const basicFields = ["customer_name", "customer_phone", "site_name", "address", "address_detail", "region", "work_type", "work_description", "contract_amount", "deposit_amount", "memo"];
-const basicDraft = site => Object.fromEntries(basicFields.map(key => [key, valueOrEmpty(site?.[key])]));
+const statusOptions = [["consulting","상담 중"],["scheduled","시공 예정"],["in_progress","시공 중"],["completed","완료"],["cancelled","취소"]];
+const basicFields = ["status","customer_name", "customer_phone", "site_name", "address", "address_detail", "region", "work_type", "work_description", "contract_amount", "deposit_amount", "memo"];
+const basicDraft = site => Object.fromEntries(basicFields.map(key => [key, valueOrEmpty(key === "status" ? site?.status || "consulting" : site?.[key])]));
 
 export default function SiteBasicInfo({
   site,
@@ -73,6 +74,7 @@ export default function SiteBasicInfo({
     form,
     setForm,
   ] = useState({
+    status: "consulting",
     customer_name: "",
     customer_phone: "",
 
@@ -111,6 +113,7 @@ export default function SiteBasicInfo({
     setForm(baseline.current);
   }, [
     site?.id,
+    site?.status,
     site?.customer_name,
     site?.customer_phone,
     site?.site_name,
@@ -227,6 +230,8 @@ export default function SiteBasicInfo({
         await updateSiteBasicInfo({
           siteId:
             site.id,
+          status: form.status,
+          expectedStatus: baseline.current.status,
 
           customer_name:
             form.customer_name,
@@ -528,6 +533,13 @@ export default function SiteBasicInfo({
           saveBasicInfo
         }
       >
+        <Field label="현장 상태">
+          <select aria-label="현장 상태" value={form.status} onChange={event=>updateField("status",event.target.value)} disabled={saving} style={inputStyle}>
+            {statusOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}
+          </select>
+        </Field>
+        {form.status === "completed" && <p style={{fontSize:13,color:"#65766b"}}>현장 상태만 완료로 변경합니다. 완료보고서 제출·검수는 별도로 진행해주세요.</p>}
+        {form.status === "cancelled" && <p style={{fontSize:13,color:"#9a4939"}}>저장하면 취소 현장으로 이동합니다. 배정된 시공자에게 취소 안내가 발송될 수 있습니다.</p>}
         <div
           style={{
             display: "grid",

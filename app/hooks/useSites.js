@@ -717,6 +717,8 @@ export default function useSites({ companyId }) {
   const updateSiteBasicInfo = useCallback(
     async ({
       siteId,
+      status,
+      expectedStatus,
       customer_name = "",
       customer_phone = "",
       site_name = "",
@@ -754,15 +756,21 @@ export default function useSites({ companyId }) {
           updated_at: new Date().toISOString(),
         };
 
-        const { data, error } = await supabase
-          .from("sites")
-          .update(updateData)
-          .eq("id", siteId)
-          .eq("company_id", companyId)
-          .select()
-          .single();
-
-        if (error) throw error;
+        let data;
+        if(status !== undefined){
+          const {data:session,error:sessionError}=await supabase.auth.getSession();
+          if(sessionError)throw sessionError;
+          if(!session?.session?.access_token)throw Error("다시 로그인해주세요.");
+          const {updated_at,...basicInfo}=updateData;
+          const response=await fetch('/api/admin/site-status',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.session.access_token},body:JSON.stringify({siteId,status,expectedStatus,basicInfo})});
+          const result=await response.json();
+          if(!response.ok||!result.success)throw Error(result.error||"현장정보 저장에 실패했습니다.");
+          data=result.site;
+        }else{
+          const result=await supabase.from("sites").update(updateData).eq("id",siteId).eq("company_id",companyId).select().single();
+          if(result.error)throw result.error;
+          data=result.data;
+        }
 
         setSites((previous) =>
           previous

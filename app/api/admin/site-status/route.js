@@ -1,3 +1,4 @@
+import {siteBasicPatch} from '../../../../lib/siteBasicPatch.mjs';
 import {notifyCustomerConfirmation} from '../../../../lib/customerConfirmation.mjs';
 import {after} from 'next/server';
 import {notifyWorkerChangeAlerts} from '../../../../lib/workerChangeAlimtalk.mjs';
@@ -19,6 +20,8 @@ export async function POST(request) {
     if (!uuid.test(siteId || "") || !statuses.has(status) || !statuses.has(expectedStatus)) {
       return json({ error: "현장과 상태를 확인해주세요." }, 400);
     }
+    let basicInfo;
+    if(body.basicInfo !== undefined){try{basicInfo=siteBasicPatch(body.basicInfo);}catch(error){return json({error:error.message},400);}}
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return json({ error: "서버 설정을 확인해주세요." }, 503);
     const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -34,18 +37,19 @@ export async function POST(request) {
     const { data: site, error: siteError } = await db.from("sites").select("id,status,updated_at").eq("company_id", companyId).eq("id", siteId).maybeSingle();
     if (siteError) throw siteError;
     if (!site) return json({ error: "현장을 찾을 수 없습니다." }, 404);
-    if (site.status === status) return json({ success: true, site });
+    const changed = site.status !== status;
+    if (!changed && !basicInfo) return json({ success: true, site });
     if (site.status !== expectedStatus) return json({ error: "현장 상태가 변경되었습니다. 현장 목록을 새로고침한 후 다시 확인해주세요." }, 409);
 
     // Completion changes only the site. It must never create, approve or erase a report.
     const { data: updated, error: updateError } = await db.from("sites")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ ...basicInfo, status, updated_at: new Date().toISOString() })
       .eq("company_id", companyId).eq("id", siteId).eq("status", expectedStatus)
-      .select("id,status,updated_at").maybeSingle();
+      .select("*").maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return json({ error: "현장 상태가 변경되었습니다. 현장 목록을 새로고침한 후 다시 확인해주세요." }, 409);
-    if(status === "scheduled") after(()=>notifyCustomerConfirmation(db,companyId,siteId,userData.user.id));
-    after(()=>notifyWorkerChangeAlerts(db,companyId,siteId,userData.user.id));
+    if(changed && status === "scheduled") after(()=>notifyCustomerConfirmation(db,companyId,siteId,userData.user.id));
+    if(changed) after(()=>notifyWorkerChangeAlerts(db,companyId,siteId,userData.user.id));
     return json({ success: true, site: updated });
   } catch (error) {
     console.error("admin site-status", error?.code || error?.message);

@@ -76,3 +76,13 @@ test('explicit discard restores current server values without saving', () => {
   assert.equal(h.draft().dirty,false);assert.equal(saves,0);
   edit(h);assert.equal(field(h,'현장명').props.value,'최신 저장본');
 });
+
+test('status selection participates in draft and saves with original status',async()=>{
+ let payload;const h=fixture(async value=>{payload=value;return {success:true};});
+ h.render({site:{...h.props().site,status:'scheduled'}});edit(h);
+ const select=()=>find(h.tree(),n=>n.type==='select'&&n.props?.['aria-label']==='현장 상태');
+ assert.equal(select().props.value,'scheduled');
+ select().props.onChange({target:{value:'in_progress'}});h.render();assert.equal(h.draft().dirty,true);
+ await find(h.tree(),n=>n.type==='form').props.onSubmit({preventDefault(){}});h.render();
+ assert.equal(payload.status,'in_progress');assert.equal(payload.expectedStatus,'scheduled');assert.equal(payload.site_name,'원래 현장');assert.equal(h.draft().dirty,false);
+});
