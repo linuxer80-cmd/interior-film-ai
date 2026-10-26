@@ -1,5 +1,5 @@
 "use client";
-import CustomerCompletionAlimtalk from "./CustomerCompletionAlimtalk";
+import CustomerStageAlimtalk from "./CustomerStageAlimtalk";
 import CustomerPortalLink from "./CustomerPortalLink";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -540,7 +540,7 @@ export default function SiteDetailModal({
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
-            <CustomerCompletionAlimtalk key={"completion-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
+            <CustomerStageAlimtalk key={"completion-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <CustomerPortalLink key={"portal-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
           </section>
