@@ -378,7 +378,9 @@ function PlannedSiteMaterials({ site }) {
       const saved = await api(editing ? "PATCH" : "POST", siteId, form);
 
       setForm(null);
-      setMessage(saved.missingPrice ? "필름은 저장했습니다. 매입단가가 없거나 여러 가격이 있어 원가 단가 관리에서 확인해주세요." : "사용 필름과 원가 단가를 저장했습니다.");
+      setMessage(saved.alreadyExists
+        ? "이미 등록된 필름입니다. 기존 항목에서 반출·반납 내역을 확인해주세요."
+        : saved.missingPrice ? "필름은 저장했습니다. 매입단가가 없거나 여러 가격이 있어 원가 단가 관리에서 확인해주세요." : "사용 필름과 원가 단가를 저장했습니다.");
 
       window.dispatchEvent(
         new CustomEvent("site-materials-changed", {

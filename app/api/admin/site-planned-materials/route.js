@@ -267,14 +267,13 @@ async function handle(request) {
     let query;
 
     if (request.method === "POST") {
-      query = db.from("site_materials").insert({
-        id: body.id,
-        ...values,
-        company_id: profile.company_id,
-        site_id: site.id,
-        material_type: "planned",
-        created_by: user.id,
+      const saved = await db.rpc("add_planned_material_once", {
+        p_user: user.id,
+        p_site: site.id,
+        p_body: { ...values, id: body.id },
       });
+      if (saved.error) throw saved.error;
+      return json(saved.data);
     } else {
       query =
         request.method === "PATCH"
@@ -324,6 +323,9 @@ async function handle(request) {
   } catch (error) {
     console.error("관리자 예정 자재 저장 실패:", error);
 
+    if (error?.code === "42501") return json({ error: error.message }, 403);
+    if (error?.code === "22023") return json({ error: error.message }, 400);
+    if (error?.code === "23505") return json({ error: "이미 등록된 요청입니다. 목록을 새로고침해 확인해주세요." }, 409);
     if (error?.code === "P0001" || error?.code === "23514") {
       return json({ error: error.message }, 409);
     }
