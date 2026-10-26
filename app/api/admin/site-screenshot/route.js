@@ -259,7 +259,7 @@ export async function POST(request) {
     const images = [];
 
     const hash = createHash("sha256")
-      .update(referenceDate);
+      .update(referenceDate).update("upcoming-year-v2");
 
     for (const file of files) {
       const bytes = Buffer.from(
@@ -386,7 +386,7 @@ export async function POST(request) {
 
     try {
       draft = normalizeScreenshot(
-        JSON.parse(output)
+        JSON.parse(output), referenceDate
       );
     } catch (error) {
       throw fault(

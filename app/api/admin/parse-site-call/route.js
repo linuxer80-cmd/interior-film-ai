@@ -394,6 +394,7 @@ function normalizeResult(raw) {
     other_schedule: cleanString(
       source.other_schedule
     ),
+    inferred_year_dates: Array.isArray(source.inferred_year_dates) ? source.inferred_year_dates : [],
     date: cleanDate(source.date),
     start_time: cleanTime(
       source.start_time
@@ -540,8 +541,7 @@ export async function POST(request) {
 현재 대한민국 기준 날짜는 ${currentDate} 입니다.
 월·일만 언급되고 연도가 없으면 현재 대한민국 기준 연도를 사용하세요.
 통화 내용에 연도가 명시되어 있으면 그 연도를 그대로 사용하세요.
-해석한 날짜가 현재 기준 과거 날짜이면 date/start_time/end_time은 빈 문자열로 남기고 원문 날짜와 확인 필요 이유를 memo에 적으세요.
-2023년 등 임의의 연도를 만들어내거나 과거 날짜를 임의로 다음 해로 변경하지 마세요.
+연도가 없는 월·일이 올해 기준으로 이미 지났으면 다음 해의 같은 월·일로 추정하세요. 예를 들어 현재가 11월이고 1월이 언급되면 다음 해 1월입니다. 생략된 연도를 추정한 날짜는 inferred_year_dates 배열에도 동일하게 넣고 memo에 추정 근거를 적으세요. 명시된 연도와 상대 날짜는 이 배열에 넣지 마세요. 월만 있고 일이 없으면 일을 만들지 말고 memo에 남기세요. 명시된 과거 연도는 바꾸지 말고 날짜 확인이 필요하다고 안내하세요.
 
 반드시 지켜야 할 규칙:
 
@@ -662,6 +662,7 @@ quote_items에는 시공 부위별 name(항목명), detail(상세내역), quanti
     }
   ],
   "other_schedule": "",
+  "inferred_year_dates": [],
   "date": "",
   "start_time": "",
   "end_time": "",
