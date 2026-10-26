@@ -1,4 +1,5 @@
 "use client";
+import CustomerPortalLink from "./CustomerPortalLink";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { guardAdminSiteHistory } from "../../lib/adminSiteHistory.mjs";
@@ -538,6 +539,7 @@ export default function SiteDetailModal({
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
+            <CustomerPortalLink key={"portal-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
           </section>
 

@@ -1,3 +1,4 @@
+import {resolvePortal,portalDb} from '../../../lib/customerPortal.mjs';
 import { reserveBadgeAllowance } from "../../../lib/aiQuota";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
@@ -558,6 +559,7 @@ function getOpenAIError(result) {
 export async function POST(request) {
   let reservation = null;
   let generated = false;
+  let portalRemaining;
 
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -572,11 +574,15 @@ export async function POST(request) {
 
     const form = await request.formData();
 
+    const customerToken = form.get("customer_token");
+    const portal = customerToken ? await resolvePortal(customerToken) : null;
+    if(customerToken && !portal) return NextResponse.json({error:"고객 링크가 만료되었습니다. 업체에 새 링크를 요청해주세요."},{status:403});
     const companySlug = cleanText(
       form.get("company_slug"),
       100
     );
 
+    if (portal && portal.company.slug !== companySlug) return NextResponse.json({error:"업체 정보를 확인해주세요."},{status:403});
     if (!companySlug) {
       return NextResponse.json(
         {
@@ -871,6 +877,13 @@ export async function POST(request) {
       id: virtualLimit.reservationId,
     };
 
+    if(portal){
+      const {data:used,error}=await portalDb().rpc('reserve_customer_portal',{p_token:portal.token_id,p_company:company.id});
+      if(error) return NextResponse.json({error:"체험 횟수를 확인하지 못했습니다. 잠시 후 다시 시도해주세요."},{status:503});
+      portalRemaining = used ? 3-used : 0;
+      if(!used) return NextResponse.json({error:"무료 미리시공 3회를 모두 이용했습니다. 추가 상담은 업체에 문의해주세요.",portalRemaining:0},{status:429});
+    }
+    // Portal allowance counts provider attempts, including timeouts with unknown billing.
     const response = await fetch(
       "https://api.openai.com/v1/images/edits",
       {
@@ -952,6 +965,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       imageUrl,
+      portalRemaining,
       targetType,
       targetLabel,
       useSplitTone,

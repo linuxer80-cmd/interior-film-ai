@@ -32,6 +32,7 @@ const emptyProfile = {
   business_address: "",
   public_phone: "",
   public_email: "",
+  instagram_url: "",
   blog_url: "",
   place_url: "",
   is_published: false,
@@ -58,6 +59,7 @@ const fields = [
   ["public_email", "공개할 이메일", 200],
   ["regions", "시공 상담 지역", 300],
   ["blog_url", "시공 블로그 주소", 1000],
+  ["instagram_url", "인스타그램 주소", 1000],
   ["place_url", "플레이스 주소", 1000],
 ];
 
@@ -256,7 +258,7 @@ export default function CustomerPageAdmin() {
       return;
     }
 
-    for (const key of ["blog_url", "place_url"]) {
+    for (const key of ["blog_url", "instagram_url", "place_url"]) {
       if (profile[key] && !safeHttpUrl(profile[key])) {
         setMessage(
           "링크는 http 또는 https 주소로 입력해주세요."
@@ -515,7 +517,7 @@ export default function CustomerPageAdmin() {
         onSubmit={saveProfile} busy={!ready || busy || restoredCompany!==companyId}
         validateStep={index => {
           if(index===0 && profile.is_published && !profile.business_name.trim()) return "공개하려면 상호를 입력해주세요.";
-          if(index===2 && ["blog_url","place_url"].some(key=>profile[key]&&!safeHttpUrl(profile[key]))) return "링크는 http 또는 https 주소로 입력해주세요.";
+          if(index===2 && ["blog_url","instagram_url","place_url"].some(key=>profile[key]&&!safeHttpUrl(profile[key]))) return "링크는 http 또는 https 주소로 입력해주세요.";
           if(index===3 && profile.is_published && (!profile.introduction.trim() || !profile.services.length)) return "공개하려면 업체 소개와 시공 서비스를 입력해주세요.";
         }}
         className={styles.panel}
@@ -528,7 +530,7 @@ export default function CustomerPageAdmin() {
         </p>
 
         <fieldset disabled={!ready || busy}>
-          {[["business_name","representative_name","business_number","business_address"],["public_phone","public_email","regions"],["blog_url","place_url"]].map((group,index) => (
+          {[["business_name","representative_name","business_number","business_address"],["public_phone","public_email","regions"],["blog_url","instagram_url","place_url"]].map((group,index) => (
           <InputStep key={index} index={index}>
           {fields.filter(([key])=>group.includes(key)).map(([key, label, max]) => (
             <label key={key}>

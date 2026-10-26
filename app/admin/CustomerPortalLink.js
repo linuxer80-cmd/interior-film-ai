@@ -1,0 +1,8 @@
+'use client';
+import {useState} from 'react';
+import {supabase} from '../../lib/supabase';
+export default function CustomerPortalLink({siteId,active,blocked}){
+ const [data,setData]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ async function load(renew=false){setBusy(true);setMessage('');try{const {data:s}=await supabase.auth.getSession();const r=await fetch('/api/admin/customer-portal',{method:'POST',headers:{Authorization:'Bearer '+(s.session?.access_token||''),'Content-Type':'application/json'},body:JSON.stringify({siteId,renew})});const d=await r.json();if(!r.ok)throw Error(d.error);setData({...d,url:window.location.origin+d.path});}catch(e){setMessage(e.message);}finally{setBusy(false);}}
+ return <section hidden={!active} style={{padding:20,border:'1px solid #dce3db',borderRadius:18,margin:'20px 0'}}><h3>고객 전용 시공 안내 페이지</h3><p>일정 · 미리시공 3회 · 샘플 · 시공 사례 · 업체 SNS</p><button type="button" disabled={busy||blocked} onClick={()=>load()}>고객 페이지 링크 확인</button>{data&&<><p>남은 체험 {data.remaining}회 · {new Date(data.expiresAt).toLocaleDateString('ko-KR')}까지</p><a href={data.path} target="_blank" rel="noopener noreferrer">고객 페이지 열기 ↗</a><p style={{overflowWrap:'anywhere'}}>{data.url}</p><button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(data.url);setMessage('링크를 복사했습니다.');}catch{setMessage('위 링크를 길게 눌러 복사해주세요.');}}}>링크 복사</button> <button type="button" disabled={busy} onClick={()=>load(true)}>기존 링크 해제하고 새 링크 발급</button><p>재발급 시 기존 링크는 즉시 종료됩니다. 체험 횟수는 유지됩니다.</p></>}<p>공유한 고객은 로그인 없이 볼 수 있습니다. 해당 고객에게만 전달해주세요. 알림톡 링크 버튼은 별도 템플릿 검수 후 연결할 수 있습니다.</p>{message&&<p role="status">{message}</p>}</section>;
+}

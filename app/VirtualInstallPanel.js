@@ -462,6 +462,8 @@ export default function VirtualInstallPanel({
   onAreaFilmsChange,
   onRequestDetail,
   companySlug = "",
+  customerToken = "",
+  onAttempt,
 }) {
   const [selectedImageId, setSelectedImageId] = useState("");
   const [targetType, setTargetType] = useState("");
@@ -666,6 +668,7 @@ export default function VirtualInstallPanel({
 
     form.append("company_slug", companySlug);
     form.append("image", sourceImage.file);
+    if(customerToken) form.append("customer_token",customerToken);
     form.append("targetType", targetType);
     form.append("targetLabel", selectedType?.label || "");
     form.append("useSplitTone", multi ? "true" : "false");
@@ -703,6 +706,7 @@ export default function VirtualInstallPanel({
       });
 
       const data = await response.json().catch(() => ({}));
+      onAttempt?.(data);
 
       if (
         generation !== generationRef.current ||
