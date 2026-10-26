@@ -30,6 +30,19 @@ test('stage reservation charges each eligible stage once and requires confirmed 
  assert.equal((await reserve('care')).rows[0].r.accepted,true);
  assert.equal((await reserve('care')).rows[0].r.reason,'duplicate');
  assert.equal((await db.query('select available_count from alimtalk_accounts')).rows[0].available_count,3);
+ await db.exec("delete from alimtalk_deliveries; update sites set status='consulting',work_dates=null; update alimtalk_accounts set available_count=5");
+ assert.equal((await reserve('before')).rows[0].r.accepted,false);
+ assert.equal((await reserve('complete')).rows[0].r.accepted,false);
+ assert.equal((await reserve('care')).rows[0].r.accepted,false);
+ assert.equal((await reserve('consultation')).rows[0].r.accepted,true);
+ assert.equal((await reserve('consultation')).rows[0].r.reason,'duplicate');
+ await db.exec("update sites set status='scheduled',work_dates=array[current_date+1]");
+ assert.equal((await reserve('consultation')).rows[0].r.accepted,false);
+ // A new stage receives its own delivery ID and does not collide with consultation.
+ const before=await db.query("select reserve_customer_stage('40000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','before','010-****-0000','template',repeat('b',64)) as r");
+ assert.equal(before.rows[0].r.accepted,true);
+ assert.equal((await db.query('select available_count from alimtalk_accounts')).rows[0].available_count,3);
+
  assert.equal((await db.query("select has_function_privilege('anon','reserve_customer_stage(uuid,uuid,uuid,uuid,text,text,text,text)','execute') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

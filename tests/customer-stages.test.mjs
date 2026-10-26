@@ -33,3 +33,10 @@ test('customer photos exclude other sites, late uploads, request photos and trav
  const rows=[make('sites/company/site/after/a.jpg'),make('sites/company/other/after/a.jpg'),make('sites/company/site/after/b.jpg','after','2026-10-26T05:00:00Z'),make('sites/company/site/request/c.jpg','request'),make('sites/company/site/../other/a.jpg')];
  assert.deepEqual(customerPhotoRows(rows,'company','site','2026-10-26T03:00:00Z'),[rows[0]]);
 });
+
+test('consultation message opens the same preparation page without claiming a confirmed date',()=>{
+ assert.equal(stageButton('consultation').linkMo,stageButton('before').linkMo);
+ assert.ok(stageTemplate('consultation').includes('상담 후 확정'));
+ assert.equal(stageTemplate('consultation').includes('일정이 확정되었습니다'),false);
+ assert.equal(stageTemplate('consultation').includes('#{시공일}'),false);
+});

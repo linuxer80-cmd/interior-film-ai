@@ -540,7 +540,7 @@ export default function SiteDetailModal({
               materialSummary={<SiteOperations key={site.id} siteId={site.id} active={menu === "info"} mode="summary" />}
             />
 
-            <CustomerStageAlimtalk key={"completion-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
+            <CustomerStageAlimtalk siteStatus={site.status} key={"completion-"+site.id+site.status} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <CustomerPortalLink key={"portal-"+site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
             <SiteAlimtalk key={site.id} siteId={site.id} active={menu === "info"} blocked={basicBusy} />
           </section>
