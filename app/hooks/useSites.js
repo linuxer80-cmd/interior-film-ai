@@ -474,6 +474,7 @@ export default function useSites({ companyId }) {
           return {
             company_id: companyId,
             site_id: siteId,
+            price_type: material.price_type,
             film_product_id: material.film_product_id || null,
             brand: material.brand?.trim() || null,
             product_code: material.product_code?.trim() || null,
@@ -519,6 +520,7 @@ export default function useSites({ companyId }) {
       let createdSite = null;
 
       try {
+        if (!form.existing_site_id && (form.materials || []).some(m => (m.product_code || m.product_name) && !["fire","non_fire"].includes(m.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
         const insertData = {
           company_id: companyId,
           customer_name: form.customer_name?.trim() || null,

@@ -52,6 +52,7 @@ const material = () => ({
   product_name: "",
   unit: "m",
   unit_price: "",
+  price_type: "",
   memo: "",
 });
 
@@ -390,6 +391,7 @@ export default function SiteRegisterModal({
         customerPhone = person?.phone || client.phone || "";
       }
 
+      if ((!duplicateChoice || duplicateChoice === "new") && materials.some(item => (item.product_code.trim() || item.product_name.trim()) && !["fire","non_fire"].includes(item.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
       const result = await createSite({
         ...form,
         registration_flow: true,
@@ -640,6 +642,7 @@ export default function SiteRegisterModal({
                     onChange={(patch) => setMaterials((previous) => previous.map((row) =>
                       row.local_id === item.local_id ? { ...row, ...patch } : row))} />
 
+                  <label>방염 구분 (필수)<select required value={item.price_type || ""} onChange={event => setMaterials(previous => previous.map(row => row.local_id === item.local_id ? {...row, price_type:event.target.value, unit_price:""} : row))}><option value="">선택해주세요</option><option value="fire">방염</option><option value="non_fire">비방염</option></select></label>
                   {[
                     ["brand", "브랜드"],
                     ["product_name", "제품명 / 색상"],
