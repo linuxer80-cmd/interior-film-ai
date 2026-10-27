@@ -1,10 +1,10 @@
 // One customer-confirmation retry explicitly requested by the owner on 2026-10-27.
 // Run only as a one-off production operation. The deadline and existing atomic
 // delivery reservation prevent subsequent builds from sending another message.
-import {portalDb} from "./lib/customerPortal.mjs";
-import {notifyCustomerConfirmation} from "./lib/customerConfirmation.mjs";
-import {customerStageContext,stageConfig} from "./lib/customerStageAlimtalk.mjs";
-import {refreshDeliveries,maskPhone,phoneNumber,workDates} from "./lib/siteAlimtalk.mjs";
+import {portalDb} from "../../lib/customerPortal.mjs";
+import {notifyCustomerConfirmation} from "../../lib/customerConfirmation.mjs";
+import {customerStageContext,stageConfig} from "../../lib/customerStageAlimtalk.mjs";
+import {refreshDeliveries,maskPhone,phoneNumber,workDates} from "../../lib/siteAlimtalk.mjs";
 const company="2ddfe3d9-4411-4991-ae35-5b876be411bc",site="c5eab1e9-f5ac-44e0-ac89-134a0e23d4de",actor="f7f8dd6f-1d74-434d-a139-10fa8691357e";
 async function run(){
  if(process.env.VERCEL_ENV!=="production"||Date.now()>1793089184297)return console.log("AUTHORIZED_SEND",{status:"expired_or_wrong_environment"});
