@@ -14,6 +14,7 @@ const SIGNED_URL_SECONDS = 1800;
 
 export default function SiteRequestPhotos({
   site,
+  active = true,
   addSiteRequestPhotos,
   deleteSiteRequestPhoto,
 }) {
@@ -63,7 +64,7 @@ export default function SiteRequestPhotos({
         .eq("site_id", site.id)
         .eq("photo_type", "request")
         .order("created_at", {
-          ascending: true,
+          ascending: false,
         });
 
       if (photoError) {
@@ -137,8 +138,16 @@ export default function SiteRequestPhotos({
   ======================================================= */
 
   useEffect(() => {
-    loadRequestPhotos();
-  }, [loadRequestPhotos]);
+    if (active) loadRequestPhotos();
+  }, [loadRequestPhotos, active]);
+
+  useEffect(() => {
+    if (!active || !site?.id) return;
+    const refresh = () => { if (document.visibilityState === 'visible') loadRequestPhotos(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh);};
+  }, [active, site?.id, loadRequestPhotos]);
 
   /* =======================================================
      현장 변경 시 상태 초기화
@@ -461,6 +470,11 @@ export default function SiteRequestPhotos({
           로딩
       ========================= */}
 
+      {photos.some(photo => photo.description?.startsWith('고객 상담 사진\n')) && <details style={{marginBottom:14,padding:12,background:'#eef4ed',borderRadius:12}}>
+        <summary style={{cursor:'pointer',fontWeight:700}}>고객 요청사항</summary>
+        {[...new Set(photos.filter(photo => photo.description?.startsWith('고객 상담 사진\n')).map(photo => photo.description.slice('고객 상담 사진\n'.length)))].map((note,index) => <p key={index} style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontSize:14}}>{note}</p>)}
+      </details>}
+
       {loading ? (
         <LoadingBox />
       ) : photos.length === 0 ? (
@@ -642,7 +656,7 @@ function PhotoCard({
           pointerEvents: "none",
         }}
       >
-        요청사진 {index + 1}
+        {photo.description?.startsWith('고객 상담 사진') ? '고객이 보낸 사진' : `요청사진 ${index + 1}`}
       </div>
 
       {/* 삭제 */}

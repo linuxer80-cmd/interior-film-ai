@@ -577,12 +577,15 @@ export default function SiteDetailModal({
           </section>
           <section
             id="admin-site-panel-photos"
+            ref={element => { taskSections.current.photos = element; }}
+            tabIndex={-1}
             aria-label="현장 요청사진"
             hidden={menu !== "report"}
           >
             <SiteRequestPhotos
               key={site.id}
               site={site}
+              active={menu === "report"}
               addSiteRequestPhotos={addSiteRequestPhotos}
               deleteSiteRequestPhoto={deleteSiteRequestPhoto}
             />

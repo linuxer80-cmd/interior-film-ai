@@ -3,6 +3,7 @@ import {useState} from 'react';
 import {CUSTOMER_STAGES} from '../../../../lib/customerStages.mjs';
 import ShowcasePhotos from '../../../components/ShowcasePhotos';
 import styles from './portal.module.css';
+import RequestPhotos from './RequestPhotos';
 function safeLink(value){try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u.href:null;}catch{return null;}}
 export default function CustomerPortal({token,site,company,profile,cases,remaining,expiresAt,stageData,requestedStage}){
  const [copyMessage,setCopyMessage]=useState('');
@@ -17,6 +18,7 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
   {stage==='before'&&<>
   <section className={styles.welcome}><small>CUSTOMER CARE</small><h1>{site.customer_name||site.site_name}님,<br/>공간의 변화를 함께 준비해요.</h1><p>일정을 확인하고 우리 집에 어울리는 필름을 먼저 만나보세요.</p></section>
   <section className={styles.card}><span className={styles.badge}>{states[site.status]||'일정 확인'}</span><h2>{site.site_name}</h2><p>시공 일정</p><strong>{dates.length?dates.map(d=>d.slice(0,10)).join(' · '):'일정 협의중'}</strong><p className={styles.muted}>일정 변경이나 궁금한 점은 담당 업체에 문의해주세요.</p></section>
+  {site.status==='consulting'&&<RequestPhotos key={token} token={token}/>}
   <section className={styles.feature}><span className={styles.badge}>고객 전용 체험 · 남은 {remaining}회</span><h2>우리 집, 미리 시공해 볼까요?</h2><p>사진과 원하는 필름을 선택하고 우리 집의 변화를 미리 확인해보세요.</p><a className={styles.primary} href={'/customer/site/'+encodeURIComponent(token)+'/preview'} target="_blank" rel="noopener noreferrer">미리시공 시작하기 →</a><small>현장당 무료 3회 · 이미지 생성 요청 기준<br/>실제 색상·질감은 실물 샘플로 확인해주세요.</small></section>
   <section className={styles.card}><h2>색상과 질감을 더 자세히</h2><p>다양한 필름 샘플을 둘러보고 마음에 드는 제품을 골라보세요.</p><a className={styles.secondary} href={'/samples?company='+encodeURIComponent(company.slug)} target="_blank" rel="noopener noreferrer">필름 샘플 전체 보기 ↗</a></section>
   <section className={styles.card}><h2>이렇게 달라졌어요</h2><p>우리 업체가 시공한 실제 전·후 사례예요.</p>{cases.length?cases.slice(0,4).map(c=><article key={c.id}><h3>{c.title}</h3><ShowcasePhotos before={c.before} after={c.after} title={c.title}/></article>):<p className={styles.muted}>공개된 시공 사례를 준비하고 있습니다.</p>}</section>

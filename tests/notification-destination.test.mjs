@@ -24,6 +24,7 @@ test('push keeps precise site, consultation and existing deep links for each rol
  [{recipient_type:'worker',reference_type:'site_assignment',reference_id:id,link:'/worker'},`/worker/site/${id}`],
  [{recipient_type:'company_admin',reference_type:'site',reference_id:id,link:'/admin'},`/admin?tab=sites&site=${id}`],
  [{recipient_type:'company_admin',reference_type:'lead',reference_id:id},`/admin?tab=leads&lead=${id}`],
+ [{recipient_type:'company_admin',type:'customer_request_photos',reference_type:'site',reference_id:id,link:`/admin?tab=sites&site=${id}&section=photos`},`/admin?tab=sites&site=${id}&section=photos`],
  [{recipient_type:'super_admin',title:'신규 시공자 등록',link:'/super-admin/notifications'},'/super-admin/workers'],
  [{recipient_type:'company_admin',reference_type:'customer_chat',reference_id:id,link:`/admin/customer-chat?thread=${id}`},`/admin/customer-chat?thread=${id}`],
  [{recipient_type:'worker',link:'/worker/attendance'},'/worker/attendance']
