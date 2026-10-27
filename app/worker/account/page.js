@@ -429,7 +429,7 @@ export default function WorkerAccount() {
                     />
                   </label>}
                 </InputStep><InputStep index={3}>
-                  <p>계좌는 구인·구직에 공개되지 않습니다. 나중에 입력해도 됩니다.</p>
+                  <p>계좌는 구인·구직에 공개되지 않습니다. 업체 관리자 계좌는 고객 정산 안내에 사용됩니다.</p>
                   {field('은행명','bank_name','text',true)}
                   {field('계좌번호','account_number','text',true)}
                   {field('예금주','account_holder','text',true)}

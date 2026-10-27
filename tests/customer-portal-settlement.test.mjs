@@ -8,7 +8,9 @@ function fixture({approved=true,amount=1950000,confirmed=true,paid=500000}={}){
   sites:{status:'completed',contract_amount:amount,work_dates:['2020-01-01']},
   work_reports:[{review_status:approved?'approved':'pending',reviewed_at:approved?'2020-01-01T03:00:00Z':null}],
   site_receivable_balances:{confirmed,paid},
-  company_estimate_defaults:{bank_account:'테스트 계좌'},site_photos:[],
+  profiles:[{id:'owner'}],
+  labor_personal_details:{bank_name:'테스트은행',account_number:'123-456-789',account_holder:'테스트 관리자'},
+  company_estimate_defaults:{bank_account:'예전 견적서 계좌'},site_photos:[],
  };
  return {reads,db:{from(table){
   reads.push(table);
@@ -23,13 +25,14 @@ test('approved customer page exposes supply, VAT, gross total and gross-based re
  assert.equal(result.amount,1950000);assert.equal(result.vatAmount,195000);
  assert.equal(result.totalAmount,2145000);assert.equal(result.paid,500000);
  assert.equal(result.outstanding,1645000);assert.equal(result.settled,false);
- assert.equal(result.bankAccount,'테스트 계좌');
+ assert.equal(result.bankAccount,'테스트은행 123-456-789 (테스트 관리자)');
 });
 test('unapproved results do not expose tax, total, payment or bank account',async()=>{
  const {db,reads}=fixture({approved:false});const result=await loadCustomerStage(db,'company','site');
  for(const key of ['amount','vatAmount','totalAmount','paid','outstanding'])assert.equal(result[key],null);
  assert.equal(result.bankAccount,'');assert.deepEqual(result.before,[]);assert.deepEqual(result.after,[]);
  assert.equal(reads.includes('site_photos'),false);
+ assert.equal(reads.includes('profiles'),false);assert.equal(reads.includes('labor_personal_details'),false);
 });
 test('unknown settlement and missing contract never become a zero bill or paid-in-full message',async()=>{
  const pending=await loadCustomerStage(fixture({confirmed:false}).db,'company','site');
