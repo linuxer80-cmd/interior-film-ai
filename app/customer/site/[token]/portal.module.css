@@ -2,5 +2,5 @@
 
 .photoActions{display:flex;flex-wrap:wrap;gap:12px}.photoActions button{flex:1;min-width:130px;margin:8px 0;font:inherit;font-weight:700;cursor:pointer;min-height:56px}.photoActions button:focus-visible{outline:3px solid #285741;outline-offset:3px}
 
-.stageNav{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:20px 0}.stageNav a{padding:12px 5px;border-radius:12px;border:1px solid #dce3db;text-align:center;color:#345846;text-decoration:none;font-size:13px;font-weight:700}.stageNav a[aria-current]{background:#285741;color:white}.paymentRows{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paymentRows dd{margin:0;text-align:right;font-weight:700}
+.paymentRows{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paymentRows dd{margin:0;text-align:right;font-weight:700}
 .paymentRows .paymentTotal{border-top:1px solid #dce3db;border-bottom:1px solid #dce3db;padding:12px 0;font-weight:800;color:#285741}

@@ -14,7 +14,6 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
  const states={consulting:'상담 중',scheduled:'예약 확정',in_progress:'시공 중',completed:'시공 완료'};
  return <main className={styles.page}>
   <header className={styles.header}><strong>{company.company_name}</strong><span>나의 시공 안내</span></header>
-  <nav className={styles.stageNav} aria-label="시공 진행 단계">{Object.entries(CUSTOMER_STAGES).map(([key,label])=><a key={key} href={'/customer/site/'+encodeURIComponent(token)+'?stage='+key} aria-current={stage===key?'page':undefined}>{label}</a>)}</nav>
   {stage==='before'&&<>
   <section className={styles.welcome}><small>CUSTOMER CARE</small><h1>{site.customer_name||site.site_name}님,<br/>공간의 변화를 함께 준비해요.</h1><p>일정을 확인하고 우리 집에 어울리는 필름을 먼저 만나보세요.</p></section>
   <section className={styles.card}><span className={styles.badge}>{states[site.status]||'일정 확인'}</span><h2>{site.site_name}</h2><p>시공 일정</p><strong>{dates.length?dates.map(d=>d.slice(0,10)).join(' · '):'일정 협의중'}</strong><p className={styles.muted}>일정 변경이나 궁금한 점은 담당 업체에 문의해주세요.</p></section>
