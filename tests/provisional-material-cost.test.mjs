@@ -6,6 +6,22 @@ import {actualMaterialUnpriced} from '../lib/settlementFlow.mjs';
 import {dealerMaterialCosts} from '../lib/dealerMaterialCosts.mjs';
 const material=(id,code,price,extra={})=>({id,company_id:'co',site_id:'site',material_type:'planned',brand:'영림',product_code:code,unit:'m',unit_price:price,...extra});
 const trip=(id,issued,returned,extra={})=>({material_id:id,issued,returned,company_id:'co',site_id:'site',...extra});
+test('manual outgoing and returns contribute before a report, without counting mirrored rolls twice',()=>{
+ const materials=[material('a','ZX103',8400)];
+ const ledger={issues:[{material_id:'a',company_id:'co',site_id:'site',quantity:45,voided_at:null}],returns:[{material_id:'a',company_id:'co',site_id:'site',quantity:20.4}]};
+ const before=JSON.stringify(ledger);
+ for(const trips of [[],[trip('a',45,20.4)]]){
+  const rows=costs(materials,trips,ledger);assert.equal(rows.length,1);assert.equal(rows[0].quantity,24.6);assert.equal(rows[0].amount,206640);assert.equal(rows[0].quantityPending,false);
+ }
+ assert.equal(JSON.stringify(ledger),before);
+ ledger.issues.push({...ledger.issues[0],quantity:100,voided_at:'2026-10-27'});
+ assert.equal(costs(materials,[],ledger)[0].amount,206640);
+ ledger.returns=[];assert.equal(costs(materials,[],ledger)[0].quantityPending,true);
+ ledger.returns=[{material_id:'a',company_id:'other',site_id:'site',quantity:0}];assert.equal(costs(materials,[],ledger)[0].quantityPending,true);
+ ledger.returns=[{material_id:'a',company_id:'co',site_id:'site',quantity:46}];assert.equal(costs(materials,[],ledger)[0].quantityPending,true);
+ ledger.returns=[{material_id:'a',company_id:'co',site_id:'site',quantity:0}];assert.equal(costs(materials,[],ledger)[0].quantity,45);
+ assert.deepEqual(costs([...materials,{...materials[0],id:'actual',material_type:'actual'}],[],ledger),[]);
+});
 test('Cheolsan usage yields 656000 without creating accounting records',()=>{
  const m=[material('a','PS160',6500),material('b','PSM197',9000),material('c','PSM210',9000)];
  const t=[trip('a',25,25),... [1,9.3,7.3,5.4,25,25,10.2].map(n=>trip('a',n,0)),trip('b',15.2,9.5),trip('c',16.1,9)];
@@ -39,17 +55,25 @@ test('profit API sums actual plus provisional once and retains company-scoped re
  const source=fs.readFileSync(new URL('../app/api/admin/profit/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
  const tables={profiles:[{id:'user',company_id:'co',role:'owner',is_active:true}],companies:[{id:'co',is_active:true}],sites:[{id:'site',company_id:'co',site_name:'철산대림',status:'in_progress',contract_amount:3540000,site_workers:[],work_dates:[]}],site_materials:[material('a','PS160',6500)],film_stock_trips:[trip('a',108.2,25)],site_expenses:[],site_daily_assignments:[],work_reports:[],company_leader_allowance_rates:[],company_leader_allowances:[]};
  const reads=[];
- const db={auth:{getUser:async()=>({data:{user:{id:'user'}}})},from(name){const filters=[];const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},neq(k,v){filters.push(r=>r[k]!==v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},range(){return q},maybeSingle(){q.single=true;return q},then(resolve){reads.push({name,count:filters.length});const rows=(tables[name]||[]).filter(r=>filters.every(f=>f(r)));return Promise.resolve({data:q.single?rows[0]||null:rows,error:null}).then(resolve)}};return q}};
+ const db={auth:{getUser:async()=>({data:{user:{id:'user'}}})},from(name){const filters=[];const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},is(k,v){filters.push(r=>v===null?r[k]==null:r[k]===v);return q},neq(k,v){filters.push(r=>r[k]!==v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},range(){return q},maybeSingle(){q.single=true;return q},then(resolve){reads.push({name,count:filters.length});const rows=(tables[name]||[]).filter(r=>filters.every(f=>f(r)));return Promise.resolve({data:q.single?rows[0]||null:rows,error:null}).then(resolve)}};return q}};
  const GET=new Function('createClient','process','Response','provisionalMaterialCosts','resolveRevenue','loadLaborContracts','contractWage','actualMaterialUnpriced','dealerMaterialCosts',source+';return GET;')(()=>db,{env:{NEXT_PUBLIC_SUPABASE_URL:'x',SUPABASE_SERVICE_ROLE_KEY:'x'}},Response,costs,s=>({revenue:s.contract_amount}),async()=>[],()=>0,actualMaterialUnpriced,dealerMaterialCosts);
  async function get(){const response=await GET(new Request('https://app.example/api/admin/profit?siteId=11111111-1111-1111-1111-111111111111',{headers:{authorization:'Bearer test'}}));return response.json()}
  // Site ID must match the requested UUID for the real scoped query.
  const id='11111111-1111-1111-1111-111111111111';for(const rows of Object.values(tables))for(const r of rows){if(r.site_id==='site')r.site_id=id;if(r.id==='site')r.id=id;}
  let result=await get();assert.equal(result.sites[0].material,540800);assert.equal(result.sites[0].materialProvisional,true);
+ tables.site_material_issues=[{id:'issue',company_id:'co',site_id:id,material_id:'a',quantity:108.2,voided_at:null}];
+ tables.site_material_returns=[{company_id:'co',site_id:id,material_id:'a',quantity:25}];
+ result=await get();assert.equal(result.sites[0].material,540800);assert.equal(result.breakdown.material.length,1);
+ tables.film_stock_trips=[];
+ result=await get();assert.equal(result.sites[0].material,540800);assert.equal(result.sites[0].materialProvisional,true);
+ tables.site_material_returns=[];
+ result=await get();assert.equal(result.sites[0].materialPending,true);assert.equal(result.sites[0].profitIsEstimated,true);
+ tables.site_material_returns=[{company_id:'co',site_id:id,material_id:'a',quantity:25}];
  tables.site_materials.push({...tables.site_materials[0],id:'actual',material_type:'actual',quantity:83.2,total_price:499200});
  result=await get();assert.equal(result.sites[0].material,499200);assert.equal(result.sites[0].materialProvisional,false);assert.equal(result.breakdown.material.length,1);
  tables.site_materials[1].unit_price=null;tables.site_materials[1].total_price=null;
  result=await get();assert.equal(result.sites[0].materialPending,true);assert.equal(result.sites[0].profitIsEstimated,true);assert.equal(result.breakdown.material[0].pricePending,true);
- assert.ok(reads.filter(r=>r.name==='film_stock_trips').every(r=>r.count>=2));
+ for(const name of ['film_stock_trips','site_material_issues','site_material_returns'])assert.ok(reads.filter(r=>r.name===name).every(r=>r.count>=2));
 });
 
 test('removed planned materials never mark profit provisional',()=>{

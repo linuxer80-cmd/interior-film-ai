@@ -141,6 +141,7 @@ export async function GET(request) {
           .in("company_id", companies)
           .in("site_id", ids)
           .eq("material_type", "planned")
+          .is("removed_at", null)
           .order("id"))
       ];
 

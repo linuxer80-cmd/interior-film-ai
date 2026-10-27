@@ -160,6 +160,7 @@ export async function GET(request) {
         .eq("site_id", siteId)
         .eq("company_id", selected.company_id)
         .eq("material_type", "planned")
+        .is("removed_at", null)
     );
 
     if (!materials.length) {

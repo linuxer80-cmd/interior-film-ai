@@ -10,6 +10,11 @@ const run=(rows=[row],m=[planned,actual],t=trips,r=rolls)=>dealerMaterialCosts(r
 test('actual rows map through canonical brands and split consumed metres while preserving total',()=>{
  const result=run();assert.deepEqual(result.map(x=>x.amount),[600,401]);assert.equal(result.reduce((s,x)=>s+x.amount,0),1001);assert.equal(result.reduce((s,x)=>s+x.quantity,0),10);assert(result.every(x=>x.dealerAllocated));assert.equal(row.amount,1001);
 });
+test('an archived duplicate cannot hide the active material dealer attribution',()=>{
+ const result=run([row],[{...planned,id:'removed',removed_at:'2026-10-27'},planned,actual]);
+ assert.deepEqual(result.map(x=>x.dealer),['A대리점','B대리점']);
+ assert.equal(result.reduce((sum,x)=>sum+x.amount,0),1001);
+});
 test('provisional rows use exact material id; manual rows stay unknown',()=>{
  const result=run([{...row,materialId:'p',provisional:true},{siteId:'s',amount:50,quantity:null}]);assert.equal(result.length,3);assert.equal(result[2].dealer,'대리점 미확인');assert.equal(result.reduce((s,x)=>s+x.amount,0),1051);
 });

@@ -452,6 +452,8 @@ export async function GET(request) {
 
     const materials = [];
     const trips = [];
+    const issues = [];
+    const returns = [];
     const expenses = [];
     const daily = [];
     const reports = [];
@@ -501,6 +503,12 @@ export async function GET(request) {
             .order("updated_at", { ascending: false })
             .order("id"),
         ),
+        allRows(db.from("site_material_issues")
+          .select("id,company_id,site_id,material_id,quantity,voided_at")
+          .eq("company_id",companyId).in("site_id",ids).is("voided_at",null).order("id")),
+        allRows(db.from("site_material_returns")
+          .select("company_id,site_id,material_id,quantity")
+          .eq("company_id",companyId).in("site_id",ids).order("material_id")),
       ]);
 
       trips.push(...await allRows(db.from("film_stock_trips")
@@ -510,6 +518,8 @@ export async function GET(request) {
       expenses.push(...results[1]);
       daily.push(...results[2]);
       reports.push(...results[3]);
+      issues.push(...results[4]);
+      returns.push(...results[5]);
     }
 
     const rolls = [];
@@ -605,7 +615,7 @@ export async function GET(request) {
       expense: [],
     };
 
-    const provisional = provisionalMaterialCosts(materials, trips);
+    const provisional = provisionalMaterialCosts(materials, trips, {issues, returns});
     const result = sites.map((site) => {
       const siteName =
         site.site_name || site.customer_name || "이름 없는 현장";
