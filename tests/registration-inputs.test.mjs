@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeRegistrationMaterials, registrationCustomerFields } from '../lib/registrationInputs.mjs';
+import { mergeRegistrationMaterials, registrationCustomerFields, registrationAmountValues } from '../lib/registrationInputs.mjs';
 
 const extracted = { brand: '현대보닥', product_code: 'S263', product_name: '솔리드', unit: 'm', memo: '방문' };
 
@@ -32,3 +32,8 @@ test('selecting a business uses its contact and does not carry a previous phone 
   assert.deepEqual(registrationCustomerFields(form,{type:'business',clientId:'client',name:'새 업체',phone:'0212345678'}), {...form,customer_name:'새 업체',customer_phone:'0212345678'});
   assert.equal(registrationCustomerFields(form,{type:'business',clientId:'client',name:'새 업체',phone:''}).customer_phone,'');
 });
+
+ test('explicit extracted contract and deposit amounts are retained, without guessing ambiguous or invalid values',()=>{
+ assert.deepEqual(registrationAmountValues({contract_amount:'1500000',deposit_amount:0}),{contract_amount:'1500000',deposit_amount:'0'});
+ for(const value of [null,undefined,'','미정','150만원',-1,NaN,1.5,{},Infinity])assert.deepEqual(registrationAmountValues({contract_amount:value}),{});
+ });

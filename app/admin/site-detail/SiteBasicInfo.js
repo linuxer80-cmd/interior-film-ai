@@ -1,6 +1,7 @@
 "use client";
 import useSiteDraft from "../hooks/useSiteDraft";
 import SiteDirections from "../../worker/SiteDirections";
+import { readableConsultationMemo } from "../../../lib/consultationSupplement.mjs";
 
 import {
   useEffect,
@@ -487,7 +488,7 @@ export default function SiteBasicInfo({
         <DetailRow
           label="메모"
           value={
-            site.memo ||
+            readableConsultationMemo(site.memo) ||
             "미정"
           }
         />

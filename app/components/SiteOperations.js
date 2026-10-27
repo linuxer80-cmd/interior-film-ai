@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { readableConsultationMemo } from "../../lib/consultationSupplement.mjs";
 import MaterialPhotoPreview from "./MaterialPhotoPreview";
 import FilmFireBadge from "./FilmFireBadge";
 import FilmRollInventory from "./FilmRollInventory";
@@ -1052,7 +1053,7 @@ export default function SiteOperations({
 
                       <p style={{ whiteSpace: "pre-wrap" }}>
                         현장 메모:{" "}
-                        {review.snapshot.site.memo || "없음"}
+                        {readableConsultationMemo(review.snapshot.site.memo) || "없음"}
                       </p>
 
                       {review.snapshot.assignments.map(

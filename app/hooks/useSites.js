@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { prepareRequestPhoto } from "../../lib/heicPhoto.mjs";
 import { supabase } from "../../lib/supabase";
-import { registrationConsultation } from "../../lib/siteRegistration.mjs";
+import { uploadConsultationPhotos } from "../../lib/uploadConsultationPhotos.mjs";
 import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
 import { saveConsultation } from "../../lib/saveConsultationClient";
 
@@ -527,6 +527,7 @@ export default function useSites({ companyId }) {
       setSitesMessage("");
 
       let createdSite = null;
+      let merged = false;
 
       try {
         if (!form.existing_site_id && (form.materials || []).some(m => (m.product_code || m.product_name) && !["fire","non_fire"].includes(m.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
@@ -578,24 +579,19 @@ export default function useSites({ companyId }) {
           : [];
 
         let savedMaterials = [];
-        let merged = false;
 
         if (form.registration_flow && form.existing_site_id) {
-          const addition=registrationConsultation(form);
-          if(!addition)throw Error("추가할 상담내용 또는 작업내용을 입력해주세요.");
-          const {data:existing,error:readError}=await supabase.from("sites").select("*").eq("id",form.existing_site_id).eq("company_id",companyId).single();
-          if(readError || !existing)throw Error("선택한 현장을 확인하지 못했습니다. 입력을 유지한 채 다시 확인해주세요.");
-          const marker=`[상담 추가 ${form.registration_request_id}]`;
-          if(String(existing.memo || "").includes(marker)) createdSite=existing;
-          else {
-            const memo=[existing.memo,marker,addition].filter(Boolean).join("\n\n");
-            let query=supabase.from("sites").update({memo,updated_at:new Date().toISOString()}).eq("id",existing.id).eq("company_id",companyId);
-            query=existing.updated_at == null ? query.is("updated_at",null) : query.eq("updated_at",existing.updated_at);
-            const {data:updated,error:updateError}=await query.select().maybeSingle();
-            if(updateError)throw updateError;
-            if(!updated)throw Error("다른 화면에서 현장이 변경됐습니다. 다시 저장하면 최신 내역에 상담을 추가합니다.");
-            createdSite=updated;
-          }
+          const {data:session,error:sessionError}=await supabase.auth.getSession();
+          if(sessionError || !session?.session?.access_token)throw Error("관리자로 다시 로그인해주세요.");
+          const response=await fetch('/api/admin/site-consultation',{
+            method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.session.access_token}`},
+            body:JSON.stringify({siteId:form.existing_site_id,requestId:form.registration_request_id,
+              data:{...insertData,consultation_text:form.consultation_text},materials}),
+          });
+          const result=await response.json();
+          if(!response.ok || !result.site?.id)throw Error(result.error || '상담을 추가하지 못했습니다.');
+          createdSite=result.site;
+          savedMaterials=result.materials || [];
           merged=true;
         } else if (form.consultation_quote_seed && !form.registration_flow) {
           const result = await saveConsultation({
@@ -625,24 +621,20 @@ export default function useSites({ companyId }) {
           });
         }
 
-        const requestPhotos = form.registration_flow && merged ? [] : Array.isArray(form.request_photos)
+        const requestPhotos = Array.isArray(form.request_photos)
           ? form.request_photos
           : [];
 
-        const savedPhotos = await uploadRequestPhotos({
-          siteId: createdSite.id,
-          files: requestPhotos,
-        });
+        const savedPhotos = form.registration_flow && merged
+          ? await uploadConsultationPhotos(supabase,companyId,createdSite.id,requestPhotos)
+          : await uploadRequestPhotos({siteId:createdSite.id,files:requestPhotos});
 
         const applySavedSite = (existing) => ({
           ...existing,
           ...createdSite,
           site_workers: existing?.site_workers || [],
-          site_materials: merged && form.registration_flow ? existing?.site_materials || [] : savedMaterials,
-          site_photos: [
-            ...(existing?.site_photos || []),
-            ...savedPhotos,
-          ],
+          site_materials: savedMaterials,
+          site_photos: [...new Map([...(existing?.site_photos || []),...savedPhotos].map(photo=>[photo.id,photo])).values()],
         });
 
         setSites((previous) => {
@@ -668,7 +660,7 @@ export default function useSites({ companyId }) {
 
         setSitesMessage(
           merged
-            ? form.registration_flow ? "✅ 기존 현장에 상담을 추가했습니다. 기존 일정·금액은 유지했습니다." : "✅ 기존 현장에 상담 내용과 견적 항목을 추가했습니다."
+            ? form.registration_flow ? "✅ 누락된 정보를 채우고 상담·자재·사진을 추가했습니다. 다른 내용은 메모에서 확인해주세요." : "✅ 기존 현장에 상담 내용과 견적 항목을 추가했습니다."
             : createdSite.status === "consulting"
               ? "✅ 상담중 현장으로 등록되었습니다."
               : "✅ 현장 일정이 등록되었습니다."
@@ -715,6 +707,7 @@ export default function useSites({ companyId }) {
             ? `현장은 저장되었지만 추가정보 저장 중 오류가 발생했습니다.\n${message}`
             : message,
           site: createdSite,
+          merged,
         };
       } finally {
         setSitesLoading(false);

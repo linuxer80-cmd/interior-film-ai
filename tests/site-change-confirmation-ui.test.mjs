@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {readableConsultationMemo} from '../lib/consultationSupplement.mjs';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 // Project tests use Next's bundled SWC; an external Babel path may be supplied for isolated verification.
@@ -16,7 +17,7 @@ function harness(owner=false){
  const useState=value=>{const i=index++;if(!(i in states))states[i]=typeof value==='function'?value():value;return[states[i],v=>{states[i]=typeof v==='function'?v(states[i]):v;}];};
  const snapshot={site:{site_name:'현장',address:'인천시',work_dates:['2026-10-22']},assignments:[],materials:[]};
  const call=async(url,options)=>{const body=JSON.parse(options.body);sent.push(body);return {ok:true,json:async()=>body.action==='latest'?{snapshot,version:'current-version'}:{...data,events:[]}};};
- const compiled=compile(source);const fn=new Function('h','Fragment','useState','useEffect','useCallback','useRef','supabase','fetch',compiled+';return SiteOperations;')(h,'fragment',useState,()=>{},f=>f,value=>({current:value}),{auth:{getSession:async()=>({data:{session:{access_token:'token'}}})}},call);
+ const compiled=compile(source);const fn=new Function('h','Fragment','useState','useEffect','useCallback','useRef','supabase','fetch','readableConsultationMemo',compiled+';return SiteOperations;')(h,'fragment',useState,()=>{},f=>f,value=>({current:value}),{auth:{getSession:async()=>({data:{session:{access_token:'token'}}})}},call,readableConsultationMemo);
  return {render(){index=0;return fn({siteId:'site',mode:'changes',compact:true});},sent};
 }
 function nodes(tree){return !tree||typeof tree!=='object'?[]:[tree,...tree.children.flatMap(nodes)];}

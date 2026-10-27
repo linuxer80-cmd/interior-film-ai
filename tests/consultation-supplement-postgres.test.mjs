@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+import {normalizeSupplement,consultationSupplement} from '../lib/consultationSupplement.mjs';
+const read=p=>fs.readFileSync(new URL(p,import.meta.url),'utf8');
+const sql=read('../supabase/migrations/20261027064811_supplement_site_consultation.sql');
+const uid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const co=uid(1),owner=uid(2),site=uid(3),worker=uid(4),foreign=uid(5);
+test('atomic supplements preserve prices and movements, merge quotes, survive retries, and enforce tenant and revision checks',async()=>{
+ const db=new PGlite();
+ try {
+  await db.exec(`
+   create role anon;create role authenticated;create role service_role;
+   create table companies(id uuid primary key,is_active boolean);
+   create table profiles(id uuid primary key,company_id uuid,role text,is_active boolean);
+   create table sites(id uuid primary key,company_id uuid,status text,customer_name text,customer_phone text,site_name text,address text,address_detail text,region text,work_type text,work_description text,memo text,contract_amount numeric,deposit_amount numeric,work_dates date[],schedule_date date,schedule_start timestamptz,schedule_end timestamptz,consultation_quote_seed jsonb,updated_at timestamptz default now());
+   create table site_materials(id uuid primary key,company_id uuid,site_id uuid,material_type text,created_by uuid,film_product_id uuid,brand text,product_code text,product_name text,price_type text,quantity numeric,unit text,unit_price numeric,total_price numeric,memo text,created_at timestamptz default now(),removed_at timestamptz);
+   create table site_material_issues(material_id uuid,quantity numeric,voided_at timestamptz);
+   create table site_consultation_quotes(site_id uuid primary key,company_id uuid,document jsonb,revision int,updated_at timestamptz);
+   create table consultation_registration_requests(company_id uuid,request_id uuid,user_id uuid,payload_hash text,site_id uuid,merged boolean,primary key(company_id,request_id));
+   insert into companies values('${co}',true);
+   insert into profiles values('${owner}','${co}','owner',true),('${worker}','${co}','worker',true);
+   insert into sites(id,company_id,status,site_name,work_description,deposit_amount) values('${site}','${co}','scheduled','부평일신동','방문 3개',0),('${foreign}','${uid(99)}','scheduled','다른 업체',null,null);
+   insert into site_consultation_quotes values('${site}','${co}','{"items":[{"id":"existing","name":"방문","quantity":"3","unit_price":"50000"}]}',1,now());
+  `);
+  await db.exec(read('./fixtures/consultation-merge-helpers.sql'));
+  await db.exec(read('../database/film_brand_normalization.sql').match(/create or replace function public\.canonical_film_brand[\s\S]*?\$\$;/)[0]);
+  await db.exec(read('../database/add_planned_material_once.sql'));
+  await db.exec(sql);
+  const current=async()=> (await db.query('select * from sites where id=$1',[site])).rows[0];
+  const input=normalizeSupplement({contract_amount:1500000,deposit_amount:100000,customer_name:'고객',work_description:'방문 3개\n신발장',work_dates:['2026-11-01'],consultation_quote_seed:{items:[{name:'방문',quantity:'4'},{name:'측면',quantity:'2.5'}]}});
+  const patch=consultationSupplement(await current(),input).patch;
+  const mat={brand:'현대',product_code:'S245',price_type:'non_fire',unit:'m',unit_price:5800};
+  const call=async({actor=owner,sid=site,request=uid(10),expected,p=patch,materials=[mat],hash='a'.repeat(64)}={})=>{expected ??= (await current()).updated_at;return (await db.query('select supplement_site_consultation($1,$2,$3,$4,$5,$6,$7) result',[actor,sid,request,expected,JSON.stringify(p),JSON.stringify(materials),hash])).rows[0].result;};
+  const first=await call();assert.equal(first.site.contract_amount,1500000);assert.equal(first.site.deposit_amount,0);assert.equal(first.site.status,'scheduled');assert.equal(first.materials.length,1);
+  assert.equal(first.materials[0].price_type,'non_fire');assert.equal(first.materials[0].quantity,0);
+  let quote=(await db.query('select document,revision from site_consultation_quotes')).rows[0];
+  assert.equal(quote.document.items[0].unit_price,'50000');assert.equal(quote.document.items[0].quantity,'3');assert.equal(quote.document.items[0].id,'existing');assert.equal(quote.document.items[1].quantity,'2.5');
+  assert.equal(quote.document.items[1].unit_price,'');assert.match(quote.document.items[0].note,/수량 4/);
+  const saved=await current();assert.equal((await call({expected:'2000-01-01'})).cached,true);assert.deepEqual(await current(),saved);
+  assert.equal((await db.query('select revision from site_consultation_quotes')).rows[0].revision,quote.revision);
+  await db.query('insert into site_material_issues values($1,20.1,null)',[first.materials[0].id]);
+  await call({request:uid(11),materials:[{...mat,brand:'현대보닥',unit_price:9999}]});
+  assert.equal((await db.query('select count(*) from site_materials')).rows[0].count,1);assert.equal((await db.query('select unit_price from site_materials')).rows[0].unit_price,'5800');
+  assert.equal((await db.query('select quantity from site_material_issues')).rows[0].quantity,'20.1');
+  for(const args of [{actor:worker},{sid:foreign},{request:uid(12),expected:'2000-01-01'},{hash:'b'.repeat(64)},{request:uid(12),p:{status:'completed'}}])await assert.rejects(call(args));
+  const before=await current();
+  await assert.rejects(call({request:uid(13),p:{customer_name:'중간 실패'},materials:[{...mat,price_type:null}]}));assert.deepEqual(await current(),before);
+  const access=(await db.query(`select has_function_privilege('anon','supplement_site_consultation(uuid,uuid,uuid,timestamptz,jsonb,jsonb,text)','execute') a,has_function_privilege('authenticated','supplement_site_consultation(uuid,uuid,uuid,timestamptz,jsonb,jsonb,text)','execute') b,has_function_privilege('service_role','supplement_site_consultation(uuid,uuid,uuid,timestamptz,jsonb,jsonb,text)','execute') c`)).rows[0];
+  assert.deepEqual(access,{a:false,b:false,c:true});
+ } finally {await db.close();}
+});

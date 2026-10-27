@@ -15,9 +15,10 @@ import CallContentAiInput from "./site-register/CallContentAiInput";
 import CustomerChoice from "./site-register/CustomerChoice";
 import ScreenshotSiteInput from "./site-register/ScreenshotSiteInput";
 import { supabase } from "../../lib/supabase";
+import { consultationSupplement } from "../../lib/consultationSupplement.mjs";
 import { registrationStatus as getRegistrationStatus, similarRegistrationSites } from "../../lib/siteRegistration.mjs";
 import { tradeApi } from "../components/TradeClients";
-import { mergeRegistrationMaterials, registrationCustomerFields } from "../../lib/registrationInputs.mjs";
+import { mergeRegistrationMaterials, registrationCustomerFields, registrationAmountValues } from "../../lib/registrationInputs.mjs";
 
 const registrationSteps = ["상담내용", "현장정보", "확인·저장"];
 
@@ -129,6 +130,10 @@ export default function SiteRegisterModal({
   }, [open]);
 
   useEffect(() => {
+    registrationRequest.current=crypto.randomUUID();
+  }, [form,materials,photos,consultationText,duplicateChoice,consultation,customer,confirmed]);
+
+  useEffect(() => {
     panelRef.current?.scrollTo({top:0, behavior:"instant"});
   }, [step]);
 
@@ -167,7 +172,7 @@ export default function SiteRegisterModal({
       if (!form.work_description.trim() && consultationText.trim()) field("work_description",consultationText.trim());
       setStep(1);return;
     }
-    if (!form.site_name.trim() || !form.address.trim()) {setMessage("현장명과 주소를 입력해주세요.");return;}
+    if (!form.site_name.trim() && !form.address.trim() && !form.customer_phone.trim()) {setMessage("현장명·주소·전화번호 중 하나를 입력해주세요.");return;}
     if (customer.type === "business" && !customer.clientId) {setMessage("거래처를 선택해주세요.");return;}
     if ([form.contract_amount, form.deposit_amount].some(value => value !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0))) {setMessage("금액은 0 이상의 숫자로 입력해주세요.");return;}
     if (!companyId) {setMessage("업체 정보를 확인하지 못했습니다. 다시 열어주세요.");return;}
@@ -175,10 +180,14 @@ export default function SiteRegisterModal({
     try {
       const rows=[];
       for(let offset=0;offset<20000;offset+=500){
-        const {data,error}=await supabase.from("sites").select("id,site_name,customer_name,customer_phone,address,address_detail,status").eq("company_id",companyId).order("id").range(offset,offset+499);
+        const {data,error}=await supabase.from("sites").select("id,site_name,customer_name,customer_phone,address,address_detail,region,status,work_type,work_description,memo,contract_amount,deposit_amount,work_dates,schedule_date,schedule_start,schedule_end").eq("company_id",companyId).order("id").range(offset,offset+499);
         if(error)throw error;
         rows.push(...(data||[]));
-        if((data||[]).length<500){setCandidates(similarRegistrationSites(rows,form));setDuplicateChoice("");setStep(2);return;}
+        if((data||[]).length<500){
+          const matches=similarRegistrationSites(rows,form);
+          if(!matches.length && (!form.site_name.trim() || !form.address.trim())) {setMessage("기존 현장을 찾지 못했습니다. 새 현장은 현장명과 주소를 입력해주세요.");return;}
+          setCandidates(matches);setDuplicateChoice("");setStep(2);return;
+        }
       }
       throw Error("기존 현장 조회 범위를 초과했습니다. 관리자에게 문의해주세요.");
     } catch(error){setMessage("기존 현장 확인 실패: "+error.message);}
@@ -203,6 +212,7 @@ export default function SiteRegisterModal({
 
   function applyAnalysis(data, origin = "call") {
     if (!data || typeof data !== "object") return;
+    const extractedAmounts=registrationAmountValues(data);
 
     setConsultation((previous) => {
       const next = quoteSeed(data);
@@ -229,12 +239,15 @@ export default function SiteRegisterModal({
       };
     });
 
-    setAnalysisConflicts(Object.keys(emptyForm).filter(key => !["work_dates","contract_amount","deposit_amount","source"].includes(key) && !(customer.type === "business" && ["customer_name","customer_phone"].includes(key)) && data[key] != null && String(data[key]).trim() && String(form[key] || "").trim() && String(form[key]).trim() !== String(data[key]).trim()).map(key=>({key,before:form[key],after:String(data[key]).trim()})));
+    setAnalysisConflicts(Object.keys(emptyForm).filter(key => !["work_dates","contract_amount","deposit_amount","source"].includes(key) && !(customer.type === "business" && ["customer_name","customer_phone"].includes(key)) && data[key] != null && String(data[key]).trim() && String(form[key] || "").trim() && String(form[key]).trim() !== String(data[key]).trim()).map(key=>({key,before:form[key],after:String(data[key]).trim()})).concat(Object.entries(extractedAmounts).filter(([key,value])=>form[key] != null && String(form[key]).trim()!=="" && Number(form[key])!==Number(value)).map(([key,value])=>({key,before:form[key],after:value}))));
     setForm((previous) => {
       const next = {
         ...previous,
         source: origin === "screenshot" ? "other" : "phone",
       };
+      for (const [key,value] of Object.entries(extractedAmounts)) {
+        if (previous[key] == null || String(previous[key]).trim()==='') next[key]=value;
+      }
 
       Object.keys(emptyForm)
         .filter((key) =>
@@ -331,6 +344,7 @@ export default function SiteRegisterModal({
         return;
       }
 
+      if ((!duplicateChoice || duplicateChoice === "new") && (!form.site_name.trim() || !form.address.trim())) throw Error("새 현장은 현장명과 주소를 입력해주세요.");
       if (candidates.length && !duplicateChoice) throw Error("기존 현장에 상담을 추가할지, 별도 현장으로 등록할지 선택해주세요.");
       if (
         customer.type === "business" &&
@@ -341,7 +355,7 @@ export default function SiteRegisterModal({
 
       const days = [
         ...new Set(
-          (confirmed ? form.work_dates : [])
+          (confirmed || (duplicateChoice && duplicateChoice !== "new") ? form.work_dates : [])
             .filter(Boolean)
             .map(koreanDay)
             .filter(Boolean)
@@ -383,7 +397,7 @@ export default function SiteRegisterModal({
         customerPhone = person?.phone || client.phone || "";
       }
 
-      if ((!duplicateChoice || duplicateChoice === "new") && materials.some(item => (item.product_code.trim() || item.product_name.trim()) && !["fire","non_fire"].includes(item.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
+      if (materials.some(item => (item.product_code.trim() || item.product_name.trim()) && !["fire","non_fire"].includes(item.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
       const result = await createSite({
         ...form,
         registration_flow: true,
@@ -425,7 +439,7 @@ export default function SiteRegisterModal({
         request_photos: photos,
       });
 
-      if (result?.site?.id) {
+      if (result?.site?.id && (result.success || !result.merged)) {
         setSaved(result.site);
 
         if (customer.type === "business" && !result.merged) {
@@ -466,7 +480,7 @@ export default function SiteRegisterModal({
           new Event("trade-clients-changed")
         );
         setSaveFinished(true);
-        setMessage(result.merged ? "기존 현장에 상담을 추가했습니다. 기존 고객정보·일정·금액은 유지했습니다." : "현장을 저장했습니다.");
+        setMessage(result.merged ? "누락된 정보를 채우고 상담·자재·사진을 추가했습니다. 다른 내용은 현장 메모에서 확인해주세요." : "현장을 저장했습니다.");
       }
     } catch (error) {
       setMessage(error.message || "저장에 실패했습니다.");
@@ -475,6 +489,10 @@ export default function SiteRegisterModal({
       setBusy(false);
     }
   }
+
+  const selectedExisting=candidates.find(site=>site.id===duplicateChoice);
+  const supplementPreview=selectedExisting ? consultationSupplement(selectedExisting,{...form,consultation_text:consultationText}) : {filled:[],conflicts:[]};
+  const summaryValue=(field,value)=>field.endsWith('_amount') ? `${Number(value).toLocaleString('ko-KR')}원 + 부가세 ${Math.round(Number(value)*.1).toLocaleString('ko-KR')}원 / 합계 ${Math.round(Number(value)*1.1).toLocaleString('ko-KR')}원` : String(value ?? '');
 
   if (!open) return null;
 
@@ -795,10 +813,18 @@ export default function SiteRegisterModal({
             {analysisConflicts.length>0 && <section><h3>상담 분석 내용이 기존 입력과 다릅니다</h3><p>기존 입력을 유지했습니다. 바꿀 항목만 선택해주세요.</p>{analysisConflicts.map(item=><div className="review-row" key={item.key}><p>{item.before} → {item.after}</p><button type="button" onClick={()=>{field(item.key,item.after);setAnalysisConflicts(rows=>rows.filter(row=>row.key!==item.key));}}>분석값 적용</button></div>)}</section>}
             </div>
             <div hidden={step !== 2}>
-              {candidates.length>0 && <section><h3>같은 현장인지 확인해주세요</h3><p className="intro">같은 현장이면 기존 정보에 상담만 추가합니다.</p>{candidates.map(candidate=><button className="duplicate-option" type="button" key={candidate.id} aria-pressed={duplicateChoice===candidate.id} onClick={()=>setDuplicateChoice(candidate.id)}>{candidate.site_name || candidate.customer_name} · {[candidate.address,candidate.address_detail].filter(Boolean).join(" ")}<br/>이 현장에 상담 추가</button>)}<button className="duplicate-option" type="button" aria-pressed={duplicateChoice==="new"} onClick={()=>setDuplicateChoice("new")}>별도 공사입니다 · 새 현장으로 등록</button></section>}
+              {candidates.length>0 && <section><h3>같은 현장인지 확인해주세요</h3><p className="intro">같은 현장이면 빈 항목을 채우고 새 내용을 추가합니다.</p>{candidates.map(candidate=><button className="duplicate-option" type="button" key={candidate.id} aria-pressed={duplicateChoice===candidate.id} onClick={()=>setDuplicateChoice(candidate.id)}>{candidate.site_name || candidate.customer_name} · {[candidate.address,candidate.address_detail].filter(Boolean).join(" ")}<br/>이 현장에 상담 추가</button>)}<button className="duplicate-option" type="button" aria-pressed={duplicateChoice==="new"} onClick={()=>setDuplicateChoice("new")}>별도 공사입니다 · 새 현장으로 등록</button></section>}
               {(!duplicateChoice || duplicateChoice==="new") && <section data-registration-edit="dates" tabIndex={-1} style={{scrollMarginTop:100}}><h3>어떤 상태로 저장할까요?</h3><div className="input-methods"><button type="button" aria-pressed={!confirmed} onClick={()=>{setConfirmed(false);setNextAction("quote");}}>상담중</button><button type="button" aria-pressed={confirmed} onClick={()=>{setConfirmed(true);setNextAction("schedule");}}>시공확정</button></div>{confirmed && <><WorkDatePicker value={form.work_dates} onChange={value=>field("work_dates",value)} disabled={blocked || !!saved}/><p className="intro">날짜 미정이면 상담중으로 저장하고 ‘시공 확정·일정 조율 중’ 메모를 남깁니다.</p></>}<label>저장 후 할 일<select value={nextAction} onChange={event=>setNextAction(event.target.value)}><option value="quote">부위별 견적서 작성</option><option value="schedule">일정·시공자 배정</option><option value="info">현장 보기</option></select></label></section>}
 
-              {duplicateChoice && duplicateChoice!=="new" ? <section><h3>상담 추가 내용</h3><p style={{whiteSpace:"pre-wrap"}}>{[consultationText,form.work_description,form.memo].filter(Boolean).join("\n") || consultation?.items?.map(row=>[row.name,row.detail].filter(Boolean).join(" · ")).join("\n") || "추가할 내용이 없습니다. 이전 단계에서 입력해주세요."}</p><p>기존 현장 정보는 유지됩니다.</p></section> : <section>
+              {duplicateChoice && duplicateChoice!=="new" ? <section><h3>기존 현장에 추가할 내용</h3>
+                <p>빈 항목은 채우고, 기존 값이 다르면 확인 메모로 남깁니다.</p>
+                {supplementPreview.filled.map(item=><div className="review-row" key={item.field}><strong>{item.label}</strong><span>{summaryValue(item.field,item.value)}</span></div>)}
+                {[['작업 내용', [form.work_type,form.work_description,consultationText,form.memo].filter(Boolean).join('\n')],
+                  ['견적 항목',consultation?.items?.map(row=>[row.name,row.detail].filter(Boolean).join(' · ')).join('\n')],
+                  ['자재',materials.filter(m=>m.product_code||m.product_name).map(m=>[m.brand,m.product_code,m.price_type==='fire'?'방염':m.price_type==='non_fire'?'비방염':'방염 구분 확인 필요'].filter(Boolean).join(' · ')).join('\n')],
+                  ['사진',photos.length ? `${photos.length}장 추가` : '']].filter(([,value])=>value).map(([label,value])=><div className="review-row" key={label}><strong>{label}</strong><p style={{whiteSpace:'pre-wrap'}}>{value}</p></div>)}
+                {supplementPreview.conflicts.length>0 && <details><summary>기존 정보와 다른 내용 {supplementPreview.conflicts.length}개</summary>{supplementPreview.conflicts.map(item=><p key={item.field}>{item.label}: {summaryValue(item.field,item.before)} → {summaryValue(item.field,item.after)}<br/>기존 값을 유지하고 메모에 남깁니다.</p>)}</details>}
+              </section> : <section>
                 <h3>저장 전 확인</h3>
 
                 {[
@@ -841,9 +867,9 @@ export default function SiteRegisterModal({
 
           {saved && !pendingLink.current && <section style={{padding:16}}><h3>{saveFinished ? "저장 완료" : "현장은 등록됐습니다 · 후속 저장 내역 확인 필요"}</h3><a data-ui-link="action" href={`/admin?${new URLSearchParams({tab:"sites",site:saved.id,section:duplicateChoice && duplicateChoice!=="new" ? "info" : nextAction,...(nextAction === "quote" ? {quoteType:"area"} : {})})}`}>{duplicateChoice && duplicateChoice!=="new" ? "현장 보기" : nextAction === "quote" ? "부위별 견적서 작성" : nextAction === "schedule" ? "일정·시공자 배정" : "현장 보기"} →</a></section>}
           <footer>
-            <div className="save-summary"><strong>{duplicateChoice && duplicateChoice!=="new" ? "기존 현장에 상담 추가" : registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{confirmed && form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
+            <div className="save-summary"><strong>{duplicateChoice && duplicateChoice!=="new" ? "기존 현장에 상담 추가" : registrationStatus === "scheduled" ? "시공 예정" : "상담 중"}</strong><span>{duplicateChoice && duplicateChoice!=="new" ? "기존 현장 상태 유지" : confirmed && form.work_dates.length ? `시공일 ${form.work_dates.length}일 선택` : "일정 미정"}</span></div>
             {step > 0 && !saved && <button type="button" disabled={blocked} onClick={()=>{setMessage("");setStep(current=>current-1);}}>이전</button>}
-            {step === 1 && <p className="intro">필수: 현장명·주소</p>}
+            {step === 1 && <p className="intro">새 현장: 현장명·주소 / 기존 현장: 전화번호로도 검색</p>}
             {step === 2 && confirmed && !form.work_dates.length && <p className="intro">날짜 미정으로 저장할 수 있습니다. 일정은 현장 상세에서 나중에 정해주세요.</p>}
             {(!saved || pendingLink.current) && (
               <button type="submit" disabled={blocked}>

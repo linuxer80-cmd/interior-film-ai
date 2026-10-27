@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import * as supplement from '../lib/consultationSupplement.mjs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -20,6 +21,7 @@ function fixture(save = async () => ({success:true})) {
   const exports = {};
   vm.runInNewContext(code, {exports, React, console:{error(){}}, window:{confirm:()=>true}, require(path) {
     if(path==='react') return React;
+    if(path.includes('consultationSupplement')) return supplement;
     if(path.includes('useSiteDraft')) return {__esModule:true,default:(_cb,_id,value)=>{draft=value;}};
     if(path.includes('siteDetailUtils')) return {getLeader:()=>null,getMembers:()=>[],formatWon:String};
     return {__esModule:true,default:()=>null};
