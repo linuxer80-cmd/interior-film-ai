@@ -346,6 +346,7 @@ export async function GET(request) {
             .eq("company_id", site.company_id)
             .eq("site_id", siteId)
             .eq("material_type", "planned")
+            .is("removed_at", null)
             .order("id")
         )
       ).map(({ id, ...material }) => ({

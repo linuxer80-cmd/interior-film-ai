@@ -35,6 +35,7 @@ function harness({ tables = {}, errors = {}, invalidToken = false } = {}) {
       const q = {
         select(value) { fields = value.split(',').map((field) => field.trim()); return q; },
         eq(key, value) { filters.push((row) => row[key] === value); return q; },
+        is(key, value) { filters.push((row) => value === null ? row[key] == null : row[key] === value); return q; },
         in(key, values) { filters.push((row) => values.includes(row[key])); return q; },
         order() { return q; },
         range(a, b) { start = a; end = b; return q; },
@@ -61,6 +62,7 @@ function harness({ tables = {}, errors = {}, invalidToken = false } = {}) {
 test('a worker without an owner profile sees their assigned site and safe planned materials', async () => {
   const h = harness({ tables: { site_materials: [
     { id: 'mat', company_id: A, site_id: S, material_type: 'planned', product_code: 'TEST', quantity: 5, unit_price: 10000 },
+    { id: 'removed-duplicate', company_id: A, site_id: S, material_type: 'planned', product_code: 'TEST', removed_at: '2026-10-27T01:00:00Z' },
     { id: 'foreign', company_id: B, site_id: S, material_type: 'planned' },
     { id: 'actual', company_id: A, site_id: S, material_type: 'actual' },
   ] } });
@@ -75,6 +77,7 @@ test('a worker without an owner profile sees their assigned site and safe planne
   assert.equal(detail.body.site.site_id, S);
   assert.equal(detail.body.materials.length, 1);
   assert.equal(detail.body.materials[0].product_code, 'TEST');
+  assert.equal(detail.body.materials[0].material_id, 'mat');
   assert.equal('unit_price' in detail.body.materials[0], false);
 });
 
