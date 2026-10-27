@@ -620,6 +620,7 @@ export async function POST(request) {
 
 34. work_description에는 실제 통화에서 확인되는 시공 부위, 개수, 범위 등 작업에 필요한 내용을 간결하게 정리하세요.
 35. 필름 제조사, 제품코드, 제품명 또는 색상이 명확하면 materials에 넣으세요.
+'인테리어필름', '필름 시공', '자재 미정'처럼 제품이 정해지지 않은 일반 표현은 materials에 넣지 말고 work_description 또는 memo에 남기세요.
 
 36. 예:
 "현대보닥 S115"가 명확하게 언급되면

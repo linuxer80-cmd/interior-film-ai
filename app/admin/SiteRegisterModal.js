@@ -18,7 +18,7 @@ import { supabase } from "../../lib/supabase";
 import { consultationSupplement } from "../../lib/consultationSupplement.mjs";
 import { registrationStatus as getRegistrationStatus, similarRegistrationSites } from "../../lib/siteRegistration.mjs";
 import { tradeApi } from "../components/TradeClients";
-import { mergeRegistrationMaterials, registrationCustomerFields, registrationAmountValues } from "../../lib/registrationInputs.mjs";
+import { mergeRegistrationMaterials, registrationCustomerFields, registrationAmountValues, normalizeRegistrationDraft, registrationMaterialTypeError } from "../../lib/registrationInputs.mjs";
 
 const registrationSteps = ["상담내용", "현장정보", "확인·저장"];
 
@@ -89,6 +89,7 @@ export default function SiteRegisterModal({
   const [step, setStep] = useState(0);
   const panelRef = useRef(null);
   const [editTarget, setEditTarget] = useState(null);
+  const reviewDraft = normalizeRegistrationDraft({...form,materials});
 
   const lock = useRef(false);
   const checkLock = useRef(false);
@@ -172,6 +173,8 @@ export default function SiteRegisterModal({
       if (!form.work_description.trim() && consultationText.trim()) field("work_description",consultationText.trim());
       setStep(1);return;
     }
+    const materialError = registrationMaterialTypeError(reviewDraft.materials);
+    if (materialError) {editReviewItem("materials");setMessage(materialError);return;}
     if (!form.site_name.trim() && !form.address.trim() && !form.customer_phone.trim()) {setMessage("현장명·주소·전화번호 중 하나를 입력해주세요.");return;}
     if (customer.type === "business" && !customer.clientId) {setMessage("거래처를 선택해주세요.");return;}
     if ([form.contract_amount, form.deposit_amount].some(value => value !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0))) {setMessage("금액은 0 이상의 숫자로 입력해주세요.");return;}
@@ -213,6 +216,7 @@ export default function SiteRegisterModal({
   function applyAnalysis(data, origin = "call") {
     if (!data || typeof data !== "object") return;
     const extractedAmounts=registrationAmountValues(data);
+    const materialDraft=normalizeRegistrationDraft({materials:data.materials});
 
     setConsultation((previous) => {
       const next = quoteSeed(data);
@@ -291,12 +295,14 @@ export default function SiteRegisterModal({
         ]),
       ].sort();
 
+      // Preserve unspecified material preferences even when an earlier memo is kept.
+      next.memo = normalizeRegistrationDraft({...next,materials:data.materials}).memo;
       return next;
     });
 
-    if (Array.isArray(data.materials)) {
+    if (Array.isArray(materialDraft.materials)) {
       setMaterials((previous) => mergeRegistrationMaterials(previous,
-        data.materials
+        materialDraft.materials
           .filter((item) =>
             item && typeof item === "object"
           )
@@ -309,6 +315,7 @@ export default function SiteRegisterModal({
                 "product_name",
                 "unit",
                 "memo",
+                "price_type",
               ]
                 .filter((key) => item[key] != null)
                 .map((key) => [key, String(item[key])])
@@ -397,14 +404,15 @@ export default function SiteRegisterModal({
         customerPhone = person?.phone || client.phone || "";
       }
 
-      if (materials.some(item => (item.product_code.trim() || item.product_name.trim()) && !["fire","non_fire"].includes(item.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
+      const materialError = registrationMaterialTypeError(reviewDraft.materials);
+      if (materialError) {editReviewItem("materials");throw new Error(materialError);}
       const result = await createSite({
-        ...form,
+        ...reviewDraft,
         registration_flow: true,
         registration_request_id: registrationRequest.current,
         existing_site_id: duplicateChoice && duplicateChoice !== "new" ? duplicateChoice : null,
         consultation_text: consultationText,
-        memo: [form.memo, confirmed && !days.length ? "시공 확정·일정 조율 중" : ""].filter(Boolean).join("\n"),
+        memo: [reviewDraft.memo, confirmed && !days.length ? "시공 확정·일정 조율 중" : ""].filter(Boolean).join("\n"),
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_type: customer.type,
@@ -425,7 +433,7 @@ export default function SiteRegisterModal({
               work_date: days.join(", "),
             }
           : null,
-        materials: materials
+        materials: reviewDraft.materials
           .filter((item) =>
             item.product_code.trim() ||
             item.product_name.trim()
@@ -491,7 +499,7 @@ export default function SiteRegisterModal({
   }
 
   const selectedExisting=candidates.find(site=>site.id===duplicateChoice);
-  const supplementPreview=selectedExisting ? consultationSupplement(selectedExisting,{...form,consultation_text:consultationText}) : {filled:[],conflicts:[]};
+  const supplementPreview=selectedExisting ? consultationSupplement(selectedExisting,{...reviewDraft,consultation_text:consultationText}) : {filled:[],conflicts:[]};
   const summaryValue=(field,value)=>field.endsWith('_amount') ? `${Number(value).toLocaleString('ko-KR')}원 + 부가세 ${Math.round(Number(value)*.1).toLocaleString('ko-KR')}원 / 합계 ${Math.round(Number(value)*1.1).toLocaleString('ko-KR')}원` : String(value ?? '');
 
   if (!open) return null;
@@ -819,9 +827,9 @@ export default function SiteRegisterModal({
               {duplicateChoice && duplicateChoice!=="new" ? <section><h3>기존 현장에 추가할 내용</h3>
                 <p>빈 항목은 채우고, 기존 값이 다르면 확인 메모로 남깁니다.</p>
                 {supplementPreview.filled.map(item=><div className="review-row" key={item.field}><strong>{item.label}</strong><span>{summaryValue(item.field,item.value)}</span></div>)}
-                {[['작업 내용', [form.work_type,form.work_description,consultationText,form.memo].filter(Boolean).join('\n')],
+                {[['작업 내용', [form.work_type,form.work_description,consultationText,reviewDraft.memo].filter(Boolean).join('\n')],
                   ['견적 항목',consultation?.items?.map(row=>[row.name,row.detail].filter(Boolean).join(' · ')).join('\n')],
-                  ['자재',materials.filter(m=>m.product_code||m.product_name).map(m=>[m.brand,m.product_code,m.price_type==='fire'?'방염':m.price_type==='non_fire'?'비방염':'방염 구분 확인 필요'].filter(Boolean).join(' · ')).join('\n')],
+                  ['자재',reviewDraft.materials.filter(m=>m.product_code||m.product_name).map(m=>[m.brand,m.product_code,m.price_type==='fire'?'방염':m.price_type==='non_fire'?'비방염':'방염 구분 확인 필요'].filter(Boolean).join(' · ')).join('\n')],
                   ['사진',photos.length ? `${photos.length}장 추가` : '']].filter(([,value])=>value).map(([label,value])=><div className="review-row" key={label}><strong>{label}</strong><p style={{whiteSpace:'pre-wrap'}}>{value}</p></div>)}
                 {supplementPreview.conflicts.length>0 && <details><summary>기존 정보와 다른 내용 {supplementPreview.conflicts.length}개</summary>{supplementPreview.conflicts.map(item=><p key={item.field}>{item.label}: {summaryValue(item.field,item.before)} → {summaryValue(item.field,item.after)}<br/>기존 값을 유지하고 메모에 남깁니다.</p>)}</details>}
               </section> : <section>
@@ -831,8 +839,8 @@ export default function SiteRegisterModal({
                   ["현장·주소", [form.site_name, form.address, form.address_detail, form.region].filter(Boolean).join(" · "), "site"],
                   ["시공 날짜", confirmed && form.work_dates.length ? form.work_dates.join(", ") : "일정 미정", "dates"],
                   ["고객", [form.customer_name, form.customer_phone].filter(Boolean).join(" · ") || "미입력", "customer"],
-                  ["작업 내용", [form.work_type, form.work_description, form.memo].filter(Boolean).join("\n") || "미입력", "work"],
-                  ["시공 자재", materials.filter(m=>m.product_code.trim()||m.product_name.trim()).map(m=>[m.brand,m.product_code,m.product_name].filter(Boolean).join(" ")).join("\n") || "미입력", "materials"],
+                  ["작업 내용", [form.work_type, form.work_description, reviewDraft.memo].filter(Boolean).join("\n") || "미입력", "work"],
+                  ["시공 자재", reviewDraft.materials.filter(m=>m.product_code.trim()||m.product_name.trim()).map(m=>[m.brand,m.product_code,m.product_name,m.price_type==='fire'?'방염':m.price_type==='non_fire'?'비방염':'방염 구분 확인 필요'].filter(Boolean).join(" ")).join("\n") || "미정 · 나중에 등록", "materials"],
                   ["현장 사진", photos.length + "장", "photos"],
                   ["계약 금액", "계약금액 " + (form.contract_amount === "" ? "미정" : Number(form.contract_amount).toLocaleString("ko-KR")+"원") + " / 선금 " + (form.deposit_amount === "" ? "미정" : Number(form.deposit_amount).toLocaleString("ko-KR")+"원"), "amount"],
                 ].map(([label,value,target])=><div className="review-row" key={label}>

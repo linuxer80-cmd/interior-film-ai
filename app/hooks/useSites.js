@@ -7,6 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { uploadConsultationPhotos } from "../../lib/uploadConsultationPhotos.mjs";
 import { initialSiteStatus } from "../../lib/siteLifecycle.mjs";
 import { saveConsultation } from "../../lib/saveConsultationClient";
+import { normalizeRegistrationDraft, registrationMaterialTypeError } from "../../lib/registrationInputs.mjs";
 
 async function prepareRegistrationMaterials(materials) {
   if (!materials.length) return [];
@@ -535,7 +536,9 @@ export default function useSites({ companyId }) {
       let merged = false;
 
       try {
-        if (!form.existing_site_id && (form.materials || []).some(m => (m.product_code || m.product_name) && !["fire","non_fire"].includes(m.price_type))) throw new Error("자재별 방염·비방염을 선택해주세요.");
+        form = normalizeRegistrationDraft(form);
+        const materialError = registrationMaterialTypeError(form.materials);
+        if (!form.existing_site_id && materialError) throw new Error(materialError);
         const insertData = {
           company_id: companyId,
           customer_name: form.customer_name?.trim() || null,
