@@ -50,3 +50,8 @@ test('production preflight validates all approved texts and buttons using only G
  assert.equal(requests,4);assert.equal(result.length,4);assert.ok(result.every(r=>r.ready));assert.ok(!JSON.stringify(result).includes('test-secret'));
  const mismatch=await checkCustomerTemplateLinks(env,async()=>Response.json(Object.keys(CUSTOMER_TEMPLATE_NAMES).map(s=>({...template(s),buttons:[]}))));assert.ok(mismatch.every(r=>!r.ready));
 });
+
+test('preview copy preserves the approved consultation sentence and inline site/date formatting',()=>{
+ assert.ok(stageTemplate('consultation').includes('확인하실 수 있습니다. 시공 일정은 상담 후 확정하여 안내드립니다.'));
+ assert.ok(stageTemplate('before').includes('■ 현장명: #{현장명} ■ 시공일: #{시공일}'));
+});
