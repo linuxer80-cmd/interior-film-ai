@@ -8,7 +8,7 @@ function fixture(status='scheduled',prior=false){
  const company={id:'company',company_name:'업체',phone:'0212345678',is_active:true};
  const db={from(table){const q={select(){return q},eq(k,v){filters.push([table,k,v]);return q},limit(){return q},maybeSingle(){return q},then(resolve){return Promise.resolve({data:table==='sites'?site:prior?[{id:'old'}]:[]}).then(resolve)}};return q;}};
  const context=async(d,co,id,stage)=>{assert.equal(d,db);assert.equal(co,'company');assert.equal(id,'site');assert.equal(stage,'before');return {site,company,reasons:[],message:buildCustomerStageMessage(site,company,stage,'signed-token'),config:stageConfig(stage,{SOLAPI_TEMPLATE_CUSTOMER_SCHEDULE:'old-template'})};};
- return {db,filters,sent,context,dispatch:async args=>{sent.push(args);return {status:'requested'};}};
+ return {db,filters,sent,context,changes:async()=>({handled:false}),dispatch:async args=>{sent.push(args);return {status:'requested'};}};
 }
 test('confirmation always uses link template and same reservation as manual schedule sends',async()=>{
  const f=fixture();assert.equal((await notifyCustomerConfirmation(f.db,'company','site','owner',f)).status,'requested');

@@ -1,4 +1,5 @@
 import {processWorkerChangeAlerts} from '../../../../lib/workerChangeAlimtalk.mjs';
+import {processCustomerScheduleChanges} from '../../../../lib/customerScheduleChanges.mjs';
 import {createClient} from '@supabase/supabase-js';
 import {timingSafeEqual} from 'node:crypto';
 import {refreshDeliveries} from '../../../../lib/siteAlimtalk.mjs';
@@ -13,6 +14,8 @@ export async function GET(request){
     // Skip untraceable reservations rather than guessing or re-sending them.
     const rows=await db.from('alimtalk_deliveries').select('id,receipt_id,accounting').eq('accounting','reserved').not('receipt_id','is',null).order('updated_at').limit(100);
     if(rows.error)throw rows.error;
-    await refreshDeliveries(db,rows.data);const changes=await processWorkerChangeAlerts(db);return Response.json({checked:rows.data.length,changes});
+    await refreshDeliveries(db,rows.data);
+    const [changes,customerChanges]=await Promise.all([processWorkerChangeAlerts(db),processCustomerScheduleChanges(db)]);
+    return Response.json({checked:rows.data.length,changes,customerChanges});
   }catch(error){console.error('알림톡 정산 갱신 오류',error.code||'request_failed');return Response.json({error:'결과 갱신 실패'},{status:503});}
 }
