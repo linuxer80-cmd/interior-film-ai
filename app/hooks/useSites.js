@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createProgressiveSiteList } from "../../lib/progressiveSiteList.mjs";
 import { prepareRequestPhoto } from "../../lib/heicPhoto.mjs";
 import { supabase } from "../../lib/supabase";
 import { uploadConsultationPhotos } from "../../lib/uploadConsultationPhotos.mjs";
@@ -145,64 +146,68 @@ export default function useSites({ companyId }) {
   const [sitesMessage, setSitesMessage] = useState("");
   const [selectedSite, setSelectedSite] = useState(null);
 
+  const listLoader = useRef(null);
+  if (!listLoader.current) listLoader.current = createProgressiveSiteList();
+  useEffect(() => {
+    setSites([]);
+    setSelectedSite(null);
+    return () => listLoader.current.invalidate();
+  }, [companyId]);
+
   const loadSites = useCallback(
     async (targetCompanyId = companyId) => {
       if (!targetCompanyId) return;
-
-      setSitesLoading(true);
       setSitesMessage("");
-
-      try {
-        try {
-          const { data: auth } = await supabase.auth.getSession();
-          if (auth?.session) {
-            const response = await fetch("/api/admin/site-status/sync", {
-              method: "POST", headers: { Authorization: `Bearer ${auth.session.access_token}` },
-              signal: AbortSignal.timeout(10000),
-            });
-            if (!response.ok) throw Error("상태 자동 변경 지연");
-          }
-        } catch {
-          setSitesMessage("현장 상태 자동 변경이 지연되고 있습니다. 새로고침하면 재시도합니다.");
-        }
-
-        const { data, error } = await supabase
-          .from("sites")
-          .select(`
-            *,
-            site_workers (
-              id,
-              role,
-              worker_id,
-              workers (
-                id,
-                name,
-                phone,
-                position
-              )
-            )
-          `)
-          .eq("company_id", targetCompanyId)
-          .order("schedule_start", {
-            ascending: true,
-            nullsFirst: false,
+      const { ready } = listLoader.current.load({
+        companyId: targetCompanyId,
+        onLoading: setSitesLoading,
+        onData: data => {
+          setSites(data.sort(sortSitesBySchedule));
+          setSitesMessage("");
+        },
+        onError: error => {
+          console.error("현장 목록 조회 오류:", error);
+          setSitesMessage(`❌ 현장 목록 조회 실패: ${error?.message || "알 수 없는 오류"}`);
+        },
+        onSyncError: () => setSitesMessage("현장 상태 자동 변경이 지연되고 있습니다. 새로고침하면 재시도합니다."),
+        sync: async () => {
+          const { data: auth, error } = await supabase.auth.getSession();
+          if (error || !auth?.session) throw Error("로그인이 필요합니다.");
+          const response = await fetch("/api/admin/site-status/sync", {
+            method: "POST", headers: { Authorization: `Bearer ${auth.session.access_token}` },
+            signal: AbortSignal.timeout(10000),
           });
+          if (!response.ok) throw Error("상태 자동 변경 지연");
+          return response.json();
+        },
+        read: async () => {
+          const { data, error } = await supabase
+            .from("sites")
+            .select(`
+              *,
+              site_workers (
+                id,
+                role,
+                worker_id,
+                workers (
+                  id,
+                  name,
+                  phone,
+                  position
+                )
+              )
+            `)
+            .eq("company_id", targetCompanyId)
+            .order("schedule_start", {
+              ascending: true,
+              nullsFirst: false,
+            });
 
-        if (error) throw error;
-
-        setSites((data || []).sort(sortSitesBySchedule));
-      } catch (error) {
-        console.error("현장 목록 조회 오류:", error);
-        setSites([]);
-
-        setSitesMessage(
-          `❌ 현장 목록 조회 실패: ${
-            error?.message || "알 수 없는 오류"
-          }`
-        );
-      } finally {
-        setSitesLoading(false);
-      }
+          if (error) throw error;
+          return data || [];
+        },
+      });
+      await ready;
     },
     [companyId]
   );

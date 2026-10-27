@@ -52,29 +52,18 @@ export default function AdminHomeSummary({ companyId }) {
           return result;
         };
 
-        const results = await Promise.allSettled([
-          read("/api/admin/today-tasks"),
-          read("/api/tomorrow-tasks?role=owner"),
+        const message = cause => cause.name === "AbortError"
+          ? "연결이 지연됩니다. 다시 확인해주세요." : cause.message;
+        // Today's work can render even if tomorrow's material lookup is slow.
+        await Promise.all([
+          read("/api/admin/today-tasks")
+            .then(result => { if (active) setData(result); })
+            .catch(cause => { if (active) setError(message(cause)); })
+            .finally(() => { if (active) setLoading(false); }),
+          read("/api/tomorrow-tasks?role=owner")
+            .then(result => { if (active) setTomorrow(result); })
+            .catch(cause => { if (active) setPrepareError(message(cause)); }),
         ]);
-
-        if (!active) return;
-
-        const message = (cause) =>
-          cause.name === "AbortError"
-            ? "연결이 지연됩니다. 다시 확인해주세요."
-            : cause.message;
-
-        if (results[0].status === "fulfilled") {
-          setData(results[0].value);
-        } else {
-          setError(message(results[0].reason));
-        }
-
-        if (results[1].status === "fulfilled") {
-          setTomorrow(results[1].value);
-        } else {
-          setPrepareError(message(results[1].reason));
-        }
       } catch (cause) {
         if (active) {
           setError(

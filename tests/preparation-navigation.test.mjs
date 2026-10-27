@@ -54,7 +54,10 @@ test('assignment shortcuts open crew directly when dates exist and retain date s
 });
 
 test('trade editing has one input location and settlement change navigation protects payment drafts',()=>{
- const h=fixture();assert.equal(all(h.render(),n=>n.type==='../components/TradeClients').length,1);
+ const h=fixture();assert.equal(all(h.render(),n=>n.type==='../components/TradeClients').length,0);
+ const details=all(h.render(),n=>n.type==='details'&&n.props.children.some(child=>child?.type==='summary'&&text(child)==='고객 구분·거래처 연결'))[0];
+ const target={open:true};details.props.onToggle({target,currentTarget:target});
+ assert.equal(all(h.render(),n=>n.type==='../components/TradeClients').length,1);
  h.button('정산').props.onClick();
  const status=h.component('SiteStatusControl');assert.equal(status.props.active,true);
  let dirty=true;

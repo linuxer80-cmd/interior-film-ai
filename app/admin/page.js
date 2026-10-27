@@ -13,8 +13,8 @@ import { supabase } from "../../lib/supabase";
 import PhotoPreviewModal from "./PhotoPreviewModal";
 import AdminTabs from "./AdminTabs";
 import NewLeadAlert from "./NewLeadAlert";
-import JobsTab from "./JobsTab";
-import RegisterTab from "./RegisterTab";
+const JobsTab = dynamic(() => import("./JobsTab"));
+const RegisterTab = dynamic(() => import("./RegisterTab"));
 const HelpChat = dynamic(() => import("./HelpChat"), { ssr: false });
 const UsageTab = dynamic(() => import("./UsageTab"));
 const ProfitTab = dynamic(() => import("./ProfitTab"));
@@ -37,6 +37,7 @@ import {
 
 export default function AdminPage() {
   const photoRegistrationRef=useRef({pending:false,busy:false});
+  const [samplesReady, setSamplesReady] = useState(false);
   /* =========================================================
      화면 공통 상태
   ========================================================= */
@@ -472,8 +473,8 @@ export default function AdminPage() {
 
      순서:
      1. 로그인 / 회사 확인
-     2. 신규 회사 샘플 데이터 확인 및 생성
-     3. 시공 DB / 설정 / 상담 데이터 조회
+     2. 홈을 먼저 표시하고 샘플 / 설정 / 상담 상태 조회
+     3. 시공 DB는 해당 탭을 열 때 조회
   ========================================================= */
 
   useEffect(() => {
@@ -495,7 +496,7 @@ export default function AdminPage() {
       const resolvedCompanyId =
         result.companyId;
 
-      try {
+      void (async () => {
         /* =====================================================
            신규 관리자 샘플 데이터 확인 / 자동 생성
         ===================================================== */
@@ -529,6 +530,7 @@ export default function AdminPage() {
                   },
 
                   cache: "no-store",
+                  signal: AbortSignal.timeout(20000),
                 },
               );
 
@@ -566,45 +568,19 @@ export default function AdminPage() {
             "샘플 데이터 자동 생성:",
             sampleError,
           );
+        } finally {
+          if (mounted) setSamplesReady(true);
         }
 
-        if (!mounted) {
-          return;
-        }
+      })();
 
-        await Promise.all([
-          loadSettings(
-            resolvedCompanyId,
-          ),
-
-          loadJobs(
-            1,
-            "",
-            resolvedCompanyId,
-          ),
-
-          loadUnreadCount(
-            resolvedCompanyId,
-          ),
-        ]);
-
-        if (!mounted) {
-          return;
-        }
-
-        syncNotificationPermission();
-
-        markAdminReady();
-      } catch (error) {
-        console.error(
-          "관리자 데이터 초기화:",
-          error,
-        );
-
-        if (mounted) {
-          markAdminReady();
-        }
-      }
+      // Company/auth checks still gate the page. Optional setup must not gate home.
+      markAdminReady();
+      syncNotificationPermission();
+      void Promise.allSettled([
+        loadSettings(resolvedCompanyId),
+        loadUnreadCount(resolvedCompanyId),
+      ]);
     }
 
     initializeAdmin();
@@ -613,6 +589,12 @@ export default function AdminPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!adminReady || !companyId || activeTab !== "jobs" || !samplesReady) return;
+    // New companies must see their sample cases once setup finishes.
+    loadJobs(jobPage, jobSearchApplied, companyId);
+  }, [adminReady, companyId, activeTab, samplesReady]);
 
   /* =========================================================
      신규 상담 실시간 구독
@@ -745,7 +727,7 @@ export default function AdminPage() {
           jobSearchApplied={jobSearchApplied}
           jobTotal={jobTotal}
           jobsMessage={jobsMessage}
-          jobsLoading={jobsLoading}
+          jobsLoading={jobsLoading || !samplesReady}
           jobs={jobs}
           editingId={editingId}
           editCategory={editCategory}

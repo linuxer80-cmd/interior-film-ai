@@ -112,6 +112,8 @@ export default function SiteDetailModal({
   const materialPriceDetails=useRef(null);
   const tradeLinkDetails=useRef(null);
   const extrasDetails=useRef(null);
+  const [extraPanels, setExtraPanels] = useState({});
+  const extraPanel = (name, open) => setExtraPanels(previous => ({...previous, [name]: open, [name + "Visited"]: previous[name + "Visited"] || open}));
   const [menu, setMenu] = useState("info");
   const [preparationStep, setPreparationStep] = useState("dates");
   useEffect(()=>{if(menu === "materials" && materialFollowup?.id === "price" && materialPriceDetails.current)materialPriceDetails.current.open=true;},[materialFollowup,menu]);
@@ -180,6 +182,7 @@ export default function SiteDetailModal({
     setLeaveRequest(null);
     closeApproved.current = false;
     setReportOpen(false);
+    setExtraPanels({});
     setRequestedQuoteType(null);
     setEstimateDirty(false);
     setHasWorkerReport(null);
@@ -524,7 +527,7 @@ export default function SiteDetailModal({
               updateSiteBasicInfo={updateSiteBasicInfo}
             />
 
-            <details ref={extrasDetails} key={"site-extras-" + site.id} style={{ margin:"12px 0" }}>
+            <details ref={extrasDetails} onToggle={event => { if (event.target === event.currentTarget) extraPanel("extras", event.currentTarget.open); }} key={"site-extras-" + site.id} style={{ margin:"12px 0" }}>
               <summary style={{minHeight:44,padding:"10px 0",cursor:"pointer",fontWeight:800}}>추가 기능</summary>
             <details key={"customer-notices-" + site.id} style={{ margin: "12px 0" }}>
               <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>
@@ -536,10 +539,10 @@ export default function SiteDetailModal({
             </details>
 
           <section hidden={menu !== "info"} aria-label="현장 거래처 연결">
-            <details key={site.id} ref={tradeLinkDetails} style={{ margin: "12px 0",scrollMarginTop:12 }}>
+            <details key={site.id} ref={tradeLinkDetails} onToggle={event => { if (event.target === event.currentTarget) extraPanel("trade", event.currentTarget.open); }} style={{ margin: "12px 0",scrollMarginTop:12 }}>
               <summary style={{ minHeight: 44, padding: "10px 0", cursor: "pointer", fontWeight: 800 }}>고객 구분·거래처 연결</summary>
               <p style={{ fontSize: 13, color: "#53665a" }}>거래처 연결은 ‘거래처 연결 저장’으로 별도 저장합니다.</p>
-              <TradeClients key={site.id} siteId={site.id} onLinked={reloadSites} onDraftState={registerDraft} />
+              {extraPanels.tradeVisited && <TradeClients key={site.id} siteId={site.id} onLinked={reloadSites} onDraftState={registerDraft} />}
             </details>
           </section>
 
@@ -547,7 +550,7 @@ export default function SiteDetailModal({
 
 
 
-          <details style={{margin:"12px 0"}}><summary style={{minHeight:44,padding:"10px 0",cursor:"pointer"}}>현장 변경 내역</summary><SiteOperations siteId={site.id} active={menu === "info"} mode="changes" compact /></details>
+          <details onToggle={event => { if (event.target === event.currentTarget) extraPanel("changes", event.currentTarget.open); }} style={{margin:"12px 0"}}><summary style={{minHeight:44,padding:"10px 0",cursor:"pointer"}}>현장 변경 내역</summary>{extraPanels.changesVisited && <SiteOperations siteId={site.id} active={menu === "info" && !!extraPanels.extras && !!extraPanels.changes} mode="changes" compact />}</details>
             </details>
             <button type="button" style={{...actionStyle,width:"100%",margin:"12px 0"}} onClick={() => chooseMenu("chat")}>현장 채팅 →</button>
           </section>
