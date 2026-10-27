@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "prebuild": "node scripts/check-customer-template-links.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.2",

@@ -46,6 +46,7 @@ export default function SiteAlimtalk({siteId,active=true,blocked=false}){
         <p>알림톡 잔여 <strong>{data.unlimited?'무제한':data.availableCount.toLocaleString('ko-KR')+'회'}</strong></p>
         {!data.unlimited&&<details><summary>알림톡 충전 안내 · 1건 {ALIMTALK_UNIT_PRICE}원</summary><p>충전 금액은 결제 총액 기준입니다. 발송마다 1회를 사용하며 실패가 확정되면 복구됩니다.</p><ul>{ALIMTALK_PACKAGES.map(pack=><li key={pack.quantity}>{pack.quantity.toLocaleString('ko-KR')}건 · {pack.amount.toLocaleString('ko-KR')}원</li>)}</ul><p>고객지원에 충전할 횟수와 업체명을 알려주세요. 안내받은 계좌로 입금한 후 확인이 완료되면 횟수가 반영됩니다.</p><a href="/support">입금·충전 문의 →</a></details>}
         <pre aria-label="고객 알림톡 메시지 미리보기">{data.text}</pre>
+        {data.path&&<p><a href={data.path} target="_blank" rel="noopener noreferrer">내 시공 안내 보기 ↗</a></p>}
         {data.reasons.length>0&&<ul className="notice">{data.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>}
         {data.syncWarning&&<p>{data.syncWarning}</p>}
         {data.latestId&&<label className="confirm"><input type="checkbox" checked={resend} onChange={e=>setResend(e.target.checked)} disabled={busy}/><span>이전에 보낸 안내가 있습니다. 이력과 번호를 확인했으며 1회를 사용해 다시 보냅니다.</span></label>}

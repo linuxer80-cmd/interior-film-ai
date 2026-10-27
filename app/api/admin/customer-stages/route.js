@@ -1,6 +1,6 @@
 import {privateAuth,privateJson as json,uuid} from '../../../../lib/workerPrivate';
 import {customerStageContext} from '../../../../lib/customerStageAlimtalk.mjs';
-import {approvedTemplate,templateMatches,dispatchSiteMessage,refreshDeliveries} from '../../../../lib/siteAlimtalk.mjs';
+import {approvedTemplate,templateMatches,templateButtonMatches,dispatchSiteMessage,refreshDeliveries} from '../../../../lib/siteAlimtalk.mjs';
 import {isOperatorCompany} from '../../../../lib/operatorCompany.mjs';
 export const runtime='nodejs';export const maxDuration=60;
 async function context(request,siteId,stage){const a=await privateAuth(request);if(a.error)throw Object.assign(Error(a.error),{status:a.status});if(!uuid(siteId))throw Object.assign(Error('현장을 확인해주세요.'),{status:400});return {...a,...await customerStageContext(a.db,a.companyId,siteId,stage)};}
@@ -11,9 +11,9 @@ export async function GET(request){try{
  await refreshDeliveries(c.db,history.data,c.config);
  history=await c.db.from('alimtalk_deliveries').select('status,created_at,error_code').eq('company_id',c.companyId).eq('site_id',c.site.id).eq('kind',c.message.kind).order('created_at',{ascending:false}).limit(1);if(history.error)throw history.error;
  const reasons=[...c.reasons],approval=await approvedTemplate(c.config);
- if(!approval.ready)reasons.push(c.config.templateId?approval.reason:'이 단계의 링크형 템플릿 등록·승인이 필요합니다.');
+ if(!approval.ready)reasons.push(approval.reason);
  else if(!templateMatches(approval.template,c.message))reasons.push('승인된 템플릿 문구와 앱 안내문이 다릅니다.');
- else if(!(approval.template.buttons||[]).some(b=>b.buttonType==='WL'&&b.buttonName===c.message.requiredButton.buttonName&&b.linkMo===c.message.requiredButton.linkMo&&b.linkPc===c.message.requiredButton.linkPc))reasons.push('등록된 링크 버튼 설정을 확인해주세요.');
+ else if(!templateButtonMatches(approval.template,c.message))reasons.push('등록된 링크 버튼 설정을 확인해주세요.');
  const account=await c.db.from('alimtalk_accounts').select('enabled,available_count').eq('company_id',c.companyId).maybeSingle();if(account.error)throw account.error;
  if(!account.data?.enabled)reasons.push('업체 알림톡 사용 설정이 꺼져 있습니다.');
  if(!isOperatorCompany(c.companyId)&&!(account.data?.available_count>0))reasons.push('알림톡 충전이 필요합니다.');

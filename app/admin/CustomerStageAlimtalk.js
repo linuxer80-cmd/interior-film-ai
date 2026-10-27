@@ -1,9 +1,8 @@
 'use client';
 import {useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
-import {CUSTOMER_NOTICE_STAGES,stageTemplate,stageButton} from '../../lib/customerStages.mjs';
+import {CUSTOMER_NOTICE_STAGES,CUSTOMER_TEMPLATE_NAMES,stageTemplate,stageButton} from '../../lib/customerStages.mjs';
 const statuses={reserved:'접수 확인 중',requested:'발송 요청됨',unknown:'결과 확인 필요',success:'발송 완료',failed:'발송 실패',rejected:'접수 거절',canceled:'발송 취소'};
-const envs={consultation:'SOLAPI_TEMPLATE_CUSTOMER_CONSULTATION',before:'SOLAPI_TEMPLATE_CUSTOMER_BEFORE',complete:'SOLAPI_TEMPLATE_CUSTOMER_COMPLETION_LINK',care:'SOLAPI_TEMPLATE_CUSTOMER_PAID'};
 export default function CustomerStageAlimtalk({siteId,active,blocked,siteStatus}){
  const [stage,setStage]=useState(siteStatus==='consulting'?'consultation':'before'),[data,setData]=useState(null),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);const lock=useRef(false);
  async function request(send=false){if(lock.current)return;lock.current=true;setBusy(true);setNotice('');try{
@@ -11,6 +10,6 @@ export default function CustomerStageAlimtalk({siteId,active,blocked,siteStatus}
  }catch(e){setNotice(e.message);}finally{lock.current=false;setBusy(false);}}
  return <section hidden={!active} style={{padding:20,border:'1px solid #dce3db',borderRadius:18,margin:'20px 0'}}><h3>단계별 고객 안내·알림톡</h3><p>상담 안내는 수동 발송합니다. 일정 확정·검수 승인·입금 확인은 승인된 템플릿으로 자동 발송합니다.</p><label>안내 단계<select value={stage} disabled={busy} onChange={e=>{setStage(e.target.value);setData(null);setNotice('');}} style={{display:'block',width:'100%',padding:12,margin:'12px 0'}}>{Object.entries(CUSTOMER_NOTICE_STAGES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><button type="button" disabled={busy||blocked} onClick={()=>request()}>안내 내용·발송 결과 확인</button>
  {busy&&<p role="status">고객 안내 정보를 처리하고 있습니다…</p>}{data&&<><pre style={{whiteSpace:'pre-wrap',font:'inherit'}}>{data.text}</pre>{data.path&&<p><a href={data.path} target="_blank" rel="noopener noreferrer">이 단계의 고객 페이지 열기 ↗</a></p>}{data.reasons.map((r,i)=><p key={i}>{r}</p>)}{data.latest&&<p>최근 발송 상태: {statuses[data.latest.status]||data.latest.status}</p>}<button type="button" disabled={busy||blocked||!data.ready} onClick={()=>request(true)}>{data.unlimited?"고객 안내 발송":"고객 안내 발송 · 1회 사용"}</button></>}
- <details style={{marginTop:16}}><summary>솔라피 템플릿 등록 문구·버튼 설정</summary><p>선택한 단계: {CUSTOMER_NOTICE_STAGES[stage]}</p><pre style={{whiteSpace:'pre-wrap',font:'inherit'}}>{stageTemplate(stage)}</pre><button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(stageTemplate(stage));setNotice('등록 문구를 복사했습니다.');}catch{setNotice('위 문구를 선택해 복사해주세요.');}}}>등록 문구 복사</button><p>버튼 종류: 웹링크(WL)</p><p>버튼명: {stageButton(stage).buttonName}</p><p>모바일·PC 링크에 아래 주소를 동일하게 입력해주세요.</p><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{stageButton(stage).linkMo}</pre><p>승인된 템플릿 ID를 등록할 환경변수</p><code style={{overflowWrap:'anywhere'}}>{envs[stage]}</code></details>
+ <details style={{marginTop:16}}><summary>솔라피 템플릿 등록 문구·버튼 설정</summary><p>선택한 단계: {CUSTOMER_NOTICE_STAGES[stage]}</p><pre style={{whiteSpace:'pre-wrap',font:'inherit'}}>{stageTemplate(stage)}</pre><button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(stageTemplate(stage));setNotice('등록 문구를 복사했습니다.');}catch{setNotice('위 문구를 선택해 복사해주세요.');}}}>등록 문구 복사</button><p>버튼 종류: 웹링크(WL)</p><p>버튼명: {stageButton(stage).buttonName}</p><p>모바일·PC 링크에 아래 주소를 동일하게 입력해주세요.</p><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{stageButton(stage).linkMo}</pre><p>연결 템플릿: {CUSTOMER_TEMPLATE_NAMES[stage]}</p><p>승인된 템플릿의 문구와 버튼을 확인해 연결합니다.</p></details>
  <p>계좌: 견적서의 업체 기본 입금 계좌 · 입금 내역: 정산</p>{notice&&<p role="status">{notice}</p>}</section>;
 }

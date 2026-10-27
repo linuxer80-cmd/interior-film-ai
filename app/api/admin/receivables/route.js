@@ -138,7 +138,7 @@ async function handle(request) {
       }, 500);
     }
 
-    if(request.method==='POST'&&['initialize','add','settle'].includes(action)&&process.env.SOLAPI_TEMPLATE_CUSTOMER_PAID){
+    if(request.method==='POST'&&['initialize','add','settle'].includes(action)){
       after(async()=>{try{const {data:p}=await db.from('profiles').select('company_id,role,is_active').eq('id',user.id).maybeSingle();if(p?.role==='owner'&&p.is_active!==false)await notifyCustomerStage(db,p.company_id,body.siteId,user.id,'care');}catch(e){console.error('입금 완료 고객 안내',e.code||'failed');}});
     }
     return json(data);
