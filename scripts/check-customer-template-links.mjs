@@ -8,7 +8,7 @@ export async function checkCustomerTemplateLinks(env=process.env,fetcher=fetch){
   const config=stageConfig(stage,env),approval=await approvedTemplate(config,fetcher);
   if(!approval.ready)return {stage,name:config.templateName,ready:false,reason:approval.reason};
   const message={text:stageTemplate(stage),variables:{},requiredButton:stageButton(stage)};
-  return {stage,name:config.templateName,templateId:approval.template.templateId,ready:templateMatches(approval.template,message)&&templateButtonMatches(approval.template,message),reason:!templateMatches(approval.template,message)?'문구 불일치':!templateButtonMatches(approval.template,message)?'고객페이지 버튼 불일치':null};
+  return {stage,name:config.templateName,templateId:approval.template.templateId,ready:templateMatches(approval.template,message)&&templateButtonMatches(approval.template,message),reason:!templateMatches(approval.template,message)?'문구 불일치':!templateButtonMatches(approval.template,message)?'고객페이지 버튼 불일치':null,...(!templateMatches(approval.template,message)||!templateButtonMatches(approval.template,message)?{approvedTemplate:{content:approval.template.content,buttons:approval.template.buttons,extra:approval.template.extra,ad:approval.template.ad}}:{})};
  }));
  return results;
 }
