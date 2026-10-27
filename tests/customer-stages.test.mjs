@@ -15,9 +15,26 @@ test('never treats worker approval amount or unconfirmed deposits as customer co
  assert.equal(customerStageState(site,reports,{confirmed:false,paid:1000000},'2026-10-26').paid,null);
 });
 test('partial payment, full payment and reversal determine current stage correctly',()=>{
- const partial=customerStageState(site,reports,{confirmed:true,paid:300000},'2026-10-26');assert.equal(partial.outstanding,700000);assert.equal(partial.stage,'complete');
- assert.equal(customerStageState(site,reports,{confirmed:true,paid:1000000},'2026-10-26').stage,'care');
+ const partial=customerStageState(site,reports,{confirmed:true,paid:300000},'2026-10-26');assert.equal(partial.outstanding,800000);assert.equal(partial.stage,'complete');
+ const supplyOnly=customerStageState(site,reports,{confirmed:true,paid:1000000},'2026-10-26');assert.equal(supplyOnly.outstanding,100000);assert.equal(supplyOnly.stage,'complete');
+ assert.equal(customerStageState(site,reports,{confirmed:true,paid:1100000},'2026-10-26').stage,'care');
  assert.equal(customerStageState(site,reports,{confirmed:true,paid:900000},'2026-10-26').stage,'complete');
+});
+test('customer settlement itemizes 10 percent VAT and keeps unconfirmed payments unknown',()=>{
+ const input={...site,contract_amount:'1950000.00'};
+ const pending=customerStageState(input,reports,{confirmed:false,paid:0},'2026-10-26');
+ assert.equal(pending.amount,1950000);assert.equal(pending.vatAmount,195000);assert.equal(pending.totalAmount,2145000);
+ assert.equal(pending.paid,null);assert.equal(pending.outstanding,null);assert.equal(pending.settled,false);
+ assert.equal(customerStageState(input,reports,{confirmed:true,paid:500000},'2026-10-26').outstanding,1645000);
+ assert.equal(customerStageState(input,reports,{confirmed:true,paid:2145000},'2026-10-26').settled,true);
+ assert.equal(customerStageState(input,reports,{confirmed:true,paid:2200000},'2026-10-26').outstanding,0);
+ assert.equal(customerStageState(input,reports,{confirmed:true,paid:1950000},'2026-10-26').settled,false);
+ assert.equal(customerStageState({...site,contract_amount:10005},reports,null,'2026-10-26').vatAmount,1001);
+ for(const amount of [null,undefined,'',0,-1,'invalid',Infinity]){
+  const state=customerStageState({...site,contract_amount:amount},reports,{confirmed:true,paid:0},'2026-10-26');
+  for(const key of ['amount','vatAmount','totalAmount','outstanding'])assert.equal(state[key],null);
+  assert.equal(state.settled,false);
+ }
 });
 test('each registration template has only service information and a scoped link button',()=>{
  for(const stage of ['before','complete','care']){assert.ok(stageTemplate(stage).includes('#{현장명}'));assert.equal(stageButton(stage).linkMo,'https://interior-film-ai.vercel.app/customer/site/#{고객페이지토큰}?stage='+stage);assert.equal(stageButton(stage).linkPc,stageButton(stage).linkMo);}

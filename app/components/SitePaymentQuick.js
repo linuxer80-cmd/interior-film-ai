@@ -191,9 +191,12 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
         <>
           <div className="summary-card">
             <div className="heading"><span>남은 수금액</span><span className="state-badge">{next.label}</span></div><strong>{site.confirmed && site.contract_amount != null ? paymentWon(site.outstanding) : "확인 필요"}</strong>
-            <div className="totals"><div>{site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"}<b>{paymentWon(site.contract_amount)}</b></div><div>받은 금액<b>{paymentWon(site.paid)}</b></div></div>
+            <div className="totals">
+              {site.vat_amount != null && <><div>공급가액<b>{paymentWon(site.supply_amount)}</b></div><div>부가세 (10%)<b>{paymentWon(site.vat_amount)}</b></div></>}
+              <div>{site.vat_amount != null ? "합계 (부가세 포함)" : site.amount_source ? revenueSourceLabel(site.amount_source) : "기준금액"}<b>{paymentWon(site.contract_amount)}</b></div><div>받은 금액<b>{paymentWon(site.paid)}</b></div>
+            </div>
             <p>입금 예정일 · {site.due_date || "미정"}</p>
-            <p className="hint">등록된 기준금액입니다. 부가세 포함·제외 기준을 확인해주세요.</p>
+            <p className="hint">{site.vat_amount != null ? "입금과 남은 금액은 부가세 포함 합계 기준입니다." : "등록된 기준금액입니다. 부가세 포함·제외 기준을 확인해주세요."}</p>
           </div>
           <div className="next-task"><h4>다음 할 일</h4><p>{form === "full" ? "아래 자동 입력된 전액과 거래일을 확인하고 저장해주세요." : next.text}</p>
             <button type="button" disabled={disabled || site.status === "cancelled"} aria-expanded={dueEditing} onClick={()=>setDueEditing(!dueEditing)}>입금 예정일 변경</button>

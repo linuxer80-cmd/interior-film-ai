@@ -27,7 +27,13 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
     {!stageData.complete?<section className={styles.card}><h2>시공 결과를 준비하고 있습니다</h2><p>관리자 검수 승인이 끝나면 시공 사진과 정산 안내가 표시됩니다.</p></section>:<>
       <section className={styles.card}><h2>우리 집, 이렇게 달라졌어요</h2>{stageData.before.length||stageData.after.length?<ShowcasePhotos before={stageData.before} after={stageData.after} title={site.site_name}/>:<p>공개할 시공 사진을 준비하고 있습니다. 업체에 문의해주세요.</p>}</section>
       <section className={styles.card}><span className={styles.badge}>{stageData.settled?'입금 완료':'정산 안내'}</span><h2>{stageData.settled?'입금이 확인되었습니다':'계약금액과 입금 안내'}</h2>
-        <dl className={styles.paymentRows}><dt>계약금액</dt><dd>{money(stageData.amount)}</dd><dt>확인된 입금액</dt><dd>{money(stageData.paid)}</dd><dt>남은 금액</dt><dd>{money(stageData.outstanding)}</dd></dl>
+        <dl className={styles.paymentRows}>
+          <dt>공급가액</dt><dd>{money(stageData.amount)}</dd>
+          <dt>부가세 (10%)</dt><dd>{money(stageData.vatAmount)}</dd>
+          <dt className={styles.paymentTotal}>합계 (부가세 포함)</dt><dd className={styles.paymentTotal}>{money(stageData.totalAmount)}</dd>
+          <dt>확인된 입금액</dt><dd>{money(stageData.paid)}</dd>
+          <dt>남은 금액</dt><dd>{money(stageData.outstanding)}</dd>
+        </dl>
         {stageData.outstanding===null&&<p className={styles.muted}>정산 내용을 확인하고 있습니다. 정확한 입금 금액은 업체에 문의해주세요.</p>}
         {!stageData.settled&&!stageData.bankAccount&&<p>입금 계좌는 담당 업체에 문의해주세요.</p>}
         {!stageData.settled&&stageData.bankAccount&&<><h3>업체 입금 계좌</h3><p style={{overflowWrap:'anywhere'}}>{stageData.bankAccount}</p><button className={styles.secondary} type="button" onClick={copyAccount}>계좌 복사</button>{copyMessage&&<p role="status">{copyMessage}</p>}</>}

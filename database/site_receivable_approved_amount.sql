@@ -1,6 +1,7 @@
 begin;
 
--- Keep the legacy column name/type for existing payment functions.
+-- Keep the legacy payable column name/type for existing payment functions.
+-- Explicit customer contracts store supply amounts; collect the total including VAT.
 -- Only the view changes; sites.contract_amount and payment entries remain intact.
 do $$
 declare
@@ -38,7 +39,9 @@ begin
       s.contract_amount as original_contract_amount,
       case when s.contract_amount > 0 then 'contract'
         when r.review_status = 'approved' and r.approved_amount >= 0 then 'approved_report'
-        else 'missing' end::text as amount_source
+        else 'missing' end::text as amount_source,
+      case when s.contract_amount > 0 then s.contract_amount else null::numeric end as supply_amount,
+      case when s.contract_amount > 0 then round(s.contract_amount * 0.1) else null::numeric end as vat_amount
     from public.sites s
     left join public.site_payment_accounts a
       on a.site_id = s.id and a.company_id = s.company_id
@@ -51,7 +54,7 @@ begin
     ) r on true
     cross join lateral (
       select case
-        when s.contract_amount > 0 then s.contract_amount
+        when s.contract_amount > 0 then s.contract_amount + round(s.contract_amount * 0.1)
         when r.review_status = 'approved' and r.approved_amount >= 0
           then r.approved_amount
         else null::numeric

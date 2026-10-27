@@ -20,6 +20,7 @@ test('stage reservation charges each eligible stage once and requires confirmed 
  insert into site_receivable_balances values('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',300,true);
  insert into alimtalk_accounts values('10000000-0000-4000-8000-000000000001',true,5,now());`);
  await db.exec(fs.readFileSync(new URL('../database/customer_stage_alimtalk.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261027092300_customer_portal_vat_totals.sql',import.meta.url),'utf8'));
  const reserve=stage=>db.query(`select reserve_customer_stage('40000000-0000-4000-8000-00000000000${stage==='complete'?1:2}','10000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','${stage}','010-****-0000','template',repeat('a',64)) as r`);
  assert.equal((await reserve('complete')).rows[0].r.accepted,false);
  await db.exec("update work_reports set review_status='approved',reviewed_at=now()");
@@ -27,6 +28,11 @@ test('stage reservation charges each eligible stage once and requires confirmed 
  assert.equal((await reserve('complete')).rows[0].r.reason,'duplicate');
  assert.equal((await reserve('care')).rows[0].r.accepted,false);
  await db.exec("update site_receivable_balances set paid=1000");
+ assert.equal((await reserve('care')).rows[0].r.accepted,false);
+ assert.equal((await db.query('select available_count from alimtalk_accounts')).rows[0].available_count,4);
+ await db.exec("update site_receivable_balances set paid=1099");
+ assert.equal((await reserve('care')).rows[0].r.accepted,false);
+ await db.exec("update site_receivable_balances set paid=1100");
  assert.equal((await reserve('care')).rows[0].r.accepted,true);
  assert.equal((await reserve('care')).rows[0].r.reason,'duplicate');
  assert.equal((await db.query('select available_count from alimtalk_accounts')).rows[0].available_count,3);

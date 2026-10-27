@@ -17,7 +17,7 @@ begin
  end if;
  if p_stage='care' then
   select b.paid,b.confirmed into paid,confirmed from public.site_receivable_balances b where b.company_id=p_company and b.id=p_site;
-  if not coalesce(confirmed,false) or s.contract_amount is null or s.contract_amount<=0 or paid is null or paid<s.contract_amount then return jsonb_build_object('accepted',false,'reason','stale');end if;
+  if not coalesce(confirmed,false) or s.contract_amount is null or s.contract_amount<=0 or paid is null or paid<s.contract_amount+round(s.contract_amount*0.1) then return jsonb_build_object('accepted',false,'reason','stale');end if;
  end if;
  select * into a from public.alimtalk_accounts where company_id=p_company for update;
  if not found or not a.enabled then return jsonb_build_object('accepted',false,'reason','disabled');end if;
