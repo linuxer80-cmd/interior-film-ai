@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import FilmFireBadge, { filmFireLabel } from "./FilmFireBadge";
 import { materialTrips } from "../../lib/materialTripScope.mjs";
 import { reportRequest } from "../utils/reportClient";
+import { createFilmStockReader } from "../../lib/filmStockReader.mjs";
 
 const same = (a, b) =>
   String(a || "").trim().toUpperCase() ===
@@ -49,6 +50,8 @@ export default function FilmRollInventory({
   const [pending, setPending] = useState(false);
   const [editingReturn, setEditingReturn] = useState(null);
   const [corrected, setCorrected] = useState("");
+  const [reader] = useState(() => createFilmStockReader(reportRequest));
+  const reading = useRef(null);
 
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -84,16 +87,16 @@ export default function FilmRollInventory({
     ]);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     if (!siteId || lock.current || !activeRef.current) return;
+    if (reading.current) return;
 
     const version = ++epoch.current;
+    reading.current = version;
     setLoading(true);
 
     try {
-      const result = await reportRequest(
-        `/api/film-stock?siteId=${encodeURIComponent(siteId)}`
-      );
+      const result = await reader.read(siteId, focusMaterialId, { force: force === true });
 
       if (!mounted.current || version !== epoch.current) return;
 
@@ -105,11 +108,12 @@ export default function FilmRollInventory({
         setError(cause.message);
       }
     } finally {
+      if (reading.current === version) reading.current = null;
       if (mounted.current && version === epoch.current) {
         setLoading(false);
       }
     }
-  }, [siteId, accept]);
+  }, [siteId, focusMaterialId, accept, reader]);
 
   useEffect(() => {
     if (active && !previousActive.current && !batch.current) refresh();
@@ -143,6 +147,8 @@ export default function FilmRollInventory({
     return () => {
       mounted.current = false;
       epoch.current++;
+      reading.current = null;
+      reader.clear();
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("beforeunload", warn);
@@ -161,6 +167,8 @@ export default function FilmRollInventory({
 
     lock.current = true;
     epoch.current++;
+    reading.current = null;
+    reader.clear();
 
     setPending(true);
     setBusy(true);
@@ -239,7 +247,7 @@ export default function FilmRollInventory({
   const canReturnRoll = data?.canReturnRoll ?? data?.canEdit;
 
   const blocked =
-    disabled || busy || loading || pending ||
+    disabled || busy || loading || pending || Boolean(error) ||
     !(tab === "issue" ? canIssue : canReturnRoll);
 
   const sum = rows =>
@@ -258,7 +266,7 @@ export default function FilmRollInventory({
         <button
           type="button"
           disabled={busy || pending || loading}
-          onClick={refresh}
+          onClick={() => refresh(true)}
         >
           새로고침
         </button>
@@ -279,7 +287,7 @@ export default function FilmRollInventory({
           aria-pressed={tab === "return"}
           onClick={() => setTab("return")}
         >
-          자재 반납 ({trips.length})
+          자재 반납 {data ? `(${trips.length})` : loading ? "(확인 중)" : "(조회 필요)"}
         </button>
       </nav>
 

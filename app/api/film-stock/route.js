@@ -95,6 +95,7 @@ async function handle(request) {
         ? {
             action: "get",
             siteId: new URL(request.url).searchParams.get("siteId"),
+            materialId: new URL(request.url).searchParams.get("materialId"),
           }
         : await request.json();
     } catch {
@@ -107,7 +108,8 @@ async function handle(request) {
       ![
         "get", "receive", "issue", "return", "correct_return", "supplier_return",
       ].includes(body.action) ||
-      (body.siteId && !uuid(body.siteId))
+      (body.siteId && !uuid(body.siteId)) ||
+      (body.action === "get" && body.materialId && (!uuid(body.materialId) || !uuid(body.siteId)))
     ) {
       return json(
         { error: "현장과 요청 내용을 확인해주세요." },
@@ -181,14 +183,17 @@ async function handle(request) {
       throw result.error;
     }
 
-    const stock = await withFilmFireTypes(db, body.siteId, result.data);
+    // New RPC snapshots include fire types atomically; retain compatibility during rollout.
+    const stock = result.data?.stockSnapshotVersion === 1
+      ? result.data
+      : await withFilmFireTypes(db, body.siteId, result.data);
     return json(stock?.owner === true ? stock : workerStock(stock));
   } catch (error) {
     console.error("film-stock", error.code || error.message);
 
     return json({
       error:
-        "재고를 처리하지 못했습니다. SQL 적용 여부와 연결을 확인해주세요.",
+        "재고를 불러오지 못했습니다. 잠시 후 새로고침해주세요.",
     }, 500);
   }
 }
