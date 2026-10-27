@@ -39,7 +39,14 @@ test('lost database response retries as already completed without another storag
 });
 test('invalid image and changed site status do not create a saved batch or notification',async()=>{
  const db=fakeDb();await assert.rejects(saveCustomerPhotos(db,portal,{id,note:'',files:[new File(['<svg/>'],'photo.jpg',{type:'image/jpeg'})]}),e=>e.status===400);assert.equal(db.stored.size,0);assert.equal(db.notices,0);
- await assert.rejects(saveCustomerPhotos(db,{...portal,site:{status:'scheduled'}},{id,note:'',files:[]}),e=>e.status===403);
+ for (const status of ['in_progress','completed','cancelled','canceled',null,undefined,'unknown'])
+  await assert.rejects(saveCustomerPhotos(db,{...portal,site:{status}},{id,note:'',files:[]}),e=>e.status===403);
+});
+test('scheduled customer saves request photos and retries without a duplicate admin alert',async()=>{
+ const db=fakeDb(),scheduled={...portal,site:{status:'scheduled'}},input={id,note:'시공 전 추가 사진',files:[await image()]};
+ assert.equal((await saveCustomerPhotos(db,scheduled,input)).count,1);
+ assert.equal(db.stored.size,1);assert.equal(db.notices,1);
+ assert.equal((await saveCustomerPhotos(db,scheduled,input)).duplicate,true);assert.equal(db.notices,1);
 });
 test('history signs only submission-owned request photos in one batch and never exposes internal paths',async()=>{
  const root=`sites/company/site/request/customer-${id}-`,signed=[];

@@ -24,6 +24,7 @@ async function setup(){
  insert into site_photos values('${id(100)}','${co}','${site}','request','existing/request.jpg',null,'기존 사진');
  grant usage on schema storage to service_role;grant all on all tables in schema public,storage to service_role;`);
  await db.exec(await fs.readFile(new URL('../supabase/migrations/20261027221708_customer_portal_request_photos.sql',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261027223520_scheduled_customer_request_photos.sql',import.meta.url),'utf8'));
  return db;
 }
 async function reserve(db,{t=token,b=batch,f=fingerprint,n=2,note='냉장고장 측면도 시공'}={}){
@@ -74,11 +75,34 @@ test('expiry, token rotation, status change and company disablement are rechecke
  const db=await setup();try{await reserve(db);await uploaded(db);
  for(const [change,restore] of [
  ["update customer_site_portals set expires_at=now()-interval '1 second' where site_id='"+site+"'","update customer_site_portals set expires_at=now()+interval '1 day'"],
- ["update sites set status='scheduled'","update sites set status='consulting'"],
+ ...['in_progress','completed','cancelled','canceled','unknown'].map(status=>["update sites set status='"+status+"'","update sites set status='consulting'"]),
+ ["update sites set status=null","update sites set status='consulting'"],
  ["update companies set is_active=false","update companies set is_active=true"],
  ["update customer_site_portals set token_id='30000000-0000-4000-8000-000000000003' where site_id='"+site+"'","update customer_site_portals set token_id='"+token+"' where site_id='"+site+"'"]
  ]){await db.exec(change);await assert.rejects(finish(db),e=>e.code==='42501');await db.exec(restore);}
  assert.equal(await count(db,'site_photos'),1);assert.equal(await count(db,'notifications'),0);await finish(db);
+ }finally{await db.close();}
+});
+test('scheduled sites reserve and save photos with one admin alert, while closed or unknown states cannot reserve',async()=>{
+ const db=await setup();try{
+ for(const status of ['in_progress','completed','cancelled','canceled','unknown',null]){
+  await db.query('update sites set status=$1 where id=$2',[status,site]);
+  await assert.rejects(reserve(db),e=>e.code==='42501');
+ }
+ assert.equal(await count(db,'customer_photo_submissions'),0);
+ await db.query('update sites set status=$1 where id=$2',['scheduled',site]);
+ await db.exec('set role service_role');await reserve(db);await uploaded(db);await finish(db);await finish(db);
+ assert.equal(await count(db,'site_photos'),3);assert.equal(await count(db,'notifications'),1);
+ const notice=(await db.query('select title,link from notifications')).rows[0];
+ assert.equal(notice.title,'고객 요청사진 도착');assert.equal(notice.link,`/admin?tab=sites&site=${site}&section=photos`);
+ }finally{await db.close();}
+});
+test('consultation upload can finish after the site becomes scheduled without losing the draft',async()=>{
+ const db=await setup();try{
+ await reserve(db);await uploaded(db);
+ await db.query('update sites set status=$1 where id=$2',['scheduled',site]);
+ assert.equal((await reserve(db)).status,'pending');assert.equal((await finish(db)).photo_count,2);
+ assert.equal(await count(db,'notifications'),1);
  }finally{await db.close();}
 });
 test('daily quotas count pending uploads too, while existing batch retries do not consume quota',async()=>{

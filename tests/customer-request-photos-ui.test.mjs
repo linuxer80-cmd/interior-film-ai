@@ -15,6 +15,23 @@ function fixture(fetcher){
  return {render,revoked,get tree(){return tree;},get button(){return nodes(tree).find(n=>n.type==='button'&&/장 보내기|전송 확인/.test(text(n)));},async choose(count=2){const input=nodes(tree).find(n=>n.type==='input'&&n.props.multiple);await input.props.onChange({target:{files:Array.from({length:count},(_,i)=>new File(['image'],'photo'+i+'.jpg',{type:'image/jpeg'})),value:''}});render();}};
 }
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
+test('customer portal renders the photo sender for consulting and scheduled sites only',()=>{
+ const source=fs.readFileSync(new URL('../app/customer/site/[token]/portal.js',import.meta.url),'utf8');
+ const transformed=swc.transformSync(source,{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
+ const RequestPhotos=()=>null,React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState:()=>['',()=>{}]},exports={};
+ vm.runInNewContext(transformed.code,{exports,React,require(path){
+  if(path==='react')return React;
+  if(path.includes('customerStages'))return {CUSTOMER_STAGES:{before:{},completion:{},care:{}}};
+  if(path==='./RequestPhotos')return {__esModule:true,default:RequestPhotos};
+  return {__esModule:true,default:new Proxy({},{get:(_,key)=>key})};
+ }});
+ for(const status of ['consulting','scheduled','in_progress','completed','cancelled','canceled',null,undefined,'unknown']){
+  const tree=exports.default({token:'customer-token',site:{status,site_name:'테스트',work_dates:[]},company:{company_name:'테스트 업체'},profile:{},cases:[],remaining:3,stageData:{stage:'before'}});
+  const senders=nodes(tree).filter(n=>n.type===RequestPhotos);
+  assert.equal(senders.length,['consulting','scheduled'].includes(status)?1:0,String(status));
+  if(senders.length)assert.equal(senders[0].props.token,'customer-token');
+ }
+});
 test('real customer form keeps same files/id after lost response, prevents duplicate edits, then clears on confirmed save',async()=>{
  const posts=[];let historyReads=0;
  const f=fixture(async(url,options)=>{assert.equal(url,'/api/customer-portal/photos');assert.equal(options.headers.Authorization,'Bearer signed-customer-token');

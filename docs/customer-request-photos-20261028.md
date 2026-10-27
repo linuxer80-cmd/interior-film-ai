@@ -1,6 +1,6 @@
 # Customer consultation request photos
 
-Customers with a valid site portal link can send 1–10 photos and an optional note while the site is consulting. Camera and gallery controls share a single draft. Photos are resized before upload and displayed in the customer's sent history.
+Customers with a valid site portal link can send 1–10 photos and an optional note while the site is consulting or scheduled. Camera and gallery controls share a single draft. Photos are resized before upload and displayed in the customer's sent history.
 
 The server validates the capability token, active company, site status, request size and actual image contents. JPEG normalization strips EXIF/GPS metadata. Private `work-photos` objects become existing `site_photos` request records for that company and site; no public storage policy is added.
 
@@ -18,3 +18,7 @@ The existing notification push trigger delivers the admin app alert. Its destina
 - No real customer message or test admin push was sent during validation. Physical-device receipt is not exercised by the isolated tests.
 
 Migration: `20261027221708_customer_portal_request_photos.sql`.
+
+Scheduled-site support: `20261027223520_scheduled_customer_request_photos.sql` extends both reservation and finalization checks, along with the API and customer page. An upload started during consultation can finish after scheduling. Other states (including null/unknown) remain blocked. The admin alert is titled “고객 요청사진 도착”; its existing site/photo destination and deduplication are preserved.
+
+Scheduled-site validation: 22 photo-upload, database, UI and notification-destination tests passed. Tests run both migrations in order and exercise real portal rendering, scheduled uploads, status transitions and duplicate retries.
