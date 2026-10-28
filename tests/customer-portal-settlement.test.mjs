@@ -45,11 +45,19 @@ test('unknown settlement and missing contract never become a zero bill or paid-i
  assert.equal(missing.totalAmount,null);assert.equal(missing.vatAmount,null);assert.equal(missing.settled,false);
 });
 
-test('customer portal combines current and previous VAT-inclusive debt without treating unknown payments as zero',async()=>{
- const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,items:[]};
+test('customer portal labels projections and calculates VAT-inclusive total without changing confirmed payment',async()=>{
+ const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,items:[],unknownItems:[{totalAmount:731500,paid:null}]};
  const {db}=fixture({trade});const result=await loadCustomerStage(db,'company','site');
- assert.equal(result.tradeReceivables.totalOutstanding,1725000);assert.equal(result.tradeReceivables.unknownCount,1);
- assert.equal((await loadCustomerStage(fixture({trade,confirmed:false}).db,'company','site')).tradeReceivables.totalOutstanding,null);
+ assert.equal(result.tradeReceivables.amounts.previous,811500);assert.equal(result.tradeReceivables.amounts.total,2456500);assert.equal(result.tradeReceivables.amounts.estimated,true);
+ const pending=await loadCustomerStage(fixture({amount:422000,trade:{...trade,previousTotal:0,count:0},confirmed:false}).db,'company','site');
+ assert.equal(pending.paid,null);assert.equal(pending.outstanding,null);assert.equal(pending.tradeReceivables.amounts.current,464200);
+ assert.equal(pending.tradeReceivables.amounts.previous,731500);assert.equal(pending.tradeReceivables.amounts.total,1195700);
+ const missing=await loadCustomerStage(fixture({trade:{...trade,unknownItems:[{totalAmount:null,paid:null}]}}).db,'company','site');
+ assert.equal(missing.tradeReceivables.amounts.previous,null);assert.equal(missing.tradeReceivables.amounts.total,null);
+ const paid=await loadCustomerStage(fixture({trade:{...trade,unknownItems:[{totalAmount:731500,paid:100000}]}}).db,'company','site');
+ assert.equal(paid.tradeReceivables.amounts.previous,711500);
+ const exact=await loadCustomerStage(fixture({trade:{...trade,unknownCount:0,unknownItems:[]}}).db,'company','site');
+ assert.equal(exact.tradeReceivables.amounts.total,1725000);assert.equal(exact.tradeReceivables.amounts.estimated,false);
  assert.equal((await loadCustomerStage(fixture().db,'company','site')).tradeReceivables,null);
  const unapproved=fixture({trade,approved:false});await loadCustomerStage(unapproved.db,'company','site');assert.equal(unapproved.reads.includes('customer_trade_receivables'),false);
 });
