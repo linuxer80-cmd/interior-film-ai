@@ -7,6 +7,8 @@ import RequestPhotos from './RequestPhotos';
 function safeLink(value){try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u.href:null;}catch{return null;}}
 export default function CustomerPortal({token,site,company,profile,cases,remaining,expiresAt,stageData,requestedStage}){
  const [copyMessage,setCopyMessage]=useState('');
+ const trade=stageData.tradeReceivables;
+ const needsPayment=!stageData.settled||Number(trade?.previousTotal)>0||Number(trade?.unknownCount)>0;
  const stage=Object.hasOwn(CUSTOMER_STAGES,requestedStage)?requestedStage:stageData.stage;
  const money=value=>value===null?'정산 확인 중':Number(value).toLocaleString('ko-KR')+'원';
  const copyAccount=async()=>{try{await navigator.clipboard.writeText(stageData.bankAccount);setCopyMessage('계좌를 복사했습니다.');}catch{setCopyMessage('계좌번호를 선택해 복사해주세요.');}};
@@ -27,17 +29,35 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
     <section className={styles.welcome}><small>{stage==='care'?'AFTER CARE':'COMPLETION'}</small><h1>{site.site_name}<br/>{stage==='care'?'입금 확인·관리 안내':'시공 완료·정산 안내'}</h1></section>
     {!stageData.complete?<section className={styles.card}><h2>시공 결과를 준비하고 있습니다</h2><p>관리자 검수 승인이 끝나면 시공 사진과 정산 안내가 표시됩니다.</p></section>:<>
       <section className={styles.card}><h2>우리 집, 이렇게 달라졌어요</h2>{stageData.before.length||stageData.after.length?<ShowcasePhotos before={stageData.before} after={stageData.after} title={site.site_name}/>:<p>공개할 시공 사진을 준비하고 있습니다. 업체에 문의해주세요.</p>}</section>
-      <section className={styles.card}><span className={styles.badge}>{stageData.settled?'입금 완료':'정산 안내'}</span><h2>{stageData.settled?'입금이 확인되었습니다':'계약금액과 입금 안내'}</h2>
+      <section className={styles.card}><span className={styles.badge}>{stageData.settled?(trade?'이번 현장 입금 완료':'입금 완료'):'정산 안내'}</span><h2>{stageData.settled?(trade?'이번 현장 입금이 확인되었습니다':'입금이 확인되었습니다'):'계약금액과 입금 안내'}</h2>
         <dl className={styles.paymentRows}>
           <dt>공급가액</dt><dd>{money(stageData.amount)}</dd>
           <dt>부가세 (10%)</dt><dd>{money(stageData.vatAmount)}</dd>
           <dt className={styles.paymentTotal}>합계 (부가세 포함)</dt><dd className={styles.paymentTotal}>{money(stageData.totalAmount)}</dd>
           <dt>확인된 입금액</dt><dd>{money(stageData.paid)}</dd>
-          <dt>남은 금액</dt><dd>{money(stageData.outstanding)}</dd>
+          <dt>{trade?'이번 현장 남은 금액':'남은 금액'}</dt><dd>{money(stageData.outstanding)}</dd>
         </dl>
+        {trade&&<section aria-label="거래처 기존 미수금">
+          <h3>{trade.clientName} · 미수금 안내</h3>
+          <dl className={styles.paymentRows}>
+            <dt>기존 현장 미수금 ({trade.count}건)</dt><dd>{money(trade.previousTotal)}</dd>
+            <dt className={styles.paymentTotal}>{trade.unknownCount>0?'확인된 총 미수금':'총 입금할 금액'}</dt><dd className={styles.paymentTotal}>{money(trade.totalOutstanding)}</dd>
+          </dl>
+          <p className={styles.muted}>부가세 포함 금액입니다. 이번 현장과 기존 현장 미수금을 합산했습니다.</p>
+          {trade.unknownCount>0&&<p className={styles.muted}>금액 확인 중인 기존 현장 {trade.unknownCount}건은 합계에서 제외했습니다.</p>}
+          {trade.items.length>0&&<details><summary>기존 미수금 내역 보기</summary>{trade.items.map((item,index)=><article key={index}>
+            <h4>{item.siteName}</h4><dl className={styles.paymentRows}>
+              <dt>공급가액</dt><dd>{money(item.supplyAmount)}</dd>
+              <dt>부가세 (10%)</dt><dd>{money(item.vatAmount)}</dd>
+              <dt>합계 (부가세 포함)</dt><dd>{money(item.totalAmount)}</dd>
+              <dt>확인된 입금액</dt><dd>{money(item.paid)}</dd>
+              <dt>미수금</dt><dd>{money(item.outstanding)}</dd>
+            </dl>
+          </article>)}</details>}
+        </section>}
         {stageData.outstanding===null&&<p className={styles.muted}>정산 내용을 확인하고 있습니다. 정확한 입금 금액은 업체에 문의해주세요.</p>}
-        {!stageData.settled&&!stageData.bankAccount&&<p>입금 계좌는 담당 업체에 문의해주세요.</p>}
-        {!stageData.settled&&stageData.bankAccount&&<><h3>업체 입금 계좌</h3><p style={{overflowWrap:'anywhere'}}>{stageData.bankAccount}</p><button className={styles.secondary} type="button" onClick={copyAccount}>계좌 복사</button>{copyMessage&&<p role="status">{copyMessage}</p>}</>}
+        {needsPayment&&!stageData.bankAccount&&<p>입금 계좌는 담당 업체에 문의해주세요.</p>}
+        {needsPayment&&stageData.bankAccount&&<><h3>업체 입금 계좌</h3><p style={{overflowWrap:'anywhere'}}>{stageData.bankAccount}</p><button className={styles.secondary} type="button" onClick={copyAccount}>계좌 복사</button>{copyMessage&&<p role="status">{copyMessage}</p>}</>}
       </section>
       {stage==='care'&&!stageData.settled?<section className={styles.card}><p>입금 확인이 완료되면 입금 완료 상태로 표시됩니다. 이미 입금하셨다면 업체에 확인을 요청해주세요.</p></section>:null}
       <section className={styles.card}><h2>시공 후 관리·A/S 안내</h2><p>제품별 접착·양생 시간과 청소 방법은 담당 업체의 안내를 확인해주세요.</p><p>들뜸이나 손상 등 확인이 필요한 부분이 있다면 사진을 준비해 아래 업체 연락처로 문의해주세요.</p>{phone&&<a className={styles.secondary} href={'tel:'+phone.replace(/[^+\d]/g,'')}>관리·A/S 문의하기</a>}</section>

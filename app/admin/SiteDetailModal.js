@@ -124,6 +124,7 @@ export default function SiteDetailModal({
   const [reportOpen, setReportOpen] = useState(false);
   const [hasWorkerReport, setHasWorkerReport] = useState(null);
   const [reviewStatus, setReviewStatus] = useState(null);
+  const [settlementVersion, setSettlementVersion] = useState(0);
 
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [basicBusy, setBasicBusy] = useState(false);
@@ -571,6 +572,7 @@ export default function SiteDetailModal({
               onDraftState={registerDraft}
               onNavigate={(next,task)=>chooseMenu(next,()=>setMaterialFollowup(task))}
               onTradeChange={openTradeLink}
+              onSettlementChanged={action => { if (action === "revise_approved_amount") setSettlementVersion(value => value + 1); }}
               active={menu === "settlement"}
               updateSiteStatus={updateSiteStatus}
             />
@@ -744,7 +746,7 @@ export default function SiteDetailModal({
               <SiteWorkReportReview
                 onDraftState={registerDraft}
                 onNavigate={chooseMenu}
-                key={site.id}
+                key={`${site.id}-${settlementVersion}`}
                 siteId={site.id}
                 onReportStateChange={({
                   hasReport,

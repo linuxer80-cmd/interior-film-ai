@@ -84,7 +84,7 @@ async function handle(request) {
 
     const allowed = request.method === "GET"
       ? ["get", "list", "completed_list"]
-      : ["initialize", "add", "void", "due", "settle"];
+      : ["initialize", "add", "void", "due", "settle", "revise_approved_amount"];
 
     if (!allowed.includes(action)) {
       return json({ error: "지원하지 않는 요청입니다." }, 400);
@@ -97,7 +97,7 @@ async function handle(request) {
     }
 
     const { data, error } = await db.rpc(
-      "manage_site_receivables_quick",
+      "manage_site_settlement",
       {
         p_user: user.id,
         p_site: listing ? null : body.siteId,

@@ -8,11 +8,11 @@ const require=createRequire(import.meta.url),swc=require('next/dist/build/swc');
 const {code}=swc.transformSync(fs.readFileSync(new URL('../app/components/SitePaymentQuick.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
 const all=(n,p)=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(c=>all(c,p)):[...(p(n)?[n]:[]),...all(n.props?.children,p)];
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
-async function fixture({entries=[],siteValues={},failOnce=false}={}){
+async function fixture({entries=[],siteValues={},failOnce=false,approvedReport=null}={}){
  let cursor=0,mounted=false,draft;const slots=[],effects=[],writes=[];
  const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(v){const i=cursor++;if(!(i in slots))slots[i]=typeof v==='function'?v():v;return[slots[i],v=>slots[i]=v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn){if(!mounted)effects.push(fn);}};
  const exports={},site={status:'scheduled',confirmed:true,contract_amount:1500000,paid:500000,outstanding:1000000,revision:2,opening_date:'2026-10-01',...siteValues};
- vm.runInNewContext(code,{exports,React,AbortSignal,URLSearchParams,crypto:{randomUUID:()=> 'request-1'},require(path){if(path==='react')return React;if(path.includes('settlementFlow'))return settlementFlow;if(path.includes('SiteSettlementProfit'))return{__esModule:true,default:()=>null};if(path.includes('useSiteDraft'))return{__esModule:true,default:(_cb,_id,state)=>{draft=state;}};if(path.includes('siteRevenue'))return{revenueSourceLabel:()=> '계약금액'};if(path.includes('workerCalendar'))return{koreanDay:()=> '2026-10-21'};return{supabase:{auth:{getSession:async()=>({data:{session:{access_token:'token'}}})}}};},fetch:async(_url,opts)=>{if(opts.method==='POST'){writes.push(JSON.parse(opts.body));if(failOnce&&writes.length===1)return{ok:false,status:500,json:async()=>({error:'저장 확인 필요'})};}return{ok:true,json:async()=>({site,entries})};}});
+ vm.runInNewContext(code,{exports,React,AbortSignal,URLSearchParams,crypto:{randomUUID:()=> 'request-1'},require(path){if(path==='react')return React;if(path.includes('settlementFlow'))return settlementFlow;if(path.includes('SiteSettlementProfit'))return{__esModule:true,default:()=>null};if(path.includes('useSiteDraft'))return{__esModule:true,default:(_cb,_id,state)=>{draft=state;}};if(path.includes('siteRevenue'))return{revenueSourceLabel:()=> '계약금액'};if(path.includes('workerCalendar'))return{koreanDay:()=> '2026-10-21'};return{supabase:{auth:{getSession:async()=>({data:{session:{access_token:'token'}}})}}};},fetch:async(_url,opts)=>{if(opts.method==='POST'){writes.push(JSON.parse(opts.body));if(failOnce&&writes.length===1)return{ok:false,status:500,json:async()=>({error:'저장 확인 필요'})};}return{ok:true,json:async()=>({site,entries,approvedReport})};}});
  const render=()=>{cursor=0;return exports.default({siteId:'site-1'});};render();mounted=true;effects.forEach(fn=>fn());await new Promise(r=>setImmediate(r));
  return{render,writes,exports,site,draft:()=>draft,button:label=>all(render(),n=>n.type==='button'&&text(n).trim()===label)[0]};
 }
@@ -58,4 +58,19 @@ for (const status of ['completed','scheduled']) {
 test('closing a full payment review does not record an actual payment',async()=>{
  const f=await fixture({siteValues:{status:'completed',confirmed:false,paid:null,outstanding:null}});
  f.button('전액 입금 등록').props.onClick();f.button('닫기').props.onClick();assert.equal(f.writes.length,0);assert.equal(all(f.render(),n=>n.type==='form').length,0);
+});
+
+test('approved amount editor previews VAT, tracks dirty state, sends report version and safely retries',async()=>{
+ const approvedReport={id:'report-1',amount:464200,updatedAt:'2026-10-27T00:00:00Z'};
+ const f=await fixture({approvedReport,failOnce:true});f.button('검수금액 수정').props.onClick();
+ const amount=()=>all(f.render(),n=>n.type==='input'&&n.props.type==='number')[0];
+ assert.equal(amount().props.value,'464200');amount().props.onChange({target:{value:'500000'}});
+ assert.match(text(f.render()),/50,000원/);assert.match(text(f.render()),/550,000원/);assert.equal(f.draft().dirty,true);
+ const submit=all(f.render(),n=>n.type==='form')[0].props.onSubmit;submit({preventDefault(){}});submit({preventDefault(){}});await new Promise(r=>setImmediate(r));
+ assert.equal(f.writes.length,1);assert.equal(f.writes[0].action,'revise_approved_amount');assert.equal(f.writes[0].reportId,'report-1');assert.equal(f.writes[0].reportUpdatedAt,approvedReport.updatedAt);
+ f.button('같은 요청 다시 확인').props.onClick();await new Promise(r=>setImmediate(r));assert.deepEqual(f.writes[0],f.writes[1]);assert.equal(all(f.render(),n=>n.type==='form').length,0);
+});
+test('approved editor is absent for unapproved reports and cancellation writes nothing',async()=>{
+ assert.equal((await fixture()).button('검수금액 수정'),undefined);
+ const f=await fixture({approvedReport:{id:'r',amount:100,updatedAt:'2026-10-27'}});f.button('검수금액 수정').props.onClick();f.button('취소').props.onClick();assert.equal(f.writes.length,0);
 });

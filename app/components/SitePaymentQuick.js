@@ -82,6 +82,7 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
   const [dueEditing,setDueEditing] = useState(false);
   const [profitOpen,setProfitOpen] = useState(false);
   const [loadAttempt,setLoadAttempt] = useState(0);
+  const [editingReport, setEditingReport] = useState(null);
 
   const paymentForm = useRef(null);
   const pending = useRef(null);
@@ -145,8 +146,9 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
       setAmount("");
       setReview(false);
       setMemo("");setVoidEntry(null);setVoidReason("");setDueEditing(false);
-      setSuccess(body.action === "void" ? "입금 기록을 취소했습니다. 남은 금액을 다시 계산했습니다." : body.action === "due" ? "입금 예정일을 저장했습니다." : "저장했습니다. 입금 내역이 반영되었습니다.");
-      try { onChanged?.(); } catch {}
+      setSuccess(body.action === "revise_approved_amount" ? "검수금액을 수정했습니다. 정산 금액을 다시 계산했습니다." : body.action === "void" ? "입금 기록을 취소했습니다. 남은 금액을 다시 계산했습니다." : body.action === "due" ? "입금 예정일을 저장했습니다." : "저장했습니다. 입금 내역이 반영되었습니다.");
+      if (body.action === "revise_approved_amount") setProfitOpen(false);
+      try { onChanged?.(body.action); } catch {}
     } catch (error) {
       if (!alive.current) return;
 
@@ -155,6 +157,7 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
       if (error.status && error.status < 500) {
         pending.current = null;
         setRetry(false);
+        if (body.action === "revise_approved_amount" && error.status === 409) setForm("");
 
         try {
           const result = await paymentApi({ siteId });
@@ -197,7 +200,29 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
             </div>
             <p>입금 예정일 · {site.due_date || "미정"}</p>
             <p className="hint">{site.vat_amount != null ? "입금과 남은 금액은 부가세 포함 합계 기준입니다." : "등록된 기준금액입니다. 부가세 포함·제외 기준을 확인해주세요."}</p>
+            {Number(site.overpaid) > 0 && <p>초과 입금액 · {paymentWon(site.overpaid)}</p>}
+            {data.approvedReport && <>
+              <p>검수금액 · {paymentWon(data.approvedReport.amount)} (부가세 별도)</p>
+              <button type="button" disabled={disabled || site.status === "cancelled" || Boolean(form) || Boolean(voidEntry)} onClick={() => {
+                setForm("approved_amount"); setAmount(String(data.approvedReport.amount ?? ""));
+                setEditingReport(data.approvedReport); setReview(false); setError(""); setSuccess("");
+              }}>검수금액 수정</button>
+            </>}
           </div>
+          {form === "approved_amount" && <form ref={paymentForm} onSubmit={event => {
+            event.preventDefault();
+            if (!/^\d+$/.test(amount) || Number(amount) < 1 || Number(amount) > 1e12) {
+              setError("검수금액은 1원 이상, 원 단위로 입력해주세요."); return;
+            }
+            save("revise_approved_amount", {amount, reportId: editingReport.id, reportUpdatedAt: editingReport.updatedAt});
+          }}>
+            <h4>검수금액 수정</h4>
+            <label>공급가액 (부가세 별도)<input type="number" inputMode="numeric" min="1" max="1000000000000" step="1" required disabled={disabled} value={amount} onChange={event => setAmount(event.target.value)} /></label>
+            <p>부가세 (10%) · {/^\d+$/.test(amount) ? paymentWon(Math.round(Number(amount) / 10)) : "—"}<br/>합계 · {/^\d+$/.test(amount) ? paymentWon(Number(amount) + Math.round(Number(amount) / 10)) : "—"}</p>
+            <p className="hint">{site.amount_source === "contract" ? "계약금액이 있는 현장은 고객 정산에 계약금액을 우선 사용합니다." : "고객페이지 정산 금액에도 반영됩니다."}</p>
+            <button type="submit" disabled={disabled}>검수금액 저장</button>
+            <button type="button" disabled={disabled} onClick={() => { setForm(""); setAmount(""); setError(""); }}>취소</button>
+          </form>}
           <div className="next-task"><h4>다음 할 일</h4><p>{form === "full" ? "아래 자동 입력된 전액과 거래일을 확인하고 저장해주세요." : next.text}</p>
             <button type="button" disabled={disabled || site.status === "cancelled"} aria-expanded={dueEditing} onClick={()=>setDueEditing(!dueEditing)}>입금 예정일 변경</button>
             {dueEditing && <div><label>입금 예정일<input type="date" value={due} disabled={disabled} onChange={event=>setDue(event.target.value)} /></label><button type="button" disabled={disabled} onClick={()=>save("due",{dueDate:due})}>예정일 저장</button><button type="button" disabled={disabled} onClick={()=>{setDue(site.due_date||"");setDueEditing(false);}}>취소</button></div>}
@@ -223,7 +248,7 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
             }}>{site.confirmed && Number(site.outstanding) === 0 ? "입금 완료" : site.confirmed ? "남은 금액 전액 등록" : "전액 입금 등록"}</button>
           </div>
 
-          {form && (
+          {form && form !== "approved_amount" && (
             <form ref={paymentForm} style={{scrollMarginTop:12}}
               onSubmit={event => {
                 event.preventDefault();

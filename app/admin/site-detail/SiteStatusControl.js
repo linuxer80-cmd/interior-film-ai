@@ -27,6 +27,7 @@ export default function SiteStatusControl({
   onDraftState,
   onNavigate,
   onTradeChange,
+  onSettlementChanged,
   active = true,
 }) {
   const [saving, setSaving] = useState(false);
@@ -80,7 +81,7 @@ export default function SiteStatusControl({
         borderTop: "1px solid #e5e7eb",
       }}
     >
-      <SitePaymentQuick key={site.id} siteId={site.id} onDraftState={onDraftState} onNavigate={onNavigate} />
+      <SitePaymentQuick key={site.id} siteId={site.id} onDraftState={onDraftState} onNavigate={onNavigate} onChanged={onSettlementChanged} />
       <details style={{ marginTop: 20 }}><summary style={{ cursor: "pointer", padding: "14px 0", fontWeight: 800 }}>현장 상태 변경</summary>
       <h3
         style={{

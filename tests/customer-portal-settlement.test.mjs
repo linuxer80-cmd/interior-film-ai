@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadCustomerStage} from '../lib/loadCustomerStage.mjs';
 
-function fixture({approved=true,amount=1950000,confirmed=true,paid=500000,amount_source='missing',supply_amount=null}={}){
+function fixture({approved=true,amount=1950000,confirmed=true,paid=500000,amount_source='missing',supply_amount=null,trade=null}={}){
  const reads=[];
  const rows={
   sites:{status:'completed',contract_amount:amount,work_dates:['2020-01-01']},
@@ -12,7 +12,7 @@ function fixture({approved=true,amount=1950000,confirmed=true,paid=500000,amount
   labor_personal_details:{bank_name:'테스트은행',account_number:'123-456-789',account_holder:'테스트 관리자'},
   company_estimate_defaults:{bank_account:'예전 견적서 계좌'},site_photos:[],
  };
- return {reads,db:{from(table){
+ return {reads,db:{rpc:async(name,args)=>{reads.push(name);assert.deepEqual(args,{p_company:'company',p_site:'site'});return {data:trade,error:null};},from(table){
   reads.push(table);
   const query={then(resolve,reject){return Promise.resolve({data:rows[table],error:null}).then(resolve,reject);}};
   for(const method of ['select','eq','in','lte','order','limit','single','maybeSingle'])query[method]=()=>query;
@@ -43,4 +43,13 @@ test('unknown settlement and missing contract never become a zero bill or paid-i
  assert.equal(pending.totalAmount,2145000);assert.equal(pending.paid,null);assert.equal(pending.outstanding,null);
  const missing=await loadCustomerStage(fixture({amount:null}).db,'company','site');
  assert.equal(missing.totalAmount,null);assert.equal(missing.vatAmount,null);assert.equal(missing.settled,false);
+});
+
+test('customer portal combines current and previous VAT-inclusive debt without treating unknown payments as zero',async()=>{
+ const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,items:[]};
+ const {db}=fixture({trade});const result=await loadCustomerStage(db,'company','site');
+ assert.equal(result.tradeReceivables.totalOutstanding,1725000);assert.equal(result.tradeReceivables.unknownCount,1);
+ assert.equal((await loadCustomerStage(fixture({trade,confirmed:false}).db,'company','site')).tradeReceivables.totalOutstanding,null);
+ assert.equal((await loadCustomerStage(fixture().db,'company','site')).tradeReceivables,null);
+ const unapproved=fixture({trade,approved:false});await loadCustomerStage(unapproved.db,'company','site');assert.equal(unapproved.reads.includes('customer_trade_receivables'),false);
 });
