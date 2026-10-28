@@ -24,7 +24,7 @@ export function ChatConversation({url,admin=false,onUpdated,onCreateQuote,realti
       if(admin&&data.thread?.last_customer_at&&readAt.current!==data.thread.last_customer_at){await chatRequest(url,{action:'read',seenAt:data.thread.last_customer_at},true);readAt.current=data.thread.last_customer_at;}
     }catch(e){if(alive.current&&version===generation.current)setError(e.name==='TimeoutError'?'연결이 지연됩니다. 다시 시도해주세요.':e.message);}
   },[url,admin]);
-  const visitorConnected=useVisitorChatRealtime(admin?null:visitorTopic,refresh);
+  const visitorConnected=useVisitorChatRealtime(admin?null:visitorTopic,()=>{if(document.visibilityState==='visible')void refresh();});
   useEffect(()=>{
     alive.current=true;void refresh();
     const visible=()=>{if(document.visibilityState==='visible')void refresh();};
