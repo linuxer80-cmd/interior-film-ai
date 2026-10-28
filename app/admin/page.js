@@ -38,6 +38,7 @@ import {
 export default function AdminPage() {
   const photoRegistrationRef=useRef({pending:false,busy:false});
   const [samplesReady, setSamplesReady] = useState(false);
+  const [startFirstSite, setStartFirstSite] = useState(false);
   /* =========================================================
      화면 공통 상태
   ========================================================= */
@@ -392,6 +393,7 @@ export default function AdminPage() {
     window.history.replaceState(null, "", destination);
 
     if (tab !== "sites") {
+      setStartFirstSite(false);
       pendingSiteIdRef.current = null;
       closeSite();
     }
@@ -707,6 +709,7 @@ export default function AdminPage() {
       <AdminTabs
         companyName={companyName}
         companyId={companyId}
+        onStartFirstSite={() => { setStartFirstSite(true); changeTab("sites"); }}
         activeTab={
           activeTab
         }
@@ -814,6 +817,7 @@ export default function AdminPage() {
 
       {activeTab === "sites" && (
         <SiteManagementTab
+          startFirstSite={startFirstSite}
           companyId={
             companyId
           }

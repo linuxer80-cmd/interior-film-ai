@@ -55,6 +55,7 @@ export default function SiteManagementTab(props) {
     selectedSite,
     closeSite,
     createSite,
+    startFirstSite = false,
     ...detailProps
   } = props;
 
@@ -87,7 +88,7 @@ export default function SiteManagementTab(props) {
   const combinedSites=useMemo(()=>combineAdminPersonalSites(sites,personalSites,detailProps.companyId),[sites,personalSites,detailProps.companyId]);
 
   const [chatDay, setChatDay] = useState(null);
-  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(startFirstSite);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 

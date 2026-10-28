@@ -559,7 +559,7 @@ export default function SiteRegisterModal({
                   onClick={() => setInputMode(value)}>{label}</button>
               ))}
             </div>
-            <p className="intro">{inputMode === "direct" ? "아는 내용만 적어주세요." : "분석 후 현장정보를 확인하세요."}</p>
+            <p className="intro">{inputMode === "direct" ? "상담내용은 선택 사항입니다. 바로 다음 단계로 넘어갈 수 있어요." : "분석 후 현장정보를 확인하세요."}</p>
             <div hidden={inputMode !== "screenshot"}>
               <ScreenshotSiteInput applyPendingRef={screenshotApplyRef} onApply={(data) => applyAnalysis(data, "screenshot")}
                 disabled={busy || loading || callBusy || !!saved} onBusyChange={setScreenshotBusy} />
@@ -578,6 +578,7 @@ export default function SiteRegisterModal({
             <div hidden={step !== 1}>
             <section data-registration-edit="site" tabIndex={-1} style={{scrollMarginTop:100}}>
               <h3>현장명과 주소</h3>
+              <p className="intro">새 현장은 현장명과 주소가 필요합니다. 일정과 다른 정보는 나중에 입력할 수 있어요.</p>
               {inputs([["site_name", "현장명"], ["address", "주소"]])}
             </section>
 

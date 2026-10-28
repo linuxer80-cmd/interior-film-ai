@@ -12,6 +12,7 @@ import LaborNotifications from "../components/LaborNotifications";
 import AchievementBadges from "../components/AchievementBadges";
 import AdminClosingTasks from "./AdminClosingTasks";
 import AdminHomeSummary from "./AdminHomeSummary";
+import FirstSiteGuide from "./FirstSiteGuide";
 const SiteExtraWork = dynamic(() => import("../components/SiteExtraWork"), { ssr: false });
 import ToolIllustration from "../components/ui/ToolIllustration";
 
@@ -97,6 +98,7 @@ export default function AdminTabs({
   companyName,
   changeTab,
   unreadCount = 0,
+  onStartFirstSite,
   secondaryOnly = false,
 }) {
   const { orderedMenus, record } = usePersonalMenus(menus, `admin:${companyId || "none"}`, activeTab === "today" && !secondaryOnly);
@@ -147,6 +149,7 @@ export default function AdminTabs({
       {isHome ? (
         <>
           <a href="/worker" data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,padding:"12px 18px",marginBottom:14,borderRadius:14,background:"#285340",color:"#fffefa",fontWeight:700,textDecoration:"none"}}>시공자 홈으로 →</a>
+          <FirstSiteGuide companyId={companyId} onStart={onStartFirstSite} />
           <AdminHomeSummary key={companyId} companyId={companyId} />
           <AdminClosingTasks key={`closing-${companyId}`} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
