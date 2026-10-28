@@ -9,10 +9,19 @@ test('completion requires all reports approved and last work day reached',()=>{
  assert.equal(customerStageState(site,reports,null,'2026-10-25').stage,'before');
  assert.equal(customerStageState(site,reports,null,'2026-10-26').stage,'complete');
 });
-test('never treats worker approval amount or unconfirmed deposits as customer contract or paid',()=>{
+test('unknown report fallback or unconfirmed deposits are not exposed as customer amounts',()=>{
  const state=customerStageState({...site,contract_amount:null},reports,{confirmed:true,paid:250000,contract_amount:250000},'2026-10-26');
  assert.equal(state.amount,null);assert.equal(state.outstanding,null);assert.equal(state.settled,false);
  assert.equal(customerStageState(site,reports,{confirmed:false,paid:1000000},'2026-10-26').paid,null);
+});
+test('approved report supplies the customer settlement when the contract is missing',()=>{
+ const reportBalance={confirmed:true,paid:100000,amount_source:'approved_report',supply_amount:250000};
+ const state=customerStageState({...site,contract_amount:null},reports,reportBalance,'2026-10-26');
+ assert.equal(state.amount,250000);assert.equal(state.vatAmount,25000);assert.equal(state.totalAmount,275000);assert.equal(state.outstanding,175000);
+ assert.equal(customerStageState({...site,contract_amount:null},reports,{...reportBalance,paid:275000},'2026-10-26').settled,true);
+ assert.equal(customerStageState(site,reports,reportBalance,'2026-10-26').amount,1000000);
+ assert.equal(customerStageState({...site,contract_amount:null},[{review_status:'pending'}],reportBalance,'2026-10-26').amount,null);
+ for(const value of [null,0,-1,'',undefined,'invalid'])assert.equal(customerStageState({...site,contract_amount:null},reports,{...reportBalance,supply_amount:value},'2026-10-26').amount,null);
 });
 test('partial payment, full payment and reversal determine current stage correctly',()=>{
  const partial=customerStageState(site,reports,{confirmed:true,paid:300000},'2026-10-26');assert.equal(partial.outstanding,800000);assert.equal(partial.stage,'complete');

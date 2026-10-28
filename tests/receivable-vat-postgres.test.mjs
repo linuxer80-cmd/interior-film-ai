@@ -40,6 +40,12 @@ test('receivables collect customer contract plus VAT without changing supply, pa
   assert.equal(Number((await get('contract')).overpaid),55000);
   await db.exec(source); // Reapplying the definition must not add VAT twice.
   assert.equal(Number((await get('contract')).contract_amount),2145000);
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261028034930_approved_report_customer_receivable.sql',import.meta.url),'utf8'));
+  const reviewed=await get('report');
+  assert.equal(Number(reviewed.supply_amount),250000);assert.equal(Number(reviewed.vat_amount),25000);assert.equal(Number(reviewed.contract_amount),275000);assert.equal(Number(reviewed.paid),100000);assert.equal(Number(reviewed.outstanding),175000);
+  assert.equal(Number((await get('contract')).contract_amount),2145000);
+  await db.exec("update work_reports set review_status='pending' where id='r1'");assert.equal((await get('report')).supply_amount,null);
+  await db.exec("update work_reports set review_status='approved',approved_amount=0 where id='r1'");assert.equal((await get('report')).supply_amount,null);
   const options=(await db.query("select reloptions from pg_class where oid='site_receivable_balances'::regclass")).rows[0].reloptions;
   assert.ok(options.includes('security_invoker=true'));
  }finally{await db.close();}
