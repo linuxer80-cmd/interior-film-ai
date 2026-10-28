@@ -13,11 +13,12 @@ function render(values={}){
  vm.runInNewContext(code,{exports,React,require(path){if(path==='react')return React;if(path.includes('customerStages'))return {CUSTOMER_STAGES:{before:1,complete:1,care:1}};return {__esModule:true,default:new Proxy({},{get:(_,key)=>key})};}});
  return exports.default({token:'test',site:{site_name:'현재 현장'},company:{company_name:'업체'},cases:[],expiresAt:'2030-01-01',stageData:{stage:'complete',complete:true,settled:true,amount:500000,vatAmount:50000,totalAmount:550000,paid:550000,outstanding:0,bankAccount:'테스트 계좌',before:[],after:[],...values}});
 }
-const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,totalOutstanding:80000,items:[{siteName:'과거 현장',supplyAmount:100000,vatAmount:10000,totalAmount:110000,paid:30000,outstanding:80000}]};
+const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,totalOutstanding:80000,items:[{siteName:'과거 현장',supplyAmount:100000,vatAmount:10000,totalAmount:110000,paid:30000,outstanding:80000}],unknownItems:[{siteName:'송도지식산업센터',scheduleDate:'2026-10-21',supplyAmount:665000,vatAmount:66500,totalAmount:731500,paid:null,outstanding:null}]};
 test('customer trade section keeps bank visible after this site is paid, with previous debt and VAT breakdown',()=>{
  const tree=render({tradeReceivables:trade});const content=text(tree);
  assert.match(content,/이번 현장 입금 완료/);assert.match(content,/이번 현장 남은 금액/);assert.match(content,/확인된 총 미수금/);assert.match(content,/80,000원/);
- assert.match(content,/테스트 계좌/);assert.match(content,/금액 확인 중인 기존 현장 1건/);
+ assert.match(content,/테스트 계좌/);assert.match(content,/입금 또는 금액 확인 중인 기존 현장 1건/);
+ assert.match(content,/송도지식산업센터 · 2026-10-21/);assert.match(content,/합계 \(부가세 포함\)731,500원/);assert.match(content,/남은 금액정산 확인 중/);
  const detail=nodes(tree).find(n=>n.type==='details');assert.match(text(detail),/과거 현장/);assert.match(text(detail),/공급가액100,000원/);assert.match(text(detail),/부가세 \(10%\)10,000원/);assert.match(text(detail),/110,000원/);
 });
 test('personal customers have no other-site section and trade with unknown current payment has no invented total',()=>{

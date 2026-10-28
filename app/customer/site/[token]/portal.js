@@ -40,11 +40,22 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
         {trade&&<section aria-label="거래처 기존 미수금">
           <h3>{trade.clientName} · 미수금 안내</h3>
           <dl className={styles.paymentRows}>
-            <dt>기존 현장 미수금 ({trade.count}건)</dt><dd>{money(trade.previousTotal)}</dd>
+            <dt>{trade.unknownCount>0?'확인된 기존 현장 미수금':'기존 현장 미수금'} ({trade.count}건)</dt><dd>{money(trade.previousTotal)}</dd>
             <dt className={styles.paymentTotal}>{trade.unknownCount>0?'확인된 총 미수금':'총 입금할 금액'}</dt><dd className={styles.paymentTotal}>{money(trade.totalOutstanding)}</dd>
           </dl>
           <p className={styles.muted}>부가세 포함 금액입니다. 이번 현장과 기존 현장 미수금을 합산했습니다.</p>
-          {trade.unknownCount>0&&<p className={styles.muted}>금액 확인 중인 기존 현장 {trade.unknownCount}건은 합계에서 제외했습니다.</p>}
+          {trade.unknownCount>0&&<><p className={styles.muted}>입금 또는 금액 확인 중인 기존 현장 {trade.unknownCount}건은 미수금 합계에서 제외했습니다.</p>
+            {(trade.unknownItems||[]).map((item,index)=><article key={index}>
+              <h4>{item.siteName}{item.scheduleDate?` · ${item.scheduleDate}`:''} <small>정산 확인 중</small></h4>
+              <dl className={styles.paymentRows}>
+                <dt>공급가액</dt><dd>{money(item.supplyAmount)}</dd>
+                <dt>부가세 (10%)</dt><dd>{money(item.vatAmount)}</dd>
+                <dt>합계 (부가세 포함)</dt><dd>{money(item.totalAmount)}</dd>
+                <dt>확인된 입금액</dt><dd>{money(item.paid)}</dd>
+                <dt>남은 금액</dt><dd>{money(item.outstanding)}</dd>
+              </dl>
+            </article>)}
+          </>}
           {trade.items.length>0&&<details><summary>기존 미수금 내역 보기</summary>{trade.items.map((item,index)=><article key={index}>
             <h4>{item.siteName}</h4><dl className={styles.paymentRows}>
               <dt>공급가액</dt><dd>{money(item.supplyAmount)}</dd>

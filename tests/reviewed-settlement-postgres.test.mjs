@@ -32,6 +32,8 @@ async function fixture(){
  await db.exec(sql('supabase/migrations/20261028040046_editable_reviewed_amount.sql'));
  await db.exec('create trigger audit_work_report after insert or update on work_reports for each row execute function app_private.audit_work_report()');
  await db.exec(sql('supabase/migrations/20261028040241_customer_trade_receivables.sql'));
+ await db.exec('alter table sites add column schedule_date date');
+ await db.exec(sql('supabase/migrations/20261028042143_customer_unknown_receivables.sql'));
  const call=async(action='get',body={},user=10)=>(await db.query('select manage_site_settlement($1,$2,$3,$4::jsonb) r',[id(user),id(20),action,JSON.stringify(body)])).rows[0].r;
  return {db,call};
 }
@@ -65,7 +67,7 @@ test('review amount edits recalculate VAT/customer balance atomically, preserve 
  for(const role of ['anon','authenticated'])assert.equal((await db.query(`select has_function_privilege('${role}','manage_site_settlement(uuid,uuid,text,jsonb)','execute') ok`)).rows[0].ok,false);
  }finally{await db.close();}
 });
-test('customer trade debt is tenant/client scoped, excludes current/cancelled/future/unknown and exposes billing fields only',async()=>{
+test('customer trade debt keeps unknown balances out of totals while showing scoped billing details',async()=>{
  const {db}=await fixture();try{
  await db.exec(`insert into trade_clients values('${id(40)}','${id(1)}','거래처'),('${id(41)}','${id(1)}','다른 거래처'),('${id(42)}','${id(2)}','다른 업체 거래처');
  insert into trade_site_links values('${id(20)}','${id(1)}','${id(40)}');`);
@@ -78,6 +80,9 @@ test('customer trade debt is tenant/client scoped, excludes current/cancelled/fu
  const result=await load();assert.equal(result.previousTotal,80000);assert.equal(result.count,1);assert.equal(result.unknownCount,1);
  assert.equal(result.items[0].siteName,'현장21');assert.equal(result.items[0].supplyAmount,100000);assert.equal(result.items[0].vatAmount,10000);
  assert.deepEqual(Object.keys(result.items[0]).sort(),['siteName','supplyAmount','vatAmount','totalAmount','paid','outstanding'].sort());
+ assert.equal(result.unknownItems.length,1);assert.equal(result.unknownItems[0].siteName,'현장22');
+ assert.equal(result.unknownItems[0].totalAmount,110000);assert.equal(result.unknownItems[0].paid,null);assert.equal(result.unknownItems[0].outstanding,null);
+ assert.deepEqual(Object.keys(result.unknownItems[0]).sort(),['siteName','scheduleDate','supplyAmount','vatAmount','totalAmount','paid','outstanding'].sort());
  assert.equal(await load(2,20),null);assert.equal(await load(1,99),null);
  // Current site's paid amount must not offset previous debt, and VAT must not be added a second time.
  await db.exec(`update site_payment_accounts set opening_paid=999999 where site_id='${id(20)}'`);assert.equal((await load()).previousTotal,80000);
