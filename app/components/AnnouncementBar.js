@@ -17,24 +17,62 @@ export default function AnnouncementBar() {
   useEffect(() => {
     setMessage(''); setOpen(false);
     if (!visible) return;
-    let alive = true, busy = false;
+    let alive = true, busy = false, pending = false, connected = false;
+    let channel = null, userId = null, version = 0, timer;
     async function refresh() {
-      if (busy || document.hidden) return;
+      if (!alive || document.hidden) return;
+      if (busy) { pending = true; return; }
       busy = true;
+      const requestedVersion = version;
       try {
         const { data } = await supabase.auth.getSession();
-        if (!data.session) { if (alive) setMessage(''); return; }
+        if (!data.session) { if (alive && requestedVersion === version) setMessage(''); return; }
         const response = await fetch(`/api/announcement?audience=${audience}`, { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store', signal: AbortSignal.timeout(10000) });
-        if (response.ok) { const result = await response.json(); if (alive) setMessage(result.announcement?.message || ''); }
-        else if (alive) setMessage('');
+        if (response.ok) { const result = await response.json(); if (alive && requestedVersion === version) setMessage(result.announcement?.message || ''); }
+        else if (alive && requestedVersion === version) setMessage('');
       } catch { /* Keep the last notice during a temporary connection loss. */ }
-      finally { busy = false; }
+      finally { busy = false; if (alive && pending) { pending = false; void refresh(); } }
     }
-    refresh();
-    const timer = setInterval(refresh, 60000);
+    function schedule() { clearInterval(timer); timer = setInterval(refresh, connected ? 300000 : 60000); }
+    function bind(session, currentVersion) {
+      if (!alive || currentVersion !== version) return;
+      const nextUser = session?.user?.id || null;
+      const oldChannel = channel;
+      channel = null; userId = nextUser; connected = false;
+      if (oldChannel) void supabase.removeChannel(oldChannel);
+      schedule(); void refresh();
+      if (!nextUser) return;
+      (async () => {
+        try {
+          await supabase.realtime.setAuth();
+          if (!alive || currentVersion !== version) return;
+          channel = supabase.channel(`announcement:${audience}`, { config: { private: true } })
+            .on('broadcast', { event: 'changed' }, () => void refresh())
+            .subscribe(status => {
+              if (!alive || currentVersion !== version) return;
+              const wasConnected = connected;
+              connected = status === 'SUBSCRIBED'; schedule();
+              if (connected && !wasConnected) void refresh();
+            });
+        } catch { if (alive && currentVersion === version) { connected = false; schedule(); } }
+      })();
+    }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id && session.user.id === userId && channel) return;
+      const currentVersion = ++version;
+      setMessage('');
+      // Supabase auth callbacks must not await another Supabase call.
+      setTimeout(() => bind(session, currentVersion), 0);
+    });
+    void refresh(); schedule();
+    window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => { setMessage(''); setTimeout(refresh, 0); });
-    return () => { alive = false; clearInterval(timer); subscription.unsubscribe(); document.removeEventListener('visibilitychange', refresh); };
+    return () => {
+      alive = false; version++; clearInterval(timer); subscription.unsubscribe();
+      if (channel) void supabase.removeChannel(channel);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [visible, audience]);
   useEffect(() => {
     if (!message || !visible) return;
