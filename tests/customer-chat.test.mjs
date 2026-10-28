@@ -19,6 +19,14 @@ test('guest lookup scopes by active company and hashed browser secret',async()=>
  assert.deepEqual(f.queries.find(q=>q.table==='customer_chat_threads').filters,[['company_id','company-a'],['visitor_hash',createHash('sha256').update(token).digest('hex')]]);
  assert.ok(f.queries[0].filters.some(([k,v])=>k==='is_active'&&v===true));
 });
+test('authorized visitor receives a separate topic without adding it to thread data',async()=>{
+ const token='a'.repeat(64),key='film_chat_'+createHash('sha256').update('film').digest('hex').slice(0,16);
+ const topic='customer-chat-visitor:'+'b'.repeat(64);
+ const f=fixture({cookie:key+'='+token,thread:{id,customer_name:'고객',last_owner_at:null,visitor_realtime_topic:topic}});
+ const a=await f.funcs.visitorChat(f.request);assert.equal(a.realtimeTopic,topic);
+ assert.equal(a.thread.visitor_realtime_topic,undefined);assert.equal(a.thread.id,id);
+ assert.deepEqual(f.queries.find(q=>q.table==='customer_chat_threads').filters,[['company_id','company-a'],['visitor_hash',createHash('sha256').update(token).digest('hex')]]);
+});
 test('missing or invalid cookie creates fresh secret, never accepts thread ID as identity',async()=>{
  const f=fixture({cookie:'film_chat_bad=123'});const a=await f.funcs.visitorChat(f.request);assert.equal(a.hasCookie,false);assert.equal(a.hash.length,64);
 });

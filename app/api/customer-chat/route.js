@@ -1,7 +1,7 @@
 import { readChatBody,visitorChat,chatMessages,saveChat,chatOrigin,chatError,chatFail,chatMessage } from '../../../lib/customerChatServer';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export async function GET(request){try{const a=await visitorChat(request);return a.reply({thread:a.thread,companyName:a.companyName,...await chatMessages(a.db,a.thread,request)});}catch(error){return chatError(error);}}
+export async function GET(request){try{const a=await visitorChat(request);return a.reply({thread:a.thread,realtimeTopic:a.realtimeTopic,companyName:a.companyName,...await chatMessages(a.db,a.thread,request)});}catch(error){return chatError(error);}}
 export async function POST(request){try{
   chatOrigin(request);
   const body=await readChatBody(request);chatMessage(body);

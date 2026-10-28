@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import styles from './CustomerChat.module.css';
+import useVisitorChatRealtime from './useVisitorChatRealtime';
 export async function chatRequest(url,body,admin=false,timeout=15000){
   const headers={};if(admin){const {data}=await supabase.auth.getSession();if(!data.session)throw Error('관리자 로그인이 필요합니다.');headers.Authorization=`Bearer ${data.session.access_token}`;}
   const multipart=body instanceof FormData;
@@ -12,24 +13,26 @@ export async function chatRequest(url,body,admin=false,timeout=15000){
 export function ChatConversation({url,admin=false,onUpdated,onCreateQuote,realtimeConnected=false,refreshSignal=0}){
   const [messages,setMessages]=useState([]),[thread,setThread]=useState(null),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[older,setOlder]=useState(false),[loadingOlder,setLoadingOlder]=useState(false);
   const [photo,setPhoto]=useState(null),[preview,setPreview]=useState(''),[preparing,setPreparing]=useState(false);
-  const [text,setText]=useState(''),[name,setName]=useState(''),[consent,setConsent]=useState(false);
+  const [text,setText]=useState(''),[name,setName]=useState(''),[consent,setConsent]=useState(false),[visitorTopic,setVisitorTopic]=useState(null);
   const list=useRef(null), pending=useRef(null), sending=useRef(false),alive=useRef(true),generation=useRef(0),nearBottom=useRef(true),historyLoaded=useRef(false),readAt=useRef(null);
   const refresh=useCallback(async()=>{
     const version=++generation.current;
     try{const data=await chatRequest(url,null,admin);if(!alive.current||version!==generation.current)return;
-      setThread(data.thread);setReady(true);setError('');
+      setThread(data.thread);if(!admin)setVisitorTopic(data.realtimeTopic||null);setReady(true);setError('');
       setMessages(previous=>{const map=new Map(previous.map(m=>[m.id,m]));for(const m of data.messages)map.set(m.id,m);return [...map.values()].sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.id.localeCompare(b.id));});
       if(!historyLoaded.current)setOlder(data.hasOlder);
       if(admin&&data.thread?.last_customer_at&&readAt.current!==data.thread.last_customer_at){await chatRequest(url,{action:'read',seenAt:data.thread.last_customer_at},true);readAt.current=data.thread.last_customer_at;}
     }catch(e){if(alive.current&&version===generation.current)setError(e.name==='TimeoutError'?'연결이 지연됩니다. 다시 시도해주세요.':e.message);}
   },[url,admin]);
+  const visitorConnected=useVisitorChatRealtime(admin?null:visitorTopic,refresh);
   useEffect(()=>{
     alive.current=true;void refresh();
     const visible=()=>{if(document.visibilityState==='visible')void refresh();};
-    const timer=setInterval(visible,admin&&realtimeConnected?60000:5000);
+    const connected=admin?realtimeConnected:visitorConnected;
+    const timer=setInterval(visible,connected||(!admin&&ready&&!thread)?60000:5000);
     window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
     return()=>{alive.current=false;generation.current++;clearInterval(timer);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);};
-  },[refresh,admin,realtimeConnected]);
+  },[refresh,admin,realtimeConnected,visitorConnected,ready,thread?.id]);
   useEffect(()=>{if(admin&&refreshSignal&&document.visibilityState==='visible')void refresh();},[admin,refreshSignal,refresh]);
   useEffect(()=>{if(nearBottom.current&&list.current)list.current.scrollTop=list.current.scrollHeight;},[messages]);
   async function loadOlder(){if(loadingOlder||!messages.length)return;setLoadingOlder(true);try{const data=await chatRequest(url+'&before='+encodeURIComponent(messages[0].created_at),null,admin);if(!alive.current)return;setMessages(previous=>{const map=new Map([...data.messages,...previous].map(m=>[m.id,m]));return [...map.values()].sort((a,b)=>a.created_at.localeCompare(b.created_at));});historyLoaded.current=true;setOlder(data.hasOlder);}catch(e){setError(e.message);}finally{setLoadingOlder(false);}}

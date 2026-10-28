@@ -26,9 +26,9 @@ test('administrator uses longer safety check only when connected; guest retains 
   const hooks={useState:v=>[v,()=>{}],useRef:v=>({current:v}),useCallback:fn=>fn,useEffect:(fn,deps)=>effects.push({fn,deps})};
   const supabase={auth:{getSession:async()=>({data:{session:{access_token:'t'}}})}};
   const document={visibilityState:'visible',addEventListener(){},removeEventListener(){}},window={addEventListener(){},removeEventListener(){}};
-  const module={exports:{}};vm.runInNewContext(code,{module,exports:module.exports,document,window,URL,AbortSignal,FormData,setInterval:(_fn,ms)=>{timers.push(ms);return ++index;},clearInterval(){},require:name=>name==='react'?hooks:name.includes('lib/supabase')?{supabase}:name.endsWith('.css')?{__esModule:true,default:{}}:name==='react/jsx-runtime'?{jsx:()=>null,jsxs:()=>null}:require(name),fetch:async()=>({ok:true,json:async()=>({messages:[],thread:null,hasOlder:false})})});
+  const module={exports:{}};vm.runInNewContext(code,{module,exports:module.exports,document,window,URL,AbortSignal,FormData,setInterval:(_fn,ms)=>{timers.push(ms);return ++index;},clearInterval(){},require:name=>name==='react'?hooks:name.includes('lib/supabase')?{supabase}:name.includes('useVisitorChatRealtime')?{__esModule:true,default:()=>false}:name.endsWith('.css')?{__esModule:true,default:{}}:name==='react/jsx-runtime'?{jsx:()=>null,jsxs:()=>null}:require(name),fetch:async()=>({ok:true,json:async()=>({messages:[],thread:null,hasOlder:false})})});
   module.exports.ChatConversation({url:'/api/chat',admin,realtimeConnected:connected});
-  const chatEffect=effects.find(x=>x.deps?.length===3&&x.deps[1]===admin&&x.deps[2]===connected);assert.ok(chatEffect);const cleanup=chatEffect.fn();await tick();cleanup();return timers[0];
+  const chatEffect=effects.find(x=>x.deps?.length===6&&x.deps[1]===admin&&x.deps[2]===connected);assert.ok(chatEffect);const cleanup=chatEffect.fn();await tick();cleanup();return timers[0];
  }
  assert.equal(await intervalFor(true,true),60000);
  assert.equal(await intervalFor(true,false),5000);
