@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const swc=require('next/dist/build/swc');await swc.loadBindings();
+const {code}=await swc.transform(fs.readFileSync(new URL('../app/worker/site/[siteId]/useTeamUnread.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript'}},module:{type:'commonjs'}});
+const tick=()=>new Promise(resolve=>setTimeout(resolve,10));
+test('unread refresh follows private events, falls back, reconnects and changes account safely',async()=>{
+ const effects=[],timers=new Map(),listeners=new Map(),channels=[],values=[];let n=0,requests=0,authCallback,unsubscribed=false;
+ let session={access_token:'token1',user:{id:'user1'}};
+ const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:cb=>{authCallback=cb;return {data:{subscription:{unsubscribe(){unsubscribed=true;}}}};}},realtime:{setAuth:async()=>{}},channel:(topic,options)=>{
+  assert.equal(options.config.private,true);const c={topic,on(_type,_filter,cb){this.event=cb;return this;},subscribe(cb){this.status=cb;return this;}};channels.push(c);return c;
+ },removeChannel:c=>{c.removed=true;}};
+ const document={hidden:false,addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:type=>listeners.delete(type)};
+ const window={addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:type=>listeners.delete(type)};
+ const module={exports:{}};
+ vm.runInNewContext(code,{module,exports:module.exports,document,window,AbortController,setTimeout,setInterval:(fn,ms)=>{const id=++n;timers.set(id,{fn,ms});return id;},clearInterval:id=>timers.delete(id),fetch:async()=>{requests++;return {ok:true,json:async()=>({count:requests,date:'2026-10-29'})};},require:name=>name==='react'?{useState:v=>[v,x=>values.push(x)],useEffect:(fn,deps)=>effects.push({fn,deps})}:name.includes('lib/supabase')?{supabase}:require(name)});
+ module.exports.default('site');const cleanup=effects[0].fn();await tick();assert.equal(requests,1);assert.equal([...timers.values()][0].ms,10000);
+ authCallback('INITIAL_SESSION',session);await tick();assert.equal(channels[0].topic,'team-unread:user1');
+ channels[0].status('SUBSCRIBED');await tick();assert.equal([...timers.values()][0].ms,60000);let before=requests;
+ channels[0].event();await tick();assert.equal(requests,before+1);
+ document.hidden=true;before=requests;channels[0].event();await tick();assert.equal(requests,before);
+ document.hidden=false;listeners.get('visibilitychange')();await tick();assert.equal(requests,before+1);
+ channels[0].status('CHANNEL_ERROR');assert.equal([...timers.values()][0].ms,10000);
+ before=requests;[...timers.values()][0].fn();await tick();assert.equal(requests,before+1);
+ channels[0].status('SUBSCRIBED');await tick();assert.equal([...timers.values()][0].ms,60000);
+ session={access_token:'token2',user:{id:'user2'}};authCallback('SIGNED_IN',session);await tick();assert.equal(channels[0].removed,true);assert.equal(channels[1].topic,'team-unread:user2');assert.equal([...timers.values()][0].ms,10000);
+ cleanup();assert.equal(channels[1].removed,true);assert.equal(unsubscribed,true);assert.equal(timers.size,0);
+});
