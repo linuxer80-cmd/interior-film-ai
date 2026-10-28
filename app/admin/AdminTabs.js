@@ -151,7 +151,7 @@ export default function AdminTabs({
           <AdminClosingTasks key={`closing-${companyId}`} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
           <SiteExtraWork key={companyId} summary />
-          <LaborNotifications />
+          <LaborNotifications poll={false} />
           <AchievementBadges key={companyId} scope="owner" compact />
 
           <h3 className="film-admin-menu-heading">

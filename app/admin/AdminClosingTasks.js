@@ -19,12 +19,11 @@ export default function AdminClosingTasks({companyId}) {
   useEffect(()=>{
     const refresh=()=>{if(!document.hidden)setAttempt(n=>n+1);};
     window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
-    const timer=setInterval(refresh,60000);
-    return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+    return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
   },[]);
   const menu={review:'report',payment:'settlement',materials:'materials'}[filter];
   const rows=(data?.rows||[]).filter(row=>!menu||row.actions.some(action=>action.menu===menu));
-  return <details className={styles.root} aria-label="정리가 필요한 현장" aria-busy={loading}>
+  return <details className={styles.root} aria-label="정리가 필요한 현장" aria-busy={loading} onToggle={event=>{if(event.currentTarget.open)setAttempt(n=>n+1);}}>
     <summary className={styles.toggle}><h2>정리가 필요한 현장</h2><span>{loading?'확인 중':error?'확인 필요':`${data?.counts.all||0}건`} · <span className={styles.whenClosed}>펼쳐보기 ＋</span><span className={styles.whenOpen}>접기 −</span></span></summary>
     <div className={styles.contents}>
     <header><p>남은 정리 업무</p><button type="button" disabled={loading} onClick={()=>setAttempt(n=>n+1)}>새로고침</button></header>

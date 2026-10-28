@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-export default function LaborNotifications({ refreshKey = 0, view = "manager" }) {
+export default function LaborNotifications({ refreshKey = 0, view = "manager", poll = true }) {
   const [notices, setNotices] = useState([]);
   const [open, setOpen] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -47,7 +48,12 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager" })
 
     load();
 
-    const timer = setInterval(load, 60000);
+    const timer = poll ? setInterval(load, 60000) : null;
+    const refreshVisible = () => { if (!document.hidden) load(); };
+    if (!poll) {
+      window.addEventListener("focus", refreshVisible);
+      document.addEventListener("visibilitychange", refreshVisible);
+    }
     const { data } = supabase.auth.onAuthStateChange(() => {
       setNotices([]);
       load();
@@ -56,10 +62,14 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager" })
     return () => {
       active = false;
       epoch++;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
+      if (!poll) {
+        window.removeEventListener("focus", refreshVisible);
+        document.removeEventListener("visibilitychange", refreshVisible);
+      }
       data.subscription.unsubscribe();
     };
-  }, [refreshKey, view]);
+  }, [refreshKey, view, poll, attempt]);
 
   async function read(id) {
     const { data } = await supabase.auth.getSession();
@@ -87,7 +97,7 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager" })
     >
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => { if (!open && !poll) setAttempt(value => value + 1); setOpen(value => !value); }}
         style={{
           padding: 12,
           border: "1px solid #cbd5e1",
