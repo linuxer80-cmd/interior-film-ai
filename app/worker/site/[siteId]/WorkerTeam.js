@@ -31,9 +31,33 @@ export default function WorkerTeam({siteId,dates,active,initialChat=false,initia
  },[endpoint,active,chat]);
  useEffect(()=>{setReadError('');return()=>{clearTimeout(readBatch.current.timer);readBatch.current.timer=null;};},[endpoint,active,chat]);
  useEffect(()=>{
-  if(!active||!date)return;let alive=true,running=false;setData(null);setError('');
-  async function load(){if(running||document.hidden)return;running=true;try{const result=await request();if(alive){setData(result);setError('');}}catch(e){if(alive){setError(e.message);setData(null);}}finally{running=false;}}
-  void load();const timer=setInterval(load,chat?5000:60000);return()=>{alive=false;clearInterval(timer);};
+  if(!active||!date)return;let alive=true,running=false,pending=false,connected=false,channel=null,timer;
+  setData(null);setError('');
+  async function load(){
+   if(!alive||document.hidden)return;
+   if(running){pending=true;return;}
+   running=true;
+   try{const result=await request();if(alive){setData(result);setError('');}}
+   catch(e){if(alive){setError(e.message);setData(null);}}
+   finally{running=false;if(alive&&pending){pending=false;void load();}}
+  }
+  function schedule(){clearInterval(timer);timer=setInterval(load,chat&&!connected?5000:60000);}
+  function visible(){if(!document.hidden)void load();}
+  window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
+  void load();schedule();
+  if(chat)(async()=>{
+   try{
+    await supabase.realtime.setAuth();if(!alive)return;
+    channel=supabase.channel(`team-chat:${siteId}:${date}`,{config:{private:true}})
+     .on('broadcast',{event:'changed'},()=>void load())
+     .subscribe(status=>{
+      if(!alive)return;
+      const wasConnected=connected;connected=status==='SUBSCRIBED';schedule();
+      if(connected&&!wasConnected)void load();
+     });
+   }catch{if(alive){connected=false;schedule();}}
+  })();
+  return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);if(channel)void supabase.removeChannel(channel);};
  },[siteId,date,active,chat]);
  async function send(e){e.preventDefault();if(sending||!text.trim())return;setSending(true);try{await request({method:'POST',body:JSON.stringify({id:crypto.randomUUID(),body:text})});setText('');setData(await request());setError('');}catch(e){setError(e.message);}finally{setSending(false);}}
  if(!days.length)return <p>날짜별 팀 배정이 등록되면 함께 일하는 팀원을 확인할 수 있습니다.</p>;
