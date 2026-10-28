@@ -9,7 +9,7 @@ export async function GET(request){try{
   const offset=Math.max(0,Math.min(100000,Number(url.searchParams.get('offset'))||0));
   const result=await a.db.from('customer_chat_threads').select('id,customer_name,updated_at,last_preview,last_customer_at,last_owner_at,owner_read_at').eq('company_id',a.companyId).order('updated_at',{ascending:false}).order('id').range(offset,offset+50);
   if(result.error)throw result.error;
-  return chatReply({threads:result.data.slice(0,50),hasMore:result.data.length>50});
+  return chatReply({companyId:a.companyId,userId:a.userId,threads:result.data.slice(0,50),hasMore:result.data.length>50});
 }catch(error){return chatError(error);}}
 export async function POST(request){try{
   chatOrigin(request);const a=await ownerChat(request);
