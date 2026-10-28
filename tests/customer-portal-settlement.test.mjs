@@ -45,6 +45,12 @@ test('unknown settlement and missing contract never become a zero bill or paid-i
  assert.equal(missing.totalAmount,null);assert.equal(missing.vatAmount,null);assert.equal(missing.settled,false);
 });
 
+test('historic full payments use the actual agreed amount without inventing a VAT breakdown',async()=>{
+ const {db}=fixture({amount:230000,paid:230000});const from=db.from;
+ db.from=table=>{if(table!=='site_receivable_balances')return from(table);const query={then(resolve,reject){return Promise.resolve({data:{confirmed:true,paid:230000,amount_source:'contract',supply_amount:230000,contract_amount:230000,legacy_payment_complete:true},error:null}).then(resolve,reject);}};for(const method of ['select','eq','maybeSingle'])query[method]=()=>query;return query;};
+ const state=await loadCustomerStage(db,'company','site');assert.equal(state.totalAmount,230000);assert.equal(state.vatAmount,null);assert.equal(state.paid,230000);assert.equal(state.outstanding,0);assert.equal(state.settled,true);
+});
+
 test('customer portal labels projections and calculates VAT-inclusive total without changing confirmed payment',async()=>{
  const trade={clientName:'거래처',previousTotal:80000,count:1,unknownCount:1,items:[],unknownItems:[{totalAmount:731500,paid:null}]};
  const {db}=fixture({trade});const result=await loadCustomerStage(db,'company','site');

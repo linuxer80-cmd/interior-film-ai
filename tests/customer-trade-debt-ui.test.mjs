@@ -27,3 +27,7 @@ test('unknown payments show clearly labeled projections, while missing amounts r
  const missing=text(render({tradeReceivables:{...trade,amounts:{...trade.amounts,previous:null,total:null}}}));assert.match(missing,/예상 총 미수금정산 확인 중/);
  const complete=text(render({tradeReceivables:{...trade,unknownCount:0,unknownItems:[],amounts:{current:0,previous:80000,total:80000,currentEstimated:false,previousEstimated:false,estimated:false}}}));assert.match(complete,/총 입금할 금액80,000원/);
 });
+test('legacy full settlement displays the confirmed amount without claiming an unknown tax breakdown',()=>{
+ const content=text(render({legacyPaymentComplete:true,amount:230000,vatAmount:null,totalAmount:230000,paid:230000,outstanding:0}));
+ assert.match(content,/기존 전액입금 확정금액230,000원/);assert.doesNotMatch(content,/부가세 \(10%\)/);
+});

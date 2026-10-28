@@ -34,6 +34,7 @@ async function fixture(){
  await db.exec(sql('supabase/migrations/20261028040241_customer_trade_receivables.sql'));
  await db.exec('alter table sites add column schedule_date date');
  await db.exec(sql('supabase/migrations/20261028042143_customer_unknown_receivables.sql'));
+ await db.exec(sql('supabase/migrations/20261028072850_preserve_legacy_full_payment.sql'));
  const call=async(action='get',body={},user=10)=>(await db.query('select manage_site_settlement($1,$2,$3,$4::jsonb) r',[id(user),id(20),action,JSON.stringify(body)])).rows[0].r;
  return {db,call};
 }
@@ -65,6 +66,21 @@ test('review amount edits recalculate VAT/customer balance atomically, preserve 
  await db.exec("update work_reports set review_status='pending'");assert.equal((await call()).approvedReport,null);
  await assert.rejects(call('revise_approved_amount',request),e=>e.code==='22023');
  for(const role of ['anon','authenticated'])assert.equal((await db.query(`select has_function_privilege('${role}','manage_site_settlement(uuid,uuid,text,jsonb)','execute') ok`)).rows[0].ok,false);
+ }finally{await db.close();}
+});
+test('legacy full payment remains settled, VAT applies to partial and new payments, and void restores balance',async()=>{
+ const {db}=await fixture();try{
+ await db.exec(`update sites set contract_amount=230000 where id='${id(20)}';
+ update site_payment_accounts set opening_paid=0 where site_id='${id(20)}';
+ insert into site_payment_entries(id,site_id,company_id,direction,amount,paid_on,memo,created_at)
+ values('${id(90)}','${id(20)}','${id(1)}','payment',230000,'2026-10-09','전액입금 처리','2026-10-09T00:02:46Z')`);
+ const get=async()=>(await db.query('select * from site_receivable_balances where id=$1',[id(20)])).rows[0];
+ let row=await get();assert.equal(row.legacy_payment_complete,true);assert.equal(Number(row.contract_amount),230000);assert.equal(Number(row.paid),230000);assert.equal(Number(row.outstanding),0);assert.equal(row.vat_amount,null);
+ await db.exec(`update site_payment_entries set voided_at=now() where id='${id(90)}'`);row=await get();assert.equal(row.legacy_payment_complete,false);assert.equal(Number(row.contract_amount),253000);assert.equal(Number(row.outstanding),253000);
+ await db.exec(`update site_payment_entries set voided_at=null,created_at='2026-10-28T00:00Z' where id='${id(90)}'`);row=await get();assert.equal(row.legacy_payment_complete,false);assert.equal(Number(row.outstanding),23000);
+ await db.exec(`update site_payment_entries set created_at='2026-10-09T00:02:46Z',memo='잔금 입금' where id='${id(90)}'`);row=await get();assert.equal(row.legacy_payment_complete,false);assert.equal(Number(row.outstanding),23000);
+ await db.exec(`update site_payment_entries set memo='전액입금 처리',amount=100000 where id='${id(90)}'`);row=await get();assert.equal(row.legacy_payment_complete,false);assert.equal(Number(row.outstanding),153000);
+ await db.exec(`update site_payment_entries set amount=230000 where id='${id(90)}'; update sites set contract_amount=240000 where id='${id(20)}'`);row=await get();assert.equal(row.legacy_payment_complete,false);assert.equal(Number(row.outstanding),34000);
  }finally{await db.close();}
 });
 test('customer trade debt keeps unknown balances out of totals while showing scoped billing details',async()=>{

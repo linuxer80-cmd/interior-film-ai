@@ -31,9 +31,9 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
       <section className={styles.card}><h2>우리 집, 이렇게 달라졌어요</h2>{stageData.before.length||stageData.after.length?<ShowcasePhotos before={stageData.before} after={stageData.after} title={site.site_name}/>:<p>공개할 시공 사진을 준비하고 있습니다. 업체에 문의해주세요.</p>}</section>
       <section className={styles.card}><span className={styles.badge}>{stageData.settled?(trade?'이번 현장 입금 완료':'입금 완료'):'정산 안내'}</span><h2>{stageData.settled?(trade?'이번 현장 입금이 확인되었습니다':'입금이 확인되었습니다'):'계약금액과 입금 안내'}</h2>
         <dl className={styles.paymentRows}>
-          <dt>공급가액</dt><dd>{money(stageData.amount)}</dd>
-          <dt>부가세 (10%)</dt><dd>{money(stageData.vatAmount)}</dd>
-          <dt className={styles.paymentTotal}>합계 (부가세 포함)</dt><dd className={styles.paymentTotal}>{money(stageData.totalAmount)}</dd>
+          {!stageData.legacyPaymentComplete&&<><dt>공급가액</dt><dd>{money(stageData.amount)}</dd>
+          <dt>부가세 (10%)</dt><dd>{money(stageData.vatAmount)}</dd></>}
+          <dt className={styles.paymentTotal}>{stageData.legacyPaymentComplete?'기존 전액입금 확정금액':'합계 (부가세 포함)'}</dt><dd className={styles.paymentTotal}>{money(stageData.totalAmount)}</dd>
           <dt>확인된 입금액</dt><dd>{money(stageData.paid)}</dd>
           <dt>{trade&&trade.amounts.currentEstimated?'이번 현장 예상 미수금':trade?'이번 현장 남은 금액':'남은 금액'}</dt><dd>{money(trade?trade.amounts.current:stageData.outstanding)}</dd>
         </dl>
@@ -43,7 +43,7 @@ export default function CustomerPortal({token,site,company,profile,cases,remaini
             <dt>{trade.amounts.previousEstimated?'기존 현장 예상 미수금':'기존 현장 미수금'} ({trade.count+trade.unknownCount}건)</dt><dd>{money(trade.amounts.previous)}</dd>
             <dt className={styles.paymentTotal}>{trade.amounts.estimated?'예상 총 미수금':'총 입금할 금액'}</dt><dd className={styles.paymentTotal}>{money(trade.amounts.total)}</dd>
           </dl>
-          <p className={styles.muted}>{trade.amounts.estimated?'부가세 포함 예상 금액입니다. 입금 내역이 확인되지 않은 현장은 입금이 없는 것으로 계산했으며, 실제 미수금은 입금 확인 후 달라질 수 있습니다.':'부가세 포함 금액입니다. 이번 현장과 기존 현장 미수금을 합산했습니다.'}</p>
+          <p className={styles.muted}>{trade.amounts.estimated?'부가세 포함 예상 금액입니다. 입금 내역이 확인되지 않은 현장은 입금이 없는 것으로 계산했으며, 실제 미수금은 입금 확인 후 달라질 수 있습니다.':stageData.legacyPaymentComplete?'이번 현장의 기존 전액입금 확정금액과 기존 현장 미수금을 반영했습니다.':'부가세 포함 금액입니다. 이번 현장과 기존 현장 미수금을 합산했습니다.'}</p>
           {trade.unknownCount>0&&<><p className={styles.muted}>기존 현장 {trade.unknownCount}건의 입금 또는 청구금액을 확인하고 있습니다.</p>
             {(trade.unknownItems||[]).map((item,index)=><article key={index}>
               <h4>{item.siteName}{item.scheduleDate?` · ${item.scheduleDate}`:''} <small>정산 확인 중</small></h4>
