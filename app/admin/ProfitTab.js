@@ -2,7 +2,7 @@
 
 import { groupCostRows as group } from "../../lib/costBrandGroups.mjs";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
-import { materialVatEstimate } from "../../lib/materialVatEstimate.mjs";
+import { materialVatEstimate, profitAfterMaterialVat } from "../../lib/materialVatEstimate.mjs";
 import { profitState } from "../../lib/settlementFlow.mjs";
 
 import useProfitExclusions from "./useProfitExclusions";
@@ -383,10 +383,15 @@ export default function ProfitTab() {
   const pendingSites = (data?.sites || []).filter(site => profitState(site).pending);
   const profitSites = (data?.sites || []).filter(site => !profitState(site).pending);
   const confirmedTotals = profitSites.reduce((sum, site) => {
-    for (const key of ["revenue", "labor", "material", "expense", "profit"]) sum[key] += Number(site[key] || 0);
+    for (const key of ["revenue", "labor", "material", "expense"]) sum[key] += Number(site[key] || 0);
+    sum.profit += profitAfterMaterialVat(site.profit, site.material) ?? Number(site.profit || 0);
     return sum;
   }, {revenue:0,labor:0,material:0,expense:0,profit:0});
-  const materialVat = materialVatEstimate(confirmedTotals.material);
+  const materialVat = profitSites.reduce((sum, site) => {
+    const item = materialVatEstimate(site.material);
+    if (item) { sum.base += item.base; sum.tax += item.tax; sum.total += item.total; }
+    return sum;
+  }, {base:0,tax:0,total:0});
   const confirmedIds = new Set(profitSites.map(site => site.id));
   const confirmedData = data && {...data, sites:profitSites, totals:confirmedTotals,
     breakdown:Object.fromEntries(Object.entries(data.breakdown || {}).map(([key,rows]) => [key,(rows || []).filter(row => confirmedIds.has(row.siteId))]))};
@@ -415,7 +420,7 @@ export default function ProfitTab() {
   const scopedTotals = filteredSites.reduce(
     (sum, site) => ({
       revenue: sum.revenue + Number(site.revenue || 0),
-      profit: sum.profit + Number(site.profit || 0),
+      profit: sum.profit + (profitAfterMaterialVat(site.profit, site.material) ?? Number(site.profit || 0)),
     }),
     { revenue: 0, profit: 0 }
   );
@@ -528,9 +533,9 @@ export default function ProfitTab() {
             lineHeight: 1.5,
           }}
         >
-          시공 시작일 기준 매출에서 인건비·실제 사용 자재비·경비를 뺀 예상 수익입니다.
+          시공 시작일 기준 등록 매출에서 인건비·자재비·경비를 뺀 예상 수익입니다. 자재비는 부가세 별도로 가정해 10%를 더합니다.
           계약금액이 있으면 우선 적용하고, 없으면 최신 완료보고서의 관리자 승인금액을 적용합니다.
-          검수 대기·반려 보고서의 금액은 반영하지 않습니다. 입금·세금·본사 공통비는 별도입니다.
+          검수 대기·반려 보고서의 금액은 반영하지 않습니다. 매출과 자재 단가의 부가세 포함 여부에 따라 실제 수익은 다를 수 있으며, 입금·매출 부가세 정산·본사 공통비는 별도입니다.
         </p>
 
         <div
@@ -734,7 +739,7 @@ export default function ProfitTab() {
               {[
                 ["기준 매출", confirmedTotals.revenue],
                 ["인건비", confirmedTotals.labor],
-                ["자재비", confirmedTotals.material],
+                ["자재비 (부가세 포함 예상)", materialVat.total],
                 ["기타 경비", confirmedTotals.expense],
                 ["예상 수익", confirmedTotals.profit],
               ].map(([label, value]) => (
@@ -767,11 +772,11 @@ export default function ProfitTab() {
                 <dt>부가세 예상 (10%)</dt><dd style={{margin:0,textAlign:"right"}}>{won(materialVat.tax)}</dd>
                 <dt><strong>부가세 포함 예상 자재비</strong></dt><dd style={{margin:0,textAlign:"right"}}><strong>{won(materialVat.total)}</strong></dd>
               </dl>
-              <p style={{margin:"10px 0 0",fontSize:12,color:"#92400e",lineHeight:1.5}}>단가별 부가세 포함 여부와 대리점 반올림 차이는 확인되지 않았습니다. 이미 부가세가 포함된 금액이 있으면 예상액이 실제보다 클 수 있습니다. 수익은 기존 등록 금액 기준이며, 창고 재고 구매액은 포함되지 않습니다.</p>
+              <p style={{margin:"10px 0 0",fontSize:12,color:"#92400e",lineHeight:1.5}}>예상 수익은 등록 매출에서 부가세 포함 예상 자재비를 빼서 계산합니다. 자재 단가와 매출 금액의 부가세 포함 여부가 확인되지 않았으므로 실제 수익과 다를 수 있습니다. 창고 재고 구매액은 포함되지 않습니다.</p>
             </div>}
 
             <div style={{ ...card, marginTop: 14 }}>
-              <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
+              <h3 style={{ margin: "0 0 10px" }}>등록 금액 기준 비용 구성</h3>
 
               {confirmedTotals.labor +
                 confirmedTotals.material +
@@ -845,7 +850,7 @@ export default function ProfitTab() {
             <p style={{fontSize:13,color:"#92400e"}}>아래 현장은 매출·인건비·자재비·경비 모두 상단 합계와 비용분석에서 제외됩니다. 금액 확인이 끝나면 자동으로 포함됩니다.</p>
             {pendingSites.map(site => <div key={site.id} style={{borderTop:"1px solid #e2e8f0",padding:"14px 0"}}>
               <strong>{site.site_name || site.customer_name || "이름 없는 현장"}</strong>
-              <p style={{fontSize:13,lineHeight:1.7}}>현재 입력 금액: 매출 {won(site.revenue)} · 인건비 {won(site.labor)} · 자재비 {won(site.material)} · 경비 {won(site.expense)}<br/>예상 수익 {won(site.profit)} (미확정)</p>
+              <p style={{fontSize:13,lineHeight:1.7}}>현재 입력 금액: 매출 {won(site.revenue)} · 인건비 {won(site.labor)} · 자재비 {won(site.material)} · 경비 {won(site.expense)}<br/>자재비 부가세 반영 예상 수익 {won(profitAfterMaterialVat(site.profit, site.material) ?? site.profit)} (미확정)</p>
               <p style={{fontSize:13,color:"#92400e"}}>{profitState(site).reasons.join(" · ")}</p>
               <a href={`/admin?tab=sites&site=${encodeURIComponent(site.id)}&section=${site.missingContract ? "info" : site.materialPending || site.materialProvisional ? "material-prices" : site.laborPending ? "assignment" : "settlement"}`} style={{display:"inline-block",padding:"10px 14px",border:"1px solid #cbd5e1",borderRadius:10,color:"#285542",fontWeight:700,textDecoration:"none"}}>금액 확인하기 →</a>
             </div>)}
@@ -980,7 +985,7 @@ export default function ProfitTab() {
                 선택 결과 {filteredSites.length}현장 · 계약{" "}
                 {won(scopedTotals.revenue)}
                 <br />
-                수익 <strong>{won(scopedTotals.profit)}</strong>
+                자재비 부가세 반영 예상 수익 <strong>{won(scopedTotals.profit)}</strong>
                 {filteredSites.some(site=>profitState(site).pending) && <span style={{ color: "#92400e" }}> · 미확정 포함</span>}
               </p>
 
@@ -1052,16 +1057,16 @@ export default function ProfitTab() {
                     </div>
                     {revenueSourceLabel(site.revenueSource)} {site.missingContract ? "확인 필요" : won(site.revenue)}
                     {" · "}인건비 {won(site.labor)}
-                    {" · "}자재 {won(site.material)}
+                    {" · "}자재 (부가세 포함 예상) {won(materialVatEstimate(site.material)?.total ?? site.material)}
                     {" · "}경비 {won(site.expense)}
                   </div>
 
                   <strong
                     style={{
-                      color: site.profit < 0 ? "#b91c1c" : "#166534",
+                      color: (profitAfterMaterialVat(site.profit, site.material) ?? site.profit) < 0 ? "#b91c1c" : "#166534",
                     }}
                   >
-                    현재 등록 비용 기준 수익 {won(site.profit)}
+                    자재비 부가세 반영 예상 수익 {won(profitAfterMaterialVat(site.profit, site.material) ?? site.profit)}
                     {profitState(site).pending && <span style={{ color: "#92400e" }}> · 미확정 포함</span>}
                   </strong>
 
