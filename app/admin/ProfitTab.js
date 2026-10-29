@@ -2,6 +2,7 @@
 
 import { groupCostRows as group } from "../../lib/costBrandGroups.mjs";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
+import { materialVatEstimate } from "../../lib/materialVatEstimate.mjs";
 import { profitState } from "../../lib/settlementFlow.mjs";
 
 import useProfitExclusions from "./useProfitExclusions";
@@ -385,6 +386,7 @@ export default function ProfitTab() {
     for (const key of ["revenue", "labor", "material", "expense", "profit"]) sum[key] += Number(site[key] || 0);
     return sum;
   }, {revenue:0,labor:0,material:0,expense:0,profit:0});
+  const materialVat = materialVatEstimate(confirmedTotals.material);
   const confirmedIds = new Set(profitSites.map(site => site.id));
   const confirmedData = data && {...data, sites:profitSites, totals:confirmedTotals,
     breakdown:Object.fromEntries(Object.entries(data.breakdown || {}).map(([key,rows]) => [key,(rows || []).filter(row => confirmedIds.has(row.siteId))]))};
@@ -756,6 +758,17 @@ export default function ProfitTab() {
                 </div>
               ))}
             </div>
+
+            {materialVat && <div style={{...card, marginTop:14}}>
+              <h3 style={{margin:"0 0 10px"}}>자재비 부가세 확인</h3>
+              <p style={{margin:"0 0 10px",fontSize:13,color:"#64748b",lineHeight:1.5}}>등록된 자재비가 모두 부가세 별도일 때의 예상 금액입니다.</p>
+              <dl style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"8px 12px",margin:0,fontSize:14}}>
+                <dt>등록 자재비</dt><dd style={{margin:0,textAlign:"right"}}>{won(materialVat.base)}</dd>
+                <dt>부가세 예상 (10%)</dt><dd style={{margin:0,textAlign:"right"}}>{won(materialVat.tax)}</dd>
+                <dt><strong>부가세 포함 예상 자재비</strong></dt><dd style={{margin:0,textAlign:"right"}}><strong>{won(materialVat.total)}</strong></dd>
+              </dl>
+              <p style={{margin:"10px 0 0",fontSize:12,color:"#92400e",lineHeight:1.5}}>단가별 부가세 포함 여부와 대리점 반올림 차이는 확인되지 않았습니다. 이미 부가세가 포함된 금액이 있으면 예상액이 실제보다 클 수 있습니다. 수익은 기존 등록 금액 기준이며, 창고 재고 구매액은 포함되지 않습니다.</p>
+            </div>}
 
             <div style={{ ...card, marginTop: 14 }}>
               <h3 style={{ margin: "0 0 10px" }}>비용 구성</h3>
