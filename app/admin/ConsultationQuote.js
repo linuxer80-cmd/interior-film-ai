@@ -36,7 +36,7 @@ const columns = {
   note: "비고",
 };
 
-async function request(siteId, body, signal) {
+async function request(siteId, body, signal, standaloneId) {
   const { data, error } = await supabase.auth.getSession();
 
   if (error || !data.session) {
@@ -44,7 +44,7 @@ async function request(siteId, body, signal) {
   }
 
   const response = await fetch(
-    `/api/admin/consultation-quote?siteId=${encodeURIComponent(siteId)}`,
+    standaloneId ? `/api/admin/standalone-quotes?id=${encodeURIComponent(standaloneId)}&type=area` : `/api/admin/consultation-quote?siteId=${encodeURIComponent(siteId)}`,
     {
       method: body ? "POST" : "GET",
       signal,
@@ -69,6 +69,7 @@ async function request(siteId, body, signal) {
 function AreaConsultationQuote({
   siteId,
   onDirtyChange,
+  standaloneId,
 }) {
   const siteFilms = useSiteQuoteFilms(siteId);
   const [draft, setDraft] = useState(null);
@@ -104,7 +105,7 @@ function AreaConsultationQuote({
     setMessage("");
 
     try {
-      const result = await request(siteId, null, signal);
+      const result = await request(siteId, null, signal, standaloneId);
 
       if (!signal.aborted) {
         setDraft(result.document);
@@ -124,7 +125,7 @@ function AreaConsultationQuote({
     load(controller.current.signal);
 
     return () => controller.current.abort();
-  }, [siteId]);
+  }, [siteId, standaloneId]);
 
   function change(next) {
     setDraft(next);
@@ -146,7 +147,8 @@ function AreaConsultationQuote({
       const result = await request(
         siteId,
         { document, revision },
-        controller.current.signal
+        controller.current.signal,
+        standaloneId
       );
 
       if (!controller.current.signal.aborted) {
@@ -428,7 +430,7 @@ function AreaConsultationQuote({
   );
 }
 
-export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft, requestedType }) {
+export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDraft, requestedType, standaloneId }) {
   const [quoteType,setQuoteType]=useState(null);
   const [visited,setVisited]=useState({});
   const [dirtyTypes,setDirtyTypes]=useState({});
@@ -436,7 +438,7 @@ export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDr
     const params=new URLSearchParams(window.location.search);
     const type=params.get("site")===String(siteId) && ["area","cost"].includes(params.get("quoteType")) ? params.get("quoteType") : initialChatDraft ? "cost" : null;
     setQuoteType(type);setVisited(type?{[type]:true}:{});setDirtyTypes({});
-  },[siteId]);
+  },[siteId, standaloneId]);
   useEffect(()=>{if(requestedType && ["area","cost"].includes(requestedType.type)){setQuoteType(requestedType.type);setVisited(previous=>({...previous,[requestedType.type]:true}));}},[requestedType]);
   const areaStatus=useCallback(value=>setDirtyTypes(previous=>({...previous,area:value})),[]);
   const costStatus=useCallback(value=>setDirtyTypes(previous=>({...previous,cost:value})),[]);
@@ -446,7 +448,7 @@ export default function ConsultationQuote({ siteId, onDirtyChange, initialChatDr
     {quoteType===null ? <><h3>어떤 견적서를 작성할까요?</h3><div role="group" aria-label="견적서 작성 방식" style={{display:"grid",gap:10,marginTop:16}}>
       {[["area","부위별 견적서","문·싱크대 등 시공 부위별로 계산"],["cost","인건비·자재비 견적서","공수·필름 물량·경비로 계산"]].map(([type,title,description])=><button key={type} type="button" onClick={()=>selectType(type)} style={{padding:16,border:"1px solid #d9ddd5",borderRadius:14,background:"#fffefa",color:"#294e40",textAlign:"left",minHeight:76}}><strong style={{display:"block",fontSize:17}}>{title}</strong><span style={{display:"block",marginTop:5,fontSize:13}}>{description}{visited[type]?" · 작성 내용 이어보기":""}</span></button>)}
     </div><p style={{fontSize:13,color:"#69756d"}}>두 견적서 모두 시공 전·후 언제든 작성할 수 있으며 각각 저장됩니다.</p></> : <button type="button" onClick={()=>setQuoteType(null)} style={{minHeight:44,padding:"10px 14px",border:"1px solid #d9ddd5",borderRadius:12,background:"#fffefa",color:"#294e40"}}>← 견적서 선택</button>}
-    {visited.area && <div hidden={quoteType!=="area"}><AreaConsultationQuote key={siteId} siteId={siteId} onDirtyChange={areaStatus}/></div>}
-    {visited.cost && <div hidden={quoteType!=="cost"}><CompletionEstimate key={siteId} siteId={siteId} onDirtyChange={costStatus} initialChatDraft={initialChatDraft}/></div>}
+    {visited.area && <div hidden={quoteType!=="area"}><AreaConsultationQuote key={standaloneId || siteId} siteId={siteId} standaloneId={standaloneId} onDirtyChange={areaStatus}/></div>}
+    {visited.cost && <div hidden={quoteType!=="cost"}><CompletionEstimate key={standaloneId || siteId} siteId={siteId} standaloneId={standaloneId} onDirtyChange={costStatus} initialChatDraft={initialChatDraft}/></div>}
   </section>;
 }

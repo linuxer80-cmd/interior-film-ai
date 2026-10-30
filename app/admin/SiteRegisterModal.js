@@ -64,6 +64,7 @@ export default function SiteRegisterModal({
   onClose,
   createSite,
   loading = false,
+  initialQuote,
 }) {
   const [consultation, setConsultation] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -121,8 +122,8 @@ export default function SiteRegisterModal({
     setConfirmed(false);setConsultationText("");setNextAction("quote");setCandidates([]);setDuplicateChoice("");setAnalysisConflicts([]);registrationRequest.current=crypto.randomUUID();
     setInputMode("direct");
     setConsultation(null);
-    setForm({ ...emptyForm, work_dates: [] });
-    setCustomer({ ...emptyCustomer });
+    setForm({ ...emptyForm, work_dates: [], customer_name:initialQuote?.customer_name || "", customer_phone:initialQuote?.customer_phone || "", site_name:initialQuote?.site_name || "", address:initialQuote?.address || "", work_description:initialQuote?.work_description || "" });
+    setCustomer({ ...emptyCustomer, name:initialQuote?.customer_name || "", phone:initialQuote?.customer_phone || "" });
     setMaterials([]);
     setPhotos([]);
     setMessage("");

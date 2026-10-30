@@ -30,7 +30,7 @@ const button = {
   cursor: "pointer",
 };
 
-async function request(siteId, body, signal) {
+async function request(siteId, body, signal, standaloneId) {
   const timeout = new AbortController();
   const abort = () => timeout.abort();
 
@@ -49,7 +49,7 @@ async function request(siteId, body, signal) {
     }
 
     const response = await fetch(
-      `/api/admin/completion-estimate?siteId=${encodeURIComponent(siteId)}`,
+      standaloneId ? `/api/admin/standalone-quotes?id=${encodeURIComponent(standaloneId)}&type=cost` : `/api/admin/completion-estimate?siteId=${encodeURIComponent(siteId)}`,
       {
         method: body ? "POST" : "GET",
         signal: timeout.signal,
@@ -90,6 +90,7 @@ async function request(siteId, body, signal) {
 
 export default function CompletionEstimate({
   siteId,
+  standaloneId,
   initialChatDraft,
   onDirtyChange,
 }) {
@@ -123,7 +124,7 @@ export default function CompletionEstimate({
     setBusy(true);
 
     try {
-      const result = await request(siteId, null, signal);
+      const result = await request(siteId, null, signal, standaloneId);
       if (signal.aborted) return;
 
       const applyChat = initialChatDraft && !result.saved && !chatApplied.current;
@@ -152,7 +153,7 @@ export default function CompletionEstimate({
     load(next.signal);
 
     return () => next.abort();
-  }, [siteId]);
+  }, [siteId, standaloneId]);
 
   useEffect(() => {
     const warn = (event) => {
@@ -186,7 +187,7 @@ export default function CompletionEstimate({
     if(defaultsSaving || busy) return;
     setDefaultsSaving(true); setError(""); setMessage("");
     try {
-      const result = await request(siteId, {action:"saveDefaults",note:defaults.note,bank_account:defaults.bank_account}, controller.current.signal);
+      const result = await request(siteId, {action:"saveDefaults",note:defaults.note,bank_account:defaults.bank_account}, controller.current.signal, standaloneId);
       if(controller.current.signal.aborted) return;
       setDefaults(result.defaults);
       change({...draft, header:{...draft.header,bank_account:result.defaults.bank_account},
@@ -267,6 +268,7 @@ export default function CompletionEstimate({
           version: draft.version,
         },
         controller.current.signal,
+        standaloneId,
       );
 
       if (controller.current.signal.aborted) return;
