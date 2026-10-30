@@ -67,7 +67,7 @@ const button = {
 const won = (value) =>
   Number(value || 0).toLocaleString("ko-KR") + "원";
 
-async function api(siteId, method = "GET", body) {
+async function api(siteId, method = "GET", body, workerView = false) {
   const { data, error } = await supabase.auth.getSession();
 
   if (error || !data?.session?.access_token) {
@@ -75,7 +75,7 @@ async function api(siteId, method = "GET", body) {
   }
 
   const response = await fetch(
-    `/api/site-expenses?siteId=${encodeURIComponent(siteId)}`,
+    `/api/site-expenses?siteId=${encodeURIComponent(siteId)}${workerView ? "&view=worker" : ""}`,
     {
       method,
       cache: "no-store",
@@ -84,7 +84,7 @@ async function api(siteId, method = "GET", body) {
         "Content-Type": "application/json",
       },
       ...(body
-        ? { body: JSON.stringify({ ...body, siteId }) }
+        ? { body: JSON.stringify({ ...body, siteId, ...(workerView ? { view: "worker" } : {}) }) }
         : {}),
     }
   );
@@ -100,7 +100,7 @@ async function api(siteId, method = "GET", body) {
   return result;
 }
 
-export default function SiteExpenses({ siteId, onSaved }) {
+export default function SiteExpenses({ siteId, onSaved, workerView = false }) {
   const [form, setForm] = useState(initial);
   const [items, setItems] = useState([]);
   const [workers, setWorkers] = useState([]);
@@ -122,7 +122,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
     setError("");
 
     try {
-      const result = await api(siteId);
+      const result = await api(siteId, "GET", undefined, workerView);
 
       if (current !== version.current) return;
 
@@ -140,7 +140,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
         setLoading(false);
       }
     }
-  }, [siteId]);
+  }, [siteId, workerView]);
 
   useEffect(() => {
     setItems([]);
@@ -187,7 +187,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
       const result = await api(siteId, "POST", {
         ...form,
         id: requestId.current,
-      });
+      }, workerView);
 
       if (current !== version.current) return;
 
@@ -237,7 +237,7 @@ export default function SiteExpenses({ siteId, onSaved }) {
     const current = version.current;
 
     try {
-      await api(siteId, "DELETE", { id: row.id });
+      await api(siteId, "DELETE", { id: row.id }, workerView);
 
       if (current !== version.current) return;
 

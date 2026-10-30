@@ -215,7 +215,7 @@ export default function WorkerMonthlyPay({
             <div><dt>입금 예정액</dt><dd>{won(data.totals.remainingAmount)}</dd></div>
           </dl>
           <details><summary>경비 내역 · {won(data.totals.expenseAmount)}</summary>
-            {data.companies.map(company => <div key={company.companyId}><b>{company.companyName}</b>{(company.expenseEntries || []).map(row => <p key={row.id}>{row.expense_date} · {(row.description || "경비").replace(/^수익관리\/경비: /, "")} · {won(row.amount)}</p>)}</div>)}
+            {data.companies.map(company => <div key={company.companyId}><b>{company.companyName}</b>{(company.expenseEntries || []).map(row => <p key={row.id}>{row.expense_date} · {(row.description || "경비").replace(/^(?:수익관리\/경비: |완료보고\/)/, "")} · {won(row.amount)}</p>)}</div>)}
           </details>
 
           {data.totals.pendingDays > 0 && (

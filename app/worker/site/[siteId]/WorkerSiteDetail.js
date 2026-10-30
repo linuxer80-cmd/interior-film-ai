@@ -582,7 +582,7 @@ export default function WorkerSiteDetail({ siteId: embeddedSiteId = null, embedd
             aria-label="현장 경비"
             hidden={tab !== "expenses"}
           >
-            <SiteExpenses key={siteId} siteId={siteId} />
+            <SiteExpenses key={siteId} siteId={siteId} workerView />
           </section>
         )}
 

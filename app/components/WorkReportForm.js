@@ -169,7 +169,7 @@ export default function WorkReportForm({
     const timer = setTimeout(() => controller.abort(), 20000);
     const [support, expenses] = await Promise.allSettled([
       reportRequest(`/api/report-support?siteId=${encodeURIComponent(siteId)}`, undefined, { signal: controller.signal }),
-      reportRequest(`/api/site-expenses?siteId=${encodeURIComponent(siteId)}`, undefined, { signal: controller.signal }),
+      reportRequest(`/api/site-expenses?siteId=${encodeURIComponent(siteId)}${owner ? "" : "&view=worker"}`, undefined, { signal: controller.signal }),
     ]);
     clearTimeout(timer);
     if (support.status === "rejected") throw support.reason;
@@ -187,7 +187,7 @@ export default function WorkReportForm({
       setContext(data);
     }
     return data;
-  }, [siteId]);
+  }, [siteId, owner]);
 
   // Recheck server prices when returning from materials or opening final review.
   // Only context is refreshed: photos, expenses and the local report draft are preserved.
@@ -949,7 +949,7 @@ export default function WorkReportForm({
 
         <section style={box} hidden={step !== 1} data-section="expenses">
           <h3>완료보고 경비</h3>
-          <p>등록하지 않은 경비만 추가하세요.</p>
+          <p>등록하지 않은 경비만 추가하세요.{!owner && " 여기에 입력한 경비는 본인이 지출한 것으로 사용월 정산에 반영됩니다."}</p>
           {overview.existingExpenses && <p>경비 메뉴에 등록된 내역 {overview.existingExpenses.length}건 · {won(overview.existingExpenseTotal)} (자동 반영)</p>}
           {expenseLookupError && <p role="alert">{expenseLookupError}</p>}
 
