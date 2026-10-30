@@ -24,6 +24,7 @@ const menus = [
   },
   { href: "/business-card?from=admin", label: "디지털 명함", description: "로고·정보 입력 · 디자인 선택 · 이미지 저장", icon: "businessCard" },
   { href: "/admin/customer-chat", label: "고객 채팅", description: "고객 문의 확인 · 답장하기", icon: "customerChat" },
+  { href: "/admin/quotes", label: "견적서 작성", description: "현장 등록 없이 견적 작성 · 보관", icon: "standaloneQuote" },
   { href: "/samples?from=admin", label: "필름 샘플 보기", description: "브랜드·색상별 필름 샘플 확인", icon: "customer" },
   {
     href: "/jobs",
