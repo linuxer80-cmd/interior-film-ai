@@ -1,5 +1,6 @@
 import {marketingDb,marketingJson,marketingError,connectionRow,syncDaangn} from '../../../../lib/onlineSalesServer';
 import {syncNaver} from '../../../../lib/naverSalesServer';
+import {syncPlace} from '../../../../lib/naverPlaceServer';
 import {MARKETING_COMPANY_ID} from '../../../../lib/onlineSales.mjs';
 export const runtime='nodejs';
 export const maxDuration=120;
@@ -11,9 +12,10 @@ export async function GET(request) {
     if(error)throw error;
     if(!company?.is_active)return marketingJson({skipped:true});
     const results={};
-    for(const [platform,sync] of [['daangn',syncDaangn],['naver',syncNaver]]){
+    for(const [platform,sync] of [['daangn',syncDaangn],['naver',syncNaver],['naver_place',syncPlace]]){
       try{
-        if(!(await connectionRow(db,platform)).api_key_ciphertext){results[platform]='skipped';continue;}
+        const row=await connectionRow(db,platform);
+        if(!row.api_key_ciphertext||(platform==='naver_place'&&row.snapshot?.autoSync!==true)){results[platform]='skipped';continue;}
         await sync(db);results[platform]='ok';
       }catch{results[platform]='failed';}
     }
