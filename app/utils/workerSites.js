@@ -7,7 +7,7 @@ const uuid =
 export function workerDestination(value) {
   if (value === "/worker" || value === "/worker/notebook") return value;
   if (new RegExp(`^/worker/notebook\\?book=${uuid}$`, "i").test(value || "")) return value;
-  if (new RegExp(`^/worker/connect/${uuid}$`,"i").test(value || "")) return value;
+  if (new RegExp(`^/worker/(?:connect|direct-invite|invite)/${uuid}$`, "i").test(value || "")) return value;
 
   if (
     /^\/worker\/menu\/(sites|film|report|pay|photos)$/.test(
@@ -110,6 +110,7 @@ export async function loadMyWorkerSites({
     );
 
     const me = await meResponse.json();
+    if (!meResponse.ok) throw Object.assign(new Error(me.error || "계정 정보를 확인하지 못했습니다."), { status: meResponse.status });
 
     if (
       meResponse.ok &&

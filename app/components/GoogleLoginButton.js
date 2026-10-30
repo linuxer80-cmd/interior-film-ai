@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-export default function GoogleLoginButton({ role = "owner", disabled = false }) {
+export default function GoogleLoginButton({ role = "owner", disabled = false, next = null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const locked = useRef(false);
@@ -13,7 +13,8 @@ export default function GoogleLoginButton({ role = "owner", disabled = false }) 
     setError("");
     try {
       const callback = new URL("/auth/google", window.location.origin);
-      callback.searchParams.set("role", ["worker", "dealer"].includes(role) ? role : "owner");
+      callback.searchParams.set("role", ["worker", "dealer", "auto"].includes(role) ? role : "owner");
+      if (role === "auto" && next) callback.searchParams.set("next", next);
       const { data, error: failure } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: callback.toString(), queryParams: { prompt: "select_account" } },

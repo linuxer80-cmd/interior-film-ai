@@ -27,7 +27,7 @@ export default function GoogleCallback() {
     async function complete() {
       const query = new URLSearchParams(window.location.search);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
-      const role = ["worker", "dealer"].includes(query.get("role")) ? query.get("role") : "owner";
+      const role = ["worker", "dealer", "auto"].includes(query.get("role")) ? query.get("role") : "owner";
       if (active) setRoleContext(role);
       const linking = query.get("mode") === "link";
       if (query.has("error") || fragment.has("error")) {
@@ -59,6 +59,15 @@ export default function GoogleCallback() {
         window.history.replaceState(null, "", "/auth/google?mode=link&role=" + role);
         sessionStorage.removeItem("film-google-link");
         if (active) setLinked(true);
+        return;
+      }
+      if (role === "auto") {
+        // The unified login page validates the destination and account capabilities.
+        const login = new URL("/login", window.location.origin);
+        const next = query.get("next");
+        if (next) login.searchParams.set("next", next);
+        window.history.replaceState(null, "", "/auth/google?role=auto");
+        if (active) window.location.replace(login.pathname + login.search);
         return;
       }
       window.history.replaceState(null, "", "/auth/google?role=" + role);

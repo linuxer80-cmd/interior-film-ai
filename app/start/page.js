@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import UnifiedLogin from "../login/UnifiedLogin";
 
 export default function StartPage() {
   const installPrompt = useRef(null);
@@ -129,19 +129,7 @@ export default function StartPage() {
           오늘도 좋은 공간을 만듭니다
         </p>
         <h1>필름장이</h1>
-        <p className="intro">어떤 역할로 이용하시나요?</p>
-
-        <div className="cards">
-          <Link className="card admin" href="/login?role=owner">
-            <strong>관리자로 시작하기 →</strong>
-            <span>현장 · 견적 · 일정 · 자재 · 정산 관리</span>
-          </Link>
-          <Link className="card worker" href="/login?role=worker">
-            <strong>시공자로 시작하기 →</strong>
-            <span>내 현장 · 시공 일정 · 완료보고 · 근무금액</span>
-          </Link>
-          <p>이메일 또는 카카오로 로그인할 수 있습니다.</p>
-        </div>
+        <UnifiedLogin />
 
         {showInstall && (
           <section className="install">
