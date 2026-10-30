@@ -244,7 +244,7 @@ export async function GET(request) {
     const reimbursements = await workerReimbursements(auth.db, auth.companyId, month, null, cutoff);
     const expenseRows = reimbursements.map(row => ({
       workerId: row.reimbursement_worker_id, siteId: row.site_id,
-      siteName: `경비 · ${row.expense_date} · ${(row.description || "").replace(/^수익관리\/경비: /, "")}`,
+      siteName: `경비 · ${row.expense_date} · ${(row.description || "").replace(/^(?:수익관리\/경비: |완료보고\/)/, "")}`,
       amount: Number(row.amount), days: 0, expenseId: row.id, isReimbursement: true,
     }));
     return json({

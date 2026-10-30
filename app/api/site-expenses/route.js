@@ -58,7 +58,7 @@ async function read(query) {
   return data;
 }
 
-async function authorize(db, token, siteId) {
+async function authorize(db, token, siteId, workerView = false) {
   const { data, error } = await db.auth.getUser(token);
 
   if (error || !data?.user) {
@@ -105,7 +105,8 @@ async function authorize(db, token, siteId) {
 
   const isAdmin =
     profile?.role === "owner" &&
-    profile.company_id === site.company_id;
+    profile.company_id === site.company_id &&
+    !workerView;
 
   if (!isAdmin) {
     const workers = await read(
@@ -213,7 +214,8 @@ async function handle(request) {
     const { user, site, isAdmin } = await authorize(
       db,
       token,
-      body.siteId
+      body.siteId,
+      body.view === "worker"
     );
 
     const scoped = () => {
