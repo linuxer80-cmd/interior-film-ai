@@ -16,3 +16,26 @@ test('profit deducts only estimated VAT in addition to already deducted material
   assert.equal(profitAfterMaterialVat(100000, 0), 100000);
   assert.equal(profitAfterMaterialVat(null, 1000), null);
 });
+
+test('VAT is allocated by site so brand and dealer groups add to the same rounded total', async () => {
+  const {allocateMaterialVatRows} = await import('../lib/materialVatEstimate.mjs');
+  const rows = [
+    {siteId:'one', brand:'A', amount:5}, {siteId:'one', brand:'B', amount:5},
+    {siteId:'two', brand:'A', amount:5}, {siteId:'two', brand:'B', amount:5},
+    {siteId:'three', brand:'A', amount:0},
+  ];
+  const allocated = allocateMaterialVatRows(rows);
+  assert.equal(allocated.reduce((sum,row)=>sum+row.vatEstimate,0),2);
+  assert.equal(allocated.filter(row=>row.siteId==='one').reduce((sum,row)=>sum+row.vatEstimate,0),1);
+  assert.ok(allocated.every(row=>row.vatEstimate>=0));
+  assert.equal(rows[0].vatEstimate,undefined);
+  assert.deepEqual(allocateMaterialVatRows([]),[]);
+});
+
+test('small split amounts keep VAT non-negative and do not duplicate it', async () => {
+  const {allocateMaterialVatRows} = await import('../lib/materialVatEstimate.mjs');
+  const rows = Array.from({length:13}, (_, i)=>({siteId:'a', amount:i<5?1:0}));
+  const allocated=allocateMaterialVatRows(rows);
+  assert.equal(allocated.reduce((sum,row)=>sum+row.vatEstimate,0),1);
+  assert.ok(allocated.every(row=>Number.isInteger(row.vatEstimate) && row.vatEstimate>=0));
+});
