@@ -2,7 +2,7 @@
 
 import { groupCostRows as group } from "../../lib/costBrandGroups.mjs";
 import { revenueSourceLabel } from "../../lib/siteRevenue.mjs";
-import { materialVatEstimate, profitAfterMaterialVat } from "../../lib/materialVatEstimate.mjs";
+import { materialVatEstimate, profitAfterMaterialVat, allocateMaterialVatRows } from "../../lib/materialVatEstimate.mjs";
 import { profitState } from "../../lib/settlementFlow.mjs";
 
 import useProfitExclusions from "./useProfitExclusions";
@@ -46,11 +46,12 @@ const MENUS = [
   { id: "payments", label: "인건비 지급", kind: "money" },
 ];
 
-function Breakdown({ data, type, title, itemKey }) {
+function Breakdown({ data, type, title, itemKey, vatSummary }) {
   const [open, setOpen] = useState("");
   const [productOpen, setProductOpen] = useState("");
 
-  const list = group(data.breakdown?.[type], itemKey);
+  const rows = type === "material" ? allocateMaterialVatRows(data.breakdown?.[type]) : data.breakdown?.[type];
+  const list = group(rows, itemKey);
   const total = Number(data.totals[type] || 0);
 
   return (
@@ -67,6 +68,12 @@ function Breakdown({ data, type, title, itemKey }) {
       <strong style={{ color: colors[type], fontSize: 20 }}>
         {won(total)}
       </strong>
+
+      {type === "material" && vatSummary && <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: "#475569" }}>
+        <div>예상 부가세 {won(vatSummary.tax)}</div>
+        <div><strong>부가세 포함 예상 {won(vatSummary.total)}</strong></div>
+        <div style={{ color: "#64748b", fontSize: 12 }}>위 자재비가 모두 부가세 별도일 때의 예상 금액입니다.</div>
+      </div>}
 
       {!list.length && (
         <p style={{ color: "#64748b", fontSize: 13 }}>
@@ -106,6 +113,11 @@ function Breakdown({ data, type, title, itemKey }) {
                 {won(entry.amount)} {open === entry.label ? "⌃" : "⌄"}
               </strong>
             </button>
+
+            {type === "material" && <p style={{ margin: "0 0 8px", color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
+              예상 부가세 {won(entry.rows.reduce((sum, row) => sum + row.vatEstimate, 0))}
+              {" · "}포함 예상 {won(entry.amount + entry.rows.reduce((sum, row) => sum + row.vatEstimate, 0))}
+            </p>}
 
             <div
               role="img"
@@ -872,6 +884,7 @@ export default function ProfitTab() {
                 type="material"
                 title="브랜드별 자재비"
                 itemKey="brand"
+                vatSummary={materialVat}
               />
             </div>
 
@@ -881,6 +894,7 @@ export default function ProfitTab() {
                 type="material"
                 title="대리점별 자재비"
                 itemKey="dealer"
+                vatSummary={materialVat}
               />
               <p style={{fontSize:12,color:"#64748b",lineHeight:1.6}}>조회 기간에 해당하는 현장의 사용 자재비입니다. 롤 입고처 기준이며, 여러 입고처를 함께 사용한 자재는 소모량 비율로 배분합니다. 연결 기록이 없는 비용은 대리점 미확인으로 표시합니다.</p>
             </div>
