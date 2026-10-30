@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis} from '../lib/estimateAnalysisCache.mjs';
+import {TARGETS, SPACES, DAMAGES} from '../lib/photoHierarchy.mjs';
 
 function harness({ limited = false } = {}) {
   const logs = [], calls = [];
@@ -16,6 +18,7 @@ function harness({ limited = false } = {}) {
   const code = fs.readFileSync(new URL('../app/api/estimate-analyze/route.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '');
   const context = {
+    estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis, TARGETS, SPACES, DAMAGES,
     console: { error() {}, warn() {} }, process: { env: { OPENAI_API_KEY: 'test' } },
     NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) },
     getUsageAdminSupabase: () => client, ESTIMATE_ANALYSIS_MODEL: 'test-model',
@@ -52,4 +55,35 @@ test('missing company, over-quota, invalid type/count/size cannot reach the mode
   const limited = harness({ limited: true });
   assert.equal((await limited.post()).status, 429);
   assert.equal(limited.calls.filter(([name]) => name === 'vision').length, 0);
+});
+
+function persistentHarness() {
+  const events = [], calls=[];
+  let limited = false, cacheError = false;
+  const analysisTarget={id:'22222222-2222-4222-8222-222222222222',part:'문',kind:'세대 현관문',object_key:'same',object_confidence:'high'};
+  const client={from(table){
+    let filtered=table==='companies'?[{id:'mine-id',slug:'mine',is_active:true},{id:'other-id',slug:'other',is_active:true}]:events.slice(), inserted=null;
+    const q={select(){return q},eq(k,v){filtered=filtered.filter(row=>(k==='metadata->>analysis_cache_key'?row.metadata?.analysis_cache_key:row[k])===v);return q},gte(k,v){filtered=filtered.filter(row=>row[k]>=v);return q},order(){return q},limit(n){filtered=filtered.slice(0,n);return q},insert(row){inserted={...row,id:`00000000-0000-4000-8000-${String(events.length+1).padStart(12,'0')}`,created_at:new Date().toISOString()};events.push(inserted);return q},maybeSingle:async()=>cacheError&&table==='usage_events'?{data:null,error:{code:'offline'}}:{data:filtered[0]||null,error:null},single:async()=>({data:inserted,error:null})};return q;
+  }};
+  const code=fs.readFileSync(new URL('../app/api/estimate-analyze/route.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replaceAll('export ','');
+  const context={estimateAnalysisCacheKey,findEstimateAnalysisCache,coalesceEstimateAnalysis,TARGETS,SPACES,DAMAGES,
+    console:{error(){},warn(){}},process:{env:{OPENAI_API_KEY:'key',SUPABASE_SERVICE_ROLE_KEY:'secret'}},
+    NextResponse:{json:(body,options)=>({body,status:options?.status||200})},getUsageAdminSupabase:()=>client,ESTIMATE_ANALYSIS_MODEL:'test',
+    checkUsageLimit:async()=>{calls.push('limit');return {ok:!limited,status:429}},makeUsageLimitError:()=>({error:'limit'}),
+    analyzeEstimatePhotos:async(files)=>{calls.push('vision');return {usage:{},photos:files.map((_,index)=>({index,analysis:{hierarchy_version:1,hierarchy_targets:[analysisTarget],category:analysisTarget.part,sub_category:analysisTarget.kind}}))}}};
+  vm.createContext(context);vm.runInContext(`${code}\nglobalThis.post=POST;`,context);
+  return {events,calls,setLimited(v){limited=v},setCacheError(v){cacheError=v},async post({slug='mine',session='11111111-1111-4111-8111-111111111111',photo='same bytes',choice='door'}={}){
+    const form=new FormData();form.append('company_slug',slug);form.append('session_id',session);form.append('target_choices',JSON.stringify([choice]));form.append('images',new File([photo],'a.jpg',{type:'image/jpeg'}));return context.post(new Request('https://example.test',{method:'POST',body:form}));
+  }};
+}
+test('same browser session and exact inputs reuse recorded analysis without another model call',async()=>{
+ const h=persistentHarness(),first=await h.post();assert.equal(first.status,200);h.setLimited(true);
+ const second=await h.post();assert.equal(second.status,200);assert.equal(second.body.reused,true);assert.equal(second.body.analysis_id,first.body.analysis_id);
+ assert.equal(h.calls.filter(x=>x==='vision').length,1);assert.equal(h.calls.filter(x=>x==='limit').length,1);assert.equal(h.events.length,1);
+ assert.equal((await h.post({choice:'wall'})).status,429);assert.equal((await h.post({photo:'different'})).status,429);
+ assert.equal((await h.post({session:'33333333-3333-4333-8333-333333333333'})).status,429);assert.equal((await h.post({slug:'other'})).status,429);
+});
+test('cache failure does not bypass AI quota and never returns another user result',async()=>{
+ const h=persistentHarness();await h.post();h.setLimited(true);h.setCacheError(true);
+ const response=await h.post();assert.equal(response.status,429);assert.equal(h.calls.filter(x=>x==='vision').length,1);
 });
