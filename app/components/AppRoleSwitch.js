@@ -41,6 +41,15 @@ export default function AppRoleSwitch() {
     return () => { active = false; subscription.subscription.unsubscribe(); };
   }, [isAdminHome]);
 
+  useEffect(() => {
+    if (!isAdminHome && !isWorkerHome) return;
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.id) {
+        try { localStorage.setItem(`film-last-home:${data.user.id}`, isAdminHome ? "owner" : "worker"); } catch {}
+      }
+    });
+  }, [isAdminHome, isWorkerHome]);
+
   if (!isAdminHome && !isWorkerHome) return null;
 
   async function switchRole() {

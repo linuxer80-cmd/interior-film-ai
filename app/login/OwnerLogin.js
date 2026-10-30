@@ -7,14 +7,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
-export default function OwnerLogin() {
+export default function OwnerLogin({ recovery = false }) {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [needsCompany, setNeedsCompany] = useState(false);
-  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotMode, setForgotMode] = useState(recovery);
   const [resetCompanyName, setResetCompanyName] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -458,6 +458,7 @@ export default function OwnerLogin() {
   ========================================================= */
 
   function closeForgotPassword() {
+    if (recovery) { router.push("/login"); return; }
     setForgotMode(
       false
     );

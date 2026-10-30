@@ -27,7 +27,7 @@ export default function KakaoCallback() {
     async function complete() {
       const query = new URLSearchParams(window.location.search);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
-      const role = ["worker", "dealer"].includes(query.get("role")) ? query.get("role") : "owner";
+      const role = ["worker", "dealer", "auto"].includes(query.get("role")) ? query.get("role") : "owner";
       if (active) setRoleContext(role);
       const linking = query.get("mode") === "link";
       if (query.has("error") || fragment.has("error")) {
@@ -43,6 +43,7 @@ export default function KakaoCallback() {
       if (sessionError || !data?.session) throw Error("로그인 정보를 확인하지 못했습니다. 다시 로그인해주세요.");
       const { data: verified, error: userError } = await supabase.auth.getUser();
       if (userError || !verified?.user) throw Error("로그인 인증을 확인하지 못했습니다.");
+      if (!linking && role === "auto" && !verified.user.identities?.some(identity => identity.provider === "kakao")) throw Error("카카오 인증이 완료되지 않았습니다. 다시 시도해주세요.");
       if (linking) {
         let pending;
         try { pending = JSON.parse(sessionStorage.getItem("film-kakao-link") || "null"); } catch {}
@@ -56,6 +57,15 @@ export default function KakaoCallback() {
         window.history.replaceState(null, "", "/auth/kakao?mode=link&role=" + role);
         sessionStorage.removeItem("film-kakao-link");
         if (active) setLinked(true);
+        return;
+      }
+      if (role === "auto") {
+        // The unified login page validates the destination and account capabilities.
+        const login = new URL("/login", window.location.origin);
+        const next = query.get("next");
+        if (next) login.searchParams.set("next", next);
+        window.history.replaceState(null, "", "/auth/kakao?role=auto");
+        if (active) window.location.replace(login.pathname + login.search);
         return;
       }
       window.history.replaceState(null, "", "/auth/kakao?role=" + role);
