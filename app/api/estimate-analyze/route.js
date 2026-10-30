@@ -1,4 +1,6 @@
 import {resolvePortal} from '../../../lib/customerPortal.mjs';
+import { estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis } from "../../../lib/estimateAnalysisCache.mjs";
+import { TARGETS, SPACES, DAMAGES } from "../../../lib/photoHierarchy.mjs";
 import { NextResponse } from "next/server";
 import { getUsageAdminSupabase, checkUsageLimit, makeUsageLimitError } from "../../utils/serverUsageLimit";
 import { ESTIMATE_ANALYSIS_MODEL } from "../../../lib/estimatePhotoAnalysis";
@@ -27,24 +29,46 @@ export async function POST(request) {
     const { data: company, error } = await supabase.from("companies")
       .select("id, slug, company_name, subscription_plan, is_active").eq("slug", slug).eq("is_active", true).maybeSingle();
     if (error || !company) return NextResponse.json({ error: "업체 정보를 확인할 수 없습니다." }, { status: 404 });
-    const limit = await checkUsageLimit({ company, eventType: "ai_photo_analysis", requestedQuantity: files.length, supabase });
-    if (!limit.ok) return NextResponse.json(makeUsageLimitError(limit), { status: limit.status || 429 });
-    const result = await analyzeEstimatePhotos(files, process.env.OPENAI_API_KEY, undefined, targetChoices);
-    const { data: usage, error: usageError } = await supabase.from("usage_events").insert({
-      company_id: company.id, event_type: "ai_photo_analysis", quantity: files.length, cost_krw: 0,
-      provider: "openai", model: ESTIMATE_ANALYSIS_MODEL, reference_id: null,
-      metadata: { company_slug: company.slug, photo_type: "estimate_batch", analyzed_photo_count: files.length,
-        hierarchy_photos: result.photos.map(({index,analysis})=>({index,targets:analysis.hierarchy_targets||[]})),
-        openai_usage: result.usage, photos: result.photos.map(({ index, analysis }) => ({ index,
-          target_type: analysis.target_type, door_count: analysis.door_count, object_key: analysis.object_key,
-          object_confidence: analysis.object_confidence, object_evidence: analysis.object_evidence,
-          construction_scope: analysis.construction_scope, view_completeness: analysis.view_completeness,
-          classification_confidence: analysis.classification_confidence, classification_evidence: analysis.classification_evidence,
-          requires_confirmation: analysis.requires_confirmation, confirmation_reason: analysis.confirmation_reason,
-        })) },
-    }).select("id").single();
-    if (usageError) { console.error("Estimate analysis usage record failed:", usageError.code); return NextResponse.json({error:"분석 결과를 저장하지 못했습니다. 다시 시도해주세요."},{status:503}); }
-    return NextResponse.json({ success: true, analysis_id: usage?.id || null, photos: result.photos });
+    // An anonymous browser session only reuses an exact batch for the same company.
+    // Similar-case prices are searched again, so newer prices are not cached here.
+    const sessionId = String(form.get("session_id") || "");
+    const cacheKey = await estimateAnalysisCacheKey({
+      companyId: company.id, sessionId, files, targetChoices,
+      model: process.env.PHOTO_CLASSIFICATION_MODEL || "gpt-5.6-luna",
+      classifierSource: analyzeEstimatePhotos.toString(), taxonomy: [TARGETS, SPACES, DAMAGES],
+      secret: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    });
+    if (cacheKey) {
+      try {
+        const cached = await findEstimateAnalysisCache({ supabase, companyId: company.id, key: cacheKey, count: files.length });
+        if (cached) return NextResponse.json(cached);
+      } catch (cacheError) {
+        // An unavailable cache must not bypass quota checks or break normal analysis.
+        console.warn("Estimate analysis cache lookup failed:", cacheError?.code || "unavailable");
+      }
+    }
+    const {value, shared} = await coalesceEstimateAnalysis(cacheKey, async () => {
+      const limit = await checkUsageLimit({ company, eventType: "ai_photo_analysis", requestedQuantity: files.length, supabase });
+      if (!limit.ok) return { body: makeUsageLimitError(limit), status: limit.status || 429 };
+      const result = await analyzeEstimatePhotos(files, process.env.OPENAI_API_KEY, undefined, targetChoices);
+      const { data: usage, error: usageError } = await supabase.from("usage_events").insert({
+        company_id: company.id, event_type: "ai_photo_analysis", quantity: files.length, cost_krw: 0,
+        provider: "openai", model: ESTIMATE_ANALYSIS_MODEL, reference_id: null,
+        metadata: { company_slug: company.slug, photo_type: "estimate_batch", analyzed_photo_count: files.length,
+          ...(cacheKey ? { analysis_cache_key: cacheKey } : {}),
+          hierarchy_photos: result.photos.map(({index,analysis})=>({index,targets:analysis.hierarchy_targets||[]})),
+          openai_usage: result.usage, photos: result.photos.map(({ index, analysis }) => ({ index,
+            target_type: analysis.target_type, door_count: analysis.door_count, object_key: analysis.object_key,
+            object_confidence: analysis.object_confidence, object_evidence: analysis.object_evidence,
+            construction_scope: analysis.construction_scope, view_completeness: analysis.view_completeness,
+            classification_confidence: analysis.classification_confidence, classification_evidence: analysis.classification_evidence,
+            requires_confirmation: analysis.requires_confirmation, confirmation_reason: analysis.confirmation_reason,
+          })) },
+      }).select("id").single();
+      if (usageError) { console.error("Estimate analysis usage record failed:", usageError.code); return {body:{error:"분석 결과를 저장하지 못했습니다. 다시 시도해주세요."},status:503}; }
+      return {body:{ success: true, analysis_id: usage?.id || null, photos: result.photos },status:200};
+    });
+    return NextResponse.json(shared && value.body.success ? {...value.body, reused: true} : value.body, {status:value.status});
   } catch (error) {
     console.warn("Estimate photo analysis failed:", {
       code: error.analysisCode || "internal",

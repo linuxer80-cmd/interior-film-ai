@@ -576,6 +576,7 @@ export default function useEstimate({
   async function analyzePhotos() {
     const form = new FormData();
     form.append("company_slug", normalizedCompanySlug);
+    try { form.append("session_id", getSessionId()); } catch { /* Analysis still works without browser storage. */ }
     images.forEach((photo) => form.append("images", photo.file));
     form.append("target_choices", JSON.stringify(images.map(p=>p.targetChoice||"")));
     const response = await fetch("/api/estimate-analyze", { method: "POST", body: form });
