@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { koreanDay, monthDays, shiftMonth } from "../utils/workerCalendar";
+import { koreanDay, monthDays, shiftMonth, shiftWeek, selectedWeek } from "../utils/workerCalendar";
 import { supabase } from "../../lib/supabase";
 import {loadMyWorkerSites} from "../utils/workerSites";
 import {combineAdminPersonalSites,isPersonalWorkDay,personalCalendarLabel} from "../../lib/adminPersonalSites.mjs";
@@ -464,16 +464,8 @@ function SiteCalendar({
   const [month, setMonth] = useState(() => today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(() => today);
   const [view, setView] = useState("calendar");
-  const [monthOpen, setMonthOpen] = useState(false);
-  const weekDays = useMemo(() => {
-    const start = new Date(`${selectedDay}T00:00:00Z`);
-    start.setUTCDate(start.getUTCDate() - start.getUTCDay());
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(start);
-      date.setUTCDate(start.getUTCDate() + i);
-      return date.toISOString().slice(0, 10);
-    });
-  }, [selectedDay]);
+  const [monthOpen, setMonthOpen] = useState(true);
+  const weekDays = useMemo(() => selectedWeek(selectedDay), [selectedDay]);
 
   const calendar = useMemo(() => {
     const { days, cells } = monthDays(month);
@@ -497,7 +489,7 @@ function SiteCalendar({
 
         if (matches) {
           byDay.get(day).push(site);
-          monthIds.add(site.id);
+          if (day.startsWith(`${month}-`)) monthIds.add(site.id);
         }
       }
     }
@@ -536,6 +528,12 @@ function SiteCalendar({
     setSelectedDay(
       next === today.slice(0, 7) ? today : `${next}-01`
     );
+  }
+
+  function moveWeek(amount) {
+    const next = shiftWeek(selectedDay, amount);
+    setSelectedDay(next);
+    setMonth(next.slice(0, 7));
   }
 
   return (
@@ -591,9 +589,8 @@ function SiteCalendar({
           >
             <button
               type="button"
-              hidden={!monthOpen}
-              aria-label="이전 달"
-              onClick={() => moveMonth(-1)}
+              aria-label={monthOpen ? "이전 달" : "이전 주"}
+              onClick={() => monthOpen ? moveMonth(-1) : moveWeek(-1)}
               style={button}
             >
               ‹
@@ -605,7 +602,7 @@ function SiteCalendar({
             </strong>
 
             <div style={{ display: "flex", gap: 4 }}>
-              <button type="button" aria-expanded={monthOpen} onClick={() => setMonthOpen(value => !value)} style={button}>{monthOpen ? "달력 닫기" : "달력 열기"}</button>
+              <button type="button" aria-expanded={monthOpen} onClick={() => setMonthOpen(value => !value)} style={button}>{monthOpen ? "주간 보기" : "월간 보기"}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -619,9 +616,8 @@ function SiteCalendar({
 
               <button
                 type="button"
-                hidden={!monthOpen}
-                aria-label="다음 달"
-                onClick={() => moveMonth(1)}
+                aria-label={monthOpen ? "다음 달" : "다음 주"}
+                onClick={() => monthOpen ? moveMonth(1) : moveWeek(1)}
                 style={button}
               >
                 ›
@@ -636,8 +632,8 @@ function SiteCalendar({
               margin: "0 4px 12px",
             }}
           >
-            선택한 상태 기준 {calendar.count}개 현장 · 날짜를 눌러
-            상세 목록을 확인하세요.
+            {!monthOpen && <>{Number(weekDays[0].slice(5, 7))}월 {Number(weekDays[0].slice(8))}일 ~ {Number(weekDays[6].slice(5, 7))}월 {Number(weekDays[6].slice(8))}일 · </>}
+            선택한 상태 기준 {calendar.count}개 현장 · 날짜를 눌러 상세 목록을 확인하세요.
           </p>
 
           <div

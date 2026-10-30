@@ -125,6 +125,12 @@ export function isUndated(site) {
   );
 }
 
+export function shiftWeek(day, amount) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 7 * amount);
+  return date.toISOString().slice(0, 10);
+}
+
 export function selectedWeek(day) {
   const start = new Date(`${day}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - start.getUTCDay());
