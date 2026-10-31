@@ -178,6 +178,9 @@ export default function CustomerEstimatePage({
   const {
     images,
     resultReady,
+    recordStatus,
+    savingRecord,
+    retrySaveEstimate,
     storageStatus,
     savingPhotos,
     ensureEstimatePhotos,
@@ -890,6 +893,10 @@ export default function CustomerEstimatePage({
                 )}
             </div>
 
+            {recordStatus && <div role="status" style={{marginBottom:12,color:recordStatus.includes("실패")?"#b45309":"#64748b"}}>
+              {recordStatus}
+              {recordStatus.includes("실패") && <button type="button" disabled={loading || savingRecord} onClick={retrySaveEstimate} style={{marginLeft:8}}>{savingRecord ? "저장 중…" : "견적 기록 다시 저장"}</button>}
+            </div>}
             <div className={styles.priceCard}>
               <div className={styles.priceLabel}>
                 {groups.some(group=>["loading","error"].includes(group.searchStatus)) ? "계산된 부위의 임시 합계" : "예상 시공 금액"}

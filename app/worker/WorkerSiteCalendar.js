@@ -346,7 +346,7 @@ export default function WorkerSiteCalendar({
                 aria-controls={calendarDaysId}
                 onClick={() => setMonthOpen(value => !value)}
               >
-                {monthOpen ? "달력 닫기" : "달력 열기"}
+                {monthOpen ? "주간 보기" : "월간 보기"}
               </button>
               <button
                 type="button"

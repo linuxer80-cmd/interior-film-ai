@@ -1,3 +1,4 @@
+import {fetchEstimate} from '../lib/estimateRequest.mjs';
 import { selectUniqueEstimatePhotos } from '../lib/estimatePhotoSelection.mjs';
 import test from 'node:test';
 import {mergeProfiles} from '../lib/caseClassification.mjs';
@@ -62,7 +63,7 @@ const flush = () => new Promise(setImmediate);
 
 // Exercise the real hook with React's state/ref contracts and deferred network requests.
 // No AI request, real upload, billing event or customer data is created.
-function harness({ analyses = null, searchOverride = null } = {}) {
+function harness({ analyses = null, searchOverride = null, saveOverride = null } = {}) {
   const state = [];
   let cursor = 0;
   let id = 0;
@@ -73,7 +74,7 @@ function harness({ analyses = null, searchOverride = null } = {}) {
     .replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm, '')
     .replace('export default function useEstimate', 'function useEstimate');
   const context = {
-    ...categories, selectUniqueEstimatePhotos, mergeDoorViews, mergeProfiles, performance, console: { error() {}, warn() {}, info() {} }, FormData,
+    ...categories, fetchEstimate, crypto, selectUniqueEstimatePhotos, mergeDoorViews, mergeProfiles, performance, console: { error() {}, warn() {}, info() {} }, FormData,
     makeId: () => `id-${++id}`,
     prepareImage: async (file) => ({ file, preview: 'blob:test' }), revokePreviewUrl() {},
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], (value) => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },
@@ -93,6 +94,7 @@ function harness({ analyses = null, searchOverride = null } = {}) {
       }
       if (url === '/api/similar-photo') { const body = JSON.parse(options.body); assert.equal(body.work_item_id, '00000000-0000-0000-0000-000000000001'); assert.ok(['before', 'after'].includes(body.photo_type)); const task = deferred(); thumbnails.push(task); return task.promise; }
       if (url === '/api/estimate-photo') { const task = deferred(); uploads.push(task); return task.promise; }
+      if (url === '/api/estimate-usage' && saveOverride) return saveOverride(options);
       if (url === '/api/estimate-usage') return ok({ success: true, usage_id: 'usage' });
       throw Error(`Unexpected URL ${url}`);
     },
@@ -326,4 +328,18 @@ test('the first price appears while another search is still pending', async()=>{
   slow.resolve();await flush();await flush();
   h.uploads.forEach((u,i)=>u.resolve(ok({success:true,path:`customer/${i}.jpg`})));
   await work;
+});
+
+test('save-only retry preserves prices, avoids AI/search/upload repeats and keeps the same request ID',async()=>{
+ const requests=[];let count=0;
+ const h=harness({saveOverride:async options=>{requests.push(JSON.parse(options.body));if(++count===1)throw Error('offline');return ok({success:true,usage_id:'saved'});}});
+ await h.render().addImages([new Blob(['one'])]);
+ const work=h.render().handleAnalyze();await flush();await flush();
+ h.uploads[0].resolve(ok({success:true,path:'customer/one.jpg'}));await work;
+ assert.match(h.render().recordStatus,/記録|기록 저장 실패/);assert.equal(h.render().totalEstimate.average,100000);
+ const before=h.calls.length;
+ await Promise.all([h.render().retrySaveEstimate(),h.render().retrySaveEstimate()]);
+ assert.equal(h.calls.length,before+1);assert.equal(h.calls.at(-1),'/api/estimate-usage');
+ assert.equal(requests[0].request_id,requests[1].request_id);assert.ok(requests[0].request_id);
+ assert.equal(h.render().recordStatus,'견적 기록 저장 완료');assert.equal(h.render().savingRecord,false);
 });

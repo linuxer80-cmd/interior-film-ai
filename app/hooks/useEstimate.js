@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchEstimate } from "../../lib/estimateRequest.mjs";
+
 import { selectUniqueEstimatePhotos } from "../../lib/estimatePhotoSelection.mjs";
 
 import { hierarchyGroups } from "../../lib/hierarchyEstimate.mjs";
@@ -76,6 +78,14 @@ export default function useEstimate({
   const [resultReady, setResultReady] = useState(false);
   const [savingPhotos, setSavingPhotos] = useState(false);
   const [storageStatus, setStorageStatus] = useState("");
+  const [recordStatus, setRecordStatus] = useState("");
+  const [savingRecord, setSavingRecord] = useState(false);
+  const pendingRecordRef = useRef(null);
+  const recordPromiseRef = useRef(null);
+  const recordRequestIdRef = useRef(null);
+  function requestEstimate(url, options) {
+    return fetchEstimate(url, options, {fetchImpl:fetch, timeoutMs:["/api/estimate-analyze", "/api/similar-estimate"].includes(url) ? 65000 : 30000});
+  }
   const savePromiseRef = useRef(null);
   const uploadedPathsRef = useRef(new Map());
   const runRef = useRef(0);
@@ -207,6 +217,9 @@ export default function useEstimate({
    */
 
   function resetEstimateResults() {
+    pendingRecordRef.current = null;
+    recordRequestIdRef.current = null;
+    setRecordStatus("");
     analysisCacheRef.current = null;
     searchCacheRef.current.clear();
     runRef.current += 1;
@@ -287,7 +300,7 @@ export default function useEstimate({
     }
 
     const response =
-      await fetch(
+      await requestEstimate(
         "/api/usage-limit",
         {
           method:
@@ -350,7 +363,7 @@ export default function useEstimate({
     );
 
     const missingUploads = images.filter((image) => !uploadedPathsRef.current.has(`${normalizedCompanySlug}:${image.id}`)).length;
-    const response = await fetch("/api/usage-limit", {
+    const response = await requestEstimate("/api/usage-limit", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company_slug: normalizedCompanySlug, checks: [
         { event_type: "auto_estimate", requested_quantity: 1 },
@@ -373,7 +386,7 @@ export default function useEstimate({
   async function addImages(
     fileList
   ) {
-    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
+    if (busyRef.current || recordPromiseRef.current || savePromiseRef.current || addingImagesRef.current) return;
     const files =
       Array.from(
         fileList || []
@@ -543,7 +556,7 @@ export default function useEstimate({
    */
 
   function removeImage(id) {
-    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
+    if (busyRef.current || recordPromiseRef.current || savePromiseRef.current || addingImagesRef.current) return;
     setImages(
       (current) => {
         const target =
@@ -586,7 +599,7 @@ export default function useEstimate({
     try { form.append("session_id", getSessionId()); } catch { /* Analysis still works without browser storage. */ }
     images.forEach((photo) => form.append("images", photo.file));
     form.append("target_choices", JSON.stringify(images.map(p=>p.targetChoice||"")));
-    const response = await fetch("/api/estimate-analyze", { method: "POST", body: form });
+    const response = await requestEstimate("/api/estimate-analyze", { method: "POST", body: form });
     const result = await readJsonSafely(response);
     if (!response.ok || !result?.success || !Array.isArray(result.photos) || result.photos.length !== images.length ||
       new Set(result.photos.map((photo) => photo.index)).size !== images.length ||
@@ -615,7 +628,7 @@ export default function useEstimate({
     const path = item[`${side}_path`];
     if (!item.work_item_id && !path) return { url: null, status: "missing" };
     try {
-      const response = await fetch("/api/similar-photo", {
+      const response = await requestEstimate("/api/similar-photo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_slug: normalizedCompanySlug,
           ...(item.work_item_id ? { work_item_id: item.work_item_id, photo_type: side === "reference" ? "history" : side } : { path }),
@@ -705,7 +718,7 @@ export default function useEstimate({
       category: group.category || null, sub_category: group.subCategory || null,
       construction_scope: group.scope, analysis_id: group.photos[0]?.analysisRecordId || null, photo_indices: group.photos.map((photo) => photo.analysisIndex), match_threshold: MATCH_THRESHOLD, match_count: 50,
     }));
-    const response = await fetch("/api/similar-estimate", { method: "POST", body: form });
+    const response = await requestEstimate("/api/similar-estimate", { method: "POST", body: form });
 
     const result =
       await readJsonSafely(
@@ -789,7 +802,7 @@ export default function useEstimate({
   }
 
   function updatePhotoOptions(id, options) {
-    if (busyRef.current || savePromiseRef.current || imageLoading) return;
+    if (busyRef.current || recordPromiseRef.current || savePromiseRef.current || imageLoading) return;
     setImages((current) => {
       if ("subjectId" in options) return assignEstimateSubject(current, id, options.subjectId);
       return current.map((photo) => photo.id === id ? { ...photo, targetChoice: options.targetChoice || "" } : photo);
@@ -826,7 +839,7 @@ export default function useEstimate({
     }
 
     const response =
-      await fetch(
+      await requestEstimate(
         "/api/estimate-photo",
         {
           method:
@@ -998,7 +1011,7 @@ export default function useEstimate({
   }) {
     try {
       const response =
-        await fetch(
+        await requestEstimate(
           "/api/estimate-usage",
           {
             method:
@@ -1015,6 +1028,7 @@ export default function useEstimate({
                   normalizedCompanySlug ||
                   null,
 
+                request_id: recordRequestIdRef.current,
                 session_id:
                   getSessionId(),
 
@@ -1103,8 +1117,32 @@ export default function useEstimate({
        * 계산된 AI 견적 결과는 유지합니다.
        */
 
-      return null;
+      throw error;
     }
+  }
+
+  async function retrySaveEstimate() {
+    if (recordPromiseRef.current) return recordPromiseRef.current;
+    if (!pendingRecordRef.current || usageIdRef.current) return;
+    const runId = runRef.current;
+    setSavingRecord(true);
+    setRecordStatus("견적 기록 저장 중…");
+    const task = (async () => {
+      try {
+        const photoPaths = await ensureEstimatePhotos();
+        const result = await saveEstimateUsage({...pendingRecordRef.current,photoPaths});
+        if (runRef.current === runId) { pendingRecordRef.current=null; setRecordStatus("견적 기록 저장 완료"); }
+        return result;
+      } catch (error) {
+        if (runRef.current === runId) setRecordStatus("견적 계산 완료 · 기록 저장 실패. 저장만 다시 시도해주세요.");
+        return null;
+      } finally {
+        recordPromiseRef.current=null;
+        if (runRef.current === runId) setSavingRecord(false);
+      }
+    })();
+    recordPromiseRef.current=task;
+    return task;
   }
 
   /*
@@ -1114,7 +1152,7 @@ export default function useEstimate({
    */
 
   async function handleAnalyze() {
-    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
+    if (busyRef.current || recordPromiseRef.current || savePromiseRef.current || addingImagesRef.current) return;
 
     /*
      * =====================================================
@@ -1403,14 +1441,13 @@ export default function useEstimate({
         "자동견적 기록을 저장하고 있습니다..."
       );
 
-      if (!completedGroups.some(group=>group.searchStatus === "error") && !usageIdRef.current) await saveEstimateUsage({
-        completedGroups,
-
-        estimate:
-          calculatedTotal,
-
-        photoPaths,
-      });
+      if (!completedGroups.some(group=>group.searchStatus === "error") && !usageIdRef.current) {
+        if (!recordRequestIdRef.current) recordRequestIdRef.current = crypto.randomUUID();
+        pendingRecordRef.current = {completedGroups,estimate:calculatedTotal};
+        // If photos failed, preserve the payload for one explicit save-only retry.
+        if (photoPaths.length === images.length) await retrySaveEstimate();
+        else setRecordStatus("견적 계산 완료 · 기록 저장 실패. 사진과 기록 저장을 다시 시도해주세요.");
+      }
 
       /*
        * ===================================================
@@ -1470,6 +1507,9 @@ export default function useEstimate({
     images,
 
     resultReady,
+    recordStatus,
+    savingRecord,
+    retrySaveEstimate,
     storageStatus,
     savingPhotos,
     ensureEstimatePhotos,

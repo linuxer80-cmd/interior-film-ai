@@ -1,3 +1,4 @@
+import {validEstimateRequestId,findSavedEstimate} from "../../../lib/estimateSaveReplay.mjs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -178,6 +179,7 @@ export async function POST(request) {
 
     const {
       company_slug,
+      request_id,
       session_id,
       category,
       sub_category,
@@ -408,6 +410,11 @@ export async function POST(request) {
      * =======================================================
      */
 
+    if (request_id != null && !validEstimateRequestId(request_id)) return NextResponse.json({success:false,error:"저장 요청을 확인해주세요."},{status:400});
+    const replayScope = {requestId:request_id,companyId:company.id,sessionId:session_id};
+    const replay = await findSavedEstimate(supabase,replayScope);
+    if (replay) return NextResponse.json(replay);
+
     const limitCheck =
       await checkUsageLimit({
         company,
@@ -535,6 +542,7 @@ export async function POST(request) {
      */
 
     const insertData = {
+      ...(request_id ? {id:request_id} : {}),
       company_id:
         company.id,
 
@@ -630,6 +638,10 @@ export async function POST(request) {
      */
 
     if (error) {
+      if (error.code === "23505" && request_id) {
+        const saved = await findSavedEstimate(supabase,replayScope);
+        if (saved) return NextResponse.json(saved);
+      }
       console.error(
         "estimate_usage INSERT ERROR:",
         error
