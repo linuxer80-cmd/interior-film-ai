@@ -1,3 +1,4 @@
+import {observeVisibleRefresh} from '../lib/visibleRefresh.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,7 +20,7 @@ function component(file,imports={},globals={}) {
   setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},
   document:{visibilityState:'visible',body:{style:{}},addEventListener(){},removeEventListener(){}},
   window:{location:{search:'',href:'https://app.test/admin'},history:{replaceState(){}},addEventListener(){},removeEventListener(){}},
-  ...globals,require(path){if(path==='react')return React;if(path==='next/dynamic')return{default:()=> 'DynamicPanel',__esModule:true};if(path in imports)return imports[path];return{__esModule:true,default:path};}};
+  ...globals,require(path){if(path.includes('visibleRefresh'))return{observeVisibleRefresh:(fn,options)=>observeVisibleRefresh(fn,{...options,windowObject:context.window,documentObject:context.document,setTimer:()=>1,clearTimer(){}})};if(path==='react')return React;if(path==='next/dynamic')return{default:()=> 'DynamicPanel',__esModule:true};if(path in imports)return imports[path];return{__esModule:true,default:path};}};
  const {code}=swc.transformSync(fs.readFileSync(new URL('../app/admin/'+file,import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
  vm.runInNewContext(code,context);
  return{render(props={}){cursor=0;return exports.default(props);},effects(){effects.splice(0).forEach(fn=>fn());},dispose(){slots.forEach(slot=>slot?.cleanup?.());}};

@@ -1,3 +1,4 @@
+import {observeVisibleRefresh} from '../lib/visibleRefresh.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ function fixture(name,data){
  const exports={};
  const {code}=swc.transformSync(fs.readFileSync(new URL('../app/admin/'+name+'.js',import.meta.url),'utf8'),{jsc:{parser:{syntax:'ecmascript',jsx:true},transform:{react:{runtime:'classic'}}},module:{type:'commonjs'}});
  vm.runInNewContext(code,{exports,React,URLSearchParams,AbortController,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},fetch:async()=>({ok:true,json:async()=>data}),require(path){
+  if(path.includes('visibleRefresh'))return{observeVisibleRefresh:(fn,options)=>observeVisibleRefresh(fn,{...options,windowObject:new EventTarget(),documentObject:new EventTarget(),setTimer:()=>1,clearTimer(){}})};
   if(path==='react')return React;
   if(path.endsWith('.css'))return {__esModule:true,default:{root:'root',toggle:'toggle',contents:'contents'}};
   if(path.includes('reportClient'))return{reportRequest:async()=>data};
@@ -51,6 +53,7 @@ test('large today view locks background scroll, focuses its close control and su
  const element={querySelector:()=>first,querySelectorAll:()=>[first,last]};
  const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useRef:()=>({current:element}),useEffect:fn=>effects.push(fn)};
  vm.runInNewContext(code,{exports,React,document,require(path){
+  if(path.includes('visibleRefresh'))return{observeVisibleRefresh:(fn,options)=>observeVisibleRefresh(fn,{...options,windowObject:new EventTarget(),documentObject:new EventTarget(),setTimer:()=>1,clearTimer(){}})};
   if(path==='react')return React;
   if(path==='react-dom')return{createPortal:tree=>tree};
   if(path.includes('useAdminOverlayBack'))return{__esModule:true,default:(_open,onClose)=>onClose};
