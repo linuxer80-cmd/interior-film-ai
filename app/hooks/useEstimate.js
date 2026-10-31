@@ -1,5 +1,7 @@
 "use client";
 
+import { selectUniqueEstimatePhotos } from "../../lib/estimatePhotoSelection.mjs";
+
 import { hierarchyGroups } from "../../lib/hierarchyEstimate.mjs";
 
 import { mergeProfiles } from "../../lib/caseClassification.mjs";
@@ -44,6 +46,8 @@ export default function useEstimate({
     String(companySlug || "")
       .trim()
       .toLowerCase();
+
+  const addingImagesRef = useRef(false);
 
   const [images, setImages] =
     useState([]);
@@ -365,7 +369,7 @@ export default function useEstimate({
   async function addImages(
     fileList
   ) {
-    if (busyRef.current || savePromiseRef.current) return;
+    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
     const files =
       Array.from(
         fileList || []
@@ -390,23 +394,17 @@ export default function useEstimate({
       return;
     }
 
-    const selected =
-      files.slice(
-        0,
-        remaining
-      );
-
-    setImageLoading(
-      true
-    );
-
-    setMessage(
-      `사진을 준비하고 있습니다... 0/${selected.length}`
-    );
-
-    resetEstimateResults();
+    addingImagesRef.current = true;
+    setImageLoading(true);
+    setMessage("중복 사진을 확인하고 있습니다...");
 
     try {
+      const { selected, duplicateCount } = await selectUniqueEstimatePhotos(files, images, remaining);
+      if (!selected.length) {
+        setMessage("이미 추가한 사진입니다. 기존 사진으로 견적을 진행합니다.");
+        return;
+      }
+      resetEstimateResults();
       let completedCount = 0;
 
       const preparedResults =
@@ -414,7 +412,7 @@ export default function useEstimate({
           selected,
           3,
           async (
-            file,
+            { file, fingerprint },
             index
           ) => {
             try {
@@ -435,6 +433,7 @@ export default function useEstimate({
                 index,
 
                 item: {
+                  fingerprint,
                   id:
                     makeId(),
 
@@ -511,7 +510,7 @@ export default function useEstimate({
         );
       } else {
         setMessage(
-          `✅ 사진 ${additions.length}장을 준비했습니다.`
+          `✅ 사진 ${additions.length}장을 준비했습니다.${duplicateCount ? ` 중복 ${duplicateCount}장은 자동 제외했습니다.` : ""}`
         );
       }
     } catch (error) {
@@ -526,6 +525,7 @@ export default function useEstimate({
         }`
       );
     } finally {
+      addingImagesRef.current = false;
       setImageLoading(
         false
       );
@@ -539,7 +539,7 @@ export default function useEstimate({
    */
 
   function removeImage(id) {
-    if (busyRef.current || savePromiseRef.current) return;
+    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
     setImages(
       (current) => {
         const target =
@@ -1104,7 +1104,7 @@ export default function useEstimate({
    */
 
   async function handleAnalyze() {
-    if (busyRef.current || savePromiseRef.current) return;
+    if (busyRef.current || savePromiseRef.current || addingImagesRef.current) return;
 
     /*
      * =====================================================

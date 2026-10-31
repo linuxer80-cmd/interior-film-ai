@@ -31,5 +31,6 @@
   ],
   "regions": [
     "hnd1"
-  ]
+  ],
+  "fluid": true
 }
