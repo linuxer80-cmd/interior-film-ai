@@ -148,7 +148,6 @@ export default function AdminTabs({
     <section className="film-admin-dashboard">
       {isHome ? (
         <>
-          <a href="/worker" data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,padding:"12px 18px",marginBottom:14,borderRadius:14,background:"#285340",color:"#fffefa",fontWeight:700,textDecoration:"none"}}>시공자 홈으로 →</a>
           <AdminHomeSummary key={companyId} companyId={companyId} />
           {homeCalendar}
           <AdminClosingTasks key={`closing-${companyId}`} companyId={companyId} />
