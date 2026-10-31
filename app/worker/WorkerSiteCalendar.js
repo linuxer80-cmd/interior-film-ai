@@ -149,7 +149,7 @@ export default function WorkerSiteCalendar({
 }) {
   const calendarConnectionId = useId();
   const calendarDaysId = useId();
-  const [monthOpen, setMonthOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(true);
   const [today, setToday] =
     useState(() => koreanDay());
 

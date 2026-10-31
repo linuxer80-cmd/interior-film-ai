@@ -77,6 +77,7 @@ const menus = [
 export default function WorkerHomeDashboard({
   worker,
   homeProfile,
+  homeCalendar = null,
   sites = [],
   onOpen,
 }) {
@@ -233,6 +234,7 @@ export default function WorkerHomeDashboard({
         )}
       </div>
 
+      {homeCalendar}
       {homeProfile}
 
       {/* 배정 알림은 유지하고 직원 홈의 구인 탐색 메뉴만 숨깁니다. */}

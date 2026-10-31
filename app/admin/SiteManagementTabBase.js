@@ -48,6 +48,7 @@ const FILTERS = [
 
 export default function SiteManagementTab(props) {
   const {
+    home = false,
     sites = [],
     sitesLoading = false,
     sitesMessage = "",
@@ -127,7 +128,7 @@ export default function SiteManagementTab(props) {
                 color: "#111827",
               }}
             >
-              현장관리
+              {home ? "일정 달력" : "현장관리"}
             </h2>
             <p
               style={{

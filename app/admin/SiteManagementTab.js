@@ -20,7 +20,7 @@ export default function SiteManagementTab(props) {
 
   return (
     <>
-      <details>
+      {!props.home && <details>
         <summary
           style={{
             padding: 14,
@@ -43,7 +43,7 @@ export default function SiteManagementTab(props) {
           />{" "}
           위 검색 조건을 아래 현장 목록·캘린더에도 적용
         </label>
-      </details>
+      </details>}
 
       <SiteManagementTabBase
         {...props}

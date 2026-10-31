@@ -390,6 +390,9 @@ export default function WorkerPage({ mode = "home" }) {
             )}
 
             <WorkerHomeDashboard
+              homeCalendar={<WorkerSiteCalendar sites={sites} loading={sitesLoading} error={message}
+                onRefresh={() => loadWorkerPage({background:true})}
+                onOpen={id => router.push(`/worker/site/${id}`)} />}
               homeProfile={homeProfile}
               worker={worker}
               sites={sites}

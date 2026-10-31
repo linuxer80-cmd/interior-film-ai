@@ -27,10 +27,11 @@ function component(file,imports={},globals={}) {
 }
 const moduleDefault=value=>({__esModule:true,default:value});
 test('administrator home becomes usable while sample setup is pending; cases load on opening their tab',async()=>{
- const sample=deferred(),settings=deferred();let ready=false,jobs=0,companyId=null;const searches=[];
+ const sample=deferred(),settings=deferred();let ready=false,jobs=0,companyId=null,siteLoads=0;const searches=[];
  const hooks={};const empty=()=>({});
  for(const name of ['useJobs','useJobRegister','useLeads','useUsage','useCompanySettings','useWorkers'])hooks['./hooks/'+name]=moduleDefault(empty);
- hooks['../hooks/useSites']=moduleDefault(()=>({sites:[],closeSite(){}}));
+ hooks['../hooks/useSites']=moduleDefault(()=>({sites:[],closeSite(){},loadSites:async()=>{siteLoads++}}));
+ hooks['./hooks/useWorkers']=moduleDefault(()=>({loadWorkers:async()=>{}}));
  hooks['./hooks/useJobs']=moduleDefault(()=>({jobTotal:0,jobPage:3,jobSearchApplied:'문',loadJobs:(...args)=>{jobs++;searches.push(args);}}));
  hooks['./hooks/useLeads']=moduleDefault(()=>({loadUnreadCount:async()=>{},syncNotificationPermission(){}}));
  hooks['./hooks/useCompanySettings']=moduleDefault(()=>({loadSettings:()=>settings.promise}));
@@ -40,9 +41,9 @@ test('administrator home becomes usable while sample setup is pending; cases loa
  hooks['../../lib/supabase']={supabase:{auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},channel:()=>channel,removeChannel(){}}};
  const h=component('page.js',hooks,{fetch:()=>sample.promise});
  h.render();h.effects();await flush();
- assert.equal(ready,true);assert.equal(jobs,0);
+ assert.equal(ready,true);assert.equal(jobs,0);assert.equal(siteLoads,1);
  let tree=h.render();h.effects();
- const tabs=all(tree,node=>node.type==='./AdminTabs'&&!node.props.secondaryOnly)[0];assert.ok(tabs);
+ const tabs=all(tree,node=>node.type==='./AdminTabs'&&!node.props.secondaryOnly)[0];assert.ok(tabs);assert.ok(tabs.props.homeCalendar);assert.equal(tabs.props.homeCalendar.props.home,true);
  tabs.props.changeTab('jobs');h.render();h.effects();await flush();assert.equal(jobs,0);
  sample.resolve({ok:true,json:async()=>({success:true})});await flush();
  tree=h.render();h.effects();await flush();assert.equal(jobs,1);assert.deepEqual(searches,[[3,'문','co']]);

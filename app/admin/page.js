@@ -402,7 +402,7 @@ export default function AdminPage() {
     setActiveTab(tab);
 
     if (
-      tab === "sites"
+      tab === "sites" || tab === "today"
     ) {
       loadSites(
         companyId,
@@ -578,6 +578,8 @@ export default function AdminPage() {
       markAdminReady();
       syncNotificationPermission();
       void Promise.allSettled([
+        loadSites(resolvedCompanyId),
+        loadWorkers(resolvedCompanyId),
         loadSettings(resolvedCompanyId),
         loadUnreadCount(resolvedCompanyId),
       ]);
@@ -648,8 +650,113 @@ export default function AdminPage() {
      관리자 준비 전
   ========================================================= */
 
+  const siteCalendar = (
+        <SiteManagementTab
+          home={activeTab === "today"}
+          companyId={
+            companyId
+          }
+
+          sites={
+            sites
+          }
+
+          sitesLoading={
+            sitesLoading
+          }
+
+          sitesMessage={
+            sitesMessage
+          }
+
+          createSite={
+            createSite
+          }
+
+          updateSiteBasicInfo={
+            updateSiteBasicInfo
+          }
+
+          updateSiteSchedule={
+            updateSiteSchedule
+          }
+
+          updateSiteStatus={
+            updateSiteStatus
+          }
+
+          addSiteRequestPhotos={
+            addSiteRequestPhotos
+          }
+
+          deleteSiteRequestPhoto={
+            deleteSiteRequestPhoto
+          }
+
+          selectedSite={
+            selectedSite
+          }
+
+          openSite={
+            openSite
+          }
+
+          closeSite={
+            closeSite
+          }
+
+          workers={
+            workers
+          }
+
+          workersLoading={
+            workersLoading
+          }
+
+          workersMessage={
+            workersMessage
+          }
+
+          loadWorkers={
+            loadWorkers
+          }
+
+          createWorker={
+            createWorker
+          }
+
+          updateWorker={
+            updateWorker
+          }
+
+          setWorkerActive={
+            setWorkerActive
+          }
+
+          createWorkerInvite={
+            createWorkerInvite
+          }
+
+          assignSiteWorkers={
+            assignSiteWorkers
+          }
+
+          loadSiteWorkers={
+            loadSiteWorkers
+          }
+
+          reloadSites={() =>
+            loadSites(
+              companyId,
+            )
+          }
+        />
+  );
+
+
   if (!adminReady) {
-    return (
+
+  return (
       <main
         style={{
           maxWidth: "900px",
@@ -705,6 +812,7 @@ export default function AdminPage() {
       )}
 
       <AdminTabs
+        homeCalendar={siteCalendar}
         companyName={companyName}
         companyId={companyId}
         activeTab={
@@ -812,107 +920,7 @@ export default function AdminPage() {
           현장 관리
       ===================================================== */}
 
-      {activeTab === "sites" && (
-        <SiteManagementTab
-          companyId={
-            companyId
-          }
-
-          sites={
-            sites
-          }
-
-          sitesLoading={
-            sitesLoading
-          }
-
-          sitesMessage={
-            sitesMessage
-          }
-
-          createSite={
-            createSite
-          }
-
-          updateSiteBasicInfo={
-            updateSiteBasicInfo
-          }
-
-          updateSiteSchedule={
-            updateSiteSchedule
-          }
-
-          updateSiteStatus={
-            updateSiteStatus
-          }
-
-          addSiteRequestPhotos={
-            addSiteRequestPhotos
-          }
-
-          deleteSiteRequestPhoto={
-            deleteSiteRequestPhoto
-          }
-
-          selectedSite={
-            selectedSite
-          }
-
-          openSite={
-            openSite
-          }
-
-          closeSite={
-            closeSite
-          }
-
-          workers={
-            workers
-          }
-
-          workersLoading={
-            workersLoading
-          }
-
-          workersMessage={
-            workersMessage
-          }
-
-          loadWorkers={
-            loadWorkers
-          }
-
-          createWorker={
-            createWorker
-          }
-
-          updateWorker={
-            updateWorker
-          }
-
-          setWorkerActive={
-            setWorkerActive
-          }
-
-          createWorkerInvite={
-            createWorkerInvite
-          }
-
-          assignSiteWorkers={
-            assignSiteWorkers
-          }
-
-          loadSiteWorkers={
-            loadSiteWorkers
-          }
-
-          reloadSites={() =>
-            loadSites(
-              companyId,
-            )
-          }
-        />
-      )}
+      {activeTab === "sites" && siteCalendar}
 
       {activeTab === "usage" && (
         <UsageTab

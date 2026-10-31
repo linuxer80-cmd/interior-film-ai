@@ -99,6 +99,7 @@ export default function AdminTabs({
   changeTab,
   unreadCount = 0,
   secondaryOnly = false,
+  homeCalendar = null,
 }) {
   const { orderedMenus, record } = usePersonalMenus(menus, `admin:${companyId || "none"}`, activeTab === "today" && !secondaryOnly);
   const calendarConnectionId = useId();
@@ -149,6 +150,7 @@ export default function AdminTabs({
         <>
           <a href="/worker" data-ui-link="action" style={{display:"inline-flex",alignItems:"center",minHeight:44,padding:"12px 18px",marginBottom:14,borderRadius:14,background:"#285340",color:"#fffefa",fontWeight:700,textDecoration:"none"}}>시공자 홈으로 →</a>
           <AdminHomeSummary key={companyId} companyId={companyId} />
+          {homeCalendar}
           <AdminClosingTasks key={`closing-${companyId}`} companyId={companyId} />
           <AutoCalendarConnection embedded compact connectedTargetId={calendarConnectionId} />
           <SiteExtraWork key={companyId} summary />
