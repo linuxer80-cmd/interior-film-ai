@@ -1,4 +1,5 @@
 'use client';
+import {observeVisibleRefresh} from '../../lib/visibleRefresh.mjs';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import styles from './CustomerChat.module.css';
@@ -27,11 +28,9 @@ export function ChatConversation({url,admin=false,onUpdated,onCreateQuote,realti
   const visitorConnected=useVisitorChatRealtime(admin?null:visitorTopic,()=>{if(document.visibilityState==='visible')void refresh();});
   useEffect(()=>{
     alive.current=true;void refresh();
-    const visible=()=>{if(document.visibilityState==='visible')void refresh();};
     const connected=admin?realtimeConnected:visitorConnected;
-    const timer=setInterval(visible,connected||(!admin&&ready&&!thread)?60000:5000);
-    window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
-    return()=>{alive.current=false;generation.current++;clearInterval(timer);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);};
+    const stopRefresh=observeVisibleRefresh(refresh,{interval:connected||(!admin&&ready&&!thread)?300000:10000,minInterval:5000});
+    return()=>{alive.current=false;generation.current++;stopRefresh();};
   },[refresh,admin,realtimeConnected,visitorConnected,ready,thread?.id]);
   useEffect(()=>{if(admin&&refreshSignal&&document.visibilityState==='visible')void refresh();},[admin,refreshSignal,refresh]);
   useEffect(()=>{if(nearBottom.current&&list.current)list.current.scrollTop=list.current.scrollHeight;},[messages]);

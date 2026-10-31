@@ -48,6 +48,8 @@ export default function useEstimate({
       .toLowerCase();
 
   const addingImagesRef = useRef(false);
+  const analysisCacheRef = useRef(null);
+  const searchCacheRef = useRef(new Map());
 
   const [images, setImages] =
     useState([]);
@@ -205,6 +207,8 @@ export default function useEstimate({
    */
 
   function resetEstimateResults() {
+    analysisCacheRef.current = null;
+    searchCacheRef.current.clear();
     runRef.current += 1;
     setResultReady(false);
     setStorageStatus("");
@@ -350,7 +354,7 @@ export default function useEstimate({
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company_slug: normalizedCompanySlug, checks: [
         { event_type: "auto_estimate", requested_quantity: 1 },
-        { event_type: "ai_photo_analysis", requested_quantity: images.length },
+        // Analysis quota is checked by the API only after attempting safe cache reuse.
         ...(missingUploads ? [{ event_type: "image_upload", requested_quantity: missingUploads }] : []),
       ] }),
     });
@@ -574,6 +578,9 @@ export default function useEstimate({
    */
 
   async function analyzePhotos() {
+    const key = JSON.stringify([normalizedCompanySlug, images.map(p=>[p.id,p.targetChoice,p.subjectId])]);
+    const cached = analysisCacheRef.current;
+    if (cached?.key === key && Date.now()-cached.at < 10*60*1000) return cached.photos;
     const form = new FormData();
     form.append("company_slug", normalizedCompanySlug);
     try { form.append("session_id", getSessionId()); } catch { /* Analysis still works without browser storage. */ }
@@ -591,7 +598,9 @@ export default function useEstimate({
       analysis: analyses.get(index)?.hierarchy_targets ? analyses.get(index) : applyEstimateTarget(analyses.get(index), photo.targetChoice),
       analysisIndex: index, analysisTotal: images.length, analysisRecordId: result.analysis_id || null,
     }));
-    return photos.every(p=>p.analysis.hierarchy_targets) ? photos : mergeDoorViews(photos);
+    const analyzed = photos.every(p=>p.analysis.hierarchy_targets) ? photos : mergeDoorViews(photos);
+    analysisCacheRef.current = {key,photos:analyzed,at:Date.now()};
+    return analyzed;
   }
 
   /*
@@ -738,6 +747,7 @@ export default function useEstimate({
 
   async function completeSimilarGroup(group) {
     const { cases, estimate, searchStatus, searchMessage } = await findSimilarCases(group);
+    if (!group.requiresConfirmation && !estimate && searchStatus === "visual_unavailable") throw new Error(searchMessage || "사례 비교가 지연됩니다. 다시 시도해주세요.");
     return { ...group, searchStatus, searchMessage, similarItems: cases.slice(0, 2).map((item) => ({
       ...item, beforeStatus: "loading", afterStatus: "loading", referenceStatus: item.reference_path ? "loading" : "missing",
     })), estimate };
@@ -1147,9 +1157,6 @@ export default function useEstimate({
       null
     );
 
-    usageIdRef.current =
-      null;
-
     estimatePhotoPathsRef.current =
       [];
 
@@ -1186,7 +1193,7 @@ export default function useEstimate({
        */
 
       setMessage(
-        `사진 ${images.length}장의 대상을 6단계로 분류하고 있습니다...`
+        "사진을 분석하고 있습니다..."
       );
 
       const analyzedPhotos = await analyzePhotos();
@@ -1214,7 +1221,8 @@ export default function useEstimate({
        * ===================================================
        */
 
-      const searchableGroups = baseGroups.filter((group) => !group.requiresConfirmation);
+      const reusable = group => { const entry=searchCacheRef.current.get(`${normalizedCompanySlug}:${group.key}`); return entry && Date.now()-entry.at < 5*60*1000 ? entry.group : null; };
+      const searchableGroups = baseGroups.filter((group) => !group.requiresConfirmation && !reusable(group));
       if (searchableGroups.length > 0) {
         setMessage(
           "유사 시공사례 검색 가능 여부를 확인하고 있습니다..."
@@ -1249,29 +1257,26 @@ export default function useEstimate({
       let searchedGroupCount = 0;
 
       const completedByKey = new Map();
-      const completedGroups =
-        await mapWithConcurrency(
-          baseGroups,
-          SIMILAR_SEARCH_CONCURRENCY,
-          async (
-            group
-          ) => {
-            const completed =
-              await completeSimilarGroup(
-                group
-              );
-
-            completedByKey.set(group.key, completed);
-            if (runRef.current === runId) setGroups(baseGroups.flatMap(item => completedByKey.has(item.key) ? [completedByKey.get(item.key)] : []));
-            searchedGroupCount += 1;
-
-            setMessage(
-              `유사 시공사례 검색 중... ${searchedGroupCount}/${baseGroups.length}`
-            );
-
-            return completed;
+      setGroups(baseGroups.map(group=>reusable(group)||{...group,searchStatus:"loading",estimate:null,similarItems:[]}));
+      const completedGroups = await mapWithConcurrency(baseGroups, SIMILAR_SEARCH_CONCURRENCY, async group => {
+        let completed = reusable(group);
+        if (!completed) {
+          try {
+            completed = await completeSimilarGroup(group);
+            searchCacheRef.current.set(`${normalizedCompanySlug}:${group.key}`,{group:completed,at:Date.now()});
+          } catch (error) {
+            completed = {...group,estimate:null,similarItems:[],searchStatus:"error",searchMessage:error.message||"견적을 불러오지 못했습니다."};
           }
-        );
+        }
+        completedByKey.set(group.key,completed);
+        if (runRef.current === runId) {
+          setGroups(baseGroups.map(item=>completedByKey.get(item.key)||reusable(item)||{...item,searchStatus:"loading",estimate:null,similarItems:[]}));
+          setResultReady(true);
+        }
+        searchedGroupCount++;
+        setMessage(`견적을 계산하고 있습니다... ${searchedGroupCount}/${baseGroups.length}`);
+        return completed;
+      });
 
       /*
        * 견적 및 유사사례 결과를
@@ -1398,7 +1403,7 @@ export default function useEstimate({
         "자동견적 기록을 저장하고 있습니다..."
       );
 
-      await saveEstimateUsage({
+      if (!completedGroups.some(group=>group.searchStatus === "error") && !usageIdRef.current) await saveEstimateUsage({
         completedGroups,
 
         estimate:
@@ -1437,7 +1442,7 @@ export default function useEstimate({
         );
       }
     } catch (error) {
-      if (!estimateFinished) { runRef.current += 1; setGroups([]); setTotalEstimate(null); setResultReady(false); }
+      if (!estimateFinished) { setResultReady(false); }
       console.error(
         "자동견적 실행 오류:",
         error

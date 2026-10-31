@@ -11,7 +11,7 @@ function SimilarCasePhoto({ url, status, alt, onRetry }) {
       style={{ display: "block", width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 10 }} />
       : <div role="status" style={{ aspectRatio: "1 / 1", background: "#f3f4f6", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 12, textAlign: "center", padding: 8 }}>
         <div>{status === "loading" ? "사진 불러오는 중…" : error ? "사진을 불러오지 못했어요" : "등록된 사진 없음"}
-          {error && <button type="button" onClick={onRetry} style={{ display: "block", margin: "8px auto", padding: 6 }}>다시 불러오기</button>}
+          {error && <button type="button" onClick={() => { setFailed(false); onRetry?.(); }} style={{ display: "block", margin: "8px auto", padding: 6 }}>다시 불러오기</button>}
         </div>
       </div>}
     <div style={{ marginTop: 4, textAlign: "center", fontSize: 12, color: "#6b7280" }}>{alt}</div>
@@ -160,6 +160,8 @@ export default function EstimateResult({
                 장
               </div>
 
+              {group.searchStatus === "loading" && <p role="status">견적 계산 중…</p>}
+              {group.searchStatus === "error" && <p role="alert">{group.searchMessage || "이 부위의 견적을 불러오지 못했습니다."}</p>}
               {group.requiresConfirmation && (
                 <div role="status" style={{ color: "#92400e", background: "#fffbeb", padding: 12, borderRadius: 10, marginTop: 12, lineHeight: 1.6 }}>
                   <p style={{ margin: 0 }}>{confirmationMessage(group)}</p>

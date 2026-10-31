@@ -412,6 +412,8 @@ export default function CustomerEstimatePage({
       return;
     }
 
+    if (groups.some(group=>group.searchStatus === "loading")) { setLeadMessage("나머지 부위의 견적 계산이 끝나면 신청해주세요."); return; }
+
     setLeadLoading(true);
     setLeadMessage(
       "사진과 상담 신청을 접수하고 있습니다..."
@@ -890,7 +892,7 @@ export default function CustomerEstimatePage({
 
             <div className={styles.priceCard}>
               <div className={styles.priceLabel}>
-                예상 시공 금액
+                {groups.some(group=>["loading","error"].includes(group.searchStatus)) ? "계산된 부위의 임시 합계" : "예상 시공 금액"}
               </div>
 
               <EstimateTotal
@@ -952,6 +954,8 @@ export default function CustomerEstimatePage({
                 </p>
               )}
 
+              {groups.some(group=>group.searchStatus === "loading") && <p role="status">완료된 부위부터 보여드립니다. 나머지 부위의 금액을 계산하고 있습니다.</p>}
+              {groups.some(group=>group.searchStatus === "error") && <button type="button" disabled={loading} onClick={handleAnalyze} className={styles.secondaryButton}>{loading ? "견적 처리 중…" : "실패한 부위만 다시 계산"}</button>}
               <EstimateResult
                 onRetrySimilarPhoto={retrySimilarPhoto}
                 onEditPhotos={() =>

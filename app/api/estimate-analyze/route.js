@@ -1,3 +1,4 @@
+import { visualCacheScope, photoSignature, findVisualAnalysisCache } from "../../../lib/estimateVisualCache.mjs";
 import {resolvePortal} from '../../../lib/customerPortal.mjs';
 import { estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis } from "../../../lib/estimateAnalysisCache.mjs";
 import { TARGETS, SPACES, DAMAGES } from "../../../lib/photoHierarchy.mjs";
@@ -47,6 +48,18 @@ export async function POST(request) {
         console.warn("Estimate analysis cache lookup failed:", cacheError?.code || "unavailable");
       }
     }
+    const visualScope = visualCacheScope({companyId:company.id, sessionId, targetChoices,
+      classifier:[process.env.PHOTO_CLASSIFICATION_MODEL || "gpt-5.6-luna", analyzeEstimatePhotos.toString(), TARGETS, SPACES, DAMAGES],
+      secret:process.env.SUPABASE_SERVICE_ROLE_KEY});
+    let signatures = null;
+    if (visualScope) {
+      try {
+        signatures = [];
+        for (const file of files) signatures.push(await photoSignature(file));
+        const cached = await findVisualAnalysisCache({supabase,companyId:company.id,scope:visualScope,signatures});
+        if (cached) return NextResponse.json(cached);
+      } catch { console.warn("Recent photo cache unavailable; continuing normal analysis"); }
+    }
     const {value, shared} = await coalesceEstimateAnalysis(cacheKey, async () => {
       const limit = await checkUsageLimit({ company, eventType: "ai_photo_analysis", requestedQuantity: files.length, supabase });
       if (!limit.ok) return { body: makeUsageLimitError(limit), status: limit.status || 429 };
@@ -56,6 +69,7 @@ export async function POST(request) {
         provider: "openai", model: ESTIMATE_ANALYSIS_MODEL, reference_id: null,
         metadata: { company_slug: company.slug, photo_type: "estimate_batch", analyzed_photo_count: files.length,
           ...(cacheKey ? { analysis_cache_key: cacheKey } : {}),
+          ...(visualScope && signatures?.length === files.length ? {visual_cache_scope:visualScope,visual_signatures:signatures} : {}),
           hierarchy_photos: result.photos.map(({index,analysis})=>({index,targets:analysis.hierarchy_targets||[]})),
           openai_usage: result.usage, photos: result.photos.map(({ index, analysis }) => ({ index,
             target_type: analysis.target_type, door_count: analysis.door_count, object_key: analysis.object_key,

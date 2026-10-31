@@ -62,7 +62,7 @@ const flush = () => new Promise(setImmediate);
 
 // Exercise the real hook with React's state/ref contracts and deferred network requests.
 // No AI request, real upload, billing event or customer data is created.
-function harness({ analyses = null } = {}) {
+function harness({ analyses = null, searchOverride = null } = {}) {
   const state = [];
   let cursor = 0;
   let id = 0;
@@ -85,6 +85,7 @@ function harness({ analyses = null } = {}) {
         return ok({ success: true, photos: options.body.getAll('images').map((_, index) => ({ index, analysis: analyses?.[index] || normalize({ ...kitchen('싱크대 하부장'), classification_confidence: 'high' }) })) });
       }
       if (url === '/api/similar-estimate') {
+        if (searchOverride) { const overridden = await searchOverride(options); if (overridden) return overridden; }
         assert.equal(JSON.parse(options.body.get('metadata')).construction_scope, analyses ? scope(analyses[0]) : 'kitchen_lower');
         assert.ok(options.body.getAll('images').length >= 1);
         assert.ok(options.body.getAll('images').length <= 2);
@@ -293,4 +294,36 @@ test('two identifiable open doors both reach pricing; unknown counts and uncerta
     assert.ok(!h.render().message.includes('데이터가 부족'), variant);
     if (pricedCount === 1) assert.ok(h.render().message.includes('미산정 1개'), variant);
   }
+});
+
+
+test('a failed group preserves the other price and retry reuses analysis and successful search', async () => {
+  let searches=0;
+  const analyses=[normalize({...kitchen('싱크대 하부장'),classification_confidence:'high'}),normalize({...kitchen('싱크대 하부장'),classification_confidence:'high'})];
+  const h=harness({analyses,searchOverride:async()=>{searches++;if(searches===2)throw Error('temporary');}});
+  await h.render().addImages([new Blob(['one']),new Blob(['two'])]);
+  const first=h.render().handleAnalyze();await flush();await flush();
+  assert.equal(h.render().resultReady,true);
+  assert.equal(h.render().groups.filter(g=>g.estimate).length,1);
+  assert.equal(h.render().groups.filter(g=>g.searchStatus==='error').length,1);
+  h.uploads.forEach((u,i)=>u.resolve(ok({success:true,path:`customer/${i}.jpg`})));
+  await first;
+  await h.render().handleAnalyze();
+  assert.equal(h.calls.filter(url=>url==='/api/estimate-analyze').length,1);
+  assert.equal(searches,3);
+  assert.equal(h.render().groups.filter(g=>g.estimate).length,2);
+  assert.equal(h.uploads.length,2);
+});
+
+test('the first price appears while another search is still pending', async()=>{
+  const slow=deferred();let count=0;
+  const h=harness({searchOverride:async()=>{if(++count===2)await slow.promise;}});
+  await h.render().addImages([new Blob(['one']),new Blob(['two'])]);
+  const work=h.render().handleAnalyze();await flush();await flush();
+  assert.equal(h.render().resultReady,true);
+  assert.equal(h.render().groups.filter(g=>g.searchStatus==='loading').length,1);
+  assert.equal(h.render().groups.filter(g=>g.estimate).length,1);
+  slow.resolve();await flush();await flush();
+  h.uploads.forEach((u,i)=>u.resolve(ok({success:true,path:`customer/${i}.jpg`})));
+  await work;
 });

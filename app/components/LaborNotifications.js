@@ -1,4 +1,5 @@
 "use client";
+import { observeVisibleRefresh } from "../../lib/visibleRefresh.mjs";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -13,6 +14,7 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager", p
     let epoch = 0;
 
     async function load() {
+      if (!active || document.hidden) return;
       const current = ++epoch;
 
       try {
@@ -48,13 +50,9 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager", p
 
     load();
 
-    const timer = poll ? setInterval(load, 60000) : null;
-    const refreshVisible = () => { if (!document.hidden) load(); };
-    if (!poll) {
-      window.addEventListener("focus", refreshVisible);
-      document.addEventListener("visibilitychange", refreshVisible);
-    }
+    const stopRefresh = observeVisibleRefresh(load, {interval:poll ? 300000 : 0});
     const { data } = supabase.auth.onAuthStateChange(() => {
+      epoch++;
       setNotices([]);
       load();
     });
@@ -62,11 +60,7 @@ export default function LaborNotifications({ refreshKey = 0, view = "manager", p
     return () => {
       active = false;
       epoch++;
-      if (timer) clearInterval(timer);
-      if (!poll) {
-        window.removeEventListener("focus", refreshVisible);
-        document.removeEventListener("visibilitychange", refreshVisible);
-      }
+      stopRefresh();
       data.subscription.unsubscribe();
     };
   }, [refreshKey, view, poll, attempt]);

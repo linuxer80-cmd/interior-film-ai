@@ -1,5 +1,7 @@
 "use client";
 
+import { observeVisibleRefresh } from "../../lib/visibleRefresh.mjs";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { koreanDay } from "../utils/workerCalendar";
@@ -171,13 +173,11 @@ function TaskPanel({ companyId, embedded }) {
       }
     }, 60000);
 
-    window.addEventListener("focus", resume);
-    document.addEventListener("visibilitychange", resume);
+    const stopRefresh = observeVisibleRefresh(resume, {interval:0, events:["site-assignment-changed", "site-materials-changed"]});
 
     return () => {
       clearInterval(timer);
-      window.removeEventListener("focus", resume);
-      document.removeEventListener("visibilitychange", resume);
+      stopRefresh();
     };
   }, []);
 

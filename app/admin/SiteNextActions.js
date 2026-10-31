@@ -1,4 +1,5 @@
 "use client";
+import { observeVisibleRefresh } from "../../lib/visibleRefresh.mjs";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -96,19 +97,7 @@ export default function SiteNextActions({ site, companyId, active, onNavigate, p
   useEffect(() => {
     if (!active) return;
     const refresh = () => { if (document.visibilityState === "visible") setAttempt(value => value + 1); };
-    const materials = event => { if (event.detail?.siteId === site.id) refresh(); };
-    const timer = setInterval(refresh, 60000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    window.addEventListener("site-assignment-changed", refresh);
-    window.addEventListener("site-materials-changed", materials);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      window.removeEventListener("site-assignment-changed", refresh);
-      window.removeEventListener("site-materials-changed", materials);
-    };
+    return observeVisibleRefresh(refresh, {interval:300000, events:["site-assignment-changed", "site-materials-changed"]});
   }, [active, site.id]);
 
   if (!active || site.status === "cancelled") return null;

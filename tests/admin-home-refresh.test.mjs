@@ -1,3 +1,4 @@
+import {observeVisibleRefresh} from '../lib/visibleRefresh.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,9 +9,9 @@ const require = createRequire(import.meta.url), swc = require('next/dist/build/s
 await swc.loadBindings();
 const all=(n,p)=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(c=>all(c,p)):[...(p(n)?[n]:[]),...all(n.props?.children,p)];
 function fixture(path, props) {
-  let cursor=0, calls=0, intervalCalls=0;
+  let cursor=0, calls=0, intervalCalls=0, clock=0;
   const state=[], effects=[], pending=[], windowEvents={}, documentEvents={};
-  const document={hidden:false,addEventListener:(name,fn)=>documentEvents[name]=fn,removeEventListener:(name)=>delete documentEvents[name]};
+  const document={hidden:false, get visibilityState(){return this.hidden ? "hidden" : "visible"},addEventListener:(name,fn)=>documentEvents[name]=fn,removeEventListener:(name)=>delete documentEvents[name]};
   const window={addEventListener:(name,fn)=>windowEvents[name]=fn,removeEventListener:(name)=>delete windowEvents[name]};
   const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>state[i]=typeof v==='function'?v(state[i]):v];},useEffect(fn,deps){const i=cursor++;const previous=effects[i];if(!previous||deps.some((v,n)=>!Object.is(v,previous.deps[n])))pending.push(()=>{previous?.cleanup?.();effects[i]={deps,cleanup:fn()};});}};
   const exports={};
@@ -18,18 +19,18 @@ function fixture(path, props) {
   const supabase={auth:{getSession:async()=>({data:{session:{access_token:'token'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})}};
   const reportRequest=async()=>{calls++;return{rows:[],counts:{all:0,review:0,payment:0,materials:0}}};
   const fetch=async()=>{calls++;return{ok:true,json:async()=>({notifications:[]})}};
-  vm.runInNewContext(code,{exports,React,document,window,fetch,AbortController,URLSearchParams,Date,setTimeout,clearTimeout,setInterval:()=>{intervalCalls++;return 1;},clearInterval(){},require(p){if(p==='react')return React;if(p.includes('supabase'))return{supabase};if(p.includes('reportClient'))return{reportRequest};if(p.endsWith('.css'))return{__esModule:true,default:{}};throw Error(p);}});
+  vm.runInNewContext(code,{exports,React,document,window,fetch,AbortController,URLSearchParams,Date,setTimeout,clearTimeout,setInterval:()=>{intervalCalls++;return 1;},clearInterval(){},require(p){if(p.includes('visibleRefresh'))return{observeVisibleRefresh:(fn,options)=>observeVisibleRefresh(fn,{...options,windowObject:window,documentObject:document,now:()=>clock,setTimer:()=>{intervalCalls++;return 1;},clearTimer(){}})};if(p==='react')return React;if(p.includes('supabase'))return{supabase};if(p.includes('reportClient'))return{reportRequest};if(p.endsWith('.css'))return{__esModule:true,default:{}};throw Error(p);}});
   const render=()=>{cursor=0;return exports.default(props);};
   const flush=async()=>{const tree=render();while(pending.length)pending.shift()();await new Promise(resolve=>setImmediate(resolve));return tree;};
-  return{render,flush,windowEvents,documentEvents,document,get calls(){return calls;},get intervalCalls(){return intervalCalls;}};
+  return{advance(){clock+=31000;},render,flush,windowEvents,documentEvents,document,get calls(){return calls;},get intervalCalls(){return intervalCalls;}};
 }
 test('admin labor notifications refresh on opening and returning, without a timer',async()=>{
  const f=fixture('app/components/LaborNotifications.js',{poll:false});await f.flush();assert.equal(f.calls,1);assert.equal(f.intervalCalls,0);
  const tree=f.render();all(tree,n=>n.type==='button')[0].props.onClick();await f.flush();assert.equal(f.calls,2);
  f.document.hidden=true;f.windowEvents.focus();await new Promise(r=>setImmediate(r));assert.equal(f.calls,2);
- f.document.hidden=false;f.documentEvents.visibilitychange();await new Promise(r=>setImmediate(r));assert.equal(f.calls,3);
+ f.advance();f.document.hidden=false;f.documentEvents.visibilitychange();await new Promise(r=>setImmediate(r));assert.equal(f.calls,3);
 });
-test('other screens keep their existing labor notification timer',async()=>{
+test('other screens retain a visible-only safety timer',async()=>{
  const f=fixture('app/components/LaborNotifications.js',{view:'worker'});await f.flush();assert.equal(f.intervalCalls,1);assert.equal(f.calls,1);
 });
 test('closing tasks refresh on expansion and on return, without a timer',async()=>{

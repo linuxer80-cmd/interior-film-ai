@@ -1,3 +1,5 @@
+import sharp from 'sharp';
+import { visualCacheScope, photoSignature, findVisualAnalysisCache } from '../lib/estimateVisualCache.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -18,7 +20,7 @@ function harness({ limited = false } = {}) {
   const code = fs.readFileSync(new URL('../app/api/estimate-analyze/route.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '');
   const context = {
-    estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis, TARGETS, SPACES, DAMAGES,
+    visualCacheScope, photoSignature, findVisualAnalysisCache, estimateAnalysisCacheKey, findEstimateAnalysisCache, coalesceEstimateAnalysis, TARGETS, SPACES, DAMAGES,
     console: { error() {}, warn() {} }, process: { env: { OPENAI_API_KEY: 'test' } },
     NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) },
     getUsageAdminSupabase: () => client, ESTIMATE_ANALYSIS_MODEL: 'test-model',
@@ -60,13 +62,13 @@ test('missing company, over-quota, invalid type/count/size cannot reach the mode
 function persistentHarness() {
   const events = [], calls=[];
   let limited = false, cacheError = false;
-  const analysisTarget={id:'22222222-2222-4222-8222-222222222222',part:'문',kind:'세대 현관문',object_key:'same',object_confidence:'high'};
+  const analysisTarget={id:'22222222-2222-4222-8222-222222222222',part:'문',kind:'세대 현관문',space:'주거공간',object_key:'same',object_confidence:'high'};
   const client={from(table){
     let filtered=table==='companies'?[{id:'mine-id',slug:'mine',is_active:true},{id:'other-id',slug:'other',is_active:true}]:events.slice(), inserted=null;
-    const q={select(){return q},eq(k,v){filtered=filtered.filter(row=>(k==='metadata->>analysis_cache_key'?row.metadata?.analysis_cache_key:row[k])===v);return q},gte(k,v){filtered=filtered.filter(row=>row[k]>=v);return q},order(){return q},limit(n){filtered=filtered.slice(0,n);return q},insert(row){inserted={...row,id:`00000000-0000-4000-8000-${String(events.length+1).padStart(12,'0')}`,created_at:new Date().toISOString()};events.push(inserted);return q},maybeSingle:async()=>cacheError&&table==='usage_events'?{data:null,error:{code:'offline'}}:{data:filtered[0]||null,error:null},single:async()=>({data:inserted,error:null})};return q;
+    const q={then(resolve){return Promise.resolve(cacheError?{data:null,error:{code:'offline'}}:{data:filtered,error:null}).then(resolve)},select(){return q},eq(k,v){filtered=filtered.filter(row=>(k.startsWith('metadata->>')?row.metadata?.[k.slice(11)]:row[k])===v);return q},gte(k,v){filtered=filtered.filter(row=>row[k]>=v);return q},order(){return q},limit(n){filtered=filtered.slice(0,n);return q},insert(row){inserted={...row,id:`00000000-0000-4000-8000-${String(events.length+1).padStart(12,'0')}`,created_at:new Date().toISOString()};events.push(inserted);return q},maybeSingle:async()=>cacheError&&table==='usage_events'?{data:null,error:{code:'offline'}}:{data:filtered[0]||null,error:null},single:async()=>({data:inserted,error:null})};return q;
   }};
   const code=fs.readFileSync(new URL('../app/api/estimate-analyze/route.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replaceAll('export ','');
-  const context={estimateAnalysisCacheKey,findEstimateAnalysisCache,coalesceEstimateAnalysis,TARGETS,SPACES,DAMAGES,
+  const context={visualCacheScope,photoSignature,findVisualAnalysisCache,estimateAnalysisCacheKey,findEstimateAnalysisCache,coalesceEstimateAnalysis,TARGETS,SPACES,DAMAGES,
     console:{error(){},warn(){}},process:{env:{OPENAI_API_KEY:'key',SUPABASE_SERVICE_ROLE_KEY:'secret'}},
     NextResponse:{json:(body,options)=>({body,status:options?.status||200})},getUsageAdminSupabase:()=>client,ESTIMATE_ANALYSIS_MODEL:'test',
     checkUsageLimit:async()=>{calls.push('limit');return {ok:!limited,status:429}},makeUsageLimitError:()=>({error:'limit'}),
@@ -86,4 +88,14 @@ test('same browser session and exact inputs reuse recorded analysis without anot
 test('cache failure does not bypass AI quota and never returns another user result',async()=>{
  const h=persistentHarness();await h.post();h.setLimited(true);h.setCacheError(true);
  const response=await h.post();assert.equal(response.status,429);assert.equal(h.calls.filter(x=>x==='vision').length,1);
+});
+
+test('recompressed recent photo reuses server analysis even when AI quota is exhausted',async()=>{
+ const svg=Buffer.from('<svg width="256" height="256"><rect width="256" height="256" fill="#bbbbbb"/><rect x="40" y="12" width="170" height="232" fill="#452810"/><rect x="49" y="24" width="150" height="208" fill="#c4aa70"/><path d="M90 24v208M150 24v208M49 80h150M49 160h150" stroke="#332211" stroke-width="9"/></svg>');
+ const h=persistentHarness();
+ const first=await h.post({photo:await sharp(svg).jpeg({quality:90}).toBuffer()});
+ assert.equal(first.status,200);assert.ok(h.events[0].metadata.visual_cache_scope);h.setLimited(true);
+ const second=await h.post({photo:await sharp(svg).jpeg({quality:75}).toBuffer()});
+ assert.equal(second.status,200);assert.equal(second.body.reuse_reason,'recent_view');
+ assert.equal(second.body.analysis_id,first.body.analysis_id);assert.equal(h.calls.filter(x=>x==='vision').length,1);
 });
