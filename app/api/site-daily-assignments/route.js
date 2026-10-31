@@ -3,6 +3,7 @@ import {notifyWorkerChangeAlerts} from '../../../lib/workerChangeAlimtalk.mjs';
 import { createClient } from "@supabase/supabase-js";
 import { notifyAssignedWorkers } from "../../../lib/siteAssignmentAlimtalk.mjs";
 import { after } from "next/server";
+import { assignmentNotifications } from "../../../lib/assignment-notifications.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -567,10 +568,11 @@ export async function POST(request) {
         conflictConfirmationRequired:true,warnings},409);
     }
 
-    const { error } = await db.rpc("replace_site_daily_assignments", {
+    const { error } = await db.rpc("replace_site_daily_assignments_notified", {
       p_company_id: profile.company_id,
       p_site_id: siteId,
       p_rows: rows,
+      p_actor_id: auth.user.id,
     });
 
     if (error) {
@@ -638,24 +640,8 @@ export async function POST(request) {
           if(error)throw error;
           directory.push(...(data||[]));
         }
-        const workerMap=new Map(directory.map(w=>[w.id,w]));
-        const notifications=changes.filter(c=>workerMap.get(c.row.worker_id)?.user_id)
-          .map(c=>{
-            const w=workerMap.get(c.row.worker_id);
-            const labels={added:"신규 배정",removed:"배정 해제",role_changed:"담당 역할 변경"};
-            const role=c.row.role==="leader"?"팀장":"팀원";
-            return {
-              company_id:profile.company_id,recipient_type:"worker",
-              recipient_user_id:w.user_id,recipient_worker_id:w.id,
-              type:"site_assignment",priority:"success",
-              title:"현장 "+labels[c.kind],
-              message:c.row.work_date+" · "+role+" · 현장 일정을 확인해주세요.",
-              link:"/worker/site/"+siteId,reference_type:"site_assignment",
-              reference_id:siteId,
-              dedupe_key:["assignment",siteId,c.row.work_date,w.id,c.kind,Date.now()].join(":"),
-              is_read:false,push_sent:false
-            };
-          });
+        const notifications=assignmentNotifications({changes, workers:directory,
+          actorId:auth.user.id,companyId:profile.company_id,siteId});
         if(notifications.length){
           const {error}=await db.from("notifications").insert(notifications);
           if(error)throw error;
@@ -693,3 +679,4 @@ export async function POST(request) {
     );
   }
 }
+
