@@ -54,7 +54,7 @@ export default function AutoCalendarConnection({embedded=false,compact=false,con
     <details open={embedded&&(enabled||compact)?undefined:true}>
     <summary style={{display:embedded&&(enabled||compact)?'list-item':'none',cursor:'pointer',color:'#355d47',fontWeight:700,marginTop:embedded&&(enabled||compact)?8:0}}>{enabled?'더보기 · 캘린더 관리':'구글 캘린더 연결하기'}</summary>
     <h2 style={{margin:'0 0 10px'}}>구글 캘린더 자동 연결</h2>
-    <p>한 번 동의하면 앱을 닫아도 내 현장 일정이 자동으로 반영됩니다.</p>
+    <p>한 번 동의하면 앱을 닫아도 현장 일정이 자동으로 반영됩니다. 관리자는 자기 업체의 모든 시공 일정과 다른 업체에서 본인에게 배정된 일정을, 시공자는 본인에게 배정된 일정을 보냅니다.</p>
     <p style={{color:'#647168'}}>오늘부터 90일 · 배정·현장 요약 변경 반영 · 취소·배정 제외된 앱 일정 정리 · 같은 일정 중복 방지</p>
     {enabled?<>
       <strong style={{color:'#355d47'}}>자동 연결됨</strong>

@@ -54,6 +54,9 @@ create or replace function app_private.calendar_auto_enqueue_site(p_site uuid,p_
 returns void language plpgsql security invoker set search_path = '' as $$
 declare ids uuid[];
 begin
+  select array_agg(p.id) into ids from public.profiles p
+  where p.company_id=p_company and p.role='owner' and p.is_active is distinct from false;
+  perform app_private.calendar_auto_enqueue(ids);
   select array_agg(distinct w.user_id) into ids
   from public.workers w join public.site_workers a on a.worker_id=w.id
   where a.site_id=p_site and a.company_id=p_company
@@ -88,7 +91,9 @@ begin
     elsif TG_TABLE_NAME='workers' and
       (a->>'user_id',a->>'company_id',a->>'is_active') is not distinct from
       (b->>'user_id',b->>'company_id',b->>'is_active') then return null;
-    elsif TG_TABLE_NAME='profiles' and a->>'is_active' is not distinct from b->>'is_active' then return null;
+    elsif TG_TABLE_NAME='profiles' and
+      (a->>'is_active',a->>'role',a->>'company_id') is not distinct from
+      (b->>'is_active',b->>'role',b->>'company_id') then return null;
     elsif TG_TABLE_NAME='companies' and
       (a->>'company_name',a->>'is_active') is not distinct from
       (b->>'company_name',b->>'is_active') then return null;
@@ -117,6 +122,9 @@ begin
     elsif TG_TABLE_NAME='companies' then
       select array_agg(distinct user_id) into ids from public.workers
       where company_id=(r->>'id')::uuid and user_id is not null;
+      perform app_private.calendar_auto_enqueue(ids);
+      select array_agg(id) into ids from public.profiles
+      where company_id=(r->>'id')::uuid and role='owner';
       perform app_private.calendar_auto_enqueue(ids);
     end if;
   end loop;
