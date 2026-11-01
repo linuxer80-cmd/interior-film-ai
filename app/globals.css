@@ -74,18 +74,19 @@ main:has(.film-admin-dashboard), main:has(.worker-polished) {
 }
 .film-admin-menu-heading { font-size: 19px; margin: 26px 0 14px; }
 .film-admin-menu-grid, .wp-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
 }
 .film-admin-menu-grid > a, .film-admin-menu-grid > button, .wp-menu {
   position: relative; display: flex; flex-direction: column; align-items: stretch;
-  gap: 8px; min-width: 0; min-height: 44px; padding: 10px 10px 12px; background: #fffdfa;
+  gap: 8px; min-width: 0; min-height: 44px; padding: 10px 7px 12px; background: #fffdfa;
   border: 1px solid var(--film-line); border-radius: 16px; color: #243648;
   text-align: left; text-decoration: none; box-shadow: var(--film-shadow);
   transition: border-color .18s, box-shadow .18s;
 }
 .photo-menu-art { max-width: 88px !important; margin: 0 auto; }
 .film-admin-menu-grid strong, .wp-menu strong {
-  display: block; font-size: 15px; line-height: 1.4; letter-spacing: -.04em;
+  display: block; font-size: 14px; line-height: 1.4; letter-spacing: -.04em;
+  word-break: keep-all; overflow-wrap: anywhere;
 }
 .film-admin-menu-grid small, .wp-menu small {
   display: block; font-size: 12px; line-height: 1.45; color: #716c63; margin-top: 4px;
@@ -213,7 +214,7 @@ main:has(.film-admin-dashboard), main:has(.worker-polished) {
 }
 @media (min-width: 760px) {
   .film-admin-menu-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .wp-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
