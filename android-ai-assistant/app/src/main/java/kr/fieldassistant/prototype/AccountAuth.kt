@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URL
@@ -82,6 +83,19 @@ internal class AccountAuth(context: Context) {
     }
     suspend fun signOut() { client.auth.signOut() }
     suspend fun clearSession() { client.auth.clearSession() }
+
+    suspend fun saveConsultation(companyId: String, request: JSONObject): JSONObject {
+        // The RPC authorizes from the current verified account, not the supplied company ID.
+        val user=client.auth.retrieveUserForCurrentSession()
+        val owners=JSONArray(client.postgrest.rpc("get_my_company").data)
+        val allowed=(0 until owners.length()).any {
+            val row=owners.getJSONObject(it)
+            row.optString("company_id")==companyId && row.optString("role")=="owner" && row.optBoolean("is_active",false)
+        }
+        check(user.id.isNotBlank() && allowed) { "선택한 업체의 활성 관리자만 상담 현장을 등록할 수 있습니다." }
+        val args=Json.parseToJsonElement(request.toString()).jsonObject
+        return JSONObject(client.postgrest.rpc("save_consultation_site",args).data)
+    }
 
     private suspend fun verify(): VerifiedAccount {
         // Never trust role or company supplied by the client: both are re-read server-side.

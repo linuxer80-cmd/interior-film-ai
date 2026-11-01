@@ -20,6 +20,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation(platform("io.github.jan-tennert.supabase:bom:3.5.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
