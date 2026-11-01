@@ -179,7 +179,7 @@ class MainActivity : Activity() {
         val speech=recognizer()
         try {
             when(speech.checkStatus()) {
-                FeatureStatus.DOWNLOADABLE -> speech.download.collect { if(it is DownloadStatus.DownloadFailed) throw IllegalStateException("음성 모델 다운로드 실패") }
+                FeatureStatus.DOWNLOADABLE -> speech.download().collect { if(it is DownloadStatus.DownloadFailed) throw IllegalStateException("음성 모델 다운로드 실패") }
                 FeatureStatus.AVAILABLE -> Unit
                 else -> throw IllegalStateException("이 휴대폰에서 한국어 음성 인식을 준비할 수 없습니다.")
             }
