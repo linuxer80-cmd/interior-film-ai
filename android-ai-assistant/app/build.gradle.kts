@@ -13,7 +13,8 @@ android {
         applicationId = "kr.fieldassistant.prototype.stable"
         minSdk = 31
         targetSdk = 35
-        versionCode = 4
+        // CI supplies a monotonically increasing value; set it explicitly for local releases.
+        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 4
         versionName = "0.4-stable-test"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

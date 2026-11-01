@@ -19,7 +19,7 @@ jobs:
           gradle-version: '8.13'
       - name: Build test APK
         working-directory: android-ai-assistant
-        run: gradle --no-daemon assembleDebug
+        run: ASSISTANT_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))" gradle --no-daemon assembleDebug
       - name: Prepare APK and Android signing tool
         shell: bash
         run: |
