@@ -38,7 +38,7 @@ test('schema preserves source photo and legacy price, atomically revisions per-t
   const two=[target(),{...target(),id:other,part:'냉장고장',kind:'냉장고장',components:['상부장'],price:null}];
   const result=await save(db,0,two);assert.equal(result.rows[0].saved.revision,1);
   rows=await db.query('select * from photo_case_management');assert.equal(rows.rows[0].missing_prices,1);assert.equal(Number(rows.rows[0].legacy_price),900000);assert.equal(rows.rows[0].targets.length,2);
-  await assert.rejects(save(db,0),/변경/);await assert.rejects(save(db,1,[target()],'reviewed',other),/권한/);
+  await assert.rejects(save(db,0),e=>e.code==='PT409'&&/변경/.test(e.message));await assert.rejects(save(db,1,[target()],'reviewed',other),/권한/);
   assert.equal((await db.query('select count(*)::integer as n from photo_case_classification_history')).rows[0].n,1);
   await save(db,1,two,'excluded');await save(db,2,two,'reviewed');
   assert.equal((await db.query('select revision from photo_case_classifications')).rows[0].revision,3);
