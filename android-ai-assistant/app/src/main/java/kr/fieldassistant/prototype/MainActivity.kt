@@ -12,6 +12,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.text.InputType
 import android.database.ContentObserver
 import android.graphics.Color
 import android.graphics.Typeface
@@ -44,7 +45,13 @@ import java.util.Locale
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
-    private val prefs by lazy { getSharedPreferences("assistant_test", MODE_PRIVATE) }
+    private val auth by lazy { AccountAuth(applicationContext) }
+    private var account: VerifiedAccount? = null
+    private var authBusy = true
+    private var authError = ""
+    private var sessionEpoch = 0
+    private var analysisJob: Job? = null
+    private val prefs get() = getSharedPreferences("assistant_user_" + requireNotNull(account).userId, MODE_PRIVATE)
     private var root: LinearLayout? = null
     private var observing = false
     private var running = false
@@ -65,6 +72,22 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
+        render()
+        restoreLogin()
+    }
+    private fun restoreLogin() {
+        authBusy=true;authError="";render()
+        scope.launch {
+            try {
+                val verified=auth.restore()
+                if(verified!=null && verified.companies.isNotEmpty()) activateAccount(verified)
+                else if(verified!=null) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
+            } catch (_: Exception) { authError="로그인 상태를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요." }
+            finally { authBusy=false;render() }
+        }
+    }
+    private fun activateAccount(verified: VerifiedAccount) {
+        account=verified;sessionEpoch++;pending.clear();inFlight.clear()
         val saved=records()
         for(i in 0 until saved.length()) {
             val item=saved.optJSONObject(i) ?: continue
@@ -73,17 +96,19 @@ class MainActivity : Activity() {
             }
         }
         saveRecords(saved)
-        render()
+        val epoch=sessionEpoch
+        if(active) { startObserver();scanFolder() }
         scope.launch {
             try {
                 val speech=recognizer(); val speechReady=try { speech.checkStatus()==FeatureStatus.AVAILABLE } finally { speech.close() }
                 val model=Generation.getClient(); val aiReady=try { model.checkStatus()==FeatureStatus.AVAILABLE } finally { model.close() }
-                if(speechReady && aiReady) { prepared=true; render(); processNext() }
+                if(epoch==sessionEpoch && speechReady && aiReady) { prepared=true; render(); processNext() }
             } catch (_: Exception) { /* The user can prepare the model from the button. */ }
         }
     }
     override fun onStart() {
-        super.onStart(); active = true; startObserver(); scanFolder()
+        super.onStart(); active = true
+        if(account!=null) { startObserver(); scanFolder() }
     }
     override fun onStop() {
         active = false; handler.removeCallbacks(handlerScan)
@@ -100,7 +125,7 @@ class MainActivity : Activity() {
         ?.filter { it.isFile && it.name?.lowercase(Locale.ROOT)?.let { n -> listOf(".m4a", ".mp3", ".wav", ".ogg", ".flac").any(n::endsWith) } == true }
         ?: throw IllegalStateException("선택한 폴더에 접근할 수 없습니다. 다시 선택해 주세요.")
     private fun startObserver() {
-        if (observing) return
+        if (observing || account==null) return
         val f = folder() ?: return
         try { contentResolver.registerContentObserver(f, true, observer); observing = true }
         catch (_: SecurityException) { message("녹음 폴더 접근이 해제됐습니다. 폴더를 다시 선택해 주세요.") }
@@ -112,7 +137,8 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 1001 || resultCode != RESULT_OK) return
+        if (requestCode != 1001 || resultCode != RESULT_OK || account==null) return
+        val epoch=sessionEpoch
         val uri = data?.data ?: return
         try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         catch (_: Exception) { message("폴더 권한을 저장하지 못했습니다. 다시 선택해 주세요."); return }
@@ -120,22 +146,26 @@ class MainActivity : Activity() {
         scope.launch {
             try {
                 val files = withContext(Dispatchers.IO) { currentFiles(uri) }
+                if(epoch!=sessionEpoch || account==null) return@launch
                 // Existing recordings form the baseline; never scan them automatically.
                 prefs.edit().putString("folder", uri.toString()).putStringSet("seen", files.map { it.uri.toString() }.toSet()).putString("records", "[]").apply()
                 pending.clear(); inFlight.clear()
                 if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
                 startObserver(); message("폴더가 연결됐습니다. 이제 저장되는 새 녹음을 확인합니다.")
             } catch (_: Exception) { message("폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요.") }
-            finally { baselineBusy = false; render() }
+            finally { if(epoch==sessionEpoch) { baselineBusy = false; render() } }
         }
     }
     private fun scanFolder() {
+        if(account==null) return
+        val epoch=sessionEpoch
         val f = folder() ?: return
         if (scanning || baselineBusy) return
         scanning = true
         scope.launch {
             try {
                 val files = withContext(Dispatchers.IO) { currentFiles(f).map { FileSnapshot(it.uri.toString(), it.name ?: "새 통화 녹음", it.length(), it.lastModified()) } }
+                if(epoch!=sessionEpoch || account==null) return@launch
                 val existing = seen()
                 val recs = records()
                 for (file in files) {
@@ -169,21 +199,25 @@ class MainActivity : Activity() {
         }; saveRecords(a); render()
     }
     private fun processNext() {
-        if (running || !active || !prepared || pending.isEmpty()) return
+        if (account==null || running || !active || !prepared || pending.isEmpty()) return
+        val epoch=sessionEpoch
         val id=pending.removeAt(0); if (id in inFlight) return
         running=true; inFlight.add(id); updateRecord(id,"휴대폰에서 분석 중")
-        scope.launch {
+        analysisJob=scope.launch {
             try {
                 val text=transcribe(Uri.parse(id))
+                if(epoch!=sessionEpoch || account==null) return@launch
                 if(text.isBlank()) throw IllegalStateException("음성 내용을 읽지 못했습니다.")
                 updateRecord(id,"내용 정리 중",text.take(30000))
                 val result=summarize(text)
+                if(epoch!=sessionEpoch || account==null) return@launch
                 updateRecord(id,"확인 필요",text.take(30000),result)
                 postCompletionNotification(id)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
-                updateRecord(id,"분석 실패",summary="기기 지원, 모델 준비 상태 또는 파일 형식을 확인한 뒤 다시 시도해 주세요.")
+                if(epoch==sessionEpoch && account!=null) updateRecord(id,"분석 실패",summary="기기 지원, 모델 준비 상태 또는 파일 형식을 확인한 뒤 다시 시도해 주세요.")
             } finally {
-                running=false; inFlight.remove(id); processNext()
+                if(epoch==sessionEpoch) { running=false; inFlight.remove(id); processNext() }
             }
         }
     }
@@ -234,6 +268,44 @@ class MainActivity : Activity() {
             return model.generateContent(prompt).candidates.firstOrNull()?.text?.trim().orEmpty().ifBlank { "AI가 내용을 정리하지 못했습니다. 통화 내용을 직접 확인해 주세요." }
         } finally { model.close() }
     }
+    private fun signOut() {
+        sessionEpoch++;analysisJob?.cancel();analysisJob=null
+        handler.removeCallbacks(handlerScan)
+        if(observing) { contentResolver.unregisterContentObserver(observer);observing=false }
+        account=null;running=false;scanning=false;prepared=false;baselineBusy=false;pending.clear();inFlight.clear()
+        authBusy=true;authError="";render()
+        scope.launch { try { auth.signOut() } catch (_: Exception) { auth.clearSession() }
+            finally { authBusy=false;render() } }
+    }
+    private fun renderLogin() {
+        val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242));isFillViewport=true }
+        val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(22),dp(36),dp(22),dp(25)) }
+        scroll.addView(col);setContentView(scroll)
+        col.addView(text("FIELD ASSISTANT · 시험 버전",12f,true,Color.rgb(112,133,117)))
+        col.addView(text("필름장이 로그인",26f,true))
+        col.addView(text("기존 필름장이 이메일 계정으로 로그인해 주세요. 로그인한 계정의 업체만 확인합니다.",14f))
+        val email=EditText(this).apply { hint="이메일";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;setSingleLine(true) }
+        val password=EditText(this).apply { hint="비밀번호";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;setSingleLine(true) }
+        col.addView(email,LinearLayout.LayoutParams(-1,dp(55)));col.addView(password,LinearLayout.LayoutParams(-1,dp(55)))
+        if(authError.isNotBlank()) col.addView(text(authError,13f,false,Color.rgb(158,65,40)))
+        val login=button(if(authBusy) "확인 중…" else "로그인",true) {
+            val enteredEmail=email.text.toString().trim();val enteredPassword=password.text.toString()
+            if(enteredEmail.isBlank()||enteredPassword.isBlank()) { message("이메일과 비밀번호를 입력해 주세요.");return@button }
+            password.text.clear();authBusy=true;authError="";render()
+            scope.launch {
+                try {
+                    val verified=auth.signIn(enteredEmail,enteredPassword)
+                    if(verified.companies.isEmpty()) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
+                    else activateAccount(verified)
+                } catch (_: Exception) { authError="로그인 또는 업체 정보를 확인하지 못했습니다. 이메일·비밀번호와 인터넷 연결을 확인해 주세요." }
+                finally { authBusy=false;render() }
+            }
+        }
+        login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)
+        if(authError.isNotBlank()) addButton(col,"저장된 로그인 다시 확인",false) { restoreLogin() }
+        col.addView(text("\n이 시험 앱의 구글·카카오 로그인은 아직 연결되지 않았습니다. 기존 웹앱에서의 로그인은 이 시험 앱에 자동으로 이어지지 않습니다.",12f,false,Color.rgb(117,130,120)))
+        addButton(col,"필름장이 웹앱 열기",false) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/login"))) }
+    }
     private fun postCompletionNotification(id: String) {
         val manager=getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(NotificationChannel("assistant_results", "통화 분석 결과", NotificationManager.IMPORTANCE_DEFAULT))
@@ -260,11 +332,20 @@ class MainActivity : Activity() {
     }
     private fun message(s:String) { Toast.makeText(this,s,Toast.LENGTH_LONG).show() }
     private fun render() {
+        if(account==null) { renderLogin();return }
         val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242)); isFillViewport=true }
         val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(28),dp(20),dp(25)) }
         root=col; scroll.addView(col);setContentView(scroll)
         col.addView(text("FIELD ASSISTANT  ·  시험 버전",12f,true,Color.rgb(112,133,117)))
         col.addView(text("현장 AI 비서",26f,true))
+        val verified=requireNotNull(account)
+        val current=verified.companies.find { it.id==prefs.getString("selected_company",null) } ?: verified.companies.first()
+        col.addView(text("로그인됨 · ${current.name} (${current.role})",14f,true))
+        if(verified.companies.size>1) addButton(col,"소속 업체 변경",false) {
+            val names=verified.companies.map { "${it.name} · ${it.role}" }.toTypedArray()
+            AlertDialog.Builder(this).setTitle("업체 선택").setItems(names) { _,which -> prefs.edit().putString("selected_company",verified.companies[which].id).apply();render() }.setNegativeButton("취소",null).show()
+        }
+        addButton(col,"로그아웃",false) { signOut() }
         col.addView(text("선택한 통화 녹음 폴더의 새 파일을 앱이 열려 있을 때 확인합니다.",14f))
         val info=text("녹음과 분석 내용은 이 휴대폰에서 처리합니다. 최초 모델 준비에 인터넷이 필요할 수 있습니다. 결과는 확인 후 사용하세요.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
@@ -278,8 +359,9 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("휴대폰 AI 준비")
                 .setMessage("음성 인식 및 기기 내부 AI 모델을 확인합니다. 모델이 없다면 다운로드가 필요할 수 있어요. 준비를 시작할까요?")
                 .setNegativeButton("취소",null).setPositiveButton("준비하기") { _,_ ->
-                    scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext() }
-                    catch(e:Exception){message(e.message ?: "AI 준비에 실패했습니다.")} }
+                    val epoch=sessionEpoch
+                    scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();if(epoch==sessionEpoch && account!=null){prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext()} }
+                    catch(e:Exception){if(epoch==sessionEpoch)message(e.message ?: "AI 준비에 실패했습니다.")} }
                 }.show()
         }
         addButton(col,"3. 결과 알림 켜기",false) {
@@ -301,18 +383,25 @@ class MainActivity : Activity() {
             if(status=="확인 필요") {
                 addButton(card,"통화 내용 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 내용").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
                 addButton(card,"내용 복사하고 필름장이 열기",false) {
-                    val clip=getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clip.setPrimaryClip(ClipData.newPlainText("상담 내용",item.optString("transcript")))
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://interior-film-ai.vercel.app/admin?tab=register")))
+                    confirmWebAccount {
+                        val clip=getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clip.setPrimaryClip(ClipData.newPlainText("상담 내용",item.optString("transcript")))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://interior-film-ai.vercel.app/admin?tab=register")))
+                    }
                 }
             }
         }
-        addButton(col,"필름장이 열기",false) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) }
+        addButton(col,"필름장이 열기",false) { confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) } }
         addButton(col,"비서함 기록 지우기",false) {
             AlertDialog.Builder(this).setTitle("비서함 기록 지우기")
                 .setMessage("이 앱에 저장된 분석 결과만 지웁니다. 휴대폰의 원본 녹음 파일은 지우지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("지우기") { _,_ -> pending.clear(); saveRecords(JSONArray());render() }.show()
         }
         col.addView(text("\n이 시험 앱은 자동 현장 저장을 하지 않습니다. 분석된 내용을 확인한 후 필름장이에서 등록해 주세요. 앱이 닫히거나 절전 중일 때 감지가 지연될 수 있습니다.",12f,false,Color.rgb(117,130,120)))
+    }
+    private fun confirmWebAccount(action: () -> Unit) {
+        AlertDialog.Builder(this).setTitle("웹앱 계정 확인")
+            .setMessage("필름장이 웹앱은 별도로 로그인됩니다. 웹앱에서도 같은 계정과 업체를 확인해 주세요.")
+            .setNegativeButton("취소",null).setPositiveButton("열기") { _,_ -> action() }.show()
     }
 }
