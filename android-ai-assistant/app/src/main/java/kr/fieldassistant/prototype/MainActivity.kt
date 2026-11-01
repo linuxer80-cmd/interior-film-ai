@@ -58,6 +58,7 @@ class MainActivity : Activity() {
     private var scanning = false
     private var active = false
     private var prepared = false
+    private var speechMode = SpeechRecognizerOptions.Mode.MODE_BASIC
     private var baselineBusy = false
     private val pending = mutableListOf<String>()
     private val inFlight = mutableSetOf<String>()
@@ -100,9 +101,9 @@ class MainActivity : Activity() {
         if(active) { startObserver();scanFolder() }
         scope.launch {
             try {
-                val speech=recognizer(); val speechReady=try { speech.checkStatus()==FeatureStatus.AVAILABLE } finally { speech.close() }
+                val readyMode=findReadySpeechMode()
                 val model=Generation.getClient(); val aiReady=try { model.checkStatus()==FeatureStatus.AVAILABLE } finally { model.close() }
-                if(epoch==sessionEpoch && speechReady && aiReady) { prepared=true; render(); processNext() }
+                if(epoch==sessionEpoch && readyMode!=null && aiReady) { speechMode=readyMode; prepared=true; render(); processNext() }
             } catch (_: Exception) { /* The user can prepare the model from the button. */ }
         }
     }
@@ -221,25 +222,58 @@ class MainActivity : Activity() {
             }
         }
     }
-    private fun recognizer() = SpeechRecognition.getClient(speechRecognizerOptions {
-        locale=Locale.KOREAN; preferredMode=SpeechRecognizerOptions.Mode.MODE_BASIC
+    private fun recognizer(mode: Int = speechMode) = SpeechRecognition.getClient(speechRecognizerOptions {
+        locale=Locale.KOREA; preferredMode=mode
     })
+    private val speechModes = listOf(SpeechRecognizerOptions.Mode.MODE_BASIC, SpeechRecognizerOptions.Mode.MODE_ADVANCED)
+    private suspend fun findReadySpeechMode(): Int? {
+        for(mode in speechModes) {
+            val speech=recognizer(mode)
+            try { if(speech.checkStatus()==FeatureStatus.AVAILABLE) return mode }
+            catch(e: CancellationException) { throw e }
+            catch(_: Exception) { /* Try the other supported mode. */ }
+            finally { speech.close() }
+        }
+        return null
+    }
     private suspend fun prepareModels() {
-        val speech=recognizer()
-        try {
-            when(speech.checkStatus()) {
-                FeatureStatus.DOWNLOADABLE -> speech.download().collect { if(it is DownloadStatus.DownloadFailed) throw IllegalStateException("음성 모델 다운로드 실패") }
-                FeatureStatus.AVAILABLE -> Unit
-                else -> throw IllegalStateException("이 휴대폰에서 한국어 음성 인식을 준비할 수 없습니다.")
-            }
-        } finally { speech.close() }
+        var selected: Int?=null
+        var downloading=false
+        var failed=false
+        for(mode in speechModes) {
+            val speech=recognizer(mode)
+            try {
+                when(speech.checkStatus()) {
+                    FeatureStatus.AVAILABLE -> selected=mode
+                    FeatureStatus.DOWNLOADABLE -> {
+                        var completed=false
+                        speech.download().collect {
+                            if(it is DownloadStatus.DownloadFailed) throw IllegalStateException("음성 모델 다운로드 실패")
+                            if(it is DownloadStatus.DownloadCompleted) completed=true
+                        }
+                        if(completed || speech.checkStatus()==FeatureStatus.AVAILABLE) selected=mode else downloading=true
+                    }
+                    FeatureStatus.DOWNLOADING -> downloading=true
+                }
+            } catch(e: CancellationException) { throw e }
+              catch(_: Exception) { failed=true }
+            finally { speech.close() }
+            if(selected!=null) break
+        }
+        speechMode=selected ?: throw IllegalStateException(when {
+            downloading -> "한국어 음성 모델을 내려받는 중입니다. 인터넷에 연결한 상태로 잠시 후 다시 눌러 주세요."
+            failed -> "한국어 음성 모델을 준비하지 못했습니다. 인터넷 연결과 Google 앱 업데이트를 확인하고 다시 시도해 주세요."
+            else -> "이 기기에서 한국어 음성 모델을 사용할 수 있는지 확인하지 못했습니다. Google 앱을 업데이트한 뒤 다시 시도해 주세요."
+        })
         val model=Generation.getClient()
         try {
             when(model.checkStatus()) {
                 FeatureStatus.DOWNLOADABLE -> model.download().collect { if(it is DownloadStatus.DownloadFailed) throw IllegalStateException("AI 모델 다운로드 실패") }
                 FeatureStatus.AVAILABLE -> Unit
-                else -> throw IllegalStateException("이 휴대폰에서 기기 내부 AI를 사용할 수 없습니다.")
+                FeatureStatus.DOWNLOADING -> throw IllegalStateException("휴대폰 AI 모델을 내려받는 중입니다. 잠시 후 다시 눌러 주세요.")
+                else -> throw IllegalStateException("한국어 음성 인식은 준비됐지만, 휴대폰 AI 모델을 사용할 수 있는지 확인하지 못했습니다. Google Play의 AICore와 Google 앱을 확인해 주세요.")
             }
+            if(model.checkStatus()!=FeatureStatus.AVAILABLE) throw IllegalStateException("휴대폰 AI 모델 준비가 아직 끝나지 않았습니다. 잠시 후 다시 눌러 주세요.")
         } finally { model.close() }
     }
     private suspend fun transcribe(uri: Uri): String {
@@ -361,7 +395,8 @@ class MainActivity : Activity() {
                 .setNegativeButton("취소",null).setPositiveButton("준비하기") { _,_ ->
                     val epoch=sessionEpoch
                     scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();if(epoch==sessionEpoch && account!=null){prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext()} }
-                    catch(e:Exception){if(epoch==sessionEpoch)message(e.message ?: "AI 준비에 실패했습니다.")} }
+                    catch(e:CancellationException){throw e}
+                    catch(e:Exception){if(epoch==sessionEpoch && account!=null) AlertDialog.Builder(this@MainActivity).setTitle("휴대폰 AI 준비 확인").setMessage(e.message ?: "AI 준비에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").setPositiveButton("확인",null).show()} }
                 }.show()
         }
         addButton(col,"3. 결과 알림 켜기",false) {
