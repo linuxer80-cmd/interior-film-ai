@@ -10,11 +10,11 @@ android {
     namespace = "kr.fieldassistant.prototype"
     compileSdk = 36
     defaultConfig {
-        applicationId = "kr.fieldassistant.prototype.loginfix"
+        applicationId = "kr.fieldassistant.prototype.stable"
         minSdk = 31
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3-korean-test"
+        versionCode = 4
+        versionName = "0.4-stable-test"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

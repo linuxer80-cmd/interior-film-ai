@@ -20,9 +20,18 @@ jobs:
       - name: Build test APK
         working-directory: android-ai-assistant
         run: gradle --no-daemon assembleDebug
+      - name: Prepare APK and Android signing tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android-ai-assistant/signing-output
+          cp android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk android-ai-assistant/signing-output/app-debug.apk
+          TOOL="$(find "$ANDROID_HOME/build-tools" -name apksigner.jar -print | sort -V | tail -n 1)"
+          test -f "$TOOL"
+          cp "$TOOL" android-ai-assistant/signing-output/apksigner.jar
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: field-assistant-android-test
-          path: android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk
+          path: android-ai-assistant/signing-output/
           if-no-files-found: error
           retention-days: 7
