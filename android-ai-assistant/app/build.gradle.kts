@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "kr.fieldassistant.prototype"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "kr.fieldassistant.prototype.login"
         minSdk = 31
