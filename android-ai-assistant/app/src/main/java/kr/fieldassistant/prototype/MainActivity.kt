@@ -1,16 +1,23 @@
 package kr.fieldassistant.prototype
 
+import android.Manifest
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.database.ContentObserver
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -67,6 +74,13 @@ class MainActivity : Activity() {
         }
         saveRecords(saved)
         render()
+        scope.launch {
+            try {
+                val speech=recognizer(); val speechReady=try { speech.checkStatus()==FeatureStatus.AVAILABLE } finally { speech.close() }
+                val model=Generation.getClient(); val aiReady=try { model.checkStatus()==FeatureStatus.AVAILABLE } finally { model.close() }
+                if(speechReady && aiReady) { prepared=true; render(); processNext() }
+            } catch (_: Exception) { /* The user can prepare the model from the button. */ }
+        }
     }
     override fun onStart() {
         super.onStart(); active = true; startObserver(); scanFolder()
@@ -165,6 +179,7 @@ class MainActivity : Activity() {
                 updateRecord(id,"내용 정리 중",text.take(30000))
                 val result=summarize(text)
                 updateRecord(id,"확인 필요",text.take(30000),result)
+                postCompletionNotification(id)
             } catch (e: Exception) {
                 updateRecord(id,"분석 실패",summary="기기 지원, 모델 준비 상태 또는 파일 형식을 확인한 뒤 다시 시도해 주세요.")
             } finally {
@@ -219,6 +234,19 @@ class MainActivity : Activity() {
             return model.generateContent(prompt).candidates.firstOrNull()?.text?.trim().orEmpty().ifBlank { "AI가 내용을 정리하지 못했습니다. 통화 내용을 직접 확인해 주세요." }
         } finally { model.close() }
     }
+    private fun postCompletionNotification(id: String) {
+        val manager=getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(NotificationChannel("assistant_results", "통화 분석 결과", NotificationManager.IMPORTANCE_DEFAULT))
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
+        val intent=Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pendingIntent=PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification=Notification.Builder(this,"assistant_results")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("새 통화 분석이 완료됐어요")
+            .setContentText("현장 AI 비서에서 내용을 확인해 주세요.")
+            .setContentIntent(pendingIntent).setAutoCancel(true).build()
+        manager.notify(id.hashCode() and Int.MAX_VALUE, notification)
+    }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun text(value: String, size: Float=14f, bold: Boolean=false, color: Int=Color.rgb(43,62,51)): TextView = TextView(this).apply {
         this.text=value; textSize=size; setTextColor(color); if(bold)setTypeface(null,Typeface.BOLD); setLineSpacing(dp(3).toFloat(),1f)
@@ -253,6 +281,11 @@ class MainActivity : Activity() {
                     scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext() }
                     catch(e:Exception){message(e.message ?: "AI 준비에 실패했습니다.")} }
                 }.show()
+        }
+        addButton(col,"3. 결과 알림 켜기",false) {
+            if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1002)
+            else message("알림 설정을 확인해 주세요.")
         }
         addButton(col,"새 녹음 확인",false) { scanFolder();message("새 녹음을 확인합니다.") }
         val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
