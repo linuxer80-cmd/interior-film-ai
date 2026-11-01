@@ -20,7 +20,7 @@ android {
 dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha1")
+    implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha2")
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
 }
 
