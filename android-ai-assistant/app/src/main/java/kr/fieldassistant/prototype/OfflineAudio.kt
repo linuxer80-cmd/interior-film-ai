@@ -118,7 +118,7 @@ internal object OfflineAudio {
                         if(index>=0) {
                             val input=decoder.getInputBuffer(index) ?: error("입력 버퍼를 확인하지 못했습니다.")
                             val time=extractor.sampleTime
-                            val size=if(time<0 || time>MAX_DURATION_US) -1 else extractor.readSampleData(input,0)
+                            val size=if(time>MAX_DURATION_US) -1 else extractor.readSampleData(input,0)
                             if(inputs++<4) android.util.Log.i("AssistantTest","CODEC input time="+time+" size="+size)
                             if(size<0) { decoder.queueInputBuffer(index,0,0,0,MediaCodec.BUFFER_FLAG_END_OF_STREAM);inputDone=true }
                             else { decoder.queueInputBuffer(index,0,size,time,0);extractor.advance() }
