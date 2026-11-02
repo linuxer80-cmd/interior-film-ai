@@ -115,7 +115,7 @@ jobs:
           sleep 10
           "$ADB" shell pidof kr.fieldassistant.prototype.stable
           "$ADB" shell dumpsys activity activities > android-ai-assistant/launch-output/web-activity.txt
-          grep -q 'mResumedActivity.*WebWorkspaceActivity' android-ai-assistant/launch-output/web-activity.txt
+          grep -Eq '(topResumedActivity|mResumedActivity|ResumedActivity).*WebWorkspaceActivity' android-ai-assistant/launch-output/web-activity.txt
           "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/web-runtime.log
           if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/web-runtime.log; then cat android-ai-assistant/launch-output/web-runtime.log; exit 1; fi
           "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/web.png
