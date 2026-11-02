@@ -967,6 +967,22 @@ class MainActivity : Activity() {
             appendHomeMessage("${name} · ${expense.label} ${java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA).format(expense.amount)}원 · $payer\n오늘 날짜로 저장할까요? ‘네’ 또는 ‘취소’라고 답해 주세요.")
             render();return
         }
+        val film=FilmInput.parse(input)
+        if(film!=null) {
+            val company=selectedCompany() ?: return
+            val selected=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
+            val name=prefs.getString("selected_site_name","").orEmpty()
+            if(selected.isBlank()) { appendHomeMessage("필름을 입력할 현장 상세를 먼저 선택해 주세요.");render();return }
+            val named=input.substringBefore("현장", "").trim()
+            if(named.isNotBlank() && named !in listOf("이","그","해당") && !name.contains(named)) {
+                appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
+                lookupSites(AssistantRequests.Request("sites",query=named));return
+            }
+            appendHomeMessage("${name} · ${film.code} ${film.metres.toPlainString()}m 사용으로 이해했습니다. 반출된 필름과 남은 길이를 확인하고 저장해 주세요.")
+            val history=JSONArray(prefs.getString("home_chat","[]"))
+            history.getJSONObject(history.length()-1).put("film_site",selected).put("film_company",company.id)
+            prefs.edit().putString("home_chat",history.toString()).apply();render();return
+        }
         val reply=ConsultationChat.reply(input)
         if(reply==ConsultationChat.Reply.DECLINE || reply==ConsultationChat.Reply.LATER) {
             val item=displayedHomeConsultationId?.let(::recordById)
@@ -1061,6 +1077,9 @@ class MainActivity : Activity() {
             }
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
             body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
+            if(m.optString("film_site").isNotBlank() && m.optString("film_company")==selectedCompany()?.id) {
+                addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
+            }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
                 addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
             }
