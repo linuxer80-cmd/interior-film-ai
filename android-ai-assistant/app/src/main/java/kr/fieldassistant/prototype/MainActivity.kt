@@ -723,7 +723,7 @@ class MainActivity : Activity() {
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
-            .setItems(arrayOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능")) { _,which ->
+            .setItems((listOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능") + if(selectedCompany()?.role=="관리자") listOf("매출 · 수익") else emptyList()).toTypedArray()) { _,which ->
                 when(which) {
                     0 -> {
                         val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
@@ -738,6 +738,7 @@ class MainActivity : Activity() {
                     1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
                     4 -> showFeatures()
+                    5 -> if(selectedCompany()?.role=="관리자") openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=profit")
                     3 -> confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") }
                 }
             }.setNegativeButton("닫기",null).show()
@@ -761,6 +762,7 @@ class MainActivity : Activity() {
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
         if(feature.id=="new-site") showNewSiteRegistration()
+        if(feature.id=="profit") openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path)
     }
     private fun showFeatures() {
         val owner=selectedCompany()?.role=="관리자"
@@ -973,6 +975,9 @@ class MainActivity : Activity() {
         shortcuts.addView(button("오늘 일정",false) { answerHome("오늘 일정") },LinearLayout.LayoutParams(0,dp(48),1f))
         shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
         body.addView(shortcuts)
+        if(selectedCompany()?.role=="관리자") {
+            addButton(body,"매출 · 수익 보기",false) { openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=profit") }
+        }
         if(folder()==null || !notificationsEnabled()) {
             body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
         }
