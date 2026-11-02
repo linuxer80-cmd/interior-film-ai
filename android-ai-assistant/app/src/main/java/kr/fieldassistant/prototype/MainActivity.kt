@@ -10,6 +10,7 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.text.InputType
@@ -63,6 +64,7 @@ class MainActivity : Activity() {
     private var prepared = false
     private var speechMode = SpeechRecognizerOptions.Mode.MODE_BASIC
     private var baselineBusy = false
+    private var folderStatus = ""
     private val pending = mutableListOf<String>()
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
@@ -137,18 +139,38 @@ class MainActivity : Activity() {
         catch (_: SecurityException) { message("녹음 폴더 접근이 해제됐습니다. 폴더를 다시 선택해 주세요.") }
     }
     private fun chooseFolder() {
-        val i = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        startActivityForResult(i, 1001)
+        if(baselineBusy) { message("선택한 폴더를 확인 중입니다. 잠시 기다려 주세요.");return }
+        AlertDialog.Builder(this).setTitle("통화 녹음 폴더 선택")
+            .setMessage("다음 화면에서 통화 녹음이 저장된 폴더를 열고 ‘이 폴더 사용’을 눌러 주세요. 갤럭시는 보통 내장 저장공간 → Recordings → Call에 있습니다. 기기에 따라 위치가 다를 수 있습니다.")
+            .setNegativeButton("취소",null).setPositiveButton("폴더 선택창 열기") { _,_ -> openFolderPicker() }.show()
+    }
+    private fun openFolderPicker() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+        // A suggestion only: the system picker remains free to choose any allowed folder.
+        val hint=DocumentsContract.buildDocumentUri("com.android.externalstorage.documents","primary:Recordings/Call")
+        i.putExtra(DocumentsContract.EXTRA_INITIAL_URI,hint)
+        folderStatus="폴더 선택창을 여는 중입니다. 화면이 열리면 녹음 폴더에서 ‘이 폴더 사용’을 눌러 주세요."
+        render()
+        try { startActivityForResult(i,1001) }
+        catch (_: ActivityNotFoundException) { folderStatus="휴대폰의 파일 선택창을 열 수 없습니다. 기본 파일 앱이 사용 가능한지 확인해 주세요.";render() }
+        catch (_: SecurityException) { folderStatus="파일 선택창을 열 수 없습니다. 휴대폰의 파일 앱 설정을 확인해 주세요.";render() }
+        catch (_: RuntimeException) { folderStatus="파일 선택창을 열지 못했습니다. 앱을 다시 연 뒤 시도해 주세요.";render() }
     }
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 1001 || resultCode != RESULT_OK || account==null) return
+        if (requestCode != 1001 || account==null) return
+        if(resultCode!=RESULT_OK) { folderStatus="폴더가 선택되지 않았습니다. 다시 선택한 뒤 ‘이 폴더 사용’을 눌러 주세요.";render();return }
         val epoch=sessionEpoch
-        val uri = data?.data ?: return
-        try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        catch (_: Exception) { message("폴더 권한을 저장하지 못했습니다. 다시 선택해 주세요."); return }
+        val uri = data?.data ?: run { folderStatus="선택한 폴더를 확인하지 못했습니다. 다시 선택해 주세요.";render();return }
+        val flags=(data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if(flags==0) { folderStatus="선택한 폴더의 읽기 권한이 없습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
+        try { contentResolver.takePersistableUriPermission(uri, flags) }
+        catch (_: Exception) { folderStatus="폴더 권한을 저장하지 못했습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
         baselineBusy = true
+        folderStatus="선택한 폴더의 기존 녹음을 확인하고 있습니다. 잠시 기다려 주세요."
+        render()
         scope.launch {
             try {
                 val files = withContext(Dispatchers.IO) { currentFiles(uri) }
@@ -157,8 +179,8 @@ class MainActivity : Activity() {
                 prefs.edit().putString("folder", uri.toString()).putStringSet("seen", files.map { it.uri.toString() }.toSet()).putString("records", "[]").apply()
                 pending.clear(); inFlight.clear()
                 if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
-                startObserver(); message("폴더가 연결됐습니다. 이제 저장되는 새 녹음을 확인합니다.")
-            } catch (_: Exception) { message("폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요.") }
+                startObserver(); folderStatus="폴더가 연결됐습니다. 이제 저장되는 새 녹음을 확인합니다.";message(folderStatus)
+            } catch (_: Exception) { if(epoch==sessionEpoch) folderStatus="폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요." }
             finally { if(epoch==sessionEpoch) { baselineBusy = false; render() } }
         }
     }
@@ -446,7 +468,7 @@ class MainActivity : Activity() {
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
         if(observing) { contentResolver.unregisterContentObserver(observer);observing=false }
-        account=null;running=false;scanning=false;prepared=false;baselineBusy=false;pending.clear();inFlight.clear()
+        account=null;running=false;scanning=false;prepared=false;baselineBusy=false;folderStatus="";pending.clear();inFlight.clear()
         authBusy=true;authError="";render()
         scope.launch { try { auth.signOut() } catch (_: Exception) { auth.clearSession() }
             finally { authBusy=false;render() } }
@@ -528,6 +550,7 @@ class MainActivity : Activity() {
                 .setMessage("새 폴더를 선택하면 이 앱의 비서함 기록이 초기화됩니다. 원본 녹음은 삭제되지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("선택하기") { _,_ -> chooseFolder() }.show()
         }
+        if(folderStatus.isNotBlank()) col.addView(text(folderStatus,13f,false,Color.rgb(76,111,85)))
         addButton(col,if(prepared) "✓ 휴대폰 AI 준비 완료" else "2. 휴대폰 AI 준비",true) {
             if(prepared) { message("휴대폰 AI를 사용할 준비가 되어 있습니다."); return@addButton }
             AlertDialog.Builder(this).setTitle("휴대폰 AI 준비")
