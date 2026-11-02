@@ -731,8 +731,8 @@ class MainActivity : Activity() {
         addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
-        if(done) { body.addView(text("✓ 현장 등록 완료",17f,true));return }
-        if(reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
+        if(done) body.addView(text("✓ 현장 등록 완료",17f,true))
+        if(!done && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
         val candidates=reg?.optJSONArray("candidates")
         if(candidates!=null && !busy) {
             for(i in 0 until candidates.length()) {
@@ -748,16 +748,18 @@ class MainActivity : Activity() {
         }
         if(busy) page.addView(text("저장 결과를 확인하고 있습니다…",14f,true))
         else {
+            if(!done) {
             val quick=LinearLayout(this)
             quick.addView(button("네 · 등록",true) { answerChat(id,"네") },LinearLayout.LayoutParams(0,dp(48),1f))
             quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f));page.addView(quick)
+            }
             val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),0,dp(6),0);background=bg(Color.rgb(244,244,244),26) }
             val input=EditText(this).apply { hint="메시지 보내기";textSize=16f;setSingleLine(true);setText(chatInput);background=null;addTextChangedListener(object: android.text.TextWatcher {
                 override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
                 override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { chatInput=s.toString() }
                 override fun afterTextChanged(s:android.text.Editable?) {}
             }) }
-            row.addView(input,LinearLayout.LayoutParams(0,dp(52),1f));row.addView(TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerChat(id,input.text.toString()) } },LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
+            row.addView(input,LinearLayout.LayoutParams(0,dp(52),1f));row.addView(TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { if(done) { chatId=null;answerHome(input.text.toString()) } else answerChat(id,input.text.toString()) } },LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         }
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
