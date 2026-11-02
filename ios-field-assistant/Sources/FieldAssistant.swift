@@ -55,7 +55,9 @@ final class SamplesModel: ObservableObject {
         let categories: [(String, [String])] = [("우드", ["WOOD", "우드"]), ("솔리드", ["SOLID", "솔리드"]), ("스톤", ["STONE", "MARBLE", "스톤"]), ("메탈", ["METAL", "메탈"])]
         for (name, values) in categories where text.contains(name) {
             let category = ((product.category ?? "") + " " + (product.pattern ?? "")).uppercased()
-            guard values.contains(where: { category.contains($0) }) else { return false }
+            let code = (product.productCode ?? "").uppercased()
+            let woodCode = name == "우드" && ["OGW", "SPW", "LW", "ZX", "W", "PW"].contains(where: { code.hasPrefix($0) })
+            guard values.contains(where: { category.contains($0) }) || woodCode else { return false }
         }
         let expression = try? NSRegularExpression(pattern: "(?i)(?<![A-Z0-9])[A-Z]{1,8}[- ]?[0-9][A-Z0-9-]*(?![A-Z0-9])")
         let range = NSRange(text.startIndex..., in: text)
