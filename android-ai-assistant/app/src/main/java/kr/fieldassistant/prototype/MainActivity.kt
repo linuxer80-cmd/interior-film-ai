@@ -906,6 +906,9 @@ class MainActivity : Activity() {
         val company=selectedCompany() ?: return
         val pending=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: return) } catch(_:Exception) { return }
         if(pending.optString("company")!=company.id || expenseSaving) { message("경비를 입력한 업체를 선택해 주세요.");return }
+        if(!pending.optBoolean("submitted") && prefs.getString("selected_site_id",null)!=pending.optString("siteId")) {
+            message("경비를 입력한 현장을 다시 선택해 주세요.");return
+        }
         expenseSaving=true
         pending.put("submitted",true);prefs.edit().putString("chat_expense_pending",pending.toString()).commit()
         val epoch=sessionEpoch
@@ -1069,6 +1072,13 @@ class MainActivity : Activity() {
             choices.addView(button("등록 안 함",false) { answerHome("등록 안 함") },LinearLayout.LayoutParams(0,dp(48),1f))
             choices.addView(button("나중에",false) { answerHome("나중에") },LinearLayout.LayoutParams(0,dp(48),1f))
             body.addView(choices)
+        }
+        val expenseDraft=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+        if(expenseDraft.has("id") && expenseDraft.optString("company")==selectedCompany()?.id) {
+            val choices=LinearLayout(this)
+            choices.addView(button(if(expenseDraft.optBoolean("submitted")) "저장 결과 확인" else "경비 저장",true) { answerHome(if(expenseDraft.optBoolean("submitted")) "다시 확인" else "네") },LinearLayout.LayoutParams(0,dp(48),1f))
+            if(!expenseDraft.optBoolean("submitted")) choices.addView(button("취소",false) { answerHome("취소") },LinearLayout.LayoutParams(0,dp(48),1f))
+            page.addView(choices)
         }
         val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),dp(4),dp(6),dp(4));background=bg(Color.rgb(244,244,244),26) }
         val input=EditText(this).apply { hint="비서에게 메시지 보내기";textSize=16f;setSingleLine(true);setText(homeInput);background=null
