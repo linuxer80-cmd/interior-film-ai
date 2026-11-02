@@ -921,6 +921,12 @@ class MainActivity : Activity() {
                 if(current.optString("id")==pending.optString("id")) prefs.edit().remove("chat_expense_pending").commit()
                 appendHomeMessage("${pending.optString("siteName")} 현장에 ${pending.optString("label")} ${java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA).format(pending.optLong("amount"))}원을 저장했습니다.")
             } catch(e:CancellationException) { throw e }
+              catch(e:ExpenseRejected) {
+                  if(epoch==sessionEpoch && account?.userId==uid) {
+                      pending.put("submitted",false);prefs.edit().putString("chat_expense_pending",pending.toString()).commit()
+                      appendHomeMessage("경비를 저장하지 못했습니다: ${e.message ?: "권한이나 입력 내용을 확인해 주세요."} 수정하려면 ‘취소’ 후 다시 입력해 주세요.")
+                  }
+              }
               catch(_:Exception) { if(epoch==sessionEpoch) appendHomeMessage("저장 결과를 확인하지 못했습니다. 중복을 막기 위해 같은 요청으로 다시 확인합니다. ‘다시 확인’이라고 입력해 주세요.") }
             finally { expenseSaving=false;if(epoch==sessionEpoch) render() }
         }

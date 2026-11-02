@@ -73,6 +73,8 @@ internal class SecureSessionManager(context: Context) : SessionManager {
     override suspend fun deleteSession() { prefs.edit().remove("session").commit() }
 }
 
+internal class ExpenseRejected(message:String):Exception(message)
+
 internal data class CompanyAccess(val id: String, val name: String, val role: String)
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
 
@@ -177,7 +179,8 @@ internal class AccountAuth private constructor(context: Context) {
                 val code=c.responseCode
                 val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
                 val response=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
-                if(code !in 200..299 || !response.optBoolean("success")) throw IllegalStateException(response.optString("error").ifBlank { "경비 저장 결과를 확인하지 못했습니다." })
+                if(code in 400..499 && code!=408) throw ExpenseRejected(response.optString("error").ifBlank { "경비 저장 권한 또는 내용을 확인해 주세요." })
+                if(code !in 200..299 || !response.optBoolean("success")) throw IllegalStateException("경비 저장 결과를 확인하지 못했습니다.")
                 response
             } finally { c.disconnect() }
         }
