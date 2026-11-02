@@ -330,11 +330,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if(requestCode==1005) {
-            val company=selectedCompany();val uri=data?.data
-            if(resultCode==RESULT_OK && uri!=null && uri.scheme=="content" && company?.role=="관리자" && company.id==imagePickerCompany) {
+            val company=selectedCompany()
+            val uris=if(data?.clipData!=null) (0 until data.clipData!!.itemCount).mapNotNull { data.clipData!!.getItemAt(it).uri } else listOfNotNull(data?.data)
+            if(resultCode==RESULT_OK && uris.isNotEmpty() && uris.all { it.scheme=="content" } && company?.role=="관리자" && company.id==imagePickerCompany) {
+                if(uris.size>5) { message("사진은 최대 5장까지 선택해 주세요.");imagePickerCompany=null;return }
                 AlertDialog.Builder(this).setTitle("대화 사진 분석")
-                    .setMessage("선택한 사진을 서버로 보내 AI 분석합니다. 분석 성공 시 기존 사진 분석 이용 횟수 1회가 사용됩니다. 계속할까요?")
-                    .setNegativeButton("취소",null).setPositiveButton("분석") { _,_ -> analyzeSelectedScreenshot(uri,company) }.show()
+                    .setMessage("선택한 사진 ${uris.size}장을 서버로 보내 함께 AI 분석합니다. 분석 성공 시 기존 사진 분석 이용 횟수 1회가 사용됩니다. 계속할까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("분석") { _,_ -> analyzeSelectedScreenshots(uris,company) }.show()
             }
             imagePickerCompany=null
             return
@@ -833,17 +835,17 @@ class MainActivity : Activity() {
         val company=selectedCompany() ?: return
         if(company.role!="관리자") return
         imagePickerCompany=company.id
-        val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try { startActivityForResult(picker,1005) } catch(_:Exception) { imagePickerCompany=null;message("사진 선택창을 열지 못했습니다.") }
     }
-    private fun analyzeSelectedScreenshot(uri:Uri,company:CompanyAccess) {
+    private fun analyzeSelectedScreenshots(uris:List<Uri>,company:CompanyAccess) {
         val uid=account?.userId ?: return
         if(textAnalysisBusy) { message("다른 상담을 분석하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
         textAnalysisBusy=true;val epoch=sessionEpoch
         appendHomeMessage("대화 사진을 분석하고 있습니다.");render()
         scope.launch {
             try {
-                val jpeg=withContext(Dispatchers.IO) {
+                val images=withContext(Dispatchers.IO) { uris.map { uri ->
                     val type=contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
                     require(type in listOf("image/jpeg","image/png","image/webp")) { "JPG, PNG 또는 WEBP 사진을 선택해 주세요." }
                     val bytes=contentResolver.openInputStream(uri)?.use { input ->
@@ -859,18 +861,22 @@ class MainActivity : Activity() {
                     try {
                         val output=java.io.ByteArrayOutputStream();check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,88,output));require(output.size()<=3500000);output.toByteArray()
                     } finally { bitmap.recycle() }
-                }
-                val digest=java.security.MessageDigest.getInstance("SHA-256").digest(jpeg)
-                val photoKey="site_photo_request_"+UUID.nameUUIDFromBytes((uid+":"+company.id+":").toByteArray(Charsets.UTF_8)+digest).toString()
+                } }
+                require(ScreenshotBatch.withinLimits(images)) { "사진은 최대 5장, 합계 3.5MB까지 가능합니다." }
+                val photoKey=ScreenshotBatch.requestKey(uid,company.id,images)
                 val requestId=prefs.getString(photoKey,null) ?: UUID.randomUUID().toString().also { check(prefs.edit().putString(photoKey,it).commit()) }
-                val result=try { auth.analyzeSiteScreenshot(uid,company.id,jpeg,requestId) } catch(e:ScreenshotRetryNew) {
+                val result=try { auth.analyzeSiteScreenshot(uid,company.id,images,requestId) } catch(e:ScreenshotRetryNew) {
                     check(prefs.edit().putString(photoKey,UUID.randomUUID().toString()).commit())
                     throw e
                 }
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
                 presentAnalyzedSite(result,company,"other")
             } catch(e:CancellationException) { throw e }
-              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(if(e is ScreenshotRetryNew) "이전 사진 분석을 다시 시작할 수 있습니다. 같은 사진을 선택해 주세요." else "사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 다시 선택해 주세요.") }
+              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(when {
+                  e is ScreenshotRetryNew -> "이전 사진 분석을 다시 시작할 수 있습니다. 같은 사진을 같은 순서로 선택해 주세요."
+                  e is IllegalArgumentException && e.message=="사진은 최대 5장, 합계 3.5MB까지 가능합니다." -> e.message!!
+                  else -> "사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 같은 순서로 다시 선택해 주세요."
+              }) }
             finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
         }
     }

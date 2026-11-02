@@ -186,10 +186,10 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,image:ByteArray,requestId:String):JSONObject {
+    suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,images:List<ByteArray>,requestId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
-        require(image.isNotEmpty() && image.size<=3500000 && Regex("^[0-9a-fA-F-]{36}$").matches(requestId))
+        require(ScreenshotBatch.withinLimits(images) && Regex("^[0-9a-fA-F-]{36}$").matches(requestId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val boundary="Assistant"+java.util.UUID.randomUUID().toString().replace("-","")
@@ -201,8 +201,11 @@ internal class AccountAuth private constructor(context: Context) {
                     fun line(s:String) { out.write((s+"\r\n").toByteArray(Charsets.UTF_8)) }
                     line("--$boundary");line("Content-Disposition: form-data; name=\"requestId\"");line("");line(requestId)
                     line("--$boundary");line("Content-Disposition: form-data; name=\"referenceDate\"");line("");line("")
-                    line("--$boundary");line("Content-Disposition: form-data; name=\"images\"; filename=\"screenshot.jpg\"");line("Content-Type: image/jpeg");line("")
-                    out.write(image);line("");line("--$boundary--")
+                    images.forEachIndexed { index,image ->
+                        line("--$boundary");line("Content-Disposition: form-data; name=\"images\"; filename=\"screenshot-${index+1}.jpg\"");line("Content-Type: image/jpeg");line("")
+                        out.write(image);line("")
+                    }
+                    line("--$boundary--")
                 }
                 val code=c.responseCode
                 val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
