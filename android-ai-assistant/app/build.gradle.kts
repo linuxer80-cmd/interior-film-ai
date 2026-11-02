@@ -19,7 +19,7 @@ android {
         targetSdk = 35
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
         versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 4
-        versionName = "0.5-whisper-test"
+        versionName = "0.6-chat-test"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
