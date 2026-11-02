@@ -185,6 +185,25 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun analyzeSiteText(expectedUser:String,companyId:String,content:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(content.length in 5..20000)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/admin/parse-site-call").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json")
+                c.outputStream.use { it.write(JSONObject().put("content",content).toString().toByteArray(Charsets.UTF_8)) }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299 && result.optBoolean("success")) { "상담 내용을 분석하지 못했습니다. 로그인과 연결 상태를 확인해 주세요." }
+                result.optJSONObject("data") ?: error("분석 결과를 확인하지 못했습니다.")
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantProfit(expectedUser:String, companyId:String, from:String, to:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
