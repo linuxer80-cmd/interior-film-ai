@@ -932,9 +932,10 @@ class MainActivity : Activity() {
             }
         }.setNegativeButton("닫기",null).show()
     }
-    private fun openRecruitWorkspace(worker:Boolean,tab:String) {
+    private fun openRecruitWorkspace(worker:Boolean,tab:String,jobId:String="") {
         if(tab !in listOf("jobs","seeking","applications","candidates","mine")) return
-        openWebWorkspace("https://interior-film-ai.vercel.app/jobs?view="+(if(worker) "worker" else "manager")+"&tab="+tab)
+        val job=if(Regex("^[0-9a-fA-F-]{36}$").matches(jobId)) "&job="+Uri.encode(jobId) else ""
+        openWebWorkspace("https://interior-film-ai.vercel.app/jobs?view="+(if(worker) "worker" else "manager")+"&tab="+tab+job)
     }
     private fun loadRecruit(uid:String,company:CompanyAccess,worker:Boolean,kind:String,page:Int) {
         if(laborBusy) { message("구인·구직 정보를 확인하고 있습니다.");return }
@@ -962,12 +963,17 @@ class MainActivity : Activity() {
         if(kind !in listOf("jobs","applications","candidates")) return
         val rows=data.optJSONArray(kind) ?: JSONArray()
         val options=mutableListOf<String>()
+        fun jobFor(row:JSONObject):JSONObject? {
+            val id=row.optString("job_id")
+            for(key in listOf("jobs","applicationJobs")) { val list=data.optJSONArray(key) ?: continue;for(i in 0 until list.length()) { val job=list.optJSONObject(i) ?: continue;if(job.optString("id")==id) return job } }
+            return null
+        }
         for(i in 0 until rows.length()) {
             val row=rows.optJSONObject(i) ?: continue
             val label=when(kind) {
                 "jobs" -> listOf(recruitText(row,"title").ifBlank { "구인 공고" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
                 "candidates" -> listOf(recruitText(row,"name").ifBlank { "시공자" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
-                else -> listOf(row.optJSONObject("profile")?.let { recruitText(it,"name") }.orEmpty().ifBlank { if(worker) "지원 · 제안" else "지원자" },recruitStatus(recruitText(row,"status"))).joinToString(" · ")
+                else -> listOf(if(worker) jobFor(row)?.let { recruitText(it,"title") }.orEmpty().ifBlank { "지원 · 제안" } else row.optJSONObject("profile")?.let { recruitText(it,"name") }.orEmpty().ifBlank { "지원자" },recruitStatus(recruitText(row,"status")),jobFor(row)?.let { recruitText(it,"region") }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
             }
             options.add(label)
         }
@@ -981,14 +987,14 @@ class MainActivity : Activity() {
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return@setItems }
                 var next=items
                 when {
-                    index<items -> rows.optJSONObject(index)?.let { showRecruitDetail(worker,kind,it) }
+                    index<items -> rows.optJSONObject(index)?.let { showRecruitDetail(worker,kind,it,if(kind=="applications") jobFor(it) else null) }
                     page>0 && kind!="applications" && index==next++ -> loadRecruit(uid,company,worker,kind,page-1)
                     canPage && index==next -> loadRecruit(uid,company,worker,kind,page+1)
                     else -> openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine")
                 }
             }.setNegativeButton("닫기",null).show()
     }
-    private fun showRecruitDetail(worker:Boolean,kind:String,row:JSONObject) {
+    private fun showRecruitDetail(worker:Boolean,kind:String,row:JSONObject,job:JSONObject?=null) {
         val title=when(kind) { "jobs"->recruitText(row,"title").ifBlank { "구인 공고" };"candidates"->recruitText(row,"name").ifBlank { "시공자" };else->"지원 · 제안" }
         val body=when(kind) {
             "jobs" -> {
@@ -996,10 +1002,10 @@ class MainActivity : Activity() {
                 "${recruitText(row,"company_name")} · ${recruitText(row,"region")}\n${recruitDates(row)}\n모집 기준 일당: $wage\n모집 인원: ${row.optInt("headcount")}명\n${recruitText(row,"work_content")}\n\n실제 확정 일당은 시공자의 등록 일당을 따릅니다."
             }
             "candidates" -> "활동 지역: ${recruitText(row,"region").ifBlank { "미등록" }}\n경력: ${if(row.isNull("experience_years")) "미등록" else recruitText(row,"experience_years")+"년"}\n가능 일정: ${recruitDates(row).ifBlank { "공개된 일정 없음" }}\n\n${recruitText(row,"introduction")}"
-            else -> "상태: ${recruitStatus(recruitText(row,"status"))}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
+            else -> "상태: ${recruitStatus(recruitText(row,"status"))}\n현장: ${job?.let { recruitText(it,"title") }.orEmpty().ifBlank { "정보 확인 필요" }}\n지역: ${job?.let { recruitText(it,"region") }.orEmpty()}\n시공일: ${job?.let { recruitDates(it) }.orEmpty()}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
         }
         AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton(if(kind=="applications") "지원 · 모집 관리" else if(kind=="candidates") "시공자 검색 · 제안" else if(worker) "일자리 화면에서 지원" else "공고 관리") { _,_ ->
-            openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine")
+            openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine",if(kind=="applications") recruitText(row,"job_id") else "")
         }.setNegativeButton("닫기",null).show()
     }
     private var tradeBusy=false
