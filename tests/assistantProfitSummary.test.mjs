@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assistantProfitSummary } from "./lib/assistantProfitSummary.mjs";
+import { assistantProfitSummary } from "../lib/assistantProfitSummary.mjs";
 
 test("matches confirmed-site totals with VAT and excluded worker labor", () => {
   const source = { sites: [
