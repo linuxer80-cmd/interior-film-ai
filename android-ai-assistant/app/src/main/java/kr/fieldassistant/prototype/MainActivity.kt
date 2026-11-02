@@ -356,6 +356,29 @@ class MainActivity : Activity() {
             }
         }
     }
+    private fun retryOffline(id: String) {
+        val uid=account?.userId ?: return
+        if(!BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
+        val epoch=sessionEpoch
+        updateRecord(id,"휴대폰에서 분석 중")
+        scope.launch {
+            val job=coroutineContext[Job]
+            try {
+                val result=withContext(Dispatchers.IO) {
+                    org.vosk.Model(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                        OfflineAudio.transcribe(applicationContext,Uri.parse(id),model) { job?.isActive!=true }
+                    }
+                }
+                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
+                val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
+                updateRecord(id,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+            } catch(e:CancellationException) { throw e }
+              catch(_: Exception) {
+                if(epoch==sessionEpoch && account?.userId==uid) updateRecord(id,"분석 실패",summary="녹음 파일과 저장 공간을 확인한 뒤 다시 시도해 주세요.")
+            } finally { BackgroundCalls.running.set(false) }
+        }
+    }
     private fun recognizer(mode: Int = speechMode) = SpeechRecognition.getClient(speechRecognizerOptions {
         locale=Locale.KOREA; preferredMode=mode
     })
@@ -474,6 +497,11 @@ class MainActivity : Activity() {
         val summary=item.optString("summary")
         val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(4),dp(20),dp(4)) }
         box.addView(text("${company.name}의 상담중 현장으로 등록합니다. 내용을 확인하거나 수정해 주세요.",13f))
+        val transcript=item.optString("transcript")
+        if(!prepared && transcript.isNotBlank()) {
+            box.addView(text("추가 AI 요약을 사용할 수 없어 아래 인식 내용을 참고해 항목을 확인해 주세요. 이 원문은 자동 전송되지 않습니다.",12f,true))
+            box.addView(text(transcript.take(3000)+(if(transcript.length>3000) "\n…이후 내용은 비서함에서 확인할 수 있습니다." else ""),12f))
+        }
         fun field(label: String, initial: String): EditText {
             box.addView(text(label,12f,true))
             return EditText(this).apply { setText(initial);textSize=15f;setSingleLine(true);box.addView(this,LinearLayout.LayoutParams(-1,dp(48))) }
@@ -708,7 +736,7 @@ class MainActivity : Activity() {
     private fun startSimpleSetup() {
         if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
         AlertDialog.Builder(this).setTitle("비서 간편 설정")
-            .setMessage("녹음 폴더 연결, 휴대폰 AI 준비, 알림 허용을 차례로 진행합니다. AI 모델을 내려받을 수 있으니 와이파이 연결을 권장합니다. 휴대폰의 폴더와 알림 허용은 직접 선택해야 합니다.")
+            .setMessage("통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
             .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
                 simpleSetup=true
                 if(folder()==null) openFolderPicker() else continueSimpleSetup()
@@ -716,28 +744,13 @@ class MainActivity : Activity() {
     }
     private fun continueSimpleSetup() {
         if(!simpleSetup || account==null || setupBusy || !active || folder()==null) return
-        if(prepared) {
-            simpleSetup=false
-            if(!notificationsEnabled()) configureNotifications() else { folderStatus="비서 준비가 완료됐습니다.";render() }
-            return
-        }
-        val epoch=sessionEpoch
-        setupBusy=true;folderStatus="휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요.";render()
-        scope.launch {
-            try {
-                prepareModels()
-                if(epoch!=sessionEpoch || account==null) return@launch
-                prepared=true;setupBusy=false;folderStatus="휴대폰 AI 준비가 완료됐습니다.";render();processNext()
-                if(simpleSetup) continueSimpleSetup()
-            } catch(e: CancellationException) { throw e }
-              catch(e: Exception) {
-                if(epoch==sessionEpoch && account!=null) {
-                    simpleSetup=false;setupBusy=false;folderStatus="휴대폰 AI 준비를 확인해 주세요.";render()
-                    if(active) AlertDialog.Builder(this@MainActivity).setTitle("휴대폰 AI 준비 확인")
-                        .setMessage(e.message ?: "AI 준비를 마치지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.")
-                        .setPositiveButton("확인",null).show()
-                }
-              }
+        simpleSetup=false
+        if(!notificationsEnabled()) {
+            folderStatus="폴더가 연결됐습니다. 알림을 허용해 주세요."
+            render();configureNotifications()
+        } else {
+            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 기본 음성 모델을 준비합니다."
+            render();scanFolder()
         }
     }
     private fun render() {
@@ -760,8 +773,8 @@ class MainActivity : Activity() {
         col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
         val info=text("녹음은 휴대폰에서 분석합니다. 견적 문의를 놓칠 수 있으니 비서함도 확인해 주세요. 등록을 확인한 내용만 필름장이에 저장됩니다. 백그라운드 확인과 알림은 절전 설정에 따라 지연될 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
-        val ready=folder()!=null && prepared && notificationsEnabled()
-        if(ready) col.addView(text("✓ 비서 준비 완료",16f,true))
+        val ready=folder()!=null && notificationsEnabled()
+        if(ready) col.addView(text("✓ 녹음 폴더와 알림 연결됨",16f,true))
         else addButton(col,if(setupBusy || baselineBusy) "비서 준비 중…" else "비서 간편 설정",true) { startSimpleSetup() }
         addButton(col,if(showSetupDetails) "설정 접기" else "연결 상태와 설정 보기",false) { showSetupDetails=!showSetupDetails;render() }
         if(folderStatus.isNotBlank()) col.addView(text(folderStatus,13f,false,Color.rgb(76,111,85)))
@@ -771,16 +784,16 @@ class MainActivity : Activity() {
                 .setMessage("새 폴더를 선택하면 이 앱의 비서함 기록이 초기화됩니다. 원본 녹음은 삭제되지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("선택하기") { _,_ -> chooseFolder() }.show()
         }
-        addButton(col,if(prepared) "✓ 휴대폰 AI 준비 완료" else "2. 휴대폰 AI 준비",true) {
+        addButton(col,if(prepared) "✓ 추가 AI 요약 준비됨" else "2. 추가 AI 요약 준비 · 선택",false) {
             if(setupBusy) { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); return@addButton }
-            if(prepared) { message("휴대폰 AI를 사용할 준비가 되어 있습니다."); return@addButton }
-            AlertDialog.Builder(this).setTitle("휴대폰 AI 준비")
-                .setMessage("음성 인식 및 기기 내부 AI 모델을 확인합니다. 모델이 없다면 다운로드가 필요할 수 있어요. 준비를 시작할까요?")
+            if(prepared) { message("추가 AI 요약을 사용할 수 있습니다."); return@addButton }
+            AlertDialog.Builder(this).setTitle("추가 AI 요약 · 선택")
+                .setMessage("지원되는 휴대폰에서 통화 내용을 더 자세히 정리합니다. 지원하지 않아도 기본 음성 분석과 일정 알림은 사용할 수 있습니다. 모델을 준비할까요?")
                 .setNegativeButton("취소",null).setPositiveButton("준비하기") { _,_ ->
                     val epoch=sessionEpoch
                     scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();if(epoch==sessionEpoch && account!=null){prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext()} }
                     catch(e:CancellationException){throw e}
-                    catch(e:Exception){if(epoch==sessionEpoch && account!=null) AlertDialog.Builder(this@MainActivity).setTitle("휴대폰 AI 준비 확인").setMessage(e.message ?: "AI 준비에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").setPositiveButton("확인",null).show()} }
+                    catch(e:Exception){if(epoch==sessionEpoch && account!=null) AlertDialog.Builder(this@MainActivity).setTitle("추가 AI 요약을 사용할 수 없습니다").setMessage("이 휴대폰에서는 추가 요약을 준비하지 못했습니다. 기본 음성 분석은 시도할 수 있습니다. 내용이 자동으로 정리되지 않으면 인식된 통화 내용을 확인해 주세요.").setPositiveButton("확인",null).show()} }
                 }.show()
         }
         addButton(col,if(notificationsEnabled()) "✓ 결과 알림 켜짐 · 확인" else "3. 결과 알림 켜기",false) { configureNotifications() }
@@ -795,7 +808,7 @@ class MainActivity : Activity() {
             val p=LinearLayout.LayoutParams(-1,-2);p.setMargins(0,0,0,dp(10));col.addView(card,p)
             card.addView(text(item.optString("name","통화 녹음"),14f,true));card.addView(text(status,12f,false,Color.rgb(88,126,94)))
             val summary=item.optString("summary"); if(summary.isNotBlank()) card.addView(text(summary,13f))
-            if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { if(id !in pending) pending.add(id);processNext();if(!prepared)message("먼저 휴대폰 AI를 준비해 주세요.") }
+            if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
             if(status=="확인 필요") {
                 addButton(card,if(id in savingRegistrations) "현장 등록 확인 중…" else "상담 현장으로 등록",true) { showRegistrationConfirmation(id) }
                 addButton(card,"통화 내용 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 내용").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
