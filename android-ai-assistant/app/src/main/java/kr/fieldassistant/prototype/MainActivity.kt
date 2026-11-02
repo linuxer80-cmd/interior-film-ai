@@ -765,7 +765,7 @@ class MainActivity : Activity() {
                     1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
                     4 -> showFeatures()
-                    5 -> if(selectedCompany()?.role=="관리자") openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=profit")
+                    5 -> if(selectedCompany()?.role=="관리자") openNativeFeature("profit")
                     3 -> confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") }
                 }
             }.setNegativeButton("닫기",null).show()
@@ -895,19 +895,44 @@ class MainActivity : Activity() {
             finally { profitBusy=false;if(epoch==sessionEpoch) render() }
         }
     }
+    private fun openNativeFeature(featureId:String):Boolean {
+        when(featureId) {
+            "new-site" -> showNewSiteRegistration()
+            "customer-page" -> customerPageManager()
+            "clients" -> tradeManager()
+            "jobs" -> recruitMenu()
+            "sites", "work" -> lookupSites(AssistantRequests.Request("sites"))
+            "profit" -> {
+                val today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+                lookupProfit(AssistantRequests.Request("profit",from=today.withDayOfMonth(1).toString(),to=today.toString()))
+            }
+            "samples" -> {
+                val input=EditText(this).apply { hint="예: 현대 S115 또는 현대 우드";setSingleLine() }
+                val dialog=AlertDialog.Builder(this).setTitle("필름 샘플 검색").setView(input).setPositiveButton("검색",null).setNegativeButton("취소",null).create()
+                dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val query=SampleSearch.parse(input.text.toString()+" 샘플")
+                    if(query==null) message("제조사, 제품번호 또는 패턴을 입력해 주세요.")
+                    else { dialog.dismiss();lookupSamples(query) }
+                } }
+                dialog.show()
+            }
+            else -> return false
+        }
+        return true
+    }
+    private fun openFeature(feature:AssistantRequests.Feature) {
+        if(openNativeFeature(feature.id)) return
+        confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) }
+    }
     private fun offerFeature(featureId:String) {
         val owner=selectedCompany()?.role=="관리자"
         val feature=AssistantRequests.feature(featureId,owner)
         if(feature==null) { appendHomeMessage("이 기능은 관리자 권한이 필요합니다.");render();return }
-        appendHomeMessage("${feature.title} 기능을 열 수 있습니다. 앱 안의 필름장이 업무 화면에서 진행할 수 있습니다.")
+        appendHomeMessage("${feature.title} 기능을 열 수 있습니다.")
         val messages=JSONArray(prefs.getString("home_chat","[]"))
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
-        if(feature.id=="customer-page") { customerPageManager();return }
-        if(feature.id=="clients") { tradeManager();return }
-        if(feature.id=="jobs") { recruitMenu();return }
-        if(feature.id=="new-site") showNewSiteRegistration()
-        if(feature.id=="profit") openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path)
+        openNativeFeature(feature.id)
     }
     private var laborBusy=false
     private fun recruitMenu() {
@@ -1769,7 +1794,7 @@ class MainActivity : Activity() {
         shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
         body.addView(shortcuts)
         if(selectedCompany()?.role=="관리자") {
-            addButton(body,"매출 · 수익 보기",false) { openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=profit") }
+            addButton(body,"매출 · 수익 보기",false) { openNativeFeature("profit") }
         }
         if(folder()==null || !notificationsEnabled()) {
             body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
@@ -1808,7 +1833,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else if(feature.id=="clients") tradeManager() else if(feature.id=="jobs") recruitMenu() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
+                addButton(body,feature.title+" 열기",false) { openFeature(feature) }
             }
         }
         candidate?.let { item ->
