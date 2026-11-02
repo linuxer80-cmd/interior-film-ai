@@ -100,12 +100,38 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setDecorFitsSystemWindows(false)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        window.insetsController?.setSystemBarsAppearance(
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        )
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
         captureReview(intent);captureSchedule(intent)
         render()
         restoreLogin()
     }
+    /** A single inset owner reserves system bars, cutouts and the keyboard.
+     * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
+    private fun setAssistantContent(content: View) {
+        val safeArea=FrameLayout(this).apply {
+            setBackgroundColor(Color.WHITE)
+            addView(content,FrameLayout.LayoutParams(-1,-1))
+            setOnApplyWindowInsetsListener { view,insets ->
+                val safe=insets.getInsets(
+                    android.view.WindowInsets.Type.systemBars() or
+                    android.view.WindowInsets.Type.displayCutout() or
+                    android.view.WindowInsets.Type.ime()
+                )
+                view.setPadding(safe.left,safe.top,safe.right,safe.bottom)
+                android.view.WindowInsets.CONSUMED
+            }
+        }
+        super.setContentView(safeArea)
+        safeArea.requestApplyInsets()
+    }
+
     private fun restoreLogin() {
         authBusy=true;authError="";render()
         scope.launch {
@@ -755,7 +781,7 @@ class MainActivity : Activity() {
     }
     private fun renderHomeChat() {
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
-        setContentView(page);chatHeader(page)
+        setAssistantContent(page);chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -795,7 +821,7 @@ class MainActivity : Activity() {
     private fun renderChat(id: String) {
         val item=recordById(id) ?: run { chatId=null;render();return }
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
-        setContentView(page)
+        setAssistantContent(page)
         chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -894,7 +920,7 @@ class MainActivity : Activity() {
     private fun renderLogin() {
         val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242));isFillViewport=true }
         val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(22),dp(36),dp(22),dp(25)) }
-        scroll.addView(col);setContentView(scroll)
+        scroll.addView(col);setAssistantContent(scroll)
         col.addView(text("FIELD ASSISTANT · 시험 버전",12f,true,Color.rgb(112,133,117)))
         col.addView(text("필름장이 로그인",26f,true))
         col.addView(text("기존 필름장이 이메일 계정으로 로그인해 주세요. 로그인한 계정의 업체만 확인합니다.",14f))
@@ -1042,7 +1068,7 @@ class MainActivity : Activity() {
         if(!settingsOpen) { chatId?.let { renderChat(it);return };renderHomeChat();return }
         val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242)); isFillViewport=true }
         val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(28),dp(20),dp(25)) }
-        root=col; scroll.addView(col);setContentView(scroll)
+        root=col; scroll.addView(col);setAssistantContent(scroll)
         addButton(col,"‹ 대화로 돌아가기",false) { settingsOpen=false;render() }
         col.addView(text("설정",26f,true))
         val verified=requireNotNull(account)
