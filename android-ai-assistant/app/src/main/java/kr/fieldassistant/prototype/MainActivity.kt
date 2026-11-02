@@ -959,6 +959,12 @@ class MainActivity : Activity() {
     private fun recruitStatus(value:String):String = when(value) {
         "applied"->"지원 완료";"accepted"->"구인 확정";"invited"->"현장 제안";"expired"->"지원 만료";"rejected"->"지원 종료";"withdrawn"->"지원 취소";"unassigned"->"배정 해제";"open"->"모집 중";"closed"->"모집 종료";else->"확인 필요"
     }
+    private fun recruitApplicationStatus(row:JSONObject):String {
+        if(recruitText(row,"status")=="accepted") return when(recruitText(row,"assignment_status")) {
+            "unassigned" -> "배정 해제";"changed" -> "배정 일정 변경";else -> "구인 확정"
+        }
+        return recruitStatus(recruitText(row,"status"))
+    }
     private fun showRecruitResults(uid:String,company:CompanyAccess,worker:Boolean,kind:String,page:Int,data:JSONObject) {
         if(kind !in listOf("jobs","applications","candidates")) return
         val rows=data.optJSONArray(kind) ?: JSONArray()
@@ -973,7 +979,7 @@ class MainActivity : Activity() {
             val label=when(kind) {
                 "jobs" -> listOf(recruitText(row,"title").ifBlank { "구인 공고" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
                 "candidates" -> listOf(recruitText(row,"name").ifBlank { "시공자" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
-                else -> listOf(if(worker) jobFor(row)?.let { recruitText(it,"title") }.orEmpty().ifBlank { "지원 · 제안" } else row.optJSONObject("profile")?.let { recruitText(it,"name") }.orEmpty().ifBlank { "지원자" },recruitStatus(recruitText(row,"status")),jobFor(row)?.let { recruitText(it,"region") }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+                else -> listOf(if(worker) jobFor(row)?.let { recruitText(it,"title") }.orEmpty().ifBlank { "지원 · 제안" } else row.optJSONObject("profile")?.let { recruitText(it,"name") }.orEmpty().ifBlank { "지원자" },recruitApplicationStatus(row),jobFor(row)?.let { recruitText(it,"region") }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
             }
             options.add(label)
         }
@@ -1002,7 +1008,7 @@ class MainActivity : Activity() {
                 "${recruitText(row,"company_name")} · ${recruitText(row,"region")}\n${recruitDates(row)}\n모집 기준 일당: $wage\n모집 인원: ${row.optInt("headcount")}명\n${recruitText(row,"work_content")}\n\n실제 확정 일당은 시공자의 등록 일당을 따릅니다."
             }
             "candidates" -> "활동 지역: ${recruitText(row,"region").ifBlank { "미등록" }}\n경력: ${if(row.isNull("experience_years")) "미등록" else recruitText(row,"experience_years")+"년"}\n가능 일정: ${recruitDates(row).ifBlank { "공개된 일정 없음" }}\n\n${recruitText(row,"introduction")}"
-            else -> "상태: ${recruitStatus(recruitText(row,"status"))}\n현장: ${job?.let { recruitText(it,"title") }.orEmpty().ifBlank { "정보 확인 필요" }}\n지역: ${job?.let { recruitText(it,"region") }.orEmpty()}\n시공일: ${job?.let { recruitDates(it) }.orEmpty()}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
+            else -> "상태: ${recruitApplicationStatus(row)}\n현장: ${job?.let { recruitText(it,"title") }.orEmpty().ifBlank { "정보 확인 필요" }}\n지역: ${job?.let { recruitText(it,"region") }.orEmpty()}\n시공일: ${job?.let { recruitDates(it) }.orEmpty()}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
         }
         AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton(if(kind=="applications") "지원 · 모집 관리" else if(kind=="candidates") "시공자 검색 · 제안" else if(worker) "일자리 화면에서 지원" else "공고 관리") { _,_ ->
             openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine",if(kind=="applications") recruitText(row,"job_id") else "")
