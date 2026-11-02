@@ -861,12 +861,16 @@ class MainActivity : Activity() {
                     } finally { bitmap.recycle() }
                 }
                 val digest=java.security.MessageDigest.getInstance("SHA-256").digest(jpeg)
-                val requestId=UUID.nameUUIDFromBytes((uid+":"+company.id+":").toByteArray(Charsets.UTF_8)+digest).toString()
-                val result=auth.analyzeSiteScreenshot(uid,company.id,jpeg,requestId)
+                val photoKey="site_photo_request_"+UUID.nameUUIDFromBytes((uid+":"+company.id+":").toByteArray(Charsets.UTF_8)+digest).toString()
+                val requestId=prefs.getString(photoKey,null) ?: UUID.randomUUID().toString().also { check(prefs.edit().putString(photoKey,it).commit()) }
+                val result=try { auth.analyzeSiteScreenshot(uid,company.id,jpeg,requestId) } catch(e:ScreenshotRetryNew) {
+                    check(prefs.edit().putString(photoKey,UUID.randomUUID().toString()).commit())
+                    throw e
+                }
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
                 presentAnalyzedSite(result,company,"other")
             } catch(e:CancellationException) { throw e }
-              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 다시 선택해 주세요.") }
+              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(if(e is ScreenshotRetryNew) "이전 사진 분석을 다시 시작할 수 있습니다. 같은 사진을 선택해 주세요." else "사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 다시 선택해 주세요.") }
             finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
         }
     }
@@ -1445,7 +1449,13 @@ class MainActivity : Activity() {
                     chatMessage(id,if(response.optBoolean("merged")) "기존 현장에 상담 내용을 추가했습니다." else "상담중 현장으로 등록했습니다.")
                 }
             } catch(e: CancellationException) { throw e }
-              catch(_: Exception) { if(epoch==sessionEpoch && account!=null) chatMessage(id,"저장 결과를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 ‘다시 시도’라고 답해 주세요. 같은 요청으로 확인하여 중복 등록을 방지합니다.") }
+              catch(e: Exception) { if(epoch==sessionEpoch && account!=null) {
+                  if(reg.optJSONObject("data")?.optString("source")=="manual" && e.message.orEmpty().contains("sites_source_check")) {
+                      if(changeRecord(id) { record -> record.remove("registration");record.optJSONObject("chat_draft")?.put("source","direct") })
+                          chatMessage(id,"이전 저장 요청의 입력 오류를 수정했습니다. 등록 내용을 확인하고 다시 ‘네’라고 답해 주세요.")
+                      else chatMessage(id,"입력 오류를 수정하지 못했습니다. 잠시 후 다시 확인해 주세요.")
+                  } else chatMessage(id,"저장 결과를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 ‘다시 시도’라고 답해 주세요. 같은 요청으로 확인하여 중복 등록을 방지합니다.")
+              } }
             finally { if(epoch==sessionEpoch) { savingRegistrations.remove(id);render() } }
         }
     }

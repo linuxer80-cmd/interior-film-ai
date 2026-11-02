@@ -74,6 +74,7 @@ internal class SecureSessionManager(context: Context) : SessionManager {
 }
 
 internal class ExpenseRejected(message:String):Exception(message)
+internal class ScreenshotRetryNew:Exception()
 
 internal data class CompanyAccess(val id: String, val name: String, val role: String)
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
@@ -206,6 +207,7 @@ internal class AccountAuth private constructor(context: Context) {
                 val code=c.responseCode
                 val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
                 val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code==409 && result.optString("code")=="RETRY_NEW") throw ScreenshotRetryNew()
                 check(code in 200..299) { result.optString("error").ifBlank { "사진 분석 결과를 확인하지 못했습니다. 같은 사진을 다시 선택해 주세요." } }
                 result.optJSONObject("data") ?: error("사진 분석 결과를 확인하지 못했습니다.")
             } finally { c.disconnect() }
