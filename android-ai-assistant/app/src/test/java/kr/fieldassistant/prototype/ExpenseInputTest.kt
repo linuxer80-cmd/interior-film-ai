@@ -17,5 +17,9 @@ class ExpenseInputTest {
         assertNull(ExpenseInput.parse("주차비 0원"))
         assertNull(ExpenseInput.parse("주차비 100000001원"))
         assertNull(ExpenseInput.parse("경비 5000원"))
+        assertNull(ExpenseInput.parse("주차비 5000원 등록하지마"))
+        assertNull(ExpenseInput.parse("주차비 5000원 저장 안 해"))
+        assertNull(ExpenseInput.parse("주차비 말고 식비 5000원"))
+        assertNull(ExpenseInput.parse("주차비 식비 합해서 5000원"))
     }
 }
