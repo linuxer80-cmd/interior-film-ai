@@ -46,6 +46,46 @@ jobs:
       - name: Build test APK
         working-directory: android-ai-assistant
         run: ASSISTANT_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))" gradle --no-daemon testDebugUnitTest assembleDebug
+      - name: Launch APK on Android 35 emulator
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+          sudo chmod 666 /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name assistant-smoke --package "system-images;android-35;google_apis;x86_64" --force
+          "$ANDROID_HOME/emulator/emulator" -avd assistant-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > /tmp/assistant-emulator.log 2>&1 &
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          timeout 180 "$ADB" wait-for-device
+          booted=false
+          for attempt in $(seq 1 120); do
+            if [ "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then booted=true; break; fi
+            sleep 2
+          done
+          test "$booted" = true
+          "$ADB" shell input keyevent 82
+          "$ADB" install -r android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk
+          "$ADB" logcat -c
+          "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
+          sleep 10
+          "$ADB" shell pidof kr.fieldassistant.prototype.stable
+          mkdir -p android-ai-assistant/launch-output
+          "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/runtime.log
+          if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/runtime.log; then cat android-ai-assistant/launch-output/runtime.log; exit 1; fi
+          "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/launch.png
+          "$ADB" shell uiautomator dump /sdcard/assistant-window.xml
+          "$ADB" pull /sdcard/assistant-window.xml android-ai-assistant/launch-output/window.xml
+          "$ADB" shell am force-stop kr.fieldassistant.prototype.stable
+          "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
+          sleep 5
+          "$ADB" shell pidof kr.fieldassistant.prototype.stable
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: assistant-launch-check
+          path: android-ai-assistant/launch-output/
+          retention-days: 3
       - name: Prepare APK and Android signing tool
         shell: bash
         run: |
