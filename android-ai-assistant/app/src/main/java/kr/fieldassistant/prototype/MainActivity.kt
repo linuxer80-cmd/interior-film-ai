@@ -1155,13 +1155,13 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
                 val current=try { JSONObject(prefs.getString("chat_film_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
                 if(current.optString("id")==p.optString("id")) prefs.edit().remove("chat_film_pending").commit()
-                appendHomeMessage("${p.optString("siteName")} · ${p.optString("code")} 사용 ${p.optString("used")}m를 저장하고 ${p.optString("remaining")}m를 창고에 반납했습니다.")
+                if(selectedCompany()?.id==company.id) appendHomeMessage("${p.optString("siteName")} · ${p.optString("code")} 사용 ${p.optString("used")}m를 저장하고 ${p.optString("remaining")}m를 창고에 반납했습니다.")
             } catch(e:CancellationException) { throw e }
               catch(e:FilmRejected) { if(epoch==sessionEpoch && account?.userId==uid) {
                   p.put("sent",false);prefs.edit().putString("chat_film_pending",p.toString()).commit()
-                  appendHomeMessage("저장하지 못했습니다: ${e.message ?: "재고를 확인해 주세요."} ‘취소’ 후 다시 확인해 주세요.")
+                  if(selectedCompany()?.id==company.id) appendHomeMessage("저장하지 못했습니다: ${e.message ?: "재고를 확인해 주세요."} ‘취소’ 후 다시 확인해 주세요.")
               } }
-              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("저장 결과를 확인하지 못했습니다. 중복 반납을 막기 위해 ‘다시 확인’으로 같은 요청을 확인해 주세요.") }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) appendHomeMessage("저장 결과를 확인하지 못했습니다. 중복 반납을 막기 위해 ‘다시 확인’으로 같은 요청을 확인해 주세요.") }
             finally { filmBusy=false;if(epoch==sessionEpoch) render() }
         }
     }
