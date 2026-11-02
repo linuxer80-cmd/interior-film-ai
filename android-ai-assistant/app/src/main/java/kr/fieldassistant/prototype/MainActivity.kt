@@ -66,6 +66,9 @@ class MainActivity : Activity() {
     private var speechMode = SpeechRecognizerOptions.Mode.MODE_BASIC
     private var baselineBusy = false
     private var folderStatus = ""
+    private var simpleSetup = false
+    private var setupBusy = false
+    private var showSetupDetails = false
     private val pending = mutableListOf<String>()
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
@@ -159,21 +162,21 @@ class MainActivity : Activity() {
         folderStatus="폴더 선택창을 여는 중입니다. 화면이 열리면 녹음 폴더에서 ‘이 폴더 사용’을 눌러 주세요."
         render()
         try { startActivityForResult(i,1001) }
-        catch (_: ActivityNotFoundException) { folderStatus="휴대폰의 파일 선택창을 열 수 없습니다. 기본 파일 앱이 사용 가능한지 확인해 주세요.";render() }
-        catch (_: SecurityException) { folderStatus="파일 선택창을 열 수 없습니다. 휴대폰의 파일 앱 설정을 확인해 주세요.";render() }
-        catch (_: RuntimeException) { folderStatus="파일 선택창을 열지 못했습니다. 앱을 다시 연 뒤 시도해 주세요.";render() }
+        catch (_: ActivityNotFoundException) { simpleSetup=false;folderStatus="휴대폰의 파일 선택창을 열 수 없습니다. 기본 파일 앱이 사용 가능한지 확인해 주세요.";render() }
+        catch (_: SecurityException) { simpleSetup=false;folderStatus="파일 선택창을 열 수 없습니다. 휴대폰의 파일 앱 설정을 확인해 주세요.";render() }
+        catch (_: RuntimeException) { simpleSetup=false;folderStatus="파일 선택창을 열지 못했습니다. 앱을 다시 연 뒤 시도해 주세요.";render() }
     }
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != 1001 || account==null) return
-        if(resultCode!=RESULT_OK) { folderStatus="폴더가 선택되지 않았습니다. 다시 선택한 뒤 ‘이 폴더 사용’을 눌러 주세요.";render();return }
+        if(resultCode!=RESULT_OK) { simpleSetup=false;folderStatus="폴더가 선택되지 않았습니다. 다시 선택한 뒤 ‘이 폴더 사용’을 눌러 주세요.";render();return }
         val epoch=sessionEpoch
-        val uri = data?.data ?: run { folderStatus="선택한 폴더를 확인하지 못했습니다. 다시 선택해 주세요.";render();return }
+        val uri = data?.data ?: run { simpleSetup=false;folderStatus="선택한 폴더를 확인하지 못했습니다. 다시 선택해 주세요.";render();return }
         val flags=(data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        if(flags==0) { folderStatus="선택한 폴더의 읽기 권한이 없습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
+        if(flags==0) { simpleSetup=false;folderStatus="선택한 폴더의 읽기 권한이 없습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
         try { contentResolver.takePersistableUriPermission(uri, flags) }
-        catch (_: Exception) { folderStatus="폴더 권한을 저장하지 못했습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
+        catch (_: Exception) { simpleSetup=false;folderStatus="폴더 권한을 저장하지 못했습니다. 다시 선택하고 접근을 허용해 주세요.";render();return }
         baselineBusy = true
         folderStatus="선택한 폴더의 기존 녹음을 확인하고 있습니다. 잠시 기다려 주세요."
         render()
@@ -186,8 +189,8 @@ class MainActivity : Activity() {
                 pending.clear(); inFlight.clear()
                 if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
                 startObserver(); folderStatus="폴더가 연결됐습니다. 이제 저장되는 새 녹음을 확인합니다.";message(folderStatus)
-            } catch (_: Exception) { if(epoch==sessionEpoch) folderStatus="폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요." }
-            finally { if(epoch==sessionEpoch) { baselineBusy = false; render() } }
+            } catch (_: Exception) { if(epoch==sessionEpoch) { simpleSetup=false;folderStatus="폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요." } }
+            finally { if(epoch==sessionEpoch) { baselineBusy = false; render(); if(simpleSetup && folder()!=null) continueSimpleSetup() } }
         }
     }
     private fun scanFolder() {
@@ -471,6 +474,7 @@ class MainActivity : Activity() {
     }
     private fun signOut() {
         sessionEpoch++;analysisJob?.cancel();analysisJob=null
+        simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
         if(observing) { contentResolver.unregisterContentObserver(observer);observing=false }
@@ -604,6 +608,41 @@ class MainActivity : Activity() {
         val b=button(label,primary,action); val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(10),0,0);col.addView(b,lp)
     }
     private fun message(s:String) { Toast.makeText(this,s,Toast.LENGTH_LONG).show() }
+    private fun startSimpleSetup() {
+        if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
+        AlertDialog.Builder(this).setTitle("비서 간편 설정")
+            .setMessage("녹음 폴더 연결, 휴대폰 AI 준비, 알림 허용을 차례로 진행합니다. AI 모델을 내려받을 수 있으니 와이파이 연결을 권장합니다. 휴대폰의 폴더와 알림 허용은 직접 선택해야 합니다.")
+            .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
+                simpleSetup=true
+                if(folder()==null) openFolderPicker() else continueSimpleSetup()
+            }.show()
+    }
+    private fun continueSimpleSetup() {
+        if(!simpleSetup || account==null || setupBusy) return
+        if(prepared) {
+            simpleSetup=false
+            if(!notificationsEnabled()) configureNotifications() else { folderStatus="비서 준비가 완료됐습니다.";render() }
+            return
+        }
+        val epoch=sessionEpoch
+        setupBusy=true;folderStatus="휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요.";render()
+        scope.launch {
+            try {
+                prepareModels()
+                if(epoch!=sessionEpoch || account==null) return@launch
+                prepared=true;setupBusy=false;folderStatus="휴대폰 AI 준비가 완료됐습니다.";render();processNext()
+                if(simpleSetup) continueSimpleSetup()
+            } catch(e: CancellationException) { throw e }
+              catch(e: Exception) {
+                if(epoch==sessionEpoch && account!=null) {
+                    simpleSetup=false;setupBusy=false;folderStatus="휴대폰 AI 준비를 확인해 주세요.";render()
+                    if(active) AlertDialog.Builder(this@MainActivity).setTitle("휴대폰 AI 준비 확인")
+                        .setMessage(e.message ?: "AI 준비를 마치지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.")
+                        .setPositiveButton("확인",null).show()
+                }
+              }
+        }
+    }
     private fun render() {
         if(account==null) { renderLogin();return }
         val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242)); isFillViewport=true }
@@ -622,13 +661,19 @@ class MainActivity : Activity() {
         col.addView(text("선택한 통화 녹음 폴더의 새 파일을 앱이 열려 있을 때 확인합니다.",14f))
         val info=text("녹음은 휴대폰에서 분석합니다. 등록을 확인하면 수정한 상담 내용이 필름장이에 저장됩니다. 최초 모델 준비에는 인터넷이 필요할 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
+        val ready=folder()!=null && prepared && notificationsEnabled()
+        if(ready) col.addView(text("✓ 비서 준비 완료",16f,true))
+        else addButton(col,if(setupBusy || baselineBusy) "비서 준비 중…" else "비서 간편 설정",true) { startSimpleSetup() }
+        addButton(col,if(showSetupDetails) "설정 접기" else "연결 상태와 설정 보기",false) { showSetupDetails=!showSetupDetails;render() }
+        if(folderStatus.isNotBlank()) col.addView(text(folderStatus,13f,false,Color.rgb(76,111,85)))
+        if(showSetupDetails) {
         addButton(col,if(folder()==null) "1. 통화 녹음 폴더 선택" else "✓ 녹음 폴더 연결됨 · 다시 선택",false) {
             if(folder()==null) chooseFolder() else AlertDialog.Builder(this).setTitle("녹음 폴더 다시 선택")
                 .setMessage("새 폴더를 선택하면 이 앱의 비서함 기록이 초기화됩니다. 원본 녹음은 삭제되지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("선택하기") { _,_ -> chooseFolder() }.show()
         }
-        if(folderStatus.isNotBlank()) col.addView(text(folderStatus,13f,false,Color.rgb(76,111,85)))
         addButton(col,if(prepared) "✓ 휴대폰 AI 준비 완료" else "2. 휴대폰 AI 준비",true) {
+            if(setupBusy) { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); return@addButton }
             if(prepared) { message("휴대폰 AI를 사용할 준비가 되어 있습니다."); return@addButton }
             AlertDialog.Builder(this).setTitle("휴대폰 AI 준비")
                 .setMessage("음성 인식 및 기기 내부 AI 모델을 확인합니다. 모델이 없다면 다운로드가 필요할 수 있어요. 준비를 시작할까요?")
@@ -640,6 +685,7 @@ class MainActivity : Activity() {
                 }.show()
         }
         addButton(col,if(notificationsEnabled()) "✓ 결과 알림 켜짐 · 확인" else "3. 결과 알림 켜기",false) { configureNotifications() }
+        }
         addButton(col,"새 녹음 확인",false) { scanFolder();message("새 녹음을 확인합니다.") }
         val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
         val list=records()
@@ -669,7 +715,7 @@ class MainActivity : Activity() {
                 .setMessage("이 앱에 저장된 분석 결과만 지웁니다. 휴대폰의 원본 녹음 파일은 지우지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("지우기") { _,_ -> pending.clear(); saveRecords(JSONArray());render() }.show()
         }
-        col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 확인한 내용만 저장됩니다. 앱이 닫히거나 절전 중일 때 감지가 지연될 수 있습니다.",12f,false,Color.rgb(117,130,120)))
+        col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 현재 시험 버전은 앱이 화면에 열려 있을 때만 녹음을 확인하고 분석합니다.",12f,false,Color.rgb(117,130,120)))
     }
     private fun confirmWebAccount(action: () -> Unit) {
         AlertDialog.Builder(this).setTitle("웹앱 계정 확인")
