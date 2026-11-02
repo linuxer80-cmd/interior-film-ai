@@ -10,7 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.documentfile.provider.DocumentFile
+import android.provider.DocumentsContract
 import androidx.work.*
 import org.json.JSONObject
 import org.vosk.Model
@@ -29,6 +29,7 @@ internal object BackgroundCalls {
     private const val RETRY="assistant_background_retry"
     val lock=Any()
     val running=AtomicBoolean(false)
+    val scanning=AtomicBoolean(false)
     private val retryPending=AtomicBoolean(false)
     fun resultPrefs(ctx: Context,uid: String)=ctx.getSharedPreferences("assistant_background_$uid",Context.MODE_PRIVATE)
     fun active(ctx: Context,uid: String,token: String?=null): Boolean {
@@ -95,39 +96,53 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
         if(inputData.getBoolean("retry",false)) BackgroundCalls.retryStarted()
         val userPrefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
         val tree=userPrefs.getString("folder",null)?.let(Uri::parse) ?: return Result.success()
-        if(!BackgroundCalls.running.compareAndSet(false,true)) {
+        if(!BackgroundCalls.scanning.compareAndSet(false,true)) {
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.retryLater(ctx,uid,token)
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
             return Result.success()
         }
         try {
             BackgroundCalls.status(ctx,uid,"녹음 폴더를 확인하고 있습니다.")
-            val dir=DocumentFile.fromTreeUri(ctx,tree) ?: throw SecurityException("폴더를 열 수 없습니다")
-            if(!dir.exists()) throw SecurityException("폴더를 열 수 없습니다")
-            val files=dir.listFiles().filter { f -> f.isFile && f.name?.lowercase(Locale.ROOT)?.let { n -> listOf(".m4a",".mp3",".wav",".ogg",".flac").any(n::endsWith) }==true }
-                .sortedBy { it.lastModified() }
+            // Fetch metadata once rather than issuing several provider queries per recording.
+            data class Recording(val uri: Uri,val name: String,val size: Long,val modified: Long)
+            val files=mutableListOf<Recording>()
+            val children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree))
+            val columns=arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED,DocumentsContract.Document.COLUMN_MIME_TYPE)
+            ctx.contentResolver.query(children,columns,null,null,null)?.use { cursor ->
+                while(cursor.moveToNext()) {
+                    if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return Result.success()
+                    val name=cursor.getString(1).orEmpty()
+                    if(cursor.getString(4)==DocumentsContract.Document.MIME_TYPE_DIR) continue
+                    if(listOf(".m4a",".mp3",".wav",".ogg",".flac").none(name.lowercase(Locale.ROOT)::endsWith)) continue
+                    files.add(Recording(DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0)),name,cursor.getLong(2),cursor.getLong(3)))
+                }
+            } ?: throw SecurityException("폴더를 열 수 없습니다")
+            files.sortBy { it.modified }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
             val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
-            var model: Model?=null;var count=0;var needsRetry=false
-            try {
+            var count=0;var needsRetry=false
+            run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
-                    val id=file.uri.toString();if(id in existing || id in processed || file.length()<=0) continue
-                    val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.length();val modified=file.lastModified()
+                    val id=file.uri.toString();if(id in existing || id in processed || file.size<=0) continue
+                    val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.size;val modified=file.modified
                     val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
                     if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
                         background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
                         needsRetry=true;continue
                     }
                     if(count>=3) { needsRetry=true;break }
-                    count++
-                    if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"새 녹음을 휴대폰에서 분석하고 있습니다.")
-                    val record=JSONObject().put("id",id).put("name",file.name ?: "새 통화 녹음")
+                    val record=JSONObject().put("id",id).put("name",file.name)
                     var candidate=false
+                    if(!BackgroundCalls.running.compareAndSet(false,true)) { needsRetry=true;break }
                     try {
-                        if(model==null) model=Model(OfflineModel.ensure(ctx).absolutePath)
-                        val result=OfflineAudio.transcribe(ctx,file.uri,model!!) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
+                        count++
+                        if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"새 녹음을 휴대폰에서 분석하고 있습니다.")
+                        val result=Model(OfflineModel.ensure(ctx).absolutePath).use { model ->
+                            OfflineAudio.transcribe(ctx,file.uri,model) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
+                        }
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
                         candidate=InquiryMatcher.likely(result.text)
                         val label=if(candidate) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
@@ -138,6 +153,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     } catch(_: Exception) {
                         record.put("status","분석 실패").put("summary","휴대폰에서 이 녹음을 분석하지 못했습니다. 앱에서 다시 시도해 주세요.")
                     }
+                    finally { BackgroundCalls.running.set(false) }
                     synchronized(BackgroundCalls.lock) {
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
                         processed.add(id)
@@ -145,7 +161,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                         if(candidate) notifyCandidate(ctx,uid,id)
                     }
                 }
-            } finally { model?.close() }
+            }
             if(BackgroundCalls.active(ctx,uid,token) && !isStopped) {
                 val summary=when {
                     needsRetry -> "확인할 녹음이 남아 있어 잠시 후 다시 확인합니다."
@@ -164,7 +180,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             return Result.retry()
         }
         finally {
-            BackgroundCalls.running.set(false)
+            BackgroundCalls.scanning.set(false)
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
         }
     }
