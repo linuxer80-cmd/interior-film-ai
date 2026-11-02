@@ -760,6 +760,32 @@ class MainActivity : Activity() {
             chatId=null;settingsOpen=false;offerFeature(features[i].id)
         }.setNegativeButton("닫기",null).show()
     }
+    private var workerActionBusy=false
+    private fun openWorkerSiteAction(companyId:String, siteId:String, section:String) {
+        if(section !in listOf("report","expenses","info") || siteId.isBlank()) return
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        if(company.id!=companyId || company.role!="시공자") { message("이 현장을 조회한 시공자 계정과 업체를 확인해 주세요.");return }
+        if(workerActionBusy) return
+        val epoch=sessionEpoch
+        confirmWebAccount {
+            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || workerActionBusy) return@confirmWebAccount
+            workerActionBusy=true
+            scope.launch {
+                try {
+                    val assigned=auth.assistantSites(uid,companyId)
+                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                    val allowed=(0 until assigned.length()).mapNotNull { assigned.optJSONObject(it) }
+                        .any { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
+                    if(!allowed) { message("현재 배정된 현장이 아닙니다. 현장 목록을 다시 조회해 주세요.");return@launch }
+                    val url="https://interior-film-ai.vercel.app/worker/site/"+Uri.encode(siteId)+"?section="+section
+                    startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+                } catch(e:CancellationException) { throw e }
+                  catch(_:Exception) { if(epoch==sessionEpoch) message("현장 접근을 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
+                finally { workerActionBusy=false }
+            }
+        }
+    }
     private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
@@ -792,7 +818,7 @@ class MainActivity : Activity() {
                     val workDates=site.optJSONArray("work_dates") ?: JSONArray()
                     field("시공일",(0 until workDates.length()).map { workDates.optString(it) }.joinToString(", "))
                     appendHomeMessage("",result=JSONObject().put("kind","detail").put("title",value(site,"site_name").ifBlank { "현장 상세" })
-                        .put("subtitle",company.name+" · 조회 시점의 현장 정보").put("company_id",company.id).put("fields",fields))
+                        .put("subtitle",company.name+" · 조회 시점의 현장 정보").put("company_id",company.id).put("site_id",id(site)).put("fields",fields))
                     return@launch
                 }
                 val dates=mutableMapOf<String,MutableList<String>>()
@@ -881,10 +907,11 @@ class MainActivity : Activity() {
             val mine=m.optBoolean("user")
             val result=m.optJSONObject("result")
             if(!mine && result!=null) {
-                body.addView(AssistantResultViews.render(this,result) { siteId ->
+                body.addView(AssistantResultViews.render(this,result,onSite={ siteId ->
                     if(result.optString("company_id")!=selectedCompany()?.id) message("이 답변을 조회한 업체로 변경해 주세요.")
                     else lookupSites(AssistantRequests.Request("detail"),siteId)
-                },LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
+                },workerActions=selectedCompany()?.role=="시공자" && selectedCompany()?.id==result.optString("company_id"),
+                    onAction={ siteId,section -> openWorkerSiteAction(result.optString("company_id"),siteId,section) }),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
                 continue
             }
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }

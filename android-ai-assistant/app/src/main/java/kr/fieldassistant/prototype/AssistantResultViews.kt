@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.widget.Button
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -18,7 +19,7 @@ import java.time.ZoneId
 
 /** Native, accessible result cards. Stored results are snapshots; taps recheck access. */
 internal object AssistantResultViews {
-    fun render(context: Context, result: JSONObject, onSite: (String)->Unit): View {
+    fun render(context: Context, result: JSONObject, onSite: (String)->Unit, workerActions:Boolean=false, onAction:(String,String)->Unit={ _,_ -> }): View {
         fun dp(n:Int)=(n*context.resources.displayMetrics.density).toInt()
         val ink=Color.rgb(43,62,51)
         val muted=Color.rgb(100,115,106)
@@ -54,6 +55,19 @@ internal object AssistantResultViews {
         if(kind=="detail") {
             val fields=result.optJSONArray("fields") ?: JSONArray()
             table(listOf("항목","내용"),listOf(1,3),(0 until fields.length()).mapNotNull { fields.optJSONArray(it) }.map { listOf(it.optString(0),it.optString(1)) to "" },false)
+            val siteId=result.optString("site_id")
+            if(workerActions && siteId.isNotBlank()) {
+                card.addView(label("이 현장에서 할 일",16f,true))
+                listOf("완료보고 작성" to "report","경비 입력" to "expenses","현장 업무 열기" to "info").forEach { (title,section) ->
+                    card.addView(Button(context).apply {
+                        text=title;textSize=15f;isAllCaps=false;minHeight=dp(48)
+                        setTextColor(if(section=="report") Color.WHITE else ink)
+                        background=GradientDrawable().apply { setColor(if(section=="report") Color.rgb(48,91,69) else green);cornerRadius=dp(12).toFloat() }
+                        setOnClickListener { onAction(siteId,section) }
+                    },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
+                }
+                card.addView(label("필름장이의 이 현장 입력 화면으로 연결됩니다. 완료보고는 제출 권한에 따라 작성하거나 확인할 수 있습니다.",12f).apply { setTextColor(muted) })
+            }
             return card
         }
         if(kind=="schedule") {
