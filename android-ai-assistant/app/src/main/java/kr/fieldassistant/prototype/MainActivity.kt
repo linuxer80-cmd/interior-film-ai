@@ -623,6 +623,19 @@ class MainActivity : Activity() {
         chatMessage(id,if(candidates.length()==1) "같은 현장일 수 있는 기록이 있습니다.\n$description\n\n이 현장에 이어서 등록할까요?" else "같은 현장일 수 있는 기록이 ${candidates.length()}개 있습니다.\n$description\n\n아래에서 현장을 선택해 주세요. 선택 후 다시 확인하겠습니다.")
     }
     private fun candidateLabel(candidate: JSONObject): String = listOf(candidate.optString("site_name").ifBlank { "이름 없는 현장" },candidate.optString("address"),candidate.optString("customer_name")).filter { it.isNotBlank() && it!="null" }.joinToString(" · ")
+    private fun pauseConsultation(id: String, declined: Boolean): String? {
+        val item=recordById(id) ?: return null
+        if(item.optString("site_id").isNotBlank()) return null
+        if(!changeRecord(id) { it.put("chat_disposition",if(declined) "declined" else "deferred") }) {
+            message("선택을 저장하지 못했습니다.");return null
+        }
+        notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
+        val reg=item.optJSONObject("registration")
+        return if(reg!=null && reg.optJSONArray("candidates")==null)
+            "추가 등록 요청을 멈췄습니다. 앞서 보낸 저장 요청은 완료됐을 수 있습니다. 대화 목록에서 이 통화를 열고 ‘등록 검토 다시 열기’를 누르면 같은 요청의 결과를 확인할 수 있습니다."
+        else if(declined) "이 통화는 등록하지 않겠습니다. 다시 등록을 권하지 않겠습니다. 기록은 대화 목록에 남겨둘게요."
+        else "이 통화는 보류했습니다. 자동으로 다시 묻지 않겠습니다. 필요할 때 대화 목록에서 다시 열어 주세요."
+    }
     private fun answerChat(id: String, input: String) {
         if(id in savingRegistrations || account==null) return
         val item=recordById(id) ?: return
@@ -640,13 +653,7 @@ class MainActivity : Activity() {
         }
         when(ConsultationChat.reply(value)) {
             ConsultationChat.Reply.LATER, ConsultationChat.Reply.DECLINE -> {
-                val declined=ConsultationChat.reply(value)==ConsultationChat.Reply.DECLINE
-                if(!changeRecord(id) { it.put("chat_disposition",if(declined) "declined" else "deferred") }) { message("선택을 저장하지 못했습니다.");return }
-                notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
-                val notice=if(reg!=null && reg.optJSONArray("candidates")==null)
-                    "추가 등록 요청을 멈췄습니다. 앞서 보낸 저장 요청은 완료됐을 수 있습니다. 대화 목록에서 이 통화를 열고 ‘등록 검토 다시 열기’를 누르면 같은 요청의 결과를 확인할 수 있습니다."
-                else if(declined) "이 통화는 등록하지 않겠습니다. 다시 등록을 권하지 않겠습니다. 기록은 대화 목록에 남겨둘게요."
-                else "이 통화는 보류했습니다. 자동으로 다시 묻지 않겠습니다. 필요할 때 대화 목록에서 다시 열어 주세요."
+                val notice=pauseConsultation(id,ConsultationChat.reply(value)==ConsultationChat.Reply.DECLINE) ?: return
                 chatMessage(id,notice);render();return
             }
             ConsultationChat.Reply.UNKNOWN -> { chatMessage(id,"등록하려면 ‘네’ 또는 ‘그래’, 보류하려면 ‘나중에’, 등록하지 않으려면 ‘등록 안 함’이라고 답해 주세요. 내용 변경은 ‘등록 내용 수정’을 눌러 주세요.");render();return }
@@ -694,6 +701,7 @@ class MainActivity : Activity() {
     }
     private var settingsOpen=false
     private var homeInput=""
+    private var displayedHomeConsultationId: String? = null
     private fun chatHeader(page: LinearLayout) {
         val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         val menu=TextView(this).apply { text="☰";textSize=26f;gravity=Gravity.CENTER;contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
@@ -809,6 +817,15 @@ class MainActivity : Activity() {
     private fun answerHome(value: String) {
         val input=value.trim().take(500);if(input.isBlank()) return
         homeInput="";appendHomeMessage(input,true)
+        val reply=ConsultationChat.reply(input)
+        if(reply==ConsultationChat.Reply.DECLINE || reply==ConsultationChat.Reply.LATER) {
+            val item=displayedHomeConsultationId?.let(::recordById)
+            if(item!=null && item.optString("site_id").isBlank() && consultationDisposition(item)=="active") {
+                val notice=pauseConsultation(item.optString("id"),reply==ConsultationChat.Reply.DECLINE)
+                if(notice!=null) appendHomeMessage(notice)
+            } else appendHomeMessage("지금 등록 여부를 기다리는 상담은 없습니다.")
+            render();return
+        }
         val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
         when(request.kind) {
             "schedule","sites","detail" -> { lookupSites(request);return }
@@ -831,7 +848,9 @@ class MainActivity : Activity() {
             candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled()).toString()
         if(visibleConversationKey==key) return
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
-        setAssistantContent(page);visibleConversationKey=key;chatHeader(page)
+        setAssistantContent(page);visibleConversationKey=key
+        displayedHomeConsultationId=candidate?.optString("id")
+        chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -850,9 +869,13 @@ class MainActivity : Activity() {
                 addButton(body,feature.title+" 열기",false) { confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app"+feature.path))) } }
             }
         }
-        latestConsultation()?.let { item ->
+        candidate?.let { item ->
             body.addView(text("새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n현장에 등록할까요?",16f))
             addButton(body,"상담 확인하고 답하기",false) { showRegistrationConfirmation(item.optString("id")) }
+            val choices=LinearLayout(this)
+            choices.addView(button("등록 안 함",false) { answerHome("등록 안 함") },LinearLayout.LayoutParams(0,dp(48),1f))
+            choices.addView(button("나중에",false) { answerHome("나중에") },LinearLayout.LayoutParams(0,dp(48),1f))
+            body.addView(choices)
         }
         val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),dp(4),dp(6),dp(4));background=bg(Color.rgb(244,244,244),26) }
         val input=EditText(this).apply { hint="비서에게 메시지 보내기";textSize=16f;setSingleLine(true);setText(homeInput);background=null
