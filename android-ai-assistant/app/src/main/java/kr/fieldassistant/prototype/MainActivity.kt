@@ -580,6 +580,11 @@ class MainActivity : Activity() {
     private fun showRegistrationConfirmation(id: String) {
         if(!active || account==null) return
         val item=recordById(id) ?: return
+        if(!item.has("chat_disposition")) {
+            val state=consultationDisposition(item)
+            if(!changeRecord(id) { it.put("chat_disposition",state) }) { message("대화 상태를 저장하지 못했습니다.");return }
+            if(state!="active") notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
+        }
         if(item.optJSONArray("chat_messages")==null) {
             val company=selectedCompany() ?: return
             val summary=item.optString("summary")
