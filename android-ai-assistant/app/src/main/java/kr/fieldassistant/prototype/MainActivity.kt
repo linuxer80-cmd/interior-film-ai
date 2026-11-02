@@ -922,7 +922,8 @@ class MainActivity : Activity() {
                 val currentName=if(currentId.isNotBlank()) prefs.getString("selected_site_name","").orEmpty() else detail?.optString("title").orEmpty()
                 val named=input.substringBefore("현장", "").trim()
                 if(named.isNotBlank() && named !in listOf("이", "그", "해당") && !currentName.contains(named)) {
-                    appendHomeMessage("요청한 현장을 먼저 검색해 상세를 열어 주세요. 다른 현장에 입력되지 않도록 확인하겠습니다.");render();return
+                    appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
+                    lookupSites(AssistantRequests.Request("sites",query=named));return
                 }
                 if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 필름 사용량, 경비 또는 완료보고를 요청할 수 있습니다.");render();return }
                 appendHomeMessage("${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
