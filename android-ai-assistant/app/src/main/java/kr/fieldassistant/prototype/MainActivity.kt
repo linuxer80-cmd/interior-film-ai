@@ -1221,7 +1221,12 @@ class MainActivity : Activity() {
                     lookupSites(AssistantRequests.Request("sites",query=named));return
                 }
                 if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 필름 사용량, 경비 또는 완료보고를 요청할 수 있습니다.");render();return }
-                appendHomeMessage("${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
+                val actionMessage=when(request.feature) {
+                    "phone" -> "${currentName} 현장의 전화 연결을 준비합니다."
+                    "navigate" -> "${currentName} 현장의 길 안내를 준비합니다."
+                    else -> "${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다."
+                }
+                appendHomeMessage(actionMessage);render()
                 openSiteAction(company.id,id,request.feature);return
             }
             "profit" -> { lookupProfit(request);return }

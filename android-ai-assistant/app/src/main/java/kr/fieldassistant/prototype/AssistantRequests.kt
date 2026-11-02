@@ -31,8 +31,11 @@ internal object AssistantRequests {
     )
     fun parse(input:String,today:LocalDate): Request {
         val q=input.trim();val compact=q.replace(Regex("\\s+"),"")
+        if(compact in listOf("오늘할일","오늘할일알려줘","오늘할일보여줘","오늘할일뭐야")) return Request("schedule",from=today.toString(),to=today.toString())
         if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
         val siteAction=when {
+            (compact.contains("현장") || compact.startsWith("전화") || compact.startsWith("거기") || compact.startsWith("고객")) && Regex("전화(걸어|걸기|해줘|해주세요|해)|통화(걸어|해줘)").containsMatchIn(compact) -> "phone"
+            (compact.contains("현장") || compact.startsWith("길") || compact.startsWith("네비") || compact.startsWith("거기")) && Regex("길안내|길찾|네비|내비|지도").containsMatchIn(compact) -> "navigate"
             (compact.contains("필름") || compact.contains("자재")) && (compact.contains("사용") || compact.contains("입력") || compact.contains("등록")) -> "film"
             compact.contains("경비") && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "expenses"
             (compact.contains("완료보고") || compact.contains("보고서")) && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "report"
@@ -116,4 +119,5 @@ internal object AssistantRequests {
         return features.find { it.id==actual && (owner || !it.ownerOnly) }
     }
 }
+
 
