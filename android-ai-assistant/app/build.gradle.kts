@@ -11,6 +11,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "kr.fieldassistant.prototype.stable"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 31
         targetSdk = 35
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
@@ -21,6 +22,9 @@ android {
 }
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.work:work-testing:2.11.2")
     testImplementation("org.json:json:20240303")
     implementation(platform("io.github.jan-tennert.supabase:bom:3.5.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
