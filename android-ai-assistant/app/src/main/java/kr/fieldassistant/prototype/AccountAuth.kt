@@ -107,7 +107,7 @@ internal class AccountAuth private constructor(context: Context) {
                 val p=rows.optJSONObject(i) ?: return@mapNotNull null
                 val aliases=p.optJSONArray("aliases") ?: JSONArray()
                 fun field(key:String)=if(p.isNull(key)) "" else p.optString(key)
-                SampleSearch.Product(field("id"),field("brand"),field("product_code"),field("product_name"),field("category_key"),field("pattern_line"),field("sample_image_path"),(0 until aliases.length()).mapNotNull { j -> if(aliases.isNull(j)) null else aliases.optString(j).takeIf { it.isNotBlank() } })
+                SampleSearch.Product(field("id"),field("brand"),field("product_code"),field("product_name"),field("category_key"),field("pattern_line"),field("sample_image_path"),(0 until aliases.length()).mapNotNull { j -> if(aliases.isNull(j)) null else aliases.optString(j).takeIf { it.isNotBlank() } },field("texture"))
             }
         } finally { conn.disconnect() }
     }
