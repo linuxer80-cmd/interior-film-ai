@@ -191,6 +191,7 @@ class MainActivity : Activity() {
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);maybeReview();maybeScheduleReview()
+        if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
     private fun captureReview(intent: Intent?) {
@@ -1080,6 +1081,7 @@ class MainActivity : Activity() {
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
         if(observing) { contentResolver.unregisterContentObserver(observer);observing=false }
+        SecureSessionManager(this).clearPending()
         account=null;running=false;scanning=false;prepared=false;baselineBusy=false;folderStatus="";pending.clear();inFlight.clear()
         authBusy=true;authError="";render()
         scope.launch { try { auth.signOut() } catch (_: Exception) { auth.clearSession() }
@@ -1092,14 +1094,24 @@ class MainActivity : Activity() {
         col.addView(text("FIELD ASSISTANT · 시험 버전",12f,true,Color.rgb(112,133,117)))
         col.addView(text("필름장이 로그인",26f,true))
         col.addView(text("기존 필름장이 이메일 계정으로 로그인해 주세요. 로그인한 계정의 업체만 확인합니다.",14f))
+        addButton(col,"카카오로 로그인",false) {
+            if(!authBusy) try { startActivity(Intent(Intent.ACTION_VIEW,KakaoOAuth.begin(this))) }
+            catch(_:Exception) { SecureSessionManager(this).clearPending();message("카카오 로그인 창을 열지 못했습니다. 브라우저 앱을 확인해 주세요.") }
+        }
+        col.addView(text("또는 이메일로 로그인",13f))
         val email=EditText(this).apply { hint="이메일";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;setSingleLine(true) }
-        val password=EditText(this).apply { hint="비밀번호";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;setSingleLine(true) }
+        val password=EditText(this).apply {
+            hint="비밀번호";setSingleLine(true)
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod=AlwaysMaskedPassword()
+            setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
+        }
         col.addView(email,LinearLayout.LayoutParams(-1,dp(55)));col.addView(password,LinearLayout.LayoutParams(-1,dp(55)))
         if(authError.isNotBlank()) col.addView(text(authError,13f,false,Color.rgb(158,65,40)))
         val login=button(if(authBusy) "확인 중…" else "로그인",true) {
             val enteredEmail=email.text.toString().trim();val enteredPassword=password.text.toString()
             if(enteredEmail.isBlank()||enteredPassword.isBlank()) { message("이메일과 비밀번호를 입력해 주세요.");return@button }
-            password.text.clear();authBusy=true;authError="";render()
+            SecureSessionManager(this).clearPending();password.text.clear();authBusy=true;authError="";render()
             scope.launch {
                 try {
                     val verified=auth.signIn(enteredEmail,enteredPassword)
@@ -1111,7 +1123,8 @@ class MainActivity : Activity() {
         }
         login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)
         if(authError.isNotBlank()) addButton(col,"저장된 로그인 다시 확인",false) { restoreLogin() }
-        col.addView(text("\n이 시험 앱의 구글·카카오 로그인은 아직 연결되지 않았습니다. 기존 웹앱에서의 로그인은 이 시험 앱에 자동으로 이어지지 않습니다.",12f,false,Color.rgb(117,130,120)))
+        addButton(col,"비밀번호 찾기",false) { openWebWorkspace("https://interior-film-ai.vercel.app/login/recovery") }
+        col.addView(text("카카오는 인증 후 비서 앱으로 돌아옵니다. 기존에 가입한 로그인 방법을 사용해 주세요.",12f,false,Color.rgb(117,130,120)))
         addButton(col,"필름장이 웹앱 열기",false) { openWebWorkspace("https://interior-film-ai.vercel.app/login") }
     }
     private fun notificationManager(): NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

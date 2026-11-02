@@ -41,6 +41,18 @@ internal class SecureSessionManager(context: Context) : SessionManager {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         return generator.generateKey()
     }
+    fun storePending(value:String) {
+        val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE,key())
+        check(prefs.edit().putString("oauth_pending",Base64.encodeToString(cipher.iv+cipher.doFinal(value.toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).commit())
+    }
+    fun pending():String? { return try {
+        val bytes=Base64.decode(prefs.getString("oauth_pending",null) ?: return null,Base64.NO_WRAP)
+        val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE,key(),GCMParameterSpec(128,bytes.copyOfRange(0,12)))
+        cipher.doFinal(bytes.copyOfRange(12,bytes.size)).toString(Charsets.UTF_8)
+    } catch(_:Exception) { null } }
+    fun clearPending() { prefs.edit().remove("oauth_pending").commit() }
     override suspend fun saveSession(session: UserSession) {
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE,key())
@@ -86,6 +98,16 @@ internal class AccountAuth private constructor(context: Context) {
             client.auth.clearSession()
             throw error
         }
+    }
+    suspend fun importKakaoSession(raw:String): VerifiedAccount {
+        client.auth.awaitInitialization()
+        val body=JSONObject(raw)
+        val session=UserSession(accessToken=body.getString("access_token"),refreshToken=body.getString("refresh_token"),
+            expiresIn=body.getLong("expires_in"),tokenType=body.getString("token_type"),user=null)
+        require(session.accessToken.isNotBlank() && session.refreshToken.isNotBlank())
+        client.auth.importSession(session)
+        return try { verify().also { require(it.companies.isNotEmpty()) } }
+        catch(e:Exception) { client.auth.clearSession();throw e }
     }
     suspend fun signOut() { client.auth.signOut() }
     suspend fun clearSession() { client.auth.clearSession() }

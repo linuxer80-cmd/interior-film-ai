@@ -108,7 +108,15 @@ jobs:
           python3 - <<'PY'
           import re, subprocess, os, xml.etree.ElementTree as ET
           root = ET.parse("android-ai-assistant/launch-output/window.xml").getroot()
-          node = next(n for n in root.iter("node") if n.attrib.get("text") == "필름장이 웹앱 열기")
+          adb = os.environ["ANDROID_HOME"]+"/platform-tools/adb"
+          for attempt in range(6):
+              node = next((n for n in root.iter("node") if n.attrib.get("text") == "필름장이 웹앱 열기"),None)
+              if node is not None: break
+              subprocess.run([adb,"shell","input","swipe","160","490","160","180","400"],check=True)
+              subprocess.run([adb,"shell","uiautomator","dump","/sdcard/scroll.xml"],check=True)
+              subprocess.run([adb,"pull","/sdcard/scroll.xml","/tmp/scroll.xml"],check=True)
+              root = ET.parse("/tmp/scroll.xml").getroot()
+          assert node is not None, "Web workspace button not found"
           x1,y1,x2,y2 = map(int,re.findall(r"\d+",node.attrib["bounds"]))
           subprocess.run([os.environ["ANDROID_HOME"]+"/platform-tools/adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)],check=True)
           PY
@@ -119,6 +127,21 @@ jobs:
           "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/web-runtime.log
           if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/web-runtime.log; then cat android-ai-assistant/launch-output/web-runtime.log; exit 1; fi
           "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/web.png
+          "$ADB" shell am start -W -a android.intent.action.VIEW -d 'filmjang-assistant://auth/kakao?state=invalid&code=invalid' -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.KakaoCallbackActivity
+          sleep 2
+          "$ADB" shell pidof kr.fieldassistant.prototype.stable
+          "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/callback-runtime.log
+          if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/callback-runtime.log; then cat android-ai-assistant/launch-output/callback-runtime.log; exit 1; fi
+          "$ADB" shell uiautomator dump /sdcard/callback-window.xml
+          "$ADB" pull /sdcard/callback-window.xml android-ai-assistant/launch-output/callback-window.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          nodes = list(ET.parse("android-ai-assistant/launch-output/window.xml").getroot().iter("node"))
+          assert any(n.get("text") == "카카오로 로그인" for n in nodes)
+          assert any(n.get("password") == "true" for n in nodes)
+          callbacks = list(ET.parse("android-ai-assistant/launch-output/callback-window.xml").getroot().iter("node"))
+          assert any(n.get("text") == "로그인으로 돌아가기" for n in callbacks)
+          PY
           "$ADB" shell am force-stop kr.fieldassistant.prototype.stable
           "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
           sleep 5
