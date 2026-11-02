@@ -74,6 +74,7 @@ internal class SecureSessionManager(context: Context) : SessionManager {
 }
 
 internal class ExpenseRejected(message:String):Exception(message)
+internal class ScreenshotRetryNew:Exception()
 
 internal data class CompanyAccess(val id: String, val name: String, val role: String)
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
@@ -182,6 +183,33 @@ internal class AccountAuth private constructor(context: Context) {
                 if(code in 400..499 && code!=408) throw ExpenseRejected(response.optString("error").ifBlank { "경비 저장 권한 또는 내용을 확인해 주세요." })
                 if(code !in 200..299 || !response.optBoolean("success")) throw IllegalStateException("경비 저장 결과를 확인하지 못했습니다.")
                 response
+            } finally { c.disconnect() }
+        }
+    }
+    suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,image:ByteArray,requestId:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(image.isNotEmpty() && image.size<=3500000 && Regex("^[0-9a-fA-F-]{36}$").matches(requestId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val boundary="Assistant"+java.util.UUID.randomUUID().toString().replace("-","")
+            val c=URL("https://interior-film-ai.vercel.app/api/admin/site-screenshot").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary=$boundary")
+                c.outputStream.use { out ->
+                    fun line(s:String) { out.write((s+"\r\n").toByteArray(Charsets.UTF_8)) }
+                    line("--$boundary");line("Content-Disposition: form-data; name=\"requestId\"");line("");line(requestId)
+                    line("--$boundary");line("Content-Disposition: form-data; name=\"referenceDate\"");line("");line("")
+                    line("--$boundary");line("Content-Disposition: form-data; name=\"images\"; filename=\"screenshot.jpg\"");line("Content-Type: image/jpeg");line("")
+                    out.write(image);line("");line("--$boundary--")
+                }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code==409 && result.optString("code")=="RETRY_NEW") throw ScreenshotRetryNew()
+                check(code in 200..299) { result.optString("error").ifBlank { "사진 분석 결과를 확인하지 못했습니다. 같은 사진을 다시 선택해 주세요." } }
+                result.optJSONObject("data") ?: error("사진 분석 결과를 확인하지 못했습니다.")
             } finally { c.disconnect() }
         }
     }
