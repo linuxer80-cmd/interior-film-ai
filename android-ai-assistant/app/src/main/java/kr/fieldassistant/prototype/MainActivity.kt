@@ -329,6 +329,23 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1005) {
+            val company=selectedCompany();val uri=data?.data
+            if(resultCode==RESULT_OK && uri!=null && uri.scheme=="content" && company?.role=="관리자" && company.id==imagePickerCompany) {
+                AlertDialog.Builder(this).setTitle("대화 사진 분석")
+                    .setMessage("선택한 사진을 서버로 보내 AI 분석합니다. 분석 성공 시 기존 사진 분석 이용 횟수 1회가 사용됩니다. 계속할까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("분석") { _,_ -> analyzeSelectedScreenshot(uri,company) }.show()
+            }
+            imagePickerCompany=null
+            return
+        }
+        if(requestCode==1004) {
+            val company=selectedCompany()
+            val uri=data?.data
+            if(resultCode==RESULT_OK && uri!=null && uri.scheme=="content" && company?.role=="관리자" && company.id==audioPickerCompany) analyzeSelectedRecording(uri,company)
+            audioPickerCompany=null
+            return
+        }
         if(requestCode==1002) {
             if(account!=null && resultCode==RESULT_OK) {
                 val spoken=data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
@@ -806,8 +823,87 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("새 현장 등록 · 입력 방법").setItems(labels) { _,index ->
             if(index==0) startManualSiteRegistration()
             else if(index==1) startTextSiteAnalysis()
+            else if(index==2) chooseScreenshotForSite()
+            else if(index==3) chooseRecordingForSite()
             else openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=sites&assistantRegister=1&inputMode="+modes[index])
         }.setNegativeButton("닫기",null).show()
+    }
+    private var imagePickerCompany:String?=null
+    private fun chooseScreenshotForSite() {
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") return
+        imagePickerCompany=company.id
+        val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try { startActivityForResult(picker,1005) } catch(_:Exception) { imagePickerCompany=null;message("사진 선택창을 열지 못했습니다.") }
+    }
+    private fun analyzeSelectedScreenshot(uri:Uri,company:CompanyAccess) {
+        val uid=account?.userId ?: return
+        if(textAnalysisBusy) { message("다른 상담을 분석하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
+        textAnalysisBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("대화 사진을 분석하고 있습니다.");render()
+        scope.launch {
+            try {
+                val jpeg=withContext(Dispatchers.IO) {
+                    val type=contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
+                    require(type in listOf("image/jpeg","image/png","image/webp")) { "JPG, PNG 또는 WEBP 사진을 선택해 주세요." }
+                    val bytes=contentResolver.openInputStream(uri)?.use { input ->
+                        val output=java.io.ByteArrayOutputStream();val chunk=ByteArray(32768)
+                        while(true) { val n=input.read(chunk);if(n<0) break;require(output.size()+n<=20000000);output.write(chunk,0,n) }
+                        output.toByteArray()
+                    } ?: error("사진을 읽지 못했습니다.")
+                    val bounds=android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds=true }
+                    android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                    require(bounds.outWidth>0 && bounds.outHeight>0 && bounds.outHeight<=10000 && bounds.outWidth.toLong()*bounds.outHeight<=40000000L)
+                    var sample=1;while(maxOf(bounds.outWidth,bounds.outHeight)/sample>2400) sample*=2
+                    val bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,android.graphics.BitmapFactory.Options().apply { inSampleSize=sample }) ?: error("사진을 읽지 못했습니다.")
+                    try {
+                        val output=java.io.ByteArrayOutputStream();check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,88,output));require(output.size()<=3500000);output.toByteArray()
+                    } finally { bitmap.recycle() }
+                }
+                val digest=java.security.MessageDigest.getInstance("SHA-256").digest(jpeg)
+                val requestId=UUID.nameUUIDFromBytes((uid+":"+company.id+":").toByteArray(Charsets.UTF_8)+digest).toString()
+                val result=auth.analyzeSiteScreenshot(uid,company.id,jpeg,requestId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                presentAnalyzedSite(result,company,"other")
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 다시 선택해 주세요.") }
+            finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
+    private var audioPickerCompany:String?=null
+    private fun chooseRecordingForSite() {
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") return
+        audioPickerCompany=company.id
+        val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try { startActivityForResult(picker,1004) } catch(_:Exception) { audioPickerCompany=null;message("녹음 파일 선택창을 열지 못했습니다.") }
+    }
+    private fun analyzeSelectedRecording(uri:Uri,company:CompanyAccess) {
+        val uid=account?.userId ?: return
+        if(textAnalysisBusy || !BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
+        textAnalysisBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("선택한 녹음을 휴대폰에서 글자로 바꾸고 있습니다.");render()
+        scope.launch {
+            try {
+                val job=coroutineContext[Job]
+                val result=withContext(Dispatchers.IO) {
+                    WhisperModel(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                        OfflineAudio.transcribe(applicationContext,uri,model) { job?.isActive!=true }
+                    }
+                }
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                if(result.text.isBlank()) error("empty recording")
+                val content=result.text.take(20000)
+                val notice=if(result.truncated || result.text.length>20000) "\n\n긴 녹음은 앞부분만 분석했습니다." else ""
+                AlertDialog.Builder(this@MainActivity).setTitle("인식한 통화 내용 확인")
+                    .setMessage(content+notice+"\n\n이 내용을 서버로 보내 AI 분석할까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("AI 분석") { _,_ ->
+                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) analyzeSiteText(content,company)
+                    }.show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("녹음 내용을 읽지 못했습니다. 파일을 확인한 뒤 다시 선택해 주세요.") }
+            finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
+        }
     }
     private var textAnalysisBusy=false
     private fun startTextSiteAnalysis() {
@@ -828,38 +924,42 @@ class MainActivity : Activity() {
             try {
                 val data=auth.analyzeSiteText(uid,company.id,content)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
-                val id="manual-"+UUID.randomUUID().toString()
-                fun field(key:String)=data.optString(key,"").takeUnless { it=="null" }.orEmpty().trim()
-                val extra=mutableListOf<String>()
-                if(field("date").isNotBlank()) extra.add("AI가 찾은 날짜 (확인 필요): "+field("date"))
-                if(field("start_time").isNotBlank()) extra.add("AI가 찾은 시간 (확인 필요): "+field("start_time"))
-                if(field("contract_amount").isNotBlank()) extra.add("AI가 찾은 계약 금액 (확인 필요): "+field("contract_amount"))
-                if(field("deposit_amount").isNotBlank()) extra.add("AI가 찾은 선금 (확인 필요): "+field("deposit_amount"))
-                fun candidates(key:String,fields:List<String>):String {
-                    val values=data.optJSONArray(key) ?: return ""
-                    return (0 until minOf(values.length(),20)).mapNotNull { i ->
-                        val row=values.optJSONObject(i) ?: return@mapNotNull null
-                        fields.map { row.optString(it,"").takeUnless { v -> v=="null" }.orEmpty().trim() }
-                            .filter { it.isNotBlank() }.joinToString(" ").takeIf { it.isNotBlank() }
-                    }.joinToString(", ")
-                }
-                candidates("materials",listOf("brand","product_code","product_name","quantity","unit")).takeIf { it.isNotBlank() }?.let { extra.add("필름·자재 후보: $it") }
-                candidates("quote_items",listOf("name","detail","quantity","unit","film_no","note")).takeIf { it.isNotBlank() }?.let { extra.add("견적 항목 후보: $it") }
-                val memo=(listOf(field("memo"),field("other_schedule"))+extra).filter { it.isNotBlank() }.joinToString("\n").take(4000)
-                val draft=JSONObject().put("site_name",field("site_name").take(300)).put("customer_name",field("customer_name").take(200))
-                    .put("customer_phone",field("customer_phone").take(100)).put("address",listOf(field("address"),field("address_detail")).filter { it.isNotBlank() }.joinToString(" ").take(500))
-                    .put("work_description",field("work_description").take(1000)).put("memo",memo).put("source","phone")
-                    .put("work_dates",JSONArray()).put("materials",JSONArray()).put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
-                val messages=JSONArray().put(JSONObject().put("user",false).put("body","AI 분석 결과입니다. 날짜·금액·자재는 확인용 메모에 보관했으며 자동으로 확정하지 않습니다. 내용을 수정하고 등록해 주세요."))
-                val item=JSONObject().put("id",id).put("name","상담 내용 분석").put("status","직접 입력").put("manual_site",true)
-                    .put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft).put("chat_messages",messages)
-                val items=records();items.put(item)
-                check(prefs.edit().putString("records",items.toString()).remove("text_analysis_company").commit()) { "분석 결과를 보관하지 못했습니다." }
-                chatId=id;render();editChatDraft(id)
+                presentAnalyzedSite(data,company,"phone")
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("상담 내용을 분석하지 못했습니다. 연결을 확인한 후 다시 보내 주세요.") }
             finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
         }
+    }
+    private fun presentAnalyzedSite(data:JSONObject,company:CompanyAccess,source:String) {
+    val id="manual-"+UUID.randomUUID().toString()
+    fun field(key:String)=data.optString(key,"").takeUnless { it=="null" }.orEmpty().trim()
+    val extra=mutableListOf<String>()
+    if(field("date").isNotBlank()) extra.add("AI가 찾은 날짜 (확인 필요): "+field("date"))
+    data.optJSONArray("work_dates")?.let { dates -> if(dates.length()>0) extra.add("AI가 찾은 날짜 (확인 필요): "+(0 until minOf(dates.length(),30)).joinToString(", ") { dates.optString(it) }) }
+    if(field("start_time").isNotBlank()) extra.add("AI가 찾은 시간 (확인 필요): "+field("start_time"))
+    if(field("contract_amount").isNotBlank()) extra.add("AI가 찾은 계약 금액 (확인 필요): "+field("contract_amount"))
+    if(field("deposit_amount").isNotBlank()) extra.add("AI가 찾은 선금 (확인 필요): "+field("deposit_amount"))
+    fun candidates(key:String,fields:List<String>):String {
+        val values=data.optJSONArray(key) ?: return ""
+        return (0 until minOf(values.length(),20)).mapNotNull { i ->
+            val row=values.optJSONObject(i) ?: return@mapNotNull null
+            fields.map { row.optString(it,"").takeUnless { v -> v=="null" }.orEmpty().trim() }
+                .filter { it.isNotBlank() }.joinToString(" ").takeIf { it.isNotBlank() }
+        }.joinToString(", ")
+    }
+    candidates("materials",listOf("brand","product_code","product_name","quantity","unit")).takeIf { it.isNotBlank() }?.let { extra.add("필름·자재 후보: $it") }
+    candidates("quote_items",listOf("name","detail","quantity","unit","film_no","note")).takeIf { it.isNotBlank() }?.let { extra.add("견적 항목 후보: $it") }
+    val memo=(listOf(field("memo"),field("other_schedule"))+extra).filter { it.isNotBlank() }.joinToString("\n").take(4000)
+    val draft=JSONObject().put("site_name",field("site_name").take(300)).put("customer_name",field("customer_name").take(200))
+        .put("customer_phone",field("customer_phone").take(100)).put("address",listOf(field("address"),field("address_detail")).filter { it.isNotBlank() }.joinToString(" ").take(500))
+        .put("work_description",field("work_description").take(1000)).put("memo",memo).put("source",source)
+        .put("work_dates",JSONArray()).put("materials",JSONArray()).put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
+    val messages=JSONArray().put(JSONObject().put("user",false).put("body","AI 분석 결과입니다. 날짜·금액·자재는 확인용 메모에 보관했으며 자동으로 확정하지 않습니다. 내용을 수정하고 등록해 주세요."))
+    val item=JSONObject().put("id",id).put("name","상담 내용 분석").put("status","직접 입력").put("manual_site",true)
+        .put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft).put("chat_messages",messages)
+    val items=records();items.put(item)
+    check(prefs.edit().putString("records",items.toString()).remove("text_analysis_company").commit()) { "분석 결과를 보관하지 못했습니다." }
+    chatId=id;render();editChatDraft(id)
     }
     private fun startManualSiteRegistration() {
         val company=selectedCompany() ?: return

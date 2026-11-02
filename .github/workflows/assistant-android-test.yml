@@ -1,7 +1,7 @@
 name: Android assistant test build
 on:
   push:
-    branches: [codex/android-field-assistant-prototype]
+    branches: [codex/android-field-assistant-prototype, codex/site-save-and-media]
 permissions:
   contents: read
 jobs:
