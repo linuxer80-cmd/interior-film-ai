@@ -904,8 +904,131 @@ class MainActivity : Activity() {
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
         if(feature.id=="customer-page") { customerPageManager();return }
+        if(feature.id=="clients") { tradeManager();return }
         if(feature.id=="new-site") showNewSiteRegistration()
         if(feature.id=="profit") openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path)
+    }
+    private var tradeBusy=false
+    private fun tradePending():JSONObject = try { JSONObject(prefs.getString("chat_trade_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+    private fun tradeManager(query:String="") {
+        val company=selectedCompany() ?: return;val uid=account?.userId ?: return
+        if(company.role!="관리자") { message("거래처 관리는 관리자만 사용할 수 있습니다.");return }
+        if(tradeBusy) { message("거래처를 확인하고 있습니다.");return }
+        tradeBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val result=auth.tradeClients(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                showTradeMenu(uid,company,result,query)
+            } catch(e:CancellationException) { throw e }
+            catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("거래처를 불러오지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
+            finally { tradeBusy=false }
+        }
+    }
+    private fun showTradeMenu(uid:String,company:CompanyAccess,data:JSONObject,query:String) {
+        val clients=data.optJSONArray("clients") ?: JSONArray()
+        val list=(0 until clients.length()).mapNotNull { clients.optJSONObject(it) }.filter { query.isBlank() || it.optString("name").contains(query,true) }
+        val pending=tradePending();val hasPending=pending.has("body")
+        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","현장 연결 · 입금 · 정산 열기")
+        if(hasPending) labels.add("이전 저장 결과 다시 확인")
+        labels.addAll(list.map { it.optString("name")+it.optString("phone").takeUnless { p -> p.isBlank() || p=="null" }?.let { p -> " · $p" }.orEmpty() })
+        val header=3+(if(hasPending) 1 else 0)
+        AlertDialog.Builder(this).setTitle(if(query.isBlank()) "거래처 관리 · ${list.size}곳" else "‘$query’ 검색 · ${list.size}곳")
+            .setItems(labels.toTypedArray()) { _,index ->
+                if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
+                when {
+                    index==0 -> editTrade(uid,company,"client",null,null)
+                    index==1 -> {
+                        val input=EditText(this).apply { hint="거래처 이름";setText(query);setSingleLine() }
+                        AlertDialog.Builder(this).setTitle("거래처 검색").setView(input).setPositiveButton("찾기") { _,_ -> showTradeMenu(uid,company,data,input.text.toString().trim()) }.setNegativeButton("취소",null).show()
+                    }
+                    index==2 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/clients")
+                    hasPending && index==3 -> retryTrade(uid,company)
+                    index>=header -> showTradeClient(uid,company,data,list[index-header])
+                }
+            }.setNegativeButton("닫기",null).show()
+    }
+    private fun showTradeClient(uid:String,company:CompanyAccess,data:JSONObject,client:JSONObject) {
+        val contacts=data.optJSONArray("contacts") ?: JSONArray()
+        val people=(0 until contacts.length()).mapNotNull { contacts.optJSONObject(it) }.filter { it.optString("client_id")==client.optString("id") }
+        val labels=mutableListOf("거래처 정보 수정","＋ 담당자 등록")
+        if(client.optString("phone").any { it.isDigit() }) labels.add("거래처 전화 걸기")
+        val offset=labels.size;labels.addAll(people.map { it.optString("name")+" · 담당자" })
+        AlertDialog.Builder(this).setTitle(client.optString("name"))
+            .setItems(labels.toTypedArray()) { _,index ->
+                when {
+                    index==0 -> editTrade(uid,company,"client",client,null)
+                    index==1 -> editTrade(uid,company,"contact",client,null)
+                    index==2 && offset==3 -> dialTrade(client.optString("phone"))
+                    index>=offset -> showTradeContact(uid,company,client,people[index-offset])
+                }
+            }.setNegativeButton("뒤로") { _,_ -> showTradeMenu(uid,company,data,"") }.show()
+    }
+    private fun dialTrade(value:String) {
+        val phone=value.filter { it.isDigit() || it=='+' }
+        if(phone.isBlank()) { message("등록된 전화번호가 없습니다.");return }
+        try { startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",phone,null))) } catch(_:Exception) { message("전화 앱을 열 수 없습니다.") }
+    }
+    private fun showTradeContact(uid:String,company:CompanyAccess,client:JSONObject,contact:JSONObject) {
+        val phone=contact.optString("phone").takeUnless { it=="null" }.orEmpty()
+        val options=if(phone.any { it.isDigit() }) arrayOf("담당자 수정","전화 걸기") else arrayOf("담당자 수정")
+        AlertDialog.Builder(this).setTitle(contact.optString("name")).setItems(options) { _,i -> if(i==0) editTrade(uid,company,"contact",client,contact) else dialTrade(phone) }.setNegativeButton("닫기",null).show()
+    }
+    private fun editTrade(uid:String,company:CompanyAccess,action:String,client:JSONObject?,contact:JSONObject?) {
+        if(tradePending().has("body")) { message("이전 저장의 결과를 먼저 확인해 주세요.");return }
+        val row=if(action=="client") client else contact
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        fun input(label:String,key:String,max:Int):EditText {
+            form.addView(text(label,14f,true))
+            return EditText(this).apply { hint=label;setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(max));setText(row?.optString(key)?.takeUnless { it=="null" }.orEmpty());form.addView(this) }
+        }
+        val name=input(if(action=="client") "거래처 이름" else "담당자 이름","name",100)
+        val phone=input("연락처","phone",100)
+        val day=if(action=="client") input("매월 정산일 (선택)","settlement_day",2).apply { inputType=InputType.TYPE_CLASS_NUMBER } else null
+        val dialog=AlertDialog.Builder(this).setTitle(if(row==null) "${if(action=="client") "거래처" else "담당자"} 등록" else "${if(action=="client") "거래처" else "담당자"} 수정")
+            .setView(form).setPositiveButton("내용 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val n=name.text.toString().trim();val p=phone.text.toString().trim();val d=day?.text?.toString()?.trim().orEmpty()
+            if(n.isBlank()) { message("이름을 입력해 주세요.");return@setOnClickListener }
+            if(d.isNotBlank() && (d.toIntOrNull() ?: 0) !in 1..31) { message("정산일은 1일부터 31일까지 입력해 주세요.");return@setOnClickListener }
+            val body=JSONObject().put("action",action).put("requestId",UUID.randomUUID().toString()).put("name",n).put("phone",p)
+            if(action=="client") { body.put("settlementDay",d);if(client!=null) body.put("clientId",client.optString("id")).put("revision",client.optInt("revision")) }
+            else { body.put("clientId",client?.optString("id").orEmpty());if(contact!=null) body.put("contactId",contact.optString("id")).put("revision",contact.optInt("revision")) }
+            val summary="이름: $n\n연락처: ${p.ifBlank { "미입력" }}"+(if(action=="client") "\n정산일: ${if(d.isBlank()) "미입력" else "매월 ${d}일"}" else "\n거래처: ${client?.optString("name").orEmpty()}")
+            AlertDialog.Builder(this).setTitle("저장 내용 확인").setMessage(summary).setPositiveButton("저장") { _,_ -> submitTrade(uid,company,body,dialog) }.setNegativeButton("수정",null).show()
+        } }
+        dialog.show()
+    }
+    private fun retryTrade(uid:String,company:CompanyAccess) {
+        val pending=tradePending();if(pending.optString("company")!=company.id) { message("저장을 시작한 업체로 변경해 주세요.");return }
+        val body=pending.optJSONObject("body") ?: return
+        AlertDialog.Builder(this).setTitle("이전 저장 확인").setMessage("${body.optString("name")} 저장 결과를 같은 요청으로 확인합니다.")
+            .setPositiveButton("다시 확인") { _,_ -> executeTrade(uid,company,body,null) }.setNegativeButton("닫기",null).show()
+    }
+    private fun submitTrade(uid:String,company:CompanyAccess,body:JSONObject,dialog:AlertDialog) {
+        if(tradeBusy || tradePending().has("body")) { message("이전 저장의 결과를 먼저 확인해 주세요.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        if(!prefs.edit().putString("chat_trade_pending",JSONObject().put("company",company.id).put("body",body).toString()).commit()) { message("저장 요청을 준비하지 못했습니다.");return }
+        executeTrade(uid,company,body,dialog)
+    }
+    private fun executeTrade(uid:String,company:CompanyAccess,body:JSONObject,dialog:AlertDialog?) {
+        if(tradeBusy || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return
+        tradeBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                auth.tradeClients(uid,company.id,body)
+                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                prefs.edit().remove("chat_trade_pending").commit();dialog?.dismiss()
+                if(selectedCompany()?.id==company.id) { appendHomeMessage("${body.optString("name")} ${if(body.optString("action")=="client") "거래처" else "담당자"} 정보를 저장했습니다.");render() }
+            } catch(e:CancellationException) { throw e }
+            catch(e:TradeApiFailure) {
+                if(epoch==sessionEpoch && account?.userId==uid) {
+                    if(e.status in 400..499 && e.status !in listOf(408,429)) { prefs.edit().remove("chat_trade_pending").commit();message(e.message ?: "저장하지 못했습니다.") }
+                    else message("저장 결과를 확인하지 못했습니다. 거래처 관리에서 ‘이전 저장 결과 다시 확인’을 눌러 주세요.")
+                }
+            } catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("저장 결과를 확인하지 못했습니다. 거래처 관리에서 ‘이전 저장 결과 다시 확인’을 눌러 주세요.") }
+            finally { tradeBusy=false }
+        }
     }
     private var customerPageBusy=false
     private val customerProfileFields=listOf(
@@ -1489,7 +1612,13 @@ class MainActivity : Activity() {
             }
             "profit" -> { lookupProfit(request);return }
             "schedule","sites","detail" -> { lookupSites(request);return }
-            "feature" -> { offerFeature(request.feature);return }
+            "feature" -> {
+                if(request.feature=="clients") {
+                    val term=input.replace(Regex("거래처|업체|관리|검색|찾아줘|찾아주세요|보여줘|알려줘|등록|수정|목록|확인|해줘|주세요")," ").trim()
+                    render();tradeManager(term);return
+                }
+                offerFeature(request.feature);return
+            }
             "features" -> { render();showFeatures();return }
         }
         when {
@@ -1572,7 +1701,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
+                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else if(feature.id=="clients") tradeManager() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
             }
         }
         candidate?.let { item ->
