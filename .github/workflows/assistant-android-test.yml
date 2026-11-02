@@ -127,7 +127,7 @@ jobs:
           "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/web-runtime.log
           if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/web-runtime.log; then cat android-ai-assistant/launch-output/web-runtime.log; exit 1; fi
           "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/web.png
-          "$ADB" shell am start -W -a android.intent.action.VIEW -d 'filmjang-assistant://auth/kakao?state=invalid&code=invalid' -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.KakaoCallbackActivity
+          "$ADB" shell am start -W -a android.intent.action.VIEW -d 'filmjang-assistant://auth/kakao?state=invalid' -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.KakaoCallbackActivity
           sleep 2
           "$ADB" shell pidof kr.fieldassistant.prototype.stable
           "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/callback-runtime.log
