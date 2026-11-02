@@ -29,6 +29,7 @@ internal object BackgroundCalls {
     private const val RETRY="assistant_background_retry"
     val lock=Any()
     val running=AtomicBoolean(false)
+    private val retryPending=AtomicBoolean(false)
     fun resultPrefs(ctx: Context,uid: String)=ctx.getSharedPreferences("assistant_background_$uid",Context.MODE_PRIVATE)
     fun active(ctx: Context,uid: String,token: String?=null): Boolean {
         val state=ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE)
@@ -55,11 +56,18 @@ internal object BackgroundCalls {
         WorkManager.getInstance(ctx).enqueueUniqueWork(IMMEDIATE,ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token)).build())
     }
-    fun retryLater(ctx: Context,uid: String) {
-        if(!active(ctx,uid)) return
-        val token=generation(ctx) ?: return
-        WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token)).setInitialDelay(30,TimeUnit.SECONDS).build())
+    fun retryLater(ctx: Context,uid: String,token: String) {
+        if(!active(ctx,uid,token) || !retryPending.compareAndSet(false,true)) return
+        try {
+            WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.APPEND_OR_REPLACE,
+                OneTimeWorkRequestBuilder<BackgroundCallWorker>()
+                    .setInputData(workDataOf("user" to uid,"generation" to token,"retry" to true))
+                    .setInitialDelay(20,TimeUnit.SECONDS).build())
+        } catch(e: Exception) { retryPending.set(false);throw e }
+    }
+    fun retryStarted() { retryPending.set(false) }
+    fun status(ctx: Context,uid: String,message: String) {
+        resultPrefs(ctx,uid).edit().putString("scan_status",message).putLong("last_check_at",System.currentTimeMillis()).apply()
     }
     fun armWatcher(ctx: Context,uid: String,tree: Uri,append: Boolean) {
         if(!active(ctx,uid)) return
@@ -71,6 +79,7 @@ internal object BackgroundCalls {
     }
     fun stop(ctx: Context) {
         synchronized(lock) { ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE).edit().remove(ACTIVE).remove("generation").remove("tree").commit() }
+        retryPending.set(false)
         val manager=WorkManager.getInstance(ctx)
         manager.cancelUniqueWork(PERIODIC);manager.cancelUniqueWork(IMMEDIATE);manager.cancelUniqueWork(WATCH);manager.cancelUniqueWork(RETRY)
     }
@@ -83,20 +92,24 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
         val ctx=applicationContext;val uid=inputData.getString("user") ?: return Result.success()
         val token=inputData.getString("generation") ?: return Result.success()
         if(!BackgroundCalls.active(ctx,uid,token)) return Result.success()
+        if(inputData.getBoolean("retry",false)) BackgroundCalls.retryStarted()
         val userPrefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
         val tree=userPrefs.getString("folder",null)?.let(Uri::parse) ?: return Result.success()
         if(!BackgroundCalls.running.compareAndSet(false,true)) {
+            if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.retryLater(ctx,uid,token)
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
             return Result.success()
         }
         try {
-            val dir=DocumentFile.fromTreeUri(ctx,tree) ?: return Result.success()
+            BackgroundCalls.status(ctx,uid,"녹음 폴더를 확인하고 있습니다.")
+            val dir=DocumentFile.fromTreeUri(ctx,tree) ?: throw SecurityException("폴더를 열 수 없습니다")
+            if(!dir.exists() || !dir.canRead()) throw SecurityException("폴더 읽기 권한이 없습니다")
             val files=dir.listFiles().filter { f -> f.isFile && f.name?.lowercase(Locale.ROOT)?.let { n -> listOf(".m4a",".mp3",".wav",".ogg",".flac").any(n::endsWith) }==true }
                 .sortedBy { it.lastModified() }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
             val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
-            var model: Model?=null;var count=0
+            var model: Model?=null;var count=0;var needsRetry=false
             try {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
@@ -105,10 +118,11 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
                     if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
                         background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
-                        BackgroundCalls.retryLater(ctx,uid);continue
+                        needsRetry=true;continue
                     }
-                    if(count>=3) { BackgroundCalls.retryLater(ctx,uid);break }
+                    if(count>=3) { needsRetry=true;break }
                     count++
+                    if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"새 녹음을 휴대폰에서 분석하고 있습니다.")
                     val record=JSONObject().put("id",id).put("name",file.name ?: "새 통화 녹음")
                     var candidate=false
                     try {
@@ -132,8 +146,23 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     }
                 }
             } finally { model?.close() }
+            if(BackgroundCalls.active(ctx,uid,token) && !isStopped) {
+                val summary=when {
+                    needsRetry -> "확인할 녹음이 남아 있어 잠시 후 다시 확인합니다."
+                    count>0 -> "새 녹음 분석을 마쳤습니다. 아래 비서함을 확인해 주세요."
+                    else -> "연결된 폴더에 새 녹음이 없습니다."
+                }
+                BackgroundCalls.status(ctx,uid,summary)
+                if(needsRetry) BackgroundCalls.retryLater(ctx,uid,token)
+            }
             return Result.success()
-        } catch(_: Exception) { return Result.retry() }
+        } catch(_: SecurityException) {
+            if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.")
+            return Result.success()
+        } catch(_: Exception) {
+            if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.")
+            return Result.retry()
+        }
         finally {
             BackgroundCalls.running.set(false)
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
