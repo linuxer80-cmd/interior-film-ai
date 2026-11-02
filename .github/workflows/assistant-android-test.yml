@@ -105,6 +105,20 @@ jobs:
           "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/launch.png
           "$ADB" shell uiautomator dump /sdcard/assistant-window.xml
           "$ADB" pull /sdcard/assistant-window.xml android-ai-assistant/launch-output/window.xml
+          python3 - <<'PY'
+          import re, subprocess, os, xml.etree.ElementTree as ET
+          root = ET.parse("android-ai-assistant/launch-output/window.xml").getroot()
+          node = next(n for n in root.iter("node") if n.attrib.get("text") == "필름장이 웹앱 열기")
+          x1,y1,x2,y2 = map(int,re.findall(r"\d+",node.attrib["bounds"]))
+          subprocess.run([os.environ["ANDROID_HOME"]+"/platform-tools/adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)],check=True)
+          PY
+          sleep 10
+          "$ADB" shell pidof kr.fieldassistant.prototype.stable
+          "$ADB" shell dumpsys activity activities > android-ai-assistant/launch-output/web-activity.txt
+          grep -q 'mResumedActivity.*WebWorkspaceActivity' android-ai-assistant/launch-output/web-activity.txt
+          "$ADB" logcat -d -s AndroidRuntime:E > android-ai-assistant/launch-output/web-runtime.log
+          if grep -q 'FATAL EXCEPTION' android-ai-assistant/launch-output/web-runtime.log; then cat android-ai-assistant/launch-output/web-runtime.log; exit 1; fi
+          "$ADB" exec-out screencap -p > android-ai-assistant/launch-output/web.png
           "$ADB" shell am force-stop kr.fieldassistant.prototype.stable
           "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
           sleep 5

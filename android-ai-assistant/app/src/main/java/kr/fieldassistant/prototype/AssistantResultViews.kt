@@ -19,7 +19,7 @@ import java.time.ZoneId
 
 /** Native, accessible result cards. Stored results are snapshots; taps recheck access. */
 internal object AssistantResultViews {
-    fun render(context: Context, result: JSONObject, onSite: (String)->Unit, workerActions:Boolean=false, onAction:(String,String)->Unit={ _,_ -> }): View {
+    fun render(context: Context, result: JSONObject, onSite: (String)->Unit, workerActions:Boolean=false, ownerActions:Boolean=false, onAction:(String,String)->Unit={ _,_ -> }): View {
         fun dp(n:Int)=(n*context.resources.displayMetrics.density).toInt()
         val ink=Color.rgb(43,62,51)
         val muted=Color.rgb(100,115,106)
@@ -45,6 +45,10 @@ internal object AssistantResultViews {
                 values.forEachIndexed { i,value ->
                     line.addView(label(value.ifBlank { "—" },if(head) 13f else 14f,head),if(horizontal) LinearLayout.LayoutParams(dp(widths[i]),-2) else LinearLayout.LayoutParams(0,-2,widths[i].toFloat()))
                 }
+                if(kind=="detail" && !head && result.optString("site_id").isNotBlank() && values.getOrNull(1) !in listOf(null,"","미등록","—")) {
+                    val action=when(values.firstOrNull()) { "연락처" -> "phone";"주소" -> "navigate";else -> "" }
+                    if(action.isNotBlank()) { (line.getChildAt(1) as? TextView)?.apply { setTextColor(Color.rgb(37,101,79));paintFlags=paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG };line.setOnClickListener { onAction(result.optString("site_id"),action) };line.contentDescription=values.joinToString(" · ")+if(action=="phone") " · 전화 걸기" else " · 길 안내" }
+                }
                 if(id.isNotBlank()) { line.isClickable=true;line.contentDescription=values.joinToString(" · ")+" · 현장 상세 보기";line.setOnClickListener { onSite(id) } }
                 grid.addView(line)
             }
@@ -56,9 +60,12 @@ internal object AssistantResultViews {
             val fields=result.optJSONArray("fields") ?: JSONArray()
             table(listOf("항목","내용"),listOf(1,3),(0 until fields.length()).mapNotNull { fields.optJSONArray(it) }.map { listOf(it.optString(0),it.optString(1)) to "" },false)
             val siteId=result.optString("site_id")
-            if(workerActions && siteId.isNotBlank()) {
+            if((workerActions || ownerActions) && siteId.isNotBlank()) {
                 card.addView(label("이 현장에서 할 일",16f,true))
-                listOf("완료보고 작성" to "report","경비 입력" to "expenses","현장 업무 열기" to "info").forEach { (title,section) ->
+                val actions=mutableListOf("전화 걸기" to "phone","길 안내" to "navigate")
+                if(workerActions) actions.addAll(listOf("완료보고 작성" to "report","경비 입력" to "expenses","현장 업무 전체" to "info"))
+                if(ownerActions) actions.addAll(listOf("현장 수정 · 전체 업무" to "info","견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
+                actions.forEach { (title,section) ->
                     card.addView(Button(context).apply {
                         text=title;textSize=15f;isAllCaps=false;minHeight=dp(48)
                         setTextColor(if(section=="report") Color.WHITE else ink)
@@ -66,7 +73,7 @@ internal object AssistantResultViews {
                         setOnClickListener { onAction(siteId,section) }
                     },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
                 }
-                card.addView(label("필름장이의 이 현장 입력 화면으로 연결됩니다. 완료보고는 제출 권한에 따라 작성하거나 확인할 수 있습니다.",12f).apply { setTextColor(muted) })
+                card.addView(label("전화·길 안내는 휴대폰 앱으로, 현장 업무는 앱 안의 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
             }
             return card
         }

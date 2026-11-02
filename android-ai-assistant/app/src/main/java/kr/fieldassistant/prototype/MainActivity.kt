@@ -730,7 +730,7 @@ class MainActivity : Activity() {
                     1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
                     4 -> showFeatures()
-                    3 -> confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) }
+                    3 -> confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") }
                 }
             }.setNegativeButton("닫기",null).show()
     }
@@ -748,10 +748,11 @@ class MainActivity : Activity() {
         val owner=selectedCompany()?.role=="관리자"
         val feature=AssistantRequests.feature(featureId,owner)
         if(feature==null) { appendHomeMessage("이 기능은 관리자 권한이 필요합니다.");render();return }
-        appendHomeMessage("${feature.title} 기능을 열 수 있습니다. 현재 이 작업은 필름장이 업무 화면에서 진행합니다. 아직 변경하거나 저장한 내용은 없습니다.")
+        appendHomeMessage("${feature.title} 기능을 열 수 있습니다. 앱 안의 필름장이 업무 화면에서 진행할 수 있습니다.")
         val messages=JSONArray(prefs.getString("home_chat","[]"))
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
+        if(feature.id=="new-site") showNewSiteRegistration()
     }
     private fun showFeatures() {
         val owner=selectedCompany()?.role=="관리자"
@@ -761,31 +762,61 @@ class MainActivity : Activity() {
         }.setNegativeButton("닫기",null).show()
     }
     private var workerActionBusy=false
-    private fun openWorkerSiteAction(companyId:String, siteId:String, section:String) {
-        if(section !in listOf("report","expenses","info") || siteId.isBlank()) return
+    private fun openWebWorkspace(url:String) {
+        startActivity(Intent(this,WebWorkspaceActivity::class.java).putExtra("url",url)
+            .putExtra("company",selectedCompany()?.name.orEmpty()).putExtra("user",account?.userId.orEmpty()))
+    }
+    private fun showNewSiteRegistration() {
+        if(selectedCompany()?.role!="관리자") { message("현장 등록은 관리자 계정에서 사용할 수 있습니다.");return }
+        val labels=arrayOf("직접 입력","통화·문자·카톡 내용 붙여넣기 · AI 분석","문자·카톡 사진 · AI 분석","통화녹음 파일 · AI 분석")
+        val modes=arrayOf("direct","text","screenshot","call")
+        AlertDialog.Builder(this).setTitle("새 현장 등록 · 입력 방법").setItems(labels) { _,index ->
+            openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=sites&assistantRegister=1&inputMode="+modes[index])
+        }.setNegativeButton("닫기",null).show()
+    }
+    private fun openSiteAction(companyId:String, siteId:String, action:String) {
+        if(action !in listOf("phone","navigate","report","expenses","info","quote","schedule") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
-        if(company.id!=companyId || company.role!="시공자") { message("이 현장을 조회한 시공자 계정과 업체를 확인해 주세요.");return }
+        if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
+        val owner=company.role=="관리자"
+        if(!owner && action in listOf("quote","schedule")) return
         if(workerActionBusy) return
+        workerActionBusy=true
         val epoch=sessionEpoch
-        confirmWebAccount {
-            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || workerActionBusy) return@confirmWebAccount
-            workerActionBusy=true
-            scope.launch {
-                try {
-                    val assigned=auth.assistantSites(uid,companyId)
-                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
-                    val allowed=(0 until assigned.length()).mapNotNull { assigned.optJSONObject(it) }
-                        .any { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
-                    if(!allowed) { message("현재 배정된 현장이 아닙니다. 현장 목록을 다시 조회해 주세요.");return@launch }
-                    val url="https://interior-film-ai.vercel.app/worker/site/"+Uri.encode(siteId)+"?section="+section
-                    startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
-                } catch(e:CancellationException) { throw e }
-                  catch(_:Exception) { if(epoch==sessionEpoch) message("현장 접근을 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
-                finally { workerActionBusy=false }
-            }
+        scope.launch {
+            try {
+                val authorized=auth.assistantSites(uid,companyId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                val site=(0 until authorized.length()).mapNotNull { authorized.optJSONObject(it) }
+                    .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
+                if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
+                when(action) {
+                    "phone" -> {
+                        val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
+                        if(phone.isBlank()) { message("등록된 전화번호가 없습니다.");return@launch }
+                        startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",phone,null)))
+                    }
+                    "navigate" -> {
+                        val address=site.optString("address").takeUnless { it=="null" }.orEmpty()
+                        if(address.isBlank()) { message("등록된 주소가 없습니다.");return@launch }
+                        val uri=Uri.parse("geo:0,0?q="+Uri.encode(address))
+                        try { startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW,uri),"길 안내 앱 선택")) }
+                        catch(_:ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://map.naver.com/p/search/"+Uri.encode(address)))) }
+                    }
+                    else -> {
+                        val path=if(owner) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
+                        openWebWorkspace("https://interior-film-ai.vercel.app"+path)
+                    }
+                }
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
+            finally { workerActionBusy=false }
         }
     }
+    private fun displaySiteDate(value:String):String = try {
+        java.time.OffsetDateTime.parse(value).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString()
+    } catch(_:Exception) { value.takeIf { it.isNotBlank() } ?: "미등록" }
     private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
@@ -814,7 +845,7 @@ class MainActivity : Activity() {
                     field("고객",value(site,"customer_name"));field("연락처",value(site,"customer_phone"))
                     field("주소",listOf(value(site,"address"),value(site,"address_detail")).filter { it.isNotBlank() }.joinToString(" "))
                     field("시공 내용",value(site,"work_description"))
-                    field("시공 기간",value(site,"schedule_start").ifBlank { "미등록" }+" ~ "+value(site,"schedule_end").ifBlank { "미등록" })
+                    field("시공 기간",displaySiteDate(value(site,"schedule_start"))+" ~ "+displaySiteDate(value(site,"schedule_end")))
                     val workDates=site.optJSONArray("work_dates") ?: JSONArray()
                     field("시공일",(0 until workDates.length()).map { workDates.optString(it) }.joinToString(", "))
                     appendHomeMessage("",result=JSONObject().put("kind","detail").put("title",value(site,"site_name").ifBlank { "현장 상세" })
@@ -911,13 +942,14 @@ class MainActivity : Activity() {
                     if(result.optString("company_id")!=selectedCompany()?.id) message("이 답변을 조회한 업체로 변경해 주세요.")
                     else lookupSites(AssistantRequests.Request("detail"),siteId)
                 },workerActions=selectedCompany()?.role=="시공자" && selectedCompany()?.id==result.optString("company_id"),
-                    onAction={ siteId,section -> openWorkerSiteAction(result.optString("company_id"),siteId,section) }),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
+                    ownerActions=selectedCompany()?.role=="관리자" && selectedCompany()?.id==result.optString("company_id"),
+                    onAction={ siteId,section -> openSiteAction(result.optString("company_id"),siteId,section) }),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
                 continue
             }
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
             body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app"+feature.path))) } }
+                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
             }
         }
         candidate?.let { item ->
@@ -1080,7 +1112,7 @@ class MainActivity : Activity() {
         login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)
         if(authError.isNotBlank()) addButton(col,"저장된 로그인 다시 확인",false) { restoreLogin() }
         col.addView(text("\n이 시험 앱의 구글·카카오 로그인은 아직 연결되지 않았습니다. 기존 웹앱에서의 로그인은 이 시험 앱에 자동으로 이어지지 않습니다.",12f,false,Color.rgb(117,130,120)))
-        addButton(col,"필름장이 웹앱 열기",false) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/login"))) }
+        addButton(col,"필름장이 웹앱 열기",false) { openWebWorkspace("https://interior-film-ai.vercel.app/login") }
     }
     private fun notificationManager(): NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private fun ensureNotificationChannel(): NotificationManager {
@@ -1268,12 +1300,12 @@ class MainActivity : Activity() {
                     confirmWebAccount {
                         val clip=getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clip.setPrimaryClip(ClipData.newPlainText("상담 내용",item.optString("transcript")))
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://interior-film-ai.vercel.app/admin?tab=register")))
+                        openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=register")
                     }
                 }
             }
         }
-        addButton(col,"필름장이 열기",false) { confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) } }
+        addButton(col,"필름장이 열기",false) { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } }
         addButton(col,"비서함 기록 지우기",false) {
             AlertDialog.Builder(this).setTitle("비서함 기록 지우기")
                 .setMessage("이 앱에 저장된 분석 결과만 지웁니다. 휴대폰의 원본 녹음 파일은 지우지 않습니다.")
@@ -1281,11 +1313,7 @@ class MainActivity : Activity() {
         }
         col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 백그라운드 확인은 휴대폰 절전 설정에 따라 늦어질 수 있습니다.",12f,false,Color.rgb(117,130,120)))
     }
-    private fun confirmWebAccount(action: () -> Unit) {
-        AlertDialog.Builder(this).setTitle("웹앱 계정 확인")
-            .setMessage("필름장이 웹앱은 별도로 로그인됩니다. 웹앱에서도 같은 계정과 업체를 확인해 주세요.")
-            .setNegativeButton("취소",null).setPositiveButton("열기") { _,_ -> action() }.show()
-    }
+    private fun confirmWebAccount(action: () -> Unit) { action() }
 }
 
 

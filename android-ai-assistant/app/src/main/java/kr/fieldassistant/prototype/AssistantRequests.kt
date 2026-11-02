@@ -9,6 +9,7 @@ internal object AssistantRequests {
     data class Request(val kind:String,val from:String="",val to:String="",val query:String="",val feature:String="",val index:Int=-1)
     data class Feature(val id:String,val title:String,val path:String,val ownerOnly:Boolean=false)
     val features=listOf(
+        Feature("new-site","새 현장 등록 · AI 상담 분석","/admin?tab=sites&assistantRegister=1",true),
         Feature("sites","현장 관리 · 일정 · 배정","/admin?tab=sites",true),
         Feature("quotes","견적서 작성","/admin/quotes",true),
         Feature("inventory","필름 재고 · 입고 · 반출 · 반입","/admin/inventory",true),
@@ -30,6 +31,7 @@ internal object AssistantRequests {
     )
     fun parse(input:String,today:LocalDate): Request {
         val q=input.trim();val compact=q.replace(Regex("\\s+"),"")
+        if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
         val action=Regex("(바꿔|변경|옮겨|수정|삭제|취소|배정해|등록해|반출해|반입해|입금처리|보내줘|발송|승인해|반려해)").containsMatchIn(compact)
         val feature=when {
             compact.contains("재단") -> "cutting"

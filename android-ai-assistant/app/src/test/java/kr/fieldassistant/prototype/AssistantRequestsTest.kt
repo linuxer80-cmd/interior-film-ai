@@ -32,6 +32,15 @@ class AssistantRequestsTest {
         assertEquals(2,ScheduleDates.fromSites(sites,"2026-11-02","2026-11-08").size)
         assertEquals("unknown",AssistantRequests.parse("0번 현장",monday).kind)
     }
+    @Test fun registrationOpensExplicitOwnerOnlyFlow() {
+        for (text in listOf("현장등록", "새 현장 등록", "신규 현장 등록", "현장 추가")) {
+            val request=AssistantRequests.parse(text,monday)
+            assertEquals("feature",request.kind)
+            assertEquals("new-site",request.feature)
+        }
+        assertNull(AssistantRequests.feature("new-site",false))
+        assertTrue(AssistantRequests.feature("new-site",true)!!.path.contains("assistantRegister=1"))
+    }
     @Test fun workerFeaturesDoNotExposeOwnerScreens() {
         assertNull(AssistantRequests.feature("receivables",false))
         assertEquals("/worker/inventory",AssistantRequests.feature("inventory",false)?.path)
