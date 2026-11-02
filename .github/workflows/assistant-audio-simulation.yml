@@ -42,7 +42,7 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: bash -c 'cd android-ai-assistant; ASSISTANT_VERSION_CODE=19999 gradle --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kr.fieldassistant.prototype.SchedulingTest; result=$?; adb logcat -d -s AssistantTest:I TestRunner:E "*:S" | tail -250; exit "$result"'
+          script: bash -c 'cd android-ai-assistant; ASSISTANT_VERSION_CODE=19999 gradle --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kr.fieldassistant.prototype.ManualQueueTest; result=$?; adb logcat -d -s AssistantTest:I TestRunner:E "*:S" | tail -250; exit "$result"'
       - name: Save test report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

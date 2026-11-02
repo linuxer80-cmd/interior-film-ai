@@ -57,6 +57,9 @@ class MainActivity : Activity() {
     private var authError = ""
     private var sessionEpoch = 0
     private var analysisJob: Job? = null
+    private var offlineQueueJob: Job? = null
+    private val offlineQueue = mutableListOf<String>()
+    private val offlineQueued = mutableSetOf<String>()
     private val prefs get() = getSharedPreferences("assistant_user_" + requireNotNull(account).userId, MODE_PRIVATE)
     private var root: LinearLayout? = null
     private var observing = false
@@ -120,14 +123,17 @@ class MainActivity : Activity() {
         attachResults(verified.userId)
         mergeResults(verified.userId)
         folder()?.let { BackgroundCalls.activate(applicationContext,verified.userId,it) }
-        val saved=records()
+        val saved=records();val resumeOffline=mutableListOf<String>()
         for(i in 0 until saved.length()) {
             val item=saved.optJSONObject(i) ?: continue
-            if(item.optString("status") in listOf("분석 대기", "휴대폰에서 분석 중", "내용 정리 중")) {
-                pending.add(item.optString("id")); item.put("status", "분석 대기")
+            val id=item.optString("id");if(id.isBlank() || item.optString("site_id").isNotBlank()) continue
+            when(item.optString("status")) {
+                "분석 대기", "휴대폰에서 분석 중" -> { item.put("status","분석 대기");resumeOffline.add(id) }
+                "내용 정리 중" -> pending.add(id)
             }
         }
         saveRecords(saved)
+        resumeOffline.forEach { retryOffline(it) }
         val epoch=sessionEpoch
         if(active) { startObserver();scanFolder();scheduleForegroundScan() }
         scope.launch {
@@ -321,7 +327,8 @@ class MainActivity : Activity() {
     private fun scanFolder() {
         val uid=account?.userId ?: return
         if(folder()==null || baselineBusy) return
-        mergeResults(uid);BackgroundCalls.kick(applicationContext,uid)
+        mergeResults(uid)
+        if(offlineQueued.isEmpty()) BackgroundCalls.kick(applicationContext,uid)
     }
     private fun inspectLatestRecording() {
         val uid=account?.userId ?: return
@@ -393,25 +400,44 @@ class MainActivity : Activity() {
     }
     private fun retryOffline(id: String) {
         val uid=account?.userId ?: return
-        if(!BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
+        if(id in offlineQueued) { message("이미 분석을 기다리고 있습니다.");return }
+        offlineQueued.add(id);offlineQueue.add(id)
+        updateRecord(id,"분석 대기",summary="앞선 확인 작업이 끝나면 자동으로 분석합니다.")
+        if(offlineQueueJob?.isActive==true) return
         val epoch=sessionEpoch
-        updateRecord(id,"휴대폰에서 분석 중")
-        scope.launch {
-            val job=coroutineContext[Job]
+        offlineQueueJob=scope.launch {
             try {
-                val result=withContext(Dispatchers.IO) {
-                    org.vosk.Model(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
-                        OfflineAudio.transcribe(applicationContext,Uri.parse(id),model) { job?.isActive!=true }
+                while(offlineQueue.isNotEmpty() && epoch==sessionEpoch && account?.userId==uid) {
+                    val current=offlineQueue.first();var locked=false
+                    try {
+                        var waited=0
+                        while(!BackgroundCalls.running.compareAndSet(false,true)) {
+                            delay(500);waited++
+                            if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                            if(waited==120) updateRecord(current,"분석 대기",summary="녹음 폴더 확인이 오래 걸리고 있습니다. 확인이 끝나면 자동으로 분석합니다.")
+                        }
+                        locked=true
+                        if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                        updateRecord(current,"휴대폰에서 분석 중",summary="")
+                        val job=coroutineContext[Job]
+                        val result=withContext(Dispatchers.IO) {
+                            org.vosk.Model(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                                OfflineAudio.transcribe(applicationContext,Uri.parse(current),model) { job?.isActive!=true }
+                            }
+                        }
+                        if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                        if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
+                        val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
+                        updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                    } catch(e:CancellationException) { throw e }
+                      catch(_: Exception) {
+                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 저장 공간을 확인한 뒤 다시 시도해 주세요.")
+                    } finally {
+                        if(locked) BackgroundCalls.running.set(false)
+                        if(epoch==sessionEpoch) { offlineQueue.remove(current);offlineQueued.remove(current) }
                     }
                 }
-                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
-                if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
-                val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
-                updateRecord(id,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
-            } catch(e:CancellationException) { throw e }
-              catch(_: Exception) {
-                if(epoch==sessionEpoch && account?.userId==uid) updateRecord(id,"분석 실패",summary="녹음 파일과 저장 공간을 확인한 뒤 다시 시도해 주세요.")
-            } finally { BackgroundCalls.running.set(false) }
+            } finally { if(epoch==sessionEpoch) offlineQueueJob=null }
         }
     }
     private fun recognizer(mode: Int = speechMode) = SpeechRecognition.getClient(speechRecognizerOptions {
@@ -631,7 +657,7 @@ class MainActivity : Activity() {
         }
     }
     private fun signOut() {
-        sessionEpoch++;analysisJob?.cancel();analysisJob=null
+        sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
