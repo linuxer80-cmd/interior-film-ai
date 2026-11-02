@@ -91,6 +91,26 @@ internal class AccountAuth private constructor(context: Context) {
         install(Auth) { sessionManager=SecureSessionManager(context); autoLoadFromStorage=true; autoSaveToStorage=true }
         install(Postgrest) { requireValidSession=true }
     }
+    suspend fun publicSamples():List<SampleSearch.Product> = withContext(Dispatchers.IO) {
+        val conn=URL("https://interior-film-ai.vercel.app/api/film-products").openConnection() as HttpsURLConnection
+        try {
+            conn.instanceFollowRedirects=false;conn.connectTimeout=15000;conn.readTimeout=30000
+            check(conn.responseCode==200)
+            val bytes=conn.inputStream.use { input ->
+                val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var n:Int
+                while(input.read(buffer).also { n=it }!=-1) { check(out.size()+n<=12*1024*1024);out.write(buffer,0,n) }
+                out.toByteArray()
+            }
+            val body=JSONObject(bytes.toString(Charsets.UTF_8));check(body.optBoolean("success"))
+            val rows=body.getJSONArray("products")
+            (0 until rows.length()).mapNotNull { i ->
+                val p=rows.optJSONObject(i) ?: return@mapNotNull null
+                val aliases=p.optJSONArray("aliases") ?: JSONArray()
+                fun field(key:String)=if(p.isNull(key)) "" else p.optString(key)
+                SampleSearch.Product(field("id"),field("brand"),field("product_code"),field("product_name"),field("category_key"),field("pattern_line"),field("sample_image_path"),(0 until aliases.length()).mapNotNull { j -> if(aliases.isNull(j)) null else aliases.optString(j).takeIf { it.isNotBlank() } })
+            }
+        } finally { conn.disconnect() }
+    }
     suspend fun restore(): VerifiedAccount? {
         client.auth.awaitInitialization()
         if(client.auth.currentSessionOrNull()==null) return null
