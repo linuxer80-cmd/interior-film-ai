@@ -17,6 +17,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '8.13'
+      - name: Include offline Korean speech model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android-ai-assistant/app/src/main/assets
+          curl -fsSL --retry 3 https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip -o android-ai-assistant/app/src/main/assets/vosk-ko.zip
+          echo 'eea36124087fed26c59996a4761519458e3bd185e8ea9d9865ad8760c4a1d989  android-ai-assistant/app/src/main/assets/vosk-ko.zip' | sha256sum -c -
       - name: Build test APK
         working-directory: android-ai-assistant
         run: ASSISTANT_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))" gradle --no-daemon testDebugUnitTest assembleDebug
