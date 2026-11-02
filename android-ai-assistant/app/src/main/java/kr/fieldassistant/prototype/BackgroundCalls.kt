@@ -13,7 +13,7 @@ import android.os.Build
 import android.provider.DocumentsContract
 import androidx.work.*
 import org.json.JSONObject
-import org.vosk.Model
+import kr.fieldassistant.prototype.WhisperModel as Model
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID

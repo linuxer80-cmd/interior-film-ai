@@ -418,10 +418,10 @@ class MainActivity : Activity() {
                         }
                         locked=true
                         if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
-                        updateRecord(current,"휴대폰에서 분석 중",summary="")
+                        updateRecord(current,"휴대폰에서 분석 중",summary="Whisper로 통화 내용을 읽고 있습니다. 처음에는 모델 준비 시간이 걸릴 수 있습니다.")
                         val job=coroutineContext[Job]
                         val result=withContext(Dispatchers.IO) {
-                            org.vosk.Model(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                            WhisperModel(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
                                 OfflineAudio.transcribe(applicationContext,Uri.parse(current),model) { job?.isActive!=true }
                             }
                         }

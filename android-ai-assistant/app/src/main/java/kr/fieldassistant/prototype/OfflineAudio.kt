@@ -7,11 +7,11 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
+import kr.fieldassistant.prototype.WhisperModel as Model
+import kr.fieldassistant.prototype.WhisperRecognizer as Recognizer
 import java.io.File
 import java.nio.ByteOrder
-import java.util.zip.ZipInputStream
+import java.security.MessageDigest
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -49,45 +49,32 @@ internal object InquiryMatcher {
 }
 
 internal object OfflineModel {
-    fun ensure(context: Context): File {
-        val destination=File(context.filesDir,"vosk-korean-0.22")
-        if(File(destination,".complete").isFile && File(destination,"am/final.mdl").isFile) return destination
-        val tmp=File(context.filesDir,"vosk-korean-0.22.tmp")
-        tmp.deleteRecursively();check(tmp.mkdirs())
-        var total=0L
+    @Synchronized fun ensure(context: Context): File {
+        val name="ggml-small-q5_1.bin"
+        val destination=File(context.filesDir,name)
+        val expected=context.assets.open("whisper-model.sha256").bufferedReader().use { it.readText().trim().split(" ").first() }
+        val marker=File(context.filesDir,"whisper-small-q5.complete")
+        if(destination.isFile && marker.isFile && marker.readText()==expected && destination.length()>100_000_000L) return destination
+        val tmp=File(context.filesDir,"$name.tmp")
         try {
-            ZipInputStream(context.assets.open("vosk-ko.zip").buffered()).use { zip ->
-                while(true) {
-                    val entry=zip.nextEntry ?: break
-                    val prefix="vosk-model-small-ko-0.22/"
-                    if(!entry.name.startsWith(prefix)) { zip.closeEntry();continue }
-                    val relative=entry.name.removePrefix(prefix)
-                    if(relative.isBlank()) { zip.closeEntry();continue }
-                    val target=File(tmp,relative)
-                    val base=tmp.canonicalPath+File.separator
-                    require(target.canonicalPath.startsWith(base)) { "잘못된 모델 파일 경로" }
-                    if(entry.isDirectory) target.mkdirs() else {
-                        target.parentFile?.mkdirs()
-                        target.outputStream().buffered().use { out ->
-                            val block=ByteArray(32768)
-                            while(true) { val n=zip.read(block);if(n<0)break;total+=n;check(total<=600L*1024*1024);out.write(block,0,n) }
-                        }
-                    }
-                    zip.closeEntry()
-                }
-            }
-            check(File(tmp,"am/final.mdl").isFile && File(tmp,"conf/model.conf").isFile) { "음성 모델 파일이 완전하지 않습니다." }
-            File(tmp,".complete").writeText("0.22")
-            if(destination.exists()) check(destination.deleteRecursively())
-            check(tmp.renameTo(destination)) { "음성 모델을 저장하지 못했습니다." }
+            val digest=MessageDigest.getInstance("SHA-256")
+            context.assets.open(name).use { input -> tmp.outputStream().buffered().use { out ->
+                val block=ByteArray(65536)
+                while(true) { val n=input.read(block);if(n<0)break;out.write(block,0,n);digest.update(block,0,n) }
+            } }
+            val actual=digest.digest().joinToString("") { "%02x".format(it) }
+            check(actual==expected) { "음성 모델 파일 검증에 실패했습니다." }
+            if(destination.exists()) check(destination.delete())
+            check(tmp.renameTo(destination))
+            marker.writeText(expected)
             return destination
-        } catch(e: Exception) { tmp.deleteRecursively();throw e }
+        } catch(e: Exception) { tmp.delete();throw e }
     }
 }
 
 data class OfflineTranscript(val text: String, val truncated: Boolean)
 
-/** Android decodes the recording locally; Vosk receives 16-kHz mono PCM. */
+/** Android decodes the recording locally; Whisper receives 16-kHz mono PCM. */
 internal object OfflineAudio {
     private const val MAX_DURATION_US=15L*60*1_000_000
     fun transcribe(context: Context, uri: Uri, model: Model, cancelled: () -> Boolean): OfflineTranscript {
@@ -154,7 +141,9 @@ internal object OfflineAudio {
                     }
                     if(progressed) idle=0 else if(++idle>1000) error("오디오 분석 시간이 초과됐습니다.")
                 }
+                if(cancelled()) throw InterruptedException("작업이 중단되었습니다.")
                 appendRecognized(output,recognizer.finalResult)
+                if(cancelled()) throw InterruptedException("작업이 중단되었습니다.")
             }
             return OfflineTranscript(output.toString().trim().take(30000),truncated)
         } finally { try { codec?.stop() } catch(_: Exception) {} ;codec?.release();extractor.release() }

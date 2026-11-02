@@ -9,13 +9,17 @@ plugins {
 android {
     namespace = "kr.fieldassistant.prototype"
     compileSdk = 36
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     defaultConfig {
         applicationId = "kr.fieldassistant.prototype.stable"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild { cmake { arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
         minSdk = 31
         targetSdk = 35
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
         versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 4
-        versionName = "0.4-stable-test"
+        versionName = "0.5-whisper-test"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -29,8 +33,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
-    implementation("net.java.dev.jna:jna:5.18.1@aar")
-    implementation("com.alphacephei:vosk-android:0.3.75@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha2")
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
