@@ -4,6 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ConsultationChatTest {
+    @Test fun candidateChoiceRequiresKnownTargetOrExplicitPermission() {
+        assertEquals(false, ConsultationChat.canChoose(listOf("a","b"),"",false,true))
+        assertEquals(false, ConsultationChat.canChoose(listOf("a","b"),"foreign",false,true))
+        assertEquals(true, ConsultationChat.canChoose(listOf("a","b"),"b",false,false))
+        assertEquals(false, ConsultationChat.canChoose(listOf("a"),null,true,false))
+        assertEquals(true, ConsultationChat.canChoose(listOf("a"),null,true,true))
+    }
     @Test fun acceptsExplicitKoreanConfirmation() {
         listOf("네", "그래", "네!", " 등록해 주세요 ", "이어서 등록해줘", "다시 시도").forEach {
             assertEquals(it, ConsultationChat.Reply.YES, ConsultationChat.reply(it))

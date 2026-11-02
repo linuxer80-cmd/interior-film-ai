@@ -2,6 +2,9 @@ package kr.fieldassistant.prototype
 
 /** Explicit confirmation only: unrecognised sentences never trigger a write. */
 object ConsultationChat {
+    fun canChoose(ids: List<String>, target: String?, createNew: Boolean, allowNew: Boolean): Boolean =
+        if(createNew) allowNew && target==null else !target.isNullOrBlank() && target in ids
+
     enum class Reply { YES, LATER, NEW, UNKNOWN }
     fun reply(input: String): Reply {
         val value = input.trim().replace(Regex("[\\s.!?。！？,]+"), "")

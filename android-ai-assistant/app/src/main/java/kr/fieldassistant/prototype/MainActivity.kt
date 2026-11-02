@@ -576,7 +576,7 @@ class MainActivity : Activity() {
         chatInput=""
         if(!chatMessage(id,value,true)) { message("답변을 저장하지 못했습니다.");return }
         when(ConsultationChat.reply(value)) {
-            ConsultationChat.Reply.LATER -> { chatMessage(id,"알겠습니다. 지금은 등록하지 않고 비서함에 보관하겠습니다. 등록하려면 다시 ‘네’라고 답해 주세요.");render();return }
+            ConsultationChat.Reply.LATER -> { chatMessage(id,if(reg!=null && reg.optJSONArray("candidates")==null) "추가 요청을 멈췄습니다. 앞서 보낸 저장 요청은 완료됐을 수 있습니다. ‘다시 시도’라고 답하면 같은 요청의 결과를 확인합니다." else "알겠습니다. 지금은 등록하지 않고 비서함에 보관하겠습니다. 등록하려면 다시 ‘네’라고 답해 주세요.");render();return }
             ConsultationChat.Reply.UNKNOWN -> { chatMessage(id,"등록하려면 ‘네’ 또는 ‘그래’, 보류하려면 ‘나중에’라고 답해 주세요. 내용 변경은 ‘등록 내용 수정’을 눌러 주세요.");render();return }
             else -> Unit
         }
@@ -587,11 +587,12 @@ class MainActivity : Activity() {
             if(!changeRecord(id) { it.put("registration",request) }) { message("등록 요청을 보관하지 못했습니다.");return }
         } else {
             val candidates=reg.optJSONArray("candidates")
+            if(candidates==null && ConsultationChat.reply(value)==ConsultationChat.Reply.NEW) { chatMessage(id,"앞서 보낸 요청의 결과를 먼저 확인해야 합니다. ‘다시 시도’라고 답해 주세요.");render();return }
             if(candidates!=null) {
                 val isNew=ConsultationChat.reply(value)==ConsultationChat.Reply.NEW
                 if(isNew && !reg.optBoolean("allow_new")) { chatMessage(id,"이 상담은 새 현장으로 중복 등록할 수 없습니다. 기존 현장을 선택해 주세요.");render();return }
                 val target=if(isNew) null else item.optString("chat_target").ifBlank { if(candidates.length()==1) candidates.optJSONObject(0)?.optString("id").orEmpty() else "" }
-                if(!isNew && (target.isNullOrBlank() || (0 until candidates.length()).none { candidates.optJSONObject(it)?.optString("id")==target })) {
+                if(!ConsultationChat.canChoose((0 until candidates.length()).mapNotNull { candidates.optJSONObject(it)?.optString("id") },target,isNew,reg.optBoolean("allow_new"))) {
                     chatMessage(id,"이어서 등록할 현장을 아래에서 먼저 선택해 주세요.");render();return
                 }
                 if(!changeRecord(id) { it.getJSONObject("registration").put("target_id",target ?: JSONObject.NULL).put("create_new",isNew).remove("candidates") }) { message("선택을 저장하지 못했습니다.");return }
