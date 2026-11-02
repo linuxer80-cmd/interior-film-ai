@@ -53,6 +53,16 @@ class IncomingRecordingTest {
         val transcript=record.optString("transcript")
         val candidate=record.optBoolean("offline_candidate")
         Log.i("AssistantTest","STATUS="+record.optString("status")+" TRANSCRIPT="+transcript+" CANDIDATE="+candidate+" NOTIFICATIONS="+nm.activeNotifications.size)
+        if(record.optString("status")=="분석 실패") {
+            try {
+                val modelPath=OfflineModel.ensure(c)
+                Log.i("AssistantTest","DIAG modelReady="+modelPath.exists())
+                org.vosk.Model(modelPath.absolutePath).use { model ->
+                    val decoded=OfflineAudio.transcribe(c,file.uri,model) { false }
+                    Log.i("AssistantTest","DIAG directTranscript="+decoded.text)
+                }
+            } catch(t:Throwable) { Log.e("AssistantTest","DIAG analysis failed",t) }
+        }
         assertEquals("확인 필요",record.optString("status"))
         assertTrue("Korean speech should be recognized",transcript.isNotBlank())
         assertTrue("the synthetic recording requests a construction estimate",candidate)
