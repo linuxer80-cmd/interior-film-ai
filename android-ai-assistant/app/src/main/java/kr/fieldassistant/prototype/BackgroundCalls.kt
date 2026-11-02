@@ -103,7 +103,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
         try {
             BackgroundCalls.status(ctx,uid,"녹음 폴더를 확인하고 있습니다.")
             val dir=DocumentFile.fromTreeUri(ctx,tree) ?: throw SecurityException("폴더를 열 수 없습니다")
-            if(!dir.exists() || !dir.canRead()) throw SecurityException("폴더 읽기 권한이 없습니다")
+            if(!dir.exists()) throw SecurityException("폴더를 열 수 없습니다")
             val files=dir.listFiles().filter { f -> f.isFile && f.name?.lowercase(Locale.ROOT)?.let { n -> listOf(".m4a",".mp3",".wav",".ogg",".flac").any(n::endsWith) }==true }
                 .sortedBy { it.lastModified() }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
