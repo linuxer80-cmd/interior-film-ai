@@ -61,4 +61,22 @@ class AssistantRequestsTest {
         assertEquals("/worker",AssistantRequests.feature("sites",false)?.path)
         assertNull(AssistantRequests.feature("https://evil.example",true))
     }
+    @Test fun profitQueriesRetainRequestedPeriod() {
+        val today=java.time.LocalDate.of(2026,11,2)
+        val last=AssistantRequests.parse("지난달 매출 알려줘",today)
+        assertEquals("profit",last.kind)
+        assertEquals("2026-10-01",last.from)
+        assertEquals("2026-10-31",last.to)
+        val month=AssistantRequests.parse("2025년 2월 수익",today)
+        assertEquals("2025-02-01",month.from)
+        assertEquals("2025-02-28",month.to)
+        val current=AssistantRequests.parse("매출 보여줘",today)
+        assertEquals("2026-11-01",current.from)
+        assertEquals("2026-11-02",current.to)
+        assertEquals("unknown",AssistantRequests.parse("13월 매출",today).kind)
+        assertEquals("unknown",AssistantRequests.parse("3분기 수익",today).kind)
+        assertEquals("2025-01-01",AssistantRequests.parse("작년 매출",today).from)
+        assertEquals("2025-12-31",AssistantRequests.parse("작년 매출",today).to)
+    }
 }
+
