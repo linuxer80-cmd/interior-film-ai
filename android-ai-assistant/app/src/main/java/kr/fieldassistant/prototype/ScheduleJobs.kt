@@ -126,11 +126,13 @@ class ScheduleWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p) {
                 val previous=p.getStringSet("days",emptySet())?.toSet() ?: emptySet()
                 val newKeys=ScheduleLogic.additions(baseline,previous,days.map { it.key }.toSet())
                 val newItems=days.filter { it.key in newKeys }
-                if(newItems.isNotEmpty()) send(c,uid,newItems.first().date,"new")
                 val now=ZonedDateTime.now(ZoneId.of("Asia/Seoul"))
                 val todayItems=days.filter { it.date==today.toString() }
                 val wasSent=p.getString("morning_date","")==today.toString()
                 val sent=if(ScheduleLogic.shouldRemind(now.hour,wasSent,todayItems.isNotEmpty())) send(c,uid,today.toString(),"morning") else false
+                // One current-day appointment needs only the morning prompt.
+                val separate=newItems.filter { !sent || it.date!=today.toString() }
+                if(separate.isNotEmpty()) send(c,uid,separate.first().date,"new")
                 val e=p.edit().putBoolean("baseline",true).putStringSet("days",days.map { it.key }.toSet())
                 if(sent) e.putString("morning_date",today.toString())
                 check(e.commit())

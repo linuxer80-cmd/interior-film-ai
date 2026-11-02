@@ -600,7 +600,7 @@ class MainActivity : Activity() {
                     if(verified.companies.isEmpty()) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
                     else activateAccount(verified)
                 } catch (_: Exception) { authError="로그인 또는 업체 정보를 확인하지 못했습니다. 이메일·비밀번호와 인터넷 연결을 확인해 주세요." }
-                finally { authBusy=false;render() }
+                finally { authBusy=false;render();maybeScheduleReview() }
             }
         }
         login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)
