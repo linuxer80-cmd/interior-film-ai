@@ -162,6 +162,26 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun saveChatExpense(expectedUser:String,companyId:String,body:JSONObject):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체가 변경되었습니다." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("siteId")))
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("id")))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/site-expenses").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=30000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json")
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val response=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code !in 200..299 || !response.optBoolean("success")) throw IllegalStateException(response.optString("error").ifBlank { "경비 저장 결과를 확인하지 못했습니다." })
+                response
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantSites(expectedUser: String, companyId: String): JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser) { "다른 계정입니다." }

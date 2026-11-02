@@ -900,9 +900,64 @@ class MainActivity : Activity() {
     private fun siteStatus(value:String):String=when(value) {
         "consulting"->"상담중";"scheduled"->"시공예정";"in_progress"->"시공중";"completed"->"시공완료";"cancelled"->"취소";else->value
     }
+    private var expenseSaving=false
+    private fun savePendingExpense() {
+        val uid=account?.userId ?: return
+        val company=selectedCompany() ?: return
+        val pending=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: return) } catch(_:Exception) { return }
+        if(pending.optString("company")!=company.id || expenseSaving) { message("경비를 입력한 업체를 선택해 주세요.");return }
+        expenseSaving=true
+        pending.put("submitted",true);prefs.edit().putString("chat_expense_pending",pending.toString()).commit()
+        val epoch=sessionEpoch
+        val body=JSONObject().put("siteId",pending.getString("siteId")).put("id",pending.getString("id"))
+            .put("expense_type",pending.getString("type")).put("amount",pending.getLong("amount"))
+            .put("expense_date",pending.getString("date")).put("description",pending.getString("label"))
+            .put("view",if(company.role=="시공자") "worker" else "admin")
+        scope.launch {
+            try {
+                auth.saveChatExpense(uid,company.id,body)
+                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                val current=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+                if(current.optString("id")==pending.optString("id")) prefs.edit().remove("chat_expense_pending").commit()
+                appendHomeMessage("${pending.optString("siteName")} 현장에 ${pending.optString("label")} ${java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA).format(pending.optLong("amount"))}원을 저장했습니다.")
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch) appendHomeMessage("저장 결과를 확인하지 못했습니다. 중복을 막기 위해 같은 요청으로 다시 확인합니다. ‘다시 확인’이라고 입력해 주세요.") }
+            finally { expenseSaving=false;if(epoch==sessionEpoch) render() }
+        }
+    }
     private fun answerHome(value: String) {
         val input=value.trim().take(500);if(input.isBlank()) return
         homeInput="";appendHomeMessage(input,true)
+        val pending=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+        val compact=input.replace(Regex("\\s+"),"")
+        if(pending.has("id") && compact in listOf("네","예","응","그래","등록","저장","다시확인")) { savePendingExpense();render();return }
+        if(pending.has("id") && compact in listOf("취소","아니요","아니","등록안함")) {
+            if(pending.optBoolean("submitted")) appendHomeMessage("이미 보낸 저장 요청의 결과를 먼저 확인해야 합니다. ‘다시 확인’이라고 입력해 주세요.")
+            else { prefs.edit().remove("chat_expense_pending").commit();appendHomeMessage("경비 입력을 취소했습니다.") }
+            render();return
+        }
+        val expense=ExpenseInput.parse(input)
+        if(expense!=null) {
+            if(pending.has("id")) { appendHomeMessage("먼저 대기 중인 경비를 저장하거나 취소해 주세요.");render();return }
+            val company=selectedCompany() ?: return
+            val id=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
+            if(id.isBlank()) { appendHomeMessage("경비를 등록할 현장 상세를 먼저 선택해 주세요.");render();return }
+            val name=prefs.getString("selected_site_name","").orEmpty()
+            val named=input.substringBefore("현장", "").trim()
+            if(named.isNotBlank() && named !in listOf("이","그","해당") && !name.contains(named)) {
+                appendHomeMessage("요청한 현장을 먼저 선택해 주세요. 현재 선택한 현장은 ${name}입니다.");render();return
+            }
+            if(listOf("어제","지난","내일","취소","등록안","저장안").any { compact.contains(it) } || Regex("[0-9]{1,2}월|[0-9]{4}-[0-9]{2}-[0-9]{2}").containsMatchIn(compact)) {
+                appendHomeMessage("날짜나 취소 여부를 확인해 주세요. 날짜를 지정한 경비는 현장 경비 화면에서 입력할 수 있습니다.");render();return
+            }
+            val draft=JSONObject().put("id",UUID.randomUUID().toString()).put("company",company.id).put("siteId",id).put("siteName",name)
+                .put("type",expense.type).put("label",expense.label).put("amount",expense.amount)
+                .put("date",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString()).put("submitted",false)
+            if(!prefs.edit().putString("chat_expense_pending",draft.toString()).commit()) { appendHomeMessage("입력 내용을 보관하지 못했습니다. 다시 입력해 주세요.");render();return }
+            val payer=if(company.role=="관리자") "업체 직접 지출" else "본인 지출"
+            appendHomeMessage("${name} · ${expense.label} ${java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA).format(expense.amount)}원 · $payer\n오늘 날짜로 저장할까요? ‘네’ 또는 ‘취소’라고 답해 주세요.")
+            render();return
+        }
         val reply=ConsultationChat.reply(input)
         if(reply==ConsultationChat.Reply.DECLINE || reply==ConsultationChat.Reply.LATER) {
             val item=displayedHomeConsultationId?.let(::recordById)
