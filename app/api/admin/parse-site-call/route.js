@@ -9,6 +9,7 @@ import {
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { mayAnalyzeSiteCall } from "../../../../lib/siteCallAccess.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -140,10 +141,10 @@ async function authenticateAdmin(request) {
     };
   }
 
-  if (profile.is_active === false) {
+  if (!mayAnalyzeSiteCall(profile)) {
     return {
       error:
-        "비활성화된 관리자 계정입니다.",
+        "활성 관리자 계정이 필요합니다.",
       status: 403,
     };
   }
@@ -813,3 +814,4 @@ ${trimmedContent}
     );
   }
 }
+
