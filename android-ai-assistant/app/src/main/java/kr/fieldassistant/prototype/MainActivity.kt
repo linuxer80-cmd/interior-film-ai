@@ -16,6 +16,11 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.text.InputType
 import android.database.ContentObserver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.LruCache
+import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -774,6 +779,101 @@ class MainActivity : Activity() {
         val items=records()
         return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { ConsultationChat.shouldPrompt(it.optString("status"),it.optString("site_id"),consultationDisposition(it)) }
     }
+    private var sampleBusy=false
+    private var sampleCache: List<SampleSearch.Product>?=null
+    private var sampleCacheAt=0L
+    private val sampleImages=object: LruCache<String,Bitmap>(12*1024*1024) {
+        override fun sizeOf(key:String,value:Bitmap)=value.byteCount
+    }
+    private fun lookupSamples(query:SampleSearch.Query, offset:Int=0) {
+        val uid=account?.userId ?: return
+        if(sampleBusy) { appendHomeMessage("샘플을 찾고 있습니다. 잠시만 기다려 주세요.");render();return }
+        sampleBusy=true
+        val epoch=sessionEpoch
+        appendHomeMessage("필름 샘플을 찾고 있습니다.");render()
+        scope.launch {
+            try {
+                val all=if(sampleCache!=null && System.currentTimeMillis()-sampleCacheAt<300000) sampleCache!! else auth.publicSamples().also { sampleCache=it;sampleCacheAt=System.currentTimeMillis() }
+                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                val matching=all.filter { SampleSearch.matches(query,it) }
+                val rows=JSONArray()
+                matching.drop(offset).take(12).forEach { p -> rows.put(JSONObject().put("brand",p.brand).put("code",p.code).put("name",p.name).put("image",p.image)) }
+                appendHomeMessage("",result=JSONObject().put("kind","samples").put("brand",query.brand).put("code",query.code).put("category",query.category).put("offset",offset).put("total",matching.size).put("rows",rows))
+            } catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("샘플을 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 요청해 주세요.") }
+            finally { sampleBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
+    private fun sampleImageUrl(raw:String):String? {
+        if(raw.isBlank() || raw.length>2048) return null
+        val u=try {
+            when {
+                raw.startsWith("https://") -> Uri.parse(raw)
+                raw.startsWith("/") && !raw.startsWith("//") -> Uri.parse("https://interior-film-ai.vercel.app$raw")
+                !raw.contains(":") -> {
+                    val builder=Uri.parse("https://gxtvvzysuhexhpljpswj.supabase.co/storage/v1/object/public").buildUpon()
+                    raw.split('/').forEach { part -> if(part.isBlank() || part=="." || part=="..") return null else builder.appendPath(Uri.decode(part)) }
+                    builder.build()
+                }
+                else -> return null
+            }
+        } catch(_:Exception) { return null }
+        if(u.scheme!="https" || u.host !in listOf("gxtvvzysuhexhpljpswj.supabase.co","interior-film-ai.vercel.app","www.ylfilm.co.kr") || u.userInfo!=null || u.port !in listOf(-1,443) || u.pathSegments.any { it==".." || it=="." }) return null
+        return u.toString()
+    }
+    private fun loadSampleImage(view:ImageView, raw:String) {
+        val url=sampleImageUrl(raw) ?: return
+        view.tag=url
+        sampleImages.get(url)?.let { view.setImageBitmap(it);return }
+        scope.launch {
+            val bitmap=withContext(Dispatchers.IO) {
+                try {
+                    val conn=URL(url).openConnection() as HttpsURLConnection
+                    try {
+                        conn.instanceFollowRedirects=false;conn.connectTimeout=10000;conn.readTimeout=15000
+                        if(conn.responseCode!=200 || !conn.contentType.orEmpty().startsWith("image/")) null else {
+                            val bytes=conn.inputStream.use { input ->
+                                val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var n:Int
+                                while(input.read(buffer).also { n=it }!=-1) { if(out.size()+n>8*1024*1024) throw java.io.IOException("image too large");out.write(buffer,0,n) }
+                                out.toByteArray()
+                            }
+                            val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                            if(bounds.outWidth<=0 || bounds.outHeight<=0 || bounds.outWidth.toLong()*bounds.outHeight>80000000L) null else {
+                                var scale=1;while(bounds.outWidth/scale>1200 || bounds.outHeight/scale>1200) scale*=2
+                                BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=scale })
+                            }
+                        }
+                    } finally { conn.disconnect() }
+                } catch(_:Exception) { null }
+            }
+            if(bitmap!=null) { sampleImages.put(url,bitmap);if(view.tag==url) view.setImageBitmap(bitmap) }
+        }
+    }
+    private fun sampleCard(result:JSONObject):View {
+        val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(14));background=bg(Color.rgb(246,248,246),16) }
+        val rows=result.optJSONArray("rows") ?: JSONArray();val total=result.optInt("total");val offset=result.optInt("offset")
+        card.addView(text("필름 샘플 · ${total}개",18f,true))
+        if(total==0) card.addView(text("일치하는 샘플이 없습니다. 제조사와 제품 번호를 확인해 주세요.",15f))
+        for(i in 0 until rows.length()) {
+            val p=rows.optJSONObject(i) ?: continue
+            val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(8),0,dp(8)) }
+            val pic=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP;setBackgroundColor(Color.rgb(225,229,225));contentDescription="${p.optString("code")} 샘플 이미지" }
+            row.addView(pic,LinearLayout.LayoutParams(dp(76),dp(76)))
+            val label=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0) }
+            label.addView(text("${p.optString("brand")} ${p.optString("code")}",16f,true))
+            if(p.optString("name").isNotBlank()) label.addView(text(p.optString("name"),14f))
+            label.addView(text(if(p.optString("image").isBlank()) "샘플 이미지 준비 중" else "눌러서 크게 보기",13f))
+            row.addView(label,LinearLayout.LayoutParams(0,-2,1f))
+            val image=p.optString("image");loadSampleImage(pic,image)
+            row.setOnClickListener {
+                val full=ImageView(this).apply { adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;minimumHeight=dp(220);setBackgroundColor(Color.rgb(225,229,225));contentDescription="${p.optString("code")} 샘플" }
+                loadSampleImage(full,image)
+                AlertDialog.Builder(this).setTitle("${p.optString("brand")} ${p.optString("code")}").setView(full).setPositiveButton("닫기",null).show()
+            }
+            card.addView(row)
+        }
+        if(offset+rows.length()<total) addButton(card,"더 보기 (${offset+rows.length()}/$total)",false) { lookupSamples(SampleSearch.Query(result.optString("brand"),result.optString("code"),result.optString("category")),offset+rows.length()) }
+        return card
+    }
     private var lookupBusy=false
     private var profitBusy=false
     private fun lookupProfit(request:AssistantRequests.Request) {
@@ -1265,6 +1365,8 @@ class MainActivity : Activity() {
             }
             prepareFilmUsage(company,selected,name,film);return
         }
+        val sampleQuery=SampleSearch.parse(input)
+        if(sampleQuery!=null) { lookupSamples(sampleQuery);return }
         val reply=ConsultationChat.reply(input)
         if(reply==ConsultationChat.Reply.DECLINE || reply==ConsultationChat.Reply.LATER) {
             val item=displayedHomeConsultationId?.let(::recordById)
@@ -1355,6 +1457,7 @@ class MainActivity : Activity() {
             val mine=m.optBoolean("user")
             val result=m.optJSONObject("result")
             if(!mine && result!=null) {
+                if(result.optString("kind")=="samples") { body.addView(sampleCard(result),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) });continue }
                 if(result.optString("kind")=="profit") {
                     if(result.optString("company_id")==selectedCompany()?.id && selectedCompany()?.role=="관리자") {
                         val nf=java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA)
