@@ -5,6 +5,11 @@ internal object ExpenseInput {
     data class Expense(val type:String,val label:String,val amount:Long)
     fun parse(message:String):Expense? {
         val text=message.replace(Regex("\\s+"),"")
+        // A negated or mixed-category sentence must not create a save draft.
+        if (Regex("취소|말고|아니|안(?:쓰|냈|들었|등록|저장|입력)|(?:등록|저장|입력)(?:하지|안|못)").containsMatchIn(text)) return null
+        val categories=listOf(Regex("주차"), Regex("식비|식사"), Regex("유류|주유"), Regex("통행료|톨비"))
+            .count { it.containsMatchIn(text) }
+        if (categories != 1) return null
         val category=when {
             text.contains("주차") -> "parking" to "주차비"
             text.contains("식비") || text.contains("식사") -> "meal" to "식비"
