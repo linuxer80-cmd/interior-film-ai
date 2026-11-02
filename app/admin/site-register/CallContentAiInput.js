@@ -14,6 +14,7 @@ import { supabase } from "../../../lib/supabase";
 
 export default function CallContentAiInput({
   disabled = false,
+  textOnly = false,
   onApply,
   onBusyChange,
 }) {
@@ -24,6 +25,8 @@ export default function CallContentAiInput({
     open,
     setOpen,
   ] = useState(false);
+
+  useEffect(() => { if (textOnly) setOpen(true); }, [textOnly]);
 
   const [
     callContent,
@@ -686,7 +689,7 @@ export default function CallContentAiInput({
               "#1e3a8a",
           }}
         >
-          📞 통화내용 자동입력
+          {textOnly ? "통화·문자·카톡 내용 분석" : "통화녹음 · 내용 분석"}
         </div>
 
         <div
@@ -704,11 +707,7 @@ export default function CallContentAiInput({
               "#475569",
           }}
         >
-          통화녹음 파일을
-          선택하거나 통화내용을
-          직접 붙여넣으면 AI가
-          현장정보를 자동으로
-          입력합니다.
+          {textOnly ? "통화 내용이나 문자·카톡 대화를 붙여넣으면 AI가 현장정보를 정리합니다." : "통화녹음 파일을 선택하거나 통화내용을 붙여넣으면 AI가 현장정보를 정리합니다."}
         </div>
       </div>
 
@@ -716,6 +715,7 @@ export default function CallContentAiInput({
           숨겨진 파일 선택
       ================================================= */}
 
+      {!textOnly && <>
       <input
         ref={
           fileInputRef
@@ -951,6 +951,8 @@ export default function CallContentAiInput({
         </div>
       )}
 
+      </>}
+
       {/* =================================================
           처리 단계
       ================================================= */}
@@ -1068,7 +1070,7 @@ export default function CallContentAiInput({
               analyzing
             }
             placeholder={
-              "여기에 통화 요약 또는 녹취 내용을 그대로 붙여넣으세요.\n\n예)\n김철수 고객, 10월 5일 오전 9시 인천 서구 검단 ○○아파트. 싱크대 상하부장 시공. 현대 S115 사용. 계약금액 120만원."
+              "여기에 통화 내용이나 문자·카톡 대화를 그대로 붙여넣으세요.\n\n예)\n김철수 고객, 10월 5일 오전 9시 인천 서구 검단 ○○아파트. 싱크대 상하부장 시공. 현대 S115 사용. 계약금액 120만원."
             }
             rows={8}
             style={{
@@ -1279,3 +1281,4 @@ export default function CallContentAiInput({
     </section>
   );
 }
+

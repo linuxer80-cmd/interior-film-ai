@@ -7,6 +7,7 @@ import {loadMyWorkerSites} from "../utils/workerSites";
 import {combineAdminPersonalSites,isPersonalWorkDay,personalCalendarLabel} from "../../lib/adminPersonalSites.mjs";
 import SiteRegisterModal from "./SiteRegisterModal";
 import SiteDetailModal from "./SiteDetailModal";
+import { assistantRegistrationMode } from "../../lib/assistantRegistration.mjs";
 import { matchesSite } from "../utils/siteSearch";
 
 const STATUS_INFO = {
@@ -89,6 +90,18 @@ export default function SiteManagementTab(props) {
 
   const [chatDay, setChatDay] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [registrationInputMode, setRegistrationInputMode] = useState("direct");
+  useEffect(() => {
+    if (home || !detailProps.companyId) return;
+    const url = new URL(window.location.href);
+    const mode = assistantRegistrationMode(url.searchParams);
+    if (!mode) return;
+    setRegistrationInputMode(mode);
+    setRegisterOpen(true);
+    url.searchParams.delete("assistantRegister");
+    url.searchParams.delete("inputMode");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [home, detailProps.companyId]);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -143,7 +156,7 @@ export default function SiteManagementTab(props) {
 
           <button
             type="button"
-            onClick={() => setRegisterOpen(true)}
+            onClick={() => { setRegistrationInputMode("direct"); setRegisterOpen(true); }}
             style={{
               border: 0,
               borderRadius: 10,
@@ -249,6 +262,7 @@ export default function SiteManagementTab(props) {
 
 
       <SiteRegisterModal
+        initialInputMode={registrationInputMode}
         open={registerOpen}
         companyId={detailProps.companyId}
         onClose={() => setRegisterOpen(false)}
@@ -801,4 +815,5 @@ function SiteCalendar({
     </div>
   );
         }
+
 

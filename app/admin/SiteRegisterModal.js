@@ -65,6 +65,7 @@ export default function SiteRegisterModal({
   createSite,
   loading = false,
   initialQuote,
+  initialInputMode = "direct",
 }) {
   const [consultation, setConsultation] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -120,7 +121,7 @@ export default function SiteRegisterModal({
     setStep(0);
     setEditTarget(null);
     setConfirmed(false);setConsultationText("");setNextAction("quote");setCandidates([]);setDuplicateChoice("");setAnalysisConflicts([]);registrationRequest.current=crypto.randomUUID();
-    setInputMode("direct");
+    setInputMode(["direct", "text", "screenshot", "call"].includes(initialInputMode) ? initialInputMode : "direct");
     setConsultation(null);
     setForm({ ...emptyForm, work_dates: [], customer_name:initialQuote?.customer_name || "", customer_phone:initialQuote?.customer_phone || "", site_name:initialQuote?.site_name || "", address:initialQuote?.address || "", work_description:initialQuote?.work_description || "" });
     setCustomer({ ...emptyCustomer, name:initialQuote?.customer_name || "", phone:initialQuote?.customer_phone || "" });
@@ -555,9 +556,9 @@ export default function SiteRegisterModal({
             <div hidden={step !== 0}>
 
             <div className="input-methods" role="group" aria-label="현장 입력 방법">
-              {[["direct", "직접 입력"], ["screenshot", "문자·카톡"], ["call", "통화녹음"]].map(([value, label]) => (
+              {[["direct", "직접 입력"], ["text", "통화·문자 내용"], ["screenshot", "문자·카톡 사진"], ["call", "통화녹음"]].map(([value, label]) => (
                 <button key={value} type="button" aria-pressed={inputMode === value}
-                  onClick={() => setInputMode(value)}>{label}</button>
+                  disabled={blocked || !!saved} onClick={() => setInputMode(value)}>{label}</button>
               ))}
             </div>
             <p className="intro">{inputMode === "direct" ? "아는 내용만 적어주세요." : "분석 후 현장정보를 확인하세요."}</p>
@@ -565,8 +566,8 @@ export default function SiteRegisterModal({
               <ScreenshotSiteInput applyPendingRef={screenshotApplyRef} onApply={(data) => applyAnalysis(data, "screenshot")}
                 disabled={busy || loading || callBusy || !!saved} onBusyChange={setScreenshotBusy} />
             </div>
-            <div hidden={inputMode !== "call"}>
-              <CallContentAiInput onApply={applyAnalysis}
+            <div hidden={inputMode !== "call" && inputMode !== "text"}>
+              <CallContentAiInput textOnly={inputMode === "text"} onApply={applyAnalysis}
                 disabled={busy || loading || screenshotBusy || !!saved} onBusyChange={setCallBusy} />
             </div>
 
@@ -1043,5 +1044,6 @@ export default function SiteRegisterModal({
     </div>
   );
                     }
+
 
 
