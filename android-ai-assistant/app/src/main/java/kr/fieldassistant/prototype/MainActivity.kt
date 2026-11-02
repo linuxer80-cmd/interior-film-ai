@@ -555,7 +555,7 @@ class MainActivity : Activity() {
             if(!changeRecord(id) { it.put("chat_draft",data).put("chat_company",company.id) }) { message("대화를 저장하지 못했습니다.");return }
             chatMessage(id,"새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n\n${company.name}의 현장에 등록할까요? 아래 등록 내용을 확인하고 ‘네’ 또는 ‘그래’라고 답해 주세요. 인식 오류는 ‘등록 내용 수정’에서 고칠 수 있습니다.")
         }
-        chatId=id;chatInput="";render()
+        settingsOpen=false;chatId=id;chatInput="";render()
     }
     private fun chatCandidates(id: String, candidates: JSONArray) {
         changeRecord(id) { it.remove("chat_target") }
@@ -620,13 +620,101 @@ class MainActivity : Activity() {
             else message("수정 내용을 저장하지 못했습니다.")
         } };dialog.show()
     }
+    private var settingsOpen=false
+    private var homeInput=""
+    private fun chatHeader(page: LinearLayout) {
+        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        val menu=TextView(this).apply { text="☰";textSize=26f;gravity=Gravity.CENTER;contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
+        bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
+        bar.addView(text("현장 AI 비서",19f,true),LinearLayout.LayoutParams(0,-2,1f))
+        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
+        page.addView(bar)
+    }
+    private fun showAssistantMenu() {
+        AlertDialog.Builder(this).setTitle("현장 AI 비서")
+            .setItems(arrayOf("대화 목록","오늘 시공 일정","설정","필름장이 열기")) { _,which ->
+                when(which) {
+                    0 -> {
+                        val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
+                        if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return@setItems }
+                        AlertDialog.Builder(this).setTitle("상담 대화").setItems(entries.map { it.optString("name")+" · "+it.optString("status") }.toTypedArray()) { _,index ->
+                            val item=entries[index]
+                            if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
+                                settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
+                            } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
+                        }.setNegativeButton("닫기",null).show()
+                    }
+                    1 -> showSchedule()
+                    2 -> { settingsOpen=true;showSetupDetails=true;render() }
+                    3 -> confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) }
+                }
+            }.setNegativeButton("닫기",null).show()
+    }
+    private fun appendHomeMessage(body: String, mine: Boolean=false) {
+        val messages=try { JSONArray(prefs.getString("home_chat","[]")) } catch(_:Exception) { JSONArray() }
+        messages.put(JSONObject().put("user",mine).put("body",body))
+        prefs.edit().putString("home_chat",messages.toString()).apply()
+    }
+    private fun latestConsultation(): JSONObject? {
+        val items=records()
+        return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { it.optString("status")=="확인 필요" && it.optString("site_id").isBlank() }
+    }
+    private fun answerHome(value: String) {
+        val input=value.trim().take(500);if(input.isBlank()) return
+        homeInput="";appendHomeMessage(input,true)
+        when {
+            input.contains("일정") || input.contains("길 안내") || input.contains("길안내") -> { appendHomeMessage("시공 일정을 확인해 드리겠습니다.");render();showSchedule() }
+            input.contains("설정") -> { settingsOpen=true;showSetupDetails=true;render() }
+            input.contains("상담") || ConsultationChat.reply(input)==ConsultationChat.Reply.YES -> {
+                val latest=latestConsultation()
+                if(latest!=null) showRegistrationConfirmation(latest.optString("id"))
+                else { appendHomeMessage("지금 확인할 새 상담은 없습니다. 새 상담이 들어오면 이곳에서 알려드리겠습니다.");render() }
+            }
+            else -> { appendHomeMessage("새 상담 확인과 현장 등록, 오늘 시공 일정 안내를 도와드릴 수 있습니다. ‘상담 확인’ 또는 ‘오늘 일정’이라고 입력해 주세요.");render() }
+        }
+    }
+    private fun renderHomeChat() {
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
+        setContentView(page);chatHeader(page)
+        val scroll=ScrollView(this)
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
+        scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        body.addView(text("무엇을 도와드릴까요?",26f,true))
+        body.addView(text("새 상담을 확인하고 현장 등록을 도와드릴게요. 오늘 시공 일정도 물어보세요.",16f))
+        if(folder()==null || !notificationsEnabled()) {
+            body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
+        }
+        val messages=try { JSONArray(prefs.getString("home_chat","[]")) } catch(_:Exception) { JSONArray() }
+        for(i in 0 until messages.length()) {
+            val m=messages.optJSONObject(i) ?: continue
+            val mine=m.optBoolean("user")
+            val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
+            body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
+        }
+        latestConsultation()?.let { item ->
+            body.addView(text("새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n현장에 등록할까요?",16f))
+            addButton(body,"상담 확인하고 답하기",false) { showRegistrationConfirmation(item.optString("id")) }
+        }
+        val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),dp(4),dp(6),dp(4));background=bg(Color.rgb(244,244,244),26) }
+        val input=EditText(this).apply { hint="비서에게 메시지 보내기";textSize=16f;setSingleLine(true);setText(homeInput);background=null
+            addTextChangedListener(object: android.text.TextWatcher {
+                override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { homeInput=s.toString() }
+                override fun afterTextChanged(s:android.text.Editable?) {}
+            })
+        }
+        row.addView(input,LinearLayout.LayoutParams(0,dp(50),1f))
+        val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
+        row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
+        scroll.post { if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
     private fun renderChat(id: String) {
         val item=recordById(id) ?: run { chatId=null;render();return }
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(16),dp(18),dp(12));setBackgroundColor(Color.rgb(248,247,242)) }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
         setContentView(page)
-        page.addView(text("현장 AI 비서 · 상담 대화",22f,true))
-        page.addView(text(selectedCompany()?.name.orEmpty(),13f))
-        addButton(page,"‹ 비서함으로",false) { chatId=null;chatInput="";render() }
+        chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -634,12 +722,12 @@ class MainActivity : Activity() {
         for(i in 0 until messages.length()) {
             val m=messages.optJSONObject(i) ?: continue
             val mine=m.optBoolean("user")
-            val bubble=text((if(mine) "나\n" else "비서\n")+m.optString("body"),15f).apply { setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(if(mine) Color.rgb(222,237,224) else Color.WHITE,16) }
+            val bubble=text(m.optString("body"),15f).apply { setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(if(mine) Color.rgb(241,242,242) else Color.WHITE,16) }
             val lp=LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(40) else 0,dp(10),if(mine) 0 else dp(28),0) };body.addView(bubble,lp)
         }
         val reg=item.optJSONObject("registration")
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
-        if(data!=null) body.addView(text("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목만 저장합니다. 인식한 통화 원문과 녹음은 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.",13f))
+        if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목만 저장합니다. 인식한 통화 원문과 녹음은 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
         addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
@@ -663,18 +751,18 @@ class MainActivity : Activity() {
             val quick=LinearLayout(this)
             quick.addView(button("네 · 등록",true) { answerChat(id,"네") },LinearLayout.LayoutParams(0,dp(48),1f))
             quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f));page.addView(quick)
-            val row=LinearLayout(this)
-            val input=EditText(this).apply { hint="네, 그래, 나중에…";setSingleLine(true);setText(chatInput);addTextChangedListener(object: android.text.TextWatcher {
+            val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),0,dp(6),0);background=bg(Color.rgb(244,244,244),26) }
+            val input=EditText(this).apply { hint="메시지 보내기";textSize=16f;setSingleLine(true);setText(chatInput);background=null;addTextChangedListener(object: android.text.TextWatcher {
                 override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
                 override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { chatInput=s.toString() }
                 override fun afterTextChanged(s:android.text.Editable?) {}
             }) }
-            row.addView(input,LinearLayout.LayoutParams(0,dp(52),1f));row.addView(button("보내기",true) { answerChat(id,input.text.toString()) });page.addView(row)
+            row.addView(input,LinearLayout.LayoutParams(0,dp(52),1f));row.addView(TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerChat(id,input.text.toString()) } },LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         }
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
     @Deprecated("Android back callback")
-    override fun onBackPressed() { if(chatId!=null) { chatId=null;chatInput="";render() } else super.onBackPressed() }
+    override fun onBackPressed() { if(settingsOpen) { settingsOpen=false;render() } else if(chatId!=null) { chatId=null;chatInput="";render() } else super.onBackPressed() }
 
     private fun submitRegistration(id: String) {
         if(account==null || id in savingRegistrations) return
@@ -707,7 +795,7 @@ class MainActivity : Activity() {
         }
     }
     private fun signOut() {
-        chatId=null;chatInput=""
+        chatId=null;chatInput="";settingsOpen=false;homeInput=""
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
@@ -867,12 +955,12 @@ class MainActivity : Activity() {
     }
     private fun render() {
         if(account==null) { renderLogin();return }
-        chatId?.let { renderChat(it);return }
+        if(!settingsOpen) { chatId?.let { renderChat(it);return };renderHomeChat();return }
         val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242)); isFillViewport=true }
         val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(28),dp(20),dp(25)) }
         root=col; scroll.addView(col);setContentView(scroll)
-        col.addView(text("FIELD ASSISTANT  ·  시험 버전",12f,true,Color.rgb(112,133,117)))
-        col.addView(text("현장 AI 비서",26f,true))
+        addButton(col,"‹ 대화로 돌아가기",false) { settingsOpen=false;render() }
+        col.addView(text("설정",26f,true))
         val verified=requireNotNull(account)
         val current=verified.companies.find { it.id==prefs.getString("selected_company",null) } ?: verified.companies.first()
         col.addView(text("로그인됨 · ${current.name} (${current.role})",14f,true))
