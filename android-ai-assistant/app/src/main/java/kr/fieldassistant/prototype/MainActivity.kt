@@ -1093,11 +1093,13 @@ class MainActivity : Activity() {
         scroll.addView(col);setAssistantContent(scroll)
         col.addView(text("FIELD ASSISTANT · 시험 버전",12f,true,Color.rgb(112,133,117)))
         col.addView(text("필름장이 로그인",26f,true))
-        col.addView(text("기존 필름장이 이메일 계정으로 로그인해 주세요. 로그인한 계정의 업체만 확인합니다.",14f))
-        addButton(col,"카카오로 로그인",false) {
+        col.addView(text("기존 필름장이 계정으로 로그인해 주세요. 로그인한 계정의 업체만 확인합니다.",14f))
+        val kakao=button("카카오로 로그인",false) {
             if(!authBusy) try { startActivity(Intent(Intent.ACTION_VIEW,KakaoOAuth.begin(this))) }
             catch(_:Exception) { SecureSessionManager(this).clearPending();message("카카오 로그인 창을 열지 못했습니다. 브라우저 앱을 확인해 주세요.") }
         }
+        kakao.setBackgroundColor(Color.rgb(254,229,0));kakao.setTextColor(Color.rgb(25,25,25));kakao.isEnabled=!authBusy
+        col.addView(kakao,LinearLayout.LayoutParams(-1,dp(52)))
         col.addView(text("또는 이메일로 로그인",13f))
         val email=EditText(this).apply { hint="이메일";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;setSingleLine(true) }
         val password=EditText(this).apply {
