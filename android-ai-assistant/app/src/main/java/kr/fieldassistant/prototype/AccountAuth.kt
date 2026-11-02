@@ -278,6 +278,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun laborMarket(expectedUser:String,companyId:String,workerView:Boolean,page:Int):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체가 변경되었습니다." }
+        if(!workerView) check(verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(page in 0..1000)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/labor-market?page=$page").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Labor-View",if(workerView) "worker" else "manager");c.setRequestProperty("Cache-Control","no-store")
+                val status=c.responseCode
+                val raw=(if(status in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299) error(result.optString("error").ifBlank { "구인·구직 정보를 불러오지 못했습니다." })
+                check(result.has("manager") && result.optBoolean("manager")!=workerView) { "구인·구직 이용 권한을 확인해 주세요." }
+                if(!workerView) check(result.optString("companyId")==companyId) { "선택한 업체의 관리자 계정을 확인해 주세요." }
+                for(key in listOf("jobs","applications","candidates")) { val rows=result.optJSONArray(key) ?: error("구인·구직 정보를 확인하지 못했습니다.");for(i in 0 until rows.length()) check(rows.optJSONObject(i)!=null) { "구인·구직 정보를 확인하지 못했습니다." } }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun tradeClients(expectedUser:String,companyId:String,body:JSONObject?=null):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }

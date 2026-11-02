@@ -34,6 +34,7 @@ internal object AssistantRequests {
         if(compact in listOf("오늘할일","오늘할일알려줘","오늘할일보여줘","오늘할일뭐야")) return Request("schedule",from=today.toString(),to=today.toString())
         if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
         if(compact.contains("고객페이지") || compact.contains("고객홈페이지") || compact.contains("업체소개관리")) return Request("feature",feature="customer-page")
+        if(Regex("구인|구직|일자리|지원자|받은제안|모집현황").containsMatchIn(compact)) return Request("feature",feature="jobs")
         val siteAction=when {
             (compact.contains("현장") || compact.startsWith("전화") || compact.startsWith("거기") || compact.startsWith("고객")) && Regex("전화(걸어|걸기|해줘|해주세요|해)|통화(걸어|해줘)").containsMatchIn(compact) -> "phone"
             (compact.contains("현장") || compact.startsWith("길") || compact.startsWith("네비") || compact.startsWith("거기")) && Regex("길안내|길찾|네비|내비|지도").containsMatchIn(compact) -> "navigate"

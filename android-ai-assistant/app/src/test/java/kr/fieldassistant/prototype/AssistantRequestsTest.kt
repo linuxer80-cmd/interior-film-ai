@@ -40,6 +40,14 @@ class AssistantRequestsTest {
         assertEquals(2,ScheduleDates.fromSites(sites,"2026-11-02","2026-11-08").size)
         assertEquals("unknown",AssistantRequests.parse("0번 현장",monday).kind)
     }
+    @Test fun laborRequestsOpenJobsForBothRoles() {
+        for(text in listOf("구인구직", "시공자 구인", "구직 등록", "일자리 보여줘", "지원자 확인", "받은 제안")) {
+            val r=AssistantRequests.parse(text,monday)
+            assertEquals("feature",r.kind);assertEquals("jobs",r.feature)
+        }
+        assertNotNull(AssistantRequests.feature("jobs",true));assertNotNull(AssistantRequests.feature("jobs",false))
+        assertEquals("/jobs",AssistantRequests.feature("jobs",true)?.path)
+    }
     @Test fun tradeClientRoutingIsOwnerOnly() {
         for (text in listOf("거래처 관리", "거래처 등록", "드림아트 거래처 보여줘")) {
             val request=AssistantRequests.parse(text,monday)
