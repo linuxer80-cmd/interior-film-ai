@@ -329,6 +329,13 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1002) {
+            if(account!=null && resultCode==RESULT_OK) {
+                val spoken=data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
+                if(spoken.isNotBlank()) { homeInput=spoken;visibleConversationKey=null;render() }
+            }
+            return
+        }
         if (requestCode != 1001 || account==null) return
         if(resultCode!=RESULT_OK) { simpleSetup=false;folderStatus="폴더가 선택되지 않았습니다. 다시 선택한 뒤 ‘이 폴더 사용’을 눌러 주세요.";render();return }
         val epoch=sessionEpoch
@@ -841,6 +848,8 @@ class MainActivity : Activity() {
                     if(targetSiteId==null && index !in 0 until ids.length()) { appendHomeMessage("어느 현장인지 번호로 알려주세요. 예: ‘1번 현장 상세’");return@launch }
                     val site=rows.find { id(it)==(targetSiteId ?: ids.optString(index)) }
                     if(site==null) { appendHomeMessage("해당 현장을 다시 조회할 수 없습니다. 배정이나 접근 권한이 변경되었을 수 있습니다.");return@launch }
+                    prefs.edit().putString("selected_site_company",company.id).putString("selected_site_id",id(site))
+                        .putString("selected_site_name",value(site,"site_name").ifBlank { "이름 없는 현장" }).apply()
                     val fields=JSONArray()
                     fun field(title:String,body:String) { fields.put(JSONArray(listOf(title,body.ifBlank { "미등록" }))) }
                     field("상태",siteStatus(value(site,"status")))
@@ -908,13 +917,15 @@ class MainActivity : Activity() {
                 val history=JSONArray(prefs.getString("home_chat","[]"))
                 val detail=(0 until history.length()).reversed().mapNotNull { history.optJSONObject(it)?.optJSONObject("result") }
                     .firstOrNull { it.optString("kind")=="detail" && it.optString("company_id")==company.id }
-                val id=detail?.optString("site_id").orEmpty()
+                val currentId=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
+                val id=currentId.ifBlank { detail?.optString("site_id").orEmpty() }
+                val currentName=if(currentId.isNotBlank()) prefs.getString("selected_site_name","").orEmpty() else detail?.optString("title").orEmpty()
                 val named=input.substringBefore("현장", "").trim()
-                if(named.isNotBlank() && named !in listOf("이", "그", "해당") && !(detail?.optString("title").orEmpty().contains(named))) {
+                if(named.isNotBlank() && named !in listOf("이", "그", "해당") && !currentName.contains(named)) {
                     appendHomeMessage("요청한 현장을 먼저 검색해 상세를 열어 주세요. 다른 현장에 입력되지 않도록 확인하겠습니다.");render();return
                 }
                 if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 필름 사용량, 경비 또는 완료보고를 요청할 수 있습니다.");render();return }
-                appendHomeMessage("${detail?.optString("title")} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
+                appendHomeMessage("${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
                 openSiteAction(company.id,id,request.feature);return
             }
             "schedule","sites","detail" -> { lookupSites(request);return }
@@ -945,6 +956,22 @@ class MainActivity : Activity() {
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         body.addView(text("무엇을 도와드릴까요?",26f,true))
         body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
+        val selectedCompanyId=selectedCompany()?.id
+        if(selectedCompanyId!=null && prefs.getString("selected_site_company",null)==selectedCompanyId) {
+            val selectedId=prefs.getString("selected_site_id","").orEmpty()
+            val selectedName=prefs.getString("selected_site_name","").orEmpty()
+            if(selectedId.isNotBlank()) {
+                body.addView(text("선택한 현장 · $selectedName",15f,true))
+                val controls=LinearLayout(this)
+                controls.addView(button("현장 상세",false) { lookupSites(AssistantRequests.Request("detail"),selectedId) },LinearLayout.LayoutParams(0,dp(48),1f))
+                controls.addView(button("현장 변경",false) { lookupSites(AssistantRequests.Request("sites")) },LinearLayout.LayoutParams(0,dp(48),1f))
+                body.addView(controls)
+            }
+        }
+        val shortcuts=LinearLayout(this)
+        shortcuts.addView(button("오늘 일정",false) { answerHome("오늘 일정") },LinearLayout.LayoutParams(0,dp(48),1f))
+        shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
+        body.addView(shortcuts)
         if(folder()==null || !notificationsEnabled()) {
             body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
         }
@@ -985,6 +1012,17 @@ class MainActivity : Activity() {
             })
         }
         row.addView(input,LinearLayout.LayoutParams(0,dp(50),1f))
+        val voice=TextView(this).apply {
+            text="🎙";textSize=22f;gravity=Gravity.CENTER;contentDescription="음성으로 입력"
+            setOnClickListener {
+                val speech=Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"ko-KR")
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"말씀해 주세요. 인식된 내용을 확인한 후 전송할 수 있습니다.")
+                try { startActivityForResult(speech,1002) } catch(_:ActivityNotFoundException) { message("음성 입력 앱을 찾을 수 없습니다.") }
+            }
+        }
+        row.addView(voice,LinearLayout.LayoutParams(dp(44),dp(44)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         scroll.post { if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN) }
