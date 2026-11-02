@@ -4,7 +4,7 @@ import java.util.Locale
 
 internal object SampleSearch {
     data class Query(val brand:String="",val code:String="",val category:String="")
-    data class Product(val id:String,val brand:String,val code:String,val name:String,val category:String,val pattern:String,val image:String,val aliases:List<String> = emptyList())
+    data class Product(val id:String,val brand:String,val code:String,val name:String,val category:String,val pattern:String,val image:String,val aliases:List<String> = emptyList(),val texture:String="")
     private fun norm(v:String)=v.trim().replace(Regex("[\\s&·._-]+"),"").uppercase(Locale.ROOT)
     private fun brand(v:String):String {
         val k=norm(v)
@@ -16,7 +16,7 @@ internal object SampleSearch {
             k.startsWith("삼성") -> "SAMSUNG"
             k.startsWith("예림") -> "YERIM"
             k.startsWith("한솔") -> "HANSOL"
-            k=="3M" -> "3M"
+            k.startsWith("3M") -> "3M"
             else -> k
         }
     }
@@ -65,7 +65,7 @@ internal object SampleSearch {
                 Regex("^PMS[0-9]").containsMatchIn(v)->return "metal";Regex("^PUL[0-9]").containsMatchIn(v)->return "leather"
                 Regex("^PSM?[0-9]").containsMatchIn(v)->return "solid";Regex("^PW[0-9]").containsMatchIn(v)->return "wood"
             }
-            val text=p.pattern+" "+p.name
+            val text=p.pattern+" "+p.texture+" "+p.name
             return when { Regex("스톤|마블|대리석|stone|marble",RegexOption.IGNORE_CASE).containsMatchIn(text)->"stone";Regex("패브릭|페브릭|fabric",RegexOption.IGNORE_CASE).containsMatchIn(text)->"fabric";Regex("레더|가죽|leather",RegexOption.IGNORE_CASE).containsMatchIn(text)->"leather";Regex("메탈|metal",RegexOption.IGNORE_CASE).containsMatchIn(text)->"metal";Regex("우드|wood",RegexOption.IGNORE_CASE).containsMatchIn(text)->"wood";Regex("솔리드|solid",RegexOption.IGNORE_CASE).containsMatchIn(text)->"solid";else->"etc" }
         }
         return when {

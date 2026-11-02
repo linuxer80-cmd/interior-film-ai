@@ -22,6 +22,12 @@ class SampleSearchTest {
         assertFalse(SampleSearch.matches(q,product("SMT123")))
         assertFalse(SampleSearch.matches(q,product("W123","영림")))
     }
+    @Test fun threeMAndYounglimCatalogValues() {
+        val q=SampleSearch.parse("3M 우드패턴 보여줘")!!
+        assertTrue(SampleSearch.matches(q,product("WG123","3M DI-NOC","wood")))
+        val y=SampleSearch.Product("2","영림","PX100","","","","",texture="우드")
+        assertTrue(SampleSearch.matches(SampleSearch.parse("영림 우드 보여줘")!!,y))
+    }
     @Test fun unrelatedAndWriteRequestsNotIntercepted() {
         assertNull(SampleSearch.parse("S115 3m 사용했어"))
         assertNull(SampleSearch.parse("현장 등록"))
