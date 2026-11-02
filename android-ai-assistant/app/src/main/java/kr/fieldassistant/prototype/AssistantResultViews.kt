@@ -63,7 +63,8 @@ internal object AssistantResultViews {
             if((workerActions || ownerActions) && siteId.isNotBlank()) {
                 card.addView(label("이 현장에서 할 일",16f,true))
                 val actions=mutableListOf("전화 걸기" to "phone","길 안내" to "navigate")
-                if(workerActions) actions.addAll(listOf("완료보고 작성" to "report","경비 입력" to "expenses","현장 업무 전체" to "info"))
+                if(workerActions || ownerActions) actions.addAll(listOf("필름 사용량 · 자재" to "film","경비 입력" to "expenses","완료보고 작성" to "report"))
+                if(workerActions) actions.add("현장 업무 전체" to "info")
                 if(ownerActions) actions.addAll(listOf("현장 수정 · 전체 업무" to "info","견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
                 actions.forEach { (title,section) ->
                     card.addView(Button(context).apply {

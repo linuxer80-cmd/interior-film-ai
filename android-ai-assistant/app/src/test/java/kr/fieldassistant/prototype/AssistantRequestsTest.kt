@@ -41,6 +41,12 @@ class AssistantRequestsTest {
         assertNull(AssistantRequests.feature("new-site",false))
         assertTrue(AssistantRequests.feature("new-site",true)!!.path.contains("assistantRegister=1"))
     }
+    @Test fun recognizesSiteWorkRequests() {
+        assertEquals("film",AssistantRequests.parse("필름 사용량 등록",monday).feature)
+        assertEquals("expenses",AssistantRequests.parse("경비 입력",monday).feature)
+        assertEquals("report",AssistantRequests.parse("완료보고 작성",monday).feature)
+        assertEquals("site_action",AssistantRequests.parse("필름 사용량 등록",monday).kind)
+    }
     @Test fun workerFeaturesDoNotExposeOwnerScreens() {
         assertNull(AssistantRequests.feature("receivables",false))
         assertEquals("/worker/inventory",AssistantRequests.feature("inventory",false)?.path)

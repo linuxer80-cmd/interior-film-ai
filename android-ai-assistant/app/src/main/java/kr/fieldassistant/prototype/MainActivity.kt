@@ -776,7 +776,7 @@ class MainActivity : Activity() {
         }.setNegativeButton("닫기",null).show()
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","report","expenses","info","quote","schedule") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","film","report","expenses","info","quote","schedule") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -806,7 +806,8 @@ class MainActivity : Activity() {
                         catch(_:ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://map.naver.com/p/search/"+Uri.encode(address)))) }
                     }
                     else -> {
-                        val path=if(owner) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
+                        val workerTask=action in listOf("film","expenses","report")
+                        val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
                         openWebWorkspace("https://interior-film-ai.vercel.app"+path)
                     }
                 }
@@ -902,6 +903,20 @@ class MainActivity : Activity() {
         }
         val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
         when(request.kind) {
+            "site_action" -> {
+                val company=selectedCompany() ?: return
+                val history=JSONArray(prefs.getString("home_chat","[]"))
+                val detail=(0 until history.length()).reversed().mapNotNull { history.optJSONObject(it)?.optJSONObject("result") }
+                    .firstOrNull { it.optString("kind")=="detail" && it.optString("company_id")==company.id }
+                val id=detail?.optString("site_id").orEmpty()
+                val named=input.substringBefore("현장", "").trim()
+                if(named.isNotBlank() && named !in listOf("이", "그", "해당") && !(detail?.optString("title").orEmpty().contains(named))) {
+                    appendHomeMessage("요청한 현장을 먼저 검색해 상세를 열어 주세요. 다른 현장에 입력되지 않도록 확인하겠습니다.");render();return
+                }
+                if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 필름 사용량, 경비 또는 완료보고를 요청할 수 있습니다.");render();return }
+                appendHomeMessage("${detail?.optString("title")} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
+                openSiteAction(company.id,id,request.feature);return
+            }
             "schedule","sites","detail" -> { lookupSites(request);return }
             "feature" -> { offerFeature(request.feature);return }
             "features" -> { render();showFeatures();return }

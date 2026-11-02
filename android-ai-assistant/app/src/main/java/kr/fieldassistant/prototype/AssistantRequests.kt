@@ -32,6 +32,13 @@ internal object AssistantRequests {
     fun parse(input:String,today:LocalDate): Request {
         val q=input.trim();val compact=q.replace(Regex("\\s+"),"")
         if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
+        val siteAction=when {
+            (compact.contains("필름") || compact.contains("자재")) && (compact.contains("사용") || compact.contains("입력") || compact.contains("등록")) -> "film"
+            compact.contains("경비") && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "expenses"
+            (compact.contains("완료보고") || compact.contains("보고서")) && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "report"
+            else -> ""
+        }
+        if(siteAction.isNotBlank()) return Request("site_action",feature=siteAction)
         val action=Regex("(바꿔|변경|옮겨|수정|삭제|취소|배정해|등록해|반출해|반입해|입금처리|보내줘|발송|승인해|반려해)").containsMatchIn(compact)
         val feature=when {
             compact.contains("재단") -> "cutting"
