@@ -11,7 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.ListenableWorker
-import androidx.work.TestWorkerBuilder
+import androidx.work.testing.TestWorkerBuilder
 import androidx.work.workDataOf
 import org.json.JSONObject
 import org.junit.Assert.*
