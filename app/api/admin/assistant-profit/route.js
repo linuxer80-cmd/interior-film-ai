@@ -1,6 +1,8 @@
 import { GET as getProfit } from "../profit/route";
 import { POST as getPreferences } from "../profit-preferences/route";
 import { assistantProfitSummary } from "../../../../lib/assistantProfitSummary.mjs";
+import { assistantProfitAccess } from "../../../../lib/assistantProfitAccess.mjs";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 const json = (data, status = 200) => Response.json(data, {status, headers:{"Cache-Control":"private, no-store"}});
@@ -12,6 +14,14 @@ export async function GET(request) {
   const authorization = request.headers.get("authorization") || "";
   if (!/^Bearer \S+$/.test(authorization)) return json({error:"관리자로 다시 로그인해주세요."},401);
   try {
+    const selectedCompany = request.headers.get("x-assistant-company") || "";
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
+      {auth:{persistSession:false,autoRefreshToken:false}});
+    const {data:auth,error:authError} = await db.auth.getUser(authorization.slice(7));
+    if (authError || !auth?.user) return json({error:"다시 로그인해주세요."},401);
+    const {data:profile,error:profileError} = await db.from("profiles").select("company_id,role,is_active").eq("id",auth.user.id).maybeSingle();
+    if (profileError) throw profileError;
+    if (!assistantProfitAccess(profile,selectedCompany)) return json({error:"선택한 업체의 관리자 권한을 확인해주세요."},403);
     const preferencesRequest = new Request(new URL("/api/admin/profit-preferences",url.origin), {
       method:"POST",headers:{authorization,"Content-Type":"application/json"},body:JSON.stringify({action:"get"}),
     });
