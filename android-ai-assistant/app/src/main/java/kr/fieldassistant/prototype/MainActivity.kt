@@ -110,7 +110,9 @@ class MainActivity : Activity() {
     }
     /** A single inset owner reserves system bars, cutouts and the keyboard.
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
+    private var visibleConversationKey: String? = null
     private fun setAssistantContent(content: View) {
+        visibleConversationKey=null
         val safeArea=FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
             addView(content,FrameLayout.LayoutParams(-1,-1))
@@ -210,7 +212,12 @@ class MainActivity : Activity() {
         detachResults();listenerUser=uid
         val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
             if(key?.startsWith("record_")==true || key=="scan_status") handler.post {
-                if(account?.userId==uid) { mergeResults(uid);render();maybeReview() }
+                if(account?.userId==uid) {
+                    mergeResults(uid)
+                    // Folder polling is not a conversation change. Keep its views and IME intact.
+                    if(key!="scan_status" || settingsOpen) refreshBackgroundUi()
+                    maybeReview()
+                }
             }
         }
         resultListener=listener
@@ -348,6 +355,13 @@ class MainActivity : Activity() {
             finally { if(epoch==sessionEpoch) { baselineBusy = false; render(); if(simpleSetup && folder()!=null) continueSimpleSetup() } }
         }
     }
+    private fun refreshBackgroundUi() {
+        if(!active) return
+        if(settingsOpen) { render();return }
+        // Analysis of another call must not rebuild an open conversation or its composer.
+        if(chatId!=null || currentFocus is EditText) return
+        renderHomeChat()
+    }
     private fun scanFolder() {
         val uid=account?.userId ?: return
         if(folder()==null || baselineBusy) return
@@ -389,7 +403,7 @@ class MainActivity : Activity() {
             val x=a.getJSONObject(i); if (x.optString("id")==id) {
                 x.put("status",status); if (transcript!=null) x.put("transcript",transcript); if (summary!=null) x.put("summary",summary)
             }
-        }; saveRecords(a); render()
+        }; saveRecords(a); refreshBackgroundUi()
     }
     private fun processNext() {
         if (account==null || running || !active || !prepared || pending.isEmpty()) return
@@ -406,8 +420,10 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account==null) return@launch
                 updateRecord(id,"확인 필요",text.take(30000),result)
                 if((forcedReviewId==id || CallSummary.isEstimateInquiry(result)) && recordById(id)?.let { consultationDisposition(it)=="active" }==true) {
+                    val requested=forcedReviewId==id
                     forcedReviewId=null
-                    if(active && account!=null) showRegistrationConfirmation(id) else postCompletionNotification(id)
+                    if(requested && active && account!=null) showRegistrationConfirmation(id)
+                    else { postCompletionNotification(id);refreshBackgroundUi() }
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
@@ -810,8 +826,12 @@ class MainActivity : Activity() {
         }
     }
     private fun renderHomeChat() {
+        val candidate=latestConsultation()
+        val key=listOf("home",account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled()).toString()
+        if(visibleConversationKey==key) return
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
-        setAssistantContent(page);chatHeader(page)
+        setAssistantContent(page);visibleConversationKey=key;chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -850,8 +870,13 @@ class MainActivity : Activity() {
 
     private fun renderChat(id: String) {
         val item=recordById(id) ?: run { chatId=null;render();return }
+        val key=listOf("call",account?.userId,selectedCompany()?.id,id,item.optJSONArray("chat_messages"),
+            item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
+            item.optString("site_id"),consultationDisposition(item),id in savingRegistrations).toString()
+        if(visibleConversationKey==key) return
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
         setAssistantContent(page)
+        visibleConversationKey=key
         chatHeader(page)
         val scroll=ScrollView(this)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
