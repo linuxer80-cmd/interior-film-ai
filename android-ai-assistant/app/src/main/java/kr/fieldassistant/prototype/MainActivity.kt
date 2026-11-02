@@ -24,6 +24,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -117,6 +118,11 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart(); active = true
         if(account!=null) { startObserver(); scanFolder() }
+    }
+    override fun onResume() {
+        super.onResume()
+        // Refresh the displayed state after returning from system settings.
+        if(account!=null) render()
     }
     override fun onStop() {
         active = false; handler.removeCallbacks(handlerScan)
@@ -502,10 +508,81 @@ class MainActivity : Activity() {
         col.addView(text("\n이 시험 앱의 구글·카카오 로그인은 아직 연결되지 않았습니다. 기존 웹앱에서의 로그인은 이 시험 앱에 자동으로 이어지지 않습니다.",12f,false,Color.rgb(117,130,120)))
         addButton(col,"필름장이 웹앱 열기",false) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/login"))) }
     }
-    private fun postCompletionNotification(id: String) {
-        val manager=getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun notificationManager(): NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun ensureNotificationChannel(): NotificationManager {
+        val manager=notificationManager()
         manager.createNotificationChannel(NotificationChannel("assistant_results", "통화 분석 결과", NotificationManager.IMPORTANCE_DEFAULT))
-        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
+        return manager
+    }
+    private fun notificationsEnabled(): Boolean {
+        val manager=ensureNotificationChannel()
+        val granted=Build.VERSION.SDK_INT<33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
+        val channel=manager.getNotificationChannel("assistant_results")
+        return NotificationPolicy.enabled(granted,manager.areNotificationsEnabled(),channel!=null && channel.importance!=NotificationManager.IMPORTANCE_NONE)
+    }
+    private fun openNotificationSettings() {
+        val manager=ensureNotificationChannel()
+        val channelBlocked=manager.areNotificationsEnabled() && manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE
+        val intent=Intent(if(channelBlocked) Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS else Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE,packageName)
+        if(channelBlocked) intent.putExtra(Settings.EXTRA_CHANNEL_ID,"assistant_results")
+        try { startActivity(intent) }
+        catch (_: RuntimeException) {
+            try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName"))) }
+            catch (_: RuntimeException) { message("휴대폰 설정에서 현장 AI 비서의 알림을 허용해 주세요.") }
+        }
+    }
+    private fun configureNotifications() {
+        ensureNotificationChannel()
+        if(notificationsEnabled()) {
+            AlertDialog.Builder(this).setTitle("알림이 켜져 있습니다")
+                .setMessage("견적 문의 가능성이 있는 통화 분석이 완료되면 알림을 보냅니다. 테스트 알림으로 확인할 수 있습니다.")
+                .setPositiveButton("테스트 알림") { _,_ -> postTestNotification() }
+                .setNeutralButton("알림 설정") { _,_ -> openNotificationSettings() }
+                .setNegativeButton("닫기",null).show()
+            return
+        }
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) {
+            val permissionPrefs=getSharedPreferences("assistant_permission_state",MODE_PRIVATE)
+            val askedBefore=permissionPrefs.getBoolean("notifications_requested",false)
+            if(NotificationPolicy.shouldRequestPermission(false,askedBefore,shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))) {
+                permissionPrefs.edit().putBoolean("notifications_requested",true).apply()
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1002)
+                return
+            }
+        }
+        AlertDialog.Builder(this).setTitle("알림을 켜 주세요")
+            .setMessage("휴대폰 알림 설정에서 ‘현장 AI 비서’와 ‘통화 분석 결과’ 알림을 허용해 주세요.")
+            .setNegativeButton("나중에",null).setPositiveButton("설정 열기") { _,_ -> openNotificationSettings() }.show()
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode!=1002 || account==null) return
+        render()
+        if(notificationsEnabled()) {
+            AlertDialog.Builder(this).setTitle("알림이 켜졌습니다")
+                .setMessage("테스트 알림을 보내 확인할 수 있습니다.")
+                .setNegativeButton("닫기",null).setPositiveButton("테스트 알림") { _,_ -> postTestNotification() }.show()
+        } else {
+            AlertDialog.Builder(this).setTitle("알림이 꺼져 있습니다")
+                .setMessage("알림을 받으려면 휴대폰 설정에서 현장 AI 비서의 알림을 허용해 주세요.")
+                .setNegativeButton("나중에",null).setPositiveButton("설정 열기") { _,_ -> openNotificationSettings() }.show()
+        }
+    }
+    private fun postTestNotification() {
+        if(!notificationsEnabled()) { message("알림을 켠 뒤 다시 시도해 주세요.");return }
+        val intent=Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pending=PendingIntent.getActivity(this,1,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        try {
+            notificationManager().notify(1002001,Notification.Builder(this,"assistant_results")
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("현장 AI 비서 테스트 알림")
+                .setContentText("알림이 정상적으로 도착했습니다.").setContentIntent(pending).setAutoCancel(true).build())
+            message("테스트 알림을 보냈습니다. 화면 위에서 알림을 확인해 주세요.")
+        } catch (_: SecurityException) { message("알림 권한을 다시 확인해 주세요.") }
+    }
+    private fun postCompletionNotification(id: String) {
+        val manager=ensureNotificationChannel()
+        if(!notificationsEnabled()) return
         val intent=Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val pendingIntent=PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=Notification.Builder(this,"assistant_results")
@@ -562,11 +639,7 @@ class MainActivity : Activity() {
                     catch(e:Exception){if(epoch==sessionEpoch && account!=null) AlertDialog.Builder(this@MainActivity).setTitle("휴대폰 AI 준비 확인").setMessage(e.message ?: "AI 준비에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").setPositiveButton("확인",null).show()} }
                 }.show()
         }
-        addButton(col,"3. 결과 알림 켜기",false) {
-            if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1002)
-            else message("알림 설정을 확인해 주세요.")
-        }
+        addButton(col,if(notificationsEnabled()) "✓ 결과 알림 켜짐 · 확인" else "3. 결과 알림 켜기",false) { configureNotifications() }
         addButton(col,"새 녹음 확인",false) { scanFolder();message("새 녹음을 확인합니다.") }
         val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
         val list=records()
