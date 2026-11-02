@@ -672,6 +672,8 @@ class MainActivity : Activity() {
         if(reg==null) {
             if(ConsultationChat.reply(value)==ConsultationChat.Reply.NEW) { chatMessage(id,"먼저 아래 내용을 확인하고 ‘네’라고 답해 주세요.");render();return }
             val data=item.optJSONObject("chat_draft") ?: return
+            // Older unsent manual drafts used an unsupported source value.
+            if(item.optBoolean("manual_site") && data.optString("source")=="manual") data.put("source","direct")
             if(item.optBoolean("manual_site") && data.optString("site_name").isBlank()) { chatMessage(id,"먼저 ‘등록 내용 수정’에서 현장명을 입력해 주세요.");render();return }
             val request=JSONObject().put("company_id",company.id).put("request_id",UUID.randomUUID().toString()).put("data",data).put("target_id",JSONObject.NULL).put("create_new",false)
             if(!changeRecord(id) { it.put("registration",request) }) { message("등록 요청을 보관하지 못했습니다.");return }
@@ -864,7 +866,7 @@ class MainActivity : Activity() {
         if(company.role!="관리자") return
         val id="manual-"+UUID.randomUUID().toString()
         val draft=JSONObject().put("site_name","").put("customer_name","").put("customer_phone","").put("address","")
-            .put("work_description","").put("memo","").put("source","manual")
+            .put("work_description","").put("memo","").put("source","direct")
             .put("work_dates",JSONArray()).put("materials",JSONArray())
             .put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
         val item=JSONObject().put("id",id).put("name","직접 입력 현장").put("status","직접 입력")
