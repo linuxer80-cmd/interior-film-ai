@@ -7,7 +7,8 @@ import java.util.Locale
 internal object FilmInput {
     data class Usage(val code:String,val metres:BigDecimal)
     fun parse(message:String):Usage? {
-        if(Regex("취소|안\\s*썼|안\\s*사용|미사용|반출|반납").containsMatchIn(message)) return null
+        if(Regex("취소|말고|안\\s*(썼|써|쓸|사용)|사용\\s*(안|하지|못)|쓰지|미사용|반출|반납|남았|남은|잔량|필요").containsMatchIn(message)) return null
+        if(!Regex("사용|썼|써").containsMatchIn(message) || Regex("사용할|사용 예정|쓸\\s*예정").containsMatchIn(message)) return null
         val codes=Regex("(?i)(?<![A-Z0-9])(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*[0-9])[A-Z0-9]+(?:-[A-Z0-9]+)*(?![A-Z0-9])").findAll(message).map { it.value.uppercase(Locale.ROOT) }.filterNot { Regex("[0-9]+M").matches(it) }.distinct().toList()
         val values=Regex("(?<![0-9.])([0-9]+(?:\\.[0-9]{1,3})?)\\s*(?:미터|메터|m)(?![A-Za-z])",RegexOption.IGNORE_CASE).findAll(message).toList()
         if(codes.size!=1 || values.size!=1) return null

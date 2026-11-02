@@ -54,6 +54,15 @@ class AssistantRequestsTest {
         assertEquals("expenses",AssistantRequests.parse("경비 입력",monday).feature)
         assertEquals("report",AssistantRequests.parse("완료보고 작성",monday).feature)
         assertEquals("site_action",AssistantRequests.parse("필름 사용량 등록",monday).kind)
+        assertEquals("phone",AssistantRequests.parse("전화 걸어줘",monday).feature)
+        assertEquals("phone",AssistantRequests.parse("대림 현장 전화해줘",monday).feature)
+        assertEquals("navigate",AssistantRequests.parse("길 안내해줘",monday).feature)
+        assertEquals("navigate",AssistantRequests.parse("그 현장 네비 켜줘",monday).feature)
+        assertNotEquals("phone",AssistantRequests.parse("새로운 전화 아니요",monday).feature)
+        val todayTasks=AssistantRequests.parse("오늘 할 일 알려줘",monday)
+        assertEquals("schedule",todayTasks.kind)
+        assertEquals(monday.toString(),todayTasks.from)
+        assertEquals(monday.toString(),todayTasks.to)
     }
     @Test fun workerFeaturesDoNotExposeOwnerScreens() {
         assertNull(AssistantRequests.feature("receivables",false))
@@ -79,4 +88,5 @@ class AssistantRequestsTest {
         assertEquals("2025-12-31",AssistantRequests.parse("작년 매출",today).to)
     }
 }
+
 

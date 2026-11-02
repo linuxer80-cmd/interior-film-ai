@@ -15,5 +15,12 @@ class FilmInputTest {
         assertNull(FilmInput.parse("S115 3m 4m 사용"))
         assertNull(FilmInput.parse("S115 W123 3m 사용"))
         assertNull(FilmInput.parse("S115 0m 사용"))
+        assertNull(FilmInput.parse("S115 3m 남았어"))
+        assertNull(FilmInput.parse("S115 3m 필요해"))
+        assertNull(FilmInput.parse("S115 3m 사용하지 않았어"))
+        assertNull(FilmInput.parse("S115 3m 안 썼어"))
+        assertNull(FilmInput.parse("S115 3m"))
+        assertNull(FilmInput.parse("S115 3m 쓸 거야"))
+        assertNull(FilmInput.parse("S115 3m 사용할 예정"))
     }
 }
