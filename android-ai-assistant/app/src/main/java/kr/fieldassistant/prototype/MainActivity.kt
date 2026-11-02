@@ -905,8 +905,102 @@ class MainActivity : Activity() {
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
         if(feature.id=="customer-page") { customerPageManager();return }
         if(feature.id=="clients") { tradeManager();return }
+        if(feature.id=="jobs") { recruitMenu();return }
         if(feature.id=="new-site") showNewSiteRegistration()
         if(feature.id=="profit") openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path)
+    }
+    private var laborBusy=false
+    private fun recruitMenu() {
+        val company=selectedCompany() ?: return;val uid=account?.userId ?: return
+        val worker=company.role!="관리자"
+        val labels=if(worker) arrayOf("일자리 찾아보기","내 지원 · 받은 제안","구직 일정 등록 · 변경","구인·구직 전체 화면")
+            else arrayOf("시공자 찾아보기","내 구인 공고","지원자 · 모집 현황","구인 공고 등록 · 현장 제안","시공자로 일자리 보기","구인·구직 전체 화면")
+        AlertDialog.Builder(this).setTitle("구인 · 구직").setItems(labels) { _,i ->
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return@setItems }
+            if(worker) when(i) {
+                0 -> loadRecruit(uid,company,true,"jobs",0)
+                1 -> loadRecruit(uid,company,true,"applications",0)
+                2 -> openRecruitWorkspace(true,"seeking")
+                else -> openRecruitWorkspace(true,"jobs")
+            } else when(i) {
+                0 -> loadRecruit(uid,company,false,"candidates",0)
+                1 -> loadRecruit(uid,company,false,"jobs",0)
+                2 -> loadRecruit(uid,company,false,"applications",0)
+                3 -> openRecruitWorkspace(false,"mine")
+                4 -> loadRecruit(uid,company,true,"jobs",0)
+                else -> openRecruitWorkspace(false,"candidates")
+            }
+        }.setNegativeButton("닫기",null).show()
+    }
+    private fun openRecruitWorkspace(worker:Boolean,tab:String) {
+        if(tab !in listOf("jobs","seeking","applications","candidates","mine")) return
+        openWebWorkspace("https://interior-film-ai.vercel.app/jobs?view="+(if(worker) "worker" else "manager")+"&tab="+tab)
+    }
+    private fun loadRecruit(uid:String,company:CompanyAccess,worker:Boolean,kind:String,page:Int) {
+        if(laborBusy) { message("구인·구직 정보를 확인하고 있습니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return }
+        laborBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val data=auth.laborMarket(uid,company.id,worker,page)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
+                showRecruitResults(uid,company,worker,kind,page,data)
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message(e.message ?: "구인·구직 정보를 불러오지 못했습니다. 연결 상태를 확인해 주세요.") }
+            finally { laborBusy=false }
+        }
+    }
+    private fun recruitText(row:JSONObject,key:String):String = if(row.isNull(key)) "" else row.optString(key).takeUnless { it=="null" }.orEmpty()
+    private fun recruitDates(row:JSONObject):String {
+        val dates=row.optJSONArray("work_dates") ?: row.optJSONArray("available_dates") ?: return ""
+        return (0 until dates.length()).mapNotNull { dates.optString(it).takeIf { x -> x.isNotBlank() && x!="null" } }.joinToString(", ")
+    }
+    private fun recruitStatus(value:String):String = when(value) {
+        "applied"->"지원 완료";"accepted"->"구인 확정";"invited"->"현장 제안";"expired"->"지원 만료";"rejected"->"지원 종료";"withdrawn"->"지원 취소";"unassigned"->"배정 해제";"open"->"모집 중";"closed"->"모집 종료";else->"확인 필요"
+    }
+    private fun showRecruitResults(uid:String,company:CompanyAccess,worker:Boolean,kind:String,page:Int,data:JSONObject) {
+        if(kind !in listOf("jobs","applications","candidates")) return
+        val rows=data.optJSONArray(kind) ?: JSONArray()
+        val options=mutableListOf<String>()
+        for(i in 0 until rows.length()) {
+            val row=rows.optJSONObject(i) ?: continue
+            val label=when(kind) {
+                "jobs" -> listOf(recruitText(row,"title").ifBlank { "구인 공고" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
+                "candidates" -> listOf(recruitText(row,"name").ifBlank { "시공자" },recruitText(row,"region"),recruitDates(row)).filter { it.isNotBlank() }.joinToString(" · ")
+                else -> listOf(row.optJSONObject("profile")?.let { recruitText(it,"name") }.orEmpty().ifBlank { if(worker) "지원 · 제안" else "지원자" },recruitStatus(recruitText(row,"status"))).joinToString(" · ")
+            }
+            options.add(label)
+        }
+        val items=options.size;val canPage=kind!="applications" && rows.length()>=30
+        if(page>0 && kind!="applications") options.add("이전 목록")
+        if(canPage) options.add("다음 목록")
+        options.add(if(kind=="applications") "지원 · 모집 관리 화면" else if(kind=="candidates") "시공자 검색 · 현장 제안" else if(worker) "일자리 찾기 · 지원" else "구인 공고 등록 · 관리")
+        val title=when(kind) { "candidates"->"시공자 찾기";"applications"->if(worker) "내 지원 · 받은 제안" else "지원자 · 모집 현황";else->if(worker) "일자리 찾기" else "내 구인 공고" }
+        AlertDialog.Builder(this).setTitle("$title · ${items}건"+(if(kind!="applications") " · ${page+1}쪽" else ""))
+            .setItems(options.toTypedArray()) { _,index ->
+                if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return@setItems }
+                var next=items
+                when {
+                    index<items -> rows.optJSONObject(index)?.let { showRecruitDetail(worker,kind,it) }
+                    page>0 && kind!="applications" && index==next++ -> loadRecruit(uid,company,worker,kind,page-1)
+                    canPage && index==next -> loadRecruit(uid,company,worker,kind,page+1)
+                    else -> openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine")
+                }
+            }.setNegativeButton("닫기",null).show()
+    }
+    private fun showRecruitDetail(worker:Boolean,kind:String,row:JSONObject) {
+        val title=when(kind) { "jobs"->recruitText(row,"title").ifBlank { "구인 공고" };"candidates"->recruitText(row,"name").ifBlank { "시공자" };else->"지원 · 제안" }
+        val body=when(kind) {
+            "jobs" -> {
+                val wage=if(row.isNull("daily_wage")) "미지정" else java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA).format(row.optLong("daily_wage"))+"원"
+                "${recruitText(row,"company_name")} · ${recruitText(row,"region")}\n${recruitDates(row)}\n모집 기준 일당: $wage\n모집 인원: ${row.optInt("headcount")}명\n${recruitText(row,"work_content")}\n\n실제 확정 일당은 시공자의 등록 일당을 따릅니다."
+            }
+            "candidates" -> "활동 지역: ${recruitText(row,"region").ifBlank { "미등록" }}\n경력: ${if(row.isNull("experience_years")) "미등록" else recruitText(row,"experience_years")+"년"}\n가능 일정: ${recruitDates(row).ifBlank { "공개된 일정 없음" }}\n\n${recruitText(row,"introduction")}"
+            else -> "상태: ${recruitStatus(recruitText(row,"status"))}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
+        }
+        AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton(if(kind=="applications") "지원 · 모집 관리" else if(kind=="candidates") "시공자 검색 · 제안" else if(worker) "일자리 화면에서 지원" else "공고 관리") { _,_ ->
+            openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine")
+        }.setNegativeButton("닫기",null).show()
     }
     private var tradeBusy=false
     private fun tradePending():JSONObject = try { JSONObject(prefs.getString("chat_trade_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
@@ -1613,6 +1707,7 @@ class MainActivity : Activity() {
             "profit" -> { lookupProfit(request);return }
             "schedule","sites","detail" -> { lookupSites(request);return }
             "feature" -> {
+                if(request.feature=="jobs") { render();recruitMenu();return }
                 if(request.feature=="clients") {
                     val term=input.replace(Regex("거래처|업체|관리|검색|찾아줘|찾아주세요|보여줘|알려줘|등록|수정|목록|확인|해줘|주세요")," ").trim()
                     render();tradeManager(term);return
@@ -1701,7 +1796,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else if(feature.id=="clients") tradeManager() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
+                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else if(feature.id=="clients") tradeManager() else if(feature.id=="jobs") recruitMenu() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
             }
         }
         candidate?.let { item ->
