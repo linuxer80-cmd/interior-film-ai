@@ -803,8 +803,53 @@ class MainActivity : Activity() {
         val modes=arrayOf("direct","text","screenshot","call")
         AlertDialog.Builder(this).setTitle("새 현장 등록 · 입력 방법").setItems(labels) { _,index ->
             if(index==0) startManualSiteRegistration()
+            else if(index==1) startTextSiteAnalysis()
             else openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=sites&assistantRegister=1&inputMode="+modes[index])
         }.setNegativeButton("닫기",null).show()
+    }
+    private var textAnalysisBusy=false
+    private fun startTextSiteAnalysis() {
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") return
+        prefs.edit().putString("text_analysis_company",company.id).commit()
+        chatId=null;settingsOpen=false
+        appendHomeMessage("통화·문자·카톡 내용을 아래에 붙여넣어 보내 주세요. 보낸 내용은 AI 분석을 위해 서버로 전송됩니다. 취소하려면 ‘취소’라고 입력해 주세요.")
+        render()
+    }
+    private fun analyzeSiteText(content:String,company:CompanyAccess) {
+        val uid=account?.userId ?: return
+        if(textAnalysisBusy) { appendHomeMessage("상담 내용을 분석하고 있습니다. 잠시 기다려 주세요.");render();return }
+        if(content.length !in 5..20000) { appendHomeMessage("상담 내용은 5자 이상 20,000자 이하로 입력해 주세요.");render();return }
+        textAnalysisBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("상담 내용을 분석하고 있습니다.");render()
+        scope.launch {
+            try {
+                val data=auth.analyzeSiteText(uid,company.id,content)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                val id="manual-"+UUID.randomUUID().toString()
+                fun field(key:String)=data.optString(key,"").takeUnless { it=="null" }.orEmpty().trim()
+                val extra=mutableListOf<String>()
+                if(field("date").isNotBlank()) extra.add("AI가 찾은 날짜 (확인 필요): "+field("date"))
+                if(field("start_time").isNotBlank()) extra.add("AI가 찾은 시간 (확인 필요): "+field("start_time"))
+                if(field("contract_amount").isNotBlank()) extra.add("AI가 찾은 계약 금액 (확인 필요): "+field("contract_amount"))
+                if(field("deposit_amount").isNotBlank()) extra.add("AI가 찾은 선금 (확인 필요): "+field("deposit_amount"))
+                if((data.optJSONArray("materials")?.length() ?: 0) > 0) extra.add("필름·자재 후보: "+data.optJSONArray("materials").toString())
+                if((data.optJSONArray("quote_items")?.length() ?: 0) > 0) extra.add("견적 항목 후보: "+data.optJSONArray("quote_items").toString())
+                val memo=(listOf(field("memo"),field("other_schedule"))+extra).filter { it.isNotBlank() }.joinToString("\n").take(4000)
+                val draft=JSONObject().put("site_name",field("site_name").take(300)).put("customer_name",field("customer_name").take(200))
+                    .put("customer_phone",field("customer_phone").take(100)).put("address",listOf(field("address"),field("address_detail")).filter { it.isNotBlank() }.joinToString(" ").take(500))
+                    .put("work_description",field("work_description").take(1000)).put("memo",memo).put("source","phone")
+                    .put("work_dates",JSONArray()).put("materials",JSONArray()).put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
+                val messages=JSONArray().put(JSONObject().put("user",false).put("body","AI 분석 결과입니다. 날짜·금액·자재는 확인용 메모에 보관했으며 자동으로 확정하지 않습니다. 내용을 수정하고 등록해 주세요."))
+                val item=JSONObject().put("id",id).put("name","상담 내용 분석").put("status","직접 입력").put("manual_site",true)
+                    .put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft).put("chat_messages",messages)
+                val items=records();items.put(item)
+                check(prefs.edit().putString("records",items.toString()).remove("text_analysis_company").commit()) { "분석 결과를 보관하지 못했습니다." }
+                chatId=id;render();editChatDraft(id)
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("상담 내용을 분석하지 못했습니다. 연결을 확인한 후 다시 보내 주세요.") }
+            finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
+        }
     }
     private fun startManualSiteRegistration() {
         val company=selectedCompany() ?: return
@@ -972,8 +1017,19 @@ class MainActivity : Activity() {
         }
     }
     private fun answerHome(value: String) {
-        val input=value.trim().take(500);if(input.isBlank()) return
+        val textCompany=prefs.getString("text_analysis_company",null)
+        val input=value.trim().take(if(textCompany!=null) 20001 else 500);if(input.isBlank()) return
         homeInput="";appendHomeMessage(input,true)
+        if(textCompany!=null) {
+            if(input.replace(Regex("\\s+"),"") in listOf("취소","그만")) {
+                if(textAnalysisBusy) appendHomeMessage("분석이 진행 중입니다. 결과를 확인한 뒤 취소해 주세요.")
+                else { prefs.edit().remove("text_analysis_company").commit();appendHomeMessage("상담 내용 분석을 취소했습니다.") }
+                render();return
+            }
+            val company=selectedCompany()
+            if(company==null || company.id!=textCompany || company.role!="관리자") { appendHomeMessage("분석을 시작한 업체의 관리자 계정을 선택해 주세요.");render();return }
+            analyzeSiteText(input,company);return
+        }
         val pending=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
         val compact=input.replace(Regex("\\s+"),"")
         if(pending.has("id") && compact in listOf("네","예","응","그래","등록","저장","다시확인")) { savePendingExpense();render();return }
