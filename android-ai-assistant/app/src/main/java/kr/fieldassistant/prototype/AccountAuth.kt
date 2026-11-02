@@ -185,6 +185,26 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantProfit(expectedUser:String, companyId:String, from:String, to:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(from) && Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(to))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/admin/assistant-profit?from=$from&to=$to").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId);c.setRequestProperty("Cache-Control","no-store")
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299) { if(code==409) "필름장이 매출·수익 화면에서 제외 설정을 먼저 확인해 주세요." else "매출·수익을 조회하지 못했습니다. 권한과 연결 상태를 확인해 주세요." }
+                check(result.optString("from")==from && result.optString("to")==to) { "조회 기간을 확인하지 못했습니다." }
+                for(key in listOf("revenue","labor","material","expense","profit","confirmedCount","pendingCount")) check(result.has(key) && !result.isNull(key) && result.opt(key) is Number) { "조회 결과를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantSites(expectedUser: String, companyId: String): JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser) { "다른 계정입니다." }
