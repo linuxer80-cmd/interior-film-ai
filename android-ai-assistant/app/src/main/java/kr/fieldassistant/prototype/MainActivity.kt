@@ -972,12 +972,12 @@ class MainActivity : Activity() {
                 if(profile.optBoolean("is_published") && (newName.isBlank() || newIntro.isBlank() || (profile.optJSONArray("services")?.length() ?: 0)==0)) { message("공개 중인 페이지에는 상호, 업체 소개와 시공 서비스가 필요합니다.");return@setOnClickListener }
                 val summary=customerProfileFields.filter { changes.has(it.first) }.joinToString("\n") { "${it.second}: ${changes.optString(it.first).ifBlank { "(비움)" }}" }
                 AlertDialog.Builder(this).setTitle("업체 정보 저장").setMessage("다음 내용을 저장할까요?\n\n$summary")
-                    .setPositiveButton("저장") { _,_ -> dialog.dismiss();saveCustomerProfile(uid,company,profile,changes) }.setNegativeButton("계속 수정",null).show()
+                    .setPositiveButton("저장") { _,_ -> saveCustomerProfile(uid,company,profile,changes,dialog) }.setNegativeButton("계속 수정",null).show()
             }
         }
         dialog.show()
     }
-    private fun saveCustomerProfile(uid:String,company:CompanyAccess,profile:JSONObject,changes:JSONObject) {
+    private fun saveCustomerProfile(uid:String,company:CompanyAccess,profile:JSONObject,changes:JSONObject,dialog:AlertDialog) {
         if(customerPageBusy) { message("저장 중입니다.");return }
         if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
         customerPageBusy=true;val epoch=sessionEpoch
@@ -986,7 +986,7 @@ class MainActivity : Activity() {
                 val version=if(profile.isNull("updated_at")) "" else profile.optString("updated_at")
                 val updated=auth.customerProfile(uid,company.id,changes,version) ?: error("저장 결과가 없습니다.")
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
-                appendHomeMessage("${company.name} 고객페이지 업체 정보를 저장했습니다.");render()
+                dialog.dismiss();appendHomeMessage("${company.name} 고객페이지 업체 정보를 저장했습니다.");render()
                 showCustomerPageMenu(uid,company,updated)
             } catch(e:CancellationException) { throw e }
             catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message(e.message ?: "저장하지 못했습니다. 다시 확인해 주세요.") }
