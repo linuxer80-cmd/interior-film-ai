@@ -359,7 +359,7 @@ class MainActivity : Activity() {
         if(!active) return
         if(settingsOpen) { render();return }
         // Analysis of another call must not rebuild an open conversation or its composer.
-        if(chatId!=null || currentFocus is EditText) return
+        if(chatId!=null || (currentFocus is EditText && (homeInput.isNotBlank() || window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime())==true))) return
         renderHomeChat()
     }
     private fun scanFolder() {
@@ -613,7 +613,9 @@ class MainActivity : Activity() {
                 .put("memo",summary.take(3500)).put("source","phone").put("work_dates",JSONArray()).put("materials",JSONArray())
                 .put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
             if(!changeRecord(id) { it.put("chat_draft",data).put("chat_company",company.id) }) { message("대화를 저장하지 못했습니다.");return }
+            if(consultationDisposition(item)=="active") {
             chatMessage(id,"새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n\n${company.name}의 현장에 등록할까요? 아래 등록 내용을 확인하고 ‘네’ 또는 ‘그래’라고 답해 주세요. 인식 오류는 ‘등록 내용 수정’에서 고칠 수 있습니다.")
+            } else chatMessage(id,if(consultationDisposition(item)=="declined") "등록하지 않기로 한 통화입니다. 자동 등록 안내는 종료되었습니다." else "보류한 통화입니다. 자동 등록 안내는 종료되었습니다.")
         }
         settingsOpen=false;chatId=id;chatInput="";render()
     }
