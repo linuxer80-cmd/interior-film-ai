@@ -120,7 +120,7 @@ class MainActivity : Activity() {
     }
     override fun onStart() {
         super.onStart(); active = true
-        if(account!=null) { startObserver(); scanFolder() }
+        if(account!=null) { startObserver(); scanFolder(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -618,7 +618,7 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun continueSimpleSetup() {
-        if(!simpleSetup || account==null || setupBusy) return
+        if(!simpleSetup || account==null || setupBusy || !active) return
         if(prepared) {
             simpleSetup=false
             if(!notificationsEnabled()) configureNotifications() else { folderStatus="비서 준비가 완료됐습니다.";render() }
