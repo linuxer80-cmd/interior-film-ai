@@ -833,8 +833,16 @@ class MainActivity : Activity() {
                 if(field("start_time").isNotBlank()) extra.add("AI가 찾은 시간 (확인 필요): "+field("start_time"))
                 if(field("contract_amount").isNotBlank()) extra.add("AI가 찾은 계약 금액 (확인 필요): "+field("contract_amount"))
                 if(field("deposit_amount").isNotBlank()) extra.add("AI가 찾은 선금 (확인 필요): "+field("deposit_amount"))
-                if((data.optJSONArray("materials")?.length() ?: 0) > 0) extra.add("필름·자재 후보: "+data.optJSONArray("materials").toString())
-                if((data.optJSONArray("quote_items")?.length() ?: 0) > 0) extra.add("견적 항목 후보: "+data.optJSONArray("quote_items").toString())
+                fun candidates(key:String,fields:List<String>):String {
+                    val values=data.optJSONArray(key) ?: return ""
+                    return (0 until minOf(values.length(),20)).mapNotNull { i ->
+                        val row=values.optJSONObject(i) ?: return@mapNotNull null
+                        fields.map { row.optString(it,"").takeUnless { v -> v=="null" }.orEmpty().trim() }
+                            .filter { it.isNotBlank() }.joinToString(" ").takeIf { it.isNotBlank() }
+                    }.joinToString(", ")
+                }
+                candidates("materials",listOf("brand","product_code","product_name","quantity","unit")).takeIf { it.isNotBlank() }?.let { extra.add("필름·자재 후보: $it") }
+                candidates("quote_items",listOf("name","detail","quantity","unit","film_no","note")).takeIf { it.isNotBlank() }?.let { extra.add("견적 항목 후보: $it") }
                 val memo=(listOf(field("memo"),field("other_schedule"))+extra).filter { it.isNotBlank() }.joinToString("\n").take(4000)
                 val draft=JSONObject().put("site_name",field("site_name").take(300)).put("customer_name",field("customer_name").take(200))
                     .put("customer_phone",field("customer_phone").take(100)).put("address",listOf(field("address"),field("address_detail")).filter { it.isNotBlank() }.joinToString(" ").take(500))
