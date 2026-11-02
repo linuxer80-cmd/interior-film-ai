@@ -1414,4 +1414,114 @@ class MainActivity : Activity() {
     }
     private fun bg(color: Int, radius: Int=16, border: Int?=null) = GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat(); if(border!=null)setStroke(dp(1),border) }
     private fun button(label: String, primary: Boolean=true, action:()->Unit): Button = Button(this).apply {
-        this.text=label; isAllCaps=fal
+        this.text=label; isAllCaps=false; textSize=14f; setTextColor(if(primary) Color.WHITE else Color.rgb(49,92,72)); background=bg(if(primary) Color.rgb(49,92,72) else Color.WHITE,14,if(primary)null else Color.rgb(211,221,210)); setOnClickListener { action() }
+    }
+    private fun addButton(col: LinearLayout, label: String, primary: Boolean=true, action:()->Unit) {
+        val b=button(label,primary,action); val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(10),0,0);col.addView(b,lp)
+    }
+    private fun message(s:String) { Toast.makeText(this,s,Toast.LENGTH_LONG).show() }
+    private fun startSimpleSetup() {
+        if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
+        AlertDialog.Builder(this).setTitle("비서 간편 설정")
+            .setMessage("통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
+            .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
+                simpleSetup=true
+                if(folder()==null) openFolderPicker() else continueSimpleSetup()
+            }.show()
+    }
+    private fun continueSimpleSetup() {
+        if(!simpleSetup || account==null || setupBusy || !active || folder()==null) return
+        simpleSetup=false
+        if(!notificationsEnabled()) {
+            folderStatus="폴더가 연결됐습니다. 알림을 허용해 주세요."
+            render();configureNotifications()
+        } else {
+            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 기본 음성 모델을 준비합니다."
+            render();scanFolder()
+        }
+    }
+    private fun render() {
+        if(account==null) { renderLogin();return }
+        if(!settingsOpen) { chatId?.let { renderChat(it);return };renderHomeChat();return }
+        val scroll=ScrollView(this).apply { setBackgroundColor(Color.rgb(248,247,242)); isFillViewport=true }
+        val col=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(28),dp(20),dp(25)) }
+        root=col; scroll.addView(col);setAssistantContent(scroll)
+        addButton(col,"‹ 대화로 돌아가기",false) { settingsOpen=false;render() }
+        col.addView(text("설정",26f,true))
+        val verified=requireNotNull(account)
+        val current=verified.companies.find { it.id==prefs.getString("selected_company",null) } ?: verified.companies.first()
+        col.addView(text("로그인됨 · ${current.name} (${current.role})",14f,true))
+        if(verified.companies.size>1) addButton(col,"소속 업체 변경",false) {
+            val names=verified.companies.map { "${it.name} · ${it.role}" }.toTypedArray()
+            AlertDialog.Builder(this).setTitle("업체 선택").setItems(names) { _,which -> prefs.edit().putString("selected_company",verified.companies[which].id).apply();render() }.setNegativeButton("취소",null).show()
+        }
+        addButton(col,"로그아웃",false) { signOut() }
+        col.addView(text("시공 일정 비서 · 새 배정과 시공 당일 오전 일정을 확인합니다.",14f,true))
+        addButton(col,"오늘 시공 일정과 길 안내",false) { showSchedule() }
+        col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
+        val info=text("녹음은 휴대폰에서 분석합니다. 견적 문의를 놓칠 수 있으니 비서함도 확인해 주세요. 등록을 확인한 내용만 필름장이에 저장됩니다. 백그라운드 확인과 알림은 절전 설정에 따라 지연될 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
+        val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
+        val ready=folder()!=null && notificationsEnabled()
+        if(ready) col.addView(text("✓ 녹음 폴더와 알림 연결됨",16f,true))
+        else addButton(col,if(setupBusy || baselineBusy) "비서 준비 중…" else "비서 간편 설정",true) { startSimpleSetup() }
+        addButton(col,if(showSetupDetails) "설정 접기" else "연결 상태와 설정 보기",false) { showSetupDetails=!showSetupDetails;render() }
+        if(folderStatus.isNotBlank()) col.addView(text(folderStatus,13f,false,Color.rgb(76,111,85)))
+        if(showSetupDetails) {
+        addButton(col,if(folder()==null) "1. 통화 녹음 폴더 선택" else "✓ 녹음 폴더 연결됨 · 다시 선택",false) {
+            if(folder()==null) chooseFolder() else AlertDialog.Builder(this).setTitle("녹음 폴더 다시 선택")
+                .setMessage("새 폴더를 선택하면 이 앱의 비서함 기록이 초기화됩니다. 원본 녹음은 삭제되지 않습니다.")
+                .setNegativeButton("취소",null).setPositiveButton("선택하기") { _,_ -> chooseFolder() }.show()
+        }
+        addButton(col,if(prepared) "✓ 추가 AI 요약 준비됨" else "2. 추가 AI 요약 준비 · 선택",false) {
+            if(setupBusy) { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); return@addButton }
+            if(prepared) { message("추가 AI 요약을 사용할 수 있습니다."); return@addButton }
+            AlertDialog.Builder(this).setTitle("추가 AI 요약 · 선택")
+                .setMessage("지원되는 휴대폰에서 통화 내용을 더 자세히 정리합니다. 지원하지 않아도 기본 음성 분석과 일정 알림은 사용할 수 있습니다. 모델을 준비할까요?")
+                .setNegativeButton("취소",null).setPositiveButton("준비하기") { _,_ ->
+                    val epoch=sessionEpoch
+                    scope.launch { try { message("휴대폰 AI를 준비하고 있습니다. 잠시 기다려 주세요."); prepareModels();if(epoch==sessionEpoch && account!=null){prepared=true;message("휴대폰 AI 준비가 완료됐습니다.");render();processNext()} }
+                    catch(e:CancellationException){throw e}
+                    catch(e:Exception){if(epoch==sessionEpoch && account!=null) AlertDialog.Builder(this@MainActivity).setTitle("추가 AI 요약을 사용할 수 없습니다").setMessage("이 휴대폰에서는 추가 요약을 준비하지 못했습니다. 기본 음성 분석은 시도할 수 있습니다. 내용이 자동으로 정리되지 않으면 인식된 통화 내용을 확인해 주세요.").setPositiveButton("확인",null).show()} }
+                }.show()
+        }
+        addButton(col,if(notificationsEnabled()) "✓ 결과 알림 켜짐 · 확인" else "3. 결과 알림 켜기",false) { configureNotifications() }
+        }
+        addButton(col,"새 녹음 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다.") }
+        val scanStatus=BackgroundCalls.resultPrefs(applicationContext,verified.userId).getString("scan_status","").orEmpty()
+        if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
+        addButton(col,"최근 녹음 한 건 시험",false) { inspectLatestRecording() }
+        val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
+        val list=records()
+        if(list.length()==0) col.addView(text("아직 새 녹음이 없습니다. 폴더를 연결한 이후 저장된 파일부터 확인합니다.",13f))
+        for(i in (0 until list.length()).reversed()) {
+            val item=list.optJSONObject(i) ?: continue;val id=item.optString("id");val status=item.optString("status")
+            val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(15),dp(14),dp(15),dp(14));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
+            val p=LinearLayout.LayoutParams(-1,-2);p.setMargins(0,0,0,dp(10));col.addView(card,p)
+            card.addView(text(item.optString("name","통화 녹음"),14f,true));card.addView(text(status,12f,false,Color.rgb(88,126,94)))
+            val summary=item.optString("summary"); if(summary.isNotBlank()) card.addView(text(summary,13f))
+            if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
+            if(status=="현장 등록 완료") addButton(card,"상담 대화 보기",false) { showRegistrationConfirmation(id) }
+            if(status=="확인 필요") {
+                addButton(card,if(id in savingRegistrations) "현장 등록 확인 중…" else "비서와 대화 · 현장 등록",true) { showRegistrationConfirmation(id) }
+                addButton(card,"통화 내용 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 내용").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
+                addButton(card,"내용 복사하고 필름장이 열기",false) {
+                    confirmWebAccount {
+                        val clip=getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clip.setPrimaryClip(ClipData.newPlainText("상담 내용",item.optString("transcript")))
+                        openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=register")
+                    }
+                }
+            }
+        }
+        addButton(col,"필름장이 열기",false) { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } }
+        addButton(col,"비서함 기록 지우기",false) {
+            AlertDialog.Builder(this).setTitle("비서함 기록 지우기")
+                .setMessage("이 앱에 저장된 분석 결과만 지웁니다. 휴대폰의 원본 녹음 파일은 지우지 않습니다.")
+                .setNegativeButton("취소",null).setPositiveButton("지우기") { _,_ -> pending.clear(); saveRecords(JSONArray());render() }.show()
+        }
+        col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 백그라운드 확인은 휴대폰 절전 설정에 따라 늦어질 수 있습니다.",12f,false,Color.rgb(117,130,120)))
+    }
+    private fun confirmWebAccount(action: () -> Unit) { action() }
+}
+
+
