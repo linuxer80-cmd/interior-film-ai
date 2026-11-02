@@ -1103,6 +1103,68 @@ class MainActivity : Activity() {
         "consulting"->"상담중";"scheduled"->"시공예정";"in_progress"->"시공중";"completed"->"시공완료";"cancelled"->"취소";else->value
     }
     private var expenseSaving=false
+    private var filmBusy=false
+    private fun prepareFilmUsage(company:CompanyAccess,siteId:String,siteName:String,film:FilmInput.Usage) {
+        val uid=account?.userId ?: return
+        if(filmBusy) { appendHomeMessage("필름 정보를 확인하고 있습니다. 잠시 기다려 주세요.");render();return }
+        filmBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("${siteName} 현장의 반출된 롤을 확인하고 있습니다.");render()
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(uid,company.id)
+                check((0 until sites.length()).any { i -> sites.optJSONObject(i)?.let { it.optString("id").ifBlank { it.optString("site_id") }==siteId }==true })
+                val data=auth.filmStock(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || prefs.getString("selected_site_id",null)!=siteId) return@launch
+                check(data.optBoolean("canReturnRoll",data.optBoolean("canEdit",false))) { "이 현장에서 롤을 반납할 권한이 없습니다." }
+                val trips=data.getJSONArray("trips")
+                val rolls=(0 until trips.length()).mapNotNull { i ->
+                    val t=trips.optJSONObject(i) ?: return@mapNotNull null
+                    val issued=t.optString("issued").toBigDecimalOrNull() ?: return@mapNotNull null
+                    if(!t.has("revision") || t.isNull("revision")) return@mapNotNull null
+                    FilmRollDecision.Roll(t.optString("site_id"),t.optString("roll_id"),t.optString("product_code"),issued,t.optInt("revision",-1),!t.isNull("returned"),t.optString("label"))
+                }
+                val proposal=FilmRollDecision.propose(siteId,film.code,film.metres,rolls)
+                if(proposal==null) {
+                    appendHomeMessage("해당 제품의 반출 롤이 없거나 여러 개이거나 사용량이 반출량보다 많습니다. 현장 자재 화면에서 롤과 수량을 확인해 주세요.")
+                    val history=JSONArray(prefs.getString("home_chat","[]"));history.getJSONObject(history.length()-1).put("film_site",siteId).put("film_company",company.id)
+                    prefs.edit().putString("home_chat",history.toString()).apply();return@launch
+                }
+                val p=JSONObject().put("id",UUID.randomUUID().toString()).put("company",company.id).put("siteId",siteId).put("siteName",siteName)
+                    .put("rollId",proposal.roll.rollId).put("revision",proposal.roll.revision).put("code",film.code).put("label",proposal.roll.label)
+                    .put("issued",proposal.roll.issued.toPlainString()).put("used",proposal.used.toPlainString()).put("remaining",proposal.remaining.toPlainString()).put("sent",false)
+                check(prefs.edit().putString("chat_film_pending",p.toString()).commit())
+                appendHomeMessage("${siteName} · ${film.code} ${proposal.roll.label}\n반출 ${p.getString("issued")}m · 사용 ${p.getString("used")}m · 남은 ${p.getString("remaining")}m\n남은 길이를 창고에 반납하고 사용량을 저장할까요? ‘네’ 또는 ‘취소’라고 답해 주세요.")
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("필름과 반납 권한을 확인하지 못했습니다. 현장 자재 화면에서 확인해 주세요.") }
+            finally { filmBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
+    private fun savePendingFilm() {
+        val uid=account?.userId ?: return;val company=selectedCompany() ?: return
+        val p=try { JSONObject(prefs.getString("chat_film_pending",null) ?: return) } catch(_:Exception) { return }
+        if(filmBusy || p.optString("company")!=company.id) { message("필름을 확인한 업체를 선택해 주세요.");return }
+        if(!p.optBoolean("sent") && (prefs.getString("selected_site_company",null)!=company.id || prefs.getString("selected_site_id",null)!=p.optString("siteId"))) { message("필름을 확인한 현장을 다시 선택해 주세요.");return }
+        filmBusy=true;p.put("sent",true)
+        if(!prefs.edit().putString("chat_film_pending",p.toString()).commit()) { filmBusy=false;message("저장 요청을 보관하지 못했습니다.");return }
+        val epoch=sessionEpoch
+        val body=JSONObject().put("action","return").put("siteId",p.getString("siteId")).put("rollId",p.getString("rollId"))
+            .put("revision",p.getInt("revision")).put("remaining",p.getString("remaining")).put("location","창고").put("requestId",p.getString("id"))
+        scope.launch {
+            try {
+                auth.filmStock(uid,company.id,p.getString("siteId"),body)
+                if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
+                val current=try { JSONObject(prefs.getString("chat_film_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+                if(current.optString("id")==p.optString("id")) prefs.edit().remove("chat_film_pending").commit()
+                appendHomeMessage("${p.optString("siteName")} · ${p.optString("code")} 사용 ${p.optString("used")}m를 저장하고 ${p.optString("remaining")}m를 창고에 반납했습니다.")
+            } catch(e:CancellationException) { throw e }
+              catch(e:FilmRejected) { if(epoch==sessionEpoch && account?.userId==uid) {
+                  p.put("sent",false);prefs.edit().putString("chat_film_pending",p.toString()).commit()
+                  appendHomeMessage("저장하지 못했습니다: ${e.message ?: "재고를 확인해 주세요."} ‘취소’ 후 다시 확인해 주세요.")
+              } }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("저장 결과를 확인하지 못했습니다. 중복 반납을 막기 위해 ‘다시 확인’으로 같은 요청을 확인해 주세요.") }
+            finally { filmBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
     private fun savePendingExpense() {
         val uid=account?.userId ?: return
         val company=selectedCompany() ?: return
@@ -1151,7 +1213,15 @@ class MainActivity : Activity() {
             analyzeSiteText(input,company);return
         }
         val pending=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+        val filmPending=try { JSONObject(prefs.getString("chat_film_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
         val compact=input.replace(Regex("\\s+"),"")
+        if(filmBusy && compact in listOf("네","예","응","그래","등록","저장","다시확인","취소","아니요")) { appendHomeMessage("필름 확인 작업이 끝날 때까지 잠시 기다려 주세요.");render();return }
+        if(filmPending.has("id") && compact in listOf("네","예","응","그래","등록","저장","다시확인")) { savePendingFilm();render();return }
+        if(filmPending.has("id") && compact in listOf("취소","아니요","아니","등록안함")) {
+            if(filmPending.optBoolean("sent")) appendHomeMessage("이미 보낸 반납 요청의 결과를 먼저 확인해야 합니다. ‘다시 확인’이라고 입력해 주세요.")
+            else { prefs.edit().remove("chat_film_pending").commit();appendHomeMessage("필름 사용량 입력을 취소했습니다.") }
+            render();return
+        }
         if(pending.has("id") && compact in listOf("네","예","응","그래","등록","저장","다시확인")) { savePendingExpense();render();return }
         if(pending.has("id") && compact in listOf("취소","아니요","아니","등록안함")) {
             if(pending.optBoolean("submitted")) appendHomeMessage("이미 보낸 저장 요청의 결과를 먼저 확인해야 합니다. ‘다시 확인’이라고 입력해 주세요.")
@@ -1160,6 +1230,7 @@ class MainActivity : Activity() {
         }
         val expense=ExpenseInput.parse(input)
         if(expense!=null) {
+            if(filmPending.has("id")) { appendHomeMessage("먼저 대기 중인 필름 반납을 저장하거나 취소해 주세요.");render();return }
             if(pending.has("id")) { appendHomeMessage("먼저 대기 중인 경비를 저장하거나 취소해 주세요.");render();return }
             val company=selectedCompany() ?: return
             val id=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
@@ -1182,6 +1253,7 @@ class MainActivity : Activity() {
         }
         val film=FilmInput.parse(input)
         if(film!=null) {
+            if(pending.has("id") || filmPending.has("id")) { appendHomeMessage("먼저 대기 중인 입력을 저장하거나 취소해 주세요.");render();return }
             val company=selectedCompany() ?: return
             val selected=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
             val name=prefs.getString("selected_site_name","").orEmpty()
@@ -1191,10 +1263,7 @@ class MainActivity : Activity() {
                 appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
                 lookupSites(AssistantRequests.Request("sites",query=named));return
             }
-            appendHomeMessage("${name} · ${film.code} ${film.metres.toPlainString()}m 사용으로 이해했습니다. 반출된 필름과 남은 길이를 확인하고 저장해 주세요.")
-            val history=JSONArray(prefs.getString("home_chat","[]"))
-            history.getJSONObject(history.length()-1).put("film_site",selected).put("film_company",company.id)
-            prefs.edit().putString("home_chat",history.toString()).apply();render();return
+            prepareFilmUsage(company,selected,name,film);return
         }
         val reply=ConsultationChat.reply(input)
         if(reply==ConsultationChat.Reply.DECLINE || reply==ConsultationChat.Reply.LATER) {
@@ -1325,6 +1394,13 @@ class MainActivity : Activity() {
             body.addView(choices)
         }
         val expenseDraft=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+        val filmDraft=try { JSONObject(prefs.getString("chat_film_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
+        if(filmDraft.has("id") && filmDraft.optString("company")==selectedCompany()?.id) {
+            val choices=LinearLayout(this)
+            choices.addView(button(if(filmDraft.optBoolean("sent")) "반납 결과 확인" else "네 · 반납 저장",true) { answerHome(if(filmDraft.optBoolean("sent")) "다시 확인" else "네") },LinearLayout.LayoutParams(0,dp(48),1f))
+            if(!filmDraft.optBoolean("sent")) choices.addView(button("취소",false) { answerHome("취소") },LinearLayout.LayoutParams(0,dp(48),1f))
+            page.addView(choices)
+        }
         if(expenseDraft.has("id") && expenseDraft.optString("company")==selectedCompany()?.id) {
             val choices=LinearLayout(this)
             choices.addView(button(if(expenseDraft.optBoolean("submitted")) "저장 결과 확인" else "경비 저장",true) { answerHome(if(expenseDraft.optBoolean("submitted")) "다시 확인" else "네") },LinearLayout.LayoutParams(0,dp(48),1f))
