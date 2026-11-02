@@ -1,0 +1,16 @@
+name: FieldAssistant
+options:
+  deploymentTarget:
+    iOS: '16.0'
+targets:
+  FieldAssistant:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: kr.fieldassistant.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 현장 AI 비서
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1,2'
