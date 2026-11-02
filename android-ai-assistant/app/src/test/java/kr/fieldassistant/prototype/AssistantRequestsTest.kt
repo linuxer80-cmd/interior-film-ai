@@ -16,6 +16,14 @@ class AssistantRequestsTest {
         assertEquals("2028-02-29",AssistantRequests.parse("이번 달 일정",LocalDate.of(2028,2,1)).to)
         assertEquals("2027-01-01",AssistantRequests.parse("내일 현장",LocalDate.of(2026,12,31)).from)
     }
+    @Test fun understandsPastAndNamedMonths() {
+        val last=AssistantRequests.parse("지난달현장 보여줘",monday)
+        assertEquals("schedule",last.kind);assertEquals("2026-10-01",last.from);assertEquals("2026-10-31",last.to)
+        assertEquals("2026-10-01",AssistantRequests.parse("10월현장 보여줘",monday).from)
+        assertEquals("2024-02-29",AssistantRequests.parse("2024년 2월 현장",monday).to)
+        assertEquals("2025-12-01",AssistantRequests.parse("지난달 현장",LocalDate.of(2026,1,2)).from)
+        assertEquals("unknown",AssistantRequests.parse("13월 현장",monday).kind)
+    }
     @Test fun findsNamedSiteAndExplicitNumber() {
         assertEquals("청라",AssistantRequests.parse("청라 현장 찾아줘",monday).query)
         assertEquals(0,AssistantRequests.parse("1번 현장 상세",monday).index)

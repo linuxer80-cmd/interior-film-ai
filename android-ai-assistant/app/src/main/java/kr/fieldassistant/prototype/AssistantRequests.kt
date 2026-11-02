@@ -69,6 +69,7 @@ internal object AssistantRequests {
             compact.contains("지난주") || compact.contains("저번주") -> monday.minusWeeks(1) to monday.minusDays(1)
             compact.contains("주말") -> monday.plusDays(5) to monday.plusDays(6)
             compact.contains("이번주") || compact.contains("금주") -> monday to monday.plusDays(6)
+            compact.contains("지난달") || compact.contains("저번달") || compact.contains("전달") -> today.minusMonths(1).withDayOfMonth(1).let { it to it.withDayOfMonth(it.lengthOfMonth()) }
             compact.contains("다음달") -> today.plusMonths(1).withDayOfMonth(1).let { it to it.withDayOfMonth(it.lengthOfMonth()) }
             compact.contains("이번달") || compact.contains("이달") -> today.withDayOfMonth(1) to today.withDayOfMonth(today.lengthOfMonth())
             compact.contains("모레") -> today.plusDays(2) to today.plusDays(2)
@@ -78,6 +79,13 @@ internal object AssistantRequests {
             else -> null
         }
         if(range!=null) return Request("schedule",from=range.first.toString(),to=range.second.toString())
+        val explicitMonth=Regex("(?<![0-9])(?:(\\d{4})년)?(\\d{1,2})월").find(compact)
+        if(explicitMonth!=null) {
+            val year=explicitMonth.groupValues[1].toIntOrNull() ?: today.year
+            val month=explicitMonth.groupValues[2].toIntOrNull() ?: return Request("unknown")
+            val day=try { LocalDate.of(year,month,1) } catch(_:Exception) { return Request("unknown") }
+            return Request("schedule",from=day.toString(),to=day.withDayOfMonth(day.lengthOfMonth()).toString())
+        }
         Regex("\\d{4}-\\d{2}-\\d{2}").find(compact)?.value?.let { date ->
             try { LocalDate.parse(date);return Request("schedule",from=date,to=date) } catch(_:Exception) { return Request("unknown") }
         }
