@@ -80,7 +80,15 @@ class MainActivity : Activity() {
     private var reviewUser: String? = null
     private var forcedReviewId: String? = null
     private var modelChecked = false
-    private val handlerScan = Runnable { scanFolder() }
+    private val handlerScan = object : Runnable {
+        override fun run() {
+            if(active && account!=null) { scanFolder();handler.postDelayed(this,30000) }
+        }
+    }
+    private fun scheduleForegroundScan() {
+        handler.removeCallbacks(handlerScan)
+        if(active && account!=null) handler.postDelayed(handlerScan,30000)
+    }
     private val observer = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean) {
             if (active) { handler.removeCallbacks(handlerScan); handler.postDelayed(handlerScan, 7000) }
@@ -121,7 +129,7 @@ class MainActivity : Activity() {
         }
         saveRecords(saved)
         val epoch=sessionEpoch
-        if(active) { startObserver();scanFolder() }
+        if(active) { startObserver();scanFolder();scheduleForegroundScan() }
         scope.launch {
             try {
                 val readyMode=findReadySpeechMode()
@@ -133,7 +141,7 @@ class MainActivity : Activity() {
     }
     override fun onStart() {
         super.onStart(); active = true
-        if(account!=null) { startObserver(); scanFolder(); maybeReview();maybeScheduleReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -171,7 +179,7 @@ class MainActivity : Activity() {
     private fun attachResults(uid: String) {
         detachResults();listenerUser=uid
         val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-            if(key?.startsWith("record_")==true) handler.post {
+            if(key?.startsWith("record_")==true || key=="scan_status") handler.post {
                 if(account?.userId==uid) { mergeResults(uid);render();maybeReview() }
             }
         }
@@ -313,7 +321,34 @@ class MainActivity : Activity() {
     private fun scanFolder() {
         val uid=account?.userId ?: return
         if(folder()==null || baselineBusy) return
-        mergeResults(uid);BackgroundCalls.kick(applicationContext,uid);render()
+        mergeResults(uid);BackgroundCalls.kick(applicationContext,uid)
+    }
+    private fun inspectLatestRecording() {
+        val uid=account?.userId ?: return
+        val tree=folder() ?: run { message("먼저 통화 녹음 폴더를 연결해 주세요.");return }
+        val epoch=sessionEpoch
+        message("연결된 폴더의 최근 녹음을 확인합니다.")
+        scope.launch {
+            try {
+                val file=withContext(Dispatchers.IO) { currentFiles(tree).filter { it.length()>0 }.maxByOrNull { it.lastModified() }?.let { Triple(it.uri.toString(),it.name ?: "이름 없는 녹음",it.lastModified()) } }
+                if(epoch!=sessionEpoch || account?.userId!=uid || !active) return@launch
+                if(file==null) { message("연결된 폴더에 녹음 파일이 없습니다. 저장 위치를 확인해 주세요.");return@launch }
+                val (id,name,modified)=file
+                val date=if(modified>0) SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date(modified)) else "저장 시간 확인 불가"
+                AlertDialog.Builder(this@MainActivity).setTitle("최근 녹음 한 건을 분석할까요?")
+                    .setMessage("$name\n$date\n\n이 녹음은 휴대폰에서 분석합니다. 통화 내용을 확인한 뒤 현장 등록 여부를 선택할 수 있습니다.")
+                    .setNegativeButton("취소",null).setPositiveButton("이 녹음 분석") { _,_ ->
+                        val a=records();var found=false
+                        if(recordById(id)?.optString("site_id").orEmpty().isNotBlank()) { message("이미 현장에 등록한 녹음입니다. 비서함을 확인해 주세요.");return@setPositiveButton }
+                        for(i in 0 until a.length()) { val item=a.optJSONObject(i) ?: continue;if(item.optString("id")==id) { found=true;break } }
+                        if(!found) a.put(JSONObject().put("id",id).put("name",name).put("status","분석 대기"))
+                        val existing=seen();existing.add(id)
+                        if(!prefs.edit().putString("records",a.toString()).putStringSet("seen",existing).commit()) {
+                            message("분석을 시작하지 못했습니다. 다시 시도해 주세요.")
+                        } else { render();retryOffline(id) }
+                    }.show()
+            } catch(_: Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("녹음 폴더를 확인하지 못했습니다. 연결 상태를 확인해 주세요.") }
+        }
     }
     private fun recordById(id: String): JSONObject? {
         val a=records(); for (i in 0 until a.length()) { val x=a.getJSONObject(i); if (x.optString("id")==id) return x }; return null
@@ -798,7 +833,10 @@ class MainActivity : Activity() {
         }
         addButton(col,if(notificationsEnabled()) "✓ 결과 알림 켜짐 · 확인" else "3. 결과 알림 켜기",false) { configureNotifications() }
         }
-        addButton(col,"새 녹음 확인",false) { scanFolder();message("새 녹음을 확인합니다.") }
+        addButton(col,"새 녹음 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다.") }
+        val scanStatus=BackgroundCalls.resultPrefs(applicationContext,verified.userId).getString("scan_status","").orEmpty()
+        if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
+        addButton(col,"최근 녹음 한 건 시험",false) { inspectLatestRecording() }
         val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
         val list=records()
         if(list.length()==0) col.addView(text("아직 새 녹음이 없습니다. 폴더를 연결한 이후 저장된 파일부터 확인합니다.",13f))

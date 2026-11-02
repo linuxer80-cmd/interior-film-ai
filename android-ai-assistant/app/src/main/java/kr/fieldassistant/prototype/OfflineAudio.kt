@@ -98,7 +98,6 @@ internal object OfflineAudio {
             val track=(0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/")==true }
                 ?: error("지원되는 음성 트랙이 없습니다.")
             val format=extractor.getTrackFormat(track); val mime=format.getString(MediaFormat.KEY_MIME) ?: error("오디오 형식을 확인할 수 없습니다.")
-            android.util.Log.i("AssistantTest","CODEC inputFormat="+format)
             val duration=if(format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
             val truncated=duration>MAX_DURATION_US
             extractor.selectTrack(track)
@@ -107,7 +106,6 @@ internal object OfflineAudio {
             var sampleRate=if(format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 16000
             var encoding=AudioFormat.ENCODING_PCM_16BIT;var resampler=StreamingResampler(sampleRate)
             val output=StringBuilder();val info=MediaCodec.BufferInfo();var inputDone=false;var outputDone=false
-            var inputs=0;var outputs=0;var totalFrames=0;var maxAmplitude=0
             Recognizer(model,16000f).use { recognizer ->
                 var idle=0
                 while(!outputDone) {
@@ -118,8 +116,8 @@ internal object OfflineAudio {
                         if(index>=0) {
                             val input=decoder.getInputBuffer(index) ?: error("입력 버퍼를 확인하지 못했습니다.")
                             val time=extractor.sampleTime
+                            // AAC priming can have a negative timestamp; only a negative read means EOF.
                             val size=if(time>MAX_DURATION_US) -1 else extractor.readSampleData(input,0)
-                            if(inputs++<4) android.util.Log.i("AssistantTest","CODEC input time="+time+" size="+size)
                             if(size<0) { decoder.queueInputBuffer(index,0,0,0,MediaCodec.BUFFER_FLAG_END_OF_STREAM);inputDone=true }
                             else { decoder.queueInputBuffer(index,0,size,time,0);extractor.advance() }
                             progressed=true
@@ -131,12 +129,10 @@ internal object OfflineAudio {
                             val nextRate=if(outputFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) outputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) else sampleRate
                             if(nextRate!=sampleRate) { sampleRate=nextRate;resampler=StreamingResampler(sampleRate) }
                             channels=if(outputFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else channels
-                            android.util.Log.i("AssistantTest","CODEC outputFormat="+outputFormat)
                             encoding=if(outputFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
                             require(channels in 1..8);progressed=true
                         }
                         in 0..Int.MAX_VALUE -> {
-                            if(outputs++<4) android.util.Log.i("AssistantTest","CODEC out size="+info.size+" flags="+info.flags+" offset="+info.offset)
                             if(info.size>0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG==0) {
                                 val buffer=decoder.getOutputBuffer(index) ?: error("출력 버퍼를 확인하지 못했습니다.")
                                 buffer.position(info.offset);buffer.limit(info.offset+info.size)
@@ -149,7 +145,6 @@ internal object OfflineAudio {
                                     repeat(channels) { sum+=if(encoding==AudioFormat.ENCODING_PCM_FLOAT) (pcm.float.coerceIn(-1f,1f)*32767f).toDouble() else pcm.short.toDouble() }
                                     mono[frame]=(sum/channels).roundToInt().coerceIn(-32768,32767).toShort()
                                 }
-                                totalFrames+=frames;maxAmplitude=maxOf(maxAmplitude,mono.maxOfOrNull { kotlin.math.abs(it.toInt()) } ?: 0)
                                 val samples=resampler.convert(mono)
                                 if(samples.isNotEmpty() && recognizer.acceptWaveForm(samples,samples.size)) appendRecognized(output,recognizer.result)
                             }
@@ -159,9 +154,7 @@ internal object OfflineAudio {
                     }
                     if(progressed) idle=0 else if(++idle>1000) error("오디오 분석 시간이 초과됐습니다.")
                 }
-                val finalJson=recognizer.finalResult
-                android.util.Log.i("AssistantTest","CODEC inputs="+inputs+" outputs="+outputs+" totalFrames="+totalFrames+" maxAmplitude="+maxAmplitude+" final="+finalJson)
-                appendRecognized(output,finalJson)
+                appendRecognized(output,recognizer.finalResult)
             }
             return OfflineTranscript(output.toString().trim().take(30000),truncated)
         } finally { try { codec?.stop() } catch(_: Exception) {} ;codec?.release();extractor.release() }
