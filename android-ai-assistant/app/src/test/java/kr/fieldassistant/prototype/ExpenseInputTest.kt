@@ -10,7 +10,9 @@ class ExpenseInputTest {
         assertEquals("meal",ExpenseInput.parse("식비 12000원")?.type)
     }
     @Test fun rejectsAmbiguousAndOutOfRangeAmounts() {
-        assertNull(ExpenseInput.parse("주차비 오천원"))
+        assertEquals(5000L,ExpenseInput.parse("주차비 오천원")?.amount)
+        assertEquals(5000L,ExpenseInput.parse("주차비 5천원")?.amount)
+        assertNull(ExpenseInput.parse("주차비 만오천원"))
         assertNull(ExpenseInput.parse("주차비 1000원 또는 2000원"))
         assertNull(ExpenseInput.parse("주차비 0원"))
         assertNull(ExpenseInput.parse("주차비 100000001원"))
