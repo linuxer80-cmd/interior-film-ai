@@ -76,6 +76,7 @@ internal class SecureSessionManager(context: Context) : SessionManager {
 internal class ExpenseRejected(message:String):Exception(message)
 internal class FilmRejected(message:String):Exception(message)
 internal class ScreenshotRetryNew:Exception()
+internal class TradeApiFailure(val status:Int,message:String):Exception(message)
 
 internal data class CompanyAccess(val id: String, val name: String, val role: String)
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
@@ -274,6 +275,34 @@ internal class AccountAuth private constructor(context: Context) {
                 val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
                 check(code in 200..299 && result.optBoolean("success")) { "상담 내용을 분석하지 못했습니다. 로그인과 연결 상태를 확인해 주세요." }
                 result.optJSONObject("data") ?: error("분석 결과를 확인하지 못했습니다.")
+            } finally { c.disconnect() }
+        }
+    }
+    suspend fun tradeClients(expectedUser:String,companyId:String,body:JSONObject?=null):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        if(body!=null) {
+            require(body.optString("action") in listOf("client","contact"))
+            require(Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("requestId")))
+        }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/admin/trade-clients").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val status=c.responseCode
+                val raw=(if(status in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299) throw TradeApiFailure(status,result.optString("error").ifBlank { "거래처 요청을 처리하지 못했습니다." })
+                if(body==null) {
+                    for(key in listOf("clients","contacts")) {
+                        val rows=result.optJSONArray(key) ?: error("거래처 목록을 확인하지 못했습니다.")
+                        for(i in 0 until rows.length()) { val row=rows.getJSONObject(i);check(row.optString("company_id")==companyId) { "다른 업체의 정보입니다." } }
+                    }
+                }
+                result
             } finally { c.disconnect() }
         }
     }

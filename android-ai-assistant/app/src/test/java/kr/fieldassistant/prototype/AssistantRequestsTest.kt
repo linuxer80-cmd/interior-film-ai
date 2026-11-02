@@ -40,6 +40,14 @@ class AssistantRequestsTest {
         assertEquals(2,ScheduleDates.fromSites(sites,"2026-11-02","2026-11-08").size)
         assertEquals("unknown",AssistantRequests.parse("0번 현장",monday).kind)
     }
+    @Test fun tradeClientRoutingIsOwnerOnly() {
+        for (text in listOf("거래처 관리", "거래처 등록", "드림아트 거래처 보여줘")) {
+            val request=AssistantRequests.parse(text,monday)
+            assertEquals("feature",request.kind);assertEquals("clients",request.feature)
+        }
+        assertNull(AssistantRequests.feature("clients",false))
+        assertEquals("/admin/clients",AssistantRequests.feature("clients",true)?.path)
+    }
     @Test fun customerPageRequestsStayOwnerOnly() {
         for (text in listOf("고객페이지 관리", "고객 페이지 견적 링크", "고객홈페이지 수정", "업체소개 관리")) {
             val r=AssistantRequests.parse(text,monday)
