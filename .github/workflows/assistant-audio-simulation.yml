@@ -28,6 +28,7 @@ jobs:
           edge-tts --voice ko-KR-SunHiNeural --text '안녕하세요. 싱크대 인테리어 필름 시공 견적 부탁드립니다. 견적을 알려 주세요.' --write-media /tmp/assistant-synthetic.mp3
           ffmpeg_bin="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
           "$ffmpeg_bin" -v error -y -i /tmp/assistant-synthetic.mp3 -ar 16000 -ac 1 -c:a aac -b:a 96k android-ai-assistant/app/src/debug/assets/fixture.m4a
+          "$ffmpeg_bin" -v error -y -i /tmp/assistant-synthetic.mp3 -ar 16000 -ac 1 -f s16le android-ai-assistant/app/src/debug/assets/fixture.pcm
       - name: Enable hardware acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

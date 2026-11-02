@@ -58,6 +58,15 @@ class IncomingRecordingTest {
                 val modelPath=OfflineModel.ensure(c)
                 Log.i("AssistantTest","DIAG modelReady="+modelPath.exists())
                 org.vosk.Model(modelPath.absolutePath).use { model ->
+                    val rawBytes=c.assets.open("fixture.pcm").readBytes()
+                    val buffer=java.nio.ByteBuffer.wrap(rawBytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                    val rawSamples=ShortArray(buffer.remaining());buffer.get(rawSamples)
+                    val amplitude=rawSamples.maxOfOrNull { kotlin.math.abs(it.toInt()) } ?: 0
+                    org.vosk.Recognizer(model,16000f).use { recognizer ->
+                        val accepted=recognizer.acceptWaveForm(rawSamples,rawSamples.size)
+                        val resultJson=if(accepted) recognizer.result else ""
+                        Log.i("AssistantTest","DIAG rawSamples="+rawSamples.size+" maxAmplitude="+amplitude+" accepted="+accepted+" result="+resultJson+" final="+recognizer.finalResult)
+                    }
                     val decoded=OfflineAudio.transcribe(c,file.uri,model) { false }
                     Log.i("AssistantTest","DIAG directTranscript="+decoded.text)
                 }
