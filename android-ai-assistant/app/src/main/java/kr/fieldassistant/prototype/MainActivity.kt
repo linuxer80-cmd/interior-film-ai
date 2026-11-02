@@ -10,6 +10,7 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -73,6 +74,12 @@ class MainActivity : Activity() {
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
     private var registrationDialog: AlertDialog? = null
+    private var resultListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private var listenerUser: String? = null
+    private var reviewId: String? = null
+    private var reviewUser: String? = null
+    private var forcedReviewId: String? = null
+    private var modelChecked = false
     private val handlerScan = Runnable { scanFolder() }
     private val observer = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean) {
@@ -84,6 +91,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
+        captureReview(intent)
         render()
         restoreLogin()
     }
@@ -99,7 +107,10 @@ class MainActivity : Activity() {
         }
     }
     private fun activateAccount(verified: VerifiedAccount) {
-        account=verified;sessionEpoch++;pending.clear();inFlight.clear()
+        account=verified;sessionEpoch++;pending.clear();inFlight.clear();modelChecked=false
+        attachResults(verified.userId)
+        mergeResults(verified.userId)
+        folder()?.let { BackgroundCalls.activate(applicationContext,verified.userId,it) }
         val saved=records()
         for(i in 0 until saved.length()) {
             val item=saved.optJSONObject(i) ?: continue
@@ -116,11 +127,12 @@ class MainActivity : Activity() {
                 val model=Generation.getClient(); val aiReady=try { model.checkStatus()==FeatureStatus.AVAILABLE } finally { model.close() }
                 if(epoch==sessionEpoch && readyMode!=null && aiReady) { speechMode=readyMode; prepared=true; render(); processNext() }
             } catch (_: Exception) { /* The user can prepare the model from the button. */ }
+            finally { if(epoch==sessionEpoch && account!=null) { modelChecked=true; maybeReview() } }
         }
     }
     override fun onStart() {
         super.onStart(); active = true
-        if(account!=null) { startObserver(); scanFolder(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder(); maybeReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -132,7 +144,64 @@ class MainActivity : Activity() {
         if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
         super.onStop()
     }
-    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent);setIntent(intent);captureReview(intent);maybeReview()
+    }
+    override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
+    private fun captureReview(intent: Intent?) {
+        val id=intent?.getStringExtra("assistant_record") ?: return
+        val user=intent.getStringExtra("assistant_user") ?: return
+        reviewId=id;reviewUser=user
+        intent.removeExtra("assistant_record");intent.removeExtra("assistant_user")
+    }
+    private fun maybeReview() {
+        if(!active || account==null || !modelChecked) return
+        val id=reviewId ?: return
+        if(reviewUser!=account?.userId) { reviewId=null;reviewUser=null;message("알림을 받은 계정으로 로그인해 주세요.");return }
+        mergeResults(requireNotNull(account).userId)
+        val item=recordById(id) ?: return
+        reviewId=null;reviewUser=null
+        if(prepared && item.optString("transcript").isNotBlank() && item.optString("site_id").isBlank()) {
+            forcedReviewId=id
+            if(id !in pending && id !in inFlight) pending.add(id)
+            processNext()
+        } else showRegistrationConfirmation(id)
+    }
+    private fun attachResults(uid: String) {
+        detachResults();listenerUser=uid
+        val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
+            if(key?.startsWith("record_")==true) handler.post {
+                if(account?.userId==uid) { mergeResults(uid);render();maybeReview() }
+            }
+        }
+        resultListener=listener
+        BackgroundCalls.resultPrefs(applicationContext,uid).registerOnSharedPreferenceChangeListener(listener)
+    }
+    private fun detachResults() {
+        val uid=listenerUser;val listener=resultListener
+        if(uid!=null && listener!=null) BackgroundCalls.resultPrefs(applicationContext,uid).unregisterOnSharedPreferenceChangeListener(listener)
+        listenerUser=null;resultListener=null
+    }
+    private fun mergeResults(uid: String) {
+        if(account?.userId!=uid) return
+        synchronized(BackgroundCalls.lock) {
+            val source=BackgroundCalls.resultPrefs(applicationContext,uid)
+            val entries=source.all.filterKeys { it.startsWith("record_") }
+            if(entries.isEmpty()) return
+            val a=records();val ids=mutableSetOf<String>()
+            for(i in 0 until a.length()) a.optJSONObject(i)?.optString("id")?.let(ids::add)
+            val known=seen();val remove=mutableListOf<String>()
+            for((key,value) in entries) {
+                val item=try { JSONObject(value as String) } catch(_: Exception) { continue }
+                val id=item.optString("id");if(id.isBlank()) continue
+                if(ids.add(id)) a.put(item)
+                known.add(id);remove.add(key)
+            }
+            if(prefs.edit().putString("records",a.toString()).putStringSet("seen",known).commit()) {
+                val editor=source.edit();remove.forEach(editor::remove);editor.apply()
+            }
+        }
+    }
 
     private fun folder(): Uri? = prefs.getString("folder", null)?.let { Uri.parse(it) }
     private fun records(): JSONArray = try { JSONArray(prefs.getString("records", "[]")) } catch (_: Exception) { JSONArray() }
@@ -185,8 +254,11 @@ class MainActivity : Activity() {
                 val files = withContext(Dispatchers.IO) { currentFiles(uri) }
                 if(epoch!=sessionEpoch || account==null) return@launch
                 // Existing recordings form the baseline; never scan them automatically.
-                prefs.edit().putString("folder", uri.toString()).putStringSet("seen", files.map { it.uri.toString() }.toSet()).putString("records", "[]").apply()
+                val uid=requireNotNull(account).userId
+                BackgroundCalls.stop(applicationContext);BackgroundCalls.resetResults(applicationContext,uid)
+                check(prefs.edit().putString("folder", uri.toString()).putStringSet("seen", files.map { it.uri.toString() }.toSet()).putString("records", "[]").commit())
                 pending.clear(); inFlight.clear()
+                BackgroundCalls.activate(applicationContext,uid,uri)
                 if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
                 startObserver(); folderStatus="폴더가 연결됐습니다. 이제 저장되는 새 녹음을 확인합니다.";message(folderStatus)
             } catch (_: Exception) { if(epoch==sessionEpoch) { simpleSetup=false;folderStatus="폴더를 읽을 수 없습니다. 다른 폴더를 선택해 주세요." } }
@@ -194,37 +266,10 @@ class MainActivity : Activity() {
         }
     }
     private fun scanFolder() {
-        if(account==null) return
-        val epoch=sessionEpoch
-        val f = folder() ?: return
-        if (scanning || baselineBusy) return
-        scanning = true
-        scope.launch {
-            try {
-                val files = withContext(Dispatchers.IO) { currentFiles(f).map { FileSnapshot(it.uri.toString(), it.name ?: "새 통화 녹음", it.length(), it.lastModified()) } }
-                if(epoch!=sessionEpoch || account==null) return@launch
-                val existing = seen()
-                val recs = records()
-                for (file in files) {
-                    val id = file.id
-                    if (id !in existing && file.size > 0) {
-                        // Some recorders write while the file already exists; retry after it is quiet.
-                        if (file.modified > 0 && System.currentTimeMillis() - file.modified < 5000) {
-                            handler.removeCallbacks(handlerScan); handler.postDelayed(handlerScan, 7000); continue
-                        }
-                        existing.add(id)
-                        recs.put(JSONObject().put("id", id).put("name", file.name).put("status", "분석 대기"))
-                        if (id !in pending) pending.add(id)
-                    }
-                }
-                prefs.edit().putStringSet("seen", existing).apply(); saveRecords(recs)
-                render(); processNext()
-            } catch (_: SecurityException) { message("녹음 폴더 접근이 해제됐습니다. 다시 선택해 주세요.") }
-              catch (_: Exception) { message("녹음 폴더를 확인하지 못했습니다. 다시 선택해 주세요.") }
-            finally { scanning = false }
-        }
+        val uid=account?.userId ?: return
+        if(folder()==null || baselineBusy) return
+        mergeResults(uid);BackgroundCalls.kick(applicationContext,uid);render()
     }
-    private data class FileSnapshot(val id: String, val name: String, val size: Long, val modified: Long)
     private fun recordById(id: String): JSONObject? {
         val a=records(); for (i in 0 until a.length()) { val x=a.getJSONObject(i); if (x.optString("id")==id) return x }; return null
     }
@@ -242,20 +287,25 @@ class MainActivity : Activity() {
         running=true; inFlight.add(id); updateRecord(id,"휴대폰에서 분석 중")
         analysisJob=scope.launch {
             try {
-                val text=transcribe(Uri.parse(id))
+                val text=recordById(id)?.optString("transcript").orEmpty().ifBlank { transcribe(Uri.parse(id)) }
                 if(epoch!=sessionEpoch || account==null) return@launch
                 if(text.isBlank()) throw IllegalStateException("음성 내용을 읽지 못했습니다.")
                 updateRecord(id,"내용 정리 중",text.take(30000))
                 val result=summarize(text)
                 if(epoch!=sessionEpoch || account==null) return@launch
                 updateRecord(id,"확인 필요",text.take(30000),result)
-                if(CallSummary.isEstimateInquiry(result)) {
-                    postCompletionNotification(id)
-                    if(active && account!=null) showRegistrationConfirmation(id)
+                if(forcedReviewId==id || CallSummary.isEstimateInquiry(result)) {
+                    forcedReviewId=null
+                    if(active && account!=null) showRegistrationConfirmation(id) else postCompletionNotification(id)
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
-                if(epoch==sessionEpoch && account!=null) updateRecord(id,"분석 실패",summary="기기 지원, 모델 준비 상태 또는 파일 형식을 확인한 뒤 다시 시도해 주세요.")
+                if(epoch==sessionEpoch && account!=null) {
+                    val prior=recordById(id)
+                    if(prior?.optString("transcript").isNullOrBlank()) updateRecord(id,"분석 실패",summary="기기 지원, 모델 준비 상태 또는 파일 형식을 확인한 뒤 다시 시도해 주세요.")
+                    else updateRecord(id,"확인 필요",summary="내용을 자동 정리하지 못했습니다. 인식한 통화 내용을 확인해 주세요.")
+                    if(forcedReviewId==id && active) { forcedReviewId=null;showRegistrationConfirmation(id) }
+                }
             } finally {
                 if(epoch==sessionEpoch) { running=false; inFlight.remove(id); processNext() }
             }
@@ -474,6 +524,7 @@ class MainActivity : Activity() {
     }
     private fun signOut() {
         sessionEpoch++;analysisJob?.cancel();analysisJob=null
+        BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
@@ -588,7 +639,8 @@ class MainActivity : Activity() {
         val manager=ensureNotificationChannel()
         if(!notificationsEnabled()) return
         val intent=Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val pendingIntent=PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            .putExtra("assistant_record",id).putExtra("assistant_user",account?.userId)
+        val pendingIntent=PendingIntent.getActivity(this, id.hashCode() and Int.MAX_VALUE, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=Notification.Builder(this,"assistant_results")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("새 통화 분석이 완료됐어요")
@@ -658,8 +710,8 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("업체 선택").setItems(names) { _,which -> prefs.edit().putString("selected_company",verified.companies[which].id).apply();render() }.setNegativeButton("취소",null).show()
         }
         addButton(col,"로그아웃",false) { signOut() }
-        col.addView(text("선택한 통화 녹음 폴더의 새 파일을 앱이 열려 있을 때 확인합니다.",14f))
-        val info=text("녹음은 휴대폰에서 분석합니다. 등록을 확인하면 수정한 상담 내용이 필름장이에 저장됩니다. 최초 모델 준비에는 인터넷이 필요할 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
+        col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
+        val info=text("녹음은 휴대폰에서 분석합니다. 견적 문의를 놓칠 수 있으니 비서함도 확인해 주세요. 등록을 확인한 내용만 필름장이에 저장됩니다. 백그라운드 확인과 알림은 절전 설정에 따라 지연될 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
         val ready=folder()!=null && prepared && notificationsEnabled()
         if(ready) col.addView(text("✓ 비서 준비 완료",16f,true))

@@ -1,0 +1,156 @@
+package kr.fieldassistant.prototype
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import androidx.documentfile.provider.DocumentFile
+import androidx.work.*
+import org.json.JSONObject
+import org.vosk.Model
+import java.security.MessageDigest
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal object BackgroundCalls {
+    private const val STATE="assistant_background_state"
+    private const val ACTIVE="active_user"
+    private const val PERIODIC="assistant_background_periodic"
+    private const val IMMEDIATE="assistant_background_immediate"
+    private const val WATCH="assistant_background_watch"
+    private const val RETRY="assistant_background_retry"
+    val lock=Any()
+    val running=AtomicBoolean(false)
+    fun resultPrefs(ctx: Context,uid: String)=ctx.getSharedPreferences("assistant_background_$uid",Context.MODE_PRIVATE)
+    fun active(ctx: Context,uid: String,token: String?=null): Boolean {
+        val state=ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE)
+        return state.getString(ACTIVE,null)==uid && (token==null || state.getString("generation",null)==token)
+    }
+    private fun generation(ctx: Context)=ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE).getString("generation",null)
+    private fun input(uid: String, token: String, watch: Boolean=false)=workDataOf("user" to uid,"generation" to token,"watch" to watch)
+    fun activate(ctx: Context,uid: String,tree: Uri) {
+        val token=synchronized(lock) {
+            val state=ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE)
+            val same=state.getString(ACTIVE,null)==uid && state.getString("tree",null)==tree.toString()
+            val next=if(same) state.getString("generation",null) ?: UUID.randomUUID().toString() else UUID.randomUUID().toString()
+            check(state.edit().putString(ACTIVE,uid).putString("tree",tree.toString()).putString("generation",next).commit());next
+        }
+        val manager=WorkManager.getInstance(ctx)
+        val periodic=PeriodicWorkRequestBuilder<BackgroundCallWorker>(15,TimeUnit.MINUTES).setInputData(input(uid,token)).build()
+        manager.enqueueUniquePeriodicWork(PERIODIC,ExistingPeriodicWorkPolicy.UPDATE,periodic)
+        armWatcher(ctx,uid,tree,false)
+        kick(ctx,uid)
+    }
+    fun kick(ctx: Context,uid: String) {
+        if(!active(ctx,uid)) return
+        val token=generation(ctx) ?: return
+        WorkManager.getInstance(ctx).enqueueUniqueWork(IMMEDIATE,ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token)).build())
+    }
+    fun retryLater(ctx: Context,uid: String) {
+        if(!active(ctx,uid)) return
+        val token=generation(ctx) ?: return
+        WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token)).setInitialDelay(30,TimeUnit.SECONDS).build())
+    }
+    fun armWatcher(ctx: Context,uid: String,tree: Uri,append: Boolean) {
+        if(!active(ctx,uid)) return
+        val token=generation(ctx) ?: return
+        val constraints=Constraints.Builder().addContentUriTrigger(tree,true)
+            .setTriggerContentUpdateDelay(10,TimeUnit.SECONDS).setTriggerContentMaxDelay(30,TimeUnit.SECONDS).build()
+        val request=OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token,true)).setConstraints(constraints).build()
+        WorkManager.getInstance(ctx).enqueueUniqueWork(WATCH,if(append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
+    }
+    fun stop(ctx: Context) {
+        synchronized(lock) { ctx.getSharedPreferences(STATE,Context.MODE_PRIVATE).edit().remove(ACTIVE).remove("generation").remove("tree").commit() }
+        val manager=WorkManager.getInstance(ctx)
+        manager.cancelUniqueWork(PERIODIC);manager.cancelUniqueWork(IMMEDIATE);manager.cancelUniqueWork(WATCH);manager.cancelUniqueWork(RETRY)
+    }
+    fun resetResults(ctx: Context,uid: String) { synchronized(lock) { resultPrefs(ctx,uid).edit().clear().commit() } }
+    fun key(id: String): String = MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+}
+
+class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(context,params) {
+    override fun doWork(): Result {
+        val ctx=applicationContext;val uid=inputData.getString("user") ?: return Result.success()
+        val token=inputData.getString("generation") ?: return Result.success()
+        if(!BackgroundCalls.active(ctx,uid,token)) return Result.success()
+        val userPrefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
+        val tree=userPrefs.getString("folder",null)?.let(Uri::parse) ?: return Result.success()
+        if(!BackgroundCalls.running.compareAndSet(false,true)) {
+            if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
+            return Result.success()
+        }
+        try {
+            val dir=DocumentFile.fromTreeUri(ctx,tree) ?: return Result.success()
+            val files=dir.listFiles().filter { f -> f.isFile && f.name?.lowercase(Locale.ROOT)?.let { n -> listOf(".m4a",".mp3",".wav",".ogg",".flac").any(n::endsWith) }==true }
+                .sortedBy { it.lastModified() }
+            val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
+            val background=BackgroundCalls.resultPrefs(ctx,uid)
+            val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
+            var model: Model?=null;var count=0
+            try {
+                for(file in files) {
+                    if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
+                    val id=file.uri.toString();if(id in existing || id in processed || file.length()<=0) continue
+                    val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.length();val modified=file.lastModified()
+                    val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
+                    if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
+                        background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
+                        BackgroundCalls.retryLater(ctx,uid);continue
+                    }
+                    if(count>=3) { BackgroundCalls.retryLater(ctx,uid);break }
+                    count++
+                    val record=JSONObject().put("id",id).put("name",file.name ?: "새 통화 녹음")
+                    var candidate=false
+                    try {
+                        if(model==null) model=Model(OfflineModel.ensure(ctx).absolutePath)
+                        val result=OfflineAudio.transcribe(ctx,file.uri,model!!) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
+                        if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
+                        candidate=InquiryMatcher.likely(result.text)
+                        val label=if(candidate) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
+                        record.put("status","확인 필요").put("transcript",result.text)
+                            .put("summary","$label\n휴대폰에서 음성을 분석했습니다. 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                            .put("offline_candidate",candidate).put("offline_truncated",result.truncated)
+                    } catch(e: InterruptedException) { break
+                    } catch(_: Exception) {
+                        record.put("status","분석 실패").put("summary","휴대폰에서 이 녹음을 분석하지 못했습니다. 앱에서 다시 시도해 주세요.")
+                    }
+                    synchronized(BackgroundCalls.lock) {
+                        if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
+                        processed.add(id)
+                        check(background.edit().putString("record_$key",record.toString()).putStringSet("processed",processed.toSet()).remove("size_$key").remove("time_$key").commit())
+                        if(candidate) notifyCandidate(ctx,uid,id)
+                    }
+                }
+            } finally { model?.close() }
+            return Result.success()
+        } catch(_: Exception) { return Result.retry() }
+        finally {
+            BackgroundCalls.running.set(false)
+            if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
+        }
+    }
+    private fun notifyCandidate(ctx: Context,uid: String,id: String) {
+        val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(NotificationChannel("assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT))
+        if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
+        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
+        val request=id.hashCode() and Int.MAX_VALUE
+        val intent=Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra("assistant_record",id).putExtra("assistant_user",uid)
+        val pending=PendingIntent.getActivity(ctx,request,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        try { manager.notify(request,Notification.Builder(ctx,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("견적 문의일 수 있는 통화가 있어요")
+            .setContentText("눌러서 내용을 확인하고 현장 등록을 선택하세요.").setContentIntent(pending).setAutoCancel(true).build()) }
+        catch(_: SecurityException) { }
+    }
+}
