@@ -903,8 +903,95 @@ class MainActivity : Activity() {
         val messages=JSONArray(prefs.getString("home_chat","[]"))
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
+        if(feature.id=="customer-page") { customerPageManager();return }
         if(feature.id=="new-site") showNewSiteRegistration()
         if(feature.id=="profit") openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path)
+    }
+    private var customerPageBusy=false
+    private val customerProfileFields=listOf(
+        Triple("business_name","상호",100),Triple("representative_name","대표자명",100),Triple("business_number","사업자등록번호",30),
+        Triple("business_address","사업장 주소",300),Triple("public_phone","상담 전화번호",30),Triple("public_email","이메일",200),
+        Triple("regions","시공 상담 지역",300),Triple("introduction","업체 소개",2000),Triple("blog_url","블로그 주소",1000),
+        Triple("instagram_url","인스타그램 주소",1000),Triple("place_url","플레이스 주소",1000))
+    private fun customerPageManager() {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        if(company.role!="관리자") { message("고객페이지 관리는 관리자만 사용할 수 있습니다.");return }
+        if(customerPageBusy) { message("고객페이지 정보를 확인하고 있습니다.");return }
+        customerPageBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val profile=auth.customerProfile(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                if(profile==null) {
+                    AlertDialog.Builder(this@MainActivity).setTitle("고객페이지 관리").setMessage("아직 저장된 업체 정보가 없습니다. 고객페이지 관리에서 처음 등록해 주세요.")
+                        .setPositiveButton("관리 화면 열기") { _,_ -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page") }.setNegativeButton("닫기",null).show()
+                } else showCustomerPageMenu(uid,company,profile)
+            } catch(e:CancellationException) { throw e }
+            catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("고객페이지 정보를 불러오지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
+            finally { customerPageBusy=false }
+        }
+    }
+    private fun showCustomerPageMenu(uid:String,company:CompanyAccess,profile:JSONObject) {
+        val name=profile.optString("business_name").takeUnless { it=="null" }.orEmpty().ifBlank { company.name }
+        val published=if(profile.optBoolean("is_published")) "공개 중" else "비공개"
+        AlertDialog.Builder(this).setTitle("고객페이지 관리 · $name").setMessage("업체 소개와 시공 사례: $published")
+            .setItems(arrayOf("업체 정보 확인 · 수정","디자인 · 시공 사례 · 공개 설정","고객페이지 열기 · 공유")) { _,choice ->
+                if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("해당 관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
+                if(choice==0) editCustomerProfile(uid,company,profile)
+                else openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page")
+            }.setNegativeButton("닫기",null).show()
+    }
+    private fun editCustomerProfile(uid:String,company:CompanyAccess,profile:JSONObject) {
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        form.addView(text("공개 설정에 따라 고객에게 보이는 정보입니다.",14f))
+        val inputs=linkedMapOf<String,EditText>()
+        customerProfileFields.forEach { (key,label,max) ->
+            form.addView(text(label,14f,true))
+            val field=EditText(this).apply {
+                setText(if(profile.isNull(key)) "" else profile.optString(key));hint=label
+                filters=arrayOf(android.text.InputFilter.LengthFilter(max))
+                inputType=if(key=="introduction") InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES else InputType.TYPE_CLASS_TEXT
+                if(key=="introduction") minLines=3
+            }
+            inputs[key]=field;form.addView(field,LinearLayout.LayoutParams(-1,-2))
+        }
+        val scroller=ScrollView(this).apply { addView(form) }
+        val dialog=AlertDialog.Builder(this).setTitle("고객페이지 업체 정보").setView(scroller).setPositiveButton("변경 내용 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val changes=JSONObject()
+                inputs.forEach { (key,field) -> val value=field.text.toString().trim();val before=if(profile.isNull(key)) "" else profile.optString(key).trim();if(value!=before) changes.put(key,value) }
+                if(changes.length()==0) { message("변경된 내용이 없습니다.");return@setOnClickListener }
+                for(key in listOf("blog_url","instagram_url","place_url")) if(changes.has(key) && changes.optString(key).isNotBlank()) {
+                    val url=try { Uri.parse(changes.optString(key)) } catch(_:Exception) { null }
+                    if(url==null || url.scheme !in listOf("http","https") || url.host.isNullOrBlank()) { message("링크 주소는 http 또는 https로 시작해야 합니다.");return@setOnClickListener }
+                }
+                val newName=changes.optString("business_name",profile.optString("business_name"))
+                val newIntro=changes.optString("introduction",profile.optString("introduction"))
+                if(profile.optBoolean("is_published") && (newName.isBlank() || newIntro.isBlank() || (profile.optJSONArray("services")?.length() ?: 0)==0)) { message("공개 중인 페이지에는 상호, 업체 소개와 시공 서비스가 필요합니다.");return@setOnClickListener }
+                val summary=customerProfileFields.filter { changes.has(it.first) }.joinToString("\n") { "${it.second}: ${changes.optString(it.first).ifBlank { "(비움)" }}" }
+                AlertDialog.Builder(this).setTitle("업체 정보 저장").setMessage("다음 내용을 저장할까요?\n\n$summary")
+                    .setPositiveButton("저장") { _,_ -> saveCustomerProfile(uid,company,profile,changes,dialog) }.setNegativeButton("계속 수정",null).show()
+            }
+        }
+        dialog.show()
+    }
+    private fun saveCustomerProfile(uid:String,company:CompanyAccess,profile:JSONObject,changes:JSONObject,dialog:AlertDialog) {
+        if(customerPageBusy) { message("저장 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        customerPageBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val version=if(profile.isNull("updated_at")) "" else profile.optString("updated_at")
+                val updated=auth.customerProfile(uid,company.id,changes,version) ?: error("저장 결과가 없습니다.")
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                dialog.dismiss();appendHomeMessage("${company.name} 고객페이지 업체 정보를 저장했습니다.");render()
+                showCustomerPageMenu(uid,company,updated)
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message(e.message ?: "저장하지 못했습니다. 다시 확인해 주세요.") }
+            finally { customerPageBusy=false }
+        }
     }
     private fun showFeatures() {
         val owner=selectedCompany()?.role=="관리자"
@@ -1485,7 +1572,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
+                addButton(body,feature.title+" 열기",false) { confirmWebAccount { if(feature.id=="new-site") showNewSiteRegistration() else if(feature.id=="customer-page") customerPageManager() else openWebWorkspace("https://interior-film-ai.vercel.app"+feature.path) } }
             }
         }
         candidate?.let { item ->

@@ -40,6 +40,14 @@ class AssistantRequestsTest {
         assertEquals(2,ScheduleDates.fromSites(sites,"2026-11-02","2026-11-08").size)
         assertEquals("unknown",AssistantRequests.parse("0번 현장",monday).kind)
     }
+    @Test fun customerPageRequestsStayOwnerOnly() {
+        for (text in listOf("고객페이지 관리", "고객 페이지 견적 링크", "고객홈페이지 수정", "업체소개 관리")) {
+            val r=AssistantRequests.parse(text,monday)
+            assertEquals("feature",r.kind);assertEquals("customer-page",r.feature)
+        }
+        assertNull(AssistantRequests.feature("customer-page",false))
+        assertEquals("/admin/customer-page",AssistantRequests.feature("customer-page",true)?.path)
+    }
     @Test fun registrationOpensExplicitOwnerOnlyFlow() {
         for (text in listOf("현장등록", "새 현장 등록", "신규 현장 등록", "현장 추가")) {
             val request=AssistantRequests.parse(text,monday)
@@ -88,5 +96,6 @@ class AssistantRequestsTest {
         assertEquals("2025-12-31",AssistantRequests.parse("작년 매출",today).to)
     }
 }
+
 
 
