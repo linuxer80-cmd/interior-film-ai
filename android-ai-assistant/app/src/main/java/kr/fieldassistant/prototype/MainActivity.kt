@@ -783,7 +783,7 @@ class MainActivity : Activity() {
         }.setNegativeButton("닫기",null).show()
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","film","report","expenses","info","quote","schedule") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","quote","schedule") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -813,7 +813,7 @@ class MainActivity : Activity() {
                         catch(_:ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://map.naver.com/p/search/"+Uri.encode(address)))) }
                     }
                     else -> {
-                        val workerTask=action in listOf("film","expenses","report")
+                        val workerTask=action in listOf("film","expenses","report","photos")
                         val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
                         openWebWorkspace("https://interior-film-ai.vercel.app"+path)
                     }
@@ -1024,6 +1024,16 @@ class MainActivity : Activity() {
             }
         }
         row.addView(voice,LinearLayout.LayoutParams(dp(44),dp(44)))
+        val photo=TextView(this).apply {
+            text="📷";textSize=20f;gravity=Gravity.CENTER;contentDescription="현장 사진 추가"
+            setOnClickListener {
+                val company=selectedCompany()
+                val id=if(company!=null && prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
+                if(company==null || id.isBlank()) message("먼저 사진을 추가할 현장 상세를 선택해 주세요.")
+                else openSiteAction(company.id,id,"photos")
+            }
+        }
+        row.addView(photo,LinearLayout.LayoutParams(dp(44),dp(44)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         scroll.post { if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN) }
