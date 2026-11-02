@@ -405,7 +405,7 @@ class MainActivity : Activity() {
                 val result=summarize(text)
                 if(epoch!=sessionEpoch || account==null) return@launch
                 updateRecord(id,"확인 필요",text.take(30000),result)
-                if(forcedReviewId==id || CallSummary.isEstimateInquiry(result)) {
+                if((forcedReviewId==id || CallSummary.isEstimateInquiry(result)) && recordById(id)?.let { consultationDisposition(it)=="active" }==true) {
                     forcedReviewId=null
                     if(active && account!=null) showRegistrationConfirmation(id) else postCompletionNotification(id)
                 }
@@ -566,6 +566,17 @@ class MainActivity : Activity() {
         messages.put(JSONObject().put("user",user).put("body",body))
         it.put("chat_messages",messages)
     }
+    private fun consultationDisposition(item: JSONObject): String {
+        val messages=item.optJSONArray("chat_messages") ?: JSONArray()
+        val replies=(0 until messages.length()).mapNotNull { messages.optJSONObject(it) }
+            .filter { it.optBoolean("user") }.map { it.optString("body") }
+        return ConsultationChat.disposition(item.optString("chat_disposition"),replies)
+    }
+    private fun resumeConsultation(id: String) {
+        if(!changeRecord(id) { it.put("chat_disposition","active") }) { message("변경을 저장하지 못했습니다.");return }
+        chatMessage(id,"등록 검토를 다시 시작합니다. 내용을 확인한 뒤 등록 여부를 알려 주세요.")
+        render()
+    }
     private fun showRegistrationConfirmation(id: String) {
         if(!active || account==null) return
         val item=recordById(id) ?: return
@@ -603,9 +614,21 @@ class MainActivity : Activity() {
         val value=input.trim().take(500);if(value.isBlank()) return
         chatInput=""
         if(!chatMessage(id,value,true)) { message("답변을 저장하지 못했습니다.");return }
+        if(consultationDisposition(item)!="active" && ConsultationChat.reply(value) !in listOf(ConsultationChat.Reply.LATER,ConsultationChat.Reply.DECLINE)) {
+            chatMessage(id,"이 통화의 등록 검토는 종료되어 있습니다. 다시 검토하려면 ‘등록 검토 다시 열기’를 눌러 주세요.");render();return
+        }
         when(ConsultationChat.reply(value)) {
-            ConsultationChat.Reply.LATER -> { chatMessage(id,if(reg!=null && reg.optJSONArray("candidates")==null) "추가 요청을 멈췄습니다. 앞서 보낸 저장 요청은 완료됐을 수 있습니다. ‘다시 시도’라고 답하면 같은 요청의 결과를 확인합니다." else "알겠습니다. 지금은 등록하지 않고 비서함에 보관하겠습니다. 등록하려면 다시 ‘네’라고 답해 주세요.");render();return }
-            ConsultationChat.Reply.UNKNOWN -> { chatMessage(id,"등록하려면 ‘네’ 또는 ‘그래’, 보류하려면 ‘나중에’라고 답해 주세요. 내용 변경은 ‘등록 내용 수정’을 눌러 주세요.");render();return }
+            ConsultationChat.Reply.LATER, ConsultationChat.Reply.DECLINE -> {
+                val declined=ConsultationChat.reply(value)==ConsultationChat.Reply.DECLINE
+                if(!changeRecord(id) { it.put("chat_disposition",if(declined) "declined" else "deferred") }) { message("선택을 저장하지 못했습니다.");return }
+                notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
+                val notice=if(reg!=null && reg.optJSONArray("candidates")==null)
+                    "추가 등록 요청을 멈췄습니다. 앞서 보낸 저장 요청은 완료됐을 수 있습니다. 대화 목록에서 이 통화를 열고 ‘등록 검토 다시 열기’를 누르면 같은 요청의 결과를 확인할 수 있습니다."
+                else if(declined) "이 통화는 등록하지 않겠습니다. 다시 등록을 권하지 않겠습니다. 기록은 대화 목록에 남겨둘게요."
+                else "이 통화는 보류했습니다. 자동으로 다시 묻지 않겠습니다. 필요할 때 대화 목록에서 다시 열어 주세요."
+                chatMessage(id,notice);render();return
+            }
+            ConsultationChat.Reply.UNKNOWN -> { chatMessage(id,"등록하려면 ‘네’ 또는 ‘그래’, 보류하려면 ‘나중에’, 등록하지 않으려면 ‘등록 안 함’이라고 답해 주세요. 내용 변경은 ‘등록 내용 수정’을 눌러 주세요.");render();return }
             else -> Unit
         }
         if(reg==null) {
@@ -687,7 +710,7 @@ class MainActivity : Activity() {
     }
     private fun latestConsultation(): JSONObject? {
         val items=records()
-        return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { it.optString("status")=="확인 필요" && it.optString("site_id").isBlank() }
+        return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { ConsultationChat.shouldPrompt(it.optString("status"),it.optString("site_id"),consultationDisposition(it)) }
     }
     private var lookupBusy=false
     private fun offerFeature(featureId:String) {
@@ -841,10 +864,11 @@ class MainActivity : Activity() {
         addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
+        val paused=consultationDisposition(item)!="active"
         if(done) body.addView(text("✓ 현장 등록 완료",17f,true))
-        if(!done && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
+        if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
         val candidates=reg?.optJSONArray("candidates")
-        if(candidates!=null && !busy) {
+        if(candidates!=null && !busy && !paused && !done) {
             for(i in 0 until candidates.length()) {
                 val c=candidates.optJSONObject(i) ?: continue
                 addButton(body,candidateLabel(c),false) {
@@ -858,7 +882,13 @@ class MainActivity : Activity() {
         }
         if(busy) page.addView(text("저장 결과를 확인하고 있습니다…",14f,true))
         else {
-            if(!done) {
+            if(!done && paused) {
+                body.addView(text(if(consultationDisposition(item)=="declined") "등록 안 함 · 자동 안내 종료" else "보류됨 · 자동 안내 종료",15f,true))
+                addButton(body,"등록 검토 다시 열기",false) { resumeConsultation(id) }
+                addButton(body,"비서 홈으로",false) { chatId=null;render() }
+            }
+            if(!done && !paused) {
+            addButton(body,"등록 안 함",false) { answerChat(id,"등록 안 함") }
             val quick=LinearLayout(this)
             quick.addView(button("네 · 등록",true) { answerChat(id,"네") },LinearLayout.LayoutParams(0,dp(48),1f))
             quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f));page.addView(quick)
@@ -1021,6 +1051,7 @@ class MainActivity : Activity() {
         } catch (_: SecurityException) { message("알림 권한을 다시 확인해 주세요.") }
     }
     private fun postCompletionNotification(id: String) {
+        if(recordById(id)?.let { consultationDisposition(it)!="active" }==true) return
         val manager=ensureNotificationChannel()
         if(!notificationsEnabled()) return
         val intent=Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -1152,4 +1183,5 @@ class MainActivity : Activity() {
             .setNegativeButton("취소",null).setPositiveButton("열기") { _,_ -> action() }.show()
     }
 }
+
 
