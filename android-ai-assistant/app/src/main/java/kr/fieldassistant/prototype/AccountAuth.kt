@@ -64,7 +64,13 @@ internal class SecureSessionManager(context: Context) : SessionManager {
 internal data class CompanyAccess(val id: String, val name: String, val role: String)
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
 
-internal class AccountAuth(context: Context) {
+internal class AccountAuth private constructor(context: Context) {
+    companion object {
+        @Volatile private var instance: AccountAuth?=null
+        fun shared(context: Context): AccountAuth = instance ?: synchronized(this) {
+            instance ?: AccountAuth(context.applicationContext).also { instance=it }
+        }
+    }
     private val client=createSupabaseClient(SUPABASE_URL,SUPABASE_PUBLIC_KEY) {
         install(Auth) { sessionManager=SecureSessionManager(context); autoLoadFromStorage=true; autoSaveToStorage=true }
         install(Postgrest) { requireValidSession=true }
@@ -118,6 +124,21 @@ internal class AccountAuth(context: Context) {
                 companies[companyId]=CompanyAccess(companyId,row.optString("company_name","업체명 미등록"),"시공자")
         }
         return VerifiedAccount(id,companies.values.toList())
+    }
+    suspend fun assignedSites(expectedUser: String): JSONArray {
+        client.auth.awaitInitialization()
+        val user=client.auth.retrieveUserForCurrentSession()
+        check(user.id==expectedUser) { "다른 계정입니다." }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/worker/my-sites").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(c.responseCode!=200) throw IllegalStateException("시공 일정을 확인하지 못했습니다.")
+                JSONObject(c.inputStream.bufferedReader().use { it.readText() }).getJSONArray("sites")
+            } finally { c.disconnect() }
+        }
     }
     private fun workerCompanies(token: String): JSONArray {
         val connection=URL("https://interior-film-ai.vercel.app/api/worker/companies").openConnection() as HttpsURLConnection

@@ -51,7 +51,7 @@ import java.util.Date
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
-    private val auth by lazy { AccountAuth(applicationContext) }
+    private val auth by lazy { AccountAuth.shared(applicationContext) }
     private var account: VerifiedAccount? = null
     private var authBusy = true
     private var authError = ""
@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
-        captureReview(intent)
+        captureReview(intent);captureSchedule(intent)
         render()
         restoreLogin()
     }
@@ -103,11 +103,12 @@ class MainActivity : Activity() {
                 if(verified!=null && verified.companies.isNotEmpty()) activateAccount(verified)
                 else if(verified!=null) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
             } catch (_: Exception) { authError="로그인 상태를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요." }
-            finally { authBusy=false;render() }
+            finally { authBusy=false;render();maybeScheduleReview() }
         }
     }
     private fun activateAccount(verified: VerifiedAccount) {
         account=verified;sessionEpoch++;pending.clear();inFlight.clear();modelChecked=false
+        ScheduleJobs.activate(applicationContext,verified.userId)
         attachResults(verified.userId)
         mergeResults(verified.userId)
         folder()?.let { BackgroundCalls.activate(applicationContext,verified.userId,it) }
@@ -132,7 +133,7 @@ class MainActivity : Activity() {
     }
     override fun onStart() {
         super.onStart(); active = true
-        if(account!=null) { startObserver(); scanFolder(); maybeReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder(); maybeReview();maybeScheduleReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -145,7 +146,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);captureReview(intent);maybeReview()
+        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);maybeReview();maybeScheduleReview()
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
     private fun captureReview(intent: Intent?) {
@@ -203,6 +204,50 @@ class MainActivity : Activity() {
         }
     }
 
+    private var scheduleUser: String?=null
+    private var scheduleDate: String?=null
+    private fun captureSchedule(intent: Intent?) {
+        val user=intent?.getStringExtra("schedule_user") ?: return
+        scheduleUser=user;scheduleDate=intent.getStringExtra("schedule_date")
+        intent.removeExtra("schedule_user");intent.removeExtra("schedule_date")
+    }
+    private fun maybeScheduleReview() {
+        if(!active || account==null || authBusy) return
+        val uid=scheduleUser ?: return
+        if(uid!=account?.userId) { scheduleUser=null;scheduleDate=null;message("일정을 받은 계정으로 로그인해 주세요.");return }
+        val date=scheduleDate
+        scheduleUser=null;scheduleDate=null
+        showSchedule(date)
+    }
+    private fun showSchedule(date: String?=null) {
+        val uid=account?.userId ?: return
+        val epoch=sessionEpoch
+        message("시공 일정을 확인하고 있습니다.")
+        scope.launch {
+            try {
+                val sites=auth.assignedSites(uid)
+                if(epoch!=sessionEpoch || account?.userId!=uid || !active) return@launch
+                val day=date ?: ScheduleDates.today()
+                val items=ScheduleDates.fromSites(sites,day,day)
+                if(items.isEmpty()) { AlertDialog.Builder(this@MainActivity).setTitle("시공 일정")
+                    .setMessage("${day}에 배정된 시공 일정이 없습니다. 배정이 변경됐을 수 있습니다.")
+                    .setPositiveButton("확인",null).show();return@launch }
+                val labels=items.map { "${it.name} · ${it.address.ifBlank { "주소 미등록" }}" }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity).setTitle("${day} 시공 일정")
+                    .setItems(labels) { _,index ->
+                        val item=items[index]
+                        if(item.address.isBlank()) { message("현장 주소가 없어 길 안내를 열 수 없습니다.");return@setItems }
+                        AlertDialog.Builder(this@MainActivity).setTitle("현장까지 안내해 드릴까요?")
+                            .setMessage("${item.name}\n${item.address}\n\n지도 앱에서 길 안내를 시작할 수 있습니다.")
+                            .setNegativeButton("나중에",null).setPositiveButton("지도 앱 열기") { _,_ ->
+                                val map=Intent(Intent.ACTION_VIEW,Uri.parse("geo:0,0?q="+Uri.encode(item.address)))
+                                try { startActivity(Intent.createChooser(map,"길 안내 앱 선택")) }
+                                catch(_: ActivityNotFoundException) { message("지도 앱을 찾지 못했습니다.") }
+                            }.show()
+                    }.setNegativeButton("닫기",null).show()
+            } catch(_: Exception) { if(epoch==sessionEpoch && active) message("일정을 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
+        }
+    }
     private fun folder(): Uri? = prefs.getString("folder", null)?.let { Uri.parse(it) }
     private fun records(): JSONArray = try { JSONArray(prefs.getString("records", "[]")) } catch (_: Exception) { JSONArray() }
     private fun saveRecords(a: JSONArray) { prefs.edit().putString("records", a.toString()).apply() }
@@ -524,7 +569,7 @@ class MainActivity : Activity() {
     }
     private fun signOut() {
         sessionEpoch++;analysisJob?.cancel();analysisJob=null
-        BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
+        ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
@@ -710,6 +755,8 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("업체 선택").setItems(names) { _,which -> prefs.edit().putString("selected_company",verified.companies[which].id).apply();render() }.setNegativeButton("취소",null).show()
         }
         addButton(col,"로그아웃",false) { signOut() }
+        col.addView(text("시공 일정 비서 · 새 배정과 시공 당일 오전 일정을 확인합니다.",14f,true))
+        addButton(col,"오늘 시공 일정과 길 안내",false) { showSchedule() }
         col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
         val info=text("녹음은 휴대폰에서 분석합니다. 견적 문의를 놓칠 수 있으니 비서함도 확인해 주세요. 등록을 확인한 내용만 필름장이에 저장됩니다. 백그라운드 확인과 알림은 절전 설정에 따라 지연될 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
@@ -767,7 +814,7 @@ class MainActivity : Activity() {
                 .setMessage("이 앱에 저장된 분석 결과만 지웁니다. 휴대폰의 원본 녹음 파일은 지우지 않습니다.")
                 .setNegativeButton("취소",null).setPositiveButton("지우기") { _,_ -> pending.clear(); saveRecords(JSONArray());render() }.show()
         }
-        col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 현재 시험 버전은 앱이 화면에 열려 있을 때만 녹음을 확인하고 분석합니다.",12f,false,Color.rgb(117,130,120)))
+        col.addView(text("\n견적 문의로 판단되면 현장 등록을 물어봅니다. 백그라운드 확인은 휴대폰 절전 설정에 따라 늦어질 수 있습니다.",12f,false,Color.rgb(117,130,120)))
     }
     private fun confirmWebAccount(action: () -> Unit) {
         AlertDialog.Builder(this).setTitle("웹앱 계정 확인")
