@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
           mkdir -p android-ai-assistant/vendor android-ai-assistant/app/src/main/assets
           git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git android-ai-assistant/vendor/whisper
           test "$(git -C android-ai-assistant/vendor/whisper rev-parse HEAD)" = a8d002cfd879315632a579e73f0148d06959de36
