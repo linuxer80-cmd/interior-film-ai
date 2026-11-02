@@ -633,7 +633,7 @@ class MainActivity : Activity() {
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
-            .setItems(arrayOf("대화 목록","오늘 시공 일정","설정","필름장이 열기")) { _,which ->
+            .setItems(arrayOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능")) { _,which ->
                 when(which) {
                     0 -> {
                         val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
@@ -645,8 +645,9 @@ class MainActivity : Activity() {
                             } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
                         }.setNegativeButton("닫기",null).show()
                     }
-                    1 -> showSchedule()
+                    1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
+                    4 -> showFeatures()
                     3 -> confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app/"))) }
                 }
             }.setNegativeButton("닫기",null).show()
@@ -660,18 +661,96 @@ class MainActivity : Activity() {
         val items=records()
         return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { it.optString("status")=="확인 필요" && it.optString("site_id").isBlank() }
     }
+    private var lookupBusy=false
+    private fun offerFeature(featureId:String) {
+        val owner=selectedCompany()?.role=="관리자"
+        val feature=AssistantRequests.feature(featureId,owner)
+        if(feature==null) { appendHomeMessage("이 기능은 관리자 권한이 필요합니다.");render();return }
+        appendHomeMessage("${feature.title} 기능을 열 수 있습니다. 현재 이 작업은 필름장이 업무 화면에서 진행합니다. 아직 변경하거나 저장한 내용은 없습니다.")
+        val messages=JSONArray(prefs.getString("home_chat","[]"))
+        messages.getJSONObject(messages.length()-1).put("feature",feature.id)
+        prefs.edit().putString("home_chat",messages.toString()).apply();render()
+    }
+    private fun showFeatures() {
+        val owner=selectedCompany()?.role=="관리자"
+        val features=AssistantRequests.features.filter { owner || !it.ownerOnly }
+        AlertDialog.Builder(this).setTitle("필름장이 기능").setItems(features.map { it.title }.toTypedArray()) { _,i ->
+            chatId=null;settingsOpen=false;offerFeature(features[i].id)
+        }.setNegativeButton("닫기",null).show()
+    }
+    private fun lookupSites(request:AssistantRequests.Request) {
+        if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val epoch=sessionEpoch
+        lookupBusy=true;appendHomeMessage("${company.name}의 현장 정보를 확인하고 있습니다.");render()
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                val rows=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
+                fun id(s:JSONObject)=s.optString("id").ifBlank { s.optString("site_id") }
+                fun value(s:JSONObject,key:String)=s.optString(key).takeUnless { it=="null" }.orEmpty()
+                if(request.kind=="detail") {
+                    if(prefs.getString("assistant_result_company",null)!=company.id) {
+                        appendHomeMessage("먼저 현장을 조회해 주세요. 예: ‘이번 주 현장 알려줘’ 또는 ‘청라 현장 찾아줘’");return@launch
+                    }
+                    val ids=JSONArray(prefs.getString("assistant_result_ids","[]"))
+                    val index=if(request.index>=0) request.index else if(ids.length()==1) 0 else -1
+                    if(index !in 0 until ids.length()) { appendHomeMessage("어느 현장인지 번호로 알려주세요. 예: ‘1번 현장 상세’");return@launch }
+                    val site=rows.find { id(it)==ids.optString(index) }
+                    if(site==null) { appendHomeMessage("해당 현장을 다시 조회할 수 없습니다. 배정이나 접근 권한이 변경되었을 수 있습니다.");return@launch }
+                    appendHomeMessage("${value(site,"site_name")}\n상태: ${siteStatus(value(site,"status"))}\n고객: ${value(site,"customer_name").ifBlank { "미등록" }}\n연락처: ${value(site,"customer_phone").ifBlank { "미등록" }}\n주소: ${listOf(value(site,"address"),value(site,"address_detail")).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "미등록" }}\n시공 내용: ${value(site,"work_description").ifBlank { "미등록" }}\n시공 기간: ${value(site,"schedule_start").ifBlank { "미등록" }} ~ ${value(site,"schedule_end").ifBlank { "미등록" }}\n시공일: ${site.optJSONArray("work_dates")?.toString() ?: "미등록"}")
+                    return@launch
+                }
+                val dates=mutableMapOf<String,MutableList<String>>()
+                val matches=if(request.kind=="schedule") {
+                    val normalized=JSONArray()
+                    rows.filter { value(it,"status") in listOf("scheduled","in_progress","completed") }.forEach {
+                        normalized.put(JSONObject(it.toString()).apply { if(optString("status")=="completed") put("status","scheduled") })
+                    }
+                    ScheduleDates.fromSites(normalized,request.from,request.to).forEach { day -> dates.getOrPut(day.id.substringAfter('/')) { mutableListOf() }.add(day.date) }
+                    rows.filter { id(it) in dates }.sortedWith(compareBy({dates[id(it)]?.firstOrNull().orEmpty()},{value(it,"site_name")}))
+                } else {
+                    val tokens=request.query.split(Regex("\\s+")).filter { it.isNotBlank() }
+                    rows.filter { site -> val searchable=listOf("site_name","address","address_detail","customer_name","customer_phone").joinToString(" ") { value(site,it) }
+                        tokens.all { searchable.contains(it,ignoreCase=true) }
+                    }.sortedBy { value(it,"site_name") }
+                }
+                val visible=matches.take(20)
+                prefs.edit().putString("assistant_result_company",company.id).putString("assistant_result_ids",JSONArray(visible.map(::id)).toString()).apply()
+                val period=if(request.kind=="schedule") "${request.from} ~ ${request.to}\n" else ""
+                val scope=if(company.role=="관리자") "업체 현장" else "내 배정 현장"
+                val lines=visible.mapIndexed { index,site ->
+                    "${index+1}. ${value(site,"site_name").ifBlank { "이름 없는 현장" }} · ${siteStatus(value(site,"status"))}\n"+
+                    (dates[id(site)]?.joinToString(", ")?.plus("\n") ?: "")+value(site,"address").ifBlank { "주소 미등록" }
+                }.joinToString("\n\n")
+                appendHomeMessage("${company.name} · $scope\n$period"+if(matches.isEmpty()) "조건에 맞는 현장이 없습니다." else "${matches.size}개 현장입니다.\n\n$lines\n\n"+(if(matches.size>20) "처음 20개를 표시했습니다. 현장명이나 지역으로 검색 범위를 좁혀 주세요.\n" else "")+"‘1번 현장 상세’처럼 번호로 자세한 내용을 확인하세요.")
+            } catch(e:CancellationException) { throw e }
+            catch(_:Exception) { if(epoch==sessionEpoch && selectedCompany()?.id==company.id) appendHomeMessage("현장을 조회하지 못했습니다. 인터넷과 로그인 상태를 확인하고 다시 요청해 주세요.") }
+            finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
+        }
+    }
+    private fun siteStatus(value:String):String=when(value) {
+        "consulting"->"상담중";"scheduled"->"시공예정";"in_progress"->"시공중";"completed"->"시공완료";"cancelled"->"취소";else->value
+    }
     private fun answerHome(value: String) {
         val input=value.trim().take(500);if(input.isBlank()) return
         homeInput="";appendHomeMessage(input,true)
+        val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
+        when(request.kind) {
+            "schedule","sites","detail" -> { lookupSites(request);return }
+            "feature" -> { offerFeature(request.feature);return }
+            "features" -> { render();showFeatures();return }
+        }
         when {
-            input.contains("일정") || input.contains("길 안내") || input.contains("길안내") -> { appendHomeMessage("시공 일정을 확인해 드리겠습니다.");render();showSchedule() }
             input.contains("설정") -> { settingsOpen=true;showSetupDetails=true;render() }
             input.contains("상담") || ConsultationChat.reply(input)==ConsultationChat.Reply.YES -> {
                 val latest=latestConsultation()
                 if(latest!=null) showRegistrationConfirmation(latest.optString("id"))
-                else { appendHomeMessage("지금 확인할 새 상담은 없습니다. 새 상담이 들어오면 이곳에서 알려드리겠습니다.");render() }
+                else { appendHomeMessage("지금 확인할 새 상담은 없습니다. 새 상담이 들어오면 알려드리겠습니다.");render() }
             }
-            else -> { appendHomeMessage("새 상담 확인과 현장 등록, 오늘 시공 일정 안내를 도와드릴 수 있습니다. ‘상담 확인’ 또는 ‘오늘 일정’이라고 입력해 주세요.");render() }
+            else -> { appendHomeMessage("‘이번 주 현장 알려줘’, ‘다음 주는?’, ‘청라 현장 찾아줘’, ‘1번 현장 상세’처럼 요청해 주세요. 견적·재고·입금 등의 작업은 ‘전체 기능’에서 기존 업무 화면으로 연결할 수 있습니다.");render() }
         }
     }
     private fun renderHomeChat() {
@@ -681,7 +760,7 @@ class MainActivity : Activity() {
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         body.addView(text("무엇을 도와드릴까요?",26f,true))
-        body.addView(text("새 상담을 확인하고 현장 등록을 도와드릴게요. 오늘 시공 일정도 물어보세요.",16f))
+        body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
         if(folder()==null || !notificationsEnabled()) {
             body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
         }
@@ -691,6 +770,9 @@ class MainActivity : Activity() {
             val mine=m.optBoolean("user")
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
             body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
+            AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
+                addButton(body,feature.title+" 열기",false) { confirmWebAccount { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://interior-film-ai.vercel.app"+feature.path))) } }
+            }
         }
         latestConsultation()?.let { item ->
             body.addView(text("새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n현장에 등록할까요?",16f))
@@ -797,7 +879,7 @@ class MainActivity : Activity() {
         }
     }
     private fun signOut() {
-        chatId=null;chatInput="";settingsOpen=false;homeInput=""
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false

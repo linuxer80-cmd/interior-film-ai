@@ -44,7 +44,7 @@ internal object ScheduleDates {
             val days=mutableSetOf<LocalDate>()
             if(assigned!=null && assigned.length()>0) {
                 for(j in 0 until assigned.length()) parse(assigned.optJSONObject(j)?.optString("work_date").orEmpty())?.let(days::add)
-            } else if(work!=null) {
+            } else if(work!=null && work.length()>0) {
                 for(j in 0 until work.length()) parse(work.optString(j))?.let(days::add)
             } else {
                 val first=parse(s.optString("schedule_start"));val last=parse(s.optString("schedule_end")) ?: first
@@ -161,3 +161,4 @@ class ScheduleWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p) {
         catch(_:SecurityException) { false }
     }
 }
+

@@ -140,6 +140,39 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantSites(expectedUser: String, companyId: String): JSONArray {
+        val verified=verify()
+        check(verified.userId==expectedUser) { "다른 계정입니다." }
+        val company=verified.companies.find { it.id==companyId } ?: error("현재 업체 접근 권한이 없습니다.")
+        if(company.role!="관리자") {
+            val assigned=assignedSites(expectedUser);val result=JSONArray()
+            for(i in 0 until assigned.length()) assigned.optJSONObject(i)?.takeIf { it.optString("company_id")==companyId }?.let(result::put)
+            return result
+        }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val result=JSONArray();var offset=0
+            while(true) {
+                val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description"
+                val url=SUPABASE_URL+"/rest/v1/sites?select="+fields+"&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset
+                val c=URL(url).openConnection() as HttpsURLConnection
+                val batch=try {
+                    c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                    c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                    check(c.responseCode==200) { "현장 정보를 확인하지 못했습니다." }
+                    JSONArray(c.inputStream.bufferedReader().use { it.readText() })
+                } finally { c.disconnect() }
+                for(i in 0 until batch.length()) {
+                    val row=batch.getJSONObject(i);check(row.optString("company_id")==companyId)
+                    result.put(row)
+                }
+                if(batch.length()<500) break
+                offset+=batch.length();check(offset<10000) { "현장이 많아 전체 조회를 완료하지 못했습니다. 필름장이 현장 관리에서 확인해 주세요." }
+            }
+            result
+        }
+    }
     private fun workerCompanies(token: String): JSONArray {
         val connection=URL("https://interior-film-ai.vercel.app/api/worker/companies").openConnection() as HttpsURLConnection
         try {
@@ -152,3 +185,4 @@ internal class AccountAuth private constructor(context: Context) {
         } finally { connection.disconnect() }
     }
 }
+
