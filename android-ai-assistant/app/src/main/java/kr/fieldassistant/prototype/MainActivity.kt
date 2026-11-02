@@ -672,6 +672,7 @@ class MainActivity : Activity() {
         if(reg==null) {
             if(ConsultationChat.reply(value)==ConsultationChat.Reply.NEW) { chatMessage(id,"먼저 아래 내용을 확인하고 ‘네’라고 답해 주세요.");render();return }
             val data=item.optJSONObject("chat_draft") ?: return
+            if(item.optBoolean("manual_site") && data.optString("site_name").isBlank()) { chatMessage(id,"먼저 ‘등록 내용 수정’에서 현장명을 입력해 주세요.");render();return }
             val request=JSONObject().put("company_id",company.id).put("request_id",UUID.randomUUID().toString()).put("data",data).put("target_id",JSONObject.NULL).put("create_new",false)
             if(!changeRecord(id) { it.put("registration",request) }) { message("등록 요청을 보관하지 못했습니다.");return }
         } else {
@@ -753,6 +754,26 @@ class MainActivity : Activity() {
         return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { ConsultationChat.shouldPrompt(it.optString("status"),it.optString("site_id"),consultationDisposition(it)) }
     }
     private var lookupBusy=false
+    private var profitBusy=false
+    private fun lookupProfit(request:AssistantRequests.Request) {
+        val uid=account?.userId ?: return
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") { appendHomeMessage("매출·수익 조회는 관리자만 사용할 수 있습니다.");render();return }
+        if(profitBusy) { appendHomeMessage("매출·수익을 조회하고 있습니다. 잠시만 기다려 주세요.");render();return }
+        profitBusy=true
+        val epoch=sessionEpoch
+        appendHomeMessage("${request.from}부터 ${request.to}까지 매출·수익을 확인하고 있습니다.");render()
+        scope.launch {
+            try {
+                val result=auth.assistantProfit(uid,company.id,request.from,request.to)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                result.put("kind","profit").put("company_id",company.id).put("company_name",company.name)
+                appendHomeMessage("",result=result)
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) appendHomeMessage(e.message ?: "매출·수익을 조회하지 못했습니다.") }
+            finally { profitBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
     private fun offerFeature(featureId:String) {
         val owner=selectedCompany()?.role=="관리자"
         val feature=AssistantRequests.feature(featureId,owner)
@@ -781,8 +802,24 @@ class MainActivity : Activity() {
         val labels=arrayOf("직접 입력","통화·문자·카톡 내용 붙여넣기 · AI 분석","문자·카톡 사진 · AI 분석","통화녹음 파일 · AI 분석")
         val modes=arrayOf("direct","text","screenshot","call")
         AlertDialog.Builder(this).setTitle("새 현장 등록 · 입력 방법").setItems(labels) { _,index ->
-            openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=sites&assistantRegister=1&inputMode="+modes[index])
+            if(index==0) startManualSiteRegistration()
+            else openWebWorkspace("https://interior-film-ai.vercel.app/admin?tab=sites&assistantRegister=1&inputMode="+modes[index])
         }.setNegativeButton("닫기",null).show()
+    }
+    private fun startManualSiteRegistration() {
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") return
+        val id="manual-"+UUID.randomUUID().toString()
+        val draft=JSONObject().put("site_name","").put("customer_name","").put("customer_phone","").put("address","")
+            .put("work_description","").put("memo","").put("source","manual")
+            .put("work_dates",JSONArray()).put("materials",JSONArray())
+            .put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
+        val item=JSONObject().put("id",id).put("name","직접 입력 현장").put("status","직접 입력")
+            .put("manual_site",true).put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft)
+            .put("chat_messages",JSONArray().put(JSONObject().put("user",false).put("body","현장 정보를 입력하고 내용을 확인한 뒤 등록해 주세요.")))
+        val items=records();items.put(item)
+        if(!prefs.edit().putString("records",items.toString()).commit()) { message("입력 내용을 보관하지 못했습니다.");return }
+        chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
         if(action !in listOf("phone","navigate","film","report","expenses","photos","info","quote","schedule") || siteId.isBlank()) return
@@ -1011,6 +1048,7 @@ class MainActivity : Activity() {
                 appendHomeMessage("${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다.");render()
                 openSiteAction(company.id,id,request.feature);return
             }
+            "profit" -> { lookupProfit(request);return }
             "schedule","sites","detail" -> { lookupSites(request);return }
             "feature" -> { offerFeature(request.feature);return }
             "features" -> { render();showFeatures();return }
@@ -1067,6 +1105,19 @@ class MainActivity : Activity() {
             val mine=m.optBoolean("user")
             val result=m.optJSONObject("result")
             if(!mine && result!=null) {
+                if(result.optString("kind")=="profit") {
+                    if(result.optString("company_id")==selectedCompany()?.id && selectedCompany()?.role=="관리자") {
+                        val nf=java.text.NumberFormat.getIntegerInstance(java.util.Locale.KOREA)
+                        val rows=listOf("매출" to "revenue","인건비" to "labor","자재비 · 예상 부가세 포함" to "material","경비" to "expense","예상 수익" to "profit")
+                        val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(14));background=bg(Color.rgb(246,248,246),16) }
+                        card.addView(text("${result.optString("company_name")} · 매출과 수익",18f,true))
+                        card.addView(text("${result.optString("from")} ~ ${result.optString("to")}",14f))
+                        rows.forEach { (label,key) -> card.addView(text("$label   ${nf.format(result.getDouble(key))}원",16f)) }
+                        card.addView(text("확정 ${result.optInt("confirmedCount")}개 · 확인 필요 ${result.optInt("pendingCount")}개\n자재비가 부가세 별도일 때의 예상 금액입니다.",13f))
+                        body.addView(card,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
+                    } else body.addView(text("다른 업체의 매출 답변입니다. 해당 업체의 관리자 계정으로 확인해 주세요.",14f))
+                    continue
+                }
                 body.addView(AssistantResultViews.render(this,result,onSite={ siteId ->
                     if(result.optString("company_id")!=selectedCompany()?.id) message("이 답변을 조회한 업체로 변경해 주세요.")
                     else lookupSites(AssistantRequests.Request("detail"),siteId)
@@ -1157,7 +1208,7 @@ class MainActivity : Activity() {
         val reg=item.optJSONObject("registration")
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
         if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목만 저장합니다. 인식한 통화 원문과 녹음은 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
-        addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
+        if(!item.optBoolean("manual_site")) addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
         val paused=consultationDisposition(item)!="active"

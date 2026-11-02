@@ -58,6 +58,20 @@ internal object AssistantRequests {
             action && (compact.contains("현장") || compact.contains("일정") || compact.contains("배정")) -> "sites"
             else -> ""
         }
+        if(feature=="profit" && !action) {
+            val yearMatch=Regex("(?<![0-9])(\\d{4})년").find(compact)
+            if(!compact.contains("월") && (yearMatch!=null || compact.contains("올해") || compact.contains("작년") || compact.contains("지난해"))) {
+                val year=yearMatch?.groupValues?.get(1)?.toIntOrNull() ?: if(compact.contains("작년") || compact.contains("지난해")) today.year-1 else today.year
+                val first=try { LocalDate.of(year,1,1) } catch(_:Exception) { return Request("unknown") }
+                return Request("profit",from=first.toString(),to=first.withMonth(12).withDayOfMonth(31).toString())
+            }
+            val explicit=Regex("지난달|저번달|전달|다음달|이번달|이달|이번주|지난주|저번주|다음주|오늘|어제|내일|모레|주말|\\d{1,2}월|\\d{4}-\\d{2}-\\d{2}").containsMatchIn(compact)
+            if(!explicit && Regex("분기|상반기|하반기|지난해|올해|[0-9]+년|[0-9]+월|[0-9]+일").containsMatchIn(compact)) return Request("unknown")
+            if(!explicit) return Request("profit",from=today.withDayOfMonth(1).toString(),to=today.toString())
+            val period=parse(compact.replace("매출","").replace("수익","")+"일정",today)
+            if(period.kind!="schedule") return Request("unknown")
+            return Request("profit",from=period.from,to=period.to)
+        }
         if(feature.isNotEmpty()) return Request("feature",feature=feature)
         if(action) return Request("unknown")
         if(compact in listOf("전체기능","기능목록","도움말","뭐할수있어","메뉴")) return Request("features")
@@ -102,3 +116,4 @@ internal object AssistantRequests {
         return features.find { it.id==actual && (owner || !it.ownerOnly) }
     }
 }
+
