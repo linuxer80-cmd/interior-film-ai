@@ -734,9 +734,9 @@ class MainActivity : Activity() {
                 }
             }.setNegativeButton("닫기",null).show()
     }
-    private fun appendHomeMessage(body: String, mine: Boolean=false) {
+    private fun appendHomeMessage(body: String, mine: Boolean=false, result: JSONObject?=null) {
         val messages=try { JSONArray(prefs.getString("home_chat","[]")) } catch(_:Exception) { JSONArray() }
-        messages.put(JSONObject().put("user",mine).put("body",body))
+        messages.put(JSONObject().put("user",mine).put("body",body).apply { if(result!=null) put("result",result) })
         prefs.edit().putString("home_chat",messages.toString()).apply()
     }
     private fun latestConsultation(): JSONObject? {
@@ -760,7 +760,7 @@ class MainActivity : Activity() {
             chatId=null;settingsOpen=false;offerFeature(features[i].id)
         }.setNegativeButton("닫기",null).show()
     }
-    private fun lookupSites(request:AssistantRequests.Request) {
+    private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
@@ -774,15 +774,25 @@ class MainActivity : Activity() {
                 fun id(s:JSONObject)=s.optString("id").ifBlank { s.optString("site_id") }
                 fun value(s:JSONObject,key:String)=s.optString(key).takeUnless { it=="null" }.orEmpty()
                 if(request.kind=="detail") {
-                    if(prefs.getString("assistant_result_company",null)!=company.id) {
+                    if(targetSiteId==null && prefs.getString("assistant_result_company",null)!=company.id) {
                         appendHomeMessage("먼저 현장을 조회해 주세요. 예: ‘이번 주 현장 알려줘’ 또는 ‘청라 현장 찾아줘’");return@launch
                     }
                     val ids=JSONArray(prefs.getString("assistant_result_ids","[]"))
                     val index=if(request.index>=0) request.index else if(ids.length()==1) 0 else -1
-                    if(index !in 0 until ids.length()) { appendHomeMessage("어느 현장인지 번호로 알려주세요. 예: ‘1번 현장 상세’");return@launch }
-                    val site=rows.find { id(it)==ids.optString(index) }
+                    if(targetSiteId==null && index !in 0 until ids.length()) { appendHomeMessage("어느 현장인지 번호로 알려주세요. 예: ‘1번 현장 상세’");return@launch }
+                    val site=rows.find { id(it)==(targetSiteId ?: ids.optString(index)) }
                     if(site==null) { appendHomeMessage("해당 현장을 다시 조회할 수 없습니다. 배정이나 접근 권한이 변경되었을 수 있습니다.");return@launch }
-                    appendHomeMessage("${value(site,"site_name")}\n상태: ${siteStatus(value(site,"status"))}\n고객: ${value(site,"customer_name").ifBlank { "미등록" }}\n연락처: ${value(site,"customer_phone").ifBlank { "미등록" }}\n주소: ${listOf(value(site,"address"),value(site,"address_detail")).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "미등록" }}\n시공 내용: ${value(site,"work_description").ifBlank { "미등록" }}\n시공 기간: ${value(site,"schedule_start").ifBlank { "미등록" }} ~ ${value(site,"schedule_end").ifBlank { "미등록" }}\n시공일: ${site.optJSONArray("work_dates")?.toString() ?: "미등록"}")
+                    val fields=JSONArray()
+                    fun field(title:String,body:String) { fields.put(JSONArray(listOf(title,body.ifBlank { "미등록" }))) }
+                    field("상태",siteStatus(value(site,"status")))
+                    field("고객",value(site,"customer_name"));field("연락처",value(site,"customer_phone"))
+                    field("주소",listOf(value(site,"address"),value(site,"address_detail")).filter { it.isNotBlank() }.joinToString(" "))
+                    field("시공 내용",value(site,"work_description"))
+                    field("시공 기간",value(site,"schedule_start").ifBlank { "미등록" }+" ~ "+value(site,"schedule_end").ifBlank { "미등록" })
+                    val workDates=site.optJSONArray("work_dates") ?: JSONArray()
+                    field("시공일",(0 until workDates.length()).map { workDates.optString(it) }.joinToString(", "))
+                    appendHomeMessage("",result=JSONObject().put("kind","detail").put("title",value(site,"site_name").ifBlank { "현장 상세" })
+                        .put("subtitle",company.name+" · 조회 시점의 현장 정보").put("company_id",company.id).put("fields",fields))
                     return@launch
                 }
                 val dates=mutableMapOf<String,MutableList<String>>()
@@ -799,15 +809,19 @@ class MainActivity : Activity() {
                         tokens.all { searchable.contains(it,ignoreCase=true) }
                     }.sortedBy { value(it,"site_name") }
                 }
-                val visible=matches.take(20)
+                val visible=matches.take(if(request.kind=="schedule") 100 else 20)
                 prefs.edit().putString("assistant_result_company",company.id).putString("assistant_result_ids",JSONArray(visible.map(::id)).toString()).apply()
-                val period=if(request.kind=="schedule") "${request.from} ~ ${request.to}\n" else ""
                 val scope=if(company.role=="관리자") "업체 현장" else "내 배정 현장"
-                val lines=visible.mapIndexed { index,site ->
-                    "${index+1}. ${value(site,"site_name").ifBlank { "이름 없는 현장" }} · ${siteStatus(value(site,"status"))}\n"+
-                    (dates[id(site)]?.joinToString(", ")?.plus("\n") ?: "")+value(site,"address").ifBlank { "주소 미등록" }
-                }.joinToString("\n\n")
-                appendHomeMessage("${company.name} · $scope\n$period"+if(matches.isEmpty()) "조건에 맞는 현장이 없습니다." else "${matches.size}개 현장입니다.\n\n$lines\n\n"+(if(matches.size>20) "처음 20개를 표시했습니다. 현장명이나 지역으로 검색 범위를 좁혀 주세요.\n" else "")+"‘1번 현장 상세’처럼 번호로 자세한 내용을 확인하세요.")
+                val resultRows=JSONArray()
+                visible.forEach { site -> resultRows.put(JSONObject().put("id",id(site)).put("name",value(site,"site_name").ifBlank { "이름 없는 현장" })
+                    .put("status",siteStatus(value(site,"status"))).put("address",value(site,"address").ifBlank { "주소 미등록" })
+                    .put("dates",JSONArray(dates[id(site)] ?: emptyList<String>()))) }
+                val title=if(request.kind=="schedule") "시공 일정" else "현장 목록"
+                val period=if(request.kind=="schedule") "\n${request.from} ~ ${request.to}" else ""
+                appendHomeMessage("",result=JSONObject().put("kind",request.kind).put("title",title)
+                    .put("subtitle","${company.name} · $scope$period\n${matches.size}개 현장 · 조회 시점 기준")
+                    .put("company_id",company.id).put("from",request.from).put("to",request.to).put("total",matches.size).put("rows",resultRows))
+
             } catch(e:CancellationException) { throw e }
             catch(_:Exception) { if(epoch==sessionEpoch && selectedCompany()?.id==company.id) appendHomeMessage("현장을 조회하지 못했습니다. 인터넷과 로그인 상태를 확인하고 다시 요청해 주세요.") }
             finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
@@ -865,6 +879,14 @@ class MainActivity : Activity() {
         for(i in 0 until messages.length()) {
             val m=messages.optJSONObject(i) ?: continue
             val mine=m.optBoolean("user")
+            val result=m.optJSONObject("result")
+            if(!mine && result!=null) {
+                body.addView(AssistantResultViews.render(this,result) { siteId ->
+                    if(result.optString("company_id")!=selectedCompany()?.id) message("이 답변을 조회한 업체로 변경해 주세요.")
+                    else lookupSites(AssistantRequests.Request("detail"),siteId)
+                },LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
+                continue
+            }
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
             body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
