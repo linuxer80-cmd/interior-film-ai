@@ -951,23 +951,23 @@ class MainActivity : Activity() {
         setAssistantContent(page);visibleConversationKey=key
         displayedHomeConsultationId=candidate?.optString("id")
         chatHeader(page)
-        val scroll=ScrollView(this)
-        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
-        scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        body.addView(text("무엇을 도와드릴까요?",26f,true))
-        body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
         val selectedCompanyId=selectedCompany()?.id
         if(selectedCompanyId!=null && prefs.getString("selected_site_company",null)==selectedCompanyId) {
             val selectedId=prefs.getString("selected_site_id","").orEmpty()
             val selectedName=prefs.getString("selected_site_name","").orEmpty()
             if(selectedId.isNotBlank()) {
-                body.addView(text("선택한 현장 · $selectedName",15f,true))
+                page.addView(text("선택한 현장 · $selectedName",15f,true))
                 val controls=LinearLayout(this)
                 controls.addView(button("현장 상세",false) { lookupSites(AssistantRequests.Request("detail"),selectedId) },LinearLayout.LayoutParams(0,dp(48),1f))
                 controls.addView(button("현장 변경",false) { lookupSites(AssistantRequests.Request("sites")) },LinearLayout.LayoutParams(0,dp(48),1f))
-                body.addView(controls)
+                page.addView(controls)
             }
         }
+        val scroll=ScrollView(this)
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
+        scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        body.addView(text("무엇을 도와드릴까요?",26f,true))
+        body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
         val shortcuts=LinearLayout(this)
         shortcuts.addView(button("오늘 일정",false) { answerHome("오늘 일정") },LinearLayout.LayoutParams(0,dp(48),1f))
         shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
