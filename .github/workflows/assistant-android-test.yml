@@ -46,18 +46,45 @@ jobs:
       - name: Build test APK
         working-directory: android-ai-assistant
         run: ASSISTANT_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))" gradle --no-daemon testDebugUnitTest assembleDebug
+      - name: Prepare APK and Android signing tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android-ai-assistant/signing-output
+          cp android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk android-ai-assistant/signing-output/app-debug.apk
+          TOOL="$(find "$ANDROID_HOME/build-tools" -name apksigner.jar -print | sort -V | tail -n 1)"
+          test -f "$TOOL"
+          cp "$TOOL" android-ai-assistant/signing-output/apksigner.jar
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: field-assistant-android-test
+          path: android-ai-assistant/signing-output/
+          if-no-files-found: error
+          retention-days: 7
       - name: Launch APK on Android 35 emulator
         shell: bash
         timeout-minutes: 12
         run: |
           set -euo pipefail
+          mkdir -p android-ai-assistant/launch-output
+          trap 'cp /tmp/assistant-emulator.log android-ai-assistant/launch-output/emulator.log 2>/dev/null || true; tail -n 100 /tmp/assistant-emulator.log 2>/dev/null || true' EXIT
+          sudo apt-get update -qq
+          sudo apt-get install -y libpulse0 libnss3 libxkbcommon-x11-0 libxcb-cursor0
+          export QT_QPA_PLATFORM=offscreen
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           "$SDKMANAGER" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
           sudo chmod 666 /dev/kvm
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name assistant-smoke --package "system-images;android-35;google_apis;x86_64" --force
           "$ANDROID_HOME/emulator/emulator" -avd assistant-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > /tmp/assistant-emulator.log 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
-          timeout 180 "$ADB" wait-for-device
+          emulator_pid=$!
+          "$ADB" start-server
+          for attempt in $(seq 1 30); do
+            kill -0 "$emulator_pid"
+            if "$ADB" devices | grep -q 'emulator-'; then break; fi
+            sleep 2
+          done
+          timeout 120 "$ADB" wait-for-device
           booted=false
           for attempt in $(seq 1 120); do
             if [ "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then booted=true; break; fi
@@ -86,18 +113,3 @@ jobs:
           name: assistant-launch-check
           path: android-ai-assistant/launch-output/
           retention-days: 3
-      - name: Prepare APK and Android signing tool
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p android-ai-assistant/signing-output
-          cp android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk android-ai-assistant/signing-output/app-debug.apk
-          TOOL="$(find "$ANDROID_HOME/build-tools" -name apksigner.jar -print | sort -V | tail -n 1)"
-          test -f "$TOOL"
-          cp "$TOOL" android-ai-assistant/signing-output/apksigner.jar
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: field-assistant-android-test
-          path: android-ai-assistant/signing-output/
-          if-no-files-found: error
-          retention-days: 7
