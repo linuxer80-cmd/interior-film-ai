@@ -277,6 +277,31 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun customerProfile(expectedUser:String,companyId:String,changes:JSONObject?=null,version:String?=null):JSONObject? {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        val allowed=listOf("business_name","representative_name","business_number","business_address","public_phone","public_email","regions","introduction","blog_url","instagram_url","place_url")
+        if(changes!=null) {
+            require(changes.keys().asSequence().all { it in allowed })
+            require(version!=null)
+        }
+        return withContext(Dispatchers.IO) {
+            val fields=(listOf("company_id","updated_at","is_published","services")+allowed).joinToString(",")
+            val versionFilter=if(changes==null) "" else if(version!!.isEmpty()) "&updated_at=is.null" else "&updated_at=eq."+java.net.URLEncoder.encode(version,"UTF-8")
+            val c=URL(SUPABASE_URL+"/rest/v1/company_public_profiles?select="+fields+"&company_id=eq."+companyId+versionFilter+(if(changes==null) "&limit=1" else "")).openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(changes==null) "GET" else "PATCH";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(changes!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Prefer","return=representation");c.outputStream.use { it.write(JSONObject(changes.toString()).put("updated_at",java.time.Instant.now().toString()).toString().toByteArray(Charsets.UTF_8)) } }
+                check(c.responseCode in 200..299) { "고객페이지 정보를 처리하지 못했습니다. 권한과 연결을 확인해 주세요." }
+                val rows=JSONArray(c.inputStream.bufferedReader().use { it.readText() })
+                if(changes!=null && rows.length()==0) error("다른 곳에서 정보가 변경됐습니다. 다시 확인한 뒤 수정해 주세요.")
+                rows.optJSONObject(0)?.also { check(it.optString("company_id")==companyId) }
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantProfit(expectedUser:String, companyId:String, from:String, to:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
