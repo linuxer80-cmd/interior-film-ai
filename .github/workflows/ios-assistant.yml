@@ -1,0 +1,17 @@
+name: iOS assistant simulator build
+on:
+  push:
+    branches: [codex/ios-sample-prototype]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate --spec ios-field-assistant/project.yml
+      - name: Build for iOS simulator
+        run: xcodebuild -project ios-field-assistant/FieldAssistant.xcodeproj -scheme FieldAssistant -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
