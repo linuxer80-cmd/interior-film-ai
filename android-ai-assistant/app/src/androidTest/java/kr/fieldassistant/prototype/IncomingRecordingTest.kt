@@ -30,7 +30,7 @@ class IncomingRecordingTest {
         val state=c.getSharedPreferences("assistant_background_state",Context.MODE_PRIVATE)
         val result=BackgroundCalls.resultPrefs(c,uid)
         val dir=File(c.filesDir,"fake-recordings").apply { mkdirs() }
-        val input=File(dir,"fixture.wav");input.delete()
+        val input=File(dir,"fixture.m4a");input.delete()
         state.edit().clear().putString("active_user",uid).putString("generation",token).putString("tree",folder.toString()).commit()
         user.edit().clear().putString("folder",folder.toString()).putStringSet("seen",emptySet()).commit()
         result.edit().clear().commit()
@@ -40,7 +40,7 @@ class IncomingRecordingTest {
         fun worker()=TestWorkerBuilder<BackgroundCallWorker>(context=c,executor=executor,inputData=workDataOf("user" to uid,"generation" to token)).build()
         assertEquals(0,DocumentFile.fromTreeUri(c,folder)!!.listFiles().size)
         assertEquals(ListenableWorker.Result.success(),worker().doWork())
-        c.assets.open("fixture.wav").use { source -> input.outputStream().use { source.copyTo(it) } }
+        c.assets.open("fixture.m4a").use { source -> input.outputStream().use { source.copyTo(it) } }
         assertTrue(input.setLastModified(System.currentTimeMillis()-30000))
         val file=DocumentFile.fromTreeUri(c,folder)!!.listFiles().single();val id=file.uri.toString()
         assertEquals(ListenableWorker.Result.success(),worker().doWork())
