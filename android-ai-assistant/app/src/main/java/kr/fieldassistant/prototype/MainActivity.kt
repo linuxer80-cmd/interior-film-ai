@@ -474,7 +474,7 @@ class MainActivity : Activity() {
         val uid=account?.userId ?: return
         if(id in offlineQueued) { message("이미 분석을 기다리고 있습니다.");return }
         offlineQueued.add(id);offlineQueue.add(id)
-        updateRecord(id,"분석 대기",summary="앞선 확인 작업이 끝나면 자동으로 분석합니다.")
+        updateRecord(id,"분석 대기",summary="다른 녹음의 확인이 끝나면 분석을 시작합니다. 앱이 종료되면 다시 열어 주세요.")
         if(offlineQueueJob?.isActive==true) return
         val epoch=sessionEpoch
         offlineQueueJob=scope.launch {
@@ -490,7 +490,7 @@ class MainActivity : Activity() {
                         }
                         locked=true
                         if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
-                        updateRecord(current,"휴대폰에서 분석 중",summary="Whisper로 통화 내용을 읽고 있습니다. 처음에는 모델 준비 시간이 걸릴 수 있습니다.")
+                        updateRecord(current,"휴대폰에서 분석 중",summary="통화 내용을 글자로 바꾸고 있습니다. 녹음 길이와 휴대폰 성능에 따라 시간이 걸릴 수 있습니다.")
                         val job=coroutineContext[Job]
                         val result=withContext(Dispatchers.IO) {
                             WhisperModel(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
@@ -503,7 +503,7 @@ class MainActivity : Activity() {
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
-                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 저장 공간을 확인한 뒤 다시 시도해 주세요.")
+                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일에 접근할 수 있는지와 휴대폰 저장 공간을 확인한 뒤 다시 분석해 주세요.")
                     } finally {
                         if(locked) BackgroundCalls.running.set(false)
                         if(epoch==sessionEpoch) { offlineQueue.remove(current);offlineQueued.remove(current) }
@@ -2220,6 +2220,10 @@ class MainActivity : Activity() {
         addButton(col,"새 녹음 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다.") }
         val scanStatus=BackgroundCalls.resultPrefs(applicationContext,verified.userId).getString("scan_status","").orEmpty()
         if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
+        if(scanStatus=="새 녹음을 휴대폰에서 분석하고 있습니다." && BackgroundCalls.running.get()) {
+            col.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="새 녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))
+            col.addView(text("녹음이 길면 시간이 걸릴 수 있습니다. 결과가 준비되면 아래 비서함에서 확인해 주세요.",12f))
+        }
         addButton(col,"최근 녹음 한 건 시험",false) { inspectLatestRecording() }
         val h=text("새 녹음 · 비서함",18f,true);val hlp=LinearLayout.LayoutParams(-1,-2);hlp.setMargins(0,dp(25),0,dp(8));col.addView(h,hlp)
         val list=records()
@@ -2229,6 +2233,10 @@ class MainActivity : Activity() {
             val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(15),dp(14),dp(15),dp(14));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
             val p=LinearLayout.LayoutParams(-1,-2);p.setMargins(0,0,0,dp(10));col.addView(card,p)
             card.addView(text(item.optString("name","통화 녹음"),14f,true));card.addView(text(status,12f,false,Color.rgb(88,126,94)))
+            if(status=="휴대폰에서 분석 중" && (id in offlineQueued || id in inFlight)) {
+                card.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))
+            }
+            if(status=="분석 대기" && id !in offlineQueued) card.addView(text("현재 실행 중인 분석이 아닙니다. 다시 분석을 눌러 시작해 주세요.",13f))
             val summary=item.optString("summary"); if(summary.isNotBlank()) card.addView(text(summary,13f))
             if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
             if(status=="현장 등록 완료") addButton(card,"상담 대화 보기",false) { showRegistrationConfirmation(id) }
