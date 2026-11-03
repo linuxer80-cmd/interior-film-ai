@@ -1701,17 +1701,20 @@ class MainActivity : Activity() {
         val ids=assigned.map { it.optString("worker_id") }.toSet()
         val available=directory.filter { it.optBoolean("is_active",true) || it.optString("id") in ids }.filter { it.optString("name").isNotBlank() }.sortedBy { it.optString("name") }
         if(available.size>100) { message("시공자가 많아 전체 업무에서 배정해 주세요.");return }
+        val duplicateNames=available.groupingBy { it.optString("name") }.eachCount().filterValues { it>1 }.keys
+        fun personLabel(person:JSONObject):String = person.optString("name")+(if(person.optString("name") in duplicateNames) " · "+person.optString("id").takeLast(4) else "")+(if(person.optBoolean("is_active",true)) "" else " (비활성)")
+        val displayNames=available.associate { it.optString("id") to personLabel(it) }
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(8)) }
         data class DayControls(val date:String,val leader:Spinner,val checks:List<CheckBox>)
         val controls=mutableListOf<DayControls>()
         for(i in 0 until dates.length()) {
             val date=dates.optString(i);val day=assigned.filter { it.optString("work_date")==date }
             form.addView(TextView(this).apply { text="\n$date";textSize=18f;setTypeface(null,Typeface.BOLD) })
-            val labels=listOf("팀장 없음")+available.map { it.optString("name")+(if(it.optBoolean("is_active",true)) "" else " (비활성)") }
+            val labels=listOf("팀장 없음")+available.map { personLabel(it) }
             val leader=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,labels) }
             val currentLeader=day.firstOrNull { it.optString("role")=="leader" }?.optString("worker_id")
             leader.setSelection((available.indexOfFirst { it.optString("id")==currentLeader }+1).coerceAtLeast(0));form.addView(leader)
-            val checks=available.map { person -> CheckBox(this).apply { text=person.optString("name")+(if(person.optBoolean("is_active",true)) "" else " (비활성)");isChecked=day.any { it.optString("worker_id")==person.optString("id") && it.optString("role")=="member" };form.addView(this) } }
+            val checks=available.map { person -> CheckBox(this).apply { text=personLabel(person);isChecked=day.any { it.optString("worker_id")==person.optString("id") && it.optString("role")=="member" };form.addView(this) } }
             controls.add(DayControls(date,leader,checks))
         }
         fun signature(result:JSONObject):String {
@@ -1731,7 +1734,7 @@ class MainActivity : Activity() {
                 val index=day.leader.selectedItemPosition-1;val leader=if(index in available.indices) available[index].optString("id") else ""
                 val members=available.indices.filter { day.checks[it].isChecked && available[it].optString("id")!=leader }.map { available[it].optString("id") }
                 days.put(JSONObject().put("workDate",day.date).put("leaderId",leader).put("memberIds",JSONArray(members)))
-                summaries.add(day.date+" · 팀장 "+(names[leader] ?: "없음")+" · 팀원 "+members.joinToString(", ") { names[it].orEmpty() }.ifBlank { "없음" })
+                summaries.add(day.date+" · 팀장 "+(displayNames[leader] ?: "없음")+" · 팀원 "+members.joinToString(", ") { displayNames[it].orEmpty() }.ifBlank { "없음" })
             }
             workerActionBusy=true;val epoch=sessionEpoch
             scope.launch {
