@@ -754,6 +754,8 @@ class MainActivity : Activity() {
         val menu=TextView(this).apply { text="☰";textSize=26f;gravity=Gravity.CENTER;contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
         bar.addView(text("현장 AI 비서",19f,true),LinearLayout.LayoutParams(0,-2,1f))
+        val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
+        bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
         val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
