@@ -432,6 +432,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun submitAssistantWorkerReport(expectedUser:String,companyId:String,siteId:String,region:String,summary:String,memo:String,labor:JSONArray):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && summary.isNotBlank())
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/worker/site-work-report").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
+                val body=JSONObject().put("siteId",siteId).put("work_region",region).put("work_summary",summary).put("memo",memo)
+                    .put("materials",JSONArray()).put("expenses",JSONArray()).put("labor",labor)
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code in 400..499 && code!=408) error(result.optString("error").ifBlank { "완료보고를 제출하지 못했습니다." })
+                check(code in 200..299 && result.optBoolean("success") && result.optString("reportId").takeUnless { it.isBlank() || it=="null" }!=null) { "제출 결과를 확인하지 못했습니다. 다시 제출하기 전에 보고서 상태를 확인해 주세요." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantReportExpenses(expectedUser:String,companyId:String,siteId:String):JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }

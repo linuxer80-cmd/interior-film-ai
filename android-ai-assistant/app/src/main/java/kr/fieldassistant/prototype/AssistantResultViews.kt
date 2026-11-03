@@ -74,7 +74,7 @@ internal object AssistantResultViews {
                         setOnClickListener { onAction(siteId,section) }
                     },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
                 }
-                card.addView(label("필름 사용량, 경비, 현장 기본정보와 상담 견적서는 앱에서 입력합니다. 날짜별 배정과 시공자 완료보고 상태를 확인하고, 시공자가 사진을 등록할 수 있습니다. 보고서 제출은 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
+                card.addView(label("필름 사용량, 경비, 현장 기본정보와 상담 견적서는 앱에서 입력합니다. 시공자의 지정 자재 신규 완료보고를 앱에서 제출할 수 있으며, 일부 보고서는 필름장이 화면에서 처리합니다.",12f).apply { setTextColor(muted) })
             }
             return card
         }
