@@ -940,7 +940,7 @@ class MainActivity : Activity() {
         val owner=selectedCompany()?.role=="관리자"
         val feature=AssistantRequests.feature(featureId,owner)
         if(feature==null) { appendHomeMessage("이 기능은 관리자 권한이 필요합니다.");render();return }
-        appendHomeMessage("${feature.title} 기능을 열 수 있습니다.")
+        appendHomeMessage(if(AssistantRequests.opensWeb(feature.id)) "${feature.title} 기능은 웹 화면에서 열립니다." else "${feature.title} 기능을 열 수 있습니다.")
         val messages=JSONArray(prefs.getString("home_chat","[]"))
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
@@ -1381,7 +1381,7 @@ class MainActivity : Activity() {
     private fun showFeatures() {
         val owner=selectedCompany()?.role=="관리자"
         val features=AssistantRequests.features.filter { owner || !it.ownerOnly }
-        AlertDialog.Builder(this).setTitle("필름장이 기능").setItems(features.map { it.title }.toTypedArray()) { _,i ->
+        AlertDialog.Builder(this).setTitle("필름장이 기능").setItems(features.map { it.title + if(AssistantRequests.opensWeb(it.id)) " (웹앱)" else "" }.toTypedArray()) { _,i ->
             chatId=null;settingsOpen=false;offerFeature(features[i].id)
         }.setNegativeButton("닫기",null).show()
     }
@@ -1690,6 +1690,10 @@ class MainActivity : Activity() {
     }
     private fun showNativeReportStatus(uid:String,company:CompanyAccess,siteId:String,siteName:String,result:JSONObject) {
         val report=result.optJSONObject("report")
+        val prefix="report_draft_"+company.id+"_"+siteId+"_"
+        if(report!=null && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) {
+            prefs.edit().remove(prefix+"submission_uncertain").apply()
+        }
         fun value(key:String)=report?.optString(key)?.takeUnless { it.isBlank() || it=="null" }.orEmpty()
         val status=if(report==null) "아직 제출된 완료보고가 없습니다." else when(value("review_status")) {
             "approved" -> "관리자 승인 완료";"rejected" -> "관리자 반려";"pending" -> "관리자 검수 대기";else -> "상태 확인 필요"
@@ -2572,7 +2576,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+" 열기",false) { openFeature(feature) }
+                addButton(body,feature.title+if(AssistantRequests.opensWeb(feature.id)) " · 웹앱에서 열기" else " 열기",false) { openFeature(feature) }
             }
         }
         candidate?.let { item ->

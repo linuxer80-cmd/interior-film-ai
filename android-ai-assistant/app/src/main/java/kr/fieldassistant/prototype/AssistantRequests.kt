@@ -29,6 +29,8 @@ internal object AssistantRequests {
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
+    private val nativeFeatures=setOf("new-site","customer-page","clients","jobs","sites","work","profit","samples")
+    fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=input.trim();val compact=q.replace(Regex("\\s+"),"")
         if(compact in listOf("오늘할일","오늘할일알려줘","오늘할일보여줘","오늘할일뭐야")) return Request("schedule",from=today.toString(),to=today.toString())
