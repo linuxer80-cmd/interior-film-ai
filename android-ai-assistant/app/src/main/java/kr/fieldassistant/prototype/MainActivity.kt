@@ -950,8 +950,8 @@ class MainActivity : Activity() {
     private fun recruitMenu() {
         val company=selectedCompany() ?: return;val uid=account?.userId ?: return
         val worker=company.role!="관리자"
-        val labels=if(worker) arrayOf("일자리 찾아보기","내 지원 · 받은 제안","구직 일정 등록 · 변경","구인·구직 전체 화면")
-            else arrayOf("시공자 찾아보기","내 구인 공고","지원자 · 모집 현황","구인 공고 등록 · 현장 제안","시공자로 일자리 보기","구인·구직 전체 화면")
+        val labels=if(worker) arrayOf("일자리 찾아보기","내 지원 · 받은 제안","구직 일정 등록 · 변경 (웹앱)","구인·구직 전체 화면 (웹앱)")
+            else arrayOf("시공자 찾아보기","내 구인 공고","지원자 · 모집 현황","구인 공고 등록 · 현장 제안 (웹앱)","시공자로 일자리 보기","구인·구직 전체 화면 (웹앱)")
         AlertDialog.Builder(this).setTitle("구인 · 구직").setItems(labels) { _,i ->
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return@setItems }
             if(worker) when(i) {
@@ -1136,7 +1136,7 @@ class MainActivity : Activity() {
         val clients=data.optJSONArray("clients") ?: JSONArray()
         val list=(0 until clients.length()).mapNotNull { clients.optJSONObject(it) }.filter { query.isBlank() || it.optString("name").contains(query,true) }
         val pending=tradePending();val hasPending=pending.has("body")
-        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","현장 연결 · 입금 · 정산 열기")
+        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","현장 연결 · 입금 · 정산 (웹앱)")
         if(hasPending) labels.add("이전 저장 결과 다시 확인")
         labels.addAll(list.map { it.optString("name")+it.optString("phone").takeUnless { p -> p.isBlank() || p=="null" }?.let { p -> " · $p" }.orEmpty() })
         val header=3+(if(hasPending) 1 else 0)
@@ -1281,7 +1281,7 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
                 if(profile==null) {
                     AlertDialog.Builder(this@MainActivity).setTitle("고객페이지 관리").setMessage("아직 저장된 업체 정보가 없습니다. 고객페이지 관리에서 처음 등록해 주세요.")
-                        .setPositiveButton("관리 화면 열기") { _,_ -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page") }.setNegativeButton("닫기",null).show()
+                        .setPositiveButton("관리 화면 열기 (웹앱)") { _,_ -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page") }.setNegativeButton("닫기",null).show()
                 } else showCustomerPageMenu(uid,company,profile)
             } catch(e:CancellationException) { throw e }
             catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("고객페이지 정보를 불러오지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
@@ -1292,7 +1292,7 @@ class MainActivity : Activity() {
         val name=profile.optString("business_name").takeUnless { it=="null" }.orEmpty().ifBlank { company.name }
         val published=if(profile.optBoolean("is_published")) "공개 중" else "비공개"
         AlertDialog.Builder(this).setTitle("고객페이지 관리 · $name").setMessage("업체 소개와 시공 사례: $published")
-            .setItems(arrayOf("업체 정보 확인 · 수정","디자인 · 시공 사례 · 공개 설정","고객 AI 견적 링크 확인 · 공유")) { _,choice ->
+            .setItems(arrayOf("업체 정보 확인 · 수정","디자인 · 시공 사례 · 공개 설정 (웹앱)","고객 AI 견적 링크 확인 · 공유")) { _,choice ->
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("해당 관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
                 if(choice==0) editCustomerProfile(uid,company,profile)
                 else if(choice==1) openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page")
