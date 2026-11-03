@@ -1659,11 +1659,38 @@ class MainActivity : Activity() {
             append(if(result.optBoolean("canSubmit")) "\n\n완료보고 작성과 사진 첨부는 현재 웹 화면에서 진행합니다." else "\n\n완료보고 제출 권한을 확인해 주세요.")
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
+        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
+            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId)
+            else message("계정과 업체를 다시 확인해 주세요.")
+        }
         dialog.setNeutralButton(if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) "작성·사진 첨부 (웹)" else "보고서·사진 보기 (웹)") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) openSiteAction(company.id,siteId,"report_web")
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()
+    }
+    private fun showReportDraft(uid:String,company:CompanyAccess,siteId:String) {
+        val prefix="report_draft_"+company.id+"_"+siteId+"_"
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        val keys=listOf("region","summary","memo");val labels=listOf("시공 부위","실제 시공 내용","메모")
+        val inputs=keys.mapIndexed { i,key -> EditText(this).apply {
+            hint=labels[i];setText(prefs.getString(prefix+key,""));filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
+            form.addView(this)
+        } }
+        val dialog=AlertDialog.Builder(this).setTitle("완료보고 내용 임시 저장")
+            .setMessage("입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("임시 저장",null).setNegativeButton("취소",null)
+            .setNeutralButton("내용 복사",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
+            val edit=prefs.edit();keys.forEachIndexed { i,key -> edit.putString(prefix+key,inputs[i].text.toString()) }
+            if(!edit.commit()) { message("임시 내용을 저장하지 못했습니다.");return@setOnClickListener }
+            dialog.dismiss();message("완료보고 내용을 이 휴대전화에 임시 저장했습니다. 보고서는 아직 제출되지 않았습니다.")
+        };dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            val text=keys.indices.map { i -> labels[i]+": "+inputs[i].text.toString().trim() }.joinToString("\n")
+            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("완료보고 임시 내용",text))
+            message("입력 내용을 복사했습니다. 임시 저장은 별도로 눌러 주세요.")
+        } };dialog.show()
     }
     private fun showNativeAssignments(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
         val dates=result.optJSONArray("dates") ?: return
