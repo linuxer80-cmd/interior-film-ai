@@ -74,7 +74,7 @@ internal object AssistantResultViews {
                         setOnClickListener { onAction(siteId,section) }
                     },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
                 }
-                card.addView(label("전화·길 안내는 휴대폰 앱으로, 현장 업무는 앱 안의 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
+                card.addView(label("필름 사용량과 경비는 앱에서 입력합니다. 완료보고·현장 수정 등 일부 업무는 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
             }
             return card
         }

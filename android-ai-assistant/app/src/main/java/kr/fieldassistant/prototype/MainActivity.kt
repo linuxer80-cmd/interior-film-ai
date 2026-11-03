@@ -1594,6 +1594,14 @@ class MainActivity : Activity() {
                         try { startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW,uri),"길 안내 앱 선택")) }
                         catch(_:ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://map.naver.com/p/search/"+Uri.encode(address)))) }
                     }
+                    "film", "expenses" -> {
+                        if(prefs.getString("text_analysis_company",null)!=null) { message("진행 중인 상담 내용 입력을 완료하거나 취소한 후 다시 선택해 주세요.");return@launch }
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
+                        if(!prefs.edit().putString("selected_site_company",companyId).putString("selected_site_id",siteId).putString("selected_site_name",name).commit()) {
+                            message("선택한 현장을 저장하지 못했습니다. 다시 시도해 주세요.");return@launch
+                        }
+                        if(action=="film") showNativeFilmInput(uid,company,siteId,name) else showNativeExpenseInput(uid,company,siteId,name)
+                    }
                     else -> {
                         val workerTask=action in listOf("film","expenses","report","photos")
                         val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
@@ -1604,6 +1612,39 @@ class MainActivity : Activity() {
               catch(_:Exception) { if(epoch==sessionEpoch) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
             finally { workerActionBusy=false }
         }
+    }
+    private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
+        account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
+            prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun showNativeExpenseInput(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
+        val categories=arrayOf("주차비","식비","유류비","통행료")
+        AlertDialog.Builder(this).setTitle("$siteName · 경비 종류").setItems(categories) { _,index ->
+            if(!nativeSiteSelectionValid(uid,company,siteId)) { message("현장과 계정을 다시 확인해 주세요.");return@setItems }
+            val amount=EditText(this).apply { hint="금액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(9)) }
+            val dialog=AlertDialog.Builder(this).setTitle("${categories[index]} 입력").setMessage("오늘 지출한 금액을 입력해 주세요. 저장 전 내용을 다시 확인합니다.").setView(amount)
+                .setPositiveButton("확인",null).setNegativeButton("취소",null).create()
+            dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if(!nativeSiteSelectionValid(uid,company,siteId)) { dialog.dismiss();message("현장과 계정을 다시 확인해 주세요.");return@setOnClickListener }
+                val value=amount.text.toString().toLongOrNull()
+                if(value==null || value !in 1..100000000L) { message("1원부터 1억원까지 입력해 주세요.");return@setOnClickListener }
+                dialog.dismiss();answerHome("${categories[index]} ${value}원")
+            } };dialog.show()
+        }.setNegativeButton("닫기",null).show()
+    }
+    private fun showNativeFilmInput(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        val code=EditText(this).apply { hint="제품번호 예: S115";setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(50)) }
+        val length=EditText(this).apply { hint="사용 길이 (m)";inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL;filters=arrayOf(android.text.InputFilter.LengthFilter(12)) }
+        form.addView(code);form.addView(length)
+        val dialog=AlertDialog.Builder(this).setTitle("$siteName · 필름 사용량")
+            .setMessage("반출된 롤을 확인한 뒤 남은 필름의 창고 반납 내용을 보여드립니다.").setView(form)
+            .setPositiveButton("롤 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(!nativeSiteSelectionValid(uid,company,siteId)) { dialog.dismiss();message("현장과 계정을 다시 확인해 주세요.");return@setOnClickListener }
+            val value="${code.text.toString().trim()} ${length.text.toString().trim()}m 사용"
+            if(FilmInput.parse(value)==null) { message("제품번호와 사용 길이를 확인해 주세요. 예: S115, 3.5m");return@setOnClickListener }
+            dialog.dismiss();answerHome(value)
+        } };dialog.show()
     }
     private fun displaySiteDate(value:String):String = try {
         java.time.OffsetDateTime.parse(value).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString()
