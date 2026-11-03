@@ -229,6 +229,30 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun dealerInventory(expectedUser:String,companyId:String,body:JSONObject?=null):JSONObject {
+        val user=client.auth.retrieveUserForCurrentSession()
+        val owners=JSONArray(client.postgrest.rpc("get_my_company").data)
+        check(user.id==expectedUser && (0 until owners.length()).any { i -> owners.optJSONObject(i)?.let { it.optString("company_id")==companyId && it.optString("role")=="owner" && it.optBoolean("is_active") }==true }) { "선택한 업체의 활성 관리자만 재고를 관리할 수 있습니다." }
+        if(body!=null) {
+            require(body.optString("action")=="receive" && Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("requestId")))
+        }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/film-dealers").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val data=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code in 400..499 && code!=408) throw FilmRejected(data.optString("error").ifBlank { "입고 내용이나 권한을 확인해 주세요." })
+                check(code in 200..299 && data.optJSONArray("dealers")!=null && data.optJSONArray("prices")!=null && data.optJSONArray("purchases")!=null && data.optJSONObject("stock")?.optBoolean("owner")==true && data.optJSONObject("stock")?.optJSONArray("rolls")!=null) { "입고 또는 재고 조회 결과를 확인하지 못했습니다." }
+                for(key in listOf("dealers","prices","purchases")) { val rows=data.getJSONArray(key);for(i in 0 until rows.length()) { val row=rows.optJSONObject(i) ?: error("업체 재고 정보를 확인하지 못했습니다.");check(row.optString("company_id")==companyId) { "업체 재고 정보를 확인하지 못했습니다." } } }
+                data
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,images:List<ByteArray>,requestId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }

@@ -912,6 +912,7 @@ class MainActivity : Activity() {
             "new-site" -> showNewSiteRegistration()
             "customer-page" -> customerPageManager()
             "clients" -> tradeManager()
+            "inventory" -> openDealerInventory()
             "jobs" -> recruitMenu()
             "sites", "work" -> lookupSites(AssistantRequests.Request("sites"))
             "profit" -> {
@@ -945,6 +946,106 @@ class MainActivity : Activity() {
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
         openNativeFeature(feature.id)
+    }
+    private var inventoryBusy=false
+    private fun openDealerInventory() {
+        val company=selectedCompany() ?: return;val uid=account?.userId ?: return
+        if(company.role!="관리자") { message("관리자만 입고와 재고를 확인할 수 있습니다.");return }
+        if(inventoryBusy) { message("재고를 확인하고 있습니다.");return }
+        inventoryBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val data=auth.dealerInventory(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
+                val pending=prefs.getString("dealer_receive_pending_"+company.id,null)
+                val options=mutableListOf("현재 재고 확인","거래처 자재 입고")
+                if(pending!=null) options.add("이전 입고 결과 확인")
+                AlertDialog.Builder(this@MainActivity).setTitle("필름 재고 · 입고").setItems(options.toTypedArray()) { _,index ->
+                    if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return@setItems }
+                    when(index) {
+                        0 -> showDealerStock(uid,company,data)
+                        1 -> if(pending!=null) message("이전 입고 결과부터 확인해 주세요.") else chooseReceiveDealer(uid,company,data)
+                        2 -> pending?.let { retryDealerReceive(uid,company,it) }
+                    }
+                }.setNegativeButton("닫기",null).show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "재고를 확인하지 못했습니다.") }
+            finally { inventoryBusy=false }
+        }
+    }
+    private fun showDealerStock(uid:String,company:CompanyAccess,data:JSONObject,query:String="") {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        val rolls=data.getJSONObject("stock").getJSONArray("rolls")
+        val all=(0 until rolls.length()).mapNotNull { rolls.optJSONObject(it) }
+        if(all.size!=rolls.length()) { message("재고 정보를 확인하지 못했습니다.");return }
+        val filtered=all.filter { row -> row.optString("status") in listOf("available","on_site") && listOf("brand","product_code","location","supplier","site_name").any { row.optString(it).contains(query,true) } }
+        val lines=filtered.take(100).map { row ->
+            fun value(key:String)=row.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
+            val state=if(row.optString("status")=="available") "창고" else "현장 반출"
+            value("brand")+" "+value("product_code")+" · "+value("remaining")+"m · "+state+"\n입고처: "+value("supplier")+" · 위치: "+(if(state=="창고") value("location") else value("site_name"))
+        }
+        val summary=if(lines.isEmpty()) "해당하는 롤이 없습니다." else lines.joinToString("\n\n")+(if(filtered.size>100) "\n\n처음 100건만 표시합니다. 제품 번호로 검색해 주세요." else "")
+        AlertDialog.Builder(this).setTitle("재고 확인 · ${filtered.size}롤").setMessage(summary).setPositiveButton("닫기",null)
+            .setNeutralButton("제품 검색") { _,_ ->
+                val input=EditText(this).apply { hint="제품 번호 또는 브랜드";setSingleLine();setText(query) }
+                AlertDialog.Builder(this).setTitle("재고 검색").setView(input).setPositiveButton("검색") { _,_ -> showDealerStock(uid,company,data,input.text.toString().trim()) }.setNegativeButton("취소",null).show()
+            }.show()
+    }
+    private fun chooseReceiveDealer(uid:String,company:CompanyAccess,data:JSONObject) {
+        val list=data.getJSONArray("dealers");val dealers=(0 until list.length()).mapNotNull { list.optJSONObject(it) }
+        if(dealers.isEmpty()) { message("등록된 대리점이 없습니다. 웹앱에서 대리점을 먼저 등록해 주세요.");return }
+        AlertDialog.Builder(this).setTitle("입고 거래처 선택").setItems(dealers.map { it.optString("name").ifBlank { "이름 확인 필요" } }.toTypedArray()) { _,i -> chooseReceiveProduct(uid,company,data,dealers[i],"") }.setNegativeButton("취소",null).show()
+    }
+    private fun chooseReceiveProduct(uid:String,company:CompanyAccess,data:JSONObject,dealer:JSONObject,query:String) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        if(query.isBlank()) {
+            val input=EditText(this).apply { hint="제품 번호 또는 브랜드";setSingleLine() }
+            AlertDialog.Builder(this).setTitle("입고할 필름 검색").setView(input).setPositiveButton("검색") { _,_ -> val q=input.text.toString().trim();if(q.isBlank()) message("제품 번호나 브랜드를 입력해 주세요.") else chooseReceiveProduct(uid,company,data,dealer,q) }.setNegativeButton("취소",null).show();return
+        }
+        val all=data.getJSONArray("prices");val rows=(0 until all.length()).mapNotNull { all.optJSONObject(it) }.filter { it.optString("dealer_id")==dealer.optString("id") && it.optBoolean("is_active",true) && listOf("brand","product_code","product_name").any { key -> it.optString(key).contains(query,true) } }
+        if(rows.isEmpty()) { message("이 거래처에 등록된 공급가가 없습니다. 웹앱에서 제품과 공급가를 먼저 등록해 주세요.");return }
+        fun kind(v:String)=when(v){"fire"->"방염";"non_fire"->"비방염";"unspecified"->"구분 미지정";else->"구분 확인 필요"}
+        val list=rows.take(50)
+        AlertDialog.Builder(this).setTitle("제품 · 방염 구분 선택${if(rows.size>50) " (50건 표시)" else ""}").setItems(list.map { it.optString("brand")+" "+it.optString("product_code")+" · "+kind(it.optString("price_type"))+" · "+it.optString("unit_price")+"원/m" }.toTypedArray()) { _,i -> enterDealerReceipt(uid,company,dealer,list[i]) }.setNegativeButton("취소",null).show()
+    }
+    private fun enterDealerReceipt(uid:String,company:CompanyAccess,dealer:JSONObject,price:JSONObject) {
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        fun input(hintText:String,initial:String,numeric:Boolean):EditText=EditText(this).apply { hint=hintText;setSingleLine();setText(initial);filters=arrayOf(android.text.InputFilter.LengthFilter(if(numeric) 16 else 100));if(numeric) inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL;form.addView(this) }
+        val length=input("롤당 길이 (m)","",true);val count=input("같은 길이의 롤 수 (1~50)","1",true);val location=input("보관 위치","창고",false);val memo=input("메모 (선택)","",false)
+        val dialog=AlertDialog.Builder(this).setTitle("거래처 자재 입고").setMessage(dealer.optString("name")+" · "+price.optString("brand")+" "+price.optString("product_code")+"\n공급가: "+price.optString("unit_price")+"원/m").setView(form).setNegativeButton("취소",null).setPositiveButton("내용 확인",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val metres=length.text.toString().trim().toBigDecimalOrNull();val copies=count.text.toString().trim().toIntOrNull()
+            if(metres==null || metres<=java.math.BigDecimal.ZERO || metres>java.math.BigDecimal(1000000) || copies==null || copies !in 1..50) { message("길이는 0 초과, 롤 수는 1~50개로 입력해 주세요.");return@setOnClickListener }
+            if(price.optString("price_type") !in listOf("fire","non_fire","unspecified") || !price.has("revision") || price.isNull("revision")) { message("공급가 정보를 다시 확인해 주세요.");return@setOnClickListener }
+            val body=JSONObject().put("action","receive").put("requestId",UUID.randomUUID().toString()).put("dealerId",dealer.optString("id")).put("productId",price.optString("product_id")).put("priceType",price.optString("price_type")).put("priceRevision",price.getInt("revision")).put("length",metres.toPlainString()).put("count",copies).put("location",location.text.toString().trim()).put("memo",memo.text.toString().trim())
+            val type=when(price.optString("price_type")){"fire"->"방염";"non_fire"->"비방염";else->"구분 미지정"}
+            val text="${dealer.optString("name")} · ${price.optString("brand")} ${price.optString("product_code")} · $type\n${metres.toPlainString()}m × ${copies}롤\n공급가 ${price.optString("unit_price")}원/m\n보관 위치 ${body.optString("location").ifBlank { "창고" }}\n메모 ${body.optString("memo").ifBlank { "없음" }}"
+            AlertDialog.Builder(this).setTitle("입고 내용 확인").setMessage(text).setNegativeButton("돌아가기",null).setPositiveButton("입고 저장") { _,_ ->
+                if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return@setPositiveButton }
+                val key="dealer_receive_pending_"+company.id
+                if(prefs.contains(key)) { message("이전 입고 결과부터 확인해 주세요.");return@setPositiveButton }
+                if(!prefs.edit().putString(key,body.toString()).commit()) { message("입고 요청을 저장하지 못했습니다.");return@setPositiveButton }
+                dialog.dismiss();retryDealerReceive(uid,company,body.toString())
+            }.show()
+        } };dialog.show()
+    }
+    private fun retryDealerReceive(uid:String,company:CompanyAccess,raw:String) {
+        if(inventoryBusy) { message("다른 재고 작업이 진행 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        val key="dealer_receive_pending_"+company.id
+        if(prefs.getString(key,null)!=raw) { message("보관된 입고 요청이 변경되었습니다. 다시 확인해 주세요.");return }
+        val body=try { JSONObject(raw) } catch(_:Exception) { message("이전 입고 요청을 확인하지 못했습니다. 관리자에게 확인해 주세요.");return }
+        inventoryBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                auth.dealerInventory(uid,company.id,body)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
+                check(prefs.getString(key,null)==raw && prefs.edit().remove(key).commit()) { "입고 결과는 확인했지만 휴대전화 상태를 저장하지 못했습니다. 이전 입고 결과를 다시 확인해 주세요." }
+                message("자재 입고를 저장했습니다. 재고 확인에서 볼 수 있습니다.")
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message("입고 결과를 확실히 확인하지 못했습니다. ‘이전 입고 결과 확인’으로 같은 요청을 확인해 주세요.\n"+(e.message ?: "")) }
+            finally { inventoryBusy=false }
+        }
     }
     private var laborBusy=false
     private fun recruitMenu() {
