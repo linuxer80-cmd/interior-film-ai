@@ -1116,7 +1116,7 @@ class MainActivity : Activity() {
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
                 val site=sites[index]
                 val paid=if(site.optBoolean("confirmed")) amount(site,"paid") else "확인 필요"
-                val status=when(site.optString("status")) { "in_progress"->"시공 중";"completed"->"시공 완료";"cancelled"->"취소";"pending"->"상담 중";else->"상태 확인 필요" }
+                val status=when(site.optString("status")) { "in_progress"->"시공 중";"completed"->"시공 완료";"cancelled"->"취소";"consulting"->"상담 중";"scheduled"->"시공 예정";else->"상태 확인 필요" }
                 AlertDialog.Builder(this).setTitle(siteName(site)).setMessage("상태: $status\n계약 금액: ${amount(site,"contract_amount")}\n확인된 입금: $paid\n미수금: ${amount(site,"outstanding")}\n\n조회 시점의 정보입니다. 금액이 확인되지 않은 항목은 확인 필요로 표시합니다.")
                     .setPositiveButton("확인",null).show()
             }.setNegativeButton("닫기",null).show()
