@@ -1745,7 +1745,7 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
                 val report=access.optJSONObject("report") ?: error("기존 보고서를 확인하지 못했습니다.")
                 val supportReport=support.optJSONObject("report") ?: error("기존 보고서를 확인하지 못했습니다.")
-                check(access.optBoolean("canSubmit") && report.optString("review_status")=="rejected" && supportReport.optString("id")==report.optString("id") && supportReport.optString("review_status")=="rejected") { "보고서 상태가 변경되었습니다. 다시 확인해 주세요." }
+                check(RejectedReportSnapshot.matches(access,support)) { "보고서 상태나 내용이 변경되었습니다. 다시 확인해 주세요." }
                 val seed=support.optJSONObject("seed") ?: error("기존 내역을 확인하지 못했습니다.")
                 val materials=seed.optJSONArray("materials") ?: error("기존 자재를 확인하지 못했습니다.")
                 val expenses=seed.optJSONArray("expenses") ?: error("기존 경비를 확인하지 못했습니다.")
