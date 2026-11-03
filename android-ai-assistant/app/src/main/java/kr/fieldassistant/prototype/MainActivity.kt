@@ -1602,6 +1602,10 @@ class MainActivity : Activity() {
                         }
                         if(action=="film") showNativeFilmInput(uid,company,siteId,name) else showNativeExpenseInput(uid,company,siteId,name)
                     }
+                    "info" -> {
+                        if(!owner) { message("관리자만 현장 정보를 수정할 수 있습니다.");return@launch }
+                        showNativeSiteEdit(uid,company,site)
+                    }
                     else -> {
                         val workerTask=action in listOf("film","expenses","report","photos")
                         val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
@@ -1616,6 +1620,49 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun showNativeSiteEdit(uid:String,company:CompanyAccess,site:JSONObject) {
+        val siteId=site.optString("id").ifBlank { site.optString("site_id") }
+        val status=site.optString("status")
+        if(status !in listOf("consulting","scheduled","in_progress","completed","cancelled")) { message("현장 상태를 확인한 뒤 다시 시도해 주세요.");return }
+        val keys=listOf("site_name","customer_name","customer_phone","address","address_detail","work_description")
+        val titles=listOf("현장 이름","고객 이름","연락처","주소","상세 주소","시공 내용")
+        fun value(row:JSONObject,key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
+        val original=keys.associateWith { value(site,it) }
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        val inputs=keys.mapIndexed { i,key -> EditText(this).apply {
+            hint=titles[i];setText(original[key]);filters=arrayOf(android.text.InputFilter.LengthFilter(if(key=="work_description") 20000 else 1000))
+            if(key!="work_description") setSingleLine()
+            form.addView(this)
+        } }
+        val scroll=ScrollView(this).apply { addView(form) }
+        val dialog=AlertDialog.Builder(this).setTitle("현장 기본정보 수정").setMessage("변경한 항목만 저장합니다.").setView(scroll)
+            .setPositiveButton("변경 내용 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
+            val changes=JSONObject();val summary=mutableListOf<String>()
+            keys.forEachIndexed { i,key -> val current=inputs[i].text.toString().trim();if(current!=original[key]?.trim()) { changes.put(key,current);summary.add("${titles[i]}: ${current.ifBlank { "(삭제)" }}") } }
+            if(changes.length()==0) { message("변경된 내용이 없습니다.");return@setOnClickListener }
+            AlertDialog.Builder(this).setTitle("현장 정보 저장 확인").setMessage(summary.joinToString("\n"))
+                .setPositiveButton("저장") { _,_ ->
+                    if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return@setPositiveButton }
+                    workerActionBusy=true;val epoch=sessionEpoch
+                    scope.launch {
+                        try {
+                            val sites=auth.assistantSites(uid,company.id)
+                            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
+                            val latest=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }.find { it.optString("id")==siteId }
+                            if(latest==null || latest.optString("status")!=status || keys.any { changes.has(it) && value(latest,it)!=original[it] }) {
+                                message("다른 곳에서 현장 정보가 변경되었습니다. 다시 열어 확인해 주세요.");return@launch
+                            }
+                            auth.updateAssistantSite(uid,company.id,siteId,status,changes)
+                            if(epoch==sessionEpoch) { dialog.dismiss();message("현장 기본정보를 저장했습니다.") }
+                        } catch(e:CancellationException) { throw e }
+                          catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "저장하지 못했습니다. 다시 확인해 주세요.") }
+                        finally { workerActionBusy=false }
+                    }
+                }.setNegativeButton("돌아가기",null).show()
+        } };dialog.show()
+    }
     private fun showNativeExpenseInput(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
         val categories=arrayOf("주차비","식비","유류비","통행료")
         AlertDialog.Builder(this).setTitle("$siteName · 경비 종류").setItems(categories) { _,index ->
