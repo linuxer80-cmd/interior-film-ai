@@ -432,6 +432,36 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantAssignments(expectedUser:String,companyId:String,siteId:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            fun get(url:String,publicKey:Boolean):String {
+                val c=URL(url).openConnection() as HttpsURLConnection
+                try {
+                    c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                    c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                    if(publicKey) c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY)
+                    val code=c.responseCode
+                    val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    check(code in 200..299) { "시공 일정과 배정을 확인하지 못했습니다." }
+                    return raw
+                } finally { c.disconnect() }
+            }
+            val result=JSONObject(get("https://interior-film-ai.vercel.app/api/site-daily-assignments?siteId="+siteId,false))
+            check(result.optBoolean("success") && result.optJSONArray("assignments")!=null && result.optJSONArray("dates")!=null && result.optJSONObject("site")?.optString("id")==siteId) { "시공 일정 결과를 확인하지 못했습니다." }
+            val workers=JSONArray();var offset=0
+            while(true) {
+                val batch=JSONArray(get(SUPABASE_URL+"/rest/v1/workers?select=id,name,company_id&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset,true))
+                for(i in 0 until batch.length()) { val row=batch.getJSONObject(i);check(row.optString("company_id")==companyId);workers.put(row) }
+                if(batch.length()<500) break
+                offset+=batch.length();check(offset<10000) { "시공자가 많아 목록을 불러오지 못했습니다." }
+            }
+            result.put("workers",workers)
+        }
+    }
     suspend fun assistantQuote(expectedUser:String,companyId:String,siteId:String,document:JSONObject?=null,revision:Int=0):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }

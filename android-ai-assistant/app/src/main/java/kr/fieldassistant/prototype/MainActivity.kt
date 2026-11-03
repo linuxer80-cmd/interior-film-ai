@@ -1565,12 +1565,12 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","all","quote","schedule") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
         val owner=company.role=="관리자"
-        if(!owner && action in listOf("quote","schedule")) return
+        if(!owner && action in listOf("quote","schedule","schedule_web")) return
         if(workerActionBusy) return
         workerActionBusy=true
         val epoch=sessionEpoch
@@ -1612,9 +1612,15 @@ class MainActivity : Activity() {
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         showNativeQuote(uid,company,siteId,quote)
                     }
+                    "schedule" -> {
+                        if(!owner) { message("관리자만 전체 배정을 볼 수 있습니다.");return@launch }
+                        val assignments=auth.assistantAssignments(uid,companyId,siteId)
+                        if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                        showNativeAssignments(uid,company,siteId,assignments)
+                    }
                     else -> {
                         val workerTask=action in listOf("film","expenses","report","photos")
-                        val section=if(action=="all") "info" else action
+                        val section=when(action) { "all" -> "info";"schedule_web" -> "schedule";else -> action }
                         val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+section else "/worker/site/"+Uri.encode(siteId)+"?section="+section
                         openWebWorkspace("https://interior-film-ai.vercel.app"+path)
                     }
@@ -1627,6 +1633,25 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun showNativeAssignments(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
+        val dates=result.optJSONArray("dates") ?: return
+        val assignments=result.optJSONArray("assignments") ?: return
+        val workers=result.optJSONArray("workers") ?: return
+        val names=(0 until workers.length()).mapNotNull { workers.optJSONObject(it) }.associate { it.optString("id") to it.optString("name").takeUnless { name -> name.isBlank() || name=="null" }.orEmpty() }
+        val lines=mutableListOf<String>()
+        for(i in 0 until dates.length()) {
+            val day=dates.optString(i);val assigned=(0 until assignments.length()).mapNotNull { assignments.optJSONObject(it) }.filter { it.optString("work_date")==day }
+            fun display(role:String):String = assigned.filter { it.optString("role")==role }.joinToString(", ") { names[it.optString("worker_id")].orEmpty().ifBlank { "이름 확인 필요" } }.ifBlank { "없음" }
+            lines.add("$day\n팀장: ${display("leader")}\n팀원: ${display("member")}")
+        }
+        AlertDialog.Builder(this).setTitle("시공 일정 · 날짜별 배정")
+            .setMessage(if(lines.isEmpty()) "등록된 시공 날짜가 없습니다." else lines.joinToString("\n\n"))
+            .setPositiveButton("닫기",null)
+            .setNeutralButton("배정 변경 (웹)") { _,_ ->
+                if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자") openSiteAction(company.id,siteId,"schedule_web")
+                else message("계정과 업체를 다시 확인해 주세요.")
+            }.show()
+    }
     private fun showNativeQuote(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
         val source=result.optJSONObject("document") ?: return
         val revision=result.optInt("revision",-1)
