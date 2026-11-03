@@ -6,6 +6,14 @@ import java.security.MessageDigest
 import java.util.UUID
 
 class ScreenshotBatchTest {
+    @Test fun perImageBudgetFitsServerLimit() {
+        for(count in 1..5) {
+            val limit=ScreenshotBatch.maxBytesPerImage(count)
+            assertTrue(ScreenshotBatch.withinLimits(List(count) { ByteArray(limit) }))
+        }
+        assertThrows(IllegalArgumentException::class.java) { ScreenshotBatch.maxBytesPerImage(0) }
+        assertThrows(IllegalArgumentException::class.java) { ScreenshotBatch.maxBytesPerImage(6) }
+    }
     @Test fun limitsNumberAndTotalSize() {
         assertFalse(ScreenshotBatch.withinLimits(emptyList()))
         assertTrue(ScreenshotBatch.withinLimits(List(5) { byteArrayOf(1) }))

@@ -1286,21 +1286,39 @@ class MainActivity : Activity() {
         appendHomeMessage("대화 사진을 분석하고 있습니다.");render()
         scope.launch {
             try {
-                val images=withContext(Dispatchers.IO) { uris.map { uri ->
+                val images=withContext(Dispatchers.IO) { val maxBytes=ScreenshotBatch.maxBytesPerImage(uris.size);uris.map { uri ->
                     val type=contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
                     require(type in listOf("image/jpeg","image/png","image/webp")) { "JPG, PNG 또는 WEBP 사진을 선택해 주세요." }
                     val bytes=contentResolver.openInputStream(uri)?.use { input ->
                         val output=java.io.ByteArrayOutputStream();val chunk=ByteArray(32768)
-                        while(true) { val n=input.read(chunk);if(n<0) break;require(output.size()+n<=20000000);output.write(chunk,0,n) }
+                        while(true) { val n=input.read(chunk);if(n<0) break;require(output.size()+n<=20000000) { "원본 사진이 너무 큽니다. 한 장당 20MB 이하의 사진을 선택해 주세요." };output.write(chunk,0,n) }
                         output.toByteArray()
                     } ?: error("사진을 읽지 못했습니다.")
                     val bounds=android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds=true }
                     android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
-                    require(bounds.outWidth>0 && bounds.outHeight>0 && bounds.outHeight<=10000 && bounds.outWidth.toLong()*bounds.outHeight<=40000000L)
+                    require(bounds.outWidth>0 && bounds.outHeight>0 && bounds.outHeight<=10000 && bounds.outWidth.toLong()*bounds.outHeight<=40000000L) { "사진 크기 또는 형식을 확인할 수 없습니다. 다른 사진을 선택해 주세요." }
                     var sample=1;while(maxOf(bounds.outWidth,bounds.outHeight)/sample>2400) sample*=2
                     val bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,android.graphics.BitmapFactory.Options().apply { inSampleSize=sample }) ?: error("사진을 읽지 못했습니다.")
                     try {
-                        val output=java.io.ByteArrayOutputStream();check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,88,output));require(output.size()<=3500000);output.toByteArray()
+                        var current=bitmap
+                        try {
+                            var compressed:ByteArray?=null
+                            for(maxDimension in listOf(2400,1800,1400,1000)) {
+                                if(maxOf(current.width,current.height)>maxDimension) {
+                                    val ratio=maxDimension.toFloat()/maxOf(current.width,current.height)
+                                    val scaled=Bitmap.createScaledBitmap(current,maxOf(1,(current.width*ratio).toInt()),maxOf(1,(current.height*ratio).toInt()),true)
+                                    if(current!==bitmap && current!==scaled) current.recycle()
+                                    current=scaled
+                                }
+                                for(quality in listOf(88,75,65,55)) {
+                                    val output=java.io.ByteArrayOutputStream()
+                                    check(current.compress(Bitmap.CompressFormat.JPEG,quality,output)) { "사진을 준비하지 못했습니다." }
+                                    if(output.size()<=maxBytes) { compressed=output.toByteArray();break }
+                                }
+                                if(compressed!=null) break
+                            }
+                            requireNotNull(compressed) { "사진 용량을 줄이지 못했습니다. 사진 수를 줄이거나 다른 사진을 선택해 주세요." }
+                        } finally { if(current!==bitmap) current.recycle() }
                     } finally { bitmap.recycle() }
                 } }
                 require(ScreenshotBatch.withinLimits(images)) { "사진은 최대 5장, 합계 3.5MB까지 가능합니다." }
@@ -1315,7 +1333,7 @@ class MainActivity : Activity() {
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(when {
                   e is ScreenshotRetryNew -> "이전 사진 분석을 다시 시작할 수 있습니다. 같은 사진을 같은 순서로 선택해 주세요."
-                  e is IllegalArgumentException && e.message=="사진은 최대 5장, 합계 3.5MB까지 가능합니다." -> e.message!!
+                  e is IllegalArgumentException && !e.message.isNullOrBlank() -> e.message!!
                   else -> "사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 같은 순서로 다시 선택해 주세요."
               }) }
             finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
