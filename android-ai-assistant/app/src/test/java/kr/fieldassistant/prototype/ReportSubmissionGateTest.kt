@@ -15,6 +15,9 @@ class ReportSubmissionGateTest {
     @Test fun blocksUnauthorizedAndPreviouslySubmittedReports() {
         assertNotNull(ReportSubmissionGate.problem(access().put("canSubmit",false),support()))
         assertNotNull(ReportSubmissionGate.problem(access().put("report",JSONObject().put("review_status","rejected")),support()))
+        assertNotNull(ReportSubmissionGate.problem(access().put("report","unknown"),support()))
+        val missing=access();missing.remove("report")
+        assertNotNull(ReportSubmissionGate.problem(missing,support()))
     }
     @Test fun requiresPhotoAndExplicitReturnEvenWhenZero() {
         assertNotNull(ReportSubmissionGate.problem(access(),support().put("afterCount",0)))

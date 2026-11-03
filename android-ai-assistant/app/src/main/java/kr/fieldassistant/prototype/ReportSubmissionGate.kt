@@ -6,7 +6,7 @@ import org.json.JSONObject
 internal object ReportSubmissionGate {
     fun problem(access:JSONObject,support:JSONObject):String? {
         if(!access.optBoolean("canSubmit")) return "책임 팀장 또는 지정 담당자만 제출할 수 있습니다."
-        if(access.optJSONObject("report")!=null || support.optJSONObject("report")!=null) return "기존 보고서가 있습니다. 기존 보고서 화면에서 확인해 주세요."
+        if(!access.has("report") || !access.isNull("report") || !support.has("report") || !support.isNull("report")) return "기존 보고서 상태를 확인해 주세요. 기존 보고서 화면에서 작성할 수 있습니다."
         val operations=support.optJSONObject("operations") ?: return "현장 자재 상태를 확인하지 못했습니다."
         val materials=operations.optJSONArray("materials") ?: return "현장 자재 상태를 확인하지 못했습니다."
         val seed=support.optJSONObject("seed") ?: return "기존 비용을 확인하지 못했습니다."
