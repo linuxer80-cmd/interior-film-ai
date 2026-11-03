@@ -1704,12 +1704,15 @@ class MainActivity : Activity() {
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) {
+            val actions=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0) }
             val photo=Button(this).apply { text="시공 사진 등록";setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("등록할 사진 선택").setItems(arrayOf("시공 전 사진","시공 완료 사진")) { _,index ->
                     pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,if(index==1) "after" else "before"))
                 }.setNegativeButton("취소",null).show()
             } }
-            dialog.setView(photo)
+            actions.addView(photo)
+            actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
+            dialog.setView(actions)
         }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId)
@@ -1720,6 +1723,40 @@ class MainActivity : Activity() {
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()
+    }
+    private fun checkNativeReportPreparation(uid:String,company:CompanyAccess,siteId:String) {
+        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val result=auth.assistantReportSupport(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
+                val operations=result.getJSONObject("operations");val materials=operations.getJSONArray("materials");val after=result.optInt("afterCount")
+                val prefix="report_draft_"+company.id+"_"+siteId+"_"
+                val summary=prefs.getString(prefix+"summary","").orEmpty().trim()
+                val missing=mutableListOf<String>()
+                for(i in 0 until materials.length()) {
+                    val item=materials.optJSONObject(i) ?: continue
+                    if(!item.has("returned") || item.isNull("returned")) {
+                        val name=item.optString("code").takeUnless { it.isBlank() || it=="null" } ?: item.optString("name").takeUnless { it.isBlank() || it=="null" } ?: "자재"
+                        missing.add(name)
+                    }
+                }
+                val text=buildString {
+                    append(if(after>0) "완료사진 ${after}장 등록됨" else "완료사진이 필요합니다.")
+                    append(if(summary.isNotEmpty()) "\n작업 내용: 휴대전화 임시 저장됨" else "\n작업 내용: 휴대전화 임시 저장 내용 없음")
+                    if(materials.length()==0) append("\n반출 자재: 확인된 목록 없음")
+                    else if(missing.isEmpty()) append("\n반출 자재: 반납량 확인됨")
+                    else append("\n반납량 또는 사용 여부 확인 필요: "+missing.joinToString(", "))
+                    if(operations.optBoolean("locked")) append("\n현재 보고서 작성이 잠겨 있습니다. 현장 상태를 확인해 주세요.")
+                    append("\n\n이 화면은 일부 항목 확인용입니다. 경비·인건비 등은 별도 확인해야 하며, 이 확인만으로 보고서가 제출되지는 않습니다.")
+                }
+                AlertDialog.Builder(this@MainActivity).setTitle("완료보고 준비 상태").setMessage(text).setPositiveButton("확인",null).show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "완료보고 준비 상태를 확인하지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
     }
     private fun showReportDraft(uid:String,company:CompanyAccess,siteId:String) {
         val prefix="report_draft_"+company.id+"_"+siteId+"_"
