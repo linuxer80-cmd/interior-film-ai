@@ -334,6 +334,16 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1006) {
+            val request=reportPhotoRequest;reportPhotoRequest=null
+            val uri=data?.data
+            if(resultCode==RESULT_OK && request!=null && uri?.scheme=="content" && account?.userId==request.uid && selectedCompany()?.id==request.company.id && selectedCompany()?.role==request.company.role) {
+                AlertDialog.Builder(this).setTitle("현장 사진 등록")
+                    .setMessage("${request.siteName} 현장에 ${if(request.type=="after") "시공 완료" else "시공 전"} 사진 1장을 등록합니다. 계속할까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ -> uploadReportPhoto(request,uri) }.show()
+            }
+            return
+        }
         if(requestCode==1005) {
             val company=selectedCompany()
             val uris=if(data?.clipData!=null) (0 until data.clipData!!.itemCount).mapNotNull { data.clipData!!.getItemAt(it).uri } else listOfNotNull(data?.data)
@@ -1624,7 +1634,7 @@ class MainActivity : Activity() {
                         } else {
                             val report=auth.assistantWorkReport(uid,companyId,siteId)
                             if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
-                            showNativeReportStatus(uid,company,siteId,report)
+                            showNativeReportStatus(uid,company,siteId,site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장",report)
                         }
                     }
                     else -> {
@@ -1642,7 +1652,41 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
-    private fun showNativeReportStatus(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
+    private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String)
+    private var reportPhotoRequest:ReportPhotoRequest?=null
+    private fun pickReportPhoto(request:ReportPhotoRequest) {
+        if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        reportPhotoRequest=request
+        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),1006) }
+        catch(_:Exception) { reportPhotoRequest=null;message("사진 선택창을 열지 못했습니다.") }
+    }
+    private fun uploadReportPhoto(request:ReportPhotoRequest,uri:Uri) {
+        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
+        if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            var started=false
+            try {
+                val mime=contentResolver.getType(uri)?.lowercase(Locale.ROOT).orEmpty()
+                if(mime !in listOf("image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif")) { message("JPEG, PNG, WebP, HEIC 또는 HEIF 사진을 선택해 주세요.");return@launch }
+                val bytes=withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        val out=java.io.ByteArrayOutputStream();val buf=ByteArray(65536);var total=0
+                        while(true) { val n=input.read(buf);if(n<0) break;total+=n;check(total<=15*1024*1024) { "사진은 15MB 이하만 등록할 수 있습니다." };out.write(buf,0,n) }
+                        out.toByteArray()
+                    } ?: error("선택한 사진을 읽지 못했습니다.")
+                }
+                check(bytes.isNotEmpty()) { "빈 사진 파일은 등록할 수 없습니다." }
+                if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) return@launch
+                started=true
+                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,bytes,mime)
+                if(epoch==sessionEpoch) message(response.optString("message").ifBlank { "사진을 등록했습니다." }+" 완료보고는 아직 제출되지 않았습니다.")
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(if(started) "사진 등록 결과를 확인하지 못했습니다. 다시 올리기 전에 기존 사진을 확인해 주세요.\n"+(e.message ?: "") else e.message ?: "사진을 읽지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
+    }
+    private fun showNativeReportStatus(uid:String,company:CompanyAccess,siteId:String,siteName:String,result:JSONObject) {
         val report=result.optJSONObject("report")
         fun value(key:String)=report?.optString(key)?.takeUnless { it.isBlank() || it=="null" }.orEmpty()
         val status=if(report==null) "아직 제출된 완료보고가 없습니다." else when(value("review_status")) {
@@ -1656,9 +1700,17 @@ class MainActivity : Activity() {
                 if(value("memo").isNotBlank()) append("\n메모: "+value("memo"))
                 if(value("review_memo").isNotBlank()) append("\n관리자 의견: "+value("review_memo"))
             }
-            append(if(result.optBoolean("canSubmit")) "\n\n완료보고 작성과 사진 첨부는 현재 웹 화면에서 진행합니다." else "\n\n완료보고 제출 권한을 확인해 주세요.")
+            append(if(result.optBoolean("canSubmit")) "\n\n완료보고 제출은 현재 웹 화면에서 진행합니다." else "\n\n완료보고 제출 권한을 확인해 주세요.")
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
+        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) {
+            val photo=Button(this).apply { text="시공 사진 등록";setOnClickListener {
+                AlertDialog.Builder(this@MainActivity).setTitle("등록할 사진 선택").setItems(arrayOf("시공 전 사진","시공 완료 사진")) { _,index ->
+                    pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,if(index==1) "after" else "before"))
+                }.setNegativeButton("취소",null).show()
+            } }
+            dialog.setView(photo)
+        }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId)
             else message("계정과 업체를 다시 확인해 주세요.")

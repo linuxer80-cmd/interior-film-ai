@@ -432,6 +432,34 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun uploadAssistantReportPhoto(expectedUser:String,companyId:String,siteId:String,type:String,bytes:ByteArray,mime:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in listOf("before","after"))
+        val ext=when(mime) { "image/jpeg","image/jpg" -> "jpg";"image/png" -> "png";"image/webp" -> "webp";"image/heic" -> "heic";"image/heif" -> "heif";else -> error("지원하지 않는 사진 형식입니다.") }
+        require(bytes.isNotEmpty() && bytes.size<=15*1024*1024)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val boundary="assistant-"+java.util.UUID.randomUUID().toString()
+            val c=URL("https://interior-film-ai.vercel.app/api/worker/site-photos").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary)
+                c.outputStream.use { out ->
+                    fun field(name:String,value:String) { out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n").toByteArray(Charsets.UTF_8)) }
+                    field("siteId",siteId);field("photoType",type)
+                    out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"photos\"; filename=\"photo.$ext\"\r\nContent-Type: $mime\r\n\r\n").toByteArray(Charsets.UTF_8))
+                    out.write(bytes);out.write(("\r\n--$boundary--\r\n").toByteArray(Charsets.UTF_8))
+                }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(code in 400..499 && code!=408) error(result.optString("error").ifBlank { "사진 등록 권한과 현장을 확인해 주세요." })
+                check(code in 200..299 && result.optBoolean("success") && result.optString("site_id")==siteId && result.optInt("count")==1) { "사진 등록 결과를 확인하지 못했습니다. 다시 올리기 전에 기존 사진을 확인해 주세요." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantWorkReport(expectedUser:String,companyId:String,siteId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
