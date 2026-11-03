@@ -1606,6 +1606,12 @@ class MainActivity : Activity() {
                         if(!owner) { message("관리자만 현장 정보를 수정할 수 있습니다.");return@launch }
                         showNativeSiteEdit(uid,company,site)
                     }
+                    "quote" -> {
+                        if(!owner) { message("관리자만 견적서를 작성할 수 있습니다.");return@launch }
+                        val quote=auth.assistantQuote(uid,companyId,siteId)
+                        if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                        showNativeQuote(uid,company,siteId,quote)
+                    }
                     else -> {
                         val workerTask=action in listOf("film","expenses","report","photos")
                         val section=if(action=="all") "info" else action
@@ -1621,6 +1627,69 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun showNativeQuote(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
+        val source=result.optJSONObject("document") ?: return
+        val revision=result.optInt("revision",-1)
+        if(revision<0) { message("견적서 버전을 확인하지 못했습니다.");return }
+        val doc=JSONObject(source.toString())
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8)) }
+        fun input(hintText:String,value:String,multiline:Boolean=false):EditText = EditText(this).apply {
+            hint=hintText;setText(value);filters=arrayOf(android.text.InputFilter.LengthFilter(2000));if(!multiline) setSingleLine()
+        }
+        val fields=listOf("title" to "견적서 제목","company_name" to "업체명","business_number" to "사업자번호","company_phone" to "업체 연락처",
+            "customer_name" to "고객명","customer_phone" to "고객 연락처","address" to "주소","work_date" to "시공일","duration" to "시공 기간",
+            "customer_note" to "고객 안내","other_schedule" to "기타 일정","footer" to "하단 안내")
+        val inputs=fields.associate { (key,title) -> key to input(title,doc.optString(key).takeUnless { it=="null" }.orEmpty(),key in listOf("customer_note","footer")) }
+        fields.forEach { (key,_) -> form.addView(inputs.getValue(key)) }
+        val vatValues=listOf("separate","included","none")
+        val vat=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("부가세 별도","부가세 포함","부가세 없음"));setSelection(vatValues.indexOf(doc.optString("vat")).coerceAtLeast(0)) }
+        form.addView(vat)
+        val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };form.addView(rows)
+        val keys=listOf("name","detail","quantity","unit","film_no","unit_price","note")
+        val names=listOf("항목명","상세 내용","수량","단위","제품번호","단가 (원)","비고")
+        val itemInputs=mutableListOf<List<EditText>>()
+        fun addItem(item:JSONObject) {
+            val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(8)) }
+            val edit=keys.mapIndexed { i,key -> input(names[i],item.optString(key).takeUnless { it=="null" }.orEmpty()).apply { if(key=="quantity" || key=="unit_price") inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL;box.addView(this) } }
+            itemInputs.add(edit)
+            box.addView(Button(this).apply { text="이 항목 삭제";setOnClickListener { itemInputs.remove(edit);rows.removeView(box) } })
+            rows.addView(box)
+        }
+        val existing=doc.optJSONArray("items") ?: JSONArray()
+        for(i in 0 until existing.length()) existing.optJSONObject(i)?.let { addItem(it) }
+        form.addView(Button(this).apply { text="견적 항목 추가";setOnClickListener { if(itemInputs.size>=60) message("견적 항목은 최대 60개입니다.") else addItem(JSONObject()) } })
+        val dialog=AlertDialog.Builder(this).setTitle("상담 견적서 작성").setMessage("입력 내용을 확인한 뒤 저장합니다.")
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장 내용 확인",null).setNegativeButton("닫기",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
+            fields.forEach { (key,_) -> doc.put(key,inputs.getValue(key).text.toString().trim()) }
+            doc.put("vat",vatValues[vat.selectedItemPosition]);val items=JSONArray()
+            itemInputs.forEach { edit -> val item=JSONObject();keys.forEachIndexed { i,key -> item.put(key,edit[i].text.toString().trim()) };items.put(item) }
+            doc.put("items",items)
+            if(itemInputs.any { it[0].text.toString().isBlank() }) { message("각 항목의 이름을 입력해 주세요.");return@setOnClickListener }
+            val complete=itemInputs.isNotEmpty() && itemInputs.all { it[2].text.toString().isNotBlank() && it[5].text.toString().isNotBlank() }
+            val total=try { itemInputs.fold(java.math.BigDecimal.ZERO) { sum,row ->
+                val qty=row[2].text.toString().trim().ifBlank { "0" }.toBigDecimal()
+                val price=row[5].text.toString().trim().ifBlank { "0" }.toBigDecimal()
+                sum.add(qty.multiply(price).setScale(0,java.math.RoundingMode.HALF_UP))
+            } } catch(_:Exception) { message("수량과 단가를 확인해 주세요.");return@setOnClickListener }
+            val totalText=if(complete) "항목 합계 ${total.toPlainString()}원 · ${vat.selectedItem}" else "수량 또는 단가가 비어 있어 합계가 확정되지 않았습니다."
+            AlertDialog.Builder(this).setTitle("견적서 저장 확인").setMessage("${itemInputs.size}개 항목\n$totalText\n\n다른 화면에서 먼저 수정한 경우 덮어쓰지 않습니다.")
+                .setPositiveButton("저장") { _,_ ->
+                    if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return@setPositiveButton }
+                    workerActionBusy=true;val epoch=sessionEpoch;val payload=JSONObject(doc.toString())
+                    scope.launch {
+                        try {
+                            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
+                            auth.assistantQuote(uid,company.id,siteId,payload,revision)
+                            if(epoch==sessionEpoch) { dialog.dismiss();message("견적서를 저장했습니다.") }
+                        } catch(e:CancellationException) { throw e }
+                          catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "견적서를 저장하지 못했습니다.") }
+                        finally { workerActionBusy=false }
+                    }
+                }.setNegativeButton("돌아가기",null).show()
+        } };dialog.show()
+    }
     private fun showNativeSiteEdit(uid:String,company:CompanyAccess,site:JSONObject) {
         val siteId=site.optString("id").ifBlank { site.optString("site_id") }
         val status=site.optString("status")

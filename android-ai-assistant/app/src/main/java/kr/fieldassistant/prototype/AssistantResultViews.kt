@@ -65,7 +65,7 @@ internal object AssistantResultViews {
                 val actions=mutableListOf("전화 걸기" to "phone","길 안내" to "navigate")
                 if(workerActions || ownerActions) actions.addAll(listOf("필름 사용량 · 자재" to "film","경비 입력" to "expenses","완료보고 작성" to "report"))
                 if(workerActions) actions.add("현장 업무 전체" to "info")
-                if(ownerActions) actions.addAll(listOf("현장 기본정보 수정" to "info","전체 업무 (웹)" to "all","견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
+                if(ownerActions) actions.addAll(listOf("현장 기본정보 수정" to "info","전체 업무 (웹)" to "all","상담 견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
                 actions.forEach { (title,section) ->
                     card.addView(Button(context).apply {
                         text=title;textSize=15f;isAllCaps=false;minHeight=dp(48)
@@ -74,7 +74,7 @@ internal object AssistantResultViews {
                         setOnClickListener { onAction(siteId,section) }
                     },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
                 }
-                card.addView(label("필름 사용량, 경비와 현장 기본정보는 앱에서 입력합니다. 완료보고·견적·일정 배정은 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
+                card.addView(label("필름 사용량, 경비, 현장 기본정보와 상담 견적서는 앱에서 입력합니다. 완료보고·일정 배정은 필름장이 화면으로 연결됩니다.",12f).apply { setTextColor(muted) })
             }
             return card
         }
