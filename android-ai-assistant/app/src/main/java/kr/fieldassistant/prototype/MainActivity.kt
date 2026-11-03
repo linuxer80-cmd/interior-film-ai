@@ -965,13 +965,30 @@ class MainActivity : Activity() {
                     when(index) {
                         0 -> showDealerStock(uid,company,data)
                         1 -> if(pending!=null) message("이전 입고 결과부터 확인해 주세요.") else chooseReceiveDealer(uid,company,data)
-                        2 -> pending?.let { retryDealerReceive(uid,company,it) }
+                        2 -> pending?.let { showPendingDealerReceive(uid,company,data,it) }
                     }
                 }.setNegativeButton("닫기",null).show()
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "재고를 확인하지 못했습니다.") }
             finally { inventoryBusy=false }
         }
+    }
+    private fun showPendingDealerReceive(uid:String,company:CompanyAccess,data:JSONObject,raw:String) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
+        val body=try { JSONObject(raw) } catch(_:Exception) { message("이전 입고 요청을 확인하지 못했습니다. 재고를 먼저 확인해 주세요.");return }
+        val dealerId=body.optString("dealerId");val productId=body.optString("productId");val priceType=body.optString("priceType")
+        val dealers=data.optJSONArray("dealers") ?: return;val prices=data.optJSONArray("prices") ?: return
+        val dealer=(0 until dealers.length()).mapNotNull { dealers.optJSONObject(it) }.find { it.optString("id")==dealerId }
+        val product=(0 until prices.length()).mapNotNull { prices.optJSONObject(it) }.find { it.optString("dealer_id")==dealerId && it.optString("product_id")==productId && it.optString("price_type")==priceType }
+        val dealerName=dealer?.optString("name")?.takeUnless { it.isBlank() || it=="null" } ?: "거래처 확인 필요"
+        val productName=product?.let { it.optString("brand")+" "+it.optString("product_code") }?.trim()?.takeUnless { it.isBlank() || it.contains("null") } ?: "제품 확인 필요"
+        val type=when(priceType) { "fire" -> "방염";"non_fire" -> "비방염";"unspecified" -> "구분 미지정";else -> "방염 구분 확인 필요" }
+        val length=body.optString("length").takeUnless { it.isBlank() || it=="null" } ?: "확인 필요"
+        val count=body.optString("count").takeUnless { it.isBlank() || it=="null" } ?: "확인 필요"
+        val location=body.optString("location").takeUnless { it.isBlank() || it=="null" } ?: "창고"
+        AlertDialog.Builder(this).setTitle("이전 입고 요청 확인")
+            .setMessage("$dealerName · $productName · $type\n${length}m × ${count}롤\n보관 위치: $location\n\n저장됐는지 확인되지 않은 요청입니다. 같은 요청 번호로 다시 확인하여 중복 입고를 방지합니다.")
+            .setNegativeButton("닫기",null).setPositiveButton("입고 결과 확인") { _,_ -> retryDealerReceive(uid,company,raw) }.show()
     }
     private fun showDealerStock(uid:String,company:CompanyAccess,data:JSONObject,query:String="") {
         if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
