@@ -1679,10 +1679,87 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("시공 일정 · 날짜별 배정")
             .setMessage(if(lines.isEmpty()) "등록된 시공 날짜가 없습니다." else lines.joinToString("\n\n"))
             .setPositiveButton("닫기",null)
-            .setNeutralButton("배정 변경 (웹)") { _,_ ->
-                if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자") openSiteAction(company.id,siteId,"schedule_web")
+            .setNeutralButton("배정 변경") { _,_ ->
+                if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자") editNativeAssignments(uid,company,siteId,result)
                 else message("계정과 업체를 다시 확인해 주세요.")
             }.show()
+    }
+    private fun editNativeAssignments(uid:String,company:CompanyAccess,siteId:String,initial:JSONObject) {
+        val dates=initial.optJSONArray("dates") ?: return
+        val old=initial.optJSONArray("assignments") ?: return
+        val workers=initial.optJSONArray("workers") ?: return
+        val site=initial.optJSONObject("site") ?: return
+        if(dates.length()==0) { message("먼저 시공 날짜를 등록해 주세요.");return }
+        if(!initial.optBoolean("hasDailySchedule")) { message("기존 배정 방식을 확인해야 합니다. 전체 업무에서 확인해 주세요.");return }
+        if(site.optString("status") in listOf("completed","cancelled","canceled")) { message("완료되거나 취소된 현장은 배정을 변경할 수 없습니다.");return }
+        val directory=(0 until workers.length()).mapNotNull { workers.optJSONObject(it) }
+        val names=directory.associate { it.optString("id") to it.optString("name").takeUnless { n -> n.isBlank() || n=="null" }.orEmpty() }
+        val assigned=(0 until old.length()).mapNotNull { old.optJSONObject(it) }
+        if(assigned.any { names[it.optString("worker_id")].isNullOrBlank() }) { message("기존 배정자의 이름을 모두 확인하지 못했습니다. 전체 업무에서 확인해 주세요.");return }
+        val ids=assigned.map { it.optString("worker_id") }.toSet()
+        val available=directory.filter { it.optBoolean("is_active",true) || it.optString("id") in ids }.filter { it.optString("name").isNotBlank() }.sortedBy { it.optString("name") }
+        if(available.size>100) { message("시공자가 많아 전체 업무에서 배정해 주세요.");return }
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(8)) }
+        data class DayControls(val date:String,val leader:Spinner,val checks:List<CheckBox>)
+        val controls=mutableListOf<DayControls>()
+        for(i in 0 until dates.length()) {
+            val date=dates.optString(i);val day=assigned.filter { it.optString("work_date")==date }
+            form.addView(TextView(this).apply { text="\n$date";textSize=18f;setTypeface(null,Typeface.BOLD) })
+            val labels=listOf("팀장 없음")+available.map { it.optString("name")+(if(it.optBoolean("is_active",true)) "" else " (비활성)") }
+            val leader=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,labels) }
+            val currentLeader=day.firstOrNull { it.optString("role")=="leader" }?.optString("worker_id")
+            leader.setSelection((available.indexOfFirst { it.optString("id")==currentLeader }+1).coerceAtLeast(0));form.addView(leader)
+            val checks=available.map { person -> CheckBox(this).apply { text=person.optString("name")+(if(person.optBoolean("is_active",true)) "" else " (비활성)");isChecked=day.any { it.optString("worker_id")==person.optString("id") && it.optString("role")=="member" };form.addView(this) } }
+            controls.add(DayControls(date,leader,checks))
+        }
+        fun signature(result:JSONObject):String {
+            val a=result.optJSONArray("assignments") ?: JSONArray();val d=result.optJSONArray("dates") ?: JSONArray()
+            val dateList=(0 until d.length()).map { d.optString(it) }.sorted()
+            val entries=(0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { listOf(it.optString("work_date"),it.optString("worker_id"),it.optString("role")).joinToString(":") }.sorted()
+            return dateList.joinToString(",")+"|"+entries.joinToString(",")
+        }
+        val baseline=signature(initial)
+        val dialog=AlertDialog.Builder(this).setTitle("날짜별 시공자 배정").setMessage("각 날짜의 팀장과 팀원을 선택해 주세요.")
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장 전 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return@setOnClickListener }
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
+            val days=JSONArray();val summaries=mutableListOf<String>()
+            controls.forEach { day ->
+                val index=day.leader.selectedItemPosition-1;val leader=if(index in available.indices) available[index].optString("id") else ""
+                val members=available.indices.filter { day.checks[it].isChecked && available[it].optString("id")!=leader }.map { available[it].optString("id") }
+                days.put(JSONObject().put("workDate",day.date).put("leaderId",leader).put("memberIds",JSONArray(members)))
+                summaries.add(day.date+" · 팀장 "+(names[leader] ?: "없음")+" · 팀원 "+members.joinToString(", ") { names[it].orEmpty() }.ifBlank { "없음" })
+            }
+            workerActionBusy=true;val epoch=sessionEpoch
+            scope.launch {
+                try {
+                    val latest=auth.assistantAssignments(uid,company.id,siteId)
+                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                    if(signature(latest)!=baseline) { message("배정이 다른 곳에서 변경되었습니다. 다시 열어 확인해 주세요.");return@launch }
+                    val preview=auth.submitAssistantAssignments(uid,company.id,siteId,days,true)
+                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                    val warnings=preview.optJSONArray("warnings") ?: JSONArray();val wages=preview.optJSONArray("pendingWages") ?: JSONArray();val missing=preview.optJSONArray("missingLeaders") ?: JSONArray()
+                    fun details(a:JSONArray):String = (0 until a.length()).mapNotNull { a.optJSONObject(it) }.joinToString("\n") { it.optString("workDate")+" · "+it.optString("workerName")+" · "+it.optString("reason") }
+                    val text=buildString { append(summaries.joinToString("\n"));if(missing.length()>0) append("\n\n팀장 없는 날짜: "+(0 until missing.length()).joinToString(", ") { missing.optString(it) });if(warnings.length()>0) append("\n\n일정 중복 확인:\n"+details(warnings));if(wages.length()>0) append("\n\n일당 확인 필요:\n"+details(wages)) }
+                    workerActionBusy=false
+                    AlertDialog.Builder(this@MainActivity).setTitle("배정 내용 확인").setMessage(text).setNegativeButton("돌아가기",null)
+                        .setPositiveButton("확인하고 저장") { _,_ ->
+                            if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return@setPositiveButton }
+                            workerActionBusy=true
+                            scope.launch {
+                                try {
+                                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
+                                    val current=auth.assistantAssignments(uid,company.id,siteId)
+                                    if(epoch!=sessionEpoch || signature(current)!=baseline) { message("배정이 다른 곳에서 변경되었습니다. 다시 확인해 주세요.");return@launch }
+                                    val saved=auth.submitAssistantAssignments(uid,company.id,siteId,days,false,warnings.length()>0)
+                                    if(epoch==sessionEpoch) { dialog.dismiss();message(saved.optString("message").ifBlank { "시공자 배정을 저장했습니다." }+saved.optString("notificationWarning").takeUnless { it.isBlank() || it=="null" }?.let { "\n알림 확인: $it" }.orEmpty()) }
+                                } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "배정을 저장하지 못했습니다.") } finally { workerActionBusy=false }
+                            }
+                        }.show()
+                } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "배정을 확인하지 못했습니다.") } finally { workerActionBusy=false }
+            }
+        } };dialog.show()
     }
     private fun showNativeQuote(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
         val source=result.optJSONObject("document") ?: return
