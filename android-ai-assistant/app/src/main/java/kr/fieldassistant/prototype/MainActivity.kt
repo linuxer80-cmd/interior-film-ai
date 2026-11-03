@@ -1565,7 +1565,7 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","quote","schedule") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","all","quote","schedule") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1608,7 +1608,8 @@ class MainActivity : Activity() {
                     }
                     else -> {
                         val workerTask=action in listOf("film","expenses","report","photos")
-                        val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+action else "/worker/site/"+Uri.encode(siteId)+"?section="+action
+                        val section=if(action=="all") "info" else action
+                        val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+section else "/worker/site/"+Uri.encode(siteId)+"?section="+section
                         openWebWorkspace("https://interior-film-ai.vercel.app"+path)
                     }
                 }
