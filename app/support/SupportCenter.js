@@ -38,6 +38,13 @@ export default function SupportCenter({ from, version }) {
 
       <section className={styles.list} aria-label="고객지원 메뉴">
         <details>
+          <summary>계정 및 데이터 삭제 요청</summary>
+          <div className={styles.body}>
+            <p>계정이나 자료 삭제를 요청할 수 있습니다. 운영자가 본인 확인 후 범위를 안내합니다.</p>
+            <Link href="/account/delete" data-ui-link="action">삭제 요청 방법 보기 ›</Link>
+          </div>
+        </details>
+        <details>
           <summary>사용 안내</summary>
           <div className={styles.body}>
             {guides.map(([title, text]) => <details key={title}><summary>{title}</summary><p>{text}</p></details>)}
