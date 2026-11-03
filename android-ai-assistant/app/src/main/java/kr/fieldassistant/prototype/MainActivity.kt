@@ -1082,7 +1082,7 @@ class MainActivity : Activity() {
     private fun showTradeClient(uid:String,company:CompanyAccess,data:JSONObject,client:JSONObject) {
         val contacts=data.optJSONArray("contacts") ?: JSONArray()
         val people=(0 until contacts.length()).mapNotNull { contacts.optJSONObject(it) }.filter { it.optString("client_id")==client.optString("id") }
-        val labels=mutableListOf("거래처 정보 수정","＋ 담당자 등록")
+        val labels=mutableListOf("거래처 정보 수정","＋ 담당자 등록","연결된 현장 · 입금 확인")
         if(client.optString("phone").any { it.isDigit() }) labels.add("거래처 전화 걸기")
         val offset=labels.size;labels.addAll(people.map { it.optString("name")+" · 담당자" })
         AlertDialog.Builder(this).setTitle(client.optString("name"))
@@ -1090,10 +1090,36 @@ class MainActivity : Activity() {
                 when {
                     index==0 -> editTrade(uid,company,"client",client,null)
                     index==1 -> editTrade(uid,company,"contact",client,null)
-                    index==2 && offset==3 -> dialTrade(client.optString("phone"))
+                    index==2 -> showTradeSites(uid,company,data,client)
+                    index==3 && offset==4 -> dialTrade(client.optString("phone"))
                     index>=offset -> showTradeContact(uid,company,client,people[index-offset])
                 }
             }.setNegativeButton("뒤로") { _,_ -> showTradeMenu(uid,company,data,"") }.show()
+    }
+    private fun showTradeSites(uid:String,company:CompanyAccess,data:JSONObject,client:JSONObject) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return }
+        val clientId=client.optString("id")
+        val rows=data.optJSONArray("sites") ?: run { message("연결된 현장 정보를 확인하지 못했습니다. 거래처 목록을 다시 열어 주세요.");return }
+        val sites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.filter { clientId.isNotBlank() && it.optString("client_id")==clientId }
+        if(sites.isEmpty()) { AlertDialog.Builder(this).setTitle(client.optString("name")).setMessage("연결된 현장이 없습니다.").setPositiveButton("확인",null).show();return }
+        fun siteName(site:JSONObject)=site.optString("site_name").takeUnless { it.isBlank() || it=="null" }
+            ?: site.optString("customer_name").takeUnless { it.isBlank() || it=="null" } ?: "이름 없는 현장"
+        fun amount(site:JSONObject,key:String):String {
+            if(site.isNull(key) || !site.has(key)) return "확인 필요"
+            val value=site.opt(key)?.toString()?.toDoubleOrNull() ?: return "확인 필요"
+            if(!value.isFinite()) return "확인 필요"
+            return java.text.NumberFormat.getIntegerInstance(Locale.KOREA).format(value)+"원"
+        }
+        val labels=sites.map { siteName(it)+" · 미수 "+amount(it,"outstanding") }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("${client.optString("name")} · 연결 현장 ${sites.size}곳")
+            .setItems(labels) { _,index ->
+                if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
+                val site=sites[index]
+                val paid=if(site.optBoolean("confirmed")) amount(site,"paid") else "확인 필요"
+                val status=when(site.optString("status")) { "in_progress"->"시공 중";"completed"->"시공 완료";"cancelled"->"취소";"pending"->"상담 중";else->"상태 확인 필요" }
+                AlertDialog.Builder(this).setTitle(siteName(site)).setMessage("상태: $status\n계약 금액: ${amount(site,"contract_amount")}\n확인된 입금: $paid\n미수금: ${amount(site,"outstanding")}\n\n조회 시점의 정보입니다. 금액이 확인되지 않은 항목은 확인 필요로 표시합니다.")
+                    .setPositiveButton("확인",null).show()
+            }.setNegativeButton("닫기",null).show()
     }
     private fun dialTrade(value:String) {
         val phone=value.filter { it.isDigit() || it=='+' }
