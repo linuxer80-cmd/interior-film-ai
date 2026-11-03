@@ -1719,6 +1719,7 @@ class MainActivity : Activity() {
             actions.addView(photo)
             actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="등록된 내 경비 확인";setOnClickListener { showNativeReportExpenses(uid,company,siteId) } })
+            if(value("review_status")=="rejected") actions.addView(Button(this).apply { text="반려 보고서의 기존 내역 확인";setOnClickListener { showRejectedReportDetails(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="인건비 임시 입력";setOnClickListener { prepareNativeLaborDraft(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="완료보고 제출 준비";setOnClickListener { prepareNativeReportSubmit(uid,company,siteId,siteName) } })
             dialog.setView(actions)
@@ -1732,6 +1733,42 @@ class MainActivity : Activity() {
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()
+    }
+    private fun showRejectedReportDetails(uid:String,company:CompanyAccess,siteId:String) {
+        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val access=auth.assistantWorkReport(uid,company.id,siteId)
+                val support=auth.assistantReportSupport(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
+                val report=access.optJSONObject("report") ?: error("기존 보고서를 확인하지 못했습니다.")
+                val supportReport=support.optJSONObject("report") ?: error("기존 보고서를 확인하지 못했습니다.")
+                check(access.optBoolean("canSubmit") && report.optString("review_status")=="rejected" && supportReport.optString("id")==report.optString("id") && supportReport.optString("review_status")=="rejected") { "보고서 상태가 변경되었습니다. 다시 확인해 주세요." }
+                val seed=support.optJSONObject("seed") ?: error("기존 내역을 확인하지 못했습니다.")
+                val materials=seed.optJSONArray("materials") ?: error("기존 자재를 확인하지 못했습니다.")
+                val expenses=seed.optJSONArray("expenses") ?: error("기존 경비를 확인하지 못했습니다.")
+                val labor=seed.optJSONArray("labor") ?: error("기존 인건비를 확인하지 못했습니다.")
+                val people=access.optJSONArray("laborWorkers") ?: error("시공자 목록을 확인하지 못했습니다.")
+                check(materials.length()<=100 && expenses.length()<=100 && labor.length()<=100) { "내역이 많아 웹앱에서 확인해 주세요." }
+                val names=(0 until people.length()).mapNotNull { people.optJSONObject(it) }.associate { it.optString("id") to it.optString("name") }
+                fun field(row:JSONObject,key:String):String = row.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미입력"
+                val details=buildString {
+                    append("저장된 반려 보고서 내역입니다. 이 화면에서는 금액이나 자재를 변경하지 않습니다.")
+                    append("\n\n실자재 ${materials.length()}건")
+                    for(i in 0 until materials.length()) { val row=materials.optJSONObject(i) ?: error("기존 자재를 확인하지 못했습니다.");append("\n"+field(row,"brand")+" · "+field(row,"product_code")+" · "+field(row,"product_name")+" / 수량 "+field(row,"quantity")+" "+field(row,"unit")+" / 단가 "+field(row,"unit_price"));if(field(row,"memo")!="미입력") append("\n메모: "+field(row,"memo")) }
+                    append("\n\n보고서 경비 ${expenses.length()}건")
+                    for(i in 0 until expenses.length()) { val row=expenses.optJSONObject(i) ?: error("기존 경비를 확인하지 못했습니다.");append("\n"+field(row,"expense_date")+" · "+field(row,"expense_type")+" · "+field(row,"amount")+"원 · "+field(row,"description")) }
+                    append("\n\n보고서 인건비 ${labor.length()}건")
+                    for(i in 0 until labor.length()) { val row=labor.optJSONObject(i) ?: error("기존 인건비를 확인하지 못했습니다.");val id=field(row,"worker_id");val name=names[id]?.takeUnless { it.isBlank() || it=="null" } ?: "시공자 확인 필요 ("+id.takeLast(4)+")";append("\n"+name+" · "+field(row,"days")+"일 · 일당 "+field(row,"daily_wage")+"원 · 수당 "+field(row,"allowance")+"원") }
+                    append("\n\n별도로 등록한 현장 경비는 ‘등록된 내 경비 확인’에서 확인해 주세요. 재제출은 현재 웹앱에서 할 수 있습니다.")
+                }
+                AlertDialog.Builder(this@MainActivity).setTitle("반려 보고서 기존 내역").setMessage(details).setPositiveButton("닫기",null).show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "기존 보고서 내역을 확인하지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
     }
     private fun prepareNativeReportSubmit(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
         if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
