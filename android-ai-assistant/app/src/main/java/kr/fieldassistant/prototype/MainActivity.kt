@@ -1659,7 +1659,7 @@ class MainActivity : Activity() {
             append(if(result.optBoolean("canSubmit")) "\n\n완료보고 작성과 사진 첨부는 현재 웹 화면에서 진행합니다." else "\n\n완료보고 제출 권한을 확인해 주세요.")
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
-        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNeutralButton("작성·사진 첨부 (웹)") { _,_ ->
+        dialog.setNeutralButton(if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) "작성·사진 첨부 (웹)" else "보고서·사진 보기 (웹)") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) openSiteAction(company.id,siteId,"report_web")
             else message("계정과 업체를 다시 확인해 주세요.")
         }
