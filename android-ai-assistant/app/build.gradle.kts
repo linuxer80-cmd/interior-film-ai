@@ -16,7 +16,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
         minSdk = 31
-        targetSdk = 35
+        targetSdk = 36
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
         versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 4
         versionName = "0.6-chat-test"
