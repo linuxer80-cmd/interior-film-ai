@@ -1713,6 +1713,7 @@ class MainActivity : Activity() {
             actions.addView(photo)
             actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="등록된 내 경비 확인";setOnClickListener { showNativeReportExpenses(uid,company,siteId) } })
+            actions.addView(Button(this).apply { text="인건비 임시 입력";setOnClickListener { prepareNativeLaborDraft(uid,company,siteId) } })
             dialog.setView(actions)
         }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
@@ -1724,6 +1725,80 @@ class MainActivity : Activity() {
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()
+    }
+    private fun prepareNativeLaborDraft(uid:String,company:CompanyAccess,siteId:String) {
+        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val access=auth.assistantWorkReport(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                if(!access.optBoolean("canSubmit") || access.optJSONObject("report")?.optString("review_status") in listOf("pending","approved")) { message("완료보고 작성 권한 또는 검수 상태를 다시 확인해 주세요.");return@launch }
+                val people=access.optJSONArray("laborWorkers") ?: error("시공자 목록을 확인하지 못했습니다.")
+                val key="report_draft_"+company.id+"_"+siteId+"_labor"
+                val stored=prefs.getString(key,null)
+                val seed=if(stored!=null) JSONArray(stored) else if(access.optJSONObject("report")?.optString("review_status")=="rejected") {
+                    val support=auth.assistantReportSupport(uid,company.id,siteId)
+                    support.optJSONObject("seed")?.optJSONArray("labor") ?: error("기존 인건비를 확인하지 못했습니다.")
+                } else JSONArray()
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || !active) return@launch
+                showNativeLaborDraft(uid,company,siteId,key,people,seed)
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "시공자와 인건비를 확인하지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
+    }
+    private fun showNativeLaborDraft(uid:String,company:CompanyAccess,siteId:String,key:String,people:JSONArray,seed:JSONArray) {
+        val rows=(0 until people.length()).mapNotNull { people.optJSONObject(it) }
+        if(rows.size!=people.length() || rows.size>100 || rows.any { it.optString("id").isBlank() || it.optString("name").isBlank() }) { message("시공자 목록을 확인하지 못했습니다. 기존 보고서 화면에서 확인해 주세요.");return }
+        val saved=(0 until seed.length()).mapNotNull { seed.optJSONObject(it) }
+        val ids=rows.map { it.optString("id") }.toSet()
+        if(saved.size!=seed.length() || saved.any { it.optString("worker_id") !in ids } || saved.map { it.optString("worker_id") }.toSet().size!=saved.size) { message("기존 인건비의 시공자를 모두 확인할 수 없습니다. 기존 보고서 화면에서 확인해 주세요.");return }
+        if(rows.isEmpty()) { message("배정된 시공자 목록이 없습니다. 배정을 확인해 주세요.");return }
+        val duplicateNames=rows.groupingBy { it.optString("name") }.eachCount().filterValues { it>1 }.keys
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8)) }
+        data class LaborFields(val id:String,val name:String,val selected:CheckBox,val days:EditText,val wage:EditText,val allowance:EditText)
+        fun input(label:String,value:String,decimal:Boolean):EditText=EditText(this).apply {
+            hint=label;inputType=InputType.TYPE_CLASS_NUMBER or (if(decimal) InputType.TYPE_NUMBER_FLAG_DECIMAL else 0)
+            filters=arrayOf(android.text.InputFilter.LengthFilter(14));setSingleLine();setText(value)
+        }
+        val controls=rows.map { person ->
+            val id=person.optString("id");val name=person.optString("name")+(if(person.optString("name") in duplicateNames) " · "+id.takeLast(4) else "")
+            val prior=saved.find { it.optString("worker_id")==id }
+            fun text(row:JSONObject?,field:String)=row?.optString(field)?.takeUnless { it=="null" }.orEmpty()
+            val selected=CheckBox(this).apply { text=name;isChecked=prior!=null };form.addView(selected)
+            val days=input("근무일수",text(prior,"days").ifBlank { "1" },true);form.addView(days)
+            val wage=input("일당 (원)",if(prior!=null) text(prior,"daily_wage") else text(person,"daily_wage"),false);form.addView(wage)
+            val allowance=input("수당 (원)",text(prior,"allowance").ifBlank { "0" },false);form.addView(allowance)
+            LaborFields(id,name,selected,days,wage,allowance)
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("인건비 임시 입력")
+            .setMessage("이번 보고에 포함할 시공자를 선택해 주세요. 등록 일당은 참고값이며 직접 확인해야 합니다. 입력 내용은 휴대전화에만 저장되고 아직 보고서에 반영되지 않습니다.")
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("내용 확인",null).setNegativeButton("취소",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
+            val output=JSONArray();val lines=mutableListOf<String>();var total=0L
+            try {
+                controls.filter { it.selected.isChecked }.forEach { row ->
+                    val daysText=row.days.text.toString().trim();val days=daysText.toBigDecimalOrNull() ?: error("${row.name}: 근무일수를 확인해 주세요.")
+                    val wage=row.wage.text.toString().trim().toLongOrNull() ?: error("${row.name}: 일당을 확인해 주세요.")
+                    val allowance=row.allowance.text.toString().trim().toLongOrNull() ?: error("${row.name}: 수당을 확인해 주세요.")
+                    check(days>java.math.BigDecimal.ZERO && days<=java.math.BigDecimal(366) && days.scale()<=3 && wage in 0..100000000L && allowance in 0..1000000000L) { "${row.name}: 일수, 일당 또는 수당 범위를 확인해 주세요." }
+                    val amount=days.multiply(java.math.BigDecimal.valueOf(wage)).add(java.math.BigDecimal.valueOf(allowance)).setScale(0,java.math.RoundingMode.HALF_UP).longValueExact()
+                    check(amount<=1000000000L) { "${row.name}: 인건비 금액을 확인해 주세요." };total=Math.addExact(total,amount)
+                    output.put(JSONObject().put("worker_id",row.id).put("days",days.toPlainString()).put("daily_wage",wage).put("allowance",allowance))
+                    lines.add(row.name+" · "+days.toPlainString()+"일 · 일당 "+String.format(Locale.KOREA,"%,d원",wage)+" · 수당 "+String.format(Locale.KOREA,"%,d원",allowance)+" · 합계 "+String.format(Locale.KOREA,"%,d원",amount))
+                }
+            } catch(e:Exception) { message(e.message ?: "인건비 입력을 확인해 주세요.");return@setOnClickListener }
+            val summary=if(lines.isEmpty()) "선택된 시공자가 없습니다." else lines.joinToString("\n\n")+"\n\n합계 "+String.format(Locale.KOREA,"%,d원",total)
+            AlertDialog.Builder(this).setTitle("인건비 임시 저장 확인").setMessage(summary+"\n\n이 내용은 휴대전화에만 저장되며 완료보고에 반영되거나 제출되지 않습니다.")
+                .setNegativeButton("돌아가기",null).setPositiveButton("임시 저장") { _,_ ->
+                    if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setPositiveButton }
+                    if(!prefs.edit().putString(key,output.toString()).commit()) { message("임시 저장에 실패했습니다.");return@setPositiveButton }
+                    dialog.dismiss();message("인건비를 이 휴대전화에 임시 저장했습니다. 보고서에는 아직 반영되지 않았습니다.")
+                }.show()
+        } };dialog.show()
     }
     private fun showNativeReportExpenses(uid:String,company:CompanyAccess,siteId:String) {
         if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
