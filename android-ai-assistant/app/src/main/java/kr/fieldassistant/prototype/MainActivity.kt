@@ -1712,6 +1712,7 @@ class MainActivity : Activity() {
             } }
             actions.addView(photo)
             actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
+            actions.addView(Button(this).apply { text="등록된 내 경비 확인";setOnClickListener { showNativeReportExpenses(uid,company,siteId) } })
             dialog.setView(actions)
         }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
@@ -1723,6 +1724,33 @@ class MainActivity : Activity() {
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()
+    }
+    private fun showNativeReportExpenses(uid:String,company:CompanyAccess,siteId:String) {
+        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val items=auth.assistantReportExpenses(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
+                val labels=mapOf("parking" to "주차비","meal" to "식비","fuel" to "유류비","toll" to "통행료","material" to "자재비","other" to "기타")
+                var total=0L;val lines=mutableListOf<String>()
+                for(i in 0 until items.length()) {
+                    val row=items.optJSONObject(i) ?: error("경비 내역을 확인하지 못했습니다.")
+                    val amount=row.opt("amount") as? Number ?: error("경비 금액을 확인하지 못했습니다.")
+                    val value=amount.toDouble();check(value.isFinite() && value>=0 && value<=1_000_000_000_000.0 && value==kotlin.math.floor(value)) { "경비 금액을 확인하지 못했습니다." }
+                    total=Math.addExact(total,value.toLong())
+                    val date=row.optString("expense_date").takeUnless { it.isBlank() || it=="null" } ?: "날짜 미확인"
+                    val description=row.optString("description").takeUnless { it.isBlank() || it=="null" }.orEmpty()
+                    val title=labels[row.optString("expense_type")] ?: "기타 경비"
+                    if(i<100) lines.add(date+" · "+title+" · "+String.format(Locale.KOREA,"%,d원",value.toLong())+(if(description.isNotBlank()) "\n"+description else ""))
+                }
+                val text=if(items.length()==0) "이 계정으로 등록한 현장 경비가 없습니다." else "${items.length()}건 · 합계 ${String.format(Locale.KOREA,"%,d원",total)}\n\n"+lines.joinToString("\n\n")+(if(items.length()>100) "\n\n나머지 내역은 전체 업무에서 확인해 주세요." else "")
+                AlertDialog.Builder(this@MainActivity).setTitle("등록된 내 현장 경비").setMessage(text+"\n\n경비 메뉴에 이미 등록한 내역입니다. 완료보고에 다시 입력하지 않아도 됩니다.").setPositiveButton("닫기",null).show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "경비를 확인하지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
     }
     private fun checkNativeReportPreparation(uid:String,company:CompanyAccess,siteId:String) {
         if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
