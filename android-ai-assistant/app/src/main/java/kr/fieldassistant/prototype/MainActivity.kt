@@ -1672,7 +1672,7 @@ class MainActivity : Activity() {
                 val bytes=withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { input ->
                         val out=java.io.ByteArrayOutputStream();val buf=ByteArray(65536);var total=0
-                        while(true) { val n=input.read(buf);if(n<0) break;total+=n;check(total<=15*1024*1024) { "사진은 15MB 이하만 등록할 수 있습니다." };out.write(buf,0,n) }
+                        while(true) { val n=input.read(buf);if(n<0) break;total+=n;check(total<=4*1024*1024) { "사진은 4MB 이하만 등록할 수 있습니다. 사진 크기를 줄인 후 다시 선택해 주세요." };out.write(buf,0,n) }
                         out.toByteArray()
                     } ?: error("선택한 사진을 읽지 못했습니다.")
                 }

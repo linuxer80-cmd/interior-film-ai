@@ -437,7 +437,7 @@ internal class AccountAuth private constructor(context: Context) {
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in listOf("before","after"))
         val ext=when(mime) { "image/jpeg","image/jpg" -> "jpg";"image/png" -> "png";"image/webp" -> "webp";"image/heic" -> "heic";"image/heif" -> "heif";else -> error("지원하지 않는 사진 형식입니다.") }
-        require(bytes.isNotEmpty() && bytes.size<=15*1024*1024)
+        require(bytes.isNotEmpty() && bytes.size<=4*1024*1024)
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val boundary="assistant-"+java.util.UUID.randomUUID().toString()
