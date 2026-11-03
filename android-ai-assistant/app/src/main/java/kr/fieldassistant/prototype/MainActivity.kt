@@ -1690,11 +1690,13 @@ class MainActivity : Activity() {
         val workers=initial.optJSONArray("workers") ?: return
         val site=initial.optJSONObject("site") ?: return
         if(dates.length()==0) { message("먼저 시공 날짜를 등록해 주세요.");return }
+        if(dates.length()>31) { message("시공 날짜가 많아 전체 업무에서 배정해 주세요.");return }
         if(!initial.optBoolean("hasDailySchedule")) { message("기존 배정 방식을 확인해야 합니다. 전체 업무에서 확인해 주세요.");return }
         if(site.optString("status") in listOf("completed","cancelled","canceled")) { message("완료되거나 취소된 현장은 배정을 변경할 수 없습니다.");return }
         val directory=(0 until workers.length()).mapNotNull { workers.optJSONObject(it) }
         val names=directory.associate { it.optString("id") to it.optString("name").takeUnless { n -> n.isBlank() || n=="null" }.orEmpty() }
         val assigned=(0 until old.length()).mapNotNull { old.optJSONObject(it) }
+        if(assigned.any { it.optString("role") !in listOf("leader","member") } || assigned.filter { it.optString("role")=="leader" }.groupBy { it.optString("work_date") }.any { it.value.size>1 }) { message("기존 배정 구성을 확인해야 합니다. 전체 업무에서 확인해 주세요.");return }
         if(assigned.any { names[it.optString("worker_id")].isNullOrBlank() }) { message("기존 배정자의 이름을 모두 확인하지 못했습니다. 전체 업무에서 확인해 주세요.");return }
         val ids=assigned.map { it.optString("worker_id") }.toSet()
         val available=directory.filter { it.optBoolean("is_active",true) || it.optString("id") in ids }.filter { it.optString("name").isNotBlank() }.sortedBy { it.optString("name") }
