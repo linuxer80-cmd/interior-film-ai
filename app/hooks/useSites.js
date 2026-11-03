@@ -152,6 +152,7 @@ export default function useSites({ companyId }) {
   useEffect(() => {
     setSites([]);
     setSelectedSite(null);
+    setSitesLoading(false);
     return () => listLoader.current.invalidate();
   }, [companyId]);
 
@@ -202,7 +203,8 @@ export default function useSites({ companyId }) {
             .order("schedule_start", {
               ascending: true,
               nullsFirst: false,
-            });
+            })
+            .abortSignal(AbortSignal.timeout(15000));
 
           if (error) throw error;
           return data || [];
@@ -212,6 +214,12 @@ export default function useSites({ companyId }) {
     },
     [companyId]
   );
+
+  // An initial load can start just before the company change invalidates it.
+  // Always start a fresh request after the new company is committed.
+  useEffect(() => {
+    if (companyId) void loadSites(companyId);
+  }, [companyId, loadSites]);
 
   const uploadRequestPhotos = useCallback(
     async ({ siteId, files = [] }) => {
