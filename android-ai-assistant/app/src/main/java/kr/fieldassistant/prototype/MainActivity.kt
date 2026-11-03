@@ -976,16 +976,23 @@ class MainActivity : Activity() {
     private fun showDealerStock(uid:String,company:CompanyAccess,data:JSONObject,query:String="") {
         if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return }
         val rolls=data.getJSONObject("stock").getJSONArray("rolls")
-        val all=(0 until rolls.length()).mapNotNull { rolls.optJSONObject(it) }
-        if(all.size!=rolls.length()) { message("재고 정보를 확인하지 못했습니다.");return }
-        val filtered=all.filter { row -> row.optString("status") in listOf("available","on_site") && listOf("brand","product_code","location","supplier","site_name").any { row.optString(it).contains(query,true) } }
-        val lines=filtered.take(100).map { row ->
-            fun value(key:String)=row.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
-            val state=if(row.optString("status")=="available") "창고" else "현장 반출"
-            value("brand")+" "+value("product_code")+" · "+value("remaining")+"m · "+state+"\n입고처: "+value("supplier")+" · 위치: "+(if(state=="창고") value("location") else value("site_name"))
+        val groups=try { InventorySummary.groups(rolls,data.getJSONArray("purchases"),query) } catch(e:Exception) { message(e.message ?: "재고 정보를 확인하지 못했습니다.");return }
+        fun kind(value:String)=when(value) { "fire" -> "방염";"non_fire" -> "비방염";"unspecified" -> "구분 미지정";else -> "방염 구분 확인 필요" }
+        val labels=groups.take(100).map { g ->
+            val state=if(g.state=="available") "창고" else "현장 반출"
+            "${g.brand} ${g.code} · ${kind(g.kind)} · $state\n${g.rolls.size}롤 · 확인된 잔량 ${g.metres.stripTrailingZeros().toPlainString()}m"+(if(g.unknown>0) " · 잔량 확인 필요 ${g.unknown}롤" else "")
         }
-        val summary=if(lines.isEmpty()) "해당하는 롤이 없습니다." else lines.joinToString("\n\n")+(if(filtered.size>100) "\n\n처음 100건만 표시합니다. 제품 번호로 검색해 주세요." else "")
-        AlertDialog.Builder(this).setTitle("재고 확인 · ${filtered.size}롤").setMessage(summary).setPositiveButton("닫기",null)
+        val builder=AlertDialog.Builder(this).setTitle("재고 확인 · ${groups.sumOf { it.rolls.size }}롤"+(if(groups.size>100) " (100개 그룹 표시)" else ""))
+        if(labels.isEmpty()) builder.setMessage("해당하는 롤이 없습니다.") else builder.setItems(labels.toTypedArray()) { _,index ->
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return@setItems }
+            val group=groups[index]
+            val details=group.rolls.take(100).map { row ->
+                fun value(key:String)=row.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
+                "잔량 "+value("remaining")+"m · 입고처 "+value("supplier")+"\n위치: "+(if(group.state=="available") value("location") else value("site_name"))
+            }.joinToString("\n\n")+(if(group.rolls.size>100) "\n\n처음 100롤만 표시합니다." else "")
+            AlertDialog.Builder(this).setTitle("${group.brand} ${group.code} · ${kind(group.kind)}").setMessage(details).setPositiveButton("닫기",null).show()
+        }
+        builder.setPositiveButton("닫기",null)
             .setNeutralButton("제품 검색") { _,_ ->
                 val input=EditText(this).apply { hint="제품 번호 또는 브랜드";setSingleLine();setText(query) }
                 AlertDialog.Builder(this).setTitle("재고 검색").setView(input).setPositiveButton("검색") { _,_ -> showDealerStock(uid,company,data,input.text.toString().trim()) }.setNegativeButton("취소",null).show()
