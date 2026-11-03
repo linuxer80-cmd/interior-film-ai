@@ -3093,6 +3093,7 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("업체 선택").setItems(names) { _,which -> prefs.edit().putString("selected_company",verified.companies[which].id).apply();render() }.setNegativeButton("취소",null).show()
         }
         addButton(col,"로그아웃",false) { signOut() }
+        addButton(col,"계정 및 데이터 삭제 요청",false) { openWebWorkspace("https://interior-film-ai.vercel.app/account/delete") }
         col.addView(text("시공 일정 비서 · 새 배정과 시공 당일 오전 일정을 확인합니다.",14f,true))
         addButton(col,"오늘 시공 일정과 길 안내",false) { showSchedule() }
         col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
