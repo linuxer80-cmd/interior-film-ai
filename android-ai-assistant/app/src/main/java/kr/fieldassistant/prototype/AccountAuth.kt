@@ -328,6 +328,23 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun customerEstimateSlug(expectedUser:String,companyId:String):String? {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=URL(SUPABASE_URL+"/rest/v1/companies?select=id,slug&id=eq."+companyId+"&limit=1").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                check(c.responseCode in 200..299) { "고객페이지 주소를 확인하지 못했습니다." }
+                val row=JSONArray(c.inputStream.bufferedReader().use { it.readText() }).optJSONObject(0) ?: return@withContext null
+                check(row.optString("id")==companyId)
+                row.optString("slug").takeUnless { it.isBlank() || it=="null" }
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun customerProfile(expectedUser:String,companyId:String,changes:JSONObject?=null,version:String?=null):JSONObject? {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }

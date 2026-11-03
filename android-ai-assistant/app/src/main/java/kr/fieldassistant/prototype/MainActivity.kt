@@ -1190,11 +1190,40 @@ class MainActivity : Activity() {
         val name=profile.optString("business_name").takeUnless { it=="null" }.orEmpty().ifBlank { company.name }
         val published=if(profile.optBoolean("is_published")) "공개 중" else "비공개"
         AlertDialog.Builder(this).setTitle("고객페이지 관리 · $name").setMessage("업체 소개와 시공 사례: $published")
-            .setItems(arrayOf("업체 정보 확인 · 수정","디자인 · 시공 사례 · 공개 설정","고객페이지 열기 · 공유")) { _,choice ->
+            .setItems(arrayOf("업체 정보 확인 · 수정","디자인 · 시공 사례 · 공개 설정","고객 AI 견적 링크 확인 · 공유")) { _,choice ->
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("해당 관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
                 if(choice==0) editCustomerProfile(uid,company,profile)
-                else openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page")
+                else if(choice==1) openWebWorkspace("https://interior-film-ai.vercel.app/admin/customer-page")
+                else showCustomerEstimateLink(uid,company)
             }.setNegativeButton("닫기",null).show()
+    }
+    private fun showCustomerEstimateLink(uid:String,company:CompanyAccess) {
+        if(customerPageBusy) { message("고객페이지 주소를 확인하고 있습니다.");return }
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return }
+        customerPageBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val slug=auth.customerEstimateSlug(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
+                if(slug==null) { message("고객페이지 주소가 없습니다. 고객페이지 관리에서 업체 주소를 먼저 설정해 주세요.");return@launch }
+                val link="https://interior-film-ai.vercel.app/estimate/"+Uri.encode(slug)
+                AlertDialog.Builder(this@MainActivity).setTitle("고객 AI 견적 링크")
+                    .setMessage("고객이 사진 견적을 요청할 수 있는 주소입니다.\n\n$link")
+                    .setPositiveButton("공유") { _,_ ->
+                        if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자") {
+                            val send=Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"사진으로 인테리어필름 견적을 받아보세요.\n$link")
+                            try { startActivity(Intent.createChooser(send,"고객 견적 링크 공유")) } catch(_:Exception) { message("공유 화면을 열지 못했습니다. 주소를 복사해 주세요.") }
+                        } else message("관리자 계정과 업체를 다시 선택해 주세요.")
+                    }
+                    .setNeutralButton("주소 복사") { _,_ ->
+                        if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자") {
+                            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("고객 AI 견적 링크",link));message("견적 링크를 복사했습니다.")
+                        } else message("관리자 계정과 업체를 다시 선택해 주세요.")
+                    }.setNegativeButton("닫기",null).show()
+            } catch(e:CancellationException) { throw e }
+            catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("고객페이지 주소를 확인하지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
+            finally { customerPageBusy=false }
+        }
     }
     private fun editCustomerProfile(uid:String,company:CompanyAccess,profile:JSONObject) {
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
