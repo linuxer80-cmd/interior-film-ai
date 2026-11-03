@@ -1035,6 +1035,8 @@ class MainActivity : Activity() {
             "candidates" -> "활동 지역: ${recruitText(row,"region").ifBlank { "미등록" }}\n경력: ${if(row.isNull("experience_years")) "미등록" else recruitText(row,"experience_years")+"년"}\n가능 일정: ${recruitDates(row).ifBlank { "공개된 일정 없음" }}\n\n${recruitText(row,"introduction")}"
             else -> "상태: ${recruitApplicationStatus(row)}\n현장: ${job?.let { recruitText(it,"title") }.orEmpty().ifBlank { "정보 확인 필요" }}\n지역: ${job?.let { recruitText(it,"region") }.orEmpty()}\n시공일: ${job?.let { recruitDates(it) }.orEmpty()}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
         }
+        val proposed=worker && kind=="applications" && recruitText(row,"status")=="invited" && job!=null && recruitText(job,"proposal_user_id")==uid && recruitText(job,"status")=="open"
+        if(proposed) { showLaborProposal(uid,company,data,job!!);return }
         val jobId=recruitText(row,"id")
         val already=(data.optJSONArray("applications") ?: JSONArray()).let { apps -> (0 until apps.length()).any { i ->
             val a=apps.optJSONObject(i);a!=null && recruitText(a,"job_id")==jobId && recruitText(a,"status") !in listOf("invited","withdrawn","unassigned")
@@ -1047,6 +1049,41 @@ class MainActivity : Activity() {
             openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine",if(kind=="applications") recruitText(row,"job_id") else "")
         }
         builder.setNegativeButton("닫기",null).show()
+    }
+    private fun showLaborProposal(uid:String,company:CompanyAccess,data:JSONObject,job:JSONObject) {
+        val jobId=recruitText(job,"id")
+        if(!Regex("^[0-9a-fA-F-]{36}$").matches(jobId)) { message("제안 정보를 확인하지 못했습니다. 목록을 다시 열어 주세요.");return }
+        val wage=recruitText(job,"proposal_wage").toLongOrNull() ?: 0L
+        val days=job.optJSONArray("work_dates")
+        val available=data.optJSONObject("profile")?.optJSONArray("available_dates")
+        val availableDates=(0 until (available?.length() ?: 0)).mapNotNull { available?.optString(it) }.toSet()
+        val datesOk=days!=null && days.length()>0 && (0 until days.length()).all { days.optString(it) in availableDates }
+        val enabled=data.optBoolean("proposalsEnabled",false)
+        val canApply=enabled && wage>0 && datesOk
+        val wageText=if(wage>0) java.text.NumberFormat.getIntegerInstance(Locale.KOREA).format(wage)+"원" else "확인 필요"
+        val details="${recruitText(job,"company_name")} · ${recruitText(job,"region")}\n${recruitDates(job)}\n제안 일당: $wageText\n${recruitText(job,"work_content")}\n\n지원하면 업체가 상세정보를 검토하며, 최종 확정 전에는 현장에 배정되지 않습니다."
+        val notice=when { !enabled -> "\n\n현재 제안 지원 기능을 사용할 수 없습니다.";wage<=0 -> "\n\n제안 일당을 확인해 주세요.";!datesOk -> "\n\n제안 날짜가 공개한 구직 가능 일정과 일치하는지 확인해 주세요.";else -> "" }
+        val dialog=AlertDialog.Builder(this).setTitle(recruitText(job,"title").ifBlank { "받은 현장 제안" }).setMessage(details+notice)
+        if(canApply) dialog.setPositiveButton("제안에 지원") { _,_ -> confirmLaborProposal(uid,company,jobId,wage,true) }
+        dialog.setNeutralButton("제안 거절") { _,_ -> confirmLaborProposal(uid,company,jobId,wage,false) }.setNegativeButton("닫기",null).show()
+    }
+    private fun confirmLaborProposal(uid:String,company:CompanyAccess,jobId:String,wage:Long,apply:Boolean) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return }
+        val description=if(apply) "제안한 날짜와 일당 ${java.text.NumberFormat.getIntegerInstance(Locale.KOREA).format(wage)}원을 확인하고, 이 업체에 프로필과 연락처를 공유하는 데 동의합니다. 지원 후 업체가 최종 확정해야 배정됩니다." else "현장 제안을 거절합니다. 구직 일정은 유지됩니다."
+        AlertDialog.Builder(this).setTitle(if(apply) "현장 제안에 지원" else "현장 제안 거절").setMessage(description)
+            .setPositiveButton(if(apply) "동의하고 지원" else "거절") { _,_ ->
+                if(laborBusy || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setPositiveButton }
+                laborBusy=true;val epoch=sessionEpoch
+                scope.launch {
+                    try {
+                        auth.replyLaborProposal(uid,company.id,jobId,apply,wage)
+                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) message(if(apply) "지원했습니다. 업체가 최종 확정하면 배정됩니다." else "현장 제안을 거절했습니다.")
+                    } catch(e:CancellationException) { throw e }
+                    catch(e:TradeApiFailure) { if(epoch==sessionEpoch && account?.userId==uid) message(e.message ?: "현장 제안을 처리하지 못했습니다.") }
+                    catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("처리 결과를 확인하지 못했습니다. 다시 시도하기 전에 내 지원·받은 제안에서 상태를 확인해 주세요.") }
+                    finally { laborBusy=false }
+                }
+            }.setNegativeButton("취소",null).show()
     }
     private fun confirmLaborApplication(uid:String,company:CompanyAccess,jobId:String,title:String) {
         if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return }

@@ -320,6 +320,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun replyLaborProposal(expectedUser:String,companyId:String,jobId:String,apply:Boolean,wage:Long) {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체가 변경되었습니다." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(jobId)) { "현장 제안을 다시 확인해 주세요." }
+        if(apply) require(wage in 1..9007199254740991L) { "제안 일당을 확인해 주세요." }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        withContext(Dispatchers.IO) {
+            val c=URL("https://interior-film-ai.vercel.app/api/labor-market").openConnection() as HttpsURLConnection
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=30000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Labor-View","worker");c.setRequestProperty("Content-Type","application/json")
+                val body=JSONObject().put("action",if(apply) "proposal_apply" else "proposal_decline").put("jobId",jobId)
+                if(apply) body.put("share_phone",true).put("expectedWage",wage)
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val status=c.responseCode
+                val raw=(if(status in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                if(status in 400..499 && status !in listOf(408,429)) throw TradeApiFailure(status,result.optString("error").ifBlank { "현장 제안을 처리하지 못했습니다." })
+                check(status in 200..299 && result.optBoolean("ok",false)) { "처리 결과를 확인하지 못했습니다." }
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun tradeClients(expectedUser:String,companyId:String,body:JSONObject?=null):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
