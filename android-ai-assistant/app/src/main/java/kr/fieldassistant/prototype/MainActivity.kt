@@ -1565,7 +1565,7 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","film","report","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1618,9 +1618,18 @@ class MainActivity : Activity() {
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         showNativeAssignments(uid,company,siteId,assignments)
                     }
+                    "report" -> {
+                        if(owner) {
+                            openWebWorkspace("https://interior-film-ai.vercel.app/worker/site/"+Uri.encode(siteId)+"?section=report")
+                        } else {
+                            val report=auth.assistantWorkReport(uid,companyId,siteId)
+                            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                            showNativeReportStatus(uid,company,siteId,report)
+                        }
+                    }
                     else -> {
-                        val workerTask=action in listOf("film","expenses","report","photos")
-                        val section=when(action) { "all" -> "info";"schedule_web" -> "schedule";else -> action }
+                        val workerTask=action in listOf("film","expenses","report","report_web","photos")
+                        val section=when(action) { "all" -> "info";"schedule_web" -> "schedule";"report_web" -> "report";else -> action }
                         val path=if(owner && !workerTask) "/admin?tab=sites&site="+Uri.encode(siteId)+"&section="+section else "/worker/site/"+Uri.encode(siteId)+"?section="+section
                         openWebWorkspace("https://interior-film-ai.vercel.app"+path)
                     }
@@ -1633,6 +1642,29 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun showNativeReportStatus(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
+        val report=result.optJSONObject("report")
+        fun value(key:String)=report?.optString(key)?.takeUnless { it.isBlank() || it=="null" }.orEmpty()
+        val status=if(report==null) "아직 제출된 완료보고가 없습니다." else when(value("review_status")) {
+            "approved" -> "관리자 승인 완료";"rejected" -> "관리자 반려";"pending" -> "관리자 검수 대기";else -> "상태 확인 필요"
+        }
+        val content=buildString {
+            append(status)
+            if(report!=null) {
+                if(value("work_region").isNotBlank()) append("\n\n시공 부위: "+value("work_region"))
+                if(value("work_summary").isNotBlank()) append("\n시공 내용: "+value("work_summary"))
+                if(value("memo").isNotBlank()) append("\n메모: "+value("memo"))
+                if(value("review_memo").isNotBlank()) append("\n관리자 의견: "+value("review_memo"))
+            }
+            append(if(result.optBoolean("canSubmit")) "\n\n완료보고 작성과 사진 첨부는 현재 웹 화면에서 진행합니다." else "\n\n완료보고 제출 권한을 확인해 주세요.")
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
+        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNeutralButton("작성·사진 첨부 (웹)") { _,_ ->
+            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) openSiteAction(company.id,siteId,"report_web")
+            else message("계정과 업체를 다시 확인해 주세요.")
+        }
+        dialog.show()
+    }
     private fun showNativeAssignments(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
         val dates=result.optJSONArray("dates") ?: return
         val assignments=result.optJSONArray("assignments") ?: return
