@@ -1018,14 +1018,14 @@ class MainActivity : Activity() {
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return@setItems }
                 var next=items
                 when {
-                    index<items -> rows.optJSONObject(index)?.let { showRecruitDetail(worker,kind,it,if(kind=="applications") jobFor(it) else null) }
+                    index<items -> rows.optJSONObject(index)?.let { showRecruitDetail(uid,company,data,worker,kind,it,if(kind=="applications") jobFor(it) else null) }
                     page>0 && kind!="applications" && index==next++ -> loadRecruit(uid,company,worker,kind,page-1)
                     canPage && index==next -> loadRecruit(uid,company,worker,kind,page+1)
                     else -> openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine")
                 }
             }.setNegativeButton("닫기",null).show()
     }
-    private fun showRecruitDetail(worker:Boolean,kind:String,row:JSONObject,job:JSONObject?=null) {
+    private fun showRecruitDetail(uid:String,company:CompanyAccess,data:JSONObject,worker:Boolean,kind:String,row:JSONObject,job:JSONObject?=null) {
         val title=when(kind) { "jobs"->recruitText(row,"title").ifBlank { "구인 공고" };"candidates"->recruitText(row,"name").ifBlank { "시공자" };else->"지원 · 제안" }
         val body=when(kind) {
             "jobs" -> {
@@ -1035,9 +1035,36 @@ class MainActivity : Activity() {
             "candidates" -> "활동 지역: ${recruitText(row,"region").ifBlank { "미등록" }}\n경력: ${if(row.isNull("experience_years")) "미등록" else recruitText(row,"experience_years")+"년"}\n가능 일정: ${recruitDates(row).ifBlank { "공개된 일정 없음" }}\n\n${recruitText(row,"introduction")}"
             else -> "상태: ${recruitApplicationStatus(row)}\n현장: ${job?.let { recruitText(it,"title") }.orEmpty().ifBlank { "정보 확인 필요" }}\n지역: ${job?.let { recruitText(it,"region") }.orEmpty()}\n시공일: ${job?.let { recruitDates(it) }.orEmpty()}\n\n지원이나 제안은 관리자가 최종 확정한 뒤 현장에 배정됩니다."
         }
-        AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton(if(kind=="applications") "지원 · 모집 관리" else if(kind=="candidates") "시공자 검색 · 제안" else if(worker) "일자리 화면에서 지원" else "공고 관리") { _,_ ->
+        val jobId=recruitText(row,"id")
+        val already=(data.optJSONArray("applications") ?: JSONArray()).let { apps -> (0 until apps.length()).any { i ->
+            val a=apps.optJSONObject(i);a!=null && recruitText(a,"job_id")==jobId && recruitText(a,"status") !in listOf("invited","withdrawn","unassigned")
+        } }
+        val normal=worker && kind=="jobs" && recruitText(row,"proposal_user_id").isBlank()
+        val canApply=normal && recruitText(row,"status")=="open" && !already && data.optJSONObject("profile")!=null && Regex("^[0-9a-fA-F-]{36}$").matches(jobId)
+        val builder=AlertDialog.Builder(this).setTitle(title).setMessage(body+(if(normal && already) "\n\n이미 지원한 공고입니다. 내 지원 현황에서 확인해 주세요." else if(normal && data.optJSONObject("profile")==null) "\n\n지원하려면 기본 프로필을 먼저 등록해 주세요." else ""))
+        if(canApply) builder.setPositiveButton("지원하기") { _,_ -> confirmLaborApplication(uid,company,jobId,title) }
+        else builder.setPositiveButton(if(kind=="applications") "지원 · 모집 관리" else if(kind=="candidates") "시공자 검색 · 제안" else if(worker) "일자리 화면 열기" else "공고 관리") { _,_ ->
             openRecruitWorkspace(worker,if(kind=="applications") "applications" else if(kind=="candidates") "candidates" else if(worker) "jobs" else "mine",if(kind=="applications") recruitText(row,"job_id") else "")
-        }.setNegativeButton("닫기",null).show()
+        }
+        builder.setNegativeButton("닫기",null).show()
+    }
+    private fun confirmLaborApplication(uid:String,company:CompanyAccess,jobId:String,title:String) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 선택해 주세요.");return }
+        AlertDialog.Builder(this).setTitle("$title 지원")
+            .setMessage("지원한 업체에 프로필과 연락처를 공유합니다. 다른 업체 현장에는 프리랜서로 지원하며 기존 소속과 일당은 유지됩니다. 업체가 최종 확정한 뒤 현장에 배정됩니다.\n\n확인하고 지원하시겠습니까?")
+            .setPositiveButton("동의하고 지원") { _,_ ->
+                if(laborBusy || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setPositiveButton }
+                laborBusy=true;val epoch=sessionEpoch
+                scope.launch {
+                    try {
+                        auth.applyLaborJob(uid,company.id,jobId)
+                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) message("지원했습니다. 업체가 최종 확정하면 배정됩니다.")
+                    } catch(e:CancellationException) { throw e }
+                    catch(e:TradeApiFailure) { if(epoch==sessionEpoch && account?.userId==uid) message(e.message ?: "지원하지 못했습니다. 공고와 프로필을 확인해 주세요.") }
+                    catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) message("지원 결과를 확인하지 못했습니다. 다시 지원하기 전에 내 지원 현황을 확인해 주세요.") }
+                    finally { laborBusy=false }
+                }
+            }.setNegativeButton("취소",null).show()
     }
     private var tradeBusy=false
     private fun tradePending():JSONObject = try { JSONObject(prefs.getString("chat_trade_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
