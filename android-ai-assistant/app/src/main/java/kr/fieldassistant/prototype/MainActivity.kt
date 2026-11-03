@@ -1724,7 +1724,7 @@ class MainActivity : Activity() {
             dialog.setView(actions)
         }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
-            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId)
+            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId,report?.takeIf { it.optString("review_status")=="rejected" })
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.setNeutralButton(if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) "기존 보고서 화면 (웹)" else "보고서·사진 보기 (웹)") { _,_ ->
@@ -1951,16 +1951,17 @@ class MainActivity : Activity() {
             finally { workerActionBusy=false }
         }
     }
-    private fun showReportDraft(uid:String,company:CompanyAccess,siteId:String) {
+    private fun showReportDraft(uid:String,company:CompanyAccess,siteId:String,previous:JSONObject?=null) {
         val prefix="report_draft_"+company.id+"_"+siteId+"_"
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
-        val keys=listOf("region","summary","memo");val labels=listOf("시공 부위","실제 시공 내용","메모")
+        val keys=listOf("region","summary","memo");val reportKeys=listOf("work_region","work_summary","memo");val labels=listOf("시공 부위","실제 시공 내용","메모")
         val inputs=keys.mapIndexed { i,key -> EditText(this).apply {
-            hint=labels[i];setText(prefs.getString(prefix+key,""));filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
+            val original=previous?.optString(reportKeys[i])?.takeUnless { it=="null" }.orEmpty()
+            hint=labels[i];setText(prefs.getString(prefix+key,null) ?: original);filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
             form.addView(this)
         } }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 내용 임시 저장")
-            .setMessage("입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
+            .setMessage((if(previous!=null) "임시 저장한 내용이 없으면 반려된 보고서 내용을 불러옵니다.\n\n" else "")+"입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
             .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("임시 저장",null).setNegativeButton("취소",null)
             .setNeutralButton("내용 복사",null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
