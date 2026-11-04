@@ -643,18 +643,28 @@ class MainActivity : Activity() {
             if(!changeRecord(id) { it.put("chat_disposition",state) }) { message("대화 상태를 저장하지 못했습니다.");return }
             if(state!="active") notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
         }
+        // Fill missing fields for unsent call drafts only once; preserve user edits.
+        if(!item.optBoolean("manual_site") && !item.optBoolean("call_hints_applied") && item.optJSONObject("registration")==null) {
+            val existing=item.optJSONObject("chat_draft")
+            if(existing!=null) {
+                if(existing.optString("customer_phone").isBlank()) existing.put("customer_phone",CallDraftHints.phone(item.optString("name")))
+                if(existing.optString("address").isBlank()) existing.put("address",CallDraftHints.area(item.optString("transcript")))
+                if(existing.optString("work_description").isBlank()) existing.put("work_description",CallDraftHints.work(item.optString("transcript")))
+                if(!changeRecord(id) { it.put("chat_draft",existing).put("call_hints_applied",true) }) { message("대화를 저장하지 못했습니다.");return }
+            }
+        }
         if(item.optJSONArray("chat_messages")==null) {
             val company=selectedCompany() ?: return
             val summary=item.optString("summary")
             val fallback="통화 상담 " + SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date())
             val data=JSONObject().put("site_name",CallSummary.field(summary,"현장명").ifBlank { fallback })
                 .put("customer_name",CallSummary.field(summary,"고객명"))
-                .put("customer_phone",CallSummary.field(summary,"전화번호"))
-                .put("address",CallSummary.field(summary,"주소"))
-                .put("work_description",listOf(CallSummary.field(summary,"공정"),CallSummary.field(summary,"시공 부위")).filter { it.isNotBlank() }.joinToString(" · "))
+                .put("customer_phone",CallSummary.field(summary,"전화번호").ifBlank { CallDraftHints.phone(item.optString("name")) })
+                .put("address",CallSummary.field(summary,"주소").ifBlank { CallDraftHints.area(item.optString("transcript")) })
+                .put("work_description",listOf(CallSummary.field(summary,"공정"),CallSummary.field(summary,"시공 부위")).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { CallDraftHints.work(item.optString("transcript")) })
                 .put("memo",summary.take(3500)).put("source","phone").put("work_dates",JSONArray()).put("materials",JSONArray())
                 .put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
-            if(!changeRecord(id) { it.put("chat_draft",data).put("chat_company",company.id) }) { message("대화를 저장하지 못했습니다.");return }
+            if(!changeRecord(id) { it.put("chat_draft",data).put("chat_company",company.id).put("call_hints_applied",true) }) { message("대화를 저장하지 못했습니다.");return }
             if(consultationDisposition(item)=="active") {
             chatMessage(id,"새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n\n${company.name}의 현장에 등록할까요? 아래 등록 내용을 확인하고 ‘네’ 또는 ‘그래’라고 답해 주세요. 인식 오류는 ‘등록 내용 수정’에서 고칠 수 있습니다.")
             } else chatMessage(id,if(consultationDisposition(item)=="declined") "등록하지 않기로 한 통화입니다. 자동 등록 안내는 종료되었습니다." else "보류한 통화입니다. 자동 등록 안내는 종료되었습니다.")
