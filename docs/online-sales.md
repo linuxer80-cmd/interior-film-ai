@@ -48,3 +48,15 @@ Show the subtotal for campaigns with all three reported metrics (impressions, cl
 - Successful bid saving remains separate from a subsequent rank lookup. If the latter fails, retain the verified save success and report rank lookup failure; never retry the mutation. Actual post-change rank is observable only after provider exposure data accumulates.
 - Request caps: shared 100-second / 230-call read client for top keywords; route maxDuration 120s. Estimate failures return per-device unavailable results without blocking bid editing.
 - Primary API examples: official Java `StatSample.java`, `Stat.java`, and estimate response DTO `EstiamteBidByPosition.java`; NAVER Help FAQ 1339 explains reference bids and non-guaranteed positions.
+# 네이버 플레이스: 지역 검색 조회
+
+`database/online_sales_place.sql`은 기존 회사 제한, RLS, 서비스 전용 권한을 유지하며 `naver_place` 연결 행만 추가한다.
+`/api/admin/online-sales/place`는 기존 활성 owner·필름장이 인증을 그대로 사용한다. NAVER API HUB의 지역 검색 전용 Client ID/Secret은 연결 시 공식 GET 요청을 검증한 뒤 기존 AES-GCM 방식으로 플랫폼·플레이스 ID에 묶어 저장한다. API 응답이나 오류에 인증값을 반환하지 않는다.
+
+2026-10-26 공식 문서: https://api.ncloud-docs.com/docs/naver-api-hub-search-local
+신규 키 발급: https://api.ncloud-docs.com/docs/naver-api-hub-overview
+검색광고 API 키와 별도이며, 검색 API를 신청한 NAVER API HUB 키가 필요하다.
+고정 검색어 `기분좋은공간 인천`의 최대 5개 결과를 반환한다. 지도 순위·업체 소유 확인·방문자 리뷰로 해석하지 않는다. `queriedAt`은 실제 요청 시각이며 `sourceBuiltAt`은 검색 응답의 생성 시각이다. 실패 시 이전 결과와 시각을 유지한다.
+
+소식 게시·대표사진·리뷰 본문/답글·문의 통계 관리의 공개 API는 확인되지 않았다. 이 기능은 스마트플레이스 관리 바로가기에서 정상 로그인해 처리한다. 제휴용 POS/멤버십 API는 본 기능에 사용하지 않는다.
+매일 검색 조회는 기본 꺼짐이며 키 연결 시 사용자가 선택한 경우에만 기존 09시 작업에 포함한다. 클라우드 요금/호출 한도는 연결 화면에서 안내한다. 키 미연결 상태에서는 호출하지 않는다.

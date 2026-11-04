@@ -3,6 +3,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {supabase} from '../../../lib/supabase';
 import styles from './sales.module.css';
 import NaverSales from './NaverSales';
+import NaverPlace from './NaverPlace';
 const number=value=>Number(value||0).toLocaleString('ko-KR',{maximumFractionDigits:0});
 const date=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'아직 조회하지 않았어요';
 export default function OnlineSalesPage() {
@@ -37,8 +38,8 @@ export default function OnlineSalesPage() {
     <a href='/admin' data-ui-link='action'>← 관리자 홈</a>
     <header className={styles.header}><p>필름장이 전용 · 기분좋은공간</p><h1>온라인 영업관리</h1><p>광고 현황을 확인하고 다음 영업을 준비하세요.</p></header>
     {!ready?<p role='status'>이용 권한을 확인하고 있어요…</p>:!allowed?<section className={styles.card}><h2>필름장이 관리자 전용입니다</h2><p role='alert'>{error}</p><a href='/admin' data-ui-link='action'>관리자 로그인으로 돌아가기</a></section>:<>
-      <nav className={styles.platforms} aria-label='광고 플랫폼 선택'><button type='button' aria-pressed={platform==='naver'} onClick={()=>setPlatform('naver')}>네이버 광고</button><button type='button' aria-pressed={platform==='daangn'} onClick={()=>setPlatform('daangn')}>당근 광고</button></nav>
-      {platform==='naver'?<NaverSales/>:<>
+      <nav className={styles.platforms} aria-label='온라인 영업 채널 선택'><button type='button' aria-pressed={platform==='naver'} onClick={()=>setPlatform('naver')}>네이버 광고</button><button type='button' aria-pressed={platform==='daangn'} onClick={()=>setPlatform('daangn')}>당근 광고</button><button type='button' aria-pressed={platform==='place'} onClick={()=>setPlatform('place')}>네이버 플레이스</button></nav>
+      {platform==='naver'?<NaverSales/>:platform==='place'?<NaverPlace/>:<>
       <section className={styles.card}>
         <div className={styles.row}><div><span className={styles.badge}>당근 광고</span><h2>{state.connected?'연결된 광고 현황':'당근 광고를 연결해보세요'}</h2></div><span>{state.connected?'API 연결됨':'연결 전'}</span></div>
         <p>{state.connected?`광고주 ID ${state.advertiserId}`:'당근에서 발급받은 API 키로 실제 광고 성과를 가져옵니다.'}</p>
