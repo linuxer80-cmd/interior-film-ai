@@ -2554,7 +2554,7 @@ class MainActivity : Activity() {
                     if(receivables==null) lines.add("완료 현장의 미수금은 확인하지 못했습니다.")
                     else {
                         val amount=java.text.NumberFormat.getNumberInstance(Locale.KOREA).format(receivables.getDouble("outstanding"))
-                        lines.add("완료 현장의 확인된 미수금 ${amount}원 · 기존 입금 확인 필요 ${receivables.getInt("unconfirmed")}건")
+                        lines.add("완료 현장의 확인된 미수금 ${amount}원 · 기존 입금 확인 필요 ${receivables.getInt("unconfirmed")}건 · 계약금액 미확정 ${receivables.getInt("unknownContract")}건")
                     }
                 }
                 appendHomeMessage(lines.joinToString("\n"))

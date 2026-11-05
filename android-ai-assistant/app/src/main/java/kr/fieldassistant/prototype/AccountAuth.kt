@@ -538,7 +538,8 @@ internal class AccountAuth private constructor(context: Context) {
                 val result=JSONObject(c.inputStream.bufferedReader().use { it.readText() })
                 val outstanding=result.opt("outstanding") as? Number ?: error("미수금을 확인하지 못했습니다.")
                 val unconfirmed=result.opt("unconfirmed") as? Number ?: error("미수금을 확인하지 못했습니다.")
-                check(result.optString("companyId")==companyId && outstanding.toDouble().isFinite() && outstanding.toDouble()>=0 && unconfirmed.toDouble()>=0 && unconfirmed.toDouble()==kotlin.math.floor(unconfirmed.toDouble())) { "미수금을 확인하지 못했습니다." }
+                val unknown=result.opt("unknownContract") as? Number ?: error("계약금액 미확정 현장 수를 확인하지 못했습니다.")
+                check(result.optString("companyId")==companyId && outstanding.toDouble().isFinite() && outstanding.toDouble()>=0 && unconfirmed.toDouble()>=0 && unconfirmed.toDouble()==kotlin.math.floor(unconfirmed.toDouble()) && unknown.toDouble()>=0 && unknown.toDouble()==kotlin.math.floor(unknown.toDouble())) { "미수금을 확인하지 못했습니다." }
                 result
             } finally { c.disconnect() }
         }

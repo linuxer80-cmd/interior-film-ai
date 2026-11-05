@@ -16,7 +16,10 @@ export async function GET(request) {
     const summary=data?.summary;
     if(!summary || typeof summary.outstanding!=='number' || !Number.isFinite(summary.outstanding) || summary.outstanding<0 ||
        !Number.isSafeInteger(summary.unconfirmed) || summary.unconfirmed<0) throw new Error('invalid summary');
-    return json({companyId:auth.companyId,outstanding:summary.outstanding,unconfirmed:summary.unconfirmed});
+    const unknown=await auth.db.from('site_receivable_balances').select('id',{count:'exact',head:true})
+      .eq('company_id',auth.companyId).eq('status','completed').is('contract_amount',null);
+    if(unknown.error || !Number.isSafeInteger(unknown.count) || unknown.count<0) throw new Error('invalid unknown count');
+    return json({companyId:auth.companyId,outstanding:summary.outstanding,unconfirmed:summary.unconfirmed,unknownContract:unknown.count});
   } catch {
     return json({error:'완료 현장의 미수금을 확인하지 못했습니다.'},503);
   }
