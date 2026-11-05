@@ -5,6 +5,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.annotations.SupabaseInternal
+import io.ktor.client.engine.android.Android
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.auth
@@ -86,7 +88,11 @@ internal class AccountAuth private constructor(context: Context) {
             instance ?: AccountAuth(context.applicationContext).also { instance=it }
         }
     }
+    // Pinned supabase-kt 3.5.0 exposes client-wide redirect policy via this opt-in.
+    @OptIn(SupabaseInternal::class)
     private val client=createSupabaseClient(SecureTransport.requireHttps(SUPABASE_URL),SUPABASE_PUBLIC_KEY) {
+        useHTTPS=true
+        httpEngine=Android.create()
         httpConfig { requireEncryptedTransport() }
         install(Auth) { sessionManager=SecureSessionManager(context); autoLoadFromStorage=true; autoSaveToStorage=true }
         install(Postgrest) { requireValidSession=true }
