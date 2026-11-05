@@ -25,8 +25,8 @@ internal object SiteMaterialSummary {
             if(available.isNotEmpty()) {
                 val lengths=available.map { number(it,"remaining") }
                 val amount=if(lengths.any { it==null }) "길이 일부 확인 필요" else lengths.filterNotNull().fold(BigDecimal.ZERO) { sum,n -> sum.add(n) }.stripTrailingZeros().toPlainString()+"m"
-                lines.add("  맞는 창고 롤 ${available.size}개 · $amount")
-            } else lines.add("  맞는 창고 롤 없음 또는 재고 확인 필요")
+                lines.add("  제품번호가 같은 창고 롤 ${available.size}개 · $amount (방염 여부 별도 확인)")
+            } else lines.add("  제품번호가 같은 창고 롤 없음 또는 재고 확인 필요")
         }
         if(materials.length()>20) lines.add("자재가 더 있습니다. 현장 자재 화면에서 전체 목록을 확인해 주세요.")
         val open=(0 until trips.length()).mapNotNull { trips.optJSONObject(it) }.filter { value(it,"site_id")==siteId && it.has("returned") && it.isNull("returned") }
