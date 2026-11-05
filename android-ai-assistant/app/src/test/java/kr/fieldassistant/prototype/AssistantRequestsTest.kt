@@ -17,6 +17,9 @@ class AssistantRequestsTest {
         assertEquals("다산",AssistantRequests.parse("현장 다산 찾아줘",monday).query)
         assertEquals("정보통신빌딩",AssistantRequests.parse("현장 정보통신빌딩 찾아줘",monday).query)
         assertEquals("",AssistantRequests.parse("우리 현장 목록 좀 보여줘",monday).query)
+        assertEquals("청라",NaturalLanguage.siteNameBefore("혹시 청라 현장에 전화 좀 걸어줘"))
+        assertEquals("",NaturalLanguage.siteNameBefore("그 현장에 전화해줘"))
+        assertNull(SampleSearch.parse("현대 아파트 현장 보여줘"))
         assertEquals("new-site",AssistantRequests.parse("현장 하나 만들어줘",monday).feature)
         assertEquals("schedule",AssistantRequests.parse("오늘 뭐 해?",monday).kind)
     }
