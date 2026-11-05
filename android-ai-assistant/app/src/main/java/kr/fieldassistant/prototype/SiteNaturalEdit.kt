@@ -23,7 +23,13 @@ internal object SiteNaturalEdit {
             if(!seen.add(key)) return null
             val end=labels.getOrNull(index+1)?.range?.first ?: text.length
             var value=text.substring(match.range.last+1,end).trim().trimEnd(',', ';',' ')
-            if(index==labels.lastIndex) value=value.replace(command,"").trim().trimEnd(',', ';',' ')
+            if(index==labels.lastIndex) {
+                // A road name such as 청라대로 ends in 로; do not mistake it for a particle.
+                val endsWithRoadName=key in listOf("address","address_detail") &&
+                    Regex("(?:대로|도로)\\s*(?=(?:추가|기록|입력|수정|변경|저장|등록|바꿔|적어|남겨))").containsMatchIn(value)
+                value=value.replace(command,"").trim().trimEnd(',', ';',' ')
+                if(endsWithRoadName && !value.endsWith("로")) value+="로"
+            }
             if(value.isBlank() || value.length>1000 || Regex("[\\r\\n]").containsMatchIn(value)) return null
             if(key=="customer_phone" && !Regex("^[+0-9() -]{8,25}$").matches(value)) return null
             if(key=="address" && Regex("(?:방문|시공|견적|일정)(?:일|은|는|을|를)").containsMatchIn(value)) return null

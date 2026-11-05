@@ -18,4 +18,9 @@ class SiteNaturalEditTest {
         assertNull(SiteNaturalEdit.parse("주소는 청라 방문일은 토요일로 변경해줘"))
         assertNull(SiteNaturalEdit.parse("주소는 청라, 주소는 송도로 수정해줘"))
     }
+    @Test fun keepsRoadNameEndingWhenRemovingTheChangeCommand() {
+        assertEquals("인천 서구 청라대로",SiteNaturalEdit.parse("주소는 인천 서구 청라대로 변경해줘")!!.single().value)
+        assertEquals("인천 서구 청라대로",SiteNaturalEdit.parse("주소는 인천 서구 청라대로로 변경해줘")!!.single().value)
+        assertEquals("인천 청라",SiteNaturalEdit.parse("주소는 인천 청라로 변경해줘")!!.single().value)
+    }
 }
