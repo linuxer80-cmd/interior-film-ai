@@ -1,7 +1,7 @@
 name: Prepare Android 16 Play build
 on:
   push:
-    branches: [codex/assistant-play-prep]
+    branches: [codex/assistant-play-prep, codex/android-https-security-20261105]
 permissions:
   contents: read
 jobs:
@@ -27,12 +27,18 @@ jobs:
           curl -fsSL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin -o android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
           cd android-ai-assistant/app/src/main/assets
           sha256sum ggml-small-q5_1.bin > whisper-model.sha256
+      - name: Prepare untrusted local TLS test certificate
+        run: |
+          set -euo pipefail
+          mkdir -p android-ai-assistant/app/src/androidTest/assets
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/test-tls.key" -out "$RUNNER_TEMP/test-tls.crt" -days 2 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null 2>&1
+          openssl pkcs12 -export -inkey "$RUNNER_TEMP/test-tls.key" -in "$RUNNER_TEMP/test-tls.crt" -out android-ai-assistant/app/src/androidTest/assets/untrusted-localhost.p12 -passout pass:test-only
       - name: Test and build
         working-directory: android-ai-assistant
-        run: ASSISTANT_VERSION_CODE="$((20000 + GITHUB_RUN_NUMBER))" gradle --no-daemon testDebugUnitTest assembleDebug bundleRelease
+        run: ASSISTANT_VERSION_CODE=20039 gradle --no-daemon testDebugUnitTest assembleDebug bundleRelease assembleDebugAndroidTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: assistant-play-prep
+          name: assistant-https-security-20039
           path: |
             android-ai-assistant/app/build/outputs/bundle/release/*.aab
             android-ai-assistant/app/build/outputs/apk/debug/*.apk
@@ -65,3 +71,15 @@ jobs:
           "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
           sleep 10
           "$ADB" shell pidof kr.fieldassistant.prototype.stable
+          "$ADB" install -r android-ai-assistant/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          "$ADB" shell am instrument -w -r kr.fieldassistant.prototype.stable.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/security-device-tests.txt
+          grep -q 'OK (4 tests)' /tmp/security-device-tests.txt
+      - name: Upload security test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-https-security-test-results
+          path: |
+            android-ai-assistant/app/build/test-results/
+            /tmp/security-device-tests.txt
+          retention-days: 7

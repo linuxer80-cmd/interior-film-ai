@@ -18,14 +18,17 @@ android {
         minSdk = 31
         targetSdk = 36
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
-        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 4
-        versionName = "0.6-chat-test"
+        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 20039
+        versionName = "0.6.39-security"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("junit:junit:4.13.2")
     implementation(platform("io.github.jan-tennert.supabase:bom:3.5.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:postgrest-kt")

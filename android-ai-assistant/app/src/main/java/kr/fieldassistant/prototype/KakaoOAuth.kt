@@ -10,8 +10,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.*
 import org.json.JSONObject
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 
 internal object KakaoOAuth {
     fun begin(context:Context):Uri {
@@ -36,7 +34,7 @@ internal object KakaoOAuth {
         return code to saved.getString("verifier")
     }
     suspend fun exchange(code:String,verifier:String):String=withContext(Dispatchers.IO) {
-        val connection=URL(SUPABASE_URL+"/auth/v1/token?grant_type=pkce").openConnection() as HttpsURLConnection
+        val connection=SecureTransport.open(SUPABASE_URL+"/auth/v1/token?grant_type=pkce")
         try {
             connection.requestMethod="POST";connection.instanceFollowRedirects=false
             connection.connectTimeout=15000;connection.readTimeout=20000;connection.doOutput=true
