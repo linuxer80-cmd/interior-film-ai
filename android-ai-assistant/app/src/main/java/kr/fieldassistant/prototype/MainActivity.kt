@@ -82,6 +82,8 @@ class MainActivity : Activity() {
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
     private var registrationDialog: AlertDialog? = null
+    private data class CallMatches(val uid:String,val company:String,val record:String,val phone:String,val loading:Boolean,val sites:List<JSONObject> = emptyList(),val failed:Boolean=false)
+    private var callMatches:CallMatches?=null
     private var resultListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var listenerUser: String? = null
     private var reviewId: String? = null
@@ -683,6 +685,56 @@ class MainActivity : Activity() {
             } else chatMessage(id,if(consultationDisposition(item)=="declined") "등록하지 않기로 한 통화입니다. 자동 등록 안내는 종료되었습니다." else "보류한 통화입니다. 자동 등록 안내는 종료되었습니다.")
         }
         settingsOpen=false;chatId=id;chatInput="";render()
+        lookupCallMatches(id)
+    }
+    /** Find candidates with the authenticated owner's existing site read; the save RPC rechecks the selection. */
+    private fun lookupCallMatches(id:String) {
+        val item=recordById(id) ?: return
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val draft=item.optJSONObject("chat_draft") ?: return
+        val phone=CallReview.phone(draft.optString("customer_phone"))
+        if(item.optBoolean("manual_site") || company.role!="관리자" || item.optString("chat_company")!=company.id ||
+            item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || phone.isBlank()) {
+            callMatches=null;return
+        }
+        val existing=callMatches
+        if(existing!=null && existing.uid==uid && existing.company==company.id && existing.record==id && existing.phone==phone && !existing.failed) return
+        callMatches=CallMatches(uid,company.id,id,phone,true)
+        render()
+        val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val rows=auth.assistantSites(uid,company.id,true)
+                val sites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+                    .filter { it.optString("company_id")==company.id && CallReview.samePhone(phone,it.optString("customer_phone")) }
+                    .take(50).map { JSONObject().put("id",it.optString("id")).put("site_name",it.optString("site_name"))
+                        .put("address",it.optString("address")).put("customer_name",it.optString("customer_name")) }
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" ||
+                    chatId!=id || recordById(id)?.optJSONObject("chat_draft")?.optString("customer_phone")?.let { CallReview.phone(it) }!=phone) return@launch
+                callMatches=CallMatches(uid,company.id,id,phone,false,sites)
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && chatId==id) callMatches=CallMatches(uid,company.id,id,phone,false,failed=true) }
+            finally { if(epoch==sessionEpoch && chatId==id && account?.userId==uid) render() }
+        }
+    }
+    private fun editCallTranscript(id:String) {
+        val item=recordById(id) ?: return
+        if(item.optBoolean("manual_site") || item.optJSONObject("registration")!=null || item.optString("site_id").isNotBlank()) return
+        val edit=EditText(this).apply { setText(item.optString("transcript"));minLines=8;gravity=Gravity.TOP }
+        AlertDialog.Builder(this).setTitle("인식한 통화 내용 수정").setMessage("휴대폰에 저장된 인식 문장만 수정합니다. 등록 내용은 별도로 확인해 주세요.")
+            .setView(edit).setNegativeButton("취소",null).setPositiveButton("수정") { _,_ ->
+                val value=edit.text.toString().trim().take(30000)
+                if(changeRecord(id) { it.put("transcript",value) }) {
+                    chatMessage(id,"인식한 통화 내용을 수정했습니다. 저장할 내용도 ‘등록 내용 수정’에서 확인해 주세요.");render()
+                } else message("통화 내용을 저장하지 못했습니다.")
+            }.show()
+    }
+    private fun callEvidenceText(item:JSONObject,data:JSONObject):String {
+        val e=CallReview.evidence(item.optString("transcript"))
+        fun values(xs:List<String>)=if(xs.isEmpty()) "원문에서 찾지 못함" else xs.joinToString(" · ")
+        val address=data.optString("address").takeUnless { it.isBlank() || it=="null" } ?: "등록 내용에 없음"
+        return "등록 전 확인해 주세요\n주소: $address (상세 주소 확인)\n시공 일정 후보: ${values(e.dates)}\n필름 코드 후보: ${values(e.codes)}\n금액 후보: ${values(e.amounts)}\n\n후보는 인식한 통화에서 찾은 표현으로, 정확도나 확정 여부를 뜻하지 않습니다. 일정·필름·금액은 자동으로 확정하거나 저장하지 않습니다. 필요하면 ‘등록 내용 수정’의 상담 메모에 직접 입력해 주세요."
     }
     private fun chatCandidates(id: String, candidates: JSONArray) {
         changeRecord(id) { it.remove("chat_target") }
@@ -732,7 +784,9 @@ class MainActivity : Activity() {
             // Older unsent manual drafts used an unsupported source value.
             if(item.optBoolean("manual_site") && data.optString("source")=="manual") data.put("source","direct")
             if(item.optBoolean("manual_site") && data.optString("site_name").isBlank()) { chatMessage(id,"먼저 ‘등록 내용 수정’에서 현장명을 입력해 주세요.");render();return }
-            val request=JSONObject().put("company_id",company.id).put("request_id",UUID.randomUUID().toString()).put("data",data).put("target_id",JSONObject.NULL).put("create_new",false)
+            val savedPhone=item.optString("preview_target_phone")
+            val selected=CallReview.selectedTarget(item.optString("preview_target_id"),savedPhone,data.optString("customer_phone"))
+            val request=JSONObject().put("company_id",company.id).put("request_id",UUID.randomUUID().toString()).put("data",data).put("target_id",selected ?: JSONObject.NULL).put("create_new",false)
             if(!changeRecord(id) { it.put("registration",request) }) { message("등록 요청을 보관하지 못했습니다.");return }
         } else {
             val candidates=reg.optJSONArray("candidates")
@@ -765,7 +819,7 @@ class MainActivity : Activity() {
             if(edits.getValue("site_name").text.toString().isBlank()) { edits.getValue("site_name").error="현장명을 입력해 주세요.";return@setOnClickListener }
             val limits=mapOf("site_name" to 300,"customer_name" to 200,"customer_phone" to 100,"address" to 500,"work_description" to 1000,"memo" to 4000)
             edits.forEach { (key,edit) -> draft.put(key,edit.text.toString().trim().take(limits.getValue(key))) }
-            if(changeRecord(id) { it.put("chat_draft",draft) }) { chatMessage(id,"등록 내용을 수정했습니다. 아래 내용을 ${selectedCompany()?.name}에 등록할까요?");dialog.dismiss();render() }
+            if(changeRecord(id) { it.put("chat_draft",draft).remove("preview_target_id");it.remove("preview_target_phone") }) { callMatches=null;chatMessage(id,"등록 내용을 수정했습니다. 아래 내용을 ${selectedCompany()?.name}에 등록할까요?");dialog.dismiss();render();lookupCallMatches(id) }
             else message("수정 내용을 저장하지 못했습니다.")
         } };dialog.show()
     }
@@ -3162,7 +3216,7 @@ class MainActivity : Activity() {
         val item=recordById(id) ?: run { chatId=null;render();return }
         val key=listOf("call",account?.userId,selectedCompany()?.id,id,item.optJSONArray("chat_messages"),
             item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
-            item.optString("site_id"),consultationDisposition(item),id in savingRegistrations).toString()
+            item.optString("site_id"),item.optString("preview_target_id"),callMatches,consultationDisposition(item),id in savingRegistrations).toString()
         if(visibleConversationKey==key) return
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
         setAssistantContent(page)
@@ -3182,6 +3236,11 @@ class MainActivity : Activity() {
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
         if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목과 메모의 통화 발췌는 확인 후 저장합니다. 녹음 파일과 통화 원문 전체는 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
         if(!item.optBoolean("manual_site")) addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
+        if(data!=null && !item.optBoolean("manual_site")) {
+            addButton(body,"주소 · 일정 · 필름 · 금액 확인",false) { AlertDialog.Builder(this).setTitle("통화에서 확인할 항목").setMessage(callEvidenceText(item,data)).setPositiveButton("닫기",null).show() }
+            if(reg==null && item.optString("site_id").isBlank()) addButton(body,"인식한 통화 내용 수정",false) { editCallTranscript(id) }
+        }
+
         if(!item.optBoolean("manual_site") && id.startsWith("content:") && selectedCompany()?.role=="관리자")
             addButton(body,"서버 AI로 다시 분석",false) { selectedCompany()?.takeIf { it.role=="관리자" }?.let { confirmCloudRecording(Uri.parse(id),it) } }
         val done=item.optString("site_id").isNotBlank()
@@ -3195,6 +3254,28 @@ class MainActivity : Activity() {
             }
         }
         if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
+        val preview=callMatches?.takeIf { it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) }
+        if(!done && !paused && !busy && reg==null && preview!=null) {
+            when {
+                preview.loading -> body.addView(text("전화번호로 같은 고객의 현장을 확인하고 있습니다…",14f))
+                preview.failed -> { body.addView(text("기존 현장을 확인하지 못했습니다. 저장할 때 서버에서 다시 확인합니다.",14f));addButton(body,"기존 현장 다시 확인",false) { lookupCallMatches(id) } }
+                preview.sites.isNotEmpty() -> {
+                    body.addView(text("같은 전화번호가 등록된 현장 ${preview.sites.size}개 (최대 50개 표시) · 해당 현장을 선택한 뒤 등록해 주세요. 번호와 현장이 맞는지 직접 확인해야 합니다.",14f,true))
+                    preview.sites.forEach { candidate ->
+                        val candidateId=candidate.optString("id")
+                        addButton(body,(if(item.optString("preview_target_id")==candidateId) "✓ " else "")+candidateLabel(candidate),false) {
+                            if(changeRecord(id) { it.put("preview_target_id",candidateId).put("preview_target_phone",preview.phone) }) {
+                                chatMessage(id,"${candidateLabel(candidate)} 선택. 통화 내용을 이 현장에 추가할까요?");render()
+                            }
+                        }
+                    }
+                    if(item.optString("preview_target_id").isNotBlank()) addButton(body,"현장 선택 취소",false) {
+                        if(changeRecord(id) { it.remove("preview_target_id");it.remove("preview_target_phone") }) { chatMessage(id,"현장 선택을 취소했습니다.");render() }
+                    }
+                }
+                else -> body.addView(text("같은 전화번호의 현장을 찾지 못했습니다. 번호가 맞는지 확인해 주세요.",13f))
+            }
+        }
         val candidates=reg?.optJSONArray("candidates")
         if(candidates!=null && !busy && !paused && !done) {
             for(i in 0 until candidates.length()) {

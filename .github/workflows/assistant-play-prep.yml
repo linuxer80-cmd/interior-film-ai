@@ -35,10 +35,10 @@ jobs:
           openssl pkcs12 -export -inkey "$RUNNER_TEMP/test-tls.key" -in "$RUNNER_TEMP/test-tls.crt" -out android-ai-assistant/app/src/androidTest/assets/untrusted-localhost.p12 -passout pass:test-only
       - name: Test and build
         working-directory: android-ai-assistant
-        run: ASSISTANT_VERSION_CODE=20045 gradle --no-daemon testDebugUnitTest assembleDebug bundleRelease assembleDebugAndroidTest
+        run: ASSISTANT_VERSION_CODE=20046 gradle --no-daemon testDebugUnitTest assembleDebug bundleRelease assembleDebugAndroidTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: construction-assistant-20045
+          name: construction-assistant-20046
           path: |
             android-ai-assistant/app/build/outputs/bundle/release/*.aab
             android-ai-assistant/app/build/outputs/apk/debug/*.apk
