@@ -24,7 +24,7 @@ internal object DailyAssistant {
     }
     fun wrapUp(siteId:String,report:JSONObject?,support:JSONObject?,stock:JSONObject?):String {
         val lines=mutableListOf<String>()
-        if(report==null || !report.has("report")) lines.add("완료보고: 확인하지 못했습니다.")
+        if(report==null || !report.has("report") || (!report.isNull("report") && report.optJSONObject("report")==null)) lines.add("완료보고: 확인하지 못했습니다.")
         else {
             val r=report.optJSONObject("report")
             val status=when(r?.optString("review_status")) {
@@ -45,6 +45,7 @@ internal object DailyAssistant {
             for(i in 0 until trips.length()) {
                 val t=trips.optJSONObject(i)
                 if(t==null) { incomplete=true;continue }
+                if(value(t,"site_id").isBlank()) { incomplete=true;continue }
                 if(value(t,"site_id")!=siteId) continue
                 if(!t.has("returned")) incomplete=true else if(t.isNull("returned")) pending++
             }

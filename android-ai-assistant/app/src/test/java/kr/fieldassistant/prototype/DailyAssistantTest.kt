@@ -31,6 +31,11 @@ class DailyAssistantTest {
         val value=DailyAssistant.wrapUp(id,null,null,null)
         assertTrue(value.contains("완료보고: 확인하지 못했습니다"));assertTrue(value.contains("자재 반입: 확인하지 못했습니다"))
     }
+    @Test fun malformedResponseCannotLookLikeNoReportOrNoOpenRoll() {
+        val text=DailyAssistant.wrapUp(id,JSONObject().put("report","invalid"),null,
+            JSONObject().put("trips",JSONArray().put(JSONObject().put("returned",JSONObject.NULL))))
+        assertTrue(text.contains("완료보고: 확인하지 못했습니다"));assertTrue(text.contains("일부 내역을 확인하지 못했습니다"))
+    }
     @Test fun pendingReportAndUnreturnedRollAreShownWithoutWriting() {
         val report=JSONObject().put("report",JSONObject().put("review_status","pending"))
         val support=JSONObject().put("afterCount",0)
