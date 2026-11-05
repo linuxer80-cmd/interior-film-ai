@@ -3142,6 +3142,7 @@ class MainActivity : Activity() {
     private fun renderHomeChat() {
         val candidate=latestConsultation()
         val key=listOf("home",account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
+            prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
             candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState).toString()
         if(visibleConversationKey==key) {
             val stale=dailyState
@@ -3153,27 +3154,37 @@ class MainActivity : Activity() {
         setAssistantContent(page);visibleConversationKey=key
         displayedHomeConsultationId=candidate?.optString("id")
         chatHeader(page)
-        val selectedCompanyId=selectedCompany()?.id
-        if(selectedCompanyId!=null && prefs.getString("selected_site_company",null)==selectedCompanyId) {
-            val selectedId=prefs.getString("selected_site_id","").orEmpty()
-            val selectedName=prefs.getString("selected_site_name","").orEmpty()
-            if(selectedId.isNotBlank()) {
-                page.addView(text("선택한 현장 · $selectedName",15f,true))
-                val controls=LinearLayout(this)
-                controls.addView(button("현장 상세",false) { lookupSites(AssistantRequests.Request("detail"),selectedId) },LinearLayout.LayoutParams(0,dp(48),1f))
-                controls.addView(button("현장 변경",false) { lookupSites(AssistantRequests.Request("sites")) },LinearLayout.LayoutParams(0,dp(48),1f))
-                page.addView(controls)
-            }
-        }
         val scroll=ScrollView(this)
         val pinnedCompany=selectedCompany();val pinnedUser=account?.userId
         val pinned=dailyState?.takeIf { it.uid==pinnedUser && it.company==pinnedCompany?.id && it.role==pinnedCompany?.role && it.date==ScheduleDates.today() }
-        val pinnedLabel=when { pinned?.loading==true -> "오늘 할 일 확인 중…";pinned?.error==true -> "오늘 할 일 다시 확인";pinned?.data!=null -> "오늘 할 일 · 현장 ${pinned.data.sites.size}건 보기";else -> "오늘 할 일 보기" }
-        page.addView(button(pinnedLabel,false) {
+        val pinnedLabel=when { pinned?.loading==true -> "확인 중";pinned?.error==true -> "다시 확인";pinned?.data!=null -> "오늘 ${pinned.data.sites.size}건";else -> "오늘 할 일" }
+        val contextRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        val selectedId=if(pinnedCompany!=null && prefs.getString("selected_site_company",null)==pinnedCompany.id) prefs.getString("selected_site_id","").orEmpty() else ""
+        val selectedName=prefs.getString("selected_site_name","").orEmpty().ifBlank { "이름 없는 현장" }
+        fun contextAction(label:String,description:String,action:()->Unit)=text(label,13f,true).apply {
+            gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
+            setPadding(dp(8),0,dp(8),0);minimumHeight=dp(48)
+            background=bg(Color.rgb(246,248,246),12);contentDescription=description
+            isClickable=true;isFocusable=true;setOnClickListener { action() }
+        }
+        if(pinnedCompany!=null) {
+            val siteLabel=if(selectedId.isBlank()) "현장 선택" else "현장 · $selectedName ›"
+            contextRow.addView(contextAction(siteLabel,if(selectedId.isBlank()) "현장 선택" else "$selectedName 현장 상세 보기") {
+                if(selectedId.isBlank()) lookupSites(AssistantRequests.Request("sites"))
+                else lookupSites(AssistantRequests.Request("detail"),selectedId)
+            },LinearLayout.LayoutParams(0,dp(48),1f))
+            if(selectedId.isNotBlank()) contextRow.addView(contextAction("변경","선택한 현장 변경") {
+                lookupSites(AssistantRequests.Request("sites"))
+            },LinearLayout.LayoutParams(dp(58),dp(48)).apply { setMargins(dp(4),0,0,0) })
+        }
+        val dailyDescription=when { pinned?.loading==true -> "오늘 할 일 확인 중";pinned?.error==true -> "오늘 할 일 다시 확인";pinned?.data!=null -> "오늘 할 일, 현장 ${pinned.data.sites.size}건 보기";else -> "오늘 할 일 보기" }
+        val dailyButton=contextAction(pinnedLabel,dailyDescription) {
             if(pinned==null || pinned.error) loadDailyAssistant(true)
             openDailyOnReady=true;scroll.post { scroll.fullScroll(View.FOCUS_UP) }
-        },LinearLayout.LayoutParams(-1,dp(44)))
-        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
+        }
+        contextRow.addView(dailyButton,if(pinnedCompany==null) LinearLayout.LayoutParams(-1,dp(48)) else LinearLayout.LayoutParams(dp(88),dp(48)).apply { setMargins(dp(4),0,0,0) })
+        page.addView(contextRow)
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         body.addView(text("무엇을 도와드릴까요?",26f,true))
         body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
