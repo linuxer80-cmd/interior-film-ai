@@ -3,14 +3,12 @@ package kr.fieldassistant.prototype
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.print.PrintManager
@@ -28,6 +26,7 @@ class WebWorkspaceActivity : Activity() {
     private var geoOrigin=""
     private var mediaRequest: PermissionRequest?=null
     private var downloadBytes: ByteArray?=null
+    private var downloadInProgress=false
     private val handler=Handler(Looper.getMainLooper())
     private val origin="https://interior-film-ai.vercel.app"
     private fun trusted(url:String?):Boolean=try { val u=Uri.parse(url);u.scheme=="https" && u.host=="interior-film-ai.vercel.app" && (u.port==-1 || u.port==443) && u.userInfo==null } catch(_:Exception) { false }
@@ -69,6 +68,8 @@ class WebWorkspaceActivity : Activity() {
                 if(request.isForMainFrame) external(url)
                 return true
             }
+            override fun shouldInterceptRequest(view:WebView,request:WebResourceRequest):WebResourceResponse? =
+                if(request.url.scheme.equals("http",true)) blockedPlaintext() else null
             override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError) { handler.cancel();notice("보안 연결을 확인하지 못했습니다.") }
             override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError) { if(request.isForMainFrame) notice("화면을 불러오지 못했습니다. 인터넷 연결 후 새로고침해 주세요.") }
             override fun onPageFinished(view:WebView,url:String) { CookieManager.getInstance().flush() }
@@ -84,11 +85,15 @@ class WebWorkspaceActivity : Activity() {
             override fun onCreateWindow(view:WebView,isDialog:Boolean,isUserGesture:Boolean,result:android.os.Message):Boolean {
                 if(!isUserGesture) return false
                 val popup=WebView(this@WebWorkspaceActivity)
+                popup.settings.apply { mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW;allowFileAccess=false;allowContentAccess=false }
                 popup.webViewClient=object:WebViewClient() {
                     override fun shouldOverrideUrlLoading(v:WebView,r:WebResourceRequest):Boolean {
                         val url=r.url.toString();if(trusted(url)) web.loadUrl(url) else external(url)
                         v.destroy();return true
                     }
+                    override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? =
+                        if(r.url.scheme.equals("http",true)) blockedPlaintext() else null
+                    override fun onReceivedSslError(v:WebView,h:SslErrorHandler,e:android.net.http.SslError) { h.cancel();v.destroy() }
                 }
                 (result.obj as WebView.WebViewTransport).webView=popup;result.sendToTarget();return true
             }
@@ -109,16 +114,8 @@ class WebWorkspaceActivity : Activity() {
         }
         web.setDownloadListener { url,agent,disposition,mime,_ ->
             if(url.startsWith("blob:$origin/")) saveBlob(url,mime)
-            else if(Uri.parse(url).scheme=="https") {
-                try {
-                    val request=DownloadManager.Request(Uri.parse(url)).setTitle(URLUtil.guessFileName(url,disposition,mime))
-                        .setMimeType(mime).setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,URLUtil.guessFileName(url,disposition,mime))
-                    request.addRequestHeader("User-Agent",agent)
-                    if(trusted(url)) CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie",it) }
-                    (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request);notice("다운로드를 시작했습니다.")
-                } catch(_:Exception) { notice("다운로드하지 못했습니다. 더보기에서 브라우저로 열어 주세요.") }
-            }
+            else if(SecureTransport.isHttps(url)) downloadSecurely(url,agent,disposition,mime)
+            else notice("보안 연결이 아닌 파일 다운로드를 차단했습니다.")
         }
         page.addView(web,LinearLayout.LayoutParams(-1,0,1f));setContentView(page);page.requestApplyInsets()
         // Web sessions stay in WebView storage; no native credentials are copied into URLs or JavaScript.
@@ -135,10 +132,47 @@ class WebWorkspaceActivity : Activity() {
             val uri=Uri.parse(url)
             when(uri.scheme?.lowercase()) {
                 "tel" -> startActivity(Intent(Intent.ACTION_DIAL,uri))
-                "https","http","geo","google.navigation","kakaomap","nmap","tmap","mailto","sms" -> startActivity(Intent(Intent.ACTION_VIEW,uri))
+                "https" -> {
+                    // Browser fragments are local navigation; the network destination still must be HTTPS.
+                    SecureTransport.requireHttps(uri.buildUpon().fragment(null).build().toString())
+                    startActivity(Intent(Intent.ACTION_VIEW,uri))
+                }
+                "http" -> notice("암호화되지 않은 연결을 차단했습니다. HTTPS 주소를 사용해 주세요.")
+                "geo","google.navigation","kakaomap","nmap","tmap","mailto","sms" -> startActivity(Intent(Intent.ACTION_VIEW,uri))
                 else -> notice("지원하지 않는 외부 연결입니다.")
             }
         } catch(_:Exception) { notice("연결할 앱을 찾지 못했습니다.") }
+    }
+    private fun blockedPlaintext() = WebResourceResponse("text/plain","UTF-8",403,"HTTPS required",emptyMap(),java.io.ByteArrayInputStream(ByteArray(0)))
+
+    private fun downloadSecurely(url:String,agent:String?,disposition:String?,mime:String?) {
+        if(downloadInProgress || downloadBytes!=null) { notice("진행 중인 파일 저장을 먼저 완료해 주세요.");return }
+        downloadInProgress=true
+        val cookie=if(trusted(url)) CookieManager.getInstance().getCookie(url) else null
+        Thread {
+            val bytes=try {
+                val connection=SecureTransport.open(url)
+                try {
+                    agent?.let { connection.setRequestProperty("User-Agent",it) }
+                    cookie?.let { connection.setRequestProperty("Cookie",it) }
+                    check(connection.responseCode==200) { "Secure download unavailable" }
+                    connection.inputStream.use { SecureTransport.readBounded(it,20*1024*1024) }
+                } finally { connection.disconnect() }
+            } catch(_:Exception) { null }
+            runOnUiThread {
+                downloadInProgress=false
+                if(!isFinishing && !isDestroyed) {
+                    if(bytes==null) notice("파일을 안전하게 다운로드하지 못했습니다. 다시 시도해 주세요.")
+                    else {
+                        downloadBytes=bytes
+                        val type=mime?.takeIf { it.contains('/') } ?: "application/octet-stream"
+                        try { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                            .setType(type).putExtra(Intent.EXTRA_TITLE,URLUtil.guessFileName(url,disposition,type)),504) }
+                        catch(_:Exception) { downloadBytes=null;notice("파일 저장창을 열지 못했습니다.") }
+                    }
+                }
+            }
+        }.start()
     }
     private fun finishMediaPermission() {
         val r=mediaRequest ?: return;mediaRequest=null
@@ -151,7 +185,7 @@ class WebWorkspaceActivity : Activity() {
         if(code==503) finishMediaPermission()
     }
     private fun saveBlob(url:String,mime:String?) {
-        if(!trusted(web.url) || downloadBytes!=null) return
+        if(!trusted(web.url) || downloadInProgress || downloadBytes!=null) return
         val key="assistantDownload"+java.util.UUID.randomUUID().toString().replace("-","")
         val js="fetch("+JSONObject.quote(url)+").then(r=>r.blob()).then(b=>{if(b.size>20971520)throw Error();let f=new FileReader();f.onload=()=>window['$key']=f.result;f.onerror=()=>window['$key']='error';f.readAsDataURL(b)}).catch(()=>window['$key']='error');"
         web.evaluateJavascript(js,null)

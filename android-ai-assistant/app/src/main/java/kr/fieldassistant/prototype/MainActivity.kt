@@ -19,8 +19,6 @@ import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -849,7 +847,7 @@ class MainActivity : Activity() {
         scope.launch {
             val bitmap=withContext(Dispatchers.IO) {
                 try {
-                    val conn=URL(url).openConnection() as HttpsURLConnection
+                    val conn=SecureTransport.open(url)
                     try {
                         conn.instanceFollowRedirects=false;conn.connectTimeout=10000;conn.readTimeout=15000
                         if(conn.responseCode!=200 || !conn.contentType.orEmpty().startsWith("image/")) null else {

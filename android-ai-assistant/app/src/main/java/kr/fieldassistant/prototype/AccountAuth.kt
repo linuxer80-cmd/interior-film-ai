@@ -19,14 +19,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URL
 import java.security.KeyStore
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.net.ssl.HttpsURLConnection
 
 /** Session secrets are encrypted by a non-exportable Android Keystore key. */
 internal class SecureSessionManager(context: Context) : SessionManager {
@@ -88,12 +86,13 @@ internal class AccountAuth private constructor(context: Context) {
             instance ?: AccountAuth(context.applicationContext).also { instance=it }
         }
     }
-    private val client=createSupabaseClient(SUPABASE_URL,SUPABASE_PUBLIC_KEY) {
+    private val client=createSupabaseClient(SecureTransport.requireHttps(SUPABASE_URL),SUPABASE_PUBLIC_KEY) {
+        httpConfig { requireEncryptedTransport() }
         install(Auth) { sessionManager=SecureSessionManager(context); autoLoadFromStorage=true; autoSaveToStorage=true }
         install(Postgrest) { requireValidSession=true }
     }
     suspend fun publicSamples():List<SampleSearch.Product> = withContext(Dispatchers.IO) {
-        val conn=URL("https://interior-film-ai.vercel.app/api/film-products").openConnection() as HttpsURLConnection
+        val conn=SecureTransport.open("https://interior-film-ai.vercel.app/api/film-products")
         try {
             conn.instanceFollowRedirects=false;conn.connectTimeout=15000;conn.readTimeout=30000
             check(conn.responseCode==200)
@@ -178,7 +177,7 @@ internal class AccountAuth private constructor(context: Context) {
         check(user.id==expectedUser) { "다른 계정입니다." }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/worker/my-sites").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/my-sites")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -194,7 +193,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("id")))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/site-expenses").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/site-expenses")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=30000;c.doOutput=true
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json")
@@ -215,7 +214,7 @@ internal class AccountAuth private constructor(context: Context) {
         if(body!=null) require(body.optString("siteId")==siteId && body.optString("action")=="return")
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/film-stock"+(if(body==null) "?siteId=$siteId" else "")).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/film-stock"+(if(body==null) "?siteId=$siteId" else ""))
             try {
                 c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -238,7 +237,7 @@ internal class AccountAuth private constructor(context: Context) {
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/film-dealers").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/film-dealers")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=90000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -260,7 +259,7 @@ internal class AccountAuth private constructor(context: Context) {
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val boundary="Assistant"+java.util.UUID.randomUUID().toString().replace("-","")
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/site-screenshot").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/site-screenshot")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary=$boundary")
@@ -289,7 +288,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(content.length in 5..20000)
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/parse-site-call").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/parse-site-call")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json")
@@ -309,7 +308,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(page in 0..1000)
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/labor-market?page=$page").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/labor-market?page=$page")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Labor-View",if(workerView) "worker" else "manager");c.setRequestProperty("Cache-Control","no-store")
@@ -330,7 +329,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(jobId)) { "공고를 다시 확인해 주세요." }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/labor-market").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/labor-market")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=30000;c.doOutput=true
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Labor-View","worker");c.setRequestProperty("Content-Type","application/json")
@@ -351,7 +350,7 @@ internal class AccountAuth private constructor(context: Context) {
         if(apply) require(wage in 1..9007199254740991L) { "제안 일당을 확인해 주세요." }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/labor-market").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/labor-market")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=30000;c.doOutput=true
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Labor-View","worker");c.setRequestProperty("Content-Type","application/json")
@@ -375,7 +374,7 @@ internal class AccountAuth private constructor(context: Context) {
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/trade-clients").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/trade-clients")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -400,7 +399,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL(SUPABASE_URL+"/rest/v1/companies?select=id,slug&id=eq."+companyId+"&limit=1").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open(SUPABASE_URL+"/rest/v1/companies?select=id,slug&id=eq."+companyId+"&limit=1")
             try {
                 c.instanceFollowRedirects=false;c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -424,7 +423,7 @@ internal class AccountAuth private constructor(context: Context) {
         return withContext(Dispatchers.IO) {
             val fields=(listOf("company_id","updated_at","is_published","services")+allowed).joinToString(",")
             val versionFilter=if(changes==null) "" else if(version!!.isEmpty()) "&updated_at=is.null" else "&updated_at=eq."+java.net.URLEncoder.encode(version,"UTF-8")
-            val c=URL(SUPABASE_URL+"/rest/v1/company_public_profiles?select="+fields+"&company_id=eq."+companyId+versionFilter+(if(changes==null) "&limit=1" else "")).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open(SUPABASE_URL+"/rest/v1/company_public_profiles?select="+fields+"&company_id=eq."+companyId+versionFilter+(if(changes==null) "&limit=1" else ""))
             try {
                 c.instanceFollowRedirects=false;c.requestMethod=if(changes==null) "GET" else "PATCH";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -442,7 +441,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(from) && Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(to))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/assistant-profit?from=$from&to=$to").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/assistant-profit?from=$from&to=$to")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId);c.setRequestProperty("Cache-Control","no-store")
@@ -462,7 +461,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && summary.isNotBlank())
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/worker/site-work-report").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/site-work-report")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
@@ -484,7 +483,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/site-expenses?siteId="+siteId+"&view=worker").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/site-expenses?siteId="+siteId+"&view=worker")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -502,7 +501,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/report-support?siteId="+siteId).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/report-support?siteId="+siteId)
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -524,7 +523,7 @@ internal class AccountAuth private constructor(context: Context) {
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val boundary="assistant-"+java.util.UUID.randomUUID().toString()
-            val c=URL("https://interior-film-ai.vercel.app/api/worker/site-photos").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/site-photos")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary)
@@ -549,7 +548,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/worker/site-work-report?siteId="+siteId).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/site-work-report?siteId="+siteId)
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -568,7 +567,7 @@ internal class AccountAuth private constructor(context: Context) {
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             fun get(url:String,publicKey:Boolean):String {
-                val c=URL(url).openConnection() as HttpsURLConnection
+                val c=SecureTransport.open(url)
                 try {
                     c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                     c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -597,7 +596,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/site-daily-assignments"+(if(preview) "/preview" else "")).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/site-daily-assignments"+(if(preview) "/preview" else ""))
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
@@ -617,7 +616,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/consultation-quote?siteId="+siteId).openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/consultation-quote?siteId="+siteId)
             try {
                 c.instanceFollowRedirects=false;c.requestMethod=if(document==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -641,7 +640,7 @@ internal class AccountAuth private constructor(context: Context) {
         require(status in listOf("consulting","scheduled","in_progress","completed","cancelled"))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val c=URL("https://interior-film-ai.vercel.app/api/admin/site-status").openConnection() as HttpsURLConnection
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/site-status")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
@@ -673,7 +672,7 @@ internal class AccountAuth private constructor(context: Context) {
             while(true) {
                 val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description"
                 val url=SUPABASE_URL+"/rest/v1/sites?select="+fields+"&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset
-                val c=URL(url).openConnection() as HttpsURLConnection
+                val c=SecureTransport.open(url)
                 val batch=try {
                     c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
                     c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
@@ -691,7 +690,7 @@ internal class AccountAuth private constructor(context: Context) {
         }
     }
     private fun workerCompanies(token: String): JSONArray {
-        val connection=URL("https://interior-film-ai.vercel.app/api/worker/companies").openConnection() as HttpsURLConnection
+        val connection=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/companies")
         try {
             connection.instanceFollowRedirects=false;connection.requestMethod="GET"
             connection.connectTimeout=15000;connection.readTimeout=20000
