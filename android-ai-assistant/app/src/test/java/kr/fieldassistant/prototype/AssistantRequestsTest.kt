@@ -15,6 +15,7 @@ class AssistantRequestsTest {
             val r=AssistantRequests.parse(text,monday);assertEquals(text,"sites",r.kind);assertEquals(text,"청라",r.query)
         }
         assertEquals("다산",AssistantRequests.parse("현장 다산 찾아줘",monday).query)
+        assertEquals("정보통신빌딩",AssistantRequests.parse("현장 정보통신빌딩 찾아줘",monday).query)
         assertEquals("",AssistantRequests.parse("우리 현장 목록 좀 보여줘",monday).query)
         assertEquals("new-site",AssistantRequests.parse("현장 하나 만들어줘",monday).feature)
         assertEquals("schedule",AssistantRequests.parse("오늘 뭐 해?",monday).kind)
