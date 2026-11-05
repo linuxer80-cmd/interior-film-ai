@@ -3254,7 +3254,7 @@ class MainActivity : Activity() {
             }
         }
         if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
-        val preview=callMatches?.takeIf { it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) }
+        val preview=callMatches?.takeIf { selectedCompany()?.role=="관리자" && item.optString("chat_company")==it.company && it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) }
         if(!done && !paused && !busy && reg==null && preview!=null) {
             when {
                 preview.loading -> body.addView(text("전화번호로 같은 고객의 현장을 확인하고 있습니다…",14f))
@@ -3264,6 +3264,7 @@ class MainActivity : Activity() {
                     preview.sites.forEach { candidate ->
                         val candidateId=candidate.optString("id")
                         addButton(body,(if(item.optString("preview_target_id")==candidateId) "✓ " else "")+candidateLabel(candidate),false) {
+                            if(account?.userId!=preview.uid || selectedCompany()?.id!=preview.company || selectedCompany()?.role!="관리자" || chatId!=id) return@addButton
                             if(changeRecord(id) { it.put("preview_target_id",candidateId).put("preview_target_phone",preview.phone) }) {
                                 chatMessage(id,"${candidateLabel(candidate)} 선택. 통화 내용을 이 현장에 추가할까요?");render()
                             }
