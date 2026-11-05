@@ -16,6 +16,7 @@ class AssistantRequestsTest {
     }
     @Test fun sitePhotoRequestsStayInTheAssistant() {
         assertEquals("gallery",AssistantRequests.parse("청라 현장 사진 보여줘",monday).feature)
+        assertEquals("gallery",AssistantRequests.parse("그 현장 사진",monday).feature)
         assertEquals("before",AssistantRequests.parse("그 현장 시공 전 사진 보여줘",monday).query)
         assertEquals("after",AssistantRequests.parse("현장 완료 사진 확인해줘",monday).query)
         assertEquals("request",AssistantRequests.parse("고객 요청 사진 보여줘",monday).query)

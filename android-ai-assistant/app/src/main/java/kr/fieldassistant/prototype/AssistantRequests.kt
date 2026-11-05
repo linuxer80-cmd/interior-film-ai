@@ -41,7 +41,7 @@ internal object AssistantRequests {
         if(Regex("현장(?:을|를)?(?:하나|새로|새롭게)?(?:만들|추가|등록|생성)").containsMatchIn(compact)) return Request("feature",feature="new-site")
         if(compact.contains("고객페이지") || compact.contains("고객홈페이지") || compact.contains("업체소개관리")) return Request("feature",feature="customer-page")
         if(Regex("구인|구직|일자리|지원자|받은제안|모집현황").containsMatchIn(compact)) return Request("feature",feature="jobs")
-        if(compact.contains("사진") && Regex("보여|보기|확인|볼래|볼수|열어").containsMatchIn(compact) &&
+        if(compact.contains("사진") && (Regex("보여|보기|확인|볼래|볼수|열어").containsMatchIn(compact) || compact.endsWith("사진")) &&
             !Regex("견적|샘플|등록|추가|촬영|올려|업로드|삭제|보내|공유").containsMatchIn(compact)) {
             val kind=when { Regex("시공전|작업전").containsMatchIn(compact)->"before";Regex("시공후|완료|작업후").containsMatchIn(compact)->"after";Regex("고객요청|요청사진|상담사진").containsMatchIn(compact)->"request";else->"all" }
             return Request("site_action",feature="gallery",query=kind)

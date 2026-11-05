@@ -1921,7 +1921,8 @@ class MainActivity : Activity() {
         };tabs.addView(bar);box.addView(tabs)
         box.addView(text("${page+1}쪽 · 사진을 누르면 크게 볼 수 있습니다.",13f))
         if(photos.length()==0) box.addView(text("이 현장에 표시할 사진이 없습니다.",16f))
-        val pending=mutableListOf<Pair<ImageView,String>>()
+        data class PendingPhoto(val image:ImageView,val label:TextView,val title:String,val url:String)
+        val pending=mutableListOf<PendingPhoto>()
         var row:LinearLayout?=null
         for(i in 0 until photos.length()) {
             val p=photos.getJSONObject(i)
@@ -1931,11 +1932,13 @@ class MainActivity : Activity() {
             val pic=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP;setBackgroundColor(Color.rgb(232,235,232));contentDescription=kind+" 사진 크게 보기" }
             card.addView(pic,LinearLayout.LayoutParams(-1,dp(125)))
             val whenText=p.optString("created_at").takeUnless { it.isBlank() || it=="null" }?.take(10).orEmpty()
-            card.addView(text(kind+(if(whenText.isBlank()) "" else " · $whenText"),13f,true))
+            val labelText=kind+(if(whenText.isBlank()) "" else " · $whenText")
+            val label=text(labelText,13f,true);card.addView(label)
             val url=if(p.isNull("url")) "" else p.optString("url")
             if(url.isBlank()) card.addView(text("사진을 불러올 수 없습니다",12f))
             else {
-                pending.add(pic to url)
+                label.text=labelText+" · 불러오는 중"
+                pending.add(PendingPhoto(pic,label,labelText,url))
                 card.setOnClickListener { showLargeSitePhoto(uid,company,siteId,kind,url) }
             }
             row?.addView(card,LinearLayout.LayoutParams(0,-2,1f))
@@ -1948,11 +1951,12 @@ class MainActivity : Activity() {
         val dialog=AlertDialog.Builder(this).setTitle("$siteName · 현장 사진").setView(ScrollView(this).apply { addView(box) }).setPositiveButton("닫기",null).create()
         box.tag=dialog;dialog.show();val epoch=sessionEpoch
         scope.launch {
-            for((view,url) in pending) {
+            for(photo in pending) {
                 if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) break
-                val bitmap=withContext(Dispatchers.IO) { try { decodeSitePhoto(url,company.id,siteId,600) } catch(_:Exception) { null } }
+                val bitmap=withContext(Dispatchers.IO) { try { decodeSitePhoto(photo.url,company.id,siteId,600) } catch(_:Exception) { null } }
                 if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { bitmap?.recycle();break }
-                if(bitmap!=null) view.setImageBitmap(bitmap) else view.contentDescription="사진을 불러오지 못했습니다. 목록을 다시 열어 주세요."
+                if(bitmap!=null) { photo.image.setImageBitmap(bitmap);photo.label.text=photo.title }
+                else { photo.label.text=photo.title+" · 사진 불러오기 실패";photo.image.contentDescription="사진을 불러오지 못했습니다. 목록을 다시 열어 주세요." }
             }
         }
     }
