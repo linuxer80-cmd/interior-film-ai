@@ -1,6 +1,6 @@
 # Account and company deletion release notes
 
-Status: implementation branch; not enabled in production.
+Status: production database installation verified; application rollout in progress.
 
 The authenticated POST binds the request to the signed-in subject. Supported
 minimal personal accounts and supported last-owner company scopes use the real
@@ -39,11 +39,16 @@ also gates execution through the user-facing POST; neither defaults to enabled.
 
 ## Release dependencies
 
-Production lacks the deletion schema. The individual database/account_deletion_*
-scripts are incremental development sources, not an alphabetically runnable
-migration bundle. A validated installation sequence is still required.
-account_deletion_retry_worker.sql requires requests, lease fields and durable
-subject tracking from the base deletion implementation. Install it before enabling
-the retry endpoint. Do not install any probe or synthetic recovery fixture on
-production. Historical ownership gaps and unsupported company data remain review
-conditions, not authorization to broaden deletion.
+Production installation uses database/account_deletion_release_manifest.json and
+scripts/build-account-deletion-release.mjs. The 78 ordered source scripts form
+one transaction with a short lock timeout and no request execution. Installation
+was rehearsed on TEST both as an update and after temporarily dropping the new
+deletion tables inside a transaction that was rolled back. Production installation
+completed; counts of Auth users, companies, sites and Storage objects were unchanged.
+The exact deterministic identities of existing auto-calendar events were recovered
+without reading or changing remote Google events.
+
+Install the entire ordered bundle before enabling execution. Test probes and
+synthetic fixtures must never be installed as production endpoints. Unknown
+ownership and unsupported data are review conditions; neither the installer nor
+an environment switch broadens the server-owned eligibility contract.
