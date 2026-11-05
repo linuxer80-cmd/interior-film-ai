@@ -676,7 +676,7 @@ internal class AccountAuth private constructor(context: Context) {
         return withContext(Dispatchers.IO) {
             val result=JSONArray();var offset=0
             while(true) {
-                val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description"
+                val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description,created_at"
                 val url=SUPABASE_URL+"/rest/v1/sites?select="+fields+"&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset
                 val c=SecureTransport.open(url)
                 val batch=try {
