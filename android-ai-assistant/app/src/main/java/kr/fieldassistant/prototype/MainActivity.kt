@@ -474,7 +474,7 @@ class MainActivity : Activity() {
                 val result=summarize(text)
                 if(epoch!=sessionEpoch || account==null) return@launch
                 updateRecord(id,"확인 필요",text.take(30000),result)
-                if((forcedReviewId==id || CallSummary.isEstimateInquiry(result)) && recordById(id)?.let { consultationDisposition(it)=="active" }==true) {
+                if((forcedReviewId==id || InquiryMatcher.likely(text)) && recordById(id)?.let { consultationDisposition(it)=="active" }==true) {
                     val requested=forcedReviewId==id
                     forcedReviewId=null
                     if(requested && active && account!=null) showRegistrationConfirmation(id)
@@ -812,7 +812,7 @@ class MainActivity : Activity() {
     }
     private fun latestConsultation(): JSONObject? {
         val items=records()
-        return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { ConsultationChat.shouldPrompt(it.optString("status"),it.optString("site_id"),consultationDisposition(it)) }
+        return (0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }.firstOrNull { ConsultationChat.shouldPrompt(it.optString("status"),it.optString("site_id"),consultationDisposition(it)) && InquiryMatcher.likely(it.optString("transcript")) }
     }
     private var sampleBusy=false
     private var sampleCache: List<SampleSearch.Product>?=null
@@ -2681,6 +2681,40 @@ class MainActivity : Activity() {
             finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
         }
     }
+    private fun lookupPhotoSearch(query:PhotoSearch.Query) {
+        if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 잠시 후 다시 요청해 주세요.");render();return }
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val epoch=sessionEpoch
+        lookupBusy=true;appendHomeMessage("볼 수 있는 현장의 사진을 찾고 있습니다.");render()
+        scope.launch {
+            try {
+                val result=auth.searchSitePhotos(uid,company.id,company.role=="시공자",query)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) return@launch
+                val rows=result.getJSONArray("rows")
+                val conditions=listOf(query.site,query.part,query.code,if(query.from.isNotBlank()) "${query.from} ~ ${query.to}" else "").filter { it.isNotBlank() }.joinToString(" · ")
+                val note=if(result.optBoolean("truncated")) "\n일부 결과만 검색했습니다. 조건을 더 구체적으로 입력해 주세요." else ""
+                if(!active) return@launch
+                if(rows.length()==0) {
+                    AlertDialog.Builder(this@MainActivity).setTitle("사진 검색 결과")
+                        .setMessage("$conditions\n조건에 맞는 사진이 있는 현장이 없습니다.$note\n등록된 현장·시공·자재 정보 기준입니다.")
+                        .setPositiveButton("닫기",null).show()
+                } else {
+                    val labels=(0 until rows.length()).map { i ->
+                        val row=rows.getJSONObject(i)
+                        listOf(row.optString("name"),row.optString("date").ifBlank { "시공일 미등록" }).joinToString(" · ")
+                    }.toTypedArray()
+                    AlertDialog.Builder(this@MainActivity).setTitle("사진이 있는 현장 · ${rows.length()}건\n$conditions\n현장에 등록된 정보 기준$note")
+                        .setItems(labels) { _,index ->
+                            val siteId=rows.getJSONObject(index).optString("id")
+                            if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,siteId,"gallery",query.type)
+                        }.setNegativeButton("닫기",null).show()
+                }
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && selectedCompany()?.id==company.id) appendHomeMessage(e.message ?: "사진을 찾지 못했습니다.") }
+            finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
+        }
+    }
     private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null, offset:Int=0) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
@@ -2924,6 +2958,9 @@ class MainActivity : Activity() {
                 lookupSites(AssistantRequests.Request("sites",query=named));return
             }
             prepareFilmUsage(company,selected,name,film);return
+        }
+        PhotoSearch.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))?.let { search ->
+            lookupPhotoSearch(search);return
         }
         val sampleQuery=SampleSearch.parse(input)
         if(sampleQuery!=null) { lookupSamples(sampleQuery);return }

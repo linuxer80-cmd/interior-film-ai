@@ -237,6 +237,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun searchSitePhotos(expectedUser:String,companyId:String,workerView:Boolean,query:PhotoSearch.Query):JSONObject {
+        val verified=verify()
+        val role=if(workerView) "시공자" else "관리자"
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role==role }) { "계정과 현장 권한을 확인해 주세요." }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        val args=listOf("site" to query.site,"part" to query.part,"code" to query.code,"from" to query.from,"to" to query.to,"type" to query.type)
+            .filter { it.second.isNotBlank() }.joinToString("&") { it.first+"="+Uri.encode(it.second) }
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/assistant/photo-search?"+args)
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId)
+                c.setRequestProperty("X-Assistant-View",if(workerView) "worker" else "owner");c.setRequestProperty("Cache-Control","no-store")
+                val status=c.responseCode
+                val raw=(if(status in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(status in 200..299) { result.optString("error").ifBlank { "사진 검색을 완료하지 못했습니다." } }
+                check(result.optString("companyId")==companyId && result.opt("truncated") is Boolean && (result.optJSONArray("rows")?.length() ?: 31)<=30) { "사진 검색 결과를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantSitePhotos(expectedUser:String,companyId:String,siteId:String,workerView:Boolean,type:String,page:Int):JSONObject {
         val verified=verify()
         val role=if(workerView) "시공자" else "관리자"
