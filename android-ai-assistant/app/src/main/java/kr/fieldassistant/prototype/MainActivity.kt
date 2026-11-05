@@ -1622,6 +1622,23 @@ class MainActivity : Activity() {
                 if(which==0) analyzeRecordingLocally(uri,company) else confirmCloudRecording(uri,company)
             }.setNegativeButton("취소",null).show()
     }
+    private fun reviewTranscription(content:String,company:CompanyAccess,uid:String,epoch:Int,notice:String="",recording:JSONObject?=null) {
+        val input=EditText(this).apply {
+            setText(content);minLines=8;maxLines=18;gravity=Gravity.TOP
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            filters=arrayOf(android.text.InputFilter.LengthFilter(20000))
+            setPadding(dp(20),dp(12),dp(20),dp(12))
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("인식한 통화 내용 확인")
+            .setMessage((if(notice.isNotBlank()) notice+"\n\n" else "")+"틀린 부분을 수정한 뒤 서버 AI로 정리해 현장 등록 초안을 만들 수 있습니다.")
+            .setView(input).setNegativeButton("취소",null).setPositiveButton("AI 분석",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) { dialog.dismiss();return@setOnClickListener }
+            val value=input.text.toString().trim()
+            if(value.length !in 5..20000) { input.error="5자 이상 20,000자 이하로 입력해 주세요.";return@setOnClickListener }
+            dialog.dismiss();analyzeSiteText(value,company,recording)
+        } };dialog.show()
+    }
     private fun analyzeRecordingLocally(uri:Uri,company:CompanyAccess) {
         val uid=account?.userId ?: return
         if(textAnalysisBusy || !BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
@@ -1639,12 +1656,7 @@ class MainActivity : Activity() {
                 val content=result.text.trim()
                 check(content.isNotBlank()) { "녹음에서 음성을 찾지 못했습니다." }
                 if(content.length>20000) { appendHomeMessage("통화 내용이 너무 길어 자동 정리할 수 없습니다. 더 짧은 녹음으로 나누어 다시 분석해 주세요.");return@launch }
-                val notice=if(result.truncated) "\n\n긴 녹음은 앞부분만 변환했습니다." else ""
-                AlertDialog.Builder(this@MainActivity).setTitle("인식한 통화 내용 확인")
-                    .setMessage(content+notice+"\n\n이 내용을 서버 AI로 정리해 현장 등록 초안을 만들까요?")
-                    .setNegativeButton("취소",null).setPositiveButton("AI 분석") { _,_ ->
-                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) analyzeSiteText(content,company)
-                    }.show()
+                reviewTranscription(content,company,uid,epoch,if(result.truncated) "긴 녹음은 앞부분만 변환했습니다." else "")
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("휴대폰에서 녹음을 분석하지 못했습니다. 서버 AI 분석을 선택하거나 파일을 확인해 주세요.") }
             finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
@@ -1665,11 +1677,7 @@ class MainActivity : Activity() {
                     appendHomeMessage("통화 내용이 너무 길어 자동 정리할 수 없습니다. 더 짧은 녹음으로 나누어 다시 분석해 주세요.")
                     return@launch
                 }
-                AlertDialog.Builder(this@MainActivity).setTitle("인식한 통화 내용 확인")
-                    .setMessage(content+"\n\n이 내용을 서버 AI로 정리해 현장 등록 초안을 만들까요?")
-                    .setNegativeButton("취소",null).setPositiveButton("AI 분석") { _,_ ->
-                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) analyzeSiteText(content,company,result)
-                    }.show()
+                reviewTranscription(content,company,uid,epoch,recording=result)
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(if(e is IllegalArgumentException || e is IllegalStateException) e.message?.take(200) ?: "녹음 분석에 실패했습니다." else "녹음 분석에 실패했습니다. 파일과 연결 상태를 확인해 주세요.") }
             finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
