@@ -10,6 +10,38 @@ class AssistantRequestsTest {
         val next=AssistantRequests.parse("다음 주는?",monday)
         assertEquals("2026-11-09",next.from);assertEquals("2026-11-15",next.to)
     }
+    @Test fun understandsConversationalSiteSearchAndRecentWork() {
+        for(text in listOf("청라 현장을 보여줄 수 있을까?", "혹시 청라 현장 좀 찾아줄래?", "제가 지난번 등록한 청라 현장 알려줘")) {
+            val r=AssistantRequests.parse(text,monday);assertEquals(text,"sites",r.kind);assertEquals(text,"청라",r.query)
+        }
+        assertEquals("다산",AssistantRequests.parse("현장 다산 찾아줘",monday).query)
+        assertEquals("정보통신빌딩",AssistantRequests.parse("현장 정보통신빌딩 찾아줘",monday).query)
+        assertEquals("",AssistantRequests.parse("우리 현장 목록 좀 보여줘",monday).query)
+        assertEquals("청라",NaturalLanguage.siteNameBefore("혹시 청라 현장에 전화 좀 걸어줘"))
+        assertEquals("",NaturalLanguage.siteNameBefore("그 현장에 전화해줘"))
+        assertNull(SampleSearch.parse("현대 아파트 현장 보여줘"))
+        assertEquals("new-site",AssistantRequests.parse("현장 하나 만들어줘",monday).feature)
+        assertEquals("schedule",AssistantRequests.parse("오늘 뭐 해?",monday).kind)
+    }
+    @Test fun conversationalPeriodsArePreciseAndUnclearWeekdaysAreNotGuessed() {
+        val day=AssistantRequests.parse("다음 주 수요일에 일정 뭐 있어?",monday)
+        assertEquals("2026-11-11",day.from);assertEquals(day.from,day.to)
+        val past=AssistantRequests.parse("저번 주 금요일 현장 알려줘",monday)
+        assertEquals("2026-10-30",past.from);assertEquals(past.from,past.to)
+        val exact=AssistantRequests.parse("2024년 2월 29일 현장 보여줘",monday)
+        assertEquals("2024-02-29",exact.from);assertEquals(exact.from,exact.to)
+        assertEquals("unknown",AssistantRequests.parse("2026년 2월 30일 일정",monday).kind)
+        assertEquals("unknown",AssistantRequests.parse("수요일 현장 알려줘",monday).kind)
+    }
+    @Test fun understandsBusinessSynonymsWithoutSkippingWriteSafety() {
+        val r=AssistantRequests.parse("지난달에 얼마나 벌었어?",monday)
+        assertEquals("profit",r.kind);assertEquals("2026-10-01",r.from);assertEquals("2026-10-31",r.to)
+        assertEquals("receivables",AssistantRequests.parse("못 받은 돈 확인해줘",monday).feature)
+        assertEquals("inventory",AssistantRequests.parse("남은 필름 보여줘",monday).feature)
+        assertEquals("customer-chat",AssistantRequests.parse("고객이랑 대화 보여줘",monday).feature)
+        assertEquals("site_action",AssistantRequests.parse("그 현장에 전화 좀 걸어줘",monday).kind)
+        assertNotEquals("schedule",AssistantRequests.parse("다음 주 수요일 현장 취소해줘",monday).kind)
+    }
     @Test fun handlesSundayYearBoundaryAndLeapMonth() {
         val sunday=AssistantRequests.parse("이번 주",LocalDate.of(2027,1,3))
         assertEquals("2026-12-28",sunday.from);assertEquals("2027-01-03",sunday.to)

@@ -2593,7 +2593,7 @@ class MainActivity : Activity() {
             val id=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
             if(id.isBlank()) { appendHomeMessage("경비를 등록할 현장 상세를 먼저 선택해 주세요.");render();return }
             val name=prefs.getString("selected_site_name","").orEmpty()
-            val named=input.substringBefore("현장", "").trim()
+            val named=NaturalLanguage.siteNameBefore(input)
             if(named.isNotBlank() && named !in listOf("이","그","해당") && !name.contains(named)) {
                 appendHomeMessage("요청한 현장을 먼저 선택해 주세요. 현재 선택한 현장은 ${name}입니다.");render();return
             }
@@ -2615,7 +2615,7 @@ class MainActivity : Activity() {
             val selected=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
             val name=prefs.getString("selected_site_name","").orEmpty()
             if(selected.isBlank()) { appendHomeMessage("필름을 입력할 현장 상세를 먼저 선택해 주세요.");render();return }
-            val named=input.substringBefore("현장", "").trim()
+            val named=NaturalLanguage.siteNameBefore(input)
             if(named.isNotBlank() && named !in listOf("이","그","해당") && !name.contains(named)) {
                 appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
                 lookupSites(AssistantRequests.Request("sites",query=named));return
@@ -2643,7 +2643,7 @@ class MainActivity : Activity() {
                 val currentId=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
                 val id=currentId.ifBlank { detail?.optString("site_id").orEmpty() }
                 val currentName=if(currentId.isNotBlank()) prefs.getString("selected_site_name","").orEmpty() else detail?.optString("title").orEmpty()
-                val named=input.substringBefore("현장", "").trim()
+                val named=NaturalLanguage.siteNameBefore(input)
                 if(named.isNotBlank() && named !in listOf("이", "그", "해당") && !currentName.contains(named)) {
                     appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
                     lookupSites(AssistantRequests.Request("sites",query=named));return
