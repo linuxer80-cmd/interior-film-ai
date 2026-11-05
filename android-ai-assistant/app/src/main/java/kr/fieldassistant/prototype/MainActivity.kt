@@ -2924,6 +2924,8 @@ class MainActivity : Activity() {
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
         if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목과 메모의 통화 발췌는 확인 후 저장합니다. 녹음 파일과 통화 원문 전체는 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
         if(!item.optBoolean("manual_site")) addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
+        if(!item.optBoolean("manual_site") && id.startsWith("content:") && selectedCompany()?.role=="관리자")
+            addButton(body,"서버 AI로 다시 분석",false) { selectedCompany()?.takeIf { it.role=="관리자" }?.let { confirmCloudRecording(Uri.parse(id),it) } }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
         val paused=consultationDisposition(item)!="active"
