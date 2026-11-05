@@ -32,14 +32,15 @@ internal object AssistantRequests {
     private val nativeFeatures=setOf("new-site","customer-page","clients","jobs","sites","work","profit","samples","inventory")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
-        val q=input.trim();val compact=q.replace(Regex("\\s+"),"")
+        val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")
         if(compact in listOf("오늘할일","오늘할일알려줘","오늘할일보여줘","오늘할일뭐야")) return Request("schedule",from=today.toString(),to=today.toString())
         if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
+        if(Regex("현장(?:을|를)?(?:하나|새로|새롭게)?(?:만들|추가|등록|생성)").containsMatchIn(compact)) return Request("feature",feature="new-site")
         if(compact.contains("고객페이지") || compact.contains("고객홈페이지") || compact.contains("업체소개관리")) return Request("feature",feature="customer-page")
         if(Regex("구인|구직|일자리|지원자|받은제안|모집현황").containsMatchIn(compact)) return Request("feature",feature="jobs")
         val siteAction=when {
             (compact.contains("현장") || compact.startsWith("전화") || compact.startsWith("거기") || compact.startsWith("고객")) && Regex("전화(걸어|걸기|해줘|해주세요|해)|통화(걸어|해줘)").containsMatchIn(compact) -> "phone"
-            (compact.contains("현장") || compact.startsWith("길") || compact.startsWith("네비") || compact.startsWith("거기")) && Regex("길안내|길찾|네비|내비|지도").containsMatchIn(compact) -> "navigate"
+            (compact.contains("현장") || compact.startsWith("길") || compact.startsWith("네비") || compact.startsWith("거기") || compact.startsWith("어떻게가")) && Regex("길안내|길찾|네비|내비|지도|어떻게가").containsMatchIn(compact) -> "navigate"
             (compact.contains("필름") || compact.contains("자재")) && (compact.contains("사용") || compact.contains("입력") || compact.contains("등록")) -> "film"
             compact.contains("경비") && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "expenses"
             (compact.contains("완료보고") || compact.contains("보고서")) && (compact.contains("입력") || compact.contains("등록") || compact.contains("작성")) -> "report"
@@ -85,6 +86,19 @@ internal object AssistantRequests {
         Regex("^(\\d{1,2})번(?:현장)?(?:상세|주소|정보|보여줘|알려줘)?[?.!]*$").matchEntire(compact)?.let { return if(it.groupValues[1].toInt()>0) Request("detail",index=it.groupValues[1].toInt()-1) else Request("unknown") }
         if(compact in listOf("그현장","그현장상세","그현장주소","거기주소","상세보기")) return Request("detail")
         val monday=today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val weekday=Regex("(월|화|수|목|금|토|일)요일").find(compact)
+        if(weekday!=null) {
+            val n=when(weekday.groupValues[1]) { "월"->0;"화"->1;"수"->2;"목"->3;"금"->4;"토"->5;else->6 }
+            val base=when { compact.contains("다음주")->monday.plusWeeks(1);compact.contains("지난주")||compact.contains("저번주")->monday.minusWeeks(1);compact.contains("이번주")->monday;else->null }
+            if(base==null) return Request("unknown")
+            val day=base.plusDays(n.toLong());return Request("schedule",from=day.toString(),to=day.toString())
+        }
+        Regex("(?<![0-9])(\\d{4})년(\\d{1,2})월(\\d{1,2})일|(?<![0-9])(\\d{1,2})월(\\d{1,2})일").find(compact)?.let { m ->
+            val year=m.groupValues[1].toIntOrNull() ?: today.year
+            val month=(m.groupValues[2].ifEmpty { m.groupValues[4] }).toIntOrNull() ?: return Request("unknown")
+            val day=(m.groupValues[3].ifEmpty { m.groupValues[5] }).toIntOrNull() ?: return Request("unknown")
+            return try { val date=LocalDate.of(year,month,day).toString();Request("schedule",from=date,to=date) } catch(_:Exception) { Request("unknown") }
+        }
         val range=when {
             compact.contains("다음주") -> monday.plusWeeks(1) to monday.plusDays(13)
             compact.contains("지난주") || compact.contains("저번주") -> monday.minusWeeks(1) to monday.minusDays(1)
@@ -110,10 +124,10 @@ internal object AssistantRequests {
         Regex("\\d{4}-\\d{2}-\\d{2}").find(compact)?.value?.let { date ->
             try { LocalDate.parse(date);return Request("schedule",from=date,to=date) } catch(_:Exception) { return Request("unknown") }
         }
-        if(compact.contains("일정")) return Request("schedule",from=today.toString(),to=today.toString())
+        if(compact.contains("일정") || compact in listOf("오늘어디가","오늘어디가야해","오늘뭐해","오늘뭐하지")) return Request("schedule",from=today.toString(),to=today.toString())
         if(compact in listOf("현장","현장목록","내현장","전체현장","현장알려줘","현장보여줘")) return Request("sites")
         if(compact.contains("현장") || compact.contains("찾아")) {
-            val term=q.replace(Regex("(현장|찾아줘|찾아주세요|알려줘|보여줘|검색해줘|검색|상세|주소|정보)")," ").trim()
+            val term=NaturalLanguage.siteQuery(q)
             return Request("sites",query=term)
         }
         return Request("unknown")
