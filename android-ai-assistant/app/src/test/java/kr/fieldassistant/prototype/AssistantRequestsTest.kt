@@ -4,6 +4,11 @@ import org.junit.Assert.*
 import org.junit.Test
 class AssistantRequestsTest {
     private val monday=LocalDate.of(2026,11,2)
+    @Test fun chatRequestsOpenTheNativeViews() {
+        assertEquals("team_chat",AssistantRequests.parse("현장 팀 채팅 보여줘",monday).feature)
+        assertEquals("customer-chat",AssistantRequests.parse("고객 채팅 보여줘",monday).feature)
+        assertFalse(AssistantRequests.opensWeb("customer-chat"))
+    }
     @Test fun briefingRequestsDoNotExecuteChanges() {
         for(text in listOf("오늘 내가 챙겨야 할 현장 알려줘", "오늘 할 일 알려줘", "오늘 어디 가고 무슨 작업해"))
             assertEquals(text,"briefing",AssistantRequests.parse(text,monday).kind)

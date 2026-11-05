@@ -29,7 +29,7 @@ internal object AssistantRequests {
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
-    private val nativeFeatures=setOf("new-site","customer-page","clients","jobs","sites","work","profit","samples","inventory")
+    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")
@@ -47,6 +47,7 @@ internal object AssistantRequests {
             return Request("site_action",feature="gallery",query=kind)
         }
         val siteAction=when {
+            Regex("팀채팅|팀원채팅|현장채팅").containsMatchIn(compact) -> "team_chat"
             Regex("마무리|마쳤|끝났|끝냈|끝냈어|작업끝|시공끝").containsMatchIn(compact) &&
                 !Regex("삭제|취소|발송|보내|승인|완료처리|등록").containsMatchIn(compact) -> "wrap_up"
             (compact.contains("현장") || compact.contains("준비") || compact.startsWith("거기")) &&

@@ -839,7 +839,7 @@ class MainActivity : Activity() {
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
-            .setItems((listOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능") + if(selectedCompany()?.role=="관리자") listOf("매출 · 수익") else emptyList()).toTypedArray()) { _,which ->
+            .setItems((listOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능") + (if(selectedCompany()?.role=="관리자") listOf("매출 · 수익","고객 채팅") else emptyList()) + listOf("오늘 현장 팀 채팅")).toTypedArray()) { _,which ->
                 when(which) {
                     0 -> {
                         val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
@@ -855,6 +855,9 @@ class MainActivity : Activity() {
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
                     4 -> showFeatures()
                     5 -> if(selectedCompany()?.role=="관리자") openNativeFeature("profit")
+                        else openTodayTeamChats()
+                    6 -> if(selectedCompany()?.role=="관리자") openCustomerChats() else openTodayTeamChats()
+                    7 -> openTodayTeamChats()
                     3 -> confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") }
                 }
             }.setNegativeButton("닫기",null).show()
@@ -988,6 +991,7 @@ class MainActivity : Activity() {
         when(featureId) {
             "new-site" -> showNewSiteRegistration()
             "customer-page" -> customerPageManager()
+            "customer-chat" -> openCustomerChats()
             "clients" -> tradeManager()
             "inventory" -> openDealerInventory()
             "jobs" -> recruitMenu()
@@ -1009,6 +1013,34 @@ class MainActivity : Activity() {
             else -> return false
         }
         return true
+    }
+    private fun nativeChats(uid:String,company:CompanyAccess)=NativeChats(this,auth,scope,uid,company) {
+        sitePhotoSessionValid(uid,company)
+    }
+    private fun openCustomerChats() {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        if(company.role!="관리자") { message("고객 채팅은 관리자만 확인할 수 있습니다.");return }
+        nativeChats(uid,company).customerInbox()
+    }
+    private fun openTodayTeamChats() {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val date=ScheduleDates.today();val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val sites=DailyAssistant.briefing(auth.assistantSites(uid,company.id,dailyOnly=true),company.id,company.role=="관리자",date).sites
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company) || date!=ScheduleDates.today()) return@launch
+                if(sites.isEmpty()) { message("오늘 확인된 현장 일정이 없습니다.");return@launch }
+                AlertDialog.Builder(this@MainActivity).setTitle("오늘 현장 팀 채팅").setItems(sites.map { it.name }.toTypedArray()) { _,index ->
+                    if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,sites[index].id,"team_chat")
+                }.setNegativeButton("닫기",null).show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("오늘 현장을 확인하지 못했습니다.") }
+        }
+    }
+    private fun showNativeTeamChat(uid:String,company:CompanyAccess,siteId:String,siteName:String,date:String) {
+        if(sitePhotoSessionValid(uid,company)) nativeChats(uid,company).conversation("team",siteId,siteName,date)
     }
     private fun openFeature(feature:AssistantRequests.Feature) {
         if(openNativeFeature(feature.id)) return
@@ -1827,7 +1859,7 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String,photoType:String="all") {
-        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web","wrap_up") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web","wrap_up","team_chat") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1844,6 +1876,7 @@ class MainActivity : Activity() {
                     .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
                 if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
                 when(action) {
+                    "team_chat" -> showNativeTeamChat(uid,company,siteId,site.optString("site_name").ifBlank { "현장" },ScheduleDates.today())
                     "wrap_up" -> {
                         if(owner) { message("마무리 점검은 배정된 시공자 화면에서 확인할 수 있습니다.");return@launch }
                         suspend fun readReport():JSONObject? = try { auth.assistantWorkReport(uid,companyId,siteId) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
@@ -2789,6 +2822,9 @@ class MainActivity : Activity() {
                         if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,if(company.role=="시공자") "wrap_up" else "schedule")
                     },LinearLayout.LayoutParams(0,dp(48),1f))
                     box.addView(work)
+                    addButton(box,"팀원과 채팅",false) {
+                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"team_chat")
+                    }
                 }
                 if(data.sites.size>4) addButton(box,"오늘 일정 전체 보기",false) { lookupSites(AssistantRequests.Request("schedule",from=state.date,to=state.date)) }
                 box.addView(text("조회 시점 기준 · 변경사항은 새로 확인해 주세요.",12f))
