@@ -82,7 +82,7 @@ export async function POST(request){try{
     try {
       const delivery = await dispatchTeamMessage(a.db, {
         members: a.members, senderId: a.user.id, siteId: a.site.id,
-        date: a.date, messageId: input.id, body,
+        date: a.date, messageId: input.id,
       });
       if (delivery.state === 'unconfigured' || delivery.failed || delivery.unsubscribed || delivery.expired)
         console.warn('Team chat push delivery', delivery);

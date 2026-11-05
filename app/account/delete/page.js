@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeletionRequest from "./DeletionRequest";
 import styles from "../../support/support.module.css";
 
 export const metadata = { title: "계정 및 데이터 삭제 요청 | 현장 AI 비서 · 필름장이" };
@@ -12,7 +13,10 @@ const requests = [
 export default function AccountDeletionPage() {
   return <main className={styles.page}>
     <header className={styles.header}><h1>계정 및 데이터 삭제 요청</h1></header>
-    <p>현장 AI 비서와 필름장이는 기분좋은공간이 운영합니다. 아래 항목을 선택해 이메일로 요청해 주세요.</p>
+    <p>현장 AI 비서와 필름장이는 기분좋은공간이 운영합니다.</p>
+    <DeletionRequest />
+    <h2>이메일로 요청하기</h2>
+    <p>로그인이 어렵거나 연결 해제·업체 서비스 종료를 요청하려면 아래 항목을 선택해 주세요.</p>
     <ul>{requests.map(([label, subject]) => <li key={subject}>
       <a href={`mailto:${email}?subject=${encodeURIComponent(subject)}`}>{label}</a>
     </li>)}</ul>
@@ -20,7 +24,7 @@ export default function AccountDeletionPage() {
     <h2>요청 및 처리 방법</h2>
     <ol>
       <li>가입 이메일과 원하는 처리 범위를 알려주세요. 비밀번호는 보내지 마세요.</li>
-      <li>운영자가 본인과 필요한 업체 권한을 확인한 뒤 삭제·보관 범위를 안내하고 요청을 처리합니다.</li>
+      <li>본인과 삭제 범위를 확인할 수 있는 요청은 자동 처리합니다. 추가 확인이 필요한 요청은 운영자가 삭제·보관 범위를 안내한 뒤 처리합니다.</li>
       <li>업체의 유일한 관리자가 탈퇴하려는 경우 관리자 권한 이전 또는 업체 서비스 종료 여부를 확인합니다.</li>
     </ol>
     <h2>다른 이용자와 공동 자료</h2>

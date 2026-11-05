@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createCompanyPhotoReferenceCleanup} from '../lib/deletionCompanyPhotoReferences.mjs';
+import {PGlite} from '@electric-sql/pglite';
+const c='00000000-0000-4000-8000-000000000001',r='00000000-0000-4000-8000-000000000002',u='00000000-0000-4000-8000-000000000003',l='00000000-0000-4000-8000-000000000004';
+test('shared reference cleanup deletes image dependencies only, rejects foreign scope and blocks recreation',async()=>{
+const db=new PGlite();try{
+await db.exec(`create role anon;create role authenticated;create role service_role;
+create table companies(id uuid primary key);insert into companies values('${c}');
+create table account_deletion_requests(id uuid,company_deletion_id uuid,user_id uuid,identity_verified boolean,scope text,status text,lease_token uuid,lease_until timestamptz);
+insert into account_deletion_requests values('${r}','${c}','${u}',true,'personal_account','processing','${l}',now()+interval '5 minutes');
+create function inspect_company_deletion_scope(uuid) returns jsonb language sql as $$select '{}'::jsonb$$;
+create function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;
+create table work_items(id uuid primary key,description text);insert into work_items values('${u}','preserve business record');
+create table work_photos(id uuid primary key,company_id uuid,work_item_id uuid references work_items,storage_path text,photo_url text);
+create table estimate_photos(id uuid primary key,company_id uuid,storage_path text,photo_url text);
+create table photo_case_classifications(photo_id uuid references work_photos on delete restrict);
+create table photo_case_classification_history(photo_id uuid references work_photos on delete restrict);
+create table similar_projects(photo_id uuid references work_photos on delete cascade);
+create table customer_leads(customer_photo_path text,customer_photo_paths jsonb,memo text,final_price bigint);create table estimate_usage(photo_paths jsonb,photo_count integer,estimate_average bigint);
+insert into work_photos values('${c}','${c}','${u}','history/${c}/original.jpg',null),('${u}','${u}','${u}','history/${c}/original.jpg',null),('${r}','${u}','${u}','history/${u}/own.jpg',null);
+insert into photo_case_classifications values('${u}');insert into photo_case_classification_history values('${u}');insert into similar_projects values('${u}');`);
+await db.exec(await readFile(new URL('../database/account_deletion_shared_photo_references.sql',import.meta.url),'utf8'));
+const run=paths=>db.query('select delete_company_shared_photo_references($1,$2,$3) ok',[r,l,paths]);
+const strip=async(value)=>(await db.query('select app_private.remove_deleted_photo_paths($1,$2) v',[JSON.stringify(value),[`history/${c}/original.jpg`]])).rows[0].v;
+assert.deepEqual(await strip([`history/${c}/original.jpg`,`history/${c}/original.jpg`]),[]);
+assert.equal(await strip(null),null);
+assert.deepEqual(await strip([`history/${u}/own.jpg`,`history/${c}/original.jpg.backup`]),[`history/${u}/own.jpg`,`history/${c}/original.jpg.backup`]);
+await assert.rejects(strip({path:`history/${c}/original.jpg`}),/Unsupported/);
+await assert.rejects(strip([{path:`history/${c}/original.jpg`}]),/Unsupported/);
+await db.exec("update account_deletion_requests set lease_until=now()-interval '1 second'");
+await assert.rejects(db.query('select delete_company_shared_photo_references($1,$2,$3)',[r,l,[`history/${c}/original.jpg`]]),/lease required/);
+await db.exec("update account_deletion_requests set lease_until=now()+interval '5 minutes'");
+
+await assert.rejects(run([`history/${u}/own.jpg`]),/owned/);
+await assert.rejects(run([`history/${c}/../other.jpg`]),/owned/);
+await db.query('insert into customer_leads(memo) values($1)',[`history/${c}/original.jpg`]);
+await assert.rejects(run([`history/${c}/original.jpg`]),/Embedded/);
+assert.equal((await db.query('select count(*)::int n from work_photos')).rows[0].n,3);
+await db.exec('delete from customer_leads');
+await db.query('insert into customer_leads values($1,$2,$3,$4)',[`history/${c}/original.jpg`,JSON.stringify([`history/${c}/original.jpg`,`history/${u}/own.jpg`]),'keep customer memo',123456]);
+await db.query('insert into estimate_usage values($1,2,300000)',[JSON.stringify([`history/${c}/original.jpg`,`history/${u}/own.jpg`])]);
+const cleanup=createCompanyPhotoReferenceCleanup({rpc:async(name,args)=>({data:(await db.query(`select ${name}($1,$2,$3) ok`,[args.p_request,args.p_lease,args.p_paths])).rows[0].ok})},r,l);
+const files=[{bucket:'work-photos',path:`history/${c}/original.jpg`}];
+assert.equal(await cleanup.detachSharedReferences(c,files),true);
+assert.equal(await cleanup.verifySharedReferences(c,files),true);
+assert.deepEqual((await db.query('select * from customer_leads')).rows[0],{customer_photo_path:null,customer_photo_paths:[`history/${u}/own.jpg`],memo:'keep customer memo',final_price:123456});
+assert.deepEqual((await db.query('select * from estimate_usage')).rows[0],{photo_paths:[`history/${u}/own.jpg`],photo_count:1,estimate_average:300000});
+assert.equal((await db.query('select count(*)::int n from work_photos')).rows[0].n,1);
+assert.equal((await db.query('select count(*)::int n from work_items')).rows[0].n,1);
+assert.equal((await db.query('select count(*)::int n from similar_projects')).rows[0].n,0);
+await assert.rejects(db.query('insert into customer_leads(customer_photo_path) values($1)',[`history/${c}/original.jpg`]),/pending permanent deletion/);
+assert.equal((await run([`history/${c}/original.jpg`])).rows[0].ok,true);
+assert.equal((await db.query("select has_function_privilege('authenticated','delete_company_shared_photo_references(uuid,uuid,text[])','EXECUTE') allowed")).rows[0].allowed,false);
+}finally{await db.close();}
+});

@@ -1,0 +1,40 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+const u='00000000-0000-4000-8000-000000000001',o='00000000-0000-4000-8000-000000000002',r='00000000-0000-4000-8000-000000000003',l='00000000-0000-4000-8000-000000000004';
+test('closed order actors are scrubbed; open orders and dealers block cleanup without partial changes',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;
+ create table account_deletion_requests(id uuid,user_id uuid,lease_token uuid,lease_until timestamptz,identity_verified boolean,scope text,status text);
+ create table account_deletion_blocks(user_id uuid);
+ create table material_pilot_dealers(user_id uuid);
+ create table material_pilot_orders(id uuid primary key,buyer_id uuid not null,status text,items jsonb,shipping jsonb,revision int,shipments jsonb default '[]');
+ create table material_pilot_events(id uuid,order_id uuid,actor_id uuid not null,action text,request_hash text);
+ create table material_pilot_notifications(user_id uuid);
+ create function material_pilot_commit(p_order uuid,p_revision integer,p_actor uuid,p_request uuid,p_action text,p_hash text,p_next jsonb) returns jsonb language plpgsql as $$declare e material_pilot_events%rowtype;begin select * into e from material_pilot_events where id=p_request;if e.actor_id<>p_actor then raise exception 'wrong actor';end if;return '{}';end;$$;
+ insert into account_deletion_requests values('${r}','${u}','${l}',now()+interval '5 minutes',true,'personal_account','processing');
+ insert into material_pilot_orders(id,buyer_id,status,items,shipping,revision) values('${r}','${u}','shipped','[{"qty":2}]','{"address":"shared delivery"}',4),('${l}','${o}','received','[]','{}',1);
+ insert into material_pilot_events values('${r}','${r}','${u}','ship','hash'),('${l}','${l}','${o}','receive','other');
+ insert into material_pilot_notifications values('${u}'),('${o}');`);
+ await db.exec(await readFile(new URL('../database/account_deletion_orders.sql',import.meta.url),'utf8'));
+ const scrub=()=>db.query('select scrub_account_order_actors($1,$2)',[r,l]);
+ await assert.rejects(scrub(),/Access block required/);await db.query('insert into account_deletion_blocks values($1)',[u]);
+ await assert.rejects(scrub(),/Open orders require review/);
+ assert.equal((await db.query('select actor_id from material_pilot_events where id=$1',[r])).rows[0].actor_id,u);
+ await db.query("update material_pilot_orders set status='received' where id=$1",[r]);
+ await db.query('insert into material_pilot_dealers values($1)',[u]);await assert.rejects(scrub(),/Dealer transfer required/);await db.query('delete from material_pilot_dealers');
+ await assert.rejects(scrub(),/Order delivery privacy review required/);
+ assert.equal((await db.query('select buyer_id from material_pilot_orders where id=$1',[r])).rows[0].buyer_id,u);
+ await db.query("update material_pilot_orders set shipping='{}',shipments='[{\"tracking\":\"private\"}]' where id=$1",[r]);
+ await assert.rejects(scrub(),/Order delivery privacy review required/);
+ await db.query("update material_pilot_orders set shipments='[]' where id=$1",[r]);
+ const before=(await db.query("select to_jsonb(t)-'buyer_id' v from material_pilot_orders t order by id")).rows;
+ await scrub();await scrub();
+ assert.deepEqual((await db.query("select to_jsonb(t)-'buyer_id' v from material_pilot_orders t order by id")).rows,before);
+ assert.deepEqual((await db.query('select buyer_id from material_pilot_orders order by id')).rows,[{buyer_id:null},{buyer_id:o}]);
+ assert.deepEqual((await db.query('select actor_id from material_pilot_events order by id')).rows,[{actor_id:null},{actor_id:o}]);
+ assert.deepEqual((await db.query('select * from material_pilot_notifications')).rows,[{user_id:o}]);
+ await assert.rejects(db.query("select material_pilot_commit($1,4,$2,$1,'ship','hash','{}')",[r,o]),/wrong actor/);
+ }finally{await db.close();}
+});

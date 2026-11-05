@@ -36,7 +36,7 @@ begin
  then raise exception '본인 업체 관리자만 승인할 수 있습니다.' using errcode='42501'; end if;
  select * into r from public.site_extra_work where id=p_id and site_id=s.id and company_id=s.company_id for update;
  if not found then raise exception '추가 작업을 확인해주세요.' using errcode='42501'; end if;
- if p_action='cancel' and r.requested_by<>p_user then raise exception '본인 요청만 취소할 수 있습니다.' using errcode='42501'; end if;
+ if p_action='cancel' and r.requested_by is distinct from p_user then raise exception '본인 요청만 취소할 수 있습니다.' using errcode='42501'; end if;
  if r.status<>'pending' then raise exception '이미 처리된 요청입니다. 새로고침해주세요.' using errcode='40001'; end if;
  if p_action='approve' then
   if s.status='cancelled' then raise exception '취소된 현장은 승인할 수 없습니다.' using errcode='22023'; end if;
