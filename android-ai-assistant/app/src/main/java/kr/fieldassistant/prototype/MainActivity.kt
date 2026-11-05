@@ -1758,7 +1758,7 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1775,6 +1775,12 @@ class MainActivity : Activity() {
                     .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
                 if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
                 when(action) {
+                    "materials" -> {
+                        val stock=auth.filmStock(uid,companyId,siteId)
+                        if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
+                        appendHomeMessage("${name} · 자재 준비 현황\n\n"+SiteMaterialSummary.describe(stock,siteId));render()
+                    }
                     "phone" -> {
                         val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
                         if(phone.isBlank()) { message("등록된 전화번호가 없습니다.");return@launch }
@@ -2400,6 +2406,65 @@ class MainActivity : Activity() {
                 }.setNegativeButton("돌아가기",null).show()
         } };dialog.show()
     }
+    private fun prepareNaturalSiteEdit(input:String) {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        if(company.role!="관리자") { appendHomeMessage("현장 정보 수정은 관리자만 할 수 있습니다.");render();return }
+        val changes=SiteNaturalEdit.parse(input)
+        if(changes==null) { appendHomeMessage("변경할 내용을 정확히 구분하지 못했습니다. 예: ‘주소는 인천 청라로 변경해줘’ 또는 ‘메모는 방문 전 전화로 추가해줘’");render();return }
+        val siteId=if(prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
+        val currentName=prefs.getString("selected_site_name","").orEmpty()
+        val named=NaturalLanguage.siteNameBefore(input)
+        if(siteId.isBlank()) { appendHomeMessage("변경할 현장 상세를 먼저 선택하고 내용을 다시 말해 주세요.");render();return }
+        if(named.isNotBlank() && named !in listOf("이","그","해당") && !currentName.contains(named,ignoreCase=true)) {
+            appendHomeMessage("요청한 현장과 선택된 현장이 다를 수 있습니다. 현장을 선택한 뒤 변경 내용을 다시 말해 주세요.")
+            lookupSites(AssistantRequests.Request("sites",query=named));return
+        }
+        if(workerActionBusy) { appendHomeMessage("다른 현장 작업이 끝난 뒤 다시 요청해 주세요.");render();return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("${currentName} 현장의 현재 정보를 확인하고 있습니다.");render()
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
+                val site=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }.find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
+                    ?: error("현장을 다시 확인해 주세요.")
+                check(site.has("updated_at")) { "현장 변경 시점을 확인하지 못했습니다." }
+                val status=site.optString("status")
+                check(status in listOf("consulting","scheduled","in_progress","completed","cancelled")) { "현장 상태를 확인해 주세요." }
+                fun clean(value:String)=value.takeUnless { it=="null" }.orEmpty()
+                val titles=mapOf("customer_name" to "고객명","customer_phone" to "전화번호","address" to "주소","address_detail" to "상세 주소","work_description" to "시공 내용","memo" to "메모")
+                val fields=JSONObject();val summary=mutableListOf<String>()
+                changes.forEach { change ->
+                    val before=clean(site.optString(change.key)).trim()
+                    val after=if(change.append && before.isNotBlank()) before+"\n"+change.value else change.value
+                    require(after.length<=if(change.key in listOf("memo","work_description")) 20000 else 1000) { "변경 내용이 너무 깁니다. 현장 화면에서 확인해 주세요." }
+                    if(after!=before) { fields.put(change.key,after);summary.add("${titles[change.key]}\n기존: ${before.ifBlank { "(없음)" }}\n변경: $after") }
+                }
+                if(fields.length()==0) { appendHomeMessage("변경된 내용이 없습니다.");return@launch }
+                val expectedAt=if(site.isNull("updated_at")) null else site.optString("updated_at")
+                if(expectedAt!=null && expectedAt.isBlank()) error("현장 변경 시점을 확인하지 못했습니다.")
+                val name=clean(site.optString("site_name")).ifBlank { "이름 없는 현장" }
+                AlertDialog.Builder(this@MainActivity).setTitle("$name · 현장 정보 변경")
+                    .setMessage(summary.joinToString("\n\n")+"\n\n방문 견적은 메모에만 추가하며 시공일을 확정하지 않습니다.")
+                    .setNegativeButton("취소",null).setPositiveButton("확인 후 저장") { _,_ ->
+                        if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("계정과 업체를 다시 확인해 주세요.");return@setPositiveButton }
+                        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return@setPositiveButton }
+                        workerActionBusy=true
+                        scope.launch {
+                            try {
+                                auth.updateAssistantSiteConditional(uid,company.id,siteId,status,expectedAt,fields)
+                                if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) appendHomeMessage("${name} 현장의 확인한 정보를 저장했습니다.")
+                            } catch(e:CancellationException) { throw e }
+                              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(e.message?.take(200) ?: "저장 결과를 확인하지 못했습니다. 현장을 다시 조회해 주세요.") }
+                            finally { workerActionBusy=false;if(epoch==sessionEpoch) render() }
+                        }
+                    }.show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(e.message?.take(200) ?: "현장 정보를 확인하지 못했습니다.") }
+            finally { workerActionBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
     private fun showNativeExpenseInput(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
         val categories=arrayOf("주차비","식비","유류비","통행료")
         AlertDialog.Builder(this).setTitle("$siteName · 경비 종류").setItems(categories) { _,index ->
@@ -2669,6 +2734,13 @@ class MainActivity : Activity() {
             else { prefs.edit().remove("chat_expense_pending").commit();appendHomeMessage("경비 입력을 취소했습니다.") }
             render();return
         }
+        if(SiteNaturalEdit.looksLikeEdit(input)) {
+            if(pending.has("id") || filmPending.has("id")) { appendHomeMessage("먼저 확인 중인 경비 또는 필름 요청을 저장하거나 취소해 주세요.");render();return }
+            prepareNaturalSiteEdit(input);return
+        }
+        if(AssistantInputSafety.mixesWorkChanges(input)) {
+            appendHomeMessage("작업 내용, 필름 사용량과 경비가 함께 들어 있어 한 항목만 저장하지 않았습니다. 완료보고, 필름 사용량, 경비를 각각 입력해 주세요.");render();return
+        }
         val expense=ExpenseInput.parse(input)
         if(expense!=null) {
             if(filmPending.has("id")) { appendHomeMessage("먼저 대기 중인 필름 반납을 저장하거나 취소해 주세요.");render();return }
@@ -2737,6 +2809,7 @@ class MainActivity : Activity() {
                 val actionMessage=when(request.feature) {
                     "phone" -> "${currentName} 현장의 전화 연결을 준비합니다."
                     "navigate" -> "${currentName} 현장의 길 안내를 준비합니다."
+                    "materials" -> "${currentName} 현장의 자재와 반출 이력을 확인합니다."
                     else -> "${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다."
                 }
                 appendHomeMessage(actionMessage);render()

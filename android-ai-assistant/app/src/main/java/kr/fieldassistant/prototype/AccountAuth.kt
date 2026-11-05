@@ -725,6 +725,32 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun updateAssistantSiteConditional(expectedUser:String,companyId:String,siteId:String,status:String,updatedAt:String?,fields:JSONObject):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
+        require(status in listOf("consulting","scheduled","in_progress","completed","cancelled"))
+        val allowed=setOf("customer_name","customer_phone","site_name","address","address_detail","work_description","memo")
+        val keys=fields.keys().asSequence().toList()
+        require(keys.isNotEmpty() && keys.all { it in allowed })
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/site-basic-conditional")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
+                val body=JSONObject().put("siteId",siteId).put("expectedStatus",status).put("expectedUpdatedAt",updatedAt ?: JSONObject.NULL).put("fields",fields)
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299 && result.optBoolean("success")) { if(code==404 || code==405) "안전한 현장 수정 기능이 서버에 아직 적용되지 않았습니다." else result.optString("error").ifBlank { "저장 결과를 확인하지 못했습니다. 현장을 다시 조회해 주세요." } }
+                val saved=result.optJSONObject("site") ?: error("저장 결과를 확인하지 못했습니다.")
+                check(saved.optString("id")==siteId && saved.optString("company_id")==companyId) { "저장된 현장을 확인하지 못했습니다." }
+                saved
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantSites(expectedUser: String, companyId: String): JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser) { "다른 계정입니다." }
@@ -739,7 +765,7 @@ internal class AccountAuth private constructor(context: Context) {
         return withContext(Dispatchers.IO) {
             val result=JSONArray();var offset=0
             while(true) {
-                val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description,created_at"
+                val fields="id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description,memo,created_at,updated_at"
                 val url=SUPABASE_URL+"/rest/v1/sites?select="+fields+"&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset
                 val c=SecureTransport.open(url)
                 val batch=try {

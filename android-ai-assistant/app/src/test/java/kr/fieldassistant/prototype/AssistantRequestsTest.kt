@@ -9,6 +9,10 @@ class AssistantRequestsTest {
             assertEquals(text,"briefing",AssistantRequests.parse(text,monday).kind)
         assertNotEquals("briefing",AssistantRequests.parse("오늘 할 일 취소해줘",monday).kind)
     }
+    @Test fun materialPreparationIsReadOnly() {
+        assertEquals("materials",AssistantRequests.parse("그 현장 자재 준비 현황 알려줘",monday).feature)
+        assertNotEquals("materials",AssistantRequests.parse("그 현장 자재 반출해줘",monday).feature)
+    }
     @Test fun understandsWeeklySitesAndFollowup() {
         val r=AssistantRequests.parse("이번주현장 알려줘",monday)
         assertEquals("schedule",r.kind);assertEquals("2026-11-02",r.from);assertEquals("2026-11-08",r.to)

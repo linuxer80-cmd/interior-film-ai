@@ -42,6 +42,9 @@ internal object AssistantRequests {
         if(compact.contains("고객페이지") || compact.contains("고객홈페이지") || compact.contains("업체소개관리")) return Request("feature",feature="customer-page")
         if(Regex("구인|구직|일자리|지원자|받은제안|모집현황").containsMatchIn(compact)) return Request("feature",feature="jobs")
         val siteAction=when {
+            (compact.contains("자재") || compact.contains("필름")) && Regex("준비|재고|반출|반입").containsMatchIn(compact) &&
+                Regex("현황|확인|알려|보여|준비할|뭐|살펴").containsMatchIn(compact) &&
+                !Regex("반출해|반입해|반납해|등록해|저장해|취소해").containsMatchIn(compact) -> "materials"
             (compact.contains("현장") || compact.startsWith("전화") || compact.startsWith("거기") || compact.startsWith("고객")) && Regex("전화(걸어|걸기|해줘|해주세요|해)|통화(걸어|해줘)").containsMatchIn(compact) -> "phone"
             (compact.contains("현장") || compact.startsWith("길") || compact.startsWith("네비") || compact.startsWith("거기") || compact.startsWith("어떻게가")) && Regex("길안내|길찾|네비|내비|지도|어떻게가").containsMatchIn(compact) -> "navigate"
             (compact.contains("필름") || compact.contains("자재")) && (compact.contains("사용") || compact.contains("입력") || compact.contains("등록")) -> "film"
