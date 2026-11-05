@@ -29,6 +29,11 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 /** Session secrets are encrypted by a non-exportable Android Keystore key. */
 internal class SecureSessionManager(context: Context) : SessionManager {
@@ -85,6 +90,8 @@ internal data class VerifiedAccount(val userId: String, val companies: List<Comp
 
 internal class AccountAuth private constructor(context: Context) {
     private val appContext=context.applicationContext
+    private val chatHttp=OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        .connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build()
     companion object {
         @Volatile private var instance: AccountAuth?=null
         fun shared(context: Context): AccountAuth = instance ?: synchronized(this) {
@@ -150,6 +157,7 @@ internal class AccountAuth private constructor(context: Context) {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
         require(kind in listOf("customers","customer","team") && method in listOf("GET","POST","PATCH"))
+        if(method=="PATCH") require(kind=="team")
         require(offset in 0..100000)
         if(kind!="team") check(company.role=="관리자") { "고객 채팅은 관리자만 이용할 수 있습니다." }
         if(kind!="customers") require(Regex("^[0-9a-fA-F-]{36}$").matches(target))
@@ -160,6 +168,17 @@ internal class AccountAuth private constructor(context: Context) {
             else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        if(method=="PATCH") return withContext(Dispatchers.IO) {
+            val url=SecureTransport.requireHttps("https://interior-film-ai.vercel.app"+path)
+            val request=Request.Builder().url(url).header("Authorization","Bearer "+token).header("Cache-Control","no-store")
+                .patch(requireNotNull(body).toString().toRequestBody("application/json".toMediaType())).build()
+            chatHttp.newCall(request).execute().use { response ->
+                val bytes=response.body?.byteStream()?.use { SecureTransport.readBounded(it,2*1024*1024) } ?: ByteArray(0)
+                val result=try { JSONObject(bytes.toString(Charsets.UTF_8)) } catch(_:Exception) { JSONObject() }
+                check(response.isSuccessful) { result.optString("error").ifBlank { "읽음 상태를 확인하지 못했습니다." } }
+                result
+            }
+        }
         return withContext(Dispatchers.IO) {
             val c=SecureTransport.open("https://interior-film-ai.vercel.app"+path)
             try {

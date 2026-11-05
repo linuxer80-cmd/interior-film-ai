@@ -80,6 +80,19 @@ internal class NativeChats(
         val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
         var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
         var latestCustomerView:TextView?=null;var latestCustomerAt=""
+        val teamViews=linkedMapOf<String,TextView>();val teamRead=mutableSetOf<String>();var teamReadReady=false
+        val markVisible=object:Runnable { override fun run() {
+            if(closed || !dialog.isShowing || !valid() || kind!="team" || !teamReadReady) return
+            val ids=teamViews.filter { (id,view) -> id !in teamRead && view.getGlobalVisibleRect(android.graphics.Rect()) }.keys.take(100)
+            if(ids.isEmpty()) return
+            teamRead.addAll(ids)
+            scope.launch {
+                try { auth.nativeChat(uid,company,"team",target,date,"PATCH",JSONObject().put("messageIds",org.json.JSONArray(ids))) }
+                catch(e:CancellationException) { throw e }
+                catch(_:Exception) { teamRead.removeAll(ids.toSet());if(!closed && dialog.isShowing && valid()) status.text="읽음 상태를 저장하지 못했습니다. 다시 확인해 주세요." }
+            }
+        } }
+        scroll.setOnScrollChangeListener { _,_,_,_,_ -> handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,350) }
         lateinit var refresh:()->Unit
         val periodic=object:Runnable { override fun run() { if(!closed && dialog.isShowing) { if(valid()) refresh() else dialog.dismiss();if(!closed) handler.postDelayed(this,20000) } } }
         fun showPhoto(url:String) {
@@ -112,7 +125,7 @@ internal class NativeChats(
                     val list=data.getJSONArray("messages");val version=list.toString()
                     if(version!=lastVersion) {
                         val nearBottom=firstLoad || scroll.scrollY+scroll.height>=messages.height-dp(80)
-                        messages.removeAllViews();latestCustomerView=null
+                        messages.removeAllViews();latestCustomerView=null;teamViews.clear()
                         latestCustomerAt=data.optJSONObject("thread")?.optString("last_customer_at").orEmpty().takeUnless { it=="null" }.orEmpty()
                         val members=data.optJSONArray("members")
                         for(i in 0 until list.length()) {
@@ -125,6 +138,7 @@ internal class NativeChats(
                             val item=label("$sender\n$body\n${m.optString("created_at").take(16).replace('T',' ')}",15f)
                             item.gravity=if(mine) Gravity.END else Gravity.START;messages.addView(item)
                             if(kind=="customer" && !mine && m.optString("created_at")==latestCustomerAt) latestCustomerView=item
+                            if(kind=="team" && !mine && m.optString("id").matches(Regex("^[0-9a-fA-F-]{36}$"))) teamViews[m.optString("id")]=item
                             if(kind=="customer" && m.optBoolean("has_image")) {
                                 val url=m.optString("image_url").takeUnless { it=="null" }.orEmpty()
                                 messages.addView(Button(activity).apply { text=if(url.isBlank()) "사진을 불러오지 못했습니다" else "사진 보기";isEnabled=url.isNotBlank();setOnClickListener { showPhoto(url) } })
@@ -136,6 +150,8 @@ internal class NativeChats(
                         if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
                     }
                     status.text=if(kind=="team") "$date · 이 현장에 배정된 팀원과 관리자" else "고객과의 대화"
+                    teamReadReady=kind=="team" && data.optBoolean("readReady")
+                    if(teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
                     chatAllowed=kind!="team" || data.optBoolean("chatReady");send.isEnabled=chatAllowed && !sending
                     // Do not mark unseen team messages read. Customer acknowledgement is made only when the latest customer message is visible.
                     if(kind=="customer") {
@@ -150,7 +166,7 @@ internal class NativeChats(
                         }
                     }
                 } catch(e:CancellationException) { throw e }
-                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." }
+                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { messages.removeAllViews();teamViews.clear();latestCustomerView=null;lastVersion="";status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
                 finally { loading=false;if(pendingRefresh && !closed && dialog.isShowing) { pendingRefresh=false;refresh() } }
             }
         }
@@ -172,7 +188,7 @@ internal class NativeChats(
                 finally { sending=false;if(!closed && dialog.isShowing) send.isEnabled=chatAllowed }
             }
         }
-        dialog.setOnDismissListener { closed=true;handler.removeCallbacks(periodic) }
+        dialog.setOnDismissListener { closed=true;handler.removeCallbacks(periodic);handler.removeCallbacks(markVisible) }
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.8).toInt())
             refresh();handler.postDelayed(periodic,20000)
