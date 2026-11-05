@@ -29,7 +29,7 @@ internal object SampleSearch {
         val q=text.trim();val compact=q.replace(Regex("\\s+"),"")
         if(!Regex("보여|찾아|검색|샘플|무늬|패턴").containsMatchIn(compact)) return null
         if(compact.contains("현장") && !Regex("샘플|필름|패턴|무늬").containsMatchIn(compact)) return null
-        if(Regex("삭제|등록|반출|반납|사용했|사용량|견적|매출").containsMatchIn(compact)) return null
+        if(Regex("삭제|등록|반출|반입|반납|재고|준비|사용했|사용량|견적|매출").containsMatchIn(compact)) return null
         val maker=when {
             Regex("현다|현대|보닥|BODAQ|HYUNDAI",RegexOption.IGNORE_CASE).containsMatchIn(compact)->"HYUNDAI"
             Regex("영림|YOUNGLIM",RegexOption.IGNORE_CASE).containsMatchIn(compact)->"YOUNGLIM"

@@ -524,6 +524,25 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantReceivableSummary(expectedUser:String,companyId:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/assistant-receivables")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId);c.setRequestProperty("Cache-Control","no-store")
+                check(c.responseCode in 200..299) { "미수금을 확인하지 못했습니다." }
+                val result=JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+                val outstanding=result.opt("outstanding") as? Number ?: error("미수금을 확인하지 못했습니다.")
+                val unconfirmed=result.opt("unconfirmed") as? Number ?: error("미수금을 확인하지 못했습니다.")
+                check(result.optString("companyId")==companyId && outstanding.toDouble().isFinite() && outstanding.toDouble()>=0 && unconfirmed.toDouble()>=0 && unconfirmed.toDouble()==kotlin.math.floor(unconfirmed.toDouble())) { "미수금을 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun submitAssistantWorkerReport(expectedUser:String,companyId:String,siteId:String,region:String,summary:String,memo:String,labor:JSONArray):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }

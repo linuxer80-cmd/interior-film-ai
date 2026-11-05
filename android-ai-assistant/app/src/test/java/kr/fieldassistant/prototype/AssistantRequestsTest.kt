@@ -12,6 +12,7 @@ class AssistantRequestsTest {
     @Test fun materialPreparationIsReadOnly() {
         assertEquals("materials",AssistantRequests.parse("그 현장 자재 준비 현황 알려줘",monday).feature)
         assertNotEquals("materials",AssistantRequests.parse("그 현장 자재 반출해줘",monday).feature)
+        assertNull(SampleSearch.parse("그 현장 S115 필름 재고 보여줘"))
     }
     @Test fun understandsWeeklySitesAndFollowup() {
         val r=AssistantRequests.parse("이번주현장 알려줘",monday)

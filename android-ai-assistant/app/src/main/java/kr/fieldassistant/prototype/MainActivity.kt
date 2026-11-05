@@ -61,6 +61,8 @@ class MainActivity : Activity() {
     private var sessionEpoch = 0
     private var analysisJob: Job? = null
     private var offlineQueueJob: Job? = null
+    private data class ReportVoiceRequest(val uid:String,val companyId:String,val siteId:String,val input:EditText)
+    private var reportVoiceRequest:ReportVoiceRequest?=null
     private val offlineQueue = mutableListOf<String>()
     private val offlineQueued = mutableSetOf<String>()
     private val prefs get() = getSharedPreferences("assistant_user_" + requireNotNull(account).userId, MODE_PRIVATE)
@@ -332,6 +334,19 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1007) {
+            val request=reportVoiceRequest;reportVoiceRequest=null
+            if(resultCode==RESULT_OK && request!=null && account?.userId==request.uid && selectedCompany()?.id==request.companyId) {
+                val spoken=data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty().trim()
+                if(spoken.isNotBlank()) {
+                    val existing=request.input.text.toString().trimEnd()
+                    val combined=if(existing.isBlank()) spoken else existing+"\n"+spoken
+                    if(combined.length>5000) message("작업 내용은 5,000자까지 입력할 수 있습니다.")
+                    else { request.input.setText(combined);request.input.setSelection(combined.length) }
+                }
+            }
+            return
+        }
         if(requestCode==1006) {
             val request=reportPhotoRequest;reportPhotoRequest=null
             val uri=data?.data
@@ -2184,10 +2199,20 @@ class MainActivity : Activity() {
             hint=labels[i];setText(prefs.getString(prefix+key,null) ?: original);filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
             form.addView(this)
         } }
+        addButton(form,"말로 작업 내용 입력",false) {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@addButton }
+            val speech=Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"ko-KR")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"오늘 완료한 작업을 말씀해 주세요")
+            reportVoiceRequest=ReportVoiceRequest(uid,company.id,siteId,inputs[1])
+            try { startActivityForResult(speech,1007) } catch(_:ActivityNotFoundException) { reportVoiceRequest=null;message("음성 입력 앱을 찾지 못했습니다.") }
+        }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 내용 임시 저장")
             .setMessage((if(previous!=null) "임시 저장한 내용이 없으면 반려된 보고서 내용을 불러옵니다.\n\n" else "")+"입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
             .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("임시 저장",null).setNegativeButton("취소",null)
             .setNeutralButton("내용 복사",null).create()
+        dialog.setOnDismissListener { if(reportVoiceRequest?.input==inputs[1]) reportVoiceRequest=null }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
             val edit=prefs.edit();keys.forEachIndexed { i,key -> edit.putString(prefix+key,inputs[i].text.toString()) }
@@ -2524,6 +2549,13 @@ class MainActivity : Activity() {
                 if(company.role=="관리자") {
                     val consulting=rows.count { value(it,"status")=="consulting" }
                     lines.add("상담중 현장 ${consulting}건 · 현장 목록에서 진행 상태를 확인해 주세요.")
+                    val receivables=try { auth.assistantReceivableSummary(uid,company.id) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
+                    if(receivables==null) lines.add("완료 현장의 미수금은 확인하지 못했습니다.")
+                    else {
+                        val amount=java.text.NumberFormat.getNumberInstance(Locale.KOREA).format(receivables.getDouble("outstanding"))
+                        lines.add("완료 현장의 확인된 미수금 ${amount}원 · 기존 입금 확인 필요 ${receivables.getInt("unconfirmed")}건")
+                    }
                 }
                 appendHomeMessage(lines.joinToString("\n"))
                 if(today.isNotEmpty()) appendHomeMessage("",result=JSONObject().put("kind","sites").put("title","오늘 시공 현장")
