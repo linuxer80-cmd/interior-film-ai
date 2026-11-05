@@ -26,7 +26,10 @@ data class AssignedDay(val id: String,val name: String,val address: String,val d
 internal object ScheduleDates {
     private val zone=ZoneId.of("Asia/Seoul")
     fun today(): String=LocalDate.now(zone).toString()
-    private fun parse(s: String): LocalDate?=try { LocalDate.parse(s.take(10)) } catch(_: Exception) { null }
+    private fun parse(s:String):LocalDate? = try {
+        if(s.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) LocalDate.parse(s)
+        else java.time.OffsetDateTime.parse(s).atZoneSameInstant(zone).toLocalDate()
+    } catch(_:Exception) { try { LocalDate.parse(s.take(10)) } catch(_:Exception) { null } }
     fun fromSites(sites: JSONArray,from: String,to: String): List<AssignedDay> {
         val start=parse(from) ?: return emptyList();val end=parse(to) ?: return emptyList()
         if(end<start || Duration.between(start.atStartOfDay(),end.atStartOfDay()).toDays()>90) return emptyList()

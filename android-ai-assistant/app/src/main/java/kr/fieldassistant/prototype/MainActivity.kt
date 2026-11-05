@@ -1827,7 +1827,7 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String,photoType:String="all") {
-        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web","wrap_up") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1839,11 +1839,21 @@ class MainActivity : Activity() {
         scope.launch {
             try {
                 val authorized=auth.assistantSites(uid,companyId)
-                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || selectedCompany()?.role!=company.role || !active) return@launch
                 val site=(0 until authorized.length()).mapNotNull { authorized.optJSONObject(it) }
                     .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
                 if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
                 when(action) {
+                    "wrap_up" -> {
+                        if(owner) { message("마무리 점검은 배정된 시공자 화면에서 확인할 수 있습니다.");return@launch }
+                        suspend fun readReport():JSONObject? = try { auth.assistantWorkReport(uid,companyId,siteId) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                        suspend fun readSupport():JSONObject? = try { auth.assistantReportSupport(uid,companyId,siteId) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                        suspend fun readStock():JSONObject? = try { auth.filmStock(uid,companyId,siteId) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                        val report=readReport();val support=readSupport();val stock=readStock()
+                        if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
+                        showWrapUp(uid,company,siteId,name,report,support,stock)
+                    }
                     "gallery" -> {
                         val photos=auth.assistantSitePhotos(uid,companyId,siteId,!owner,photoType,0)
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || selectedCompany()?.role!=company.role || !active) return@launch
@@ -1912,6 +1922,21 @@ class MainActivity : Activity() {
               catch(_:Exception) { if(epoch==sessionEpoch) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
             finally { workerActionBusy=false }
         }
+    }
+    private fun showWrapUp(uid:String,company:CompanyAccess,siteId:String,name:String,report:JSONObject?,support:JSONObject?,stock:JSONObject?) {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="시공자") return
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(10),dp(16),dp(10)) }
+        content.addView(text(DailyAssistant.wrapUp(siteId,report,support,stock),14f))
+        val dialog=AlertDialog.Builder(this).setTitle("$name · 현장 마무리").setView(ScrollView(this).apply { addView(content) }).setNegativeButton("닫기",null).create()
+        fun action(label:String,run:()->Unit) { addButton(content,label,false) {
+            if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return@addButton }
+            dialog.dismiss();run()
+        } }
+        action("완료사진 등록") { pickReportPhoto(ReportPhotoRequest(uid,company,siteId,name,"after")) }
+        action("완료보고 확인 · 작성") { openSiteAction(company.id,siteId,"report") }
+        action("자재 사용 · 반납 확인") { openSiteAction(company.id,siteId,"film") }
+        action("경비 입력") { openSiteAction(company.id,siteId,"expenses") }
+        dialog.show()
     }
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
@@ -2692,48 +2717,81 @@ class MainActivity : Activity() {
     private fun displaySiteDate(value:String):String = try {
         java.time.OffsetDateTime.parse(value).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString()
     } catch(_:Exception) { value.takeIf { it.isNotBlank() } ?: "미등록" }
+    private data class DailyState(val uid:String,val company:String,val role:String,val date:String,val loading:Boolean,
+        val data:DailyAssistant.Briefing?=null,val error:Boolean=false,val loadedAt:Long=0,val receivableNote:String="")
+    private var dailyState:DailyState?=null
+    private var openDailyOnReady=false
     private fun lookupBriefing(request:AssistantRequests.Request) {
-        if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 잠시 기다려 주세요.");render();return }
+        openDailyOnReady=true;loadDailyAssistant(force=true);render()
+    }
+    private fun loadDailyAssistant(force:Boolean=false) {
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
-        val epoch=sessionEpoch;lookupBusy=true
-        appendHomeMessage("오늘의 현장과 확인할 정보를 살펴보고 있습니다.");render()
+        if(!active || chatId!=null || settingsOpen) return
+        val day=ScheduleDates.today()
+        val current=dailyState
+        if(current?.loading==true && current.uid==uid && current.company==company.id && current.role==company.role && current.date==day) return
+        if(!force && current!=null && current.uid==uid && current.company==company.id && current.role==company.role && current.date==day &&
+            (current.error || System.currentTimeMillis()-current.loadedAt<300_000L)) return
+        val epoch=sessionEpoch
+        dailyState=DailyState(uid,company.id,company.role,day,true)
+        refreshBackgroundUi()
         scope.launch {
             try {
-                val sites=auth.assistantSites(uid,company.id)
-                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
-                val rows=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
-                fun value(row:JSONObject,key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
-                fun id(row:JSONObject)=value(row,"id").ifBlank { value(row,"site_id") }
-                val scheduled=JSONArray()
-                rows.filter { value(it,"status") in listOf("scheduled","in_progress") }.forEach { scheduled.put(it) }
-                val ids=ScheduleDates.fromSites(scheduled,request.from,request.to).map { it.id.substringAfter('/') }.toSet()
-                val today=rows.filter { id(it) in ids }
-                val resultRows=JSONArray()
-                today.forEach { row -> resultRows.put(JSONObject().put("id",id(row)).put("name",value(row,"site_name").ifBlank { "이름 없는 현장" })
-                    .put("status",siteStatus(value(row,"status"))).put("address",value(row,"address").ifBlank { "주소 미등록" })) }
-                val lines=mutableListOf("오늘 시공 일정 ${today.size}건")
-                today.filter { value(it,"address").isBlank() }.takeIf { it.isNotEmpty() }?.let { lines.add("주소 확인 필요: "+it.joinToString(", ") { row -> value(row,"site_name").ifBlank { "이름 없는 현장" } }) }
-                today.filter { value(it,"work_description").isBlank() }.takeIf { it.isNotEmpty() }?.let { lines.add("시공 내용 확인 필요: "+it.joinToString(", ") { row -> value(row,"site_name").ifBlank { "이름 없는 현장" } }) }
-                if(company.role=="관리자") {
-                    val consulting=rows.count { value(it,"status")=="consulting" }
-                    lines.add("상담중 현장 ${consulting}건 · 현장 목록에서 진행 상태를 확인해 주세요.")
-                    val receivables=try { auth.assistantReceivableSummary(uid,company.id) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
-                    if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
-                    if(receivables==null) lines.add("완료 현장의 미수금은 확인하지 못했습니다.")
-                    else {
-                        val amount=java.text.NumberFormat.getNumberInstance(Locale.KOREA).format(receivables.getDouble("outstanding"))
-                        lines.add("완료 현장의 확인된 미수금 ${amount}원 · 기존 입금 확인 필요 ${receivables.getInt("unconfirmed")}건 · 계약금액 미확정 ${receivables.getInt("unknownContract")}건")
-                    }
-                }
-                appendHomeMessage(lines.joinToString("\n"))
-                if(today.isNotEmpty()) appendHomeMessage("",result=JSONObject().put("kind","sites").put("title","오늘 시공 현장")
-                    .put("subtitle",company.name+" · "+request.from+" · 조회 시점 기준").put("company_id",company.id)
-                    .put("total",today.size).put("rows",resultRows))
+                val rows=auth.assistantSites(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || ScheduleDates.today()!=day) return@launch
+                val data=DailyAssistant.briefing(rows,company.id,company.role=="관리자",day)
+                val receivableNote=if(company.role=="관리자" && force) {
+                    val result=try { auth.assistantReceivableSummary(uid,company.id) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                    if(result==null) "완료 현장 미수금: 확인하지 못했습니다."
+                    else "완료 현장 확인된 미수금 ${java.text.NumberFormat.getNumberInstance(Locale.KOREA).format(result.getDouble("outstanding"))}원 · 입금 확인 필요 ${result.getInt("unconfirmed")}건 · 계약금액 미확정 ${result.getInt("unknownContract")}건"
+                } else ""
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || ScheduleDates.today()!=day) return@launch
+                dailyState=DailyState(uid,company.id,company.role,day,false,data=data,loadedAt=System.currentTimeMillis(),receivableNote=receivableNote)
             } catch(e:CancellationException) { throw e }
-              catch(_:Exception) { if(epoch==sessionEpoch) appendHomeMessage("오늘의 현장을 확인하지 못했습니다. 연결과 로그인 상태를 확인해 주세요.") }
-            finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role)
+                  dailyState=DailyState(uid,company.id,company.role,day,false,error=true,loadedAt=System.currentTimeMillis()) }
+            finally { if(epoch==sessionEpoch && account?.userId==uid) refreshBackgroundUi() }
         }
+    }
+    private fun dailyCard(company:CompanyAccess,uid:String,state:DailyState):View {
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.rgb(241,247,242),16) }
+        box.addView(text("오늘 할 일 · ${company.role}",18f,true))
+        when {
+            state.loading -> box.addView(text("현장 일정을 확인하고 있습니다.",14f))
+            state.error -> box.addView(text("오늘 할 일을 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.",14f))
+            state.data!=null -> {
+                val data=state.data
+                val scope=if(company.role=="관리자") "업체 일정" else "내 배정 일정"
+                box.addView(text("${state.date} · $scope ${data.sites.size}건",14f,true))
+                if(data.sites.isEmpty()) box.addView(text("조회 시점에 오늘 일정이 없습니다.",14f))
+                data.consultations?.let { box.addView(text("상담중 현장 ${it}건 · 진행 상태를 확인해 주세요.",14f)) }
+                if(state.receivableNote.isNotBlank()) box.addView(text(state.receivableNote,13f))
+                data.sites.take(4).forEach { site ->
+                    box.addView(text("${site.name}\n시공 내용: ${site.work.ifBlank { "확인 필요" }}\n주소: ${site.address.ifBlank { "확인 필요" }}",14f,true))
+                    val row=LinearLayout(this)
+                    row.addView(button("현장 상세",false) {
+                        if(sitePhotoSessionValid(uid,company)) lookupSites(AssistantRequests.Request("detail"),site.id)
+                    },LinearLayout.LayoutParams(0,dp(48),1f))
+                    row.addView(button("길 안내",false) {
+                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"navigate")
+                    },LinearLayout.LayoutParams(0,dp(48),1f))
+                    box.addView(row)
+                    val work=LinearLayout(this)
+                    work.addView(button("자재 확인",false) {
+                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"materials")
+                    },LinearLayout.LayoutParams(0,dp(48),1f))
+                    work.addView(button(if(company.role=="시공자") "현장 마무리" else "시공자 배정",false) {
+                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,if(company.role=="시공자") "wrap_up" else "schedule")
+                    },LinearLayout.LayoutParams(0,dp(48),1f))
+                    box.addView(work)
+                }
+                if(data.sites.size>4) addButton(box,"오늘 일정 전체 보기",false) { lookupSites(AssistantRequests.Request("schedule",from=state.date,to=state.date)) }
+                box.addView(text("조회 시점 기준 · 변경사항은 새로 확인해 주세요.",12f))
+            }
+        }
+        if(!state.loading) addButton(box,"오늘 할 일 새로 확인",false) { loadDailyAssistant(true);render() }
+        return box
     }
     private fun lookupPhotoSearch(query:PhotoSearch.Query) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 잠시 후 다시 요청해 주세요.");render();return }
@@ -3043,12 +3101,13 @@ class MainActivity : Activity() {
                     appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
                     lookupSites(AssistantRequests.Request("sites",query=named));return
                 }
-                if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 필름 사용량, 경비 또는 완료보고를 요청할 수 있습니다.");render();return }
+                if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 자재, 경비, 완료보고 또는 현장 마무리를 요청할 수 있습니다.");render();return }
                 val actionMessage=when(request.feature) {
                     "phone" -> "${currentName} 현장의 전화 연결을 준비합니다."
                     "navigate" -> "${currentName} 현장의 길 안내를 준비합니다."
                     "materials" -> "${currentName} 현장의 자재와 반출 이력을 확인합니다."
                     "gallery" -> "${currentName} 현장의 사진을 불러옵니다."
+                    "wrap_up" -> "${currentName} 현장의 마무리 상태를 확인합니다."
                     else -> "${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다."
                 }
                 appendHomeMessage(actionMessage);render()
@@ -3079,8 +3138,13 @@ class MainActivity : Activity() {
     private fun renderHomeChat() {
         val candidate=latestConsultation()
         val key=listOf("home",account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
-            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled()).toString()
-        if(visibleConversationKey==key) return
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState).toString()
+        if(visibleConversationKey==key) {
+            val stale=dailyState
+            if(stale!=null && !stale.loading && !stale.error && System.currentTimeMillis()-stale.loadedAt>=300_000L)
+                handler.post { if(chatId==null && !settingsOpen) loadDailyAssistant() }
+            return
+        }
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
         setAssistantContent(page);visibleConversationKey=key
         displayedHomeConsultationId=candidate?.optString("id")
@@ -3098,6 +3162,13 @@ class MainActivity : Activity() {
             }
         }
         val scroll=ScrollView(this)
+        val pinnedCompany=selectedCompany();val pinnedUser=account?.userId
+        val pinned=dailyState?.takeIf { it.uid==pinnedUser && it.company==pinnedCompany?.id && it.role==pinnedCompany?.role && it.date==ScheduleDates.today() }
+        val pinnedLabel=when { pinned?.loading==true -> "오늘 할 일 확인 중…";pinned?.error==true -> "오늘 할 일 다시 확인";pinned?.data!=null -> "오늘 할 일 · 현장 ${pinned.data.sites.size}건 보기";else -> "오늘 할 일 보기" }
+        page.addView(button(pinnedLabel,false) {
+            if(pinned==null || pinned.error) loadDailyAssistant(true)
+            openDailyOnReady=true;scroll.post { scroll.fullScroll(View.FOCUS_UP) }
+        },LinearLayout.LayoutParams(-1,dp(44)))
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(24),dp(12),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         body.addView(text("무엇을 도와드릴까요?",26f,true))
@@ -3106,6 +3177,11 @@ class MainActivity : Activity() {
         shortcuts.addView(button("오늘 일정",false) { answerHome("오늘 일정") },LinearLayout.LayoutParams(0,dp(48),1f))
         shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
         body.addView(shortcuts)
+        val company=selectedCompany();val uid=account?.userId
+        val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(10),0,dp(8)) })
+        if(company!=null && uid!=null && (state==null || (!state.loading && !state.error && System.currentTimeMillis()-state.loadedAt>=300_000L)))
+            handler.post { if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role && chatId==null && !settingsOpen) loadDailyAssistant() }
         if(selectedCompany()?.role=="관리자") {
             addButton(body,"매출 · 수익 보기",false) { openNativeFeature("profit") }
         }
@@ -3209,7 +3285,10 @@ class MainActivity : Activity() {
         row.addView(photo,LinearLayout.LayoutParams(dp(44),dp(44)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
-        scroll.post { if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN) }
+        scroll.post {
+            if(openDailyOnReady && state!=null && !state.loading) { scroll.fullScroll(View.FOCUS_UP);openDailyOnReady=false }
+            else if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN)
+        }
     }
 
     private fun renderChat(id: String) {
@@ -3359,7 +3438,7 @@ class MainActivity : Activity() {
         }
     }
     private fun signOut() {
-        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false

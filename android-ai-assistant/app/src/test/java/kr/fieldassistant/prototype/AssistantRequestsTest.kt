@@ -9,6 +9,10 @@ class AssistantRequestsTest {
             assertEquals(text,"briefing",AssistantRequests.parse(text,monday).kind)
         assertNotEquals("briefing",AssistantRequests.parse("오늘 할 일 취소해줘",monday).kind)
     }
+    @Test fun wrapUpIntentDoesNotExecuteAWrite() {
+        for(text in listOf("현장 마무리 도와줘","작업 끝났어","이 현장 작업 마쳤어")) assertEquals(text,"wrap_up",AssistantRequests.parse(text,monday).feature)
+        assertNotEquals("wrap_up",AssistantRequests.parse("작업 완료 처리해줘",monday).feature)
+    }
     @Test fun materialPreparationIsReadOnly() {
         assertEquals("materials",AssistantRequests.parse("그 현장 자재 준비 현황 알려줘",monday).feature)
         assertNotEquals("materials",AssistantRequests.parse("그 현장 자재 반출해줘",monday).feature)

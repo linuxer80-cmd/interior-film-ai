@@ -47,6 +47,8 @@ internal object AssistantRequests {
             return Request("site_action",feature="gallery",query=kind)
         }
         val siteAction=when {
+            Regex("마무리|마쳤|끝났|끝냈|끝냈어|작업끝|시공끝").containsMatchIn(compact) &&
+                !Regex("삭제|취소|발송|보내|승인|완료처리|등록").containsMatchIn(compact) -> "wrap_up"
             (compact.contains("현장") || compact.contains("준비") || compact.startsWith("거기")) &&
                 (compact.contains("자재") || compact.contains("필름")) && Regex("준비|재고|반출|반입").containsMatchIn(compact) &&
                 Regex("현황|확인|알려|보여|준비할|뭐|살펴").containsMatchIn(compact) &&
