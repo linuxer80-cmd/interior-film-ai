@@ -33,6 +33,7 @@ export default function AccountDeletionPage() {
     <h2>보존 및 기기 자료</h2>
     <p>법령상 보존해야 하는 결제·거래 기록 등은 적용되는 기간 동안 보관할 수 있습니다. 실제 삭제·보관 대상과 기간은 요청을 확인한 후 안내합니다.</p>
     <p>휴대폰에 저장된 원본 통화녹음은 서버 계정 삭제로 지워지지 않습니다. 기기에서 직접 삭제해주세요.</p>
+    <p><Link href="/support/legal/privacy">개인정보처리방침과 보유·삭제 기준 보기</Link></p>
     <Link href="/support">고객지원으로 이동</Link>
   </main>;
 }

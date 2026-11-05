@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import UnifiedLogin from "../login/UnifiedLogin";
 
 export default function StartPage() {
@@ -159,6 +160,8 @@ export default function StartPage() {
 
         <p className="footer">
           기분좋은공간과 함께하는 현장 관리
+          <br />
+          <Link href="/support/legal/privacy">개인정보처리방침</Link>
         </p>
       </section>
 
