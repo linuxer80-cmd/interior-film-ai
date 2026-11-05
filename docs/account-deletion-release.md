@@ -1,6 +1,19 @@
 # Account and company deletion release notes
 
-Status: production database installation verified; application rollout in progress.
+Status: production database and application rollout verified on 2026-11-05.
+
+PR #73 was merged as 09aeaa4f6fe63455eb8938d5e2ad4d61dfce9c8d. Vercel production
+deployment dpl_CJ3sgDrb9fzcmtjEwo3WixPbsqFb reached READY and serves
+https://interior-film-ai.vercel.app/account/delete. Both execution and retry
+switches are enabled for production only.
+
+Production verification confirmed the rendered sign-in gate and HTTP 200 page;
+unauthenticated GET/POST, invalid-token GET and unauthenticated retry GET each
+returned 401 with Cache-Control: no-store. Existing account/company/site/file
+counts were unchanged; there were no deletion requests or frozen companies.
+No existing production account or company was deleted. Actual destructive
+integration tests were run only with disposable fixtures in the isolated test
+project, not by submitting an existing production user's deletion form.
 
 The authenticated POST binds the request to the signed-in subject. Supported
 minimal personal accounts and supported last-owner company scopes use the real
@@ -36,6 +49,20 @@ also gates execution through the user-facing POST; neither defaults to enabled.
 - Hosted concurrent retry: two workers attempted the same failed request; exactly
   one completed and one returned busy. Both fixture cleanup checks passed.
 - Fixture users, request and files were removed; the probe endpoint was retired.
+- Isolated hosted company test used the actual request handler and processor,
+  without eligibility overrides: populated company/site/business/media, company
+  file and owner Auth/avatar were removed, while another member's Auth/avatar
+  remained and their profile was detached. The durable receipt and fixture
+  teardown were verified; the probe was retired.
+
+## Remaining support boundaries
+
+Automatic deletion is not yet a general solution for every existing account or
+company. Company workers/settings and other tables outside the explicit contract,
+populated personal histories, ordinary URL aliases and unverified legacy file
+ownership still require additional implementation or ownership review. These
+requests remain review_required before destructive work. Do not describe this
+release as complete automatic deletion support for all existing companies.
 
 ## Release dependencies
 
