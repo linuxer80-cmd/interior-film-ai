@@ -14,6 +14,15 @@ class AssistantRequestsTest {
         assertNotEquals("materials",AssistantRequests.parse("그 현장 자재 반출해줘",monday).feature)
         assertNull(SampleSearch.parse("그 현장 S115 필름 재고 보여줘"))
     }
+    @Test fun sitePhotoRequestsStayInTheAssistant() {
+        assertEquals("gallery",AssistantRequests.parse("청라 현장 사진 보여줘",monday).feature)
+        assertEquals("before",AssistantRequests.parse("그 현장 시공 전 사진 보여줘",monday).query)
+        assertEquals("after",AssistantRequests.parse("현장 완료 사진 확인해줘",monday).query)
+        assertEquals("request",AssistantRequests.parse("고객 요청 사진 보여줘",monday).query)
+        assertNotEquals("gallery",AssistantRequests.parse("현장 사진 삭제해줘",monday).feature)
+        assertNotEquals("gallery",AssistantRequests.parse("사진 견적 보여줘",monday).feature)
+        assertNull(SampleSearch.parse("현대 현장 사진 보여줘"))
+    }
     @Test fun understandsWeeklySitesAndFollowup() {
         val r=AssistantRequests.parse("이번주현장 알려줘",monday)
         assertEquals("schedule",r.kind);assertEquals("2026-11-02",r.from);assertEquals("2026-11-08",r.to)

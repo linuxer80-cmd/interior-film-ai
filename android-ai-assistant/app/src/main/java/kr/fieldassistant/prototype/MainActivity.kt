@@ -1772,8 +1772,8 @@ class MainActivity : Activity() {
         if(!prefs.edit().putString("records",items.toString()).commit()) { message("입력 내용을 보관하지 못했습니다.");return }
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
-    private fun openSiteAction(companyId:String, siteId:String, action:String) {
-        if(action !in listOf("phone","navigate","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
+    private fun openSiteAction(companyId:String, siteId:String, action:String,photoType:String="all") {
+        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
@@ -1790,6 +1790,12 @@ class MainActivity : Activity() {
                     .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
                 if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
                 when(action) {
+                    "gallery" -> {
+                        val photos=auth.assistantSitePhotos(uid,companyId,siteId,!owner,photoType,0)
+                        if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || selectedCompany()?.role!=company.role || !active) return@launch
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
+                        showSitePhotoGallery(uid,company,siteId,name,photos)
+                    }
                     "materials" -> {
                         val stock=auth.filmStock(uid,companyId,siteId)
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
@@ -1856,6 +1862,111 @@ class MainActivity : Activity() {
     private fun nativeSiteSelectionValid(uid:String,company:CompanyAccess,siteId:String):Boolean =
         account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role &&
             prefs.getString("selected_site_company",null)==company.id && prefs.getString("selected_site_id",null)==siteId
+    private fun sitePhotoSessionValid(uid:String,company:CompanyAccess):Boolean =
+        active && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role
+
+    /** A private signed URL is loaded only from this project's Storage and is never cached or logged. */
+    private fun decodeSitePhoto(url:String,companyId:String,siteId:String,maxEdge:Int):Bitmap? {
+        if(!SitePhotoUrl.allowed(url,SUPABASE_URL,companyId,siteId)) return null
+        val c=SecureTransport.open(url)
+        try {
+            c.instanceFollowRedirects=false;c.connectTimeout=15000;c.readTimeout=30000
+            if(c.responseCode!=200 || !c.contentType.orEmpty().lowercase(Locale.ROOT).startsWith("image/")) return null
+            val bytes=c.inputStream.use { SecureTransport.readBounded(it,20*1024*1024) }
+            val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+            BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+            if(bounds.outWidth<=0 || bounds.outHeight<=0 || bounds.outWidth.toLong()*bounds.outHeight>100_000_000L) return null
+            var sample=1
+            while(bounds.outWidth/sample>maxEdge || bounds.outHeight/sample>maxEdge) sample*=2
+            val bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=sample }) ?: return null
+            val orientation=try { android.media.ExifInterface(java.io.ByteArrayInputStream(bytes)).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_NORMAL) } catch(_:Exception) { android.media.ExifInterface.ORIENTATION_NORMAL }
+            val matrix=android.graphics.Matrix()
+            when(orientation) {
+                android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f,1f)
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+                android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f,-1f)
+                android.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.setRotate(90f);matrix.postScale(-1f,1f) }
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+                android.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.setRotate(270f);matrix.postScale(-1f,1f) }
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
+            }
+            return if(matrix.isIdentity) bitmap else Bitmap.createBitmap(bitmap,0,0,bitmap.width,bitmap.height,matrix,true).also { if(it!==bitmap) bitmap.recycle() }
+        } finally { c.disconnect() }
+    }
+    private fun requestSitePhotoPage(uid:String,company:CompanyAccess,siteId:String,siteName:String,type:String,page:Int,previous:AlertDialog?=null) {
+        if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return }
+        if(workerActionBusy) { message("사진을 불러오고 있습니다. 잠시 기다려 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val result=auth.assistantSitePhotos(uid,company.id,siteId,company.role=="시공자",type,page)
+                if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company) && (previous==null || previous.isShowing)) {
+                    previous?.dismiss();showSitePhotoGallery(uid,company,siteId,siteName,result)
+                }
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "사진을 불러오지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
+    }
+    private fun showSitePhotoGallery(uid:String,company:CompanyAccess,siteId:String,siteName:String,data:JSONObject) {
+        if(!sitePhotoSessionValid(uid,company)) return
+        val type=data.optString("type","all");val page=data.optInt("page",0);val photos=data.getJSONArray("photos")
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(12)) }
+        val tabs=HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false }
+        val bar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        listOf("all" to "전체","request" to "고객 요청","before" to "시공 전","after" to "시공 완료").forEach { (value,title) ->
+            bar.addView(Button(this).apply { text=(if(value==type) "✓ " else "")+title;isAllCaps=false;setOnClickListener {
+                if(value!=type) requestSitePhotoPage(uid,company,siteId,siteName,value,0,box.tag as? AlertDialog)
+            } })
+        };tabs.addView(bar);box.addView(tabs)
+        box.addView(text("${page+1}쪽 · 사진을 누르면 크게 볼 수 있습니다.",13f))
+        if(photos.length()==0) box.addView(text("이 현장에 표시할 사진이 없습니다.",16f))
+        val pending=mutableListOf<Pair<ImageView,String>>()
+        var row:LinearLayout?=null
+        for(i in 0 until photos.length()) {
+            val p=photos.getJSONObject(i)
+            if(i%2==0) { row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL };box.addView(row) }
+            val kind=when(p.optString("type")) { "request"->"고객 요청";"before"->"시공 전";"after"->"시공 완료";else->"사진" }
+            val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(4),dp(6),dp(4),dp(6)) }
+            val pic=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP;setBackgroundColor(Color.rgb(232,235,232));contentDescription=kind+" 사진 크게 보기" }
+            card.addView(pic,LinearLayout.LayoutParams(-1,dp(125)))
+            val whenText=p.optString("created_at").takeUnless { it.isBlank() || it=="null" }?.take(10).orEmpty()
+            card.addView(text(kind+(if(whenText.isBlank()) "" else " · $whenText"),13f,true))
+            val url=if(p.isNull("url")) "" else p.optString("url")
+            if(url.isBlank()) card.addView(text("사진을 불러올 수 없습니다",12f))
+            else {
+                pending.add(pic to url)
+                card.setOnClickListener { showLargeSitePhoto(uid,company,siteId,kind,url) }
+            }
+            row?.addView(card,LinearLayout.LayoutParams(0,-2,1f))
+            if(i%2==0 && i==photos.length()-1) row?.addView(View(this),LinearLayout.LayoutParams(0,1,1f))
+        }
+        val footer=LinearLayout(this)
+        if(page>0) footer.addView(Button(this).apply { text="이전";setOnClickListener { requestSitePhotoPage(uid,company,siteId,siteName,type,page-1,box.tag as? AlertDialog) } },LinearLayout.LayoutParams(0,-2,1f))
+        if(data.optBoolean("hasMore") && page<999) footer.addView(Button(this).apply { text="더 보기";setOnClickListener { requestSitePhotoPage(uid,company,siteId,siteName,type,page+1,box.tag as? AlertDialog) } },LinearLayout.LayoutParams(0,-2,1f))
+        box.addView(footer)
+        val dialog=AlertDialog.Builder(this).setTitle("$siteName · 현장 사진").setView(ScrollView(this).apply { addView(box) }).setPositiveButton("닫기",null).create()
+        box.tag=dialog;dialog.show();val epoch=sessionEpoch
+        scope.launch {
+            for((view,url) in pending) {
+                if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) break
+                val bitmap=withContext(Dispatchers.IO) { try { decodeSitePhoto(url,company.id,siteId,600) } catch(_:Exception) { null } }
+                if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { bitmap?.recycle();break }
+                if(bitmap!=null) view.setImageBitmap(bitmap) else view.contentDescription="사진을 불러오지 못했습니다. 목록을 다시 열어 주세요."
+            }
+        }
+    }
+    private fun showLargeSitePhoto(uid:String,company:CompanyAccess,siteId:String,title:String,url:String) {
+        if(!sitePhotoSessionValid(uid,company) || !SitePhotoUrl.allowed(url,SUPABASE_URL,company.id,siteId)) return
+        val image=ImageView(this).apply { adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;minimumHeight=dp(240);contentDescription="$title 사진" }
+        val dialog=AlertDialog.Builder(this).setTitle(title).setView(image).setPositiveButton("닫기",null).create()
+        dialog.show();val epoch=sessionEpoch
+        scope.launch {
+            val bitmap=withContext(Dispatchers.IO) { try { decodeSitePhoto(url,company.id,siteId,1800) } catch(_:Exception) { null } }
+            if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { bitmap?.recycle();return@launch }
+            if(bitmap!=null) image.setImageBitmap(bitmap) else message("사진을 열지 못했습니다. 목록을 다시 열어 주세요.")
+        }
+    }
     private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String)
     private var reportPhotoRequest:ReportPhotoRequest?=null
     private fun pickReportPhoto(request:ReportPhotoRequest) {
@@ -2842,10 +2953,11 @@ class MainActivity : Activity() {
                     "phone" -> "${currentName} 현장의 전화 연결을 준비합니다."
                     "navigate" -> "${currentName} 현장의 길 안내를 준비합니다."
                     "materials" -> "${currentName} 현장의 자재와 반출 이력을 확인합니다."
+                    "gallery" -> "${currentName} 현장의 사진을 불러옵니다."
                     else -> "${currentName} 현장의 입력 화면을 엽니다. 시공자로 배정된 계정에서 입력할 수 있습니다."
                 }
                 appendHomeMessage(actionMessage);render()
-                openSiteAction(company.id,id,request.feature);return
+                openSiteAction(company.id,id,request.feature,if(request.feature=="gallery") request.query.ifBlank { "all" } else "all");return
             }
             "profit" -> { lookupProfit(request);return }
             "schedule","sites","detail" -> { lookupSites(request);return }

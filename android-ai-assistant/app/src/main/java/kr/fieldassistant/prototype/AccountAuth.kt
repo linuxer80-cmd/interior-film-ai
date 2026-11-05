@@ -237,6 +237,34 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantSitePhotos(expectedUser:String,companyId:String,siteId:String,workerView:Boolean,type:String,page:Int):JSONObject {
+        val verified=verify()
+        val role=if(workerView) "시공자" else "관리자"
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role==role }) { "계정과 현장 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in listOf("all","request","before","after") && page in 0..999)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/assistant/site-photos?siteId=$siteId&type=$type&page=$page")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId)
+                c.setRequestProperty("X-Assistant-View",if(workerView) "worker" else "owner");c.setRequestProperty("Cache-Control","no-store")
+                val code=c.responseCode
+                val raw=(if(code in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299) { if(code==404 || code==405) "현장 사진 보기 기능이 서버에 아직 적용되지 않았습니다." else result.optString("error").ifBlank { "사진을 불러오지 못했습니다." } }
+                check(result.optString("siteId")==siteId && result.optString("companyId")==companyId && result.optString("type")==type && result.optInt("page",-1)==page && result.opt("hasMore") is Boolean) { "현장 사진 응답을 확인하지 못했습니다." }
+                val photos=result.optJSONArray("photos") ?: error("현장 사진 목록을 확인하지 못했습니다.")
+                check(photos.length()<=12)
+                for(i in 0 until photos.length()) {
+                    val item=photos.optJSONObject(i) ?: error("사진 정보를 확인하지 못했습니다.")
+                    check(Regex("^[0-9a-fA-F-]{36}$").matches(item.optString("id")) && item.optString("type") in listOf("request","before","after")) { "사진 정보를 확인하지 못했습니다." }
+                    if(!item.isNull("url")) check(SitePhotoUrl.allowed(item.optString("url"),SUPABASE_URL,companyId,siteId)) { "사진 주소를 확인하지 못했습니다." }
+                }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun dealerInventory(expectedUser:String,companyId:String,body:JSONObject?=null):JSONObject {
         val user=client.auth.retrieveUserForCurrentSession()
         val owners=JSONArray(client.postgrest.rpc("get_my_company").data)
