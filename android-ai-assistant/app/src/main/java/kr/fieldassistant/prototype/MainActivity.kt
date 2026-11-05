@@ -50,7 +50,7 @@ import java.util.UUID
 import java.text.SimpleDateFormat
 import java.util.Date
 
-/** Local-only test companion: never uploads audio or transcript. */
+/** Construction assistant: server analysis is started only after an explicit user action. */
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
@@ -357,7 +357,7 @@ class MainActivity : Activity() {
         if(requestCode==1004) {
             val company=selectedCompany()
             val uri=data?.data
-            if(resultCode==RESULT_OK && uri!=null && uri.scheme=="content" && company?.role=="관리자" && company.id==audioPickerCompany) analyzeSelectedRecording(uri,company)
+            if(resultCode==RESULT_OK && uri!=null && uri.scheme=="content" && company?.role=="관리자" && company.id==audioPickerCompany) chooseRecordingAnalysis(uri,company)
             audioPickerCompany=null
             return
         }
@@ -1611,7 +1611,18 @@ class MainActivity : Activity() {
         val picker=Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try { startActivityForResult(picker,1004) } catch(_:Exception) { audioPickerCompany=null;message("녹음 파일 선택창을 열지 못했습니다.") }
     }
-    private fun analyzeSelectedRecording(uri:Uri,company:CompanyAccess) {
+    private fun confirmCloudRecording(uri:Uri,company:CompanyAccess) {
+        AlertDialog.Builder(this).setTitle("서버 AI로 통화 분석")
+            .setMessage("선택한 녹음을 서버에 임시 업로드하고 OpenAI 음성 분석 서비스로 전송합니다. 분석 비용이 발생할 수 있습니다. 통화 내용과 개인정보를 확인한 뒤 진행해 주세요. 처리가 끝나면 임시 업로드 파일의 삭제를 시도합니다. (최대 25MB)")
+            .setNegativeButton("취소",null).setPositiveButton("전송하고 분석") { _,_ -> analyzeSelectedRecording(uri,company) }.show()
+    }
+    private fun chooseRecordingAnalysis(uri:Uri,company:CompanyAccess) {
+        AlertDialog.Builder(this).setTitle("통화 분석 방법")
+            .setItems(arrayOf("휴대폰에서 분석", "서버 AI로 자세히 분석")) { _,which ->
+                if(which==0) analyzeRecordingLocally(uri,company) else confirmCloudRecording(uri,company)
+            }.setNegativeButton("취소",null).show()
+    }
+    private fun analyzeRecordingLocally(uri:Uri,company:CompanyAccess) {
         val uid=account?.userId ?: return
         if(textAnalysisBusy || !BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
         textAnalysisBusy=true;val epoch=sessionEpoch
@@ -1625,16 +1636,42 @@ class MainActivity : Activity() {
                     }
                 }
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
-                if(result.text.isBlank()) error("empty recording")
-                val content=result.text.take(20000)
-                val notice=if(result.truncated || result.text.length>20000) "\n\n긴 녹음은 앞부분만 분석했습니다." else ""
+                val content=result.text.trim()
+                check(content.isNotBlank()) { "녹음에서 음성을 찾지 못했습니다." }
+                if(content.length>20000) { appendHomeMessage("통화 내용이 너무 길어 자동 정리할 수 없습니다. 더 짧은 녹음으로 나누어 다시 분석해 주세요.");return@launch }
+                val notice=if(result.truncated) "\n\n긴 녹음은 앞부분만 변환했습니다." else ""
                 AlertDialog.Builder(this@MainActivity).setTitle("인식한 통화 내용 확인")
-                    .setMessage(content+notice+"\n\n이 내용을 서버로 보내 AI 분석할까요?")
+                    .setMessage(content+notice+"\n\n이 내용을 서버 AI로 정리해 현장 등록 초안을 만들까요?")
                     .setNegativeButton("취소",null).setPositiveButton("AI 분석") { _,_ ->
                         if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) analyzeSiteText(content,company)
                     }.show()
             } catch(e:CancellationException) { throw e }
-              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("녹음 내용을 읽지 못했습니다. 파일을 확인한 뒤 다시 선택해 주세요.") }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("휴대폰에서 녹음을 분석하지 못했습니다. 서버 AI 분석을 선택하거나 파일을 확인해 주세요.") }
+            finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
+        }
+    }
+    private fun analyzeSelectedRecording(uri:Uri,company:CompanyAccess) {
+        val uid=account?.userId ?: return
+        if(textAnalysisBusy || !BackgroundCalls.running.compareAndSet(false,true)) { message("다른 녹음을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.");return }
+        textAnalysisBusy=true;val epoch=sessionEpoch
+        appendHomeMessage("선택한 녹음을 서버에서 글자로 변환하고 있습니다.");render()
+        scope.launch {
+            try {
+                val result=auth.transcribeSiteRecording(uid,company.id,uri)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                val content=result.optString("transcript").trim()
+                check(content.isNotBlank()) { "녹음에서 음성을 찾지 못했습니다." }
+                if(content.length>20000) {
+                    appendHomeMessage("통화 내용이 너무 길어 자동 정리할 수 없습니다. 더 짧은 녹음으로 나누어 다시 분석해 주세요.")
+                    return@launch
+                }
+                AlertDialog.Builder(this@MainActivity).setTitle("인식한 통화 내용 확인")
+                    .setMessage(content+"\n\n이 내용을 서버 AI로 정리해 현장 등록 초안을 만들까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("AI 분석") { _,_ ->
+                        if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id) analyzeSiteText(content,company,result)
+                    }.show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage(if(e is IllegalArgumentException || e is IllegalStateException) e.message?.take(200) ?: "녹음 분석에 실패했습니다." else "녹음 분석에 실패했습니다. 파일과 연결 상태를 확인해 주세요.") }
             finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
         }
     }
@@ -1647,7 +1684,7 @@ class MainActivity : Activity() {
         appendHomeMessage("통화·문자·카톡 내용을 아래에 붙여넣어 보내 주세요. 보낸 내용은 AI 분석을 위해 서버로 전송됩니다. 취소하려면 ‘취소’라고 입력해 주세요.")
         render()
     }
-    private fun analyzeSiteText(content:String,company:CompanyAccess) {
+    private fun analyzeSiteText(content:String,company:CompanyAccess,recording:JSONObject?=null) {
         val uid=account?.userId ?: return
         if(textAnalysisBusy) { appendHomeMessage("상담 내용을 분석하고 있습니다. 잠시 기다려 주세요.");render();return }
         if(content.length !in 5..20000) { appendHomeMessage("상담 내용은 5자 이상 20,000자 이하로 입력해 주세요.");render();return }
@@ -1657,6 +1694,9 @@ class MainActivity : Activity() {
             try {
                 val data=auth.analyzeSiteText(uid,company.id,content)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                if(recording!=null) for(key in listOf("customer_name","customer_phone")) {
+                    if(data.optString(key).let { it.isBlank() || it=="null" }) recording.optString(key).takeIf { it.isNotBlank() && it!="null" }?.let { data.put(key,it) }
+                }
                 presentAnalyzedSite(data,company,"phone")
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("상담 내용을 분석하지 못했습니다. 연결을 확인한 후 다시 보내 주세요.") }
@@ -2385,6 +2425,42 @@ class MainActivity : Activity() {
     private fun displaySiteDate(value:String):String = try {
         java.time.OffsetDateTime.parse(value).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString()
     } catch(_:Exception) { value.takeIf { it.isNotBlank() } ?: "미등록" }
+    private fun lookupBriefing(request:AssistantRequests.Request) {
+        if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 잠시 기다려 주세요.");render();return }
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val epoch=sessionEpoch;lookupBusy=true
+        appendHomeMessage("오늘의 현장과 확인할 정보를 살펴보고 있습니다.");render()
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(uid,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id) return@launch
+                val rows=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
+                fun value(row:JSONObject,key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
+                fun id(row:JSONObject)=value(row,"id").ifBlank { value(row,"site_id") }
+                val scheduled=JSONArray()
+                rows.filter { value(it,"status") in listOf("scheduled","in_progress") }.forEach { scheduled.put(it) }
+                val ids=ScheduleDates.fromSites(scheduled,request.from,request.to).map { it.id.substringAfter('/') }.toSet()
+                val today=rows.filter { id(it) in ids }
+                val resultRows=JSONArray()
+                today.forEach { row -> resultRows.put(JSONObject().put("id",id(row)).put("name",value(row,"site_name").ifBlank { "이름 없는 현장" })
+                    .put("status",siteStatus(value(row,"status"))).put("address",value(row,"address").ifBlank { "주소 미등록" })) }
+                val lines=mutableListOf("오늘 시공 일정 ${today.size}건")
+                today.filter { value(it,"address").isBlank() }.takeIf { it.isNotEmpty() }?.let { lines.add("주소 확인 필요: "+it.joinToString(", ") { row -> value(row,"site_name").ifBlank { "이름 없는 현장" } }) }
+                today.filter { value(it,"work_description").isBlank() }.takeIf { it.isNotEmpty() }?.let { lines.add("시공 내용 확인 필요: "+it.joinToString(", ") { row -> value(row,"site_name").ifBlank { "이름 없는 현장" } }) }
+                if(company.role=="관리자") {
+                    val consulting=rows.count { value(it,"status")=="consulting" }
+                    lines.add("상담중 현장 ${consulting}건 · 현장 목록에서 진행 상태를 확인해 주세요.")
+                }
+                appendHomeMessage(lines.joinToString("\n"))
+                if(today.isNotEmpty()) appendHomeMessage("",result=JSONObject().put("kind","sites").put("title","오늘 시공 현장")
+                    .put("subtitle",company.name+" · "+request.from+" · 조회 시점 기준").put("company_id",company.id)
+                    .put("total",today.size).put("rows",resultRows))
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch) appendHomeMessage("오늘의 현장을 확인하지 못했습니다. 연결과 로그인 상태를 확인해 주세요.") }
+            finally { if(epoch==sessionEpoch) { lookupBusy=false;render() } }
+        }
+    }
     private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null, offset:Int=0) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
@@ -2635,6 +2711,7 @@ class MainActivity : Activity() {
         }
         val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
         when(request.kind) {
+            "briefing" -> { lookupBriefing(request);return }
             "site_action" -> {
                 val company=selectedCompany() ?: return
                 val history=JSONArray(prefs.getString("home_chat","[]"))
@@ -3167,6 +3244,10 @@ class MainActivity : Activity() {
             }
             if(status=="분석 대기" && id !in offlineQueued) card.addView(text("현재 실행 중인 분석이 아닙니다. 다시 분석을 눌러 시작해 주세요.",13f))
             val summary=item.optString("summary"); if(summary.isNotBlank()) card.addView(text(summary,13f))
+            if(id.startsWith("content:") && selectedCompany()?.role=="관리자") addButton(card,"서버 AI로 통화 분석",false) {
+                val company=selectedCompany()
+                if(company?.role=="관리자") confirmCloudRecording(Uri.parse(id),company)
+            }
             if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
             if(status=="현장 등록 완료") addButton(card,"상담 대화 보기",false) { showRegistrationConfirmation(id) }
             if(status=="확인 필요") {

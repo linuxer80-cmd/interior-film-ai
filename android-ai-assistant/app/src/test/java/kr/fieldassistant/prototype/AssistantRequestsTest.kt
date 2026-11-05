@@ -4,6 +4,11 @@ import org.junit.Assert.*
 import org.junit.Test
 class AssistantRequestsTest {
     private val monday=LocalDate.of(2026,11,2)
+    @Test fun briefingRequestsDoNotExecuteChanges() {
+        for(text in listOf("오늘 내가 챙겨야 할 현장 알려줘", "오늘 할 일 알려줘", "오늘 어디 가고 무슨 작업해"))
+            assertEquals(text,"briefing",AssistantRequests.parse(text,monday).kind)
+        assertNotEquals("briefing",AssistantRequests.parse("오늘 할 일 취소해줘",monday).kind)
+    }
     @Test fun understandsWeeklySitesAndFollowup() {
         val r=AssistantRequests.parse("이번주현장 알려줘",monday)
         assertEquals("schedule",r.kind);assertEquals("2026-11-02",r.from);assertEquals("2026-11-08",r.to)
@@ -116,7 +121,7 @@ class AssistantRequestsTest {
         assertEquals("navigate",AssistantRequests.parse("그 현장 네비 켜줘",monday).feature)
         assertNotEquals("phone",AssistantRequests.parse("새로운 전화 아니요",monday).feature)
         val todayTasks=AssistantRequests.parse("오늘 할 일 알려줘",monday)
-        assertEquals("schedule",todayTasks.kind)
+        assertEquals("briefing",todayTasks.kind)
         assertEquals(monday.toString(),todayTasks.from)
         assertEquals(monday.toString(),todayTasks.to)
     }

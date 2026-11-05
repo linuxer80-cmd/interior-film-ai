@@ -1,6 +1,8 @@
 package kr.fieldassistant.prototype
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -82,6 +84,7 @@ internal data class CompanyAccess(val id: String, val name: String, val role: St
 internal data class VerifiedAccount(val userId: String, val companies: List<CompanyAccess>)
 
 internal class AccountAuth private constructor(context: Context) {
+    private val appContext=context.applicationContext
     companion object {
         @Volatile private var instance: AccountAuth?=null
         fun shared(context: Context): AccountAuth = instance ?: synchronized(this) {
@@ -305,6 +308,66 @@ internal class AccountAuth private constructor(context: Context) {
                 check(code in 200..299 && result.optBoolean("success")) { "상담 내용을 분석하지 못했습니다. 로그인과 연결 상태를 확인해 주세요." }
                 result.optJSONObject("data") ?: error("분석 결과를 확인하지 못했습니다.")
             } finally { c.disconnect() }
+        }
+    }
+    /** Uploads only an explicitly selected recording, then removes its temporary object. */
+    suspend fun transcribeSiteRecording(expectedUser:String,companyId:String,uri:Uri):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(uri.scheme=="content")
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val resolver=appContext.contentResolver
+            val name=resolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use { c ->
+                if(c.moveToFirst()) c.getString(0) else null
+            }.orEmpty().take(255)
+            val ext=name.substringAfterLast('.',"").lowercase(Locale.ROOT)
+            require(ext in setOf("m4a","mp3","mp4","wav","webm","mpeg","mpga")) { "지원하는 녹음 형식은 m4a, mp3, mp4, wav, webm, mpeg, mpga입니다." }
+            val bytes=resolver.openInputStream(uri)?.use { input ->
+                val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var n:Int
+                while(input.read(buffer).also { n=it }!=-1) {
+                    require(out.size()+n<=25*1024*1024) { "녹음 파일은 25MB 이하여야 합니다." }
+                    out.write(buffer,0,n)
+                }
+                out.toByteArray()
+            } ?: error("녹음 파일을 읽지 못했습니다. 다시 선택해 주세요.")
+            require(bytes.isNotEmpty()) { "녹음 파일이 비어 있습니다." }
+            fun api(method:String,path:String,body:JSONObject):JSONObject {
+                val c=SecureTransport.open("https://interior-film-ai.vercel.app"+path)
+                try {
+                    c.instanceFollowRedirects=false;c.requestMethod=method;c.connectTimeout=15000;c.readTimeout=120000;c.doOutput=true
+                    c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json")
+                    c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                    val code=c.responseCode
+                    val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                    check(code in 200..299) { result.optString("error").ifBlank { "녹음 분석 요청에 실패했습니다. ($code)" } }
+                    return result
+                } finally { c.disconnect() }
+            }
+            val prepared=api("POST","/api/admin/site-call-upload",JSONObject().put("fileName",name).put("size",bytes.size))
+            val bucket=prepared.optString("bucket");val path=prepared.optString("path");val signed=prepared.optString("token")
+            val expectedPrefix="$companyId/$expectedUser/"
+            check(bucket=="site-call-audio-private" && path.startsWith(expectedPrefix) &&
+                Regex("^[0-9a-fA-F-]{36}\\.(m4a|mp3|mp4|wav|webm|mpeg|mpga)$").matches(path.removePrefix(expectedPrefix)) &&
+                path.substringAfterLast('.')==ext && signed.isNotBlank()) { "녹음 업로드 권한을 확인하지 못했습니다." }
+            try {
+                val uploadUrl=SUPABASE_URL.trimEnd('/')+"/storage/v1/object/upload/sign/"+bucket+"/"+
+                    path.split('/').joinToString("/") { Uri.encode(it) }+"?token="+Uri.encode(signed)
+                val c=SecureTransport.open(uploadUrl)
+                try {
+                    c.instanceFollowRedirects=false;c.requestMethod="PUT";c.connectTimeout=15000;c.readTimeout=120000;c.doOutput=true
+                    c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY);c.setRequestProperty("Content-Type","application/octet-stream")
+                    c.setRequestProperty("x-upsert","false");c.setFixedLengthStreamingMode(bytes.size)
+                    c.outputStream.use { it.write(bytes) }
+                    check(c.responseCode in 200..299) { "녹음 업로드에 실패했습니다. 연결 상태를 확인해 주세요." }
+                } finally { c.disconnect() }
+                val result=api("POST","/api/admin/transcribe-site-call",JSONObject().put("path",path).put("fileName",name))
+                check(result.optBoolean("success")) { "녹음을 글자로 변환하지 못했습니다." }
+                result.optJSONObject("data") ?: error("음성 변환 결과를 확인하지 못했습니다.")
+            } finally {
+                try { api("DELETE","/api/admin/site-call-upload",JSONObject().put("path",path)) } catch(_:Exception) { /* server also removes temporary audio */ }
+            }
         }
     }
     suspend fun laborMarket(expectedUser:String,companyId:String,workerView:Boolean,page:Int):JSONObject {

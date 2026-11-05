@@ -33,6 +33,9 @@ internal object AssistantRequests {
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")
+        if(!Regex("취소|삭제|변경|등록|발송|보내|배정|완료처리").containsMatchIn(compact) &&
+            ((compact.contains("오늘") && Regex("챙겨|할일|브리핑|준비할|뭐해야").containsMatchIn(compact)) ||
+             compact in listOf("오늘어디가고무슨작업해","오늘어디가고무슨일해","오늘시공브리핑"))) return Request("briefing",from=today.toString(),to=today.toString())
         if(compact in listOf("오늘할일","오늘할일알려줘","오늘할일보여줘","오늘할일뭐야")) return Request("schedule",from=today.toString(),to=today.toString())
         if(compact in listOf("현장등록","새현장등록","신규현장등록","새로운현장등록","현장추가","현장등록해줘","새현장등록해줘")) return Request("feature",feature="new-site")
         if(Regex("현장(?:을|를)?(?:하나|새로|새롭게)?(?:만들|추가|등록|생성)").containsMatchIn(compact)) return Request("feature",feature="new-site")
