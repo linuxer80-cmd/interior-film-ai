@@ -660,11 +660,11 @@ class MainActivity : Activity() {
                 .put("customer_phone",CallSummary.field(summary,"전화번호").ifBlank { CallDraftHints.phone(item.optString("name")) })
                 .put("address",CallSummary.field(summary,"주소").ifBlank { CallDraftHints.area(item.optString("transcript")) })
                 .put("work_description",listOf(CallSummary.field(summary,"공정"),CallSummary.field(summary,"시공 부위")).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { CallDraftHints.work(item.optString("transcript")) })
-                .put("memo",summary.take(3500)).put("source","phone").put("work_dates",JSONArray()).put("materials",JSONArray())
+                .put("memo",CallDraftHints.reviewMemo(summary,item.optString("transcript"))).put("source","phone").put("work_dates",JSONArray()).put("materials",JSONArray())
                 .put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
             if(!changeRecord(id) { it.put("chat_draft",data).put("chat_company",company.id).put("call_hints_applied",true) }) { message("대화를 저장하지 못했습니다.");return }
             if(consultationDisposition(item)=="active") {
-            chatMessage(id,"새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n\n${company.name}의 현장에 등록할까요? 아래 등록 내용을 확인하고 ‘네’ 또는 ‘그래’라고 답해 주세요. 인식 오류는 ‘등록 내용 수정’에서 고칠 수 있습니다.")
+            chatMessage(id,"새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n\n${company.name}의 현장에 등록할까요?\n\n저장할 상담 내용:\n${data.optString("memo")}\n\n위 요약 또는 발췌도 저장됩니다. 내용을 확인하고 ‘네’ 또는 ‘그래’라고 답해 주세요. 인식 오류는 ‘등록 내용 수정’에서 고칠 수 있습니다.")
             } else chatMessage(id,if(consultationDisposition(item)=="declined") "등록하지 않기로 한 통화입니다. 자동 등록 안내는 종료되었습니다." else "보류한 통화입니다. 자동 등록 안내는 종료되었습니다.")
         }
         settingsOpen=false;chatId=id;chatInput="";render()
@@ -2385,7 +2385,7 @@ class MainActivity : Activity() {
     private fun displaySiteDate(value:String):String = try {
         java.time.OffsetDateTime.parse(value).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString()
     } catch(_:Exception) { value.takeIf { it.isNotBlank() } ?: "미등록" }
-    private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null) {
+    private fun lookupSites(request:AssistantRequests.Request, targetSiteId:String?=null, offset:Int=0) {
         if(lookupBusy) { appendHomeMessage("앞선 조회가 진행 중입니다. 결과가 나오면 다시 요청해 주세요.");render();return }
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
@@ -2434,9 +2434,10 @@ class MainActivity : Activity() {
                     val tokens=request.query.split(Regex("\\s+")).filter { it.isNotBlank() }
                     rows.filter { site -> val searchable=listOf("site_name","address","address_detail","customer_name","customer_phone").joinToString(" ") { value(site,it) }
                         tokens.all { searchable.contains(it,ignoreCase=true) }
-                    }.sortedBy { value(it,"site_name") }
+                    }.let { SiteListOrder.newestFirst(it) }
                 }
-                val visible=matches.take(if(request.kind=="schedule") 100 else 20)
+                val pageOffset=if(request.kind=="schedule") 0 else offset.coerceIn(0,matches.size)
+                val visible=matches.drop(pageOffset).take(if(request.kind=="schedule") 100 else 20)
                 prefs.edit().putString("assistant_result_company",company.id).putString("assistant_result_ids",JSONArray(visible.map(::id)).toString()).apply()
                 val scope=if(company.role=="관리자") "업체 현장" else "내 배정 현장"
                 val resultRows=JSONArray()
@@ -2447,7 +2448,8 @@ class MainActivity : Activity() {
                 val period=if(request.kind=="schedule") "\n${request.from} ~ ${request.to}" else ""
                 appendHomeMessage("",result=JSONObject().put("kind",request.kind).put("title",title)
                     .put("subtitle","${company.name} · $scope$period\n${matches.size}개 현장 · 조회 시점 기준")
-                    .put("company_id",company.id).put("from",request.from).put("to",request.to).put("total",matches.size).put("rows",resultRows))
+                    .put("company_id",company.id).put("from",request.from).put("to",request.to).put("query",request.query)
+                    .put("offset",pageOffset).put("total",matches.size).put("rows",resultRows))
 
             } catch(e:CancellationException) { throw e }
             catch(_:Exception) { if(epoch==sessionEpoch && selectedCompany()?.id==company.id) appendHomeMessage("현장을 조회하지 못했습니다. 인터넷과 로그인 상태를 확인하고 다시 요청해 주세요.") }
@@ -2739,6 +2741,12 @@ class MainActivity : Activity() {
                 },workerActions=selectedCompany()?.role=="시공자" && selectedCompany()?.id==result.optString("company_id"),
                     ownerActions=selectedCompany()?.role=="관리자" && selectedCompany()?.id==result.optString("company_id"),
                     onAction={ siteId,section -> openSiteAction(result.optString("company_id"),siteId,section) }),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
+                if(result.optString("kind")=="sites" && result.optString("company_id")==selectedCompany()?.id) {
+                    val next=result.optInt("offset",0)+(result.optJSONArray("rows")?.length() ?: 0)
+                    if(next>0 && next<result.optInt("total")) addButton(body,"현장 더 보기 ($next/${result.optInt("total")})",false) {
+                        lookupSites(AssistantRequests.Request("sites",query=result.optString("query")),offset=next)
+                    }
+                }
                 continue
             }
             val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
@@ -2829,12 +2837,18 @@ class MainActivity : Activity() {
         }
         val reg=item.optJSONObject("registration")
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
-        if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목만 저장합니다. 인식한 통화 원문과 녹음은 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
+        if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목과 메모의 통화 발췌는 확인 후 저장합니다. 녹음 파일과 통화 원문 전체는 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
         if(!item.optBoolean("manual_site")) addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
         val paused=consultationDisposition(item)!="active"
-        if(done) body.addView(text("✓ 현장 등록 완료",17f,true))
+        if(done) {
+            body.addView(text("✓ 현장 등록 완료",17f,true))
+            addButton(body,"등록한 현장 바로 열기",false) {
+                if(item.optString("chat_company")!=selectedCompany()?.id) message("등록한 업체로 변경한 뒤 확인해 주세요.")
+                else { chatId=null;lookupSites(AssistantRequests.Request("detail"),item.optString("site_id")) }
+            }
+        }
         if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
         val candidates=reg?.optJSONArray("candidates")
         if(candidates!=null && !busy && !paused && !done) {
