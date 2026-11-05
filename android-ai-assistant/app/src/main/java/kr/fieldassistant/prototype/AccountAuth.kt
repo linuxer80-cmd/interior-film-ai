@@ -821,7 +821,7 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun assistantSites(expectedUser: String, companyId: String, callMatchOnly:Boolean=false): JSONArray {
+    suspend fun assistantSites(expectedUser: String, companyId: String, callMatchOnly:Boolean=false,dailyOnly:Boolean=false): JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser) { "다른 계정입니다." }
         val company=verified.companies.find { it.id==companyId } ?: error("현재 업체 접근 권한이 없습니다.")
@@ -835,7 +835,7 @@ internal class AccountAuth private constructor(context: Context) {
         return withContext(Dispatchers.IO) {
             val result=JSONArray();var offset=0
             while(true) {
-                val fields=if(callMatchOnly) "id,company_id,site_name,address,customer_name,customer_phone" else "id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description,memo,created_at,updated_at"
+                val fields=if(callMatchOnly) "id,company_id,site_name,address,customer_name,customer_phone" else if(dailyOnly) "id,company_id,site_name,address,address_detail,status,work_dates,schedule_start,schedule_end,work_description" else "id,company_id,site_name,address,address_detail,customer_name,customer_phone,status,work_dates,schedule_start,schedule_end,work_description,memo,created_at,updated_at"
                 val url=SUPABASE_URL+"/rest/v1/sites?select="+fields+"&company_id=eq."+companyId+"&order=id.asc&limit=500&offset="+offset
                 val c=SecureTransport.open(url)
                 val batch=try {

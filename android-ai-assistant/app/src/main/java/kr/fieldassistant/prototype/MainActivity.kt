@@ -2734,11 +2734,12 @@ class MainActivity : Activity() {
         if(!force && current!=null && current.uid==uid && current.company==company.id && current.role==company.role && current.date==day &&
             (current.error || System.currentTimeMillis()-current.loadedAt<300_000L)) return
         val epoch=sessionEpoch
-        dailyState=DailyState(uid,company.id,company.role,day,true)
+        val started=DailyState(uid,company.id,company.role,day,true)
+        dailyState=started
         refreshBackgroundUi()
         scope.launch {
             try {
-                val rows=auth.assistantSites(uid,company.id)
+                val rows=auth.assistantSites(uid,company.id,dailyOnly=true)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || ScheduleDates.today()!=day) return@launch
                 val data=DailyAssistant.briefing(rows,company.id,company.role=="관리자",day)
                 val receivableNote=if(company.role=="관리자" && force) {
@@ -2751,7 +2752,10 @@ class MainActivity : Activity() {
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role)
                   dailyState=DailyState(uid,company.id,company.role,day,false,error=true,loadedAt=System.currentTimeMillis()) }
-            finally { if(epoch==sessionEpoch && account?.userId==uid) refreshBackgroundUi() }
+            finally {
+                if(dailyState===started) dailyState=null
+                if(epoch==sessionEpoch && account?.userId==uid) refreshBackgroundUi()
+            }
         }
     }
     private fun dailyCard(company:CompanyAccess,uid:String,state:DailyState):View {
