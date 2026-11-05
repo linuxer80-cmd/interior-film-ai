@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/account/deletion/retry",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/alimtalk/reconcile",
       "schedule": "30 0 * * *"
     },

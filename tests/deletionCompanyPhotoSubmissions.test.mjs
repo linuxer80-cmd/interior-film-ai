@@ -1,0 +1,40 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const co='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',u='00000000-0000-4000-8000-000000000003',l='00000000-0000-4000-8000-000000000004';
+test('pending upload paths and completed provenance protect submission evidence until media removal',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema app_private;create schema storage;
+ create table account_deletion_requests(id uuid,company_deletion_id uuid,user_id uuid,identity_verified boolean,scope text,status text,lease_token uuid,lease_until timestamptz);
+ insert into account_deletion_requests values('${co}','${co}','${u}',true,'personal_account','processing','${l}',now()+interval '5 minutes');
+ create function app_private.authorize_company_cleanup(uuid,uuid) returns void language sql as $$select$$;
+ create function inspect_company_deletion_scope(uuid) returns jsonb language sql as $$select '{}'::jsonb$$;
+ create function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;
+ create table app_private.company_write_freezes(company_id uuid,request_id uuid);insert into app_private.company_write_freezes values('${co}','${co}');
+ create table sites(id uuid primary key,company_id uuid);insert into sites values('${co}','${co}'),('${other}','${other}');
+ create table site_photos(id uuid primary key,company_id uuid,site_id uuid references sites,storage_path text,photo_url text,description text);
+ create table customer_photo_submissions(id uuid primary key,company_id uuid,site_id uuid,photo_count int,status text,photo_ids uuid[],note text);
+ create table storage.objects(bucket_id text,name text);`);
+ const shared=await readFile(new URL('../database/account_deletion_shared_photo_references.sql',import.meta.url),'utf8');
+ await db.exec(shared.slice(0,shared.indexOf('drop trigger'))+'commit;');
+ await db.exec(await readFile(new URL('../database/account_deletion_company_photo_submissions.sql',import.meta.url),'utf8'));
+ const path=`sites/${co}/${co}/request/customer-${co}-0.jpg`;
+ const {createHash}=await import('node:crypto');const hash=createHash('sha256').update(path).digest('hex').slice(0,32);const id=[hash.slice(0,8),hash.slice(8,12),hash.slice(12,16),hash.slice(16,20),hash.slice(20)].join('-');
+ await db.query("insert into customer_photo_submissions values($1,$1,$1,1,'pending','{}','target'),($2,$2,$2,1,'pending','{}','control')",[co,other]);
+ const run=()=>db.query('select delete_company_photo_submissions($1,$2) ok',[co,l]);
+ await db.query("insert into storage.objects values('work-photos',$1)",[path]);await assert.rejects(run(),/files remain/);
+ await db.exec('delete from storage.objects');
+ await db.query('update customer_photo_submissions set site_id=$1 where id=$2',[other,co]);await assert.rejects(run(),/Cross-company/);
+ await db.query('update customer_photo_submissions set site_id=$1 where id=$1',[co]);
+ await db.query('insert into site_photos values($1,$2,$2,$3,null,null)',[id,co,path]);await assert.rejects(run(),/references remain/);
+ await db.exec('delete from site_photos');
+ await db.query("update customer_photo_submissions set status='completed',photo_ids=array[$1::uuid] where company_id=$2",[other,co]);await assert.rejects(run(),/provenance mismatch/);
+ await db.query('update customer_photo_submissions set photo_ids=array[$1::uuid] where company_id=$2',[id,co]);
+ await db.exec('create or replace function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select false$$;');
+ await assert.rejects(run(),/expired/);assert.equal((await db.query('select count(*)::int n from customer_photo_submissions')).rows[0].n,2);assert.equal((await db.query('select count(*)::int n from app_private.company_deleted_photo_paths')).rows[0].n,0);
+ await db.exec('create or replace function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;');
+ assert.equal((await run()).rows[0].ok,true);assert.equal((await run()).rows[0].ok,true);
+ assert.deepEqual((await db.query('select company_id from customer_photo_submissions')).rows,[{company_id:other}]);
+ assert.deepEqual((await db.query('select path from app_private.company_deleted_photo_paths')).rows,[{path}]);
+ await db.query("insert into customer_photo_submissions values($1,$2,$2,1,'pending','{}','interrupted')",[u,co]);
+ assert.equal((await run()).rows[0].ok,true);assert.equal((await db.query('select count(*)::int n from app_private.company_deleted_photo_paths')).rows[0].n,2);
+ }finally{await db.close();}
+});

@@ -1,0 +1,41 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const co='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',user='00000000-0000-4000-8000-000000000003',lease='00000000-0000-4000-8000-000000000004';
+test('durable company write freeze blocks insert/update/delete and transfer while transaction-scoped cleanup remains possible',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema app_private;
+ create table companies(id uuid primary key,updated_at timestamptz);insert into companies values('${co}',now()),('${other}',now());
+ create table account_deletion_requests(id uuid primary key,company_deletion_id uuid,user_id uuid,identity_verified boolean,scope text,status text,lease_token uuid,lease_until timestamptz);
+ insert into account_deletion_requests values('${co}','${co}','${user}',true,'personal_account','processing','${lease}',now()+interval '5 minutes');
+ create function inspect_company_deletion_scope(uuid) returns jsonb language sql as $$select '{}'::jsonb$$;
+ create table sites(id uuid primary key,company_id uuid,name text);insert into sites values('${co}','${co}','target'),('${other}','${other}','control');
+ create table awards(subject_key text);insert into awards values('company:${co}');
+ create table messages(id uuid primary key,site_id uuid references sites on delete cascade,body text);insert into messages values('${co}','${co}','target'),('${other}','${other}','control');
+ create table message_reads(message_id uuid references messages on delete cascade,seen boolean);insert into message_reads values('${co}',false),('${other}',false);
+ alter table sites add unique(id,company_id);
+ create table composite_children(site_ref uuid,tenant_ref uuid,value text,foreign key(site_ref,tenant_ref) references sites(id,company_id) on delete cascade);
+ insert into composite_children values('${co}','${co}','target'),('${other}','${other}','control');`);
+ await db.exec(await readFile(new URL('../database/account_deletion_company_write_freeze.sql',import.meta.url),'utf8'));
+ await assert.rejects(db.query('select freeze_company_direct_writes($1,$2)',[co,user]),/lease required/);
+ const result=(await db.query('select freeze_company_direct_writes($1,$2) value',[co,lease])).rows[0].value;
+ assert.equal(result.directWritesFrozen,true);assert.equal(result.complete,false);
+ for(const sql of [`insert into sites values('${user}','${co}','new')`,`update sites set name='changed' where id='${co}'`,`delete from sites where id='${co}'`,`update sites set company_id='${co}' where id='${other}'`,`update sites set company_id='${other}' where id='${co}'`,`delete from awards where subject_key='company:${co}'`])await assert.rejects(db.exec(sql),/frozen/);
+ for(const sql of [`insert into messages values('${user}','${co}','new')`,`update messages set site_id='${other}' where id='${co}'`,`delete from messages where id='${co}'`,`insert into message_reads values('${co}',true)`,`update message_reads set seen=true where message_id='${co}'`,`delete from message_reads where message_id='${co}'`])await assert.rejects(db.exec(sql),/frozen/);
+ await db.query('update message_reads set seen=true where message_id=$1',[other]);
+ await assert.rejects(db.query('update composite_children set value=$1 where site_ref=$2',['blocked',co]),/frozen/);
+ await assert.rejects(db.query('insert into composite_children values($1,$1,$2)',[co,'blocked']),/frozen/);
+ await db.query('update composite_children set value=$1 where site_ref=$2',['allowed',other]);
+ await db.query('update sites set name=$1 where id=$2',['allowed',other]);
+ await db.exec(`create function late_company() returns trigger language plpgsql as $$begin if new.company_id is null then new.company_id='${co}';end if;return new;end;$$;create trigger bbb_late_company before insert on sites for each row execute function late_company();`);
+ await assert.rejects(db.query('insert into sites(id,name) values($1,$2)',[user,'late bound']),/frozen/);
+ assert.equal((await db.query('select name from sites where id=$1',[other])).rows[0].name,'allowed');
+ await db.exec(`create function test_cleanup(r uuid,l uuid) returns void language plpgsql as $$begin perform app_private.authorize_company_cleanup(r,l);delete from public.sites where company_id='${co}';end;$$;`);
+ await db.query('select test_cleanup($1,$2)',[co,lease]);
+ assert.equal((await db.query('select count(*)::int n from sites')).rows[0].n,1);
+ assert.deepEqual((await db.query('select message_id,seen from message_reads')).rows,[{message_id:other,seen:true}]);
+ assert.deepEqual((await db.query('select site_ref,value from composite_children')).rows,[{site_ref:other,value:'allowed'}]);
+ await assert.rejects(db.exec(`insert into sites values('${co}','${co}','recreated')`),/frozen/);
+ assert.equal((await db.query("select has_function_privilege('service_role','app_private.authorize_company_cleanup(uuid,uuid)','execute') allowed")).rows[0].allowed,false);
+ await db.exec('create table newly_added(company_id uuid)');
+ await assert.rejects(db.query('select freeze_company_direct_writes($1,$2)',[co,lease]),/coverage changed/);
+ }finally{await db.close();}
+});

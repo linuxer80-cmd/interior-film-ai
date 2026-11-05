@@ -503,6 +503,7 @@ export default function WorkerAccount() {
           }}>
             로그아웃
           </button>
+          <p><a href='/account/delete'>계정 및 개인정보 삭제 요청</a></p>
         </>
     }
 

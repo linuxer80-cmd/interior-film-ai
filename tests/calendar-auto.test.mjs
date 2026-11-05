@@ -10,6 +10,11 @@ const user='u',site={site_id:'s',site_name:'테스트',address:'주소',address_
 const window={from:'2026-10-20',to:'2026-10-20',chunks:[{from:'2026-10-20',to:'2026-10-20'}]};
 const event=(await siteCalendarEvents([site],user,window.from,window.to,'https://interior-film-ai.vercel.app'))[0];
 const missing=()=>Object.assign(Error('missing'),{status:404});
+test('automatic sync persists the originating site alongside event identity',async()=>{
+  const c=calendar(),records=[];
+  await reconcileCalendar({token:'x',userId:user,sites:[site],...window,api:c.api,remember:async row=>records.push(row)});
+  assert.deepEqual(records,[{event_id:event.id,work_date:'2026-10-20',site_id:site.site_id}]);
+});
 function calendar(initial=[]) {
   const events=new Map(initial.map(e=>[e.id,structuredClone(e)])),writes=[];
   const api=async(_token,path='',options={})=>{

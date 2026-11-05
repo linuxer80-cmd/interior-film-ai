@@ -234,7 +234,7 @@ export default function JobsPage(){
             <div className='chips'>{j.work_dates?.map(d=><span className='badge' key={d}>{d}</span>)}</div>
             <p>모집 {j.headcount}명 · 확정 {selectedCount(j.id)}명 · 남은 인원 {Math.max(0,j.headcount-selectedCount(j.id))}명</p>
             {!related.some(a=>a.job_id===j.id)?<p>아직 지원자가 없습니다.</p>:related.filter(a=>a.job_id===j.id).map(a=><div key={a.id} className='selected-site'>
-              <div><strong>{a.profile?.name||'시공자'} · {applicationLabel(a)}</strong><PublicAchievementBadge badge={a.profile?.featured_badge}/>
+              <div><strong>{a.profile?.name||(a.user_id?'시공자':'탈퇴한 시공자')} · {applicationLabel(a)}</strong><PublicAchievementBadge badge={a.profile?.featured_badge}/>
               {a.accepted_daily_wage!=null&&<p>확정 일당 {money(a.accepted_daily_wage)}원</p>}</div>
               <div className='applicant-actions'>
                 {a.profile&&<button type='button' onClick={()=>setPerson({...a.profile,application:a})}>프로필 보기</button>}

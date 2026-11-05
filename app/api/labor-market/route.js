@@ -426,7 +426,7 @@ export async function GET(request) {
     }
 
     if (companyId) {
-      const ids = [...new Set(applications.map(a=>a.user_id))];
+      const ids = [...new Set(applications.map(a=>a.user_id).filter(Boolean))];
 
       if(ids.length) {
         const applicantProfiles = await photos(

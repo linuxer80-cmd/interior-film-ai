@@ -1,0 +1,44 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
+const co='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',u='00000000-0000-4000-8000-000000000003',l='00000000-0000-4000-8000-000000000004';
+test('quote deletion rejects unknown documents and cross-tenant links, rolls back late failure and preserves other companies',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema app_private;create schema storage;
+ create table account_deletion_requests(id uuid,company_deletion_id uuid,user_id uuid,identity_verified boolean,scope text,status text,lease_token uuid,lease_until timestamptz);
+ insert into account_deletion_requests values('${co}','${co}','${u}',true,'personal_account','processing','${l}',now()+interval '5 minutes');
+ create function app_private.authorize_company_cleanup(uuid,uuid) returns void language sql as $$select$$;
+ create function inspect_company_deletion_scope(uuid) returns jsonb language sql as $$select '{}'::jsonb$$;
+ create function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;
+ create table app_private.company_write_freezes(company_id uuid,request_id uuid);insert into app_private.company_write_freezes values('${co}','${co}');
+ create table sites(id uuid primary key,company_id uuid);insert into sites values('${co}','${co}'),('${other}','${other}');
+ create table site_completion_estimates(site_id uuid references sites,company_id uuid,document jsonb);
+ create table site_consultation_quotes(site_id uuid references sites,company_id uuid,document jsonb);
+ create table standalone_quotes(id uuid primary key,company_id uuid,linked_site_id uuid references sites,area_document jsonb,cost_document jsonb);
+ create table quote_child(quote_id uuid references standalone_quotes);
+ create table storage.objects(bucket_id text,name text);`);
+ await db.exec(await readFile(new URL('../database/account_deletion_company_quotes.sql',import.meta.url),'utf8'));
+ await db.exec(`create table earlier_business(company_id uuid);insert into earlier_business values('${co}');
+ create function delete_company_business_records(uuid,uuid) returns boolean language plpgsql as $$begin delete from public.earlier_business;return true;end;$$;
+ create function delete_company_trade_records(uuid,uuid) returns boolean language sql as $$select true$$;`);
+ await db.exec(await readFile(new URL('../database/account_deletion_frozen_business.sql',import.meta.url),'utf8'));
+ const safe=async(doc,kind='cost')=>(await db.query('select app_private.deletion_quote_document_safe($1,$2) ok',[JSON.stringify(doc),kind])).rows[0].ok;
+ assert.equal(await safe({items:[{name:'인건비',amount:100}],header:{work_date:'2026-11-05'},pending_items:[]}),true);
+ for(const doc of [{attachment:'abc'},{items:[{name:{image:'abc'}}]},{items:[null]},{header:{photo:'abc'}},{note:'https://example.com/a'},{note:'sites/company/file'},[],{items:'bad'}])assert.equal(await safe(doc),false);
+ await db.query("insert into site_completion_estimates values($1,$1,'{}'),($2,$2,'{}')",[co,other]);
+ await db.query("insert into site_consultation_quotes values($1,$1,'{}'),($2,$2,'{}')",[co,other]);
+ await db.query("insert into standalone_quotes values($1,$1,$1,'{}','{}'),($2,$2,$2,'{}','{}')",[co,other]);
+ const run=()=>db.query('select delete_frozen_company_business_records($1,$2) ok',[co,l]);
+ await db.query('update standalone_quotes set area_document=$1 where id=$2',[JSON.stringify({attachments:['x']}),co]);await assert.rejects(run(),/requires review/);
+ assert.equal((await db.query('select count(*)::int n from earlier_business')).rows[0].n,1);
+ await db.query("update standalone_quotes set area_document='{}',linked_site_id=$1 where id=$2",[other,co]);await assert.rejects(run(),/Cross-company/);
+ await db.query('update standalone_quotes set linked_site_id=$1 where id=$1',[co]);
+ await db.query('insert into quote_child values($1)',[co]);await assert.rejects(run(),/foreign key/);
+ assert.equal((await db.query('select count(*)::int n from earlier_business')).rows[0].n,1);
+ assert.equal((await db.query('select count(*)::int n from site_completion_estimates')).rows[0].n,2);
+ await db.exec('delete from quote_child;create or replace function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select false$$;');
+ await assert.rejects(run(),/expired/);assert.equal((await db.query('select count(*)::int n from site_consultation_quotes')).rows[0].n,2);
+ await db.exec('create or replace function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;');
+ assert.equal((await run()).rows[0].ok,true);assert.equal((await run()).rows[0].ok,true);
+ for(const t of ['site_completion_estimates','site_consultation_quotes','standalone_quotes'])assert.deepEqual((await db.query(`select company_id from ${t}`)).rows,[{company_id:other}]);
+ assert.equal((await db.query('select count(*)::int n from sites')).rows[0].n,2);
+ }finally{await db.close();}
+});

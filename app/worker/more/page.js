@@ -4,6 +4,7 @@ export const metadata = { title: "더보기 | 필름장이" };
 const menus = [
   ["/worker/account", "개인설정"],
   ["/worker/companies", "소속 업체"],
+  ["/account/delete", "계정 및 개인정보 삭제 요청"],
   ["/support?from=worker", "고객지원"],
 ];
 export default function WorkerMorePage() {

@@ -21,8 +21,11 @@ test('verified Kakao without email is accepted; unverified email and forged meta
   if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;
  }
 });
-const callback=fs.readFileSync('app/auth/kakao/page.js','utf8');
-const complete=callback.slice(callback.indexOf('async function complete()'),callback.indexOf('    complete().catch'));
+const callback=fs.readFileSync('app/auth/kakao/KakaoCallback.js','utf8');
+const start=callback.indexOf('async function complete()');
+const end=callback.indexOf('    complete().catch',start);
+assert.ok(start >= 0 && end > start, 'Kakao callback completion handler must be found');
+const complete=callback.slice(start,end);
 test('dealer callback returns to dealer without owner or worker registration; existing routes preserved',async()=>{
  for(const role of ['dealer','owner','worker']){
   let destination,companyCalls=0,workerCalls=0;

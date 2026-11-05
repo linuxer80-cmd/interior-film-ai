@@ -27,8 +27,10 @@ test('assigned owner gets shared directions and date-scoped team tools inside ad
 
 test('administrator uses the separate worker home instead of restoring the removed embedded workspace',()=>{
  const modal=fs.readFileSync(new URL('../app/admin/SiteDetailModal.js',import.meta.url),'utf8');
- const home=fs.readFileSync(new URL('../app/admin/AdminTabs.js',import.meta.url),'utf8');
+ const layout=fs.readFileSync(new URL('../app/layout.js',import.meta.url),'utf8');
+ const home=fs.readFileSync(new URL('../app/components/AppRoleSwitch.js',import.meta.url),'utf8');
  assert.ok(!modal.includes('import AdminAssignedWork'));
- assert.match(home,/href="\/worker"/);assert.match(home,/시공자 홈으로/);
+ assert.match(layout,/<AppRoleSwitch\s*\/>/);
+ assert.match(home,/router\.push\("\/worker"\)/);assert.match(home,/시공자 홈으로/);
 });
 

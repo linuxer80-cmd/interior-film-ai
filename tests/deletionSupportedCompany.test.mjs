@@ -1,0 +1,41 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {readFile} from 'node:fs/promises';
+const id='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002';
+test('company eligibility audits nested references, unknown tables, foreign records and storage before authorizing files',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema storage;create schema app_private;
+ create table storage.objects(bucket_id text,name text,owner_id text);
+ create table account_deletion_requests(id uuid,user_id uuid,subject_id uuid,company_deletion_id uuid);
+ insert into account_deletion_requests values('${id}','${id}','${id}','${id}');
+ create table companies(id uuid);insert into companies values('${id}');
+ create table profiles(id uuid,company_id uuid);insert into profiles values('${id}','${id}');
+ create table sites(id uuid,company_id uuid);insert into sites values('${id}','${id}');
+ create table site_completion_estimates(company_id uuid,document jsonb);
+ create table site_consultation_quotes(company_id uuid,document jsonb);
+ create table standalone_quotes(company_id uuid,area_document jsonb,cost_document jsonb);
+ create table site_photos(company_id uuid,site_id uuid,storage_path text,metadata jsonb);
+ create table test_refs(value jsonb);insert into test_refs values('[]');
+ create table test_scope(value jsonb);insert into test_scope values('[]');
+ create function assert_account_deletion_lease(uuid,uuid,uuid) returns boolean language sql as $$select true$$;
+ create function account_deletion_shared_auth_check(uuid) returns boolean language sql as $$select false$$;
+ create function inspect_account_deletion_references(uuid) returns jsonb language sql as $$select value from public.test_refs$$;
+ create function inspect_company_deletion_scope(uuid) returns jsonb language sql as $$select jsonb_build_object('company_id',$1,'direct_records',value) from public.test_scope$$;
+ create function inspect_company_deletion_files(uuid) returns jsonb language sql as $$select jsonb_build_object('companyId',$1,'files',coalesce((select jsonb_agg(jsonb_build_object('bucket',bucket_id,'path',name)) from storage.objects where bucket_id='work-photos' and name like 'sites/'||$1||'/%'),'[]'),'chatThreadIds','[]'::jsonb,'sharedFiles','[]'::jsonb,'complete',false)$$;
+ create function app_private.deletion_quote_document_safe(jsonb,text) returns boolean language sql as $$select true$$;`);
+ await db.exec(await readFile(new URL('../database/account_deletion_supported_company.sql',import.meta.url),'utf8'));
+ const inspect=async()=>(await db.query('select inspect_supported_company_deletion($1,$1) p',[id])).rows[0].p;
+ assert.equal((await inspect()).eligible,true);
+ await db.query('insert into site_photos values($1,$1,$2,$3)',[id,`sites/${id}/image.png`,JSON.stringify({nested:[{note:'ordinary text'}]})]);
+ await db.query('insert into storage.objects values($1,$2,$3)',['work-photos',`sites/${id}/image.png`,id]);
+ assert.equal((await inspect()).manifest.complete,true);
+ await db.query('update site_photos set metadata=$1',[JSON.stringify({nested:[{file:'customer/unknown.jpg'}]})]);assert.equal((await inspect()).eligible,false);
+ await db.exec('update site_photos set metadata=null');
+ await db.query('update site_photos set company_id=$1',[other]);assert.ok((await inspect()).codes.includes('unsupported_company_dependencies'));
+ await db.query('update site_photos set company_id=$1',[id]);
+ await db.exec("update storage.objects set bucket_id='unrecognized'");assert.ok((await inspect()).codes.includes('unsupported_company_files'));
+ await db.exec("update storage.objects set bucket_id='work-photos'");
+ await db.query('update test_scope set value=$1',[JSON.stringify([{schema:'public',table:'new_unhandled_table'}])]);assert.ok((await inspect()).codes.includes('unsupported_company_records'));
+ await db.exec("update test_scope set value='[]'");
+ await db.query('update test_refs set value=$1',[JSON.stringify([{schema:'public',table:'workers',column:'user_id'}])]);assert.ok((await inspect()).codes.includes('linked_records_require_review'));
+ assert.equal((await db.query("select has_function_privilege('authenticated','inspect_supported_company_deletion(uuid,uuid)','EXECUTE') ok")).rows[0].ok,false);
+ }finally{await db.close();}
+});
