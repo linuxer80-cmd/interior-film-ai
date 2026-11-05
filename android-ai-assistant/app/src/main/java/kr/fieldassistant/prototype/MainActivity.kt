@@ -3343,7 +3343,13 @@ class MainActivity : Activity() {
                 }
             } catch(e: CancellationException) { throw e }
               catch(e: Exception) { if(epoch==sessionEpoch && account!=null) {
-                  if(reg.optJSONObject("data")?.optString("source")=="manual" && e.message.orEmpty().contains("sites_source_check")) {
+                  if(!reg.isNull("target_id") && reg.optString("target_id").isNotBlank() && e.message.orEmpty().contains("현장 정보가 변경됐습니다")) {
+                      // The RPC explicitly rejected this target before making a write. Unknown failures retain the request for idempotent retry.
+                      if(changeRecord(id) { record -> record.remove("registration");record.remove("preview_target_id");record.remove("preview_target_phone") }) {
+                          callMatches=null;chatMessage(id,"현장 정보가 변경되어 저장하지 않았습니다. 같은 번호의 현장을 다시 확인해 주세요.")
+                          if(chatId==id) lookupCallMatches(id)
+                      } else chatMessage(id,"현장 선택 상태를 갱신하지 못했습니다. 다시 확인해 주세요.")
+                  } else if(reg.optJSONObject("data")?.optString("source")=="manual" && e.message.orEmpty().contains("sites_source_check")) {
                       if(changeRecord(id) { record -> record.remove("registration");record.optJSONObject("chat_draft")?.put("source","direct") })
                           chatMessage(id,"이전 저장 요청의 입력 오류를 수정했습니다. 등록 내용을 확인하고 다시 ‘네’라고 답해 주세요.")
                       else chatMessage(id,"입력 오류를 수정하지 못했습니다. 잠시 후 다시 확인해 주세요.")
