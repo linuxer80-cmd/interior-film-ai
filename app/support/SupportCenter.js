@@ -73,7 +73,7 @@ export default function SupportCenter({ from, version }) {
         <details>
           <summary>약관 및 정책</summary>
           <div className={styles.body}>
-            <Link className={styles.row} href={`/support/legal/terms?from=${from}`}>이용약관 <small>검토용 초안 ›</small></Link>
+            <Link className={styles.row} href={`/support/legal/terms?from=${from}`}>이용약관 <small>자세히 보기 ›</small></Link>
             <Link className={styles.row} href="/support/legal/privacy">개인정보처리방침 <small>2026.11.05 시행 ›</small></Link>
             <Link className={styles.row} href={`/support/legal/sharing?from=${from}`}>공통 사례 활용 선택 동의 <small>검토용 초안 ›</small></Link>
             <Link className={styles.row} href="/admin/billing">정기결제·취소·환불 안내 <span aria-hidden="true">›</span></Link>
