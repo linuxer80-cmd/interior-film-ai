@@ -19,10 +19,14 @@ class NotificationInboxDeviceTest {
                 .setContentTitle("견적 문의").setContentText("현장 등록").addExtras(NotificationInbox.owner(own)).build())
             m.notify("inbox-test-other",902,Notification.Builder(c,"inbox_test").setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("다른 계정").addExtras(NotificationInbox.owner(other)).build())
-            val mine=NotificationInbox.list(c,own)
-            assertEquals(1,mine.size)
+            var mine=NotificationInbox.list(c,own)
+            var theirs=NotificationInbox.list(c,other)
+            repeat(40) {
+                if(mine.isEmpty() || theirs.isEmpty()) { Thread.sleep(100);mine=NotificationInbox.list(c,own);theirs=NotificationInbox.list(c,other) }
+            }
+            assertEquals("own notification missing; active="+m.activeNotifications.size,1,mine.size)
             assertEquals("견적 문의",mine[0].notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-            assertEquals(1,NotificationInbox.list(c,other).size)
+            assertEquals(1,theirs.size)
             assertTrue(NotificationInbox.list(c,"").isEmpty())
         } finally {
             m.cancel("inbox-test-own",901);m.cancel("inbox-test-other",902);m.deleteNotificationChannel("inbox_test")
