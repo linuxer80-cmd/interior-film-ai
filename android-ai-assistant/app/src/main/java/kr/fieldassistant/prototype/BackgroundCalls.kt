@@ -62,7 +62,7 @@ internal object BackgroundCalls {
             WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.APPEND_OR_REPLACE,
                 OneTimeWorkRequestBuilder<BackgroundCallWorker>()
                     .setInputData(workDataOf("user" to uid,"generation" to token,"retry" to true))
-                    .setInitialDelay(20,TimeUnit.SECONDS).build())
+                    .setInitialDelay(5,TimeUnit.SECONDS).build())
         } catch(e: Exception) { retryPending.set(false);throw e }
     }
     fun retryStarted() { retryPending.set(false) }
@@ -73,7 +73,7 @@ internal object BackgroundCalls {
         if(!active(ctx,uid)) return
         val token=generation(ctx) ?: return
         val constraints=Constraints.Builder().addContentUriTrigger(tree,true)
-            .setTriggerContentUpdateDelay(10,TimeUnit.SECONDS).setTriggerContentMaxDelay(30,TimeUnit.SECONDS).build()
+            .setTriggerContentUpdateDelay(3,TimeUnit.SECONDS).setTriggerContentMaxDelay(10,TimeUnit.SECONDS).build()
         val request=OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token,true)).setConstraints(constraints).build()
         WorkManager.getInstance(ctx).enqueueUniqueWork(WATCH,if(append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
@@ -125,9 +125,14 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
-                    val id=file.uri.toString();if(id in existing || id in processed || file.size<=0) continue
+                    val id=file.uri.toString();if(id in existing || id in processed) continue
                     val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.size;val modified=file.modified
                     val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
+                    if(size<=0) {
+                        if(first==0L) background.edit().putLong("time_$key",now).apply()
+                        if(first==0L || now-first in 0..119999) needsRetry=true
+                        continue
+                    }
                     if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
                         background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
                         needsRetry=true;continue
@@ -157,7 +162,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
                         processed.add(id)
                         check(background.edit().putString("record_$key",record.toString()).putStringSet("processed",processed.toSet()).remove("size_$key").remove("time_$key").commit())
-                        if(candidate) notifyCandidate(ctx,uid,id)
+                        if(candidate) CallNotifications.post(ctx,uid,id)
                     }
                 }
             }
@@ -168,7 +173,9 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     else -> "연결된 폴더에 새 녹음이 없습니다."
                 }
                 BackgroundCalls.status(ctx,uid,summary)
-                if(needsRetry) BackgroundCalls.retryLater(ctx,uid,token)
+                // A new file can arrive while a long transcription is running and
+                // the content-trigger worker is not yet rearmed. Scan once more.
+                if(needsRetry || count>0) BackgroundCalls.retryLater(ctx,uid,token)
             }
             return Result.success()
         } catch(_: SecurityException) {
@@ -182,19 +189,5 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             BackgroundCalls.scanning.set(false)
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
         }
-    }
-    private fun notifyCandidate(ctx: Context,uid: String,id: String) {
-        val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
-        if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
-        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
-        val request=id.hashCode() and Int.MAX_VALUE
-        val intent=Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra("assistant_record",id).putExtra("assistant_user",uid)
-        val pending=PendingIntent.getActivity(ctx,request,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        try { manager.notify(request,Notification.Builder(ctx,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("견적 문의일 수 있는 통화가 있어요")
-            .setContentText("눌러서 내용을 확인하고 현장 등록을 선택하세요.").setContentIntent(pending).setAutoCancel(true).build()) }
-        catch(_: SecurityException) { }
     }
 }

@@ -39,7 +39,7 @@ internal class StreamingResampler(private val inputRate: Int, private val output
 }
 
 internal object InquiryMatcher {
-    private val quoteWords=listOf("견적","견젹","견젨","견적서")
+    private val quoteWords=listOf("견적","견젹","견젨","견적서","인테리어","필름","시트지","문의")
     private val prices=listOf("얼마","비용","가격","금액","단가","값")
     private val work=listOf("시공","공사","인테리어","인테리","필름","시트지","도배","벽지","도장","페인트","마루","타일","전기","조명","배관","수도","설치","교체","수리","철거","목공","창문","문짝","방문","싱크대","싱크","욕실","화장실","보수","리모델링")
     fun likely(text: String): Boolean {

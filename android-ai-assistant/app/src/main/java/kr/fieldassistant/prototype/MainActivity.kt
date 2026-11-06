@@ -88,6 +88,7 @@ class MainActivity : Activity() {
     private var listenerUser: String? = null
     private var reviewId: String? = null
     private var reviewUser: String? = null
+    private var reviewDecision: String? = null
     private var forcedReviewId: String? = null
     private var modelChecked = false
     private val handlerScan = object : Runnable {
@@ -110,6 +111,7 @@ class MainActivity : Activity() {
         receiptPickerUid=savedInstanceState?.getString("receiptPickerUid")
         receiptPickerCompany=savedInstanceState?.getString("receiptPickerCompany")
         receiptCameraUri=savedInstanceState?.getString("receiptCameraUri")?.let { Uri.parse(it) }
+        reviewId=savedInstanceState?.getString("callReviewId");reviewUser=savedInstanceState?.getString("callReviewUser");reviewDecision=savedInstanceState?.getString("callReviewDecision")
         window.setDecorFitsSystemWindows(false)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
@@ -120,6 +122,7 @@ class MainActivity : Activity() {
     }
     override fun onSaveInstanceState(outState:Bundle) {
         outState.putString("receiptPickerUid",receiptPickerUid);outState.putString("receiptPickerCompany",receiptPickerCompany);outState.putString("receiptCameraUri",receiptCameraUri?.toString())
+        outState.putString("callReviewId",reviewId);outState.putString("callReviewUser",reviewUser);outState.putString("callReviewDecision",reviewDecision)
         super.onSaveInstanceState(outState)
     }
     /** A single inset owner reserves system bars, cutouts and the keyboard.
@@ -187,7 +190,7 @@ class MainActivity : Activity() {
         saveRecords(saved)
         resumeOffline.forEach { retryOffline(it) }
         val epoch=sessionEpoch
-        if(active) { startObserver();scanFolder();scheduleForegroundScan() }
+        if(active) { startObserver();scanFolder();scheduleForegroundScan();maybeReview() }
         scope.launch {
             try {
                 val readyMode=findReadySpeechMode()
@@ -220,24 +223,28 @@ class MainActivity : Activity() {
     private fun captureReview(intent: Intent?) {
         val id=intent?.getStringExtra("assistant_record") ?: return
         val user=intent.getStringExtra("assistant_user") ?: return
-        reviewId=id;reviewUser=user
-        intent.removeExtra("assistant_record");intent.removeExtra("assistant_user")
+        reviewId=id;reviewUser=user;reviewDecision=intent.getStringExtra("assistant_decision")
+        intent.removeExtra("assistant_record");intent.removeExtra("assistant_user");intent.removeExtra("assistant_decision")
     }
     private fun maybeReview() {
         if(!active || account==null) return
         val id=reviewId ?: return
-        if(reviewUser!=account?.userId) { reviewId=null;reviewUser=null;message("알림을 받은 계정으로 로그인해 주세요.");return }
+        if(reviewUser!=account?.userId) { reviewId=null;reviewUser=null;reviewDecision=null;message("알림을 받은 계정으로 로그인해 주세요.");return }
         mergeResults(requireNotNull(account).userId)
         val item=recordById(id) ?: return
-        reviewId=null;reviewUser=null
+        val decision=reviewDecision
+        reviewId=null;reviewUser=null;reviewDecision=null
+        notificationManager().cancel(id.hashCode() and Int.MAX_VALUE)
         showRegistrationConfirmation(id)
+        if(decision=="yes") confirmCallNotificationRegistration(id)
     }
     private fun attachResults(uid: String) {
         detachResults();listenerUser=uid
         val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-            if(key?.startsWith("record_")==true || key=="scan_status") handler.post {
+            if(key?.startsWith("record_")==true || key=="scan_status" || key?.startsWith(CallNotifications.DECLINED_PREFIX)==true) handler.post {
                 if(account?.userId==uid) {
                     mergeResults(uid)
+                    if(key?.startsWith(CallNotifications.DECLINED_PREFIX)==true && chatId?.let { CallNotifications.declinedKey(it)==key }==true) { render();return@post }
                     // Folder polling is not a conversation change. Keep its views and IME intact.
                     if(key!="scan_status" || settingsOpen) refreshBackgroundUi()
                     maybeReview()
@@ -246,10 +253,14 @@ class MainActivity : Activity() {
         }
         resultListener=listener
         BackgroundCalls.resultPrefs(applicationContext,uid).registerOnSharedPreferenceChangeListener(listener)
+        getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(listener)
     }
     private fun detachResults() {
         val uid=listenerUser;val listener=resultListener
-        if(uid!=null && listener!=null) BackgroundCalls.resultPrefs(applicationContext,uid).unregisterOnSharedPreferenceChangeListener(listener)
+        if(uid!=null && listener!=null) {
+            BackgroundCalls.resultPrefs(applicationContext,uid).unregisterOnSharedPreferenceChangeListener(listener)
+            getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(listener)
+        }
         listenerUser=null;resultListener=null
     }
     private fun mergeResults(uid: String) {
@@ -665,6 +676,7 @@ class MainActivity : Activity() {
         it.put("chat_messages",messages)
     }
     private fun consultationDisposition(item: JSONObject): String {
+        if(prefs.getBoolean(CallNotifications.declinedKey(item.optString("id")),false)) return "declined"
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
         val replies=(0 until messages.length()).mapNotNull { messages.optJSONObject(it) }
             .filter { it.optBoolean("user") }.map { it.optString("body") }
@@ -672,6 +684,7 @@ class MainActivity : Activity() {
     }
     private fun resumeConsultation(id: String) {
         if(!changeRecord(id) { it.put("chat_disposition","active") }) { message("변경을 저장하지 못했습니다.");return }
+        if(!prefs.edit().remove(CallNotifications.declinedKey(id)).commit()) { message("등록 검토를 다시 열지 못했습니다.");return }
         chatMessage(id,"등록 검토를 다시 시작합니다. 내용을 확인한 뒤 등록 여부를 알려 주세요.")
         render()
     }
@@ -711,6 +724,18 @@ class MainActivity : Activity() {
         }
         settingsOpen=false;chatId=id;chatInput="";render()
         lookupCallMatches(id)
+    }
+    private fun confirmCallNotificationRegistration(id:String) {
+        val item=recordById(id) ?: return
+        if(!active || item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || consultationDisposition(item)!="active") return
+        val company=selectedCompany() ?: return
+        if(company.role!="관리자") { message("현장 등록은 관리자 계정에서 할 수 있습니다.");return }
+        val data=item.optJSONObject("chat_draft") ?: return
+        fun value(key:String)=data.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
+        val details="업체: ${company.name}\n현장명: ${value("site_name")}\n고객: ${value("customer_name")}\n전화번호: ${value("customer_phone")}\n주소: ${value("address")}\n시공 내용: ${value("work_description")}\n메모: ${value("memo")}\n\n인식이 다를 수 있습니다. 확인 후 등록을 진행해 주세요."
+        AlertDialog.Builder(this).setTitle("통화 현장 등록 확인").setMessage(details)
+            .setNegativeButton("나중에",null).setNeutralButton("내용 수정") { _,_ -> editChatDraft(id) }
+            .setPositiveButton("등록 진행") { _,_ -> if(active && chatId==id && selectedCompany()?.id==company.id) answerChat(id,"네") }.show()
     }
     /** Find candidates with the authenticated owner's existing site read; the save RPC rechecks the selection. */
     private fun lookupCallMatches(id:String) {
@@ -4102,7 +4127,7 @@ class MainActivity : Activity() {
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
         chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
-        ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
+        ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
@@ -4240,17 +4265,8 @@ class MainActivity : Activity() {
     }
     private fun postCompletionNotification(id: String) {
         if(recordById(id)?.let { consultationDisposition(it)!="active" }==true) return
-        val manager=ensureNotificationChannel()
-        if(!notificationsEnabled()) return
-        val intent=Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra("assistant_record",id).putExtra("assistant_user",account?.userId)
-        val pendingIntent=PendingIntent.getActivity(this, id.hashCode() and Int.MAX_VALUE, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification=Notification.Builder(this,"assistant_results")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("새 통화 분석이 완료됐어요")
-            .setContentText("현장 AI 비서에서 내용을 확인해 주세요.")
-            .setContentIntent(pendingIntent).setAutoCancel(true).build()
-        manager.notify(id.hashCode() and Int.MAX_VALUE, notification)
+        val uid=account?.userId ?: return
+        CallNotifications.post(applicationContext,uid,id)
     }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun text(value: String, size: Float=14f, bold: Boolean=false, color: Int=Color.rgb(43,62,51)): TextView = TextView(this).apply {
