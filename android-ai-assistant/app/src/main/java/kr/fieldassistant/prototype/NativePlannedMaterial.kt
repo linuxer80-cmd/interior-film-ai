@@ -109,16 +109,12 @@ internal class NativePlannedMaterial(
                 val data=auth.listAssistantPlannedMaterials(uid,company.id,siteId)
                 if(!valid()) return@launch
                 val rows=data.getJSONArray("materials")
-                val matches=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.filter { row ->
-                    clean(row,"brand").equals(body.optString("brand"),true) &&
-                        (clean(row,"product_code").equals(body.optString("product_code"),true) && body.optString("product_code").isNotBlank() ||
-                         clean(row,"product_name").equals(body.optString("product_name"),true) && body.optString("product_name").isNotBlank())
-                }
-                val message=if(matches.isEmpty()) "같은 제조사와 제품번호·이름의 자재를 찾지 못했습니다." else matches.joinToString("\n") { row ->
+                val list=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+                val message=if(list.isEmpty()) "현재 등록된 현장 자재가 없습니다." else list.take(100).joinToString("\n") { row ->
                     clean(row,"brand")+" "+clean(row,"product_code").ifBlank { clean(row,"product_name") }+" · "+when(clean(row,"price_type")) { "fire"->"방염";"non_fire"->"비방염";else->"구분 확인" }
-                }
+                }+(if(list.size>100) "\n외 ${list.size-100}개: 전체 목록을 확인해 주세요." else "")
                 AlertDialog.Builder(activity).setTitle("현재 등록된 자재 확인").setMessage(message+"\n\n이전 요청:\n"+record.optString("summary")+
-                    "\n\n목록을 확인한 뒤 요청을 닫으면 다시 보낼 수 없습니다. 확실하지 않으면 요청을 유지해 주세요.")
+                    "\n\n제품 표기가 다를 수 있으니 목록을 직접 확인해 주세요. 요청을 닫으면 다시 보낼 수 없습니다. 확실하지 않으면 요청을 유지해 주세요.")
                     .setNegativeButton("요청 유지",null).setPositiveButton("확인 후 요청 닫기") { _,_ ->
                         if(valid() && pending()?.optJSONObject("body")?.optString("id")==body.optString("id") && prefs.edit().remove(key).commit()) open()
                     }.show()
