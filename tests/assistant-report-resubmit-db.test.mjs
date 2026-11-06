@@ -81,3 +81,10 @@ test('real resubmission route and database preserve existing costs and reject re
  assert.equal((await post(request())).status,200);assert.deepEqual((await db.query('select * from site_expenses')).rows,before);
  assert.equal((await post(request())).status,409);assert.equal(synced,1);
 }finally{await db.close()}});
+test('competing resubmissions preserve costs and only one may transition the report',async()=>{const db=await fixture();try{
+ const before=(await db.query('select * from site_expenses')).rows;
+ const attempts=await Promise.allSettled([call(db),call(db)]);
+ assert.equal(attempts.filter(x=>x.status==='fulfilled').length,1);assert.equal(attempts.filter(x=>x.status==='rejected').length,1);
+ assert.deepEqual((await db.query('select * from site_expenses')).rows,before);
+ assert.equal((await db.query('select review_status from work_reports')).rows[0].review_status,'pending');
+}finally{await db.close()}});

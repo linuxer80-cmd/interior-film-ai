@@ -33,3 +33,10 @@ test('review detail API is restricted to active company owners',async()=>{
  assert.equal((await verify(db('worker'),'token')).status,403);
  assert.equal((await verify(db('owner',false),'token')).status,403);
 });
+test('reviewer can reject with a reason without sending a completion notification',async()=>{
+ const f=fixture(),r=await send(f,{...payload,action:'reject',approvedAmount:null,reviewMemo:'완료사진을 추가해 주세요.'});
+ assert.equal(r.status,200);assert.equal(f.rows.work_reports[0].review_status,'rejected');assert.equal(f.rows.work_reports[0].review_memo,'완료사진을 추가해 주세요.');assert.equal(f.notices(),0);
+});
+test('rejection without a reason never changes the report',async()=>{
+ const f=fixture(),r=await send(f,{...payload,action:'reject',approvedAmount:null,reviewMemo:' '});assert.equal(r.status,400);assert.equal(f.rows.work_reports[0].review_status,'pending');assert.equal(f.notices(),0);
+});
