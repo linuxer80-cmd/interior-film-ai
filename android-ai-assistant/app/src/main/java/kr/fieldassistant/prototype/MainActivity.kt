@@ -150,7 +150,8 @@ class MainActivity : Activity() {
             try {
                 val verified=auth.restore()
                 if(verified!=null && verified.companies.isNotEmpty()) activateAccount(verified)
-                else if(verified!=null) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
+                else if(verified!=null) { ChatPushRegistration.deactivate(applicationContext);auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
+                else ChatPushRegistration.deactivate(applicationContext)
             } catch (_: Exception) { authError="로그인 상태를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요." }
             finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush() }
         }
