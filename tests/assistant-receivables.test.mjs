@@ -26,3 +26,58 @@ test('does not replace an unavailable or invalid amount with zero',async()=>{
   const {result}=await run({summary:{outstanding:null,unconfirmed:0}});assert.equal(result.status,503);
   const missing=await run({unknownError:true});assert.equal(missing.result.status,503);
 });
+
+const exampleSite={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',company_id:'company',status:'completed',site_name:'현장',customer_name:'고객',confirmed:true,contract_amount:110000,paid:10000,outstanding:100000};
+async function runItems({company='company',selected='company',active=true,item=exampleSite,path='?view=items&filter=unpaid&page=1&q=%ED%98%84%EC%9E%A5',count=12}={}) {
+  let calls=[];
+  const auth=async()=>active ? {success:true,companyId:company,userId:'user',db:{rpc:async(name,args)=>{calls.push({name,args});return {data:{items:item===null?[]:[item],count},error:null}}}} : {success:false,status:403};
+  const get=new Function('authenticateAdmin','Response',source+';return GET;')(auth,Response);
+  const result=await get(new Request('https://example.test/'+path,{headers:{'X-Assistant-Company':selected}}));
+  return {result,calls};
+}
+test('lists authorized completed sites with bounded filters and only required fields',async()=>{
+  const {result,calls}=await runItems();assert.equal(result.status,200);
+  assert.deepEqual(calls[0].args.p_body,{filter:'unpaid',page:'1',q:'현장'});
+  const body=await result.json();assert.equal(body.companyId,'company');assert.equal(body.page,1);assert.equal(body.count,12);
+  assert.deepEqual(body.items,[{id:exampleSite.id,site_name:'현장',customer_name:'고객',confirmed:true,contract_amount:110000,paid:10000,outstanding:100000}]);
+});
+test('unconfirmed amounts remain null instead of becoming zero',async()=>{
+  const {result}=await runItems({item:{...exampleSite,confirmed:false,paid:null,outstanding:null}});
+  assert.equal(result.status,200);const site=(await result.json()).items[0];assert.equal(site.paid,null);assert.equal(site.outstanding,null);
+});
+test('rejects other companies, non-completed sites and malformed financial rows',async()=>{
+  for(const item of [{...exampleSite,company_id:'other'}, {...exampleSite,status:'scheduled'}, {...exampleSite,outstanding:null,paid:undefined}]) {
+    const {result}=await runItems({item});assert.equal(result.status,503);
+  }
+  const denied=await runItems({selected:'other'});assert.equal(denied.result.status,403);assert.equal(denied.calls.length,0);
+  const inactive=await runItems({active:false});assert.equal(inactive.result.status,403);assert.equal(inactive.calls.length,0);
+});
+test('invalid filter, page and long searches are rejected before database access',async()=>{
+  for(const path of ['?view=items&filter=unknown','?view=items&page=-1','?view=items&page=100001','?view=items&q='+('a'.repeat(101))]) {
+    const {result,calls}=await runItems({path});assert.equal(result.status,400);assert.equal(calls.length,0);
+  }
+});
+
+async function runPayment({method='GET',selected='company',site=exampleSite,requestBody=null,status=200,remoteThrows=false}={}) {
+  let forwarded=0;let seenBody=null;
+  const auth=async()=>({success:true,companyId:'company',userId:'user'});
+  const delegate=async req=>{forwarded++;if(remoteThrows)throw Error('network');if(method==='POST')seenBody=await req.json();return Response.json(status===200?{site}:{error:'확인 필요'},{status})};
+  const handlers=new Function('authenticateAdmin','Response','existingGet','existingPost',source+';return {GET,POST};')(auth,Response,delegate,delegate);
+  const url='https://example.test/?view=detail&siteId='+exampleSite.id;
+  const req=new Request(url,{method,headers:{'X-Assistant-Company':selected,'Content-Type':'application/json'},...(requestBody?{body:JSON.stringify(requestBody)}:{})});
+  return {result:await handlers[method](req),forwarded,seenBody};
+}
+const paymentBody={siteId:exampleSite.id,requestId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',action:'add',amount:'10000',revision:2,paidOn:'2026-11-06',phase:'balance',direction:'payment',method:'other',memo:'잔금'};
+test('detail delegates through existing authorization and scopes result',async()=>{
+  const good=await runPayment();assert.equal(good.result.status,200);assert.equal(good.forwarded,1);
+  const body=await good.result.json();assert.equal(body.companyId,'company');assert.equal(body.site.id,exampleSite.id);assert.equal(body.site.company_id,'company');
+  const foreign=await runPayment({site:{...exampleSite,company_id:'other'}});assert.equal(foreign.result.status,503);
+  const denied=await runPayment({selected:'other'});assert.equal(denied.result.status,403);assert.equal(denied.forwarded,0);
+});
+test('payment requests keep the same id and body for the existing ledger and preserve conflicts',async()=>{
+  const success=await runPayment({method:'POST',requestBody:paymentBody});assert.equal(success.result.status,200);assert.deepEqual(success.seenBody,paymentBody);
+  const conflict=await runPayment({method:'POST',requestBody:paymentBody,status:409});assert.equal(conflict.result.status,409);
+  const lost=await runPayment({method:'POST',requestBody:paymentBody,remoteThrows:true});assert.equal(lost.result.status,503);
+  const bad=await runPayment({method:'POST',requestBody:{...paymentBody,action:'void'}});assert.equal(bad.result.status,400);assert.equal(bad.forwarded,0);
+  const other=await runPayment({method:'POST',selected:'other',requestBody:paymentBody});assert.equal(other.result.status,403);assert.equal(other.forwarded,0);
+});

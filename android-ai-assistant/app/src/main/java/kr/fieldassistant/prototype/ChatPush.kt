@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.google.firebase.messaging.FirebaseMessaging
@@ -43,11 +45,21 @@ internal data class ChatPushTarget(val kind:String,val user:String,val company:S
     }
 }
 
+/** Process-local signal only; list contents are always reloaded through authorized APIs. */
+internal object ChatInboxEvents {
+    @Volatile private var listener:((ChatPushTarget)->Unit)?=null
+    fun attach(callback:(ChatPushTarget)->Unit) { listener=callback }
+    fun detach(callback:(ChatPushTarget)->Unit) { if(listener===callback) listener=null }
+    fun emit(target:ChatPushTarget) { Handler(Looper.getMainLooper()).post { listener?.invoke(target) } }
+}
+
 class ChatPushService:FirebaseMessagingService() {
     override fun onNewToken(token:String) { ChatPushRegistration.enqueue(applicationContext) }
     override fun onMessageReceived(message:RemoteMessage) {
+        if(message.data["kind"]=="notice") { showAppNotice(message.data);return }
         val target=ChatPushTarget.parse(message.data) ?: return
         if(ChatPushRegistration.activeUser(applicationContext)!=target.user) return
+        ChatInboxEvents.emit(target)
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="chat_messages"
@@ -63,6 +75,32 @@ class ChatPushService:FirebaseMessagingService() {
             .setContentText("새 메시지가 있습니다. 앱에서 확인해 주세요.")
             .setContentIntent(pending).setAutoCancel(true).setCategory(Notification.CATEGORY_MESSAGE).build()
         manager.notify("chat-${target.message}",0,notification)
+    }
+    private fun showAppNotice(data:Map<String,String>) {
+        val user=data["recipient_id"] ?: return
+        val id=data["notice_id"] ?: return
+        if(!Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$").matches(id)) return
+        if(ChatPushRegistration.activeUser(applicationContext)!=user) return
+        val title=data["title"]?.take(120)?.takeIf { it.isNotBlank() } ?: return
+        val text=data["body"]?.take(500) ?: return
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
+        val manager=getSystemService(NotificationManager::class.java) ?: return
+        val channel="app_notifications"
+        AssistantNotificationChannels.ensure(manager,channel,"앱 알림",NotificationManager.IMPORTANCE_HIGH)
+        val siteTarget=SiteNoticeTarget.parse(data)
+        val intent=Intent(this,MainActivity::class.java).apply {
+            flags=Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            this.data=Uri.parse("fieldassistant://app-notification/$id")
+            siteTarget?.let { target ->
+                putExtra("site_notice_user",target.user);putExtra("site_notice_company",target.company)
+                putExtra("site_notice_site",target.site);putExtra("site_notice_id",target.notice)
+            }
+        }
+        val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notice=Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(pending).setAutoCancel(true).build()
+        manager.notify("notice-$id",0,notice)
     }
 }
 
@@ -90,7 +128,7 @@ internal object ChatPushRegistration {
         prefs(c).edit().remove("user").commit()
         WorkManager.getInstance(c).cancelUniqueWork(WORK)
         val manager=c.getSystemService(NotificationManager::class.java)
-        manager?.activeNotifications?.filter { it.notification.channelId=="chat_messages" }?.forEach { manager.cancel(it.tag,it.id) }
+        manager?.activeNotifications?.filter { it.notification.channelId in listOf("chat_messages","app_notifications") }?.forEach { manager.cancel(it.tag,it.id) }
         FirebaseMessaging.getInstance().isAutoInitEnabled=false
         return device(c)
     }
@@ -110,7 +148,16 @@ class ChatPushWorker(context:Context,params:WorkerParameters):CoroutineWorker(co
                     Tasks.await(FirebaseMessaging.getInstance().token,15,TimeUnit.SECONDS)
                 }
                 if(ChatPushRegistration.activeUser(applicationContext)!=user) return@withLock Result.success()
-                auth.updateChatPush(user,ChatPushRegistration.device(applicationContext),token)
+                val manager=applicationContext.getSystemService(NotificationManager::class.java)
+                if(manager!=null) {
+                    AssistantNotificationChannels.ensure(manager,"chat_messages","채팅 메시지",NotificationManager.IMPORTANCE_HIGH)
+                    AssistantNotificationChannels.ensure(manager,"app_notifications","앱 알림",NotificationManager.IMPORTANCE_HIGH)
+                }
+                val permission=Build.VERSION.SDK_INT<33 || applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
+                val enabled=manager!=null && manager.areNotificationsEnabled() && permission
+                val chatReady=enabled && manager?.getNotificationChannel("chat_messages")?.importance?.let { it!=NotificationManager.IMPORTANCE_NONE }==true
+                val generalReady=enabled && manager?.getNotificationChannel("app_notifications")?.importance?.let { it!=NotificationManager.IMPORTANCE_NONE }==true
+                auth.updateChatPush(user,ChatPushRegistration.device(applicationContext),token,chatReady,generalReady)
                 Result.success()
             }
         } catch(e:kotlinx.coroutines.CancellationException) { throw e }

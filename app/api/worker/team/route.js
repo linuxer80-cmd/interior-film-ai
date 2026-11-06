@@ -4,6 +4,7 @@ import { dispatchAndroidChat } from '../../../../lib/androidChatPushDispatch.mjs
 import { privateAuth, privateJson, uuid } from '../../../../lib/workerPrivate';
 import { resolveTeamSite } from '../../../../lib/teamSiteAccess.mjs';
 import { authorizedTeam, includeTeamOwners, teamDate, teamMessage } from '../../../../lib/workerTeam.mjs';
+import { teamInboxSummary } from '../../../../lib/teamInboxSummary.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 async function context(request){
@@ -50,6 +51,9 @@ function failure(e){return privateJson({error:e.status?e.message:['42P01','PGRST
 export async function GET(request){try{
   const a=await context(request);
   if(a.dates)return privateJson({dates:a.dates});
+  if(a.url.searchParams.get('view')==='summary') {
+    return privateJson(await teamInboxSummary(a.db,{companyId:a.site.company_id,siteId:a.site.id,date:a.date,userId:a.user.id}));
+  }
   const users=[...new Set(a.members.map(w=>w.user_id).filter(Boolean))];
   const profiles=users.length?await a.db.from('labor_profiles').select('user_id,name,region,skills,experience_years,introduction,photo_path').in('user_id',users):{data:[]};
   if(profiles.error)throw profiles.error;
@@ -80,21 +84,24 @@ export async function POST(request){try{
   // Only a newly persisted message schedules push. Retrying the same message ID
   // does not send another notification, and push errors never undo the message.
   if (!r.error) after(async () => {
+    let current;
+    try { current=await context(request); } catch { return; }
+    let nativeDelivery={acceptedUserIds:[]};
     try {
-      const delivery = await dispatchTeamMessage(a.db, {
-        members: a.members, senderId: a.user.id, siteId: a.site.id,
-        date: a.date, messageId: input.id,
-      });
-      if (delivery.state === 'unconfigured' || delivery.failed || delivery.unsubscribed || delivery.expired)
-        console.warn('Team chat push delivery', delivery);
-    } catch { console.error('Team chat push dispatch failed'); }
-    try {
-      const current=await context(request);
-      const androidDelivery=await dispatchAndroidChat(current.db, { kind:'team', companyId:current.site.company_id, targetId:current.site.id,
+      nativeDelivery=await dispatchAndroidChat(current.db, { kind:'team', companyId:current.site.company_id, targetId:current.site.id,
         date:current.date, messageId:input.id, senderId:current.user.id,
         recipients:current.members.map(member=>member.user_id).filter(id=>id && id!==current.user.id) });
-      if(androidDelivery.state==='unconfigured' || androidDelivery.failed) console.warn('Team chat Android push status',androidDelivery);
+      if(nativeDelivery.state==='unconfigured' || nativeDelivery.failed) console.warn('Team chat Android push status',nativeDelivery);
     } catch { console.error('Team chat Android push dispatch failed'); }
+    try {
+      const accepted=new Set(nativeDelivery.acceptedUserIds || []);
+      const delivery=await dispatchTeamMessage(current.db, {
+        members:current.members.filter(member=>!accepted.has(member.user_id)), senderId:current.user.id,
+        siteId:current.site.id,date:current.date,messageId:input.id,
+      });
+      if(delivery.state==='unconfigured' || delivery.failed || delivery.unsubscribed || delivery.expired)
+        console.warn('Team chat push delivery',delivery);
+    } catch { console.error('Team chat push dispatch failed'); }
   });
   return privateJson({ok:true});
 }catch(e){return failure(e);}}

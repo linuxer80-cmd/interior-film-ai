@@ -7,6 +7,7 @@ test('registration rejects malformed identifiers and tokens', () => {
   assert.deepEqual(validatePushRegistration(input),input);
   assert.throws(()=>validatePushRegistration({...input,deviceId:'invalid'}));
   assert.throws(()=>validatePushRegistration({...input,token:'bad'}));
+  assert.throws(()=>validatePushRegistration({...input,chatReady:'true'}));
   assert.deepEqual(validatePushRegistration({deviceId:input.deviceId},true),{deviceId:input.deviceId});
 });
 test('logout deletion is scoped to both device and authenticated user', async () => {
@@ -20,4 +21,12 @@ test('blocked accounts cannot register devices', async () => {
   const db={from:table=>table==='account_deletion_blocks' ? {select:()=>({eq:()=>({maybeSingle:async()=>({data:{user_id:'user-one'}})})})} : {upsert:()=>{writes++;}}};
   await assert.rejects(updatePushRegistration(db,'user-one',input), /사용할 수 없는 계정/);
   assert.equal(writes,0);
+});
+
+test('old app registrations default to disabled and staged schema fallback stays compatible',async()=>{
+ const writes=[];const db={from(table){if(table==='account_deletion_blocks')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:null})})})};
+ return {upsert:async row=>{writes.push(row);return writes.length===1?{error:{code:'PGRST204'}}:{error:null}}};}};
+ await updatePushRegistration(db,'user-one',input);
+ assert.equal(writes[0].native_chat_ready,false);assert.equal(writes[0].native_general_ready,false);
+ assert.equal('native_chat_ready' in writes[1],false);
 });

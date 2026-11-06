@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { nextSiteStatus } from "../../../../lib/siteLifecycle.mjs";
 import { siteFields, rows, companySites } from "../../../../lib/workerSiteAssignments.mjs";
+import { loadCalendarTeams } from "../../../../lib/calendarTeam.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -459,6 +460,9 @@ export async function GET(request) {
         error
       );
     }
+
+    const teams = await loadCalendarTeams(db, site.company_id, [site]);
+    site.calendar_team = teams.get(site.site_id) || [];
 
     return json({
       worker,

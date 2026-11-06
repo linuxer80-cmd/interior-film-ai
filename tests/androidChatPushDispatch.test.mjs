@@ -19,7 +19,7 @@ function fixture() {
   worker_team_messages:[{id:ids.messageId,company_id:ids.companyId,site_id:ids.targetId,work_date:ids.date,sender_id:ids.senderId}],
   workers:[{id:'worker-1',company_id:ids.companyId,user_id:ids.recipientId,is_active:true}],
   site_daily_assignments:[{id:'assignment',company_id:ids.companyId,site_id:ids.targetId,work_date:ids.date,worker_id:'worker-1'}],
-  android_chat_push_tokens:[{device_id:'device-1',user_id:ids.recipientId,token:'long-test-registration-token'}]};
+  android_chat_push_tokens:[{device_id:'device-1',user_id:ids.recipientId,token:'long-test-registration-token',native_chat_ready:true}]};
  const db={from(table){let filters=[];let remove=false;let limit=Infinity;
   const q={select(){return q},delete(){remove=true;return q},eq(k,v){filters.push(r=>r[k]===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},limit(n){limit=n;return q},
    async maybeSingle(){return {data:(rows[table]||[]).filter(r=>filters.every(f=>f(r))).slice(0,limit)[0]||null,error:null}},
@@ -45,4 +45,16 @@ test('customer push is restricted to an active owner of the thread company', asy
  assert.equal(await canReceiveAndroidChat(db,metadata),false);
  rows.profiles[0].role='owner';assert.equal(await canReceiveAndroidChat(db,metadata),true);
  rows.account_deletion_blocks=[{user_id:ids.recipientId}];assert.equal(await canReceiveAndroidChat(db,metadata),false);
+});
+
+test('only an accepted, enabled app is preferred over browser delivery',async()=>{
+ const {db,rows}=fixture(),metadata={...ids,kind:'team',recipients:[ids.recipientId]};
+ let result=await dispatchAndroidChat(db,metadata,{send:async()=>({state:'accepted'})});
+ assert.deepEqual(result.acceptedUserIds,[ids.recipientId]);
+ rows.android_chat_push_tokens[0].native_chat_ready=false;
+ result=await dispatchAndroidChat(db,metadata,{send:async()=>{throw Error('disabled app sent')}});
+ assert.deepEqual(result.acceptedUserIds,[]);
+ rows.android_chat_push_tokens[0].native_chat_ready=true;
+ result=await dispatchAndroidChat(db,metadata,{send:async()=>({state:'failed'})});
+ assert.deepEqual(result.acceptedUserIds,[]);
 });

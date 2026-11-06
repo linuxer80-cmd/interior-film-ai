@@ -69,6 +69,9 @@ async function verifyAdmin(supabase, accessToken) {
   if (!profile.company_id) {
     return { ok: false, status: 403, error: "관리자 계정에 업체가 연결되어 있지 않습니다." };
   }
+  const company=await supabase.from("companies").select("id,is_active").eq("id",profile.company_id).maybeSingle();
+  if(company.error) return {ok:false,status:500,error:"업체 상태를 확인하지 못했습니다."};
+  if(!company.data || company.data.is_active!==true) return {ok:false,status:403,error:"활성 업체의 관리자만 검수할 수 있습니다."};
   return { ok: true, user, profile };
 }
 
@@ -88,6 +91,13 @@ export async function POST(request) {
     const action = cleanText(body?.action);
     const reviewMemo = cleanText(body?.reviewMemo);
     const approvedAmount = parseAmount(body?.approvedAmount);
+    const expectedId = body?.expectedReportId;
+    const expectedUpdatedAt = body?.expectedUpdatedAt;
+    const guarded = expectedId !== undefined || expectedUpdatedAt !== undefined;
+    if (guarded && (typeof expectedId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expectedId) ||
+        typeof expectedUpdatedAt !== 'string' || expectedUpdatedAt.length > 64 || !Number.isFinite(Date.parse(expectedUpdatedAt)))) {
+      return NextResponse.json({success:false,error:'검토한 보고서 정보를 다시 확인해주세요.'}, {status:400});
+    }
 
     if (!siteId) {
       return NextResponse.json(
@@ -160,6 +170,10 @@ export async function POST(request) {
       );
     }
 
+    if (guarded && (report.id !== expectedId || report.updated_at !== expectedUpdatedAt)) {
+      return NextResponse.json({success:false,error:'검토 중 보고서가 변경되었습니다. 내용을 다시 확인해주세요.'}, {status:409});
+    }
+
     const currentStatus = report.review_status || "pending";
     if (currentStatus === "approved") {
       return NextResponse.json(
@@ -188,10 +202,11 @@ export async function POST(request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: updatedRows, error: updateError } = await supabase.from("work_reports")
+    let updateQuery = supabase.from("work_reports")
       .update(updatePayload).eq("id", report.id)
-      .eq("company_id", companyId).eq("review_status", "pending")
-      .select(
+      .eq("company_id", companyId).eq("review_status", "pending");
+    if (guarded) updateQuery = updateQuery.eq("updated_at", expectedUpdatedAt);
+    const { data: updatedRows, error: updateError } = await updateQuery.select(
         "id,site_id,worker_id,work_summary,review_status,reviewed_at,reviewed_by,approved_amount,review_memo,updated_at"
       );
 
