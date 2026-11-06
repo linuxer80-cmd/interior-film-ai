@@ -124,11 +124,38 @@ internal object AssistantResultViews {
             card.addView(label("날짜를 누르면 그날의 현장을 확인할 수 있습니다.",12f).apply { setTextColor(muted) })
             val agenda=sites.flatMap { site -> val days=site.optJSONArray("dates") ?: JSONArray();(0 until days.length()).map { days.optString(it) to site } }.sortedBy { it.first }
             if(agenda.isNotEmpty()) table(listOf("날짜","현장","상태"),listOf(105,200,90),agenda.map { (date,site) -> listOf(date,site.optString("name"),site.optString("status")) to site.optString("id") })
+        } else if(kind=="sites" && sites.isNotEmpty()) {
+            sites.forEachIndexed { index,site ->
+                val id=site.optString("id")
+                val name=site.optString("name").ifBlank { "이름 없는 현장" }
+                val item=LinearLayout(context).apply {
+                    orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(6),dp(8),dp(8))
+                    background=GradientDrawable().apply { setColor(Color.rgb(249,250,246));cornerRadius=dp(14).toFloat();setStroke(dp(1),Color.rgb(225,232,223)) }
+                }
+                item.addView(label("${index+1}. $name",17f,true))
+                item.addView(label(site.optString("status").ifBlank { "상태 확인 필요" },13f,true).apply { setTextColor(Color.rgb(52,100,75)) })
+                item.addView(label(site.optString("address").ifBlank { "주소 미등록" },14f).apply { setTextColor(muted) })
+                val dates=site.optJSONArray("dates")
+                if(dates!=null && dates.length()>0) item.addView(label("일정 · "+(0 until minOf(dates.length(),3)).joinToString(", ") { dates.optString(it) }+(if(dates.length()>3) " 외" else ""),13f).apply { setTextColor(muted) })
+                if(id.isNotBlank()) {
+                    item.isClickable=true;item.contentDescription="$name 현장 상세 보기";item.setOnClickListener { onSite(id) }
+                    val actions=LinearLayout(context)
+                    listOf("전화" to "phone","길 안내" to "navigate","팀 채팅" to "team_chat").forEach { (title,action) ->
+                        actions.addView(Button(context).apply {
+                            text=title;textSize=13f;isAllCaps=false;minWidth=0;minimumWidth=0;minHeight=dp(48);setPadding(dp(4),0,dp(4),0)
+                            setTextColor(ink);background=GradientDrawable().apply { setColor(Color.WHITE);cornerRadius=dp(10).toFloat();setStroke(dp(1),Color.rgb(218,226,220)) }
+                            setOnClickListener { onAction(id,action) }
+                        },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(3),0,dp(3),0) })
+                    }
+                    item.addView(actions)
+                }
+                card.addView(item,LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(4),dp(5),dp(4),dp(5)) })
+            }
         } else if(sites.isNotEmpty()) {
             table(listOf("번호","현장","상태","주소"),listOf(48,160,85,240),sites.mapIndexed { i,s -> listOf("${i+1}",s.optString("name"),s.optString("status"),s.optString("address")) to s.optString("id") })
         }
         if(sites.isEmpty()) card.addView(label("조건에 맞는 현장이 없습니다.",15f))
-        else card.addView(label("표는 좌우로 밀어 볼 수 있어요. 현장을 누르면 상세 정보를 확인합니다.",12f).apply { setTextColor(muted) })
+        else card.addView(label(if(kind=="sites") "현장을 누르면 상세 정보를 확인합니다." else "표는 좌우로 밀어 볼 수 있어요. 현장을 누르면 상세 정보를 확인합니다.",12f).apply { setTextColor(muted) })
         if(result.optInt("total")>sites.size) card.addView(label("전체 ${result.optInt("total")}개 중 ${sites.size}개만 표시했습니다. 기간이나 검색 범위를 좁혀 주세요.",13f,true))
         return card
     }
