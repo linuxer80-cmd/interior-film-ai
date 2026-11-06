@@ -63,7 +63,7 @@ export default function AutoCalendarConnection({embedded=false,compact=false,con
       <button style={button} disabled={busy} onClick={()=>run('sync')}>{busy?'처리 중…':'지금 반영 확인'}</button>
       <button style={{...button,background:'#fff',color:'#355d47'}} disabled={busy} onClick={()=>run('disconnect')}>자동 연결 해제</button>
     </>:<>
-      <p>전체 주소·동호수·작업내용·사용 필름·현장 메모·내 배정을 보냅니다. 공유 캘린더라면 공유 대상에게도 보입니다. 이후 앱에서 변경·제외된 현장은 구글 일정도 수정·삭제합니다. 개인 일정은 수정하지 않습니다.</p>
+      <p>전체 주소·동호수·작업내용·사용 필름·현장 메모·내 배정·함께하는 팀원을 보냅니다. 공유 캘린더라면 공유 대상에게도 보입니다. 이후 앱에서 변경·제외된 현장은 구글 일정도 수정·삭제합니다. 개인 일정은 수정하지 않습니다.</p>
       <button style={button} disabled={busy||state?.configured===false} onClick={()=>run('start')}>{busy?'연결 준비 중…':c?.needs_reconnect?'구글 캘린더 다시 동의하기':'동의하고 자동 연결하기'}</button>
       {state?.configured===false&&<p>자동 연결 서버 설정을 준비 중입니다. 기존 수동 보내기는 계속 사용할 수 있습니다.</p>}
     </>}
