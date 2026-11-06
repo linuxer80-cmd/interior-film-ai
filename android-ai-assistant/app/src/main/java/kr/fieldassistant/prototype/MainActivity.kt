@@ -190,7 +190,7 @@ class MainActivity : Activity() {
         saveRecords(saved)
         resumeOffline.forEach { retryOffline(it) }
         val epoch=sessionEpoch
-        if(active) { startObserver();scanFolder();scheduleForegroundScan() }
+        if(active) { startObserver();scanFolder();scheduleForegroundScan();maybeReview() }
         scope.launch {
             try {
                 val readyMode=findReadySpeechMode()
