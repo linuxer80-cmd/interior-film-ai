@@ -830,13 +830,13 @@ class MainActivity : Activity() {
     private var homeInput=""
     private var displayedHomeConsultationId: String? = null
     private fun chatHeader(page: LinearLayout) {
-        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        val menu=TextView(this).apply { text="☰";textSize=26f;gravity=Gravity.CENTER;contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
+        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.rgb(29,67,50),16) }
+        val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
-        bar.addView(text("현장 AI 비서",19f,true),LinearLayout.LayoutParams(0,-2,1f))
-        val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
+        bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
+        val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
-        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
     }
@@ -3211,7 +3211,7 @@ class MainActivity : Activity() {
                 handler.post { if(chatId==null && !settingsOpen) loadDailyAssistant() }
             return
         }
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.rgb(249,247,242)) }
         setAssistantContent(page);visibleConversationKey=key
         displayedHomeConsultationId=candidate?.optString("id")
         chatHeader(page)
@@ -3247,12 +3247,17 @@ class MainActivity : Activity() {
         page.addView(contextRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        body.addView(text("무엇을 도와드릴까요?",26f,true))
-        body.addView(text("현장과 일정을 확인하고 상담 등록을 도와드릴게요. “이번 주 현장 알려줘”라고 물어보세요.",16f))
-        val shortcuts=LinearLayout(this)
-        shortcuts.addView(button("오늘 일정",false) { answerHome("오늘 일정") },LinearLayout.LayoutParams(0,dp(48),1f))
-        shortcuts.addView(button("현장 찾기",false) { answerHome("현장 목록") },LinearLayout.LayoutParams(0,dp(48),1f))
-        body.addView(shortcuts)
+        body.addView(text("무엇을 도와드릴까요?",24f,true))
+        body.addView(text("현장 업무를 편하게 물어보세요.",15f,false,Color.rgb(100,110,103)).apply { setPadding(0,dp(5),0,dp(10)) })
+        fun shortcuts(first:String, firstAction:()->Unit, second:String, secondAction:()->Unit) {
+            val row=LinearLayout(this)
+            row.addView(button(first,false,firstAction),LinearLayout.LayoutParams(0,dp(52),1f).apply { setMargins(0,0,dp(4),dp(6)) })
+            row.addView(button(second,false,secondAction),LinearLayout.LayoutParams(0,dp(52),1f).apply { setMargins(dp(4),0,0,dp(6)) })
+            body.addView(row)
+        }
+        shortcuts("오늘 일정",{ answerHome("오늘 일정") },"현장 찾기",{ answerHome("현장 목록") })
+        if(selectedCompany()?.role=="관리자") shortcuts("새 상담",{ openNativeFeature("new-site") },"필름 검색",{ openNativeFeature("samples") })
+        else shortcuts("오늘 팀 채팅",{ openTodayTeamChats() },"필름 검색",{ openNativeFeature("samples") })
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
         if(company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(10),0,dp(8)) })
@@ -3298,7 +3303,7 @@ class MainActivity : Activity() {
                 }
                 continue
             }
-            val bubble=text(m.optString("body"),16f).apply { setPadding(dp(14),dp(14),dp(14),dp(14));if(mine) background=bg(Color.rgb(241,242,242),20) }
+            val bubble=text(m.optString("body"),16f,false,if(mine) Color.WHITE else Color.rgb(43,62,51)).apply { setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(if(mine) Color.rgb(35,84,59) else Color.WHITE,18,if(mine) null else Color.rgb(230,232,222)) }
             body.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(42) else 0,dp(12),if(mine) 0 else dp(20),0) })
             if(m.optString("film_site").isNotBlank() && m.optString("film_company")==selectedCompany()?.id) {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
@@ -3329,7 +3334,7 @@ class MainActivity : Activity() {
             if(!expenseDraft.optBoolean("submitted")) choices.addView(button("취소",false) { answerHome("취소") },LinearLayout.LayoutParams(0,dp(48),1f))
             page.addView(choices)
         }
-        val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),dp(4),dp(6),dp(4));background=bg(Color.rgb(244,244,244),26) }
+        val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),dp(4),dp(6),dp(4));background=bg(Color.WHITE,26,Color.rgb(225,229,220)) }
         val input=EditText(this).apply { hint="비서에게 메시지 보내기";textSize=16f;setSingleLine(true);setText(homeInput);background=null
             addTextChangedListener(object: android.text.TextWatcher {
                 override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
@@ -3359,7 +3364,7 @@ class MainActivity : Activity() {
             }
         }
         row.addView(photo,LinearLayout.LayoutParams(dp(44),dp(44)))
-        val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
+        val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(35,84,59),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         scroll.post {
             if(openDailyOnReady && state!=null && !state.loading) { scroll.fullScroll(View.FOCUS_UP);openDailyOnReady=false }
