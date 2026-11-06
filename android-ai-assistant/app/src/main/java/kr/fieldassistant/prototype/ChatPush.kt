@@ -70,7 +70,7 @@ class ChatPushService:FirebaseMessagingService() {
             target.addTo(this)
         }
         val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification=Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_email)
+        val notification=Notification.Builder(this,channel).addExtras(NotificationInbox.owner(target.user)).setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(if(target.kind=="customer") "고객 메시지" else "팀원 메시지")
             .setContentText("새 메시지가 있습니다. 앱에서 확인해 주세요.")
             .setContentIntent(pending).setAutoCancel(true).setCategory(Notification.CATEGORY_MESSAGE).build()
@@ -97,7 +97,7 @@ class ChatPushService:FirebaseMessagingService() {
             }
         }
         val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notice=Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info)
+        val notice=Notification.Builder(this,channel).addExtras(NotificationInbox.owner(user)).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(pending).setAutoCancel(true).build()
         manager.notify("notice-$id",0,notice)

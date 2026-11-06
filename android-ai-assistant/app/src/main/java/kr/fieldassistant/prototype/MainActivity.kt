@@ -907,6 +907,8 @@ class MainActivity : Activity() {
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
         bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
         val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
+        val inbox=TextView(this).apply { text="알림";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) } } }
+        bar.addView(inbox,LinearLayout.LayoutParams(dp(48),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
         val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
@@ -4272,7 +4274,7 @@ class MainActivity : Activity() {
         val pending=PendingIntent.getActivity(this,1,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         try {
             notificationManager().notify(1002001,Notification.Builder(this,"assistant_results")
-                .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("현장 AI 비서 테스트 알림")
+                .addExtras(NotificationInbox.owner(account?.userId ?: return)).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("현장 AI 비서 테스트 알림")
                 .setContentText("알림이 정상적으로 도착했습니다.").setContentIntent(pending).setAutoCancel(true).build())
             message("테스트 알림을 보냈습니다. 화면 위에서 알림을 확인해 주세요.")
         } catch (_: SecurityException) { message("알림 권한을 다시 확인해 주세요.") }

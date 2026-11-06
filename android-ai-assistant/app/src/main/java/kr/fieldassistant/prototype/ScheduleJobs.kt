@@ -158,7 +158,7 @@ class ScheduleWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p) {
         val pending=PendingIntent.getActivity(c,code,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val title=if(kind=="morning") "오늘 시공 일정이 있어요" else "새 시공 일정이 등록됐어요"
         val text=if(kind=="morning") "일정을 확인하고 현장까지 길 안내를 받을까요?" else "배정된 시공 일정을 확인해 주세요."
-        return try { manager.notify(code,Notification.Builder(c,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
+        return try { manager.notify(code,Notification.Builder(c,"assistant_results").addExtras(NotificationInbox.owner(uid)).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(text).setContentIntent(pending).setVisibility(Notification.VISIBILITY_PRIVATE).setAutoCancel(true).build());true }
         catch(_:SecurityException) { false }
     }

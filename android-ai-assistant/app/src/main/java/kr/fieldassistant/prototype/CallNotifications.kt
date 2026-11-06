@@ -29,7 +29,7 @@ internal object CallNotifications {
             .putExtra("assistant_record",id).putExtra("assistant_user",uid)
         val review=PendingIntent.getActivity(ctx,0,yes,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val decline=PendingIntent.getBroadcast(ctx,0,no,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(ctx,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
+        return Notification.Builder(ctx,"assistant_results").addExtras(NotificationInbox.owner(uid)).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("견적 문의로 보이는 전화가 왔습니다")
             .setContentText("현장에 등록할까요?")
             .setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(review).setAutoCancel(true)
@@ -56,7 +56,7 @@ internal object CallNotifications {
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("assistant_settings_user",uid)
         val pending=PendingIntent.getActivity(ctx,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         try {
-            manager.notify("call-folder-"+BackgroundCalls.key(uid),0,Notification.Builder(ctx,"assistant_results")
+            manager.notify("call-folder-"+BackgroundCalls.key(uid),0,Notification.Builder(ctx,"assistant_results").addExtras(NotificationInbox.owner(uid))
                 .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("통화 녹음 폴더 연결 확인")
                 .setContentText("폴더에 접근할 수 없습니다. 앱에서 다시 연결해 주세요.")
                 .setContentIntent(pending).setAutoCancel(true).build())
