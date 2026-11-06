@@ -117,11 +117,13 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     files.add(Recording(DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0)),name,cursor.getLong(2),cursor.getLong(3)))
                 }
             } ?: throw SecurityException("폴더를 열 수 없습니다")
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putLong("last_successful_scan_at",System.currentTimeMillis()).apply()
+            CallNotifications.folderAccessRestored(ctx,uid)
             files.sortBy { it.modified }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
             val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
-            var count=0;var needsRetry=false
+            var count=0;var needsRetry=false;var lastProgress:Int?=null
             run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
@@ -144,15 +146,28 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     try {
                         count++
                         if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"새 녹음을 휴대폰에서 분석하고 있습니다.")
-                        val result=Model(OfflineModel.ensure(ctx).absolutePath).use { model ->
-                            OfflineAudio.transcribe(ctx,file.uri,model) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
+                        val checkpoint=RecordingProgress.restore(background.getString("progress_$key",null),size,modified) ?: RecordingProgress(size,modified)
+                        val chunk=Model(OfflineModel.ensure(ctx).absolutePath).use { model ->
+                            OfflineAudio.transcribeChunk(ctx,file.uri,model,checkpoint.nextUs) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
                         }
-                        if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
-                        candidate=InquiryMatcher.likely(result.text)
+                        val latest=ctx.contentResolver.query(file.uri,arrayOf(DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED),null,null,null)?.use { c ->
+                            if(!c.moveToFirst()) null else c.getLong(0) to c.getLong(1)
+                        } ?: throw SecurityException("녹음 파일 정보를 확인하지 못했습니다.")
+                        if(latest.first!=size || latest.second!=modified) { background.edit().remove("progress_$key").remove("time_$key").remove("size_$key").apply();needsRetry=true;continue }
+                        val result=checkpoint.add(chunk.text)
+                        if(chunk.hasMore) {
+                            synchronized(BackgroundCalls.lock) {
+                                if(isStopped || !BackgroundCalls.active(ctx,uid,token)) throw InterruptedException("작업이 중단되었습니다.")
+                                check(background.edit().putString("progress_$key",result.json()).commit()) { "분석 진행 상태를 저장하지 못했습니다." }
+                            }
+                            lastProgress=result.chunks;needsRetry=true;continue
+                        }
+                        if(result.display().isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
+                        candidate=result.likely
                         val label=if(candidate) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
-                        record.put("status","확인 필요").put("transcript",result.text)
-                            .put("summary","$label\n휴대폰에서 음성을 분석했습니다. 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
-                            .put("offline_candidate",candidate).put("offline_truncated",result.truncated)
+                        record.put("status","확인 필요").put("transcript",result.display())
+                            .put("summary","$label\n휴대폰에서 통화를 나누어 분석했습니다. 내용을 확인해 주세요."+(if(result.compacted) "\n긴 통화의 글은 일부만 표시합니다." else ""))
+                            .put("offline_candidate",candidate).put("offline_truncated",result.compacted)
                     } catch(e: InterruptedException) { break
                     } catch(_: Exception) {
                         record.put("status","분석 실패").put("summary","휴대폰에서 이 녹음을 분석하지 못했습니다. 앱에서 다시 시도해 주세요.")
@@ -161,13 +176,14 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     synchronized(BackgroundCalls.lock) {
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
                         processed.add(id)
-                        check(background.edit().putString("record_$key",record.toString()).putStringSet("processed",processed.toSet()).remove("size_$key").remove("time_$key").commit())
+                        check(background.edit().putString("record_$key",record.toString()).putStringSet("processed",processed.toSet()).remove("size_$key").remove("time_$key").remove("progress_$key").commit())
                         if(candidate) CallNotifications.post(ctx,uid,id)
                     }
                 }
             }
             if(BackgroundCalls.active(ctx,uid,token) && !isStopped) {
                 val summary=when {
+                    lastProgress!=null -> "긴 녹음의 ${lastProgress}분 구간까지 분석했습니다. 남은 부분을 이어서 확인합니다."
                     needsRetry -> "확인할 녹음이 남아 있어 잠시 후 다시 확인합니다."
                     count>0 -> "새 녹음 분석을 마쳤습니다. 아래 비서함을 확인해 주세요."
                     else -> "연결된 폴더에 새 녹음이 없습니다."
@@ -179,7 +195,10 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             }
             return Result.success()
         } catch(_: SecurityException) {
-            if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.")
+            if(BackgroundCalls.active(ctx,uid,token)) {
+                BackgroundCalls.status(ctx,uid,"녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.")
+                CallNotifications.folderAccessLost(ctx,uid)
+            }
             return Result.success()
         } catch(_: Exception) {
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.")

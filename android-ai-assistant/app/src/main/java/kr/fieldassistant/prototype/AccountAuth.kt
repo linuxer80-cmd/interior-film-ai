@@ -465,7 +465,7 @@ internal class AccountAuth private constructor(context: Context) {
         val owners=JSONArray(client.postgrest.rpc("get_my_company").data)
         check(user.id==expectedUser && (0 until owners.length()).any { i -> owners.optJSONObject(i)?.let { it.optString("company_id")==companyId && it.optString("role")=="owner" && it.optBoolean("is_active") }==true }) { "선택한 업체의 활성 관리자만 재고를 관리할 수 있습니다." }
         if(body!=null) {
-            require(body.optString("action") in listOf("receive","dealer","price","register_product") && Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("requestId")))
+            require(body.optString("action") in listOf("receive","dealer","price","register_product","supplier_return") && Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("requestId")))
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {

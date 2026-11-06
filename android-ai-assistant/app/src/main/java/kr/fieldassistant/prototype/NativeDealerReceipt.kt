@@ -35,6 +35,7 @@ internal class NativeDealerReceipt(
         val saved=draft();val rows=saved?.optJSONObject("analysis")?.optJSONArray("rows")
         if(saved!=null && rows!=null && index in 0 until rows.length()) row(saved,index) else show()
     } }
+    private val returns by lazy { NativeDealerReturn(activity,auth,scope,uid,company,valid,{ data },{ data=it },{ show() }) }
     fun store(result:JSONObject) {
         check(valid() && company.role=="관리자")
         check(draft()==null && !prefs.contains(pendingKey)) { "이전 영수증이나 입고 결과를 먼저 확인해 주세요." }
@@ -46,6 +47,7 @@ internal class NativeDealerReceipt(
     }
     fun show() {
         if(!valid()) return
+        if(returns.hasPending()) { returns.reviewPending();return }
         if(setup.hasPending()) { setup.reviewPending();return }
         val record=draft() ?: return
         if(record.optString("uid")!=uid || record.optString("companyId")!=company.id) { msg("업체와 계정을 다시 확인해 주세요.");return }
@@ -55,26 +57,28 @@ internal class NativeDealerReceipt(
         val intro=listOf(field(a,"dealer"),field(a,"date")).filter { it.isNotBlank() }.joinToString(" · ")
         val notes=(0 until (warnings?.length() ?: 0)).map { warnings!!.optString(it) }.filter { it.isNotBlank() }.joinToString("\n")
         val labels=(0 until rows.length()).map { i ->
-            val r=rows.getJSONObject(i);val status=if(r.optBoolean("_done")) "저장됨" else when(field(r,"action")) { "receive"->"확인 필요";"supplier_return"->"대리점 반납";else->"구분 확인 필요" }
+            val r=rows.getJSONObject(i);val status=if(r.optBoolean("_done")) "저장됨" else when(field(r,"action")) { "receive"->"확인 필요";"supplier_return"->if(r.has("_returnRemaining")) "반납 진행 · 남은 ${field(r,"_returnRemaining")}m" else "대리점 반납";else->"구분 확인 필요" }
             "${i+1}. ${field(r,"brand")} ${field(r,"code").ifBlank { field(r,"name") }} · $status\n인식 물량 ${field(r,"totalM").ifBlank { "확인 필요" }}m"
         }
         val builder=AlertDialog.Builder(activity).setTitle("영수증 품목 확인")
         if(labels.isEmpty()) builder.setMessage("읽은 품목이 없습니다. 사진을 다시 확인해 주세요.\n$notes")
         else builder.setItems(labels.toTypedArray()) { _,i -> row(record,i) }
-        builder.setNegativeButton("닫기",null).setNeutralButton("영수증 정보") { _,_ -> msg("$intro\n$notes\n\n품목별 입고 수량과 방염 구분을 확인해 주세요. 대리점 반납은 기존 반납 절차에서 처리해 주세요.") }
+        builder.setNegativeButton("닫기",null).setNeutralButton("영수증 정보") { _,_ -> msg("$intro\n$notes\n\n입고·반납 품목별 수량과 방염 구분을 확인해 주세요. 반납은 해당 창고 롤을 한 개씩 선택합니다.") }
             .setPositiveButton("작업 마치기") { _,_ ->
                 if(prefs.contains(pendingKey)) { msg("확인되지 않은 입고 요청이 있습니다. 입고 결과부터 확인해 주세요.");return@setPositiveButton }
-                AlertDialog.Builder(activity).setTitle("영수증 작업 마치기").setMessage("확인하지 않은 품목은 저장되지 않습니다. 이 분석 결과를 닫을까요?")
+                AlertDialog.Builder(activity).setTitle("영수증 작업 마치기").setMessage("아직 확인하지 않은 물량은 저장되지 않습니다. 일부 반납한 물량은 이미 저장되어 있으며, 분석 결과를 닫으면 남은 물량은 다시 확인해야 합니다. 이 작업을 마칠까요?")
                     .setNegativeButton("돌아가기") { _,_ -> show() }.setPositiveButton("마치기") { _,_ -> if(valid()) prefs.edit().remove(key).commit() }.show()
             }.show()
     }
     private fun row(record:JSONObject,index:Int) {
         if(!valid()) return
+        if(returns.hasPending()) { returns.reviewPending();return }
         if(setup.hasPending()) { setup.reviewPending();return }
         val r=record.getJSONObject("analysis").getJSONArray("rows").getJSONObject(index)
         if(r.optBoolean("_done")) { msg("이미 입고가 확인된 품목입니다.");return }
         if(prefs.contains(pendingKey)) { msg("이전 입고 결과를 먼저 확인해 주세요.");return }
-        if(field(r,"action")!="receive") { msg("입고로 확인되지 않은 품목입니다. 대리점 반납 또는 구분이 불확실한 항목은 기존 재고 화면에서 확인해 주세요.");return }
+        if(field(r,"action")=="supplier_return") { returns.open(record,index);return }
+        if(field(r,"action")!="receive") { msg("입고 또는 반납 구분이 불확실한 품목입니다. 영수증을 다시 확인해 주세요.");return }
         val dealers=data.getJSONArray("dealers");val list=(0 until dealers.length()).mapNotNull { dealers.optJSONObject(it) }
         val code=field(r,"code").uppercase().replace(" ","")
         val initial=if(Regex("^([GF][A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*|[RE]S[0-9][A-Z0-9-]*)$").matches(code)) code.drop(1) else code
