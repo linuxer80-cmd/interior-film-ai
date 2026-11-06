@@ -169,10 +169,10 @@ internal class AccountAuth private constructor(context: Context) {
     suspend fun signOut() { client.auth.signOut() }
     suspend fun clearSession() { client.auth.clearSession() }
 
-    suspend fun updateChatPush(expectedUser:String,deviceId:String,token:String?=null) {
+    suspend fun updateChatPush(expectedUser:String,deviceId:String,token:String?=null,chatReady:Boolean=false,generalReady:Boolean=false) {
         check(verify().userId==expectedUser) { "계정이 변경되었습니다." }
         val bearer=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
-        val body=JSONObject().put("deviceId",deviceId).apply { if(token!=null) put("token",token) }
+        val body=JSONObject().put("deviceId",deviceId).apply { if(token!=null) { put("token",token);put("chatReady",chatReady);put("generalReady",generalReady) } }
         withContext(Dispatchers.IO) {
             val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/assistant/chat-push")
             try {

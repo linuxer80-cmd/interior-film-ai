@@ -192,7 +192,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         // Refresh the displayed state after returning from system settings.
-        if(account!=null) render()
+        if(account!=null) { render();ChatPushRegistration.enqueue(applicationContext,replace=true) }
     }
     override fun onStop() {
         active = false; activeNativeChats?.pause();handler.removeCallbacks(handlerScan)
@@ -3857,6 +3857,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
         if(requestCode!=1002 || account==null) return
+        ChatPushRegistration.enqueue(applicationContext,replace=true)
         render()
         if(notificationsEnabled()) {
             AlertDialog.Builder(this).setTitle("알림이 켜졌습니다")

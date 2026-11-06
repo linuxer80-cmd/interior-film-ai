@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { chatPushPayload, createFcmSender } from '../lib/fcmChatPush.mjs';
+import { chatPushPayload, noticePushPayload, createFcmSender } from '../lib/fcmChatPush.mjs';
 
 const meta = { token: 'registration-token-for-test', recipientId: '11111111-1111-1111-1111-111111111111',
   companyId: '22222222-2222-2222-2222-222222222222', targetId: '33333333-3333-3333-3333-333333333333',
@@ -36,4 +36,12 @@ test('server authenticates FCM, signs JWT, reuses access token and distinguishes
   assert.deepEqual(await send(meta), { state: 'accepted' });
   assert.deepEqual(await send(meta), { state: 'unregistered', status: 404 });
   assert.equal(calls.length, 3);
+});
+
+test('general notice payload limits fields and is targeted to the Android package',()=>{
+ const p=noticePushPayload({...meta,noticeId:meta.messageId,title:'일정',body:'내일 현장을 확인하세요'});
+ assert.equal(p.message.data.kind,'notice');assert.equal(p.message.data.recipient_id,meta.recipientId);
+ assert.equal(p.message.android.restricted_package_name,'kr.fieldassistant.prototype.stable');
+ assert.throws(()=>noticePushPayload({...meta,noticeId:'bad',title:'일정',body:'text'}));
+ assert.throws(()=>noticePushPayload({...meta,noticeId:meta.messageId,title:'a'.repeat(121),body:'text'}));
 });

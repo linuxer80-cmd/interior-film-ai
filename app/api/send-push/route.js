@@ -1,3 +1,4 @@
+import { dispatchAndroidNotice } from "../../../lib/androidNoticePushDispatch.mjs";
 import { notificationDestination } from "../../../lib/superNotificationDestination.mjs";
 import { dispatchAndroidChat } from "../../../lib/androidChatPushDispatch.mjs";
 import { REPORT_REMINDER_TYPE, koreaDay, reminderWindow, currentReportReminder, reportReminderNotice } from "../../../lib/workReportReminders.mjs";
@@ -1216,16 +1217,31 @@ export async function POST(
         notification,
       );
 
-    if (notification?.type === 'customer_chat' && notification?.reference_type === 'customer_chat') {
-      const match = /^customer-chat:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(notification?.dedupe_key || '');
-      if (match) {
-        try {
-          const androidDelivery=await dispatchAndroidChat(supabase, { kind: 'customer', companyId: notification.company_id,
-            targetId: notification.reference_id, messageId: match[1], recipients: recipientUserIds });
-          if (androidDelivery.state==='unconfigured' || androidDelivery.failed) console.warn('Customer chat Android push status', androidDelivery);
-        } catch { console.error('Customer chat Android push dispatch failed'); }
+    // Only a server-accepted native delivery suppresses this user's browser push.
+    let nativeDelivery={sent:0,failed:0,acceptedUserIds:[]};
+    try {
+      if (notification?.type === 'customer_chat' && notification?.reference_type === 'customer_chat') {
+        const match = /^customer-chat:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(notification?.dedupe_key || '');
+        if (match) nativeDelivery=await dispatchAndroidChat(supabase, { kind:'customer', companyId:notification.company_id,
+          targetId:notification.reference_id,messageId:match[1],recipients:recipientUserIds });
+      } else if(notification.id) {
+        // Never trust a webhook-provided title or recipient without the saved row.
+        const saved=await supabase.from('notifications').select('*').eq('id',notification.id).maybeSingle();
+        if(!saved.error && saved.data) {
+          const payload=JSON.parse(buildPayload(saved.data));
+          const allowed=async userId=>{
+            const current=await supabase.from('notifications').select('*').eq('id',notification.id).maybeSingle();
+            if(current.error || !current.data) return false;
+            const users=await resolveRecipientUserIds(supabase,current.data);
+            return users.includes(userId);
+          };
+          nativeDelivery=await dispatchAndroidNotice(supabase,{noticeId:notification.id,
+            title:payload.title.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds},{allowed});
+        }
       }
-    }
+    } catch { console.error('Native notification dispatch failed'); }
+    const nativeRecipients=new Set(nativeDelivery.acceptedUserIds || []);
+    const browserRecipients=recipientUserIds.filter(id=>!nativeRecipients.has(id));
 
     if (
       recipientUserIds.length ===
@@ -1279,12 +1295,12 @@ export async function POST(
     const subscriptions =
       await getPushSubscriptions(
         supabase,
-        recipientUserIds,
+        browserRecipients,
       );
 
     if (
       subscriptions.length ===
-      0
+      0 && nativeDelivery.sent === 0
     ) {
       await updateNotificationPushStatus({
         supabase,
@@ -1333,16 +1349,15 @@ export async function POST(
        7. Push 발송
     ------------------------------------------------------- */
 
-    configureWebPush();
-
-    const result =
-      await sendPushToSubscriptions({
-        supabase,
-
-        subscriptions,
-
-        payload,
-      });
+    let result={sent:0,failed:0,expiredRemoved:0};
+    if(subscriptions.length) {
+      try {
+        configureWebPush();
+        result=await sendPushToSubscriptions({supabase,subscriptions,payload});
+      } catch { result.failed++; }
+    }
+    result.sent+=nativeDelivery.sent;
+    result.failed+=nativeDelivery.failed;
 
     /* -------------------------------------------------------
        8. Notification 상태 기록
@@ -1377,6 +1392,7 @@ export async function POST(
       registered_devices:
         subscriptions.length,
 
+      native_accepted: nativeDelivery.sent,
       sent:
         result.sent,
 

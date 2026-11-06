@@ -1,3 +1,4 @@
+import { dispatchAndroidNotice, noticeRowAllowed } from '../../../../lib/androidNoticePushDispatch.mjs';
 import {createClient} from "@supabase/supabase-js";
 import webpush from "web-push";
 
@@ -26,15 +27,15 @@ const key=(company,site)=>company+":"+site;
 export async function GET(request){
  if(!process.env.CRON_SECRET||request.headers.get("authorization")!==`Bearer ${process.env.CRON_SECRET}`)
   return reply({error:"Unauthorized"},401);
- if(!process.env.NEXT_PUBLIC_SUPABASE_URL||!process.env.SUPABASE_SERVICE_ROLE_KEY||
-    !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY||!process.env.VAPID_PRIVATE_KEY)
-  return reply({error:"Supabase 또는 VAPID 환경 변수가 누락됐습니다."},503);
+ if(!process.env.NEXT_PUBLIC_SUPABASE_URL||!process.env.SUPABASE_SERVICE_ROLE_KEY)
+  return reply({error:"Supabase 환경 변수가 누락됐습니다."},503);
+ const webReady=Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
  const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{
   auth:{persistSession:false,autoRefreshToken:false}
  });
  const date=tomorrowKorea();
  try{
-  webpush.setVapidDetails("mailto:linuxer80@gmail.com",
+  if(webReady) webpush.setVapidDetails("mailto:linuxer80@gmail.com",
    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,process.env.VAPID_PRIVATE_KEY);
   // Explicit daily assignments take precedence; legacy assignments are used only
   // for sites with no dated assignment and an explicit work_dates match.
@@ -92,6 +93,31 @@ export async function GET(request){
    if(readError)throw readError;
    if(record.status==="sent")continue;
    queued++;
+   const title="내일 시공 일정 · "+(companies.get(site.company_id)||"협력 업체");
+   const body=`${site.site_name||"현장"} · ${date} 시공 예정입니다. 현장 정보를 확인해주세요.`;
+   let native={acceptedUserIds:[]};
+   try {
+    const checkRow=noticeRowAllowed(db,"worker_schedule_reminders",record.id);
+    const allowed=async userId=>{
+     if(!await checkRow(userId))return false;
+     const freshWorker=await db.from("workers").select("id").eq("id",workerId).eq("company_id",site.company_id).eq("user_id",userId).eq("is_active",true).maybeSingle();
+     if(freshWorker.error || !freshWorker.data)return false;
+     const freshSite=await db.from("sites").select("id,status,work_dates").eq("id",site.id).eq("company_id",site.company_id).maybeSingle();
+     if(freshSite.error || !freshSite.data || !["scheduled","in_progress"].includes(freshSite.data.status) || !freshSite.data.work_dates?.includes(date))return false;
+     const dated=await db.from("site_daily_assignments").select("worker_id").eq("company_id",site.company_id).eq("site_id",site.id).eq("work_date",date).limit(500);
+     if(dated.error)return false;
+     if(dated.data?.length)return dated.data.some(row=>row.worker_id===workerId);
+     const legacy=await db.from("site_workers").select("worker_id").eq("company_id",site.company_id).eq("site_id",site.id).eq("worker_id",workerId).limit(1);
+     return !legacy.error && Boolean(legacy.data?.length);
+    };
+    native=await dispatchAndroidNotice(db,{noticeId:record.id,title:title.slice(0,120),body:body.slice(0,500),recipients:[worker.user_id]},{allowed});
+   } catch { /* Browser fallback. */ }
+   if(native.acceptedUserIds.includes(worker.user_id)){
+    await db.from("worker_schedule_reminders").update({status:"sent",attempts:record.attempts+1,
+     sent_at:new Date().toISOString(),last_error:null,updated_at:new Date().toISOString()}).eq("id",record.id);
+    sent++;continue;
+   }
+   if(!webReady){failed++;continue;}
    const {data:subscriptions,error:subError}=await db.from("push_subscriptions")
     .select("id,endpoint,p256dh,auth").eq("user_id",worker.user_id).limit(20);
    if(subError){errors.push(subError.message);failed++;continue;}
@@ -100,8 +126,7 @@ export async function GET(request){
     await db.from("worker_schedule_reminders").update({status:"no_subscription",attempts:record.attempts+1,last_error:"알림을 허용한 기기가 없습니다.",updated_at:new Date().toISOString()}).eq("id",record.id);
     continue;
    }
-   const title="내일 시공 일정 · "+(companies.get(site.company_id)||"협력 업체");
-   const payload=JSON.stringify({title,body:`${site.site_name||"현장"} · ${date} 시공 예정입니다. 현장 정보를 확인해주세요.`,
+   const payload=JSON.stringify({title,body,
     url:`/worker/site/${site.id}`,tag:`site-reminder-${date}-${site.id}`});
    let success=0;
    const failures=[];
