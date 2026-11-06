@@ -90,9 +90,10 @@ export async function POST(request){try{
     } catch { console.error('Team chat push dispatch failed'); }
     try {
       const current=await context(request);
-      await dispatchAndroidChat(current.db, { kind:'team', companyId:current.site.company_id, targetId:current.site.id,
+      const androidDelivery=await dispatchAndroidChat(current.db, { kind:'team', companyId:current.site.company_id, targetId:current.site.id,
         date:current.date, messageId:input.id, senderId:current.user.id,
         recipients:current.members.map(member=>member.user_id).filter(id=>id && id!==current.user.id) });
+      if(androidDelivery.state==='unconfigured' || androidDelivery.failed) console.warn('Team chat Android push status',androidDelivery);
     } catch { console.error('Team chat Android push dispatch failed'); }
   });
   return privateJson({ok:true});

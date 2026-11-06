@@ -90,6 +90,8 @@ internal object ChatPushRegistration {
     fun deactivate(c:Context):String {
         prefs(c).edit().remove("user").commit()
         WorkManager.getInstance(c).cancelUniqueWork(WORK)
+        val manager=c.getSystemService(NotificationManager::class.java)
+        manager?.activeNotifications?.filter { it.notification.channelId=="chat_messages" }?.forEach { manager.cancel(it.tag,it.id) }
         FirebaseMessaging.getInstance().isAutoInitEnabled=false
         return device(c)
     }

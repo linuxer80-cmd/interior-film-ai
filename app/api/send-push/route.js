@@ -1220,8 +1220,9 @@ export async function POST(
       const match = /^customer-chat:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(notification?.dedupe_key || '');
       if (match) {
         try {
-          await dispatchAndroidChat(supabase, { kind: 'customer', companyId: notification.company_id,
+          const androidDelivery=await dispatchAndroidChat(supabase, { kind: 'customer', companyId: notification.company_id,
             targetId: notification.reference_id, messageId: match[1], recipients: recipientUserIds });
+          if (androidDelivery.state==='unconfigured' || androidDelivery.failed) console.warn('Customer chat Android push status', androidDelivery);
         } catch { console.error('Customer chat Android push dispatch failed'); }
       }
     }
