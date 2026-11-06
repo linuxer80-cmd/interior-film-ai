@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canReceiveAndroidChat, dispatchAndroidChat } from '../lib/androidChatPushDispatch.mjs';
+import { canReceiveAndroidChat, dispatchAndroidChat, configuredSender } from '../lib/androidChatPushDispatch.mjs';
 
 const ids={companyId:'11111111-1111-1111-1111-111111111111',targetId:'22222222-2222-2222-2222-222222222222',
  messageId:'33333333-3333-3333-3333-333333333333',recipientId:'44444444-4444-4444-4444-444444444444',senderId:'55555555-5555-5555-5555-555555555555',date:'2026-11-06'};
+test('single service-account secret must match the configured project and account',()=>{
+ const projectId='field-ai-assistant',clientEmail='account@field-ai-assistant.iam.gserviceaccount.com';
+ const creds={type:'service_account',project_id:projectId,client_email:clientEmail,private_key:'test-key'};
+ const env={FIREBASE_PROJECT_ID:projectId,FIREBASE_CLIENT_EMAIL:clientEmail,FIREBASE_SERVICE_ACCOUNT_JSON:JSON.stringify(creds)};
+ assert.equal(configuredSender(env,x=>x).privateKey,'test-key');
+ assert.throws(()=>configuredSender({...env,FIREBASE_CLIENT_EMAIL:'different@example.com'},x=>x),/Invalid Firebase service account/);
+ assert.throws(()=>configuredSender({...env,FIREBASE_SERVICE_ACCOUNT_JSON:'broken'},x=>x),/Invalid Firebase service account/);
+ assert.equal(configuredSender({}),null);
+});
 function fixture() {
  const rows={account_deletion_blocks:[],companies:[{id:ids.companyId,is_active:true}],profiles:[{id:ids.recipientId,company_id:ids.companyId,role:'worker',is_active:true}],
   sites:[{id:ids.targetId,company_id:ids.companyId,status:'active',work_dates:[ids.date]}],
