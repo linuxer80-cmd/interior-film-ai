@@ -44,6 +44,25 @@ internal object CallNotifications {
         if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
         try { manager.notify(id.hashCode() and Int.MAX_VALUE,build(ctx,uid,id)) } catch(_:SecurityException) { }
     }
+    fun folderAccessLost(ctx:Context,uid:String) {
+        if(!BackgroundCalls.active(ctx,uid)) return
+        val prefs=BackgroundCalls.resultPrefs(ctx,uid)
+        if(prefs.getBoolean("folder_access_alerted",false)) return
+        val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
+        if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
+        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
+        val intent=Intent(ctx,MainActivity::class.java).setAction("kr.fieldassistant.prototype.FOLDER_ACCESS")
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("assistant_settings_user",uid)
+        val pending=PendingIntent.getActivity(ctx,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        try {
+            manager.notify("call-folder-"+BackgroundCalls.key(uid),0,Notification.Builder(ctx,"assistant_results")
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("통화 녹음 폴더 연결 확인")
+                .setContentText("폴더에 접근할 수 없습니다. 앱에서 다시 연결해 주세요.")
+                .setContentIntent(pending).setAutoCancel(true).build())
+            prefs.edit().putBoolean("folder_access_alerted",true).apply()
+        } catch(_:SecurityException) { }
+    }
     fun decline(ctx:Context,uid:String,id:String):Boolean = synchronized(BackgroundCalls.lock) {
         if(uid.isBlank() || id.isBlank() || !BackgroundCalls.active(ctx,uid)) return@synchronized false
         val prefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)

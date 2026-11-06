@@ -89,6 +89,7 @@ class MainActivity : Activity() {
     private var reviewId: String? = null
     private var reviewUser: String? = null
     private var reviewDecision: String? = null
+    private var folderAlertUser:String?=null
     private var forcedReviewId: String? = null
     private var modelChecked = false
     private val handlerScan = object : Runnable {
@@ -116,13 +117,15 @@ class MainActivity : Activity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
-        captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent)
+        folderAlertUser=savedInstanceState?.getString("folderAlertUser")
+        captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);captureFolderAlert(intent)
         render()
         restoreLogin()
     }
     override fun onSaveInstanceState(outState:Bundle) {
         outState.putString("receiptPickerUid",receiptPickerUid);outState.putString("receiptPickerCompany",receiptPickerCompany);outState.putString("receiptCameraUri",receiptCameraUri?.toString())
         outState.putString("callReviewId",reviewId);outState.putString("callReviewUser",reviewUser);outState.putString("callReviewDecision",reviewDecision)
+        outState.putString("folderAlertUser",folderAlertUser)
         super.onSaveInstanceState(outState)
     }
     /** A single inset owner reserves system bars, cutouts and the keyboard.
@@ -190,7 +193,7 @@ class MainActivity : Activity() {
         saveRecords(saved)
         resumeOffline.forEach { retryOffline(it) }
         val epoch=sessionEpoch
-        if(active) { startObserver();scanFolder();scheduleForegroundScan();maybeReview() }
+        if(active) { startObserver();scanFolder();scheduleForegroundScan();maybeReview();maybeOpenFolderAlert() }
         scope.launch {
             try {
                 val readyMode=findReadySpeechMode()
@@ -203,7 +206,7 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart(); active = true
         activeNativeChats?.resume()
-        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeOpenFolderAlert();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -216,10 +219,21 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
+        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);captureFolderAlert(intent);maybeReview();maybeOpenFolderAlert();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
         if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
+    private fun captureFolderAlert(intent:Intent?) {
+        val uid=intent?.getStringExtra("assistant_settings_user") ?: return
+        folderAlertUser=uid;intent.removeExtra("assistant_settings_user")
+    }
+    private fun maybeOpenFolderAlert() {
+        if(!active || account==null) return
+        val uid=folderAlertUser ?: return
+        folderAlertUser=null
+        if(account?.userId!=uid) { message("알림을 받은 계정으로 로그인해 주세요.");return }
+        settingsOpen=true;showSetupDetails=true;chatId=null;render()
+    }
     private fun captureReview(intent: Intent?) {
         val id=intent?.getStringExtra("assistant_record") ?: return
         val user=intent.getStringExtra("assistant_user") ?: return
@@ -561,7 +575,7 @@ class MainActivity : Activity() {
                         if(epoch!=sessionEpoch || account?.userId!=uid) return@launch
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
                         val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
-                        updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                        updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화의 글은 일부만 표시합니다." else ""))
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
                         if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일에 접근할 수 있는지와 휴대폰 저장 공간을 확인한 뒤 다시 분석해 주세요.")
@@ -2157,7 +2171,7 @@ class MainActivity : Activity() {
                 val content=result.text.trim()
                 check(content.isNotBlank()) { "녹음에서 음성을 찾지 못했습니다." }
                 if(content.length>20000) { appendHomeMessage("통화 내용이 너무 길어 자동 정리할 수 없습니다. 더 짧은 녹음으로 나누어 다시 분석해 주세요.");return@launch }
-                reviewTranscription(content,company,uid,epoch,if(result.truncated) "긴 녹음은 앞부분만 변환했습니다." else "")
+                reviewTranscription(content,company,uid,epoch,if(result.truncated) "긴 녹음은 나누어 분석했으며 인식한 글의 일부만 표시합니다." else "")
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid) appendHomeMessage("휴대폰에서 녹음을 분석하지 못했습니다. 서버 AI 분석을 선택하거나 파일을 확인해 주세요.") }
             finally { BackgroundCalls.running.set(false);textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
@@ -4127,7 +4141,7 @@ class MainActivity : Activity() {
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
         chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
-        ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;forcedReviewId=null;modelChecked=false
+        ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;folderAlertUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
         registrationDialog?.dismiss();registrationDialog=null;savingRegistrations.clear()
         handler.removeCallbacks(handlerScan)
@@ -4322,7 +4336,19 @@ class MainActivity : Activity() {
         col.addView(text("새 통화를 휴대폰에서 확인하고 견적 문의로 보이면 알림을 보냅니다.",14f))
         val info=text("녹음은 휴대폰에서 분석합니다. 견적 문의를 놓칠 수 있으니 비서함도 확인해 주세요. 등록을 확인한 내용만 필름장이에 저장됩니다. 백그라운드 확인과 알림은 절전 설정에 따라 지연될 수 있습니다.",13f,false,Color.rgb(76,111,85)).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.rgb(235,243,233)) }
         val infoLp=LinearLayout.LayoutParams(-1,-2);infoLp.setMargins(0,dp(14),0,dp(4));col.addView(info,infoLp)
-        val ready=folder()!=null && notificationsEnabled()
+        val configuredFolder=folder()
+        val hasFolderGrant=configuredFolder!=null && contentResolver.persistedUriPermissions.any { it.isReadPermission && it.uri==configuredFolder }
+        val monitorPrefs=BackgroundCalls.resultPrefs(applicationContext,verified.userId)
+        val lastSuccess=monitorPrefs.getLong("last_successful_scan_at",0L)
+        val health=RecordingMonitorHealth.state(configuredFolder!=null,hasFolderGrant,notificationsEnabled(),BackgroundCalls.active(applicationContext,verified.userId),lastSuccess,System.currentTimeMillis())
+        col.addView(text(health,13f,true))
+        col.addView(text(if(lastSuccess>0L) "마지막 폴더 확인: "+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date(lastSuccess)) else "마지막 폴더 확인: 아직 없음",12f))
+        val power=getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if(!power.isIgnoringBatteryOptimizations(packageName)) {
+            col.addView(text("휴대폰 절전 설정에 따라 확인과 알림이 늦어질 수 있습니다.",12f))
+            addButton(col,"배터리 절전 설정 확인",false) { try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch(_:Exception) { message("휴대폰 설정에서 앱 배터리 설정을 확인해 주세요.") } }
+        }
+        val ready=configuredFolder!=null && hasFolderGrant && notificationsEnabled()
         if(ready) col.addView(text("✓ 녹음 폴더와 알림 연결됨",16f,true))
         else addButton(col,if(setupBusy || baselineBusy) "비서 준비 중…" else "비서 간편 설정",true) { startSimpleSetup() }
         addButton(col,if(showSetupDetails) "설정 접기" else "연결 상태와 설정 보기",false) { showSetupDetails=!showSetupDetails;render() }
