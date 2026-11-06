@@ -3,6 +3,9 @@ package kr.fieldassistant.prototype
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +39,9 @@ internal class NativeChats(
     fun close() { pause();startLive=null;currentDialog?.dismiss();currentDialog=null }
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density).toInt()
     private fun label(s:String,size:Float=15f)=TextView(activity).apply { text=s;textSize=size;setPadding(dp(8),dp(8),dp(8),dp(8)) }
+    private fun background(color:Int,radius:Int,border:Int?=null)=GradientDrawable().apply {
+        setColor(color);cornerRadius=dp(radius).toFloat();if(border!=null) setStroke(dp(1),border)
+    }
     private fun toast(s:String)=android.widget.Toast.makeText(activity,s,android.widget.Toast.LENGTH_LONG).show()
 
     fun customerInbox(offset:Int=0) {
@@ -76,14 +82,14 @@ internal class NativeChats(
 
     fun conversation(kind:String,target:String,title:String,date:String) {
         if(!valid() || kind !in listOf("customer","team")) return
-        val root=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,dp(12),dp(8)) }
-        val status=label(if(kind=="team") "$date · 이 현장에 배정된 팀원과 관리자" else "고객과의 대화",13f)
+        val root=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(Color.rgb(249,247,242)) }
+        val status=label(if(kind=="team") "$date · 이 현장에 배정된 팀원과 관리자" else "고객과의 대화",13f).apply { setTextColor(Color.rgb(89,111,96)) }
         val scroll=ScrollView(activity)
-        val messages=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
+        val messages=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(0,dp(8),0,dp(12)) }
         scroll.addView(messages);root.addView(status);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        val input=EditText(activity).apply { hint="메시지를 입력하세요";maxLines=4;filters=arrayOf(android.text.InputFilter.LengthFilter(2000)) }
-        val send=Button(activity).apply { text="보내기";isAllCaps=false }
-        val compose=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;addView(input,LinearLayout.LayoutParams(0,-2,1f));addView(send) }
+        val input=EditText(activity).apply { hint="메시지를 입력하세요";textSize=16f;maxLines=4;setPadding(dp(12),dp(10),dp(8),dp(10));background=null;filters=arrayOf(android.text.InputFilter.LengthFilter(2000)) }
+        val send=Button(activity).apply { text="보내기";isAllCaps=false;setTextColor(Color.WHITE);background=background(Color.rgb(35,84,59),20);minWidth=dp(66);minimumWidth=dp(66);contentDescription="메시지 보내기" }
+        val compose=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(4),dp(4),dp(4));background=background(Color.WHITE,24,Color.rgb(225,229,220));addView(input,LinearLayout.LayoutParams(0,-2,1f));addView(send,LinearLayout.LayoutParams(dp(72),dp(48))) }
         root.addView(compose)
         val dialog=AlertDialog.Builder(activity).setTitle(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅").setView(root).setNegativeButton("닫기",null).setNeutralButton("새로 확인",null).create()
         currentDialog=dialog
@@ -144,8 +150,15 @@ internal class NativeChats(
                                 val id=m.optString("sender_id");(0 until (members?.length() ?: 0)).mapNotNull { members?.optJSONObject(it) }.find { it.optString("user_id")==id }?.optString("name")?.takeIf { it.isNotBlank() } ?: if(mine) "나" else "팀원"
                             }
                             val body=m.optString("body").takeUnless { it=="null" }.orEmpty()
-                            val item=label("$sender\n$body\n${m.optString("created_at").take(16).replace('T',' ')}",15f)
-                            item.gravity=if(mine) Gravity.END else Gravity.START;messages.addView(item)
+                            val item=label("$sender\n$body\n${m.optString("created_at").take(16).replace('T',' ')}",15f).apply {
+                                setTextColor(if(mine) Color.WHITE else Color.rgb(43,62,51))
+                                setPadding(dp(14),dp(11),dp(14),dp(11))
+                                setLineSpacing(dp(3).toFloat(),1f)
+                                maxWidth=(activity.resources.displayMetrics.widthPixels*0.76f).toInt()
+                                background=background(if(mine) Color.rgb(35,84,59) else Color.WHITE,16,if(mine) null else Color.rgb(225,229,220))
+                            }
+                            val row=LinearLayout(activity).apply { gravity=if(mine) Gravity.END else Gravity.START;addView(item) }
+                            messages.addView(row,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(5),0,dp(5)) })
                             if(kind=="customer" && !mine && m.optString("created_at")==latestCustomerAt) latestCustomerView=item
                             if(kind=="team" && !mine && m.optString("id").matches(Regex("^[0-9a-fA-F-]{36}$"))) teamViews[m.optString("id")]=item
                             if(kind=="customer" && m.optBoolean("has_image")) {
@@ -217,7 +230,8 @@ internal class NativeChats(
         }
         dialog.setOnDismissListener { closed=true;pause();startLive=null;handler.removeCallbacks(markVisible);if(currentDialog===dialog) currentDialog=null }
         dialog.setOnShowListener {
-            dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.8).toInt())
+            dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt())
+            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { if(valid()) refresh() }
             refresh();resume()
         }
