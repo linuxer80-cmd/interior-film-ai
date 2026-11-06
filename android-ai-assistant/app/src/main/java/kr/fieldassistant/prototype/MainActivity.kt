@@ -107,6 +107,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        receiptPickerUid=savedInstanceState?.getString("receiptPickerUid")
+        receiptPickerCompany=savedInstanceState?.getString("receiptPickerCompany")
+        receiptCameraUri=savedInstanceState?.getString("receiptCameraUri")?.let { Uri.parse(it) }
         window.setDecorFitsSystemWindows(false)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
@@ -114,6 +117,10 @@ class MainActivity : Activity() {
         captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent)
         render()
         restoreLogin()
+    }
+    override fun onSaveInstanceState(outState:Bundle) {
+        outState.putString("receiptPickerUid",receiptPickerUid);outState.putString("receiptPickerCompany",receiptPickerCompany);outState.putString("receiptCameraUri",receiptCameraUri?.toString())
+        super.onSaveInstanceState(outState)
     }
     /** A single inset owner reserves system bars, cutouts and the keyboard.
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
@@ -345,6 +352,15 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1008 || requestCode==1009) {
+            val uid=receiptPickerUid;val company=selectedCompany()
+            val uri=if(requestCode==1009) receiptCameraUri else data?.data
+            if(requestCode==1009 && resultCode!=RESULT_OK && uri!=null) try { contentResolver.delete(uri,null,null) } catch(_:Exception) {}
+            if(resultCode==RESULT_OK && uri?.scheme=="content" && uid!=null && company!=null && account?.userId==uid && company.id==receiptPickerCompany && company.role=="관리자") analyzeReceipt(uri,uid,company)
+            else if(resultCode==RESULT_OK) message("로그인과 업체를 다시 확인한 뒤 사진을 선택해 주세요.")
+            receiptPickerUid=null;receiptPickerCompany=null;receiptCameraUri=null
+            return
+        }
         if(requestCode==1007) {
             val request=reportVoiceRequest;reportVoiceRequest=null
             if(resultCode==RESULT_OK && request!=null && account?.userId==request.uid && selectedCompany()?.id==request.companyId) {
@@ -1364,6 +1380,56 @@ class MainActivity : Activity() {
         openNativeFeature(feature.id)
     }
     private var inventoryBusy=false
+    private var receiptPickerUid:String?=null
+    private var receiptPickerCompany:String?=null
+    private var receiptCameraUri:Uri?=null
+    private fun receiptValid(uid:String,company:CompanyAccess,epoch:Int)=epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자" && !isFinishing && !isDestroyed
+    private fun receiptScreen(uid:String,company:CompanyAccess,data:JSONObject,epoch:Int)=NativeDealerReceipt(this,uid,company,data,{ receiptValid(uid,company,epoch) },{ raw -> retryDealerReceive(uid,company,raw) })
+    private fun receiptPhotoMenu(uid:String,company:CompanyAccess) {
+        if(account?.userId!=uid || selectedCompany()?.id!=company.id || company.role!="관리자") return
+        receiptPickerUid=uid;receiptPickerCompany=company.id
+        AlertDialog.Builder(this).setTitle("영수증 사진 준비").setItems(arrayOf("카메라로 촬영","사진에서 선택")) { _,i ->
+            if(i==0) {
+                if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(Manifest.permission.CAMERA),1013)
+                else launchReceiptCamera()
+            } else {
+                try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),1008) }
+                catch(_:Exception) { message("사진 선택창을 열지 못했습니다.") }
+            }
+        }.setNegativeButton("취소",null).show()
+    }
+    private fun launchReceiptCamera() {
+        if(account?.userId!=receiptPickerUid || selectedCompany()?.id!=receiptPickerCompany || selectedCompany()?.role!="관리자") return
+        try {
+            val values=android.content.ContentValues().apply { put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"receipt_"+System.currentTimeMillis()+".jpg");put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/jpeg") }
+            val uri=contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values) ?: error("사진 공간을 열지 못했습니다.")
+            receiptCameraUri=uri
+            val intent=Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.clipData=ClipData.newRawUri("receipt",uri)
+            try { startActivityForResult(intent,1009) } catch(e:Exception) { contentResolver.delete(uri,null,null);receiptCameraUri=null;throw e }
+        } catch(_:Exception) { message("카메라를 열지 못했습니다. 사진에서 선택해 주세요.") }
+    }
+    private fun analyzeReceipt(uri:Uri,uid:String,company:CompanyAccess) {
+        val epoch=sessionEpoch
+        if(!receiptValid(uid,company,epoch) || inventoryBusy) return
+        AlertDialog.Builder(this).setTitle("영수증 사진 분석")
+            .setMessage("사진을 서버로 보내 품목을 읽습니다. 영수증·단가표 AI 사용 횟수 1회가 적용됩니다. 인식한 내용을 확인한 뒤 입고합니다.")
+            .setNegativeButton("취소",null).setPositiveButton("분석") { _,_ ->
+                if(!receiptValid(uid,company,epoch) || inventoryBusy) return@setPositiveButton
+                if(prefs.contains("dealer_receipt_draft_"+company.id) || prefs.contains("dealer_receive_pending_"+company.id)) { message("이전 영수증 또는 입고 결과부터 확인해 주세요.");return@setPositiveButton }
+                inventoryBusy=true;message("영수증을 분석하고 있습니다. 잠시 기다려 주세요.")
+                scope.launch {
+                    try {
+                        val image=withContext(Dispatchers.IO) { NativeDealerReceipt.prepare(applicationContext,uri) }
+                        val data=auth.dealerInventory(uid,company.id)
+                        val result=auth.analyzeDealerReceipt(uid,company.id,image)
+                        if(receiptValid(uid,company,epoch)) receiptScreen(uid,company,data,epoch).store(result)
+                    } catch(e:CancellationException) { throw e }
+                      catch(e:Exception) { if(receiptValid(uid,company,epoch)) message(e.message ?: "영수증을 분석하지 못했습니다. 사진과 연결을 확인해 주세요.") }
+                    finally { inventoryBusy=false }
+                }
+            }.show()
+    }
     private fun openDealerInventory() {
         val company=selectedCompany() ?: return;val uid=account?.userId ?: return
         if(company.role!="관리자") { message("관리자만 입고와 재고를 확인할 수 있습니다.");return }
@@ -1374,14 +1440,16 @@ class MainActivity : Activity() {
                 val data=auth.dealerInventory(uid,company.id)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
                 val pending=prefs.getString("dealer_receive_pending_"+company.id,null)
-                val options=mutableListOf("현재 재고 확인","거래처 자재 입고")
+                val draft=prefs.contains("dealer_receipt_draft_"+company.id)
+                val options=mutableListOf("현재 재고 확인","거래처 자재 입고",if(draft) "영수증 입고 이어서 확인" else "영수증 사진으로 입고")
                 if(pending!=null) options.add("이전 입고 결과 확인")
                 AlertDialog.Builder(this@MainActivity).setTitle("필름 재고 · 입고").setItems(options.toTypedArray()) { _,index ->
                     if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return@setItems }
                     when(index) {
                         0 -> showDealerStock(uid,company,data)
                         1 -> if(pending!=null) message("이전 입고 결과부터 확인해 주세요.") else chooseReceiveDealer(uid,company,data)
-                        2 -> pending?.let { showPendingDealerReceive(uid,company,data,it) }
+                        2 -> if(pending!=null) message("이전 입고 결과부터 확인해 주세요.") else if(draft) receiptScreen(uid,company,data,epoch).show() else receiptPhotoMenu(uid,company)
+                        3 -> pending?.let { showPendingDealerReceive(uid,company,data,it) }
                     }
                 }.setNegativeButton("닫기",null).show()
             } catch(e:CancellationException) { throw e }
@@ -1480,7 +1548,7 @@ class MainActivity : Activity() {
             try {
                 auth.dealerInventory(uid,company.id,body)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
-                check(prefs.getString(key,null)==raw && prefs.edit().remove(key).commit()) { "입고 결과는 확인했지만 휴대전화 상태를 저장하지 못했습니다. 이전 입고 결과를 다시 확인해 주세요." }
+                check(NativeDealerReceipt.complete(prefs,company.id,raw)) { "입고 결과는 확인했지만 휴대전화 상태를 저장하지 못했습니다. 이전 입고 결과를 다시 확인해 주세요." }
                 message("자재 입고를 저장했습니다. 재고 확인에서 볼 수 있습니다.")
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(epoch==sessionEpoch) message("입고 결과를 확실히 확인하지 못했습니다. ‘이전 입고 결과 확인’으로 같은 요청을 확인해 주세요.\n"+(e.message ?: "")) }
@@ -4141,6 +4209,11 @@ class MainActivity : Activity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode==1013) {
+            if(grantResults.isNotEmpty() && grantResults[0]==PackageManager.PERMISSION_GRANTED) launchReceiptCamera()
+            else message("카메라 권한을 허용하거나 사진에서 선택해 주세요.")
+            return
+        }
         if(requestCode!=1002 || account==null) return
         ChatPushRegistration.enqueue(applicationContext,replace=true)
         render()

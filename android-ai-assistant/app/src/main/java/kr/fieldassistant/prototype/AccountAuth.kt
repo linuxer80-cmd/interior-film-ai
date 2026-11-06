@@ -484,6 +484,29 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun analyzeDealerReceipt(expectedUser:String,companyId:String,image:ByteArray):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(image.isNotEmpty() && image.size<=550000)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val boundary="Receipt"+java.util.UUID.randomUUID().toString().replace("-","")
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/dealer-receipts")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary=$boundary")
+                c.outputStream.use { out ->
+                    out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"images\"; filename=\"receipt.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").toByteArray(Charsets.UTF_8))
+                    out.write(image);out.write(("\r\n--$boundary--\r\n").toByteArray(Charsets.UTF_8))
+                }
+                val code=c.responseCode
+                val raw=(if(code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299 && result.optJSONArray("rows")!=null) { result.optString("error").ifBlank { "영수증 분석을 확인하지 못했습니다." } }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,images:List<ByteArray>,requestId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
