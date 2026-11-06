@@ -57,3 +57,27 @@ test('invalid filter, page and long searches are rejected before database access
     const {result,calls}=await runItems({path});assert.equal(result.status,400);assert.equal(calls.length,0);
   }
 });
+
+async function runPayment({method='GET',selected='company',site=exampleSite,requestBody=null,status=200,remoteThrows=false}={}) {
+  let forwarded=0;let seenBody=null;
+  const auth=async()=>({success:true,companyId:'company',userId:'user'});
+  const delegate=async req=>{forwarded++;if(remoteThrows)throw Error('network');if(method==='POST')seenBody=await req.json();return Response.json(status===200?{site}:{error:'확인 필요'},{status})};
+  const handlers=new Function('authenticateAdmin','Response','existingGet','existingPost',source+';return {GET,POST};')(auth,Response,delegate,delegate);
+  const url='https://example.test/?view=detail&siteId='+exampleSite.id;
+  const req=new Request(url,{method,headers:{'X-Assistant-Company':selected,'Content-Type':'application/json'},...(requestBody?{body:JSON.stringify(requestBody)}:{})});
+  return {result:await handlers[method](req),forwarded,seenBody};
+}
+const paymentBody={siteId:exampleSite.id,requestId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',action:'add',amount:'10000',revision:2,paidOn:'2026-11-06',phase:'balance',direction:'payment',method:'other',memo:'잔금'};
+test('detail delegates through existing authorization and scopes result',async()=>{
+  const good=await runPayment();assert.equal(good.result.status,200);assert.equal(good.forwarded,1);
+  const body=await good.result.json();assert.equal(body.companyId,'company');assert.equal(body.site.id,exampleSite.id);assert.equal(body.site.company_id,'company');
+  const foreign=await runPayment({site:{...exampleSite,company_id:'other'}});assert.equal(foreign.result.status,503);
+  const denied=await runPayment({selected:'other'});assert.equal(denied.result.status,403);assert.equal(denied.forwarded,0);
+});
+test('payment requests keep the same id and body for the existing ledger and preserve conflicts',async()=>{
+  const success=await runPayment({method:'POST',requestBody:paymentBody});assert.equal(success.result.status,200);assert.deepEqual(success.seenBody,paymentBody);
+  const conflict=await runPayment({method:'POST',requestBody:paymentBody,status:409});assert.equal(conflict.result.status,409);
+  const lost=await runPayment({method:'POST',requestBody:paymentBody,remoteThrows:true});assert.equal(lost.result.status,503);
+  const bad=await runPayment({method:'POST',requestBody:{...paymentBody,action:'void'}});assert.equal(bad.result.status,400);assert.equal(bad.forwarded,0);
+  const other=await runPayment({method:'POST',selected:'other',requestBody:paymentBody});assert.equal(other.result.status,403);assert.equal(other.forwarded,0);
+});

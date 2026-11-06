@@ -737,6 +737,33 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantSitePayment(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId) && Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
+        if(body!=null) require(body.optString("siteId")==siteId && body.optString("action") in listOf("initialize","add"))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val path=if(body==null) "?view=detail&siteId="+Uri.encode(siteId) else ""
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/assistant-receivables"+path)
+            try {
+                c.requestMethod=if(body==null) "GET" else "POST"
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val status=c.responseCode
+                val stream=if(status in 200..299)c.inputStream else c.errorStream
+                val result=try { JSONObject(stream?.use { SecureTransport.readBounded(it,128*1024) }?.toString(Charsets.UTF_8).orEmpty()) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299) throw TradeApiFailure(status,result.optString("error").ifBlank { "입금 내역을 확인하지 못했습니다." })
+                val site=result.optJSONObject("site") ?: error("현장 입금 정보를 확인하지 못했습니다.")
+                val revision=site.opt("revision") as? Number ?: error("입금 내역 버전을 확인하지 못했습니다.")
+                check(result.optString("companyId")==companyId && site.optString("company_id")==companyId && site.optString("id")==siteId &&
+                    site.optString("status")=="completed" && site.opt("confirmed") is Boolean && revision.toDouble().isFinite() && revision.toDouble()>=0 &&
+                    revision.toDouble()==kotlin.math.floor(revision.toDouble()) && revision.toDouble()<=Int.MAX_VALUE &&
+                    listOf("contract_amount","paid","outstanding").all { key -> site.has(key) && (site.isNull(key) || (site.opt(key) as? Number)?.toDouble()?.isFinite()==true) }) { "현장 입금 정보를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun submitAssistantWorkerReport(expectedUser:String,companyId:String,siteId:String,region:String,summary:String,memo:String,labor:JSONArray):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
