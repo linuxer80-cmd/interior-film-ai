@@ -33,14 +33,21 @@ jobs:
           mkdir -p android-ai-assistant/app/src/androidTest/assets
           openssl req -x509 -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/test-tls.key" -out "$RUNNER_TEMP/test-tls.crt" -days 2 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null 2>&1
           openssl pkcs12 -export -inkey "$RUNNER_TEMP/test-tls.key" -in "$RUNNER_TEMP/test-tls.crt" -out android-ai-assistant/app/src/androidTest/assets/untrusted-localhost.p12 -passout pass:test-only
+      - name: Prepare non-production Firebase build config
+        run: |
+          # This placeholder only lets CI compile; Firebase auto-init is disabled.
+          # Never use this config for a distributable build.
+          mkdir -p android-ai-assistant/app/src/debug
+          cat > android-ai-assistant/app/src/debug/google-services.json <<'EOF'
+          {"project_info":{"project_number":"123456789012","project_id":"field-assistant-test-only"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789012:android:0123456789abcdef","android_client_info":{"package_name":"kr.fieldassistant.prototype.stable"}},"api_key":[{"current_key":"test-build-only-not-a-real-api-key"}]}],"configuration_version":"1"}
+          EOF
       - name: Test and build
         working-directory: android-ai-assistant
-        run: ASSISTANT_VERSION_CODE=20047 gradle --no-daemon testDebugUnitTest assembleDebug bundleRelease assembleDebugAndroidTest
+        run: ASSISTANT_VERSION_CODE=20047 gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: construction-assistant-20047
+          name: construction-assistant-test-only
           path: |
-            android-ai-assistant/app/build/outputs/bundle/release/*.aab
             android-ai-assistant/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7

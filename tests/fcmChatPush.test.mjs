@@ -1,0 +1,39 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { generateKeyPairSync, createVerify } from 'node:crypto';
+import { chatPushPayload, createFcmSender } from '../lib/fcmChatPush.mjs';
+
+const meta = { token: 'registration-token-for-test', recipientId: '11111111-1111-1111-1111-111111111111',
+  companyId: '22222222-2222-2222-2222-222222222222', targetId: '33333333-3333-3333-3333-333333333333',
+  messageId: '44444444-4444-4444-4444-444444444444', kind: 'team', date: '2026-11-06' };
+
+test('chat payload excludes message content and rejects invalid routing', () => {
+  const payload = chatPushPayload({ ...meta, body: 'private message', title: 'private name' });
+  assert.equal(payload.message.android.restricted_package_name, 'kr.fieldassistant.prototype.stable');
+  assert.equal(JSON.stringify(payload).includes('private'), false);
+  assert.throws(() => chatPushPayload({ ...meta, targetId: 'not-a-uuid' }));
+  assert.throws(() => chatPushPayload({ ...meta, date: 'invalid' }));
+});
+
+test('server authenticates FCM, signs JWT, reuses access token and distinguishes expired registrations', async () => {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  const calls = [];
+  const fakeFetch = async (url, request) => {
+    calls.push({ url, request });
+    if (url.includes('oauth2.googleapis.com')) {
+      const jwt = request.body.get('assertion');
+      const [header, claims, sig] = jwt.split('.');
+      const verifier = createVerify('RSA-SHA256'); verifier.update(`${header}.${claims}`); verifier.end();
+      assert.equal(verifier.verify(publicKey, Buffer.from(sig, 'base64url')), true);
+      assert.equal(JSON.parse(Buffer.from(claims, 'base64url')).scope, 'https://www.googleapis.com/auth/firebase.messaging');
+      return { ok: true, json: async () => ({ access_token: 'test-access', expires_in: 3600 }) };
+    }
+    assert.equal(request.headers.Authorization, 'Bearer test-access');
+    return calls.length === 2 ? { ok: true } : { ok: false, status: 404, json: async () => ({ error: { details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode: 'UNREGISTERED' }] } }) };
+  };
+  const send = createFcmSender({ projectId: 'field-ai-assistant', clientEmail: 'test@project.iam.gserviceaccount.com', privateKey, fetchImpl: fakeFetch, now: () => 1800000000000 });
+  assert.deepEqual(await send(meta), { state: 'accepted' });
+  assert.deepEqual(await send(meta), { state: 'unregistered', status: 404 });
+  assert.equal(calls.length, 3);
+});

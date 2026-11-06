@@ -111,7 +111,7 @@ class MainActivity : Activity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
-        captureReview(intent);captureSchedule(intent)
+        captureReview(intent);captureSchedule(intent);captureChatPush(intent)
         render()
         restoreLogin()
     }
@@ -151,7 +151,7 @@ class MainActivity : Activity() {
                 if(verified!=null && verified.companies.isNotEmpty()) activateAccount(verified)
                 else if(verified!=null) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
             } catch (_: Exception) { authError="로그인 상태를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요." }
-            finally { authBusy=false;render();maybeScheduleReview() }
+            finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush() }
         }
     }
     private fun activateAccount(verified: VerifiedAccount) {
@@ -185,7 +185,7 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart(); active = true
         activeNativeChats?.resume()
-        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview();maybeOpenChatPush(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -198,7 +198,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);maybeReview();maybeScheduleReview()
+        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush()
         if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
@@ -1019,6 +1019,26 @@ class MainActivity : Activity() {
     private fun nativeChats(uid:String,company:CompanyAccess):NativeChats {
         activeNativeChats?.close()
         return NativeChats(this,auth,scope,uid,company) { sitePhotoSessionValid(uid,company) }.also { activeNativeChats=it }
+    }
+    private var pendingChatPush:ChatPushTarget?=null
+    private fun captureChatPush(intent:Intent?) {
+        val target=ChatPushTarget.fromIntent(intent) ?: return
+        pendingChatPush=target
+        listOf("kind","recipient_id","company_id","target_id","message_id","date").forEach { intent?.removeExtra("chat_push_$it") }
+    }
+    private fun maybeOpenChatPush() {
+        val target=pendingChatPush ?: return
+        val current=account ?: return
+        if(!active || authBusy) return
+        if(current.userId!=target.user) { message("이 알림을 받은 계정으로 로그인해 주세요.");return }
+        pendingChatPush=null
+        val company=current.companies.find { it.id==target.company && (target.kind!="customer" || it.role=="관리자") }
+        if(company==null) { message("이 대화를 볼 수 있는 업체 권한이 없습니다.");return }
+        prefs.edit().putString("selected_company",company.id).apply()
+        render()
+        // The chat API rechecks membership and current assignment before returning any messages.
+        if(sitePhotoSessionValid(current.userId,company))
+            nativeChats(current.userId,company).conversation(target.kind,target.target,if(target.kind=="customer") "고객" else "현장",target.date)
     }
     private fun openCustomerChats() {
         val company=selectedCompany() ?: return
@@ -3492,6 +3512,7 @@ class MainActivity : Activity() {
         }
     }
     private fun signOut() {
+        activeNativeChats?.close();activeNativeChats=null
         chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
@@ -3538,7 +3559,7 @@ class MainActivity : Activity() {
                     if(verified.companies.isEmpty()) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
                     else activateAccount(verified)
                 } catch (_: Exception) { authError="로그인 또는 업체 정보를 확인하지 못했습니다. 이메일·비밀번호와 인터넷 연결을 확인해 주세요." }
-                finally { authBusy=false;render();maybeScheduleReview() }
+                finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush() }
             }
         }
         login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)
