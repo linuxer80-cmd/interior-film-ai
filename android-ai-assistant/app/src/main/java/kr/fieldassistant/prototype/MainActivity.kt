@@ -1187,7 +1187,10 @@ class MainActivity : Activity() {
         if(!sitePhotoSessionValid(uid,company)) return
         val confirmed=site.opt("confirmed")==true
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8)) }
-        form.addView(text("기준 금액 · ${ReceivableDisplay.amount(site,"contract_amount")}\n받은 금액 · ${ReceivableDisplay.paid(site)}\n남은 금액 · ${ReceivableDisplay.outstanding(site)}",14f))
+        val base=if(!site.isNull("vat_amount") && !site.isNull("supply_amount"))
+            "공급가액 · ${ReceivableDisplay.amount(site,"supply_amount")}\n부가세 · ${ReceivableDisplay.amount(site,"vat_amount")}\n합계 (부가세 포함) · ${ReceivableDisplay.amount(site,"contract_amount")}"
+        else "기준 금액 · ${ReceivableDisplay.amount(site,"contract_amount")}\n부가세 포함 여부를 확인해 주세요."
+        form.addView(text("$base\n받은 금액 · ${ReceivableDisplay.paid(site)}\n남은 금액 · ${ReceivableDisplay.outstanding(site)}",14f))
         form.addView(text(if(confirmed) "이번에 실제로 받은 금액을 입력해 주세요." else "처음 확인합니다. 지금까지 받은 총액을 입력해 주세요. 받은 금액이 없으면 0원을 입력합니다.",14f,true))
         val amount=EditText(this).apply { hint=if(confirmed) "이번 입금액 (원)" else "지금까지 받은 총액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(13)) }
         val date=EditText(this).apply { hint="입금일 YYYY-MM-DD";setSingleLine();setText(ScheduleDates.today());filters=arrayOf(android.text.InputFilter.LengthFilter(10)) }
