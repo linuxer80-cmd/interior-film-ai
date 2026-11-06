@@ -1,0 +1,59 @@
+name: Prepare unsigned assistant bundle
+on:
+  push:
+    branches: [codex/assistant-release-20049]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '8.13'
+      - name: Prepare Android and offline speech model
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36'
+          mkdir -p android-ai-assistant/vendor android-ai-assistant/app/src/main/assets android-ai-assistant/app/src/release
+          git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git android-ai-assistant/vendor/whisper
+          test "$(git -C android-ai-assistant/vendor/whisper rev-parse HEAD)" = a8d002cfd879315632a579e73f0148d06959de36
+          curl -fsSL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin -o android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
+          (cd android-ai-assistant/app/src/main/assets && sha256sum ggml-small-q5_1.bin > whisper-model.sha256)
+      - name: Generate non-production Firebase placeholders
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          config={
+            "project_info":{"project_number":"111111111111","project_id":"tttttttttttttttttt","storage_bucket":"q"*26+".appspot.com"},
+            "client":[{"client_info":{"mobilesdk_app_id":"1:111111111111:android:"+"a"*22,
+              "android_client_info":{"package_name":"kr.fieldassistant.prototype.stable"}},
+              "api_key":[{"current_key":"AIza"+"z"*35}]}],"configuration_version":"1"}
+          with open("android-ai-assistant/app/src/release/google-services.json","w") as f: json.dump(config,f)
+          PY
+      - name: Build unsigned bundle
+        working-directory: android-ai-assistant
+        run: ASSISTANT_VERSION_CODE=20049 gradle --no-daemon bundleRelease
+      - name: Include pinned bundle validator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundle-output
+          cp android-ai-assistant/app/build/outputs/bundle/release/*.aab bundle-output/assistant-unsigned-placeholder.aab
+          curl -fsSL --retry 3 https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar -o bundle-output/bundletool.jar
+          echo '378b5434cd1378bef6b2bc527b8c7f0ff2584b273830335bce54d6d0813c8584  bundle-output/bundletool.jar' | sha256sum -c -
+          java -jar bundle-output/bundletool.jar validate --bundle=bundle-output/assistant-unsigned-placeholder.aab
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-unsigned-placeholder-20049
+          path: bundle-output/
+          if-no-files-found: error
+          retention-days: 1
