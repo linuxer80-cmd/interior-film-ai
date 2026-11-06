@@ -2598,12 +2598,12 @@ class MainActivity : Activity() {
                 if(materials.length()>100 || expenses.length()>100 || labor.length()>100) error("내역이 많아 기존 보고서 화면에서 확인해 주세요.")
                 workerActionBusy=false
                 val form=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
-                val hint=buildString {
+                val instructions=buildString {
                     append("현장: $siteName\n관리자 보완 사유: "+report.optString("review_memo").takeUnless { it.isBlank() || it=="null" }.orEmpty())
                     append("\n완료사진 ${support.optInt("afterCount")}장 · 기존 자재 ${materials.length()}건 · 보고서 경비 ${expenses.length()}건 · 인건비 ${labor.length()}건")
                     append("\n\n기존 자재·경비·인건비는 그대로 보존합니다. 필름 반출·반납 내용이 달라진 경우 기존 보고서 화면에서 자재를 확인해야 합니다.")
                 }
-                form.addView(text(hint,14f))
+                form.addView(text(instructions,14f))
                 val fields=listOf("work_region","work_summary","memo");val titles=listOf("시공 부위","실제 시공 내용","메모")
                 val inputs=fields.mapIndexed { i,key -> EditText(this@MainActivity).apply {
                     hint=titles[i];minLines=if(i==1)3 else 1;filters=arrayOf(android.text.InputFilter.LengthFilter(5000))
