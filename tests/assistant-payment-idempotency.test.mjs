@@ -59,3 +59,29 @@ test('initial payment retries preserve the original total and request id',async(
   await assert.rejects(call('initialize',{...request,requestId:id(71)}),e=>e.code==='22023');
  } finally { await db.close(); }
 });
+test('lost response retries pass through both real API handlers without duplicating an entry',async()=>{
+ const {db}=await fixture();const oldUrl=process.env.NEXT_PUBLIC_SUPABASE_URL,oldKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
+ try {
+  process.env.NEXT_PUBLIC_SUPABASE_URL='https://test.invalid';process.env.SUPABASE_SERVICE_ROLE_KEY='test-only';
+  const existingSource=sql('app/api/admin/receivables/route.js').replace(/^import .*;$/gm,'').replaceAll('export ','');
+  const client={auth:{getUser:async()=>({data:{user:{id:id(10)}},error:null})},rpc:async(name,args)=>{
+   try { const r=await db.query('select manage_site_settlement($1,$2,$3,$4::jsonb) result',[args.p_user,args.p_site,args.p_action,JSON.stringify(args.p_body)]);return {data:r.rows[0].result,error:null}; }
+   catch(error) { return {data:null,error}; }
+  }};
+  const realPost=new Function('createClient','after','notifyCustomerStage','Response',existingSource+';return POST;')(()=>client,()=>{},()=>{},Response);
+  let loseOnce=true;
+  const delegatedPost=async request=>{const response=await realPost(request);if(loseOnce){loseOnce=false;throw Error('response lost');}return response;};
+  const wrapperSource=sql('app/api/admin/assistant-receivables/route.js').replace(/^import .*;$/gm,'').replaceAll('export ','');
+  const wrapperPost=new Function('authenticateAdmin','Response','existingGet','existingPost',wrapperSource+';return POST;')(
+   async()=>({success:true,companyId:id(1),userId:id(10)}),Response,()=>{},delegatedPost);
+  const body={siteId:id(20),requestId:id(80),action:'add',amount:'50000',revision:2,paidOn:'2026-10-27',phase:'balance',direction:'payment',method:'other',memo:'잔금 입금'};
+  const send=()=>wrapperPost(new Request('https://example.test/api/admin/assistant-receivables',{method:'POST',headers:{'Authorization':'Bearer test','X-Assistant-Company':id(1),'Content-Type':'application/json'},body:JSON.stringify(body)}));
+  assert.equal((await send()).status,503);
+  const recovered=await send();assert.equal(recovered.status,200);assert.equal((await recovered.json()).site.paid,150000);
+  assert.equal(Number((await db.query('select count(*) n from site_payment_entries where id=$1',[id(80)])).rows[0].n),1);
+ } finally {
+  if(oldUrl===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=oldUrl;
+  if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;
+  await db.close();
+ }
+});
