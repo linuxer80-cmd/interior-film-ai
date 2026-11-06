@@ -2,7 +2,6 @@ package kr.fieldassistant.prototype
 
 import android.Manifest
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
@@ -52,7 +51,7 @@ class ChatPushService:FirebaseMessagingService() {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="chat_messages"
-        manager.createNotificationChannel(NotificationChannel(channel,"채팅 메시지",NotificationManager.IMPORTANCE_HIGH))
+        AssistantNotificationChannels.ensure(manager,channel,"채팅 메시지",NotificationManager.IMPORTANCE_HIGH)
         val intent=Intent(this,MainActivity::class.java).apply {
             flags=Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             data=Uri.parse("fieldassistant://chat-notification/${target.message}")

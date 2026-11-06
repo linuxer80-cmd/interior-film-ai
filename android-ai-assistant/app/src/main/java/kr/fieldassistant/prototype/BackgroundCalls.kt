@@ -2,7 +2,6 @@ package kr.fieldassistant.prototype
 
 import android.Manifest
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -186,7 +185,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
     }
     private fun notifyCandidate(ctx: Context,uid: String,id: String) {
         val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(NotificationChannel("assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT))
+        AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
         if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
         val request=id.hashCode() and Int.MAX_VALUE

@@ -3,7 +3,6 @@ package kr.fieldassistant.prototype
 import android.Manifest
 import android.app.Activity
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.AlertDialog
@@ -3581,7 +3580,7 @@ class MainActivity : Activity() {
     private fun notificationManager(): NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private fun ensureNotificationChannel(): NotificationManager {
         val manager=notificationManager()
-        manager.createNotificationChannel(NotificationChannel("assistant_results", "통화 분석 결과", NotificationManager.IMPORTANCE_DEFAULT))
+        AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
         return manager
     }
     private fun notificationsEnabled(): Boolean {

@@ -2,7 +2,6 @@ package kr.fieldassistant.prototype
 
 import android.Manifest
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -150,7 +149,7 @@ class ScheduleWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p) {
     }
     private fun send(c:Context,uid:String,date:String,kind:String):Boolean {
         val manager=c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(NotificationChannel("assistant_results","비서 알림",NotificationManager.IMPORTANCE_DEFAULT))
+        AssistantNotificationChannels.ensure(manager,"assistant_results","비서 알림",NotificationManager.IMPORTANCE_DEFAULT)
         if(Build.VERSION.SDK_INT>=33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return false
         if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return false
         val code=("schedule:$uid:$date:$kind".hashCode() and Int.MAX_VALUE)
