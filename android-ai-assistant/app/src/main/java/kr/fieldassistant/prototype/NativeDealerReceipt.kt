@@ -12,6 +12,7 @@ import android.net.Uri
 import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
+import kotlinx.coroutines.CoroutineScope
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -20,8 +21,8 @@ import java.util.UUID
 
 /** A receipt is a reviewable draft; each confirmed row uses the ordinary idempotent receive API. */
 internal class NativeDealerReceipt(
-    private val activity:Activity, private val uid:String, private val company:CompanyAccess,
-    private val data:JSONObject, private val valid:()->Boolean, private val send:(String)->Unit,
+    private val activity:Activity, private val auth:AccountAuth, private val scope:CoroutineScope, private val uid:String, private val company:CompanyAccess,
+    private var data:JSONObject, private val valid:()->Boolean, private val send:(String)->Unit,
 ) {
     private val prefs=activity.getSharedPreferences("assistant_user_"+uid,Context.MODE_PRIVATE)
     private val key="dealer_receipt_draft_"+company.id
@@ -29,6 +30,11 @@ internal class NativeDealerReceipt(
     private fun msg(s:String) { if(valid()) AlertDialog.Builder(activity).setMessage(s).setPositiveButton("확인",null).show() }
     private fun draft():JSONObject?=try { prefs.getString(key,null)?.let { JSONObject(it) } } catch(_:Exception) { null }
     private fun field(row:JSONObject,k:String)=row.optString(k).takeUnless { it.isBlank() || it=="null" }.orEmpty()
+    private val setup by lazy { NativeDealerSetup(activity,auth,scope,uid,company,valid,{ data }) { updated,index ->
+        data=updated
+        val saved=draft();val rows=saved?.optJSONObject("analysis")?.optJSONArray("rows")
+        if(saved!=null && rows!=null && index in 0 until rows.length()) row(saved,index) else show()
+    } }
     fun store(result:JSONObject) {
         check(valid() && company.role=="관리자")
         check(draft()==null && !prefs.contains(pendingKey)) { "이전 영수증이나 입고 결과를 먼저 확인해 주세요." }
@@ -40,6 +46,7 @@ internal class NativeDealerReceipt(
     }
     fun show() {
         if(!valid()) return
+        if(setup.hasPending()) { setup.reviewPending();return }
         val record=draft() ?: return
         if(record.optString("uid")!=uid || record.optString("companyId")!=company.id) { msg("업체와 계정을 다시 확인해 주세요.");return }
         val a=record.optJSONObject("analysis") ?: return
@@ -63,16 +70,26 @@ internal class NativeDealerReceipt(
     }
     private fun row(record:JSONObject,index:Int) {
         if(!valid()) return
+        if(setup.hasPending()) { setup.reviewPending();return }
         val r=record.getJSONObject("analysis").getJSONArray("rows").getJSONObject(index)
         if(r.optBoolean("_done")) { msg("이미 입고가 확인된 품목입니다.");return }
         if(prefs.contains(pendingKey)) { msg("이전 입고 결과를 먼저 확인해 주세요.");return }
         if(field(r,"action")!="receive") { msg("입고로 확인되지 않은 품목입니다. 대리점 반납 또는 구분이 불확실한 항목은 기존 재고 화면에서 확인해 주세요.");return }
         val dealers=data.getJSONArray("dealers");val list=(0 until dealers.length()).mapNotNull { dealers.optJSONObject(it) }
-        if(list.isEmpty()) { msg("등록된 대리점이 없습니다. 대리점과 공급가를 먼저 등록해 주세요.");return }
         val code=field(r,"code").uppercase().replace(" ","")
         val initial=if(Regex("^([GF][A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*|[RE]S[0-9][A-Z0-9-]*)$").matches(code)) code.drop(1) else code
+        val detectedDealer=field(record.getJSONObject("analysis"),"dealer")
         AlertDialog.Builder(activity).setTitle("대리점 선택 · 인식: ${field(record.getJSONObject("analysis"),"dealer").ifBlank { "확인 필요" }}")
-            .setItems(list.map { field(it,"name") }.toTypedArray()) { _,i -> chooseProduct(record,index,list[i],initial) }
+            .setItems((list.map { field(it,"name") }+"＋ 대리점 등록").toTypedArray()) { _,i ->
+                if(i==list.size) setup.dealer(null,detectedDealer,index)
+                else {
+                    val dealer=list[i]
+                    AlertDialog.Builder(activity).setTitle(field(dealer,"name"))
+                        .setItems(arrayOf("이 대리점으로 계속","대리점 정보 수정")) { _,action ->
+                            if(action==0) chooseProduct(record,index,dealer,initial) else setup.dealer(dealer,"",index)
+                        }.setNegativeButton("취소") { _,_ -> row(record,index) }.show()
+                }
+            }
             .setNegativeButton("취소") { _,_ -> show() }.show()
     }
     private fun chooseProduct(record:JSONObject,index:Int,dealer:JSONObject,query:String) {
@@ -84,6 +101,7 @@ internal class NativeDealerReceipt(
         val b=AlertDialog.Builder(activity).setTitle("입고 제품 선택 · ${field(r,"code")}")
         if(names.isEmpty()) b.setMessage("검색 결과가 없습니다. 제품번호를 바꿔 검색하거나 공급가를 먼저 등록해 주세요.")
         else b.setItems(names.toTypedArray()) { _,i -> enter(record,index,dealer,list[i]) }
+        b.setPositiveButton("＋ 제품·공급가 등록") { _,_ -> setup.product(dealer,field(r,"brand"),q,index) }
         b.setNegativeButton("뒤로") { _,_ -> row(record,index) }.setNeutralButton("제품 검색") { _,_ ->
             val input=EditText(activity).apply { setSingleLine();setText(q);hint="제품번호 또는 제조사" }
             AlertDialog.Builder(activity).setTitle("제품 검색").setView(input).setNegativeButton("취소") { _,_ -> show() }
@@ -99,7 +117,8 @@ internal class NativeDealerReceipt(
         val type=if(field(price,"price_type")=="fire") "방염" else "비방염"
         val detectedType=when(field(r,"priceType")) { "fire"->"방염";"non_fire"->"비방염";else->"확인 필요" }
         val info="인식: ${field(r,"brand")} ${field(r,"code")} · $detectedType · 총 ${field(r,"totalM").ifBlank { "확인 필요" }}m\n선택: ${field(dealer,"name")} · ${field(price,"brand")} ${field(price,"product_code")} · $type · ${field(price,"unit_price")}원/m\n\n사진과 비교해 확인해 주세요."
-        val dialog=AlertDialog.Builder(activity).setTitle("입고 내용 확인").setMessage(info).setView(form).setNegativeButton("취소") { _,_ -> show() }.setPositiveButton("저장 내용 확인",null).create()
+        val dialog=AlertDialog.Builder(activity).setTitle("입고 내용 확인").setMessage(info).setView(form).setNegativeButton("취소") { _,_ -> show() }
+            .setNeutralButton("공급가 수정") { _,_ -> setup.price(dealer,price,index) }.setPositiveButton("저장 내용 확인",null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(!valid()) return@setOnClickListener
             val m=length.text.toString().trim().toBigDecimalOrNull();val n=count.text.toString().trim().toIntOrNull()

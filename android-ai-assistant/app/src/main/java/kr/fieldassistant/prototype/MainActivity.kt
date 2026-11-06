@@ -1384,7 +1384,7 @@ class MainActivity : Activity() {
     private var receiptPickerCompany:String?=null
     private var receiptCameraUri:Uri?=null
     private fun receiptValid(uid:String,company:CompanyAccess,epoch:Int)=epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자" && !isFinishing && !isDestroyed
-    private fun receiptScreen(uid:String,company:CompanyAccess,data:JSONObject,epoch:Int)=NativeDealerReceipt(this,uid,company,data,{ receiptValid(uid,company,epoch) },{ raw -> retryDealerReceive(uid,company,raw) })
+    private fun receiptScreen(uid:String,company:CompanyAccess,data:JSONObject,epoch:Int)=NativeDealerReceipt(this,auth,scope,uid,company,data,{ receiptValid(uid,company,epoch) },{ raw -> retryDealerReceive(uid,company,raw) })
     private fun receiptPhotoMenu(uid:String,company:CompanyAccess) {
         if(account?.userId!=uid || selectedCompany()?.id!=company.id || company.role!="관리자") return
         receiptPickerUid=uid;receiptPickerCompany=company.id
