@@ -184,6 +184,7 @@ class MainActivity : Activity() {
     }
     override fun onStart() {
         super.onStart(); active = true
+        activeNativeChats?.resume()
         if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
@@ -192,7 +193,7 @@ class MainActivity : Activity() {
         if(account!=null) render()
     }
     override fun onStop() {
-        active = false; handler.removeCallbacks(handlerScan)
+        active = false; activeNativeChats?.pause();handler.removeCallbacks(handlerScan)
         if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
         super.onStop()
     }
@@ -1014,8 +1015,10 @@ class MainActivity : Activity() {
         }
         return true
     }
-    private fun nativeChats(uid:String,company:CompanyAccess)=NativeChats(this,auth,scope,uid,company) {
-        sitePhotoSessionValid(uid,company)
+    private var activeNativeChats:NativeChats?=null
+    private fun nativeChats(uid:String,company:CompanyAccess):NativeChats {
+        activeNativeChats?.close()
+        return NativeChats(this,auth,scope,uid,company) { sitePhotoSessionValid(uid,company) }.also { activeNativeChats=it }
     }
     private fun openCustomerChats() {
         val company=selectedCompany() ?: return

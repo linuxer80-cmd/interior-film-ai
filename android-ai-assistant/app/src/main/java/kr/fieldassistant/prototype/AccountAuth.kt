@@ -9,6 +9,10 @@ import android.util.Base64
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.annotations.SupabaseInternal
 import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.okhttp.OkHttp
+import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.realtime.realtime
+import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.auth
@@ -18,8 +22,14 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.NonCancellable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import org.json.JSONArray
 import org.json.JSONObject
@@ -102,10 +112,11 @@ internal class AccountAuth private constructor(context: Context) {
     @OptIn(SupabaseInternal::class)
     private val client=createSupabaseClient(SecureTransport.requireHttps(SUPABASE_URL),SUPABASE_PUBLIC_KEY) {
         useHTTPS=true
-        httpEngine=Android.create()
+        httpEngine=OkHttp.create()
         httpConfig { requireEncryptedTransport() }
         install(Auth) { sessionManager=SecureSessionManager(context); autoLoadFromStorage=true; autoSaveToStorage=true }
         install(Postgrest) { requireValidSession=true }
+        install(Realtime) { secure=true }
     }
     suspend fun publicSamples():List<SampleSearch.Product> = withContext(Dispatchers.IO) {
         val conn=SecureTransport.open("https://interior-film-ai.vercel.app/api/film-products")
@@ -151,6 +162,32 @@ internal class AccountAuth private constructor(context: Context) {
     }
     suspend fun signOut() { client.auth.signOut() }
     suspend fun clearSession() { client.auth.clearSession() }
+
+    /** Only subscribe to private invalidations; message content is re-fetched through authorized APIs. */
+    suspend fun watchChat(expectedUser:String, company:CompanyAccess, kind:String, target:String, date:String, onChange:()->Unit, onState:(Boolean)->Unit) = coroutineScope {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
+        require(kind in listOf("customer","team") && target.matches(Regex("^[0-9a-fA-F-]{36}$")))
+        val topic=if(kind=="customer") {
+            check(company.role=="관리자");"customer-chat-admin:${company.id}"
+        } else {
+            require(date.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")));"team-chat:$target:$date"
+        }
+        val channel=client.realtime.channel(topic) { isPrivate=true }
+        val events=launch(start=CoroutineStart.UNDISPATCHED) { channel.broadcastFlow<JsonObject>(event="changed").collect { onChange() } }
+        val statuses=launch(start=CoroutineStart.UNDISPATCHED) {
+            channel.status.collect { state ->
+                val connected=state.toString()=="SUBSCRIBED"
+                onState(connected)
+                if(connected) onChange() // Recover changes missed during a disconnect.
+            }
+        }
+        try { channel.subscribe(blockUntilSubscribed=true);awaitCancellation() }
+        finally {
+            events.cancel();statuses.cancel()
+            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+        }
+    }
 
     /** Existing chat endpoints perform their own server-side authorization. */
     suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0):JSONObject {

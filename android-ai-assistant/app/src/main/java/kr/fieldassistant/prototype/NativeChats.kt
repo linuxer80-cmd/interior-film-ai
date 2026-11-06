@@ -17,6 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
@@ -26,6 +28,12 @@ internal class NativeChats(
     private val activity:Activity, private val auth:AccountAuth, private val scope:CoroutineScope,
     private val uid:String, private val company:CompanyAccess, private val valid:()->Boolean
 ) {
+    private var liveJob:Job?=null
+    private var startLive:(()->Unit)?=null
+    private var currentDialog:AlertDialog?=null
+    fun pause() { liveJob?.cancel();liveJob=null }
+    fun resume() { startLive?.invoke() }
+    fun close() { pause();startLive=null;currentDialog?.dismiss();currentDialog=null }
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density).toInt()
     private fun label(s:String,size:Float=15f)=TextView(activity).apply { text=s;textSize=size;setPadding(dp(8),dp(8),dp(8),dp(8)) }
     private fun toast(s:String)=android.widget.Toast.makeText(activity,s,android.widget.Toast.LENGTH_LONG).show()
@@ -52,14 +60,15 @@ internal class NativeChats(
                 if(previous) options.add("이전 목록")
                 if(more) options.add("다음 목록")
                 if(options.isEmpty()) { toast("아직 고객 채팅이 없습니다.");return@launch }
-                AlertDialog.Builder(activity).setTitle("고객 채팅").setItems(options.toTypedArray()) { _,index ->
+                val inbox=AlertDialog.Builder(activity).setTitle("고객 채팅").setItems(options.toTypedArray()) { _,index ->
                     if(!valid()) return@setItems
                     when {
                         index<ids.size -> conversation("customer",ids[index],names[index],"")
                         previous && index==ids.size -> customerInbox((offset-50).coerceAtLeast(0))
                         more -> customerInbox(offset+50)
                     }
-                }.setNegativeButton("닫기",null).show()
+                }.setNegativeButton("닫기",null).create()
+                currentDialog=inbox;inbox.show()
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(valid()) toast(e.message ?: "고객 채팅을 불러오지 못했습니다.") }
         }
@@ -76,7 +85,8 @@ internal class NativeChats(
         val send=Button(activity).apply { text="보내기";isAllCaps=false }
         val compose=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;addView(input,LinearLayout.LayoutParams(0,-2,1f));addView(send) }
         root.addView(compose)
-        val dialog=AlertDialog.Builder(activity).setTitle(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅").setView(root).setNegativeButton("닫기",null).create()
+        val dialog=AlertDialog.Builder(activity).setTitle(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅").setView(root).setNegativeButton("닫기",null).setNeutralButton("새로 확인",null).create()
+        currentDialog=dialog
         val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
         var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
         var latestCustomerView:TextView?=null;var latestCustomerAt=""
@@ -94,7 +104,6 @@ internal class NativeChats(
         } }
         scroll.setOnScrollChangeListener { _,_,_,_,_ -> handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,350) }
         lateinit var refresh:()->Unit
-        val periodic=object:Runnable { override fun run() { if(!closed && dialog.isShowing) { if(valid()) refresh() else dialog.dismiss();if(!closed) handler.postDelayed(this,20000) } } }
         fun showPhoto(url:String) {
             if(!valid() || !ChatPhotoUrl.allowed(url,target)) { toast("사진을 확인할 수 없습니다.");return }
             val image=ImageView(activity).apply { adjustViewBounds=true;minimumHeight=dp(220);contentDescription="고객이 보낸 사진" }
@@ -149,7 +158,6 @@ internal class NativeChats(
                         lastVersion=version;firstLoad=false
                         if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
                     }
-                    status.text=if(kind=="team") "$date · 이 현장에 배정된 팀원과 관리자" else "고객과의 대화"
                     teamReadReady=kind=="team" && data.optBoolean("readReady")
                     if(teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
                     chatAllowed=kind!="team" || data.optBoolean("chatReady");send.isEnabled=chatAllowed && !sending
@@ -188,10 +196,30 @@ internal class NativeChats(
                 finally { sending=false;if(!closed && dialog.isShowing) send.isEnabled=chatAllowed }
             }
         }
-        dialog.setOnDismissListener { closed=true;handler.removeCallbacks(periodic);handler.removeCallbacks(markVisible) }
+        startLive=start@{
+            if(closed || !dialog.isShowing || !valid() || liveJob?.isActive==true) return@start
+            liveJob=scope.launch {
+                var attempt=0
+                while(!closed && dialog.isShowing && valid()) {
+                    try {
+                        status.text="실시간 연결 중…"
+                        auth.watchChat(uid,company,kind,target,date,
+                            onChange={ if(!closed && dialog.isShowing && valid()) refresh() },
+                            onState={ connected -> if(!closed && dialog.isShowing && valid()) {
+                                status.text=if(connected) (if(kind=="team") "$date · 팀원과 실시간 대화" else "고객과 실시간 대화") else "실시간 연결을 확인 중입니다."
+                                if(connected) attempt=0
+                            } })
+                    } catch(e:CancellationException) { throw e }
+                      catch(_:Exception) { if(!closed && dialog.isShowing && valid()) status.text="실시간 연결이 끊겼습니다. 다시 연결합니다." }
+                    if(!closed && dialog.isShowing && valid()) { attempt=(attempt+1).coerceAtMost(6);delay((attempt*5000L).coerceAtMost(30000L)) }
+                }
+            }
+        }
+        dialog.setOnDismissListener { closed=true;pause();startLive=null;handler.removeCallbacks(markVisible);if(currentDialog===dialog) currentDialog=null }
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.8).toInt())
-            refresh();handler.postDelayed(periodic,20000)
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { if(valid()) refresh() }
+            refresh();resume()
         }
         dialog.show()
     }
