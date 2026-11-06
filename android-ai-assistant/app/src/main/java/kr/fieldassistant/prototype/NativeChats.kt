@@ -192,11 +192,27 @@ internal class NativeChats(
         dialog=AlertDialog.Builder(activity).setCustomTitle(header).setView(root).create()
         currentDialog=dialog
         val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
-        var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
+        var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var chatAllowed=true
+        val customerReceipt=CustomerReadReceipt()
         var latestCustomerView:TextView?=null;var latestCustomerAt=""
         val teamViews=linkedMapOf<String,TextView>();val teamRead=mutableSetOf<String>();var teamReadReady=false
         val markVisible=object:Runnable { override fun run() {
-            if(closed || !dialog.isShowing || !valid() || kind!="team" || !teamReadReady) return
+            if(closed || !dialog.isShowing || !valid()) return
+            if(kind=="customer") {
+                val seen=customerReceipt.visible(latestCustomerAt,latestCustomerView?.getGlobalVisibleRect(android.graphics.Rect())==true) ?: return
+                val rescan=this
+                scope.launch {
+                    try {
+                        auth.nativeChat(uid,company,"customer",target,method="POST",body=JSONObject().put("action","read").put("seenAt",seen))
+                        customerReceipt.completed(seen)
+                        if(!closed && dialog.isShowing && valid()) { handler.removeCallbacks(rescan);handler.postDelayed(rescan,350) }
+                    }
+                    catch(e:CancellationException) { throw e }
+                    catch(_:Exception) { customerReceipt.failed(seen) }
+                }
+                return
+            }
+            if(kind!="team" || !teamReadReady) return
             val ids=teamViews.filter { (id,view) -> id !in teamRead && view.getGlobalVisibleRect(android.graphics.Rect()) }.keys.take(100)
             if(ids.isEmpty()) return
             teamRead.addAll(ids)
@@ -340,20 +356,8 @@ internal class NativeChats(
                     }
                     if(kind=="customer") { handler.removeCallbacks(scanPhotos);scroll.post { handler.post(scanPhotos) } }
                     teamReadReady=kind=="team" && data.optBoolean("readReady")
-                    if(teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
+                    if(kind=="customer" || teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
                     chatAllowed=kind!="team" || data.optBoolean("chatReady");send.isEnabled=chatAllowed && !sending
-                    // Do not mark unseen team messages read. Customer acknowledgement is made only when the latest customer message is visible.
-                    if(kind=="customer") {
-                        val seen=data.optJSONObject("thread")?.optString("last_customer_at").orEmpty().takeUnless { it=="null" }.orEmpty()
-                        if(seen.isNotBlank() && seen!=lastAcknowledged) scroll.post {
-                            val rect=android.graphics.Rect()
-                            if(!closed && dialog.isShowing && valid() && latestCustomerAt==seen && latestCustomerView?.getGlobalVisibleRect(rect)==true) {
-                                lastAcknowledged=seen
-                                scope.launch { try { auth.nativeChat(uid,company,"customer",target,method="POST",body=JSONObject().put("action","read").put("seenAt",seen)) }
-                                    catch(e:CancellationException) { throw e } catch(_:Exception) { lastAcknowledged="" } }
-                            }
-                        }
-                    }
                 } catch(e:CancellationException) { throw e }
                   catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { clearPreviews();messages.removeAllViews();teamViews.clear();latestCustomerView=null;lastVersion="";status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
                 finally { loading=false;if(pendingRefresh && !closed && dialog.isShowing) { pendingRefresh=false;refresh() } }
