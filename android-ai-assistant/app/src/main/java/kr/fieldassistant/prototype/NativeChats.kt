@@ -11,6 +11,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -205,25 +206,51 @@ internal class NativeChats(
                 catch(_:Exception) { teamRead.removeAll(ids.toSet());if(!closed && dialog.isShowing && valid()) status.text="읽음 상태를 저장하지 못했습니다. 다시 확인해 주세요." }
             }
         } }
-        scroll.setOnScrollChangeListener { _,_,_,_,_ -> handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,350) }
+        data class PhotoPreview(val container:FrameLayout,val image:ImageView,val hint:TextView,var url:String,var job:Job?=null,var failed:Boolean=false,var opening:Boolean=false)
+        val previews=linkedMapOf<String,PhotoPreview>()
+        val photoLimit=kotlinx.coroutines.sync.Semaphore(2)
+        var expandedPhoto:AlertDialog?=null
+        lateinit var scanPhotos:Runnable
+        fun clearPreviews() {
+            previews.values.forEach { it.job?.cancel();it.image.setImageDrawable(null) }
+            previews.clear()
+        }
+        fun isVisible(view:android.view.View):Boolean = view.isAttachedToWindow && view.getGlobalVisibleRect(android.graphics.Rect())
+        fun loadPreview(preview:PhotoPreview) {
+            if(preview.job!=null || preview.failed || preview.image.drawable!=null || !isVisible(preview.container)) return
+            val url=preview.url
+            if(!ChatPhotoUrl.allowed(url,target)) { preview.failed=true;preview.hint.text="사진을 불러오지 못했습니다. 눌러서 다시 시도";return }
+            preview.hint.text="사진을 불러오는 중…"
+            preview.job=scope.launch {
+                photoLimit.acquire()
+                try {
+                    val bitmap=withContext(Dispatchers.IO) { ChatPhotoLoader.load(url,target,512) }
+                    if(closed || !dialog.isShowing || !valid() || !isVisible(preview.container) || previews.values.none { it===preview }) { bitmap?.recycle();return@launch }
+                    if(bitmap==null) { preview.failed=true;preview.hint.text="사진을 불러오지 못했습니다. 눌러서 다시 시도" }
+                    else { preview.image.setImageBitmap(bitmap);preview.hint.visibility=android.view.View.GONE }
+                } finally { photoLimit.release();preview.job=null }
+            }
+        }
+        scanPhotos=Runnable {
+            if(!closed && dialog.isShowing && valid()) previews.values.forEach { preview ->
+                if(isVisible(preview.container)) loadPreview(preview)
+                else { preview.image.setImageDrawable(null);if(!preview.failed) { preview.hint.visibility=android.view.View.VISIBLE;preview.hint.text="사진을 불러오는 중…" } }
+            }
+        }
+        scroll.setOnScrollChangeListener { _,_,_,_,_ ->
+            handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,350)
+            handler.removeCallbacks(scanPhotos);handler.postDelayed(scanPhotos,150)
+        }
         fun showPhoto(url:String) {
             if(!valid() || !ChatPhotoUrl.allowed(url,target)) { toast("사진을 확인할 수 없습니다.");return }
             val image=ImageView(activity).apply { adjustViewBounds=true;minimumHeight=dp(220);contentDescription="고객이 보낸 사진" }
-            val photo=AlertDialog.Builder(activity).setTitle("채팅 사진").setView(image).setPositiveButton("닫기",null).create();photo.show()
+            expandedPhoto?.dismiss()
+            val photo=AlertDialog.Builder(activity).setTitle("사진을 불러오는 중…").setView(image).setPositiveButton("닫기",null).create()
+            expandedPhoto=photo;photo.setOnDismissListener { if(expandedPhoto===photo) expandedPhoto=null };photo.show()
             scope.launch {
-                val bitmap=withContext(Dispatchers.IO) { try {
-                    val c=SecureTransport.open(url)
-                    try { if(c.responseCode!=200) null else {
-                        val bytes=c.inputStream.use { SecureTransport.readBounded(it,4*1024*1024) }
-                        val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
-                        if(bounds.outWidth<=0 || bounds.outHeight<=0 || bounds.outWidth>16000 || bounds.outHeight>16000) null else {
-                            var sample=1;while(bounds.outWidth/sample>1600 || bounds.outHeight/sample>1600) sample*=2
-                            BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=sample })
-                        }
-                    } } finally { c.disconnect() }
-                } catch(_:Exception) { null } }
-                if(photo.isShowing && valid() && bitmap!=null) image.setImageBitmap(bitmap) else bitmap?.recycle()
-                if(bitmap==null && photo.isShowing && valid()) toast("사진을 불러오지 못했습니다.")
+                val bitmap=withContext(Dispatchers.IO) { ChatPhotoLoader.load(url,target,1600) }
+                if(!closed && dialog.isShowing && photo.isShowing && valid() && bitmap!=null) { photo.setTitle("채팅 사진");image.setImageBitmap(bitmap) } else bitmap?.recycle()
+                if(bitmap==null && !closed && dialog.isShowing && photo.isShowing && valid()) { photo.setTitle("사진을 불러오지 못했습니다");toast("대화를 새로고침한 후 다시 시도해 주세요.") }
             }
         }
         refresh=refresh@{
@@ -233,10 +260,16 @@ internal class NativeChats(
                 try {
                     val data=auth.nativeChat(uid,company,kind,target,date)
                     if(closed || !dialog.isShowing || !valid()) return@launch
-                    val list=data.getJSONArray("messages");val version=list.toString()
+                    val list=data.getJSONArray("messages")
+                    // Signed URLs rotate on each response; they are not message changes.
+                    for(i in 0 until list.length()) list.optJSONObject(i)?.let { row ->
+                        val id=row.optString("id");val url=row.optString("image_url").takeUnless { it=="null" }.orEmpty()
+                        previews[id]?.url=url
+                    }
+                    val version=ChatPhotoMessages.version(list,data.optBoolean("hasOlder"))
                     if(version!=lastVersion) {
                         val nearBottom=firstLoad || scroll.scrollY+scroll.height>=messages.height-dp(80)
-                        messages.removeAllViews();latestCustomerView=null;teamViews.clear()
+                        clearPreviews();messages.removeAllViews();latestCustomerView=null;teamViews.clear()
                         latestCustomerAt=data.optJSONObject("thread")?.optString("last_customer_at").orEmpty().takeUnless { it=="null" }.orEmpty()
                         val members=data.optJSONArray("members")
                         for(i in 0 until list.length()) {
@@ -258,8 +291,46 @@ internal class NativeChats(
                             if(kind=="customer" && !mine && m.optString("created_at")==latestCustomerAt) latestCustomerView=item
                             if(kind=="team" && !mine && m.optString("id").matches(Regex("^[0-9a-fA-F-]{36}$"))) teamViews[m.optString("id")]=item
                             if(kind=="customer" && m.optBoolean("has_image")) {
-                                val url=m.optString("image_url").takeUnless { it=="null" }.orEmpty()
-                                messages.addView(Button(activity).apply { text=if(url.isBlank()) "사진을 불러오지 못했습니다" else "사진 보기";isEnabled=url.isNotBlank();setOnClickListener { showPhoto(url) } })
+                                val id=m.optString("id");val url=m.optString("image_url").takeUnless { it=="null" }.orEmpty()
+                                val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="채팅 사진 확대해서 보기" }
+                                val hint=label("사진을 불러오는 중…",13f).apply { gravity=Gravity.CENTER;setTextColor(Color.rgb(89,111,96));setPadding(dp(8),dp(8),dp(8),dp(8)) }
+                                val frame=FrameLayout(activity).apply {
+                                    background=background(Color.rgb(239,242,235),14,Color.rgb(225,229,220));isClickable=true;isFocusable=true
+                                    addView(image,FrameLayout.LayoutParams(-1,-1));addView(hint,FrameLayout.LayoutParams(-1,-1))
+                                }
+                                val preview=PhotoPreview(frame,image,hint,url);previews[id]=preview
+                                frame.setOnClickListener {
+                                    if(!valid() || closed) return@setOnClickListener
+                                    if(preview.failed) {
+                                        preview.failed=false;preview.hint.text="사진을 다시 확인하는 중…"
+                                        scope.launch {
+                                            try {
+                                                val fresh=auth.nativeChat(uid,company,"customer",target)
+                                                if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
+                                                val items=fresh.getJSONArray("messages")
+                                                preview.url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
+                                                loadPreview(preview)
+                                            } catch(e:CancellationException) { throw e }
+                                              catch(_:Exception) { if(!closed && dialog.isShowing && valid() && previews[id]===preview) { preview.failed=true;preview.hint.text="사진을 불러오지 못했습니다. 눌러서 다시 시도" } }
+                                        }
+                                    } else if(preview.image.drawable!=null && !preview.opening) {
+                                        preview.opening=true;preview.hint.visibility=android.view.View.VISIBLE;preview.hint.text="사진을 여는 중…"
+                                        scope.launch {
+                                            try {
+                                                val fresh=auth.nativeChat(uid,company,"customer",target)
+                                                if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
+                                                val items=fresh.getJSONArray("messages")
+                                                val url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
+                                                preview.url=url;preview.hint.visibility=android.view.View.GONE
+                                                showPhoto(url)
+                                            } catch(e:CancellationException) { throw e }
+                                              catch(_:Exception) { if(!closed && dialog.isShowing && valid() && previews[id]===preview) { preview.hint.visibility=android.view.View.GONE;toast("사진을 열지 못했습니다. 다시 시도해 주세요.") } }
+                                            finally { preview.opening=false }
+                                        }
+                                    }
+                                }
+                                val photoRow=LinearLayout(activity).apply { gravity=if(mine) Gravity.END else Gravity.START;addView(frame,LinearLayout.LayoutParams(dp(220),dp(180))) }
+                                messages.addView(photoRow,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(10)) })
                             }
                         }
                         if(list.length()==0) messages.addView(label("아직 메시지가 없습니다."))
@@ -267,6 +338,7 @@ internal class NativeChats(
                         lastVersion=version;firstLoad=false
                         if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
                     }
+                    if(kind=="customer") { handler.removeCallbacks(scanPhotos);scroll.post { handler.post(scanPhotos) } }
                     teamReadReady=kind=="team" && data.optBoolean("readReady")
                     if(teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
                     chatAllowed=kind!="team" || data.optBoolean("chatReady");send.isEnabled=chatAllowed && !sending
@@ -283,7 +355,7 @@ internal class NativeChats(
                         }
                     }
                 } catch(e:CancellationException) { throw e }
-                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { messages.removeAllViews();teamViews.clear();latestCustomerView=null;lastVersion="";status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
+                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { clearPreviews();messages.removeAllViews();teamViews.clear();latestCustomerView=null;lastVersion="";status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
                 finally { loading=false;if(pendingRefresh && !closed && dialog.isShowing) { pendingRefresh=false;refresh() } }
             }
         }
@@ -307,6 +379,7 @@ internal class NativeChats(
         }
         startLive=start@{
             if(closed || !dialog.isShowing || !valid() || liveJob?.isActive==true) return@start
+            refresh()
             liveJob=scope.launch {
                 var attempt=0
                 while(!closed && dialog.isShowing && valid()) {
@@ -324,12 +397,12 @@ internal class NativeChats(
                 }
             }
         }
-        dialog.setOnDismissListener { closed=true;pause();startLive=null;handler.removeCallbacks(markVisible);if(currentDialog===dialog) currentDialog=null }
+        dialog.setOnDismissListener { closed=true;expandedPhoto?.dismiss();expandedPhoto=null;pause();startLive=null;handler.removeCallbacks(markVisible);handler.removeCallbacks(scanPhotos);clearPreviews();if(currentDialog===dialog) currentDialog=null }
         dialog.setOnCancelListener { handler.post { if(valid()) onReturn?.invoke() } }
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt())
             dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            refresh();resume()
+            resume()
         }
         dialog.show()
     }
@@ -344,4 +417,39 @@ internal object ChatPhotoUrl {
             thread.matches(Regex("^[0-9a-fA-F-]{36}$")) &&
             path.startsWith("/storage/v1/object/sign/customer-chat/$thread/") && !path.split('/').contains("..")
     } catch(_:Exception) { false }
+}
+
+/** Read only a bounded, trusted chat photo and decode to a bounded size. */
+internal object ChatPhotoLoader {
+    fun sampleSize(width:Int,height:Int,maxSide:Int):Int? {
+        if(width<=0 || height<=0 || width>16000 || height>16000 || maxSide<=0) return null
+        var sample=1
+        while(width/sample>maxSide || height/sample>maxSide) sample*=2
+        return sample
+    }
+    fun load(url:String,thread:String,maxSide:Int):android.graphics.Bitmap? {
+        if(!ChatPhotoUrl.allowed(url,thread)) return null
+        return try {
+            val connection=SecureTransport.open(url)
+            try {
+                if(connection.responseCode!=200) null else {
+                    val bytes=connection.inputStream.use { SecureTransport.readBounded(it,4*1024*1024) }
+                    val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+                    BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                    val sample=sampleSize(bounds.outWidth,bounds.outHeight,maxSide)
+                    if(sample==null) null else BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=sample })
+                }
+            } finally { connection.disconnect() }
+        } catch(_:Exception) { null }
+    }
+}
+
+internal object ChatPhotoMessages {
+    fun version(messages:org.json.JSONArray,hasOlder:Boolean):String {
+        val stable=org.json.JSONArray()
+        for(i in 0 until messages.length()) messages.optJSONObject(i)?.let { row ->
+            val copy=JSONObject(row.toString());copy.remove("image_url");stable.put(copy)
+        }
+        return stable.toString()+":"+hasOlder
+    }
 }
