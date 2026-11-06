@@ -997,6 +997,7 @@ class MainActivity : Activity() {
             "customer-chat" -> openCustomerChats()
             "clients" -> tradeManager()
             "inventory" -> openDealerInventory()
+            "receivables" -> openReceivableSummary()
             "jobs" -> recruitMenu()
             "sites", "work" -> lookupSites(AssistantRequests.Request("sites"))
             "profit" -> {
@@ -1016,6 +1017,39 @@ class MainActivity : Activity() {
             else -> return false
         }
         return true
+    }
+    private var receivableSummaryBusy=false
+    private fun openReceivableSummary() {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        if(company.role!="관리자") { message("미수금은 관리자만 확인할 수 있습니다.");return }
+        if(receivableSummaryBusy) { message("미수금을 확인하고 있습니다.");return }
+        receivableSummaryBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val result=auth.assistantReceivableSummary(uid,company.id)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                val amount=java.text.NumberFormat.getNumberInstance(Locale.KOREA).format(result.getDouble("outstanding"))
+                val pending=result.getInt("unconfirmed")
+                val unknown=result.getInt("unknownContract")
+                val content=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(12),dp(18),dp(8)) }
+                content.addView(text("시공 완료 현장 기준",14f,false,Color.rgb(89,111,96)))
+                content.addView(text("확인된 미수금",14f,true))
+                content.addView(text("${amount}원",24f,true,Color.rgb(29,67,50)))
+                content.addView(text("기존 입금 확인 필요  ${pending}건",15f))
+                content.addView(text("계약금액 미확정  ${unknown}건",15f))
+                content.addView(text("금액이 확정되지 않은 현장은 합계에 포함되지 않을 수 있습니다. 조회 시점 기준입니다.",13f,false,Color.rgb(89,111,96)))
+                val dialog=AlertDialog.Builder(this@MainActivity).setTitle("${company.name} · 미수금 확인").setView(content).setNegativeButton("닫기",null).create()
+                addButton(content,"다시 확인",false) { dialog.dismiss();openReceivableSummary() }
+                addButton(content,"거래처별 연결 현장 보기",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();tradeManager() } }
+                addButton(content,"입금 등록 · 상세 관리 (웹앱)",false) {
+                    if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/admin/receivables") } }
+                }
+                dialog.show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("미수금을 불러오지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
+            finally { receivableSummaryBusy=false }
+        }
     }
     private var activeNativeChats:NativeChats?=null
     private fun nativeChats(uid:String,company:CompanyAccess):NativeChats {

@@ -9,6 +9,12 @@ class AssistantRequestsTest {
         assertEquals("customer-chat",AssistantRequests.parse("고객 채팅 보여줘",monday).feature)
         assertFalse(AssistantRequests.opensWeb("customer-chat"))
     }
+    @Test fun receivableSummaryIsAvailableOnlyToManagers() {
+        assertEquals("receivables",AssistantRequests.parse("미수금 확인해줘",monday).feature)
+        assertNotNull(AssistantRequests.feature("receivables",true))
+        assertNull(AssistantRequests.feature("receivables",false))
+        assertFalse(AssistantRequests.opensWeb("receivables"))
+    }
     @Test fun briefingRequestsDoNotExecuteChanges() {
         for(text in listOf("오늘 내가 챙겨야 할 현장 알려줘", "오늘 할 일 알려줘", "오늘 어디 가고 무슨 작업해"))
             assertEquals(text,"briefing",AssistantRequests.parse(text,monday).kind)
