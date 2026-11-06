@@ -2439,14 +2439,18 @@ class MainActivity : Activity() {
             append("\n\n실제 자재 ${materials.length()}건")
             for(i in 0 until materials.length()) { val row=materials.optJSONObject(i) ?: continue;append("\n"+field(row,"brand")+" "+field(row,"product_code")+" · "+field(row,"quantity")+field(row,"unit")+" · 단가 "+field(row,"unit_price")+"원 · 합계 "+field(row,"total_price")+"원") }
             append("\n\n등록된 경비 ${expenses.length()}건")
-            for(i in 0 until expenses.length()) { val row=expenses.optJSONObject(i) ?: continue;append("\n"+field(row,"expense_type")+" · "+field(row,"amount")+"원 · "+field(row,"description")) }
+            for(i in 0 until expenses.length()) { val row=expenses.optJSONObject(i) ?: continue;append("\n"+AdminReportDisplay.expense(row)) }
         }
         content.addView(text(details,14f))
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 검토").setView(ScrollView(this).apply { addView(content) }).setPositiveButton("닫기",null).create()
         fun action(label:String,run:()->Unit) { addButton(content,label,false) { if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return@addButton };dialog.dismiss();run() } }
-        action("시공 전·완료 사진 보기") { requestSitePhotoPage(uid,company,siteId,siteName,"all",0) }
+        addButton(content,"시공 전·완료 사진 보기",false) {
+            if(sitePhotoSessionValid(uid,company)) requestSitePhotoPage(uid,company,siteId,siteName,"all",0)
+            else message("계정과 업체를 다시 확인해 주세요.")
+        }
         if(status=="pending" && AdminReportSnapshot.key(data)!=null) {
-            action("검수 승인") { showAdminReviewInput(uid,company,siteId,siteName,data,"approve") }
+            if(after.length()>0) action("검수 승인") { showAdminReviewInput(uid,company,siteId,siteName,data,"approve") }
+            else content.addView(text("완료사진이 없어 승인할 수 없습니다. 보완 요청을 해 주세요.",13f))
             action("보완 요청") { showAdminReviewInput(uid,company,siteId,siteName,data,"reject") }
         } else if(status=="pending") content.addView(text("보고서 상태를 확인하지 못했습니다. 다시 열어 주세요.",13f))
         dialog.show()
