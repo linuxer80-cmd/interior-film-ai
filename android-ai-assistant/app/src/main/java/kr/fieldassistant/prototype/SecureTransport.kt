@@ -19,6 +19,15 @@ internal object SecureTransport {
 
     fun isHttps(raw: String): Boolean = try { requireHttps(raw); true } catch (_: Exception) { false }
 
+    /** Ktor also opens WSS for realtime; ordinary HTTP requests still require HTTPS. */
+    fun requireSecureRequest(raw:String):String {
+        val uri=try { URI(raw).parseServerAuthority() } catch (_:Exception) { throw IllegalArgumentException("보안 연결 주소가 올바르지 않습니다.") }
+        if(!uri.scheme.equals("wss",ignoreCase=true)) return requireHttps(raw)
+        require(!uri.host.isNullOrBlank() && uri.rawUserInfo==null && uri.rawFragment==null &&
+            (uri.port == -1 || uri.port in 1..65535)) { "안전한 웹소켓 연결만 사용할 수 있습니다." }
+        return raw
+    }
+
     fun open(raw: String): HttpsURLConnection =
         (URI(requireHttps(raw)).toURL().openConnection() as HttpsURLConnection).apply {
             // No automatic redirects: neither HTTP downgrade nor credential forwarding.

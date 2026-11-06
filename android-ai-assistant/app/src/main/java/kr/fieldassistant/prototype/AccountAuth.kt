@@ -13,6 +13,8 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.broadcastFlow
+import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.auth
@@ -27,6 +29,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -100,6 +105,7 @@ internal data class VerifiedAccount(val userId: String, val companies: List<Comp
 
 internal class AccountAuth private constructor(context: Context) {
     private val appContext=context.applicationContext
+    private val chatWatchMutex=Mutex()
     private val chatHttp=OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build()
     companion object {
@@ -164,7 +170,7 @@ internal class AccountAuth private constructor(context: Context) {
     suspend fun clearSession() { client.auth.clearSession() }
 
     /** Only subscribe to private invalidations; message content is re-fetched through authorized APIs. */
-    suspend fun watchChat(expectedUser:String, company:CompanyAccess, kind:String, target:String, date:String, onChange:()->Unit, onState:(Boolean)->Unit) = coroutineScope {
+    suspend fun watchChat(expectedUser:String, company:CompanyAccess, kind:String, target:String, date:String, onChange:()->Unit, onState:(Boolean)->Unit):Unit = chatWatchMutex.withLock { coroutineScope {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
         require(kind in listOf("customer","team") && target.matches(Regex("^[0-9a-fA-F-]{36}$")))
@@ -176,18 +182,24 @@ internal class AccountAuth private constructor(context: Context) {
         val channel=client.realtime.channel(topic) { isPrivate=true }
         val events=launch(start=CoroutineStart.UNDISPATCHED) { channel.broadcastFlow<JsonObject>(event="changed").collect { onChange() } }
         val statuses=launch(start=CoroutineStart.UNDISPATCHED) {
+            var joined=false
             channel.status.collect { state ->
-                val connected=state.toString()=="SUBSCRIBED"
+                val connected=state==RealtimeChannel.Status.SUBSCRIBED
                 onState(connected)
-                if(connected) onChange() // Recover changes missed during a disconnect.
+                if(connected) { joined=true;onChange() } // Recover changes missed during a disconnect.
+                if(joined && state==RealtimeChannel.Status.UNSUBSCRIBED) error("실시간 연결을 다시 시작합니다.")
             }
         }
-        try { channel.subscribe(blockUntilSubscribed=true);awaitCancellation() }
+        try {
+            val joined=withTimeoutOrNull(15000) { channel.subscribe(blockUntilSubscribed=true);true } ?: false
+            check(joined) { "실시간 연결을 다시 시도합니다." }
+            awaitCancellation()
+        }
         finally {
             events.cancel();statuses.cancel()
-            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+            withContext(NonCancellable) { withTimeoutOrNull(5000) { client.realtime.removeChannel(channel) } }
         }
-    }
+    } }
 
     /** Existing chat endpoints perform their own server-side authorization. */
     suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0):JSONObject {

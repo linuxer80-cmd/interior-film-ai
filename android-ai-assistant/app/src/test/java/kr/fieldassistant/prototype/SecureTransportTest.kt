@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SecureTransportTest {
+    @Test fun websocketRequestsRequireSecureWssAndValidAuthority() {
+        val good="wss://example.com/realtime/v1/websocket?apikey=public"
+        assertEquals(good,SecureTransport.requireSecureRequest(good))
+        for(url in listOf("ws://example.com/websocket","wss://user:secret@example.com/websocket","wss://example.com/#fragment","wss:///missing-host")) {
+            try { SecureTransport.requireSecureRequest(url);fail("Accepted unsafe realtime URL") } catch(_:IllegalArgumentException) { }
+        }
+        assertFalse(SecureTransport.isHttps(good))
+    }
     @Test fun rejectsUnsafeDestinationsBeforeConnecting() {
         val values = listOf("http://example.com", "ws://example.com", "file:///tmp/data", "//example.com",
             "https://user:secret@example.com", "https://example.com/#token", "https:///missing-host",
