@@ -1,4 +1,5 @@
 import { notificationDestination } from "../../../lib/superNotificationDestination.mjs";
+import { dispatchAndroidChat } from "../../../lib/androidChatPushDispatch.mjs";
 import { REPORT_REMINDER_TYPE, koreaDay, reminderWindow, currentReportReminder, reportReminderNotice } from "../../../lib/workReportReminders.mjs";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
@@ -1151,8 +1152,6 @@ export async function POST(
        2. 서버 설정
     ------------------------------------------------------- */
 
-    configureWebPush();
-
     supabase =
       createAdminClient();
 
@@ -1216,6 +1215,16 @@ export async function POST(
         supabase,
         notification,
       );
+
+    if (notification?.type === 'customer_chat' && notification?.reference_type === 'customer_chat') {
+      const match = /^customer-chat:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(notification?.dedupe_key || '');
+      if (match) {
+        try {
+          await dispatchAndroidChat(supabase, { kind: 'customer', companyId: notification.company_id,
+            targetId: notification.reference_id, messageId: match[1], recipients: recipientUserIds });
+        } catch { console.error('Customer chat Android push dispatch failed'); }
+      }
+    }
 
     if (
       recipientUserIds.length ===
@@ -1322,6 +1331,8 @@ export async function POST(
     /* -------------------------------------------------------
        7. Push 발송
     ------------------------------------------------------- */
+
+    configureWebPush();
 
     const result =
       await sendPushToSubscriptions({

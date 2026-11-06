@@ -43,6 +43,7 @@ import com.google.mlkit.genai.speechrecognition.SpeechRecognizerResponse
 import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.speechRecognizerRequest
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -156,6 +157,7 @@ class MainActivity : Activity() {
     }
     private fun activateAccount(verified: VerifiedAccount) {
         account=verified;sessionEpoch++;pending.clear();inFlight.clear();modelChecked=false
+        ChatPushRegistration.activate(applicationContext,verified.userId)
         ScheduleJobs.activate(applicationContext,verified.userId)
         attachResults(verified.userId)
         mergeResults(verified.userId)
@@ -3513,6 +3515,8 @@ class MainActivity : Activity() {
     }
     private fun signOut() {
         activeNativeChats?.close();activeNativeChats=null
+        val pushUser=account?.userId
+        val pushDevice=ChatPushRegistration.deactivate(applicationContext)
         chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
@@ -3523,7 +3527,12 @@ class MainActivity : Activity() {
         SecureSessionManager(this).clearPending()
         account=null;running=false;scanning=false;prepared=false;baselineBusy=false;folderStatus="";pending.clear();inFlight.clear()
         authBusy=true;authError="";render()
-        scope.launch { try { auth.signOut() } catch (_: Exception) { auth.clearSession() }
+        scope.launch { try {
+                ChatPushRegistration.mutex.withLock {
+                    if(pushUser!=null) try { auth.updateChatPush(pushUser,pushDevice) } catch(_:Exception) { }
+                    auth.signOut()
+                }
+            } catch (_: Exception) { auth.clearSession() }
             finally { authBusy=false;render() } }
     }
     private fun renderLogin() {

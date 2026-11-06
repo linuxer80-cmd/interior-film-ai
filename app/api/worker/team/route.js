@@ -1,5 +1,6 @@
 import { after } from 'next/server';
 import { dispatchTeamMessage } from '../../../../lib/workerTeamPush.mjs';
+import { dispatchAndroidChat } from '../../../../lib/androidChatPushDispatch.mjs';
 import { privateAuth, privateJson, uuid } from '../../../../lib/workerPrivate';
 import { resolveTeamSite } from '../../../../lib/teamSiteAccess.mjs';
 import { authorizedTeam, includeTeamOwners, teamDate, teamMessage } from '../../../../lib/workerTeam.mjs';
@@ -87,6 +88,12 @@ export async function POST(request){try{
       if (delivery.state === 'unconfigured' || delivery.failed || delivery.unsubscribed || delivery.expired)
         console.warn('Team chat push delivery', delivery);
     } catch { console.error('Team chat push dispatch failed'); }
+    try {
+      const current=await context(request);
+      await dispatchAndroidChat(current.db, { kind:'team', companyId:current.site.company_id, targetId:current.site.id,
+        date:current.date, messageId:input.id, senderId:current.user.id,
+        recipients:current.members.map(member=>member.user_id).filter(id=>id && id!==current.user.id) });
+    } catch { console.error('Team chat Android push dispatch failed'); }
   });
   return privateJson({ok:true});
 }catch(e){return failure(e);}}

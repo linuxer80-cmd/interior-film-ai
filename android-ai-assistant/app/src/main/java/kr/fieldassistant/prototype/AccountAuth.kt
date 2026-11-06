@@ -169,6 +169,21 @@ internal class AccountAuth private constructor(context: Context) {
     suspend fun signOut() { client.auth.signOut() }
     suspend fun clearSession() { client.auth.clearSession() }
 
+    suspend fun updateChatPush(expectedUser:String,deviceId:String,token:String?=null) {
+        check(verify().userId==expectedUser) { "계정이 변경되었습니다." }
+        val bearer=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        val body=JSONObject().put("deviceId",deviceId).apply { if(token!=null) put("token",token) }
+        withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/assistant/chat-push")
+            try {
+                c.requestMethod=if(token==null) "DELETE" else "POST";c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer $bearer");c.setRequestProperty("Content-Type","application/json")
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                check(c.responseCode in 200..299) { "알림 등록을 확인하지 못했습니다." }
+            } finally { c.disconnect() }
+        }
+    }
+
     /** Only subscribe to private invalidations; message content is re-fetched through authorized APIs. */
     suspend fun watchChat(expectedUser:String, company:CompanyAccess, kind:String, target:String, date:String, onChange:()->Unit, onState:(Boolean)->Unit):Unit = chatWatchMutex.withLock { coroutineScope {
         val verified=verify()
