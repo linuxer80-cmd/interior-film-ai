@@ -107,17 +107,18 @@ internal object OfflineAudio {
             val track=(0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/")==true }
                 ?: error("지원되는 음성 트랙이 없습니다.")
             val format=extractor.getTrackFormat(track);val mime=format.getString(MediaFormat.KEY_MIME) ?: error("오디오 형식을 확인할 수 없습니다.")
+            val duration=if(format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
             extractor.selectTrack(track)
             if(startUs>0) {
                 extractor.seekTo(lower,MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
                 val actual=extractor.sampleTime
-                check(actual>=0 && actual<=startUs+1_000_000L) { "녹음의 이어 분석 위치를 확인하지 못했습니다." }
+                check(actual>=maxOf(0L,lower-10_000_000L) && actual<=startUs+1_000_000L) { "녹음의 이어 분석 위치를 확인하지 못했습니다." }
             }
             val decoder=MediaCodec.createDecoderByType(mime);codec=decoder;decoder.configure(format,null,null,0);decoder.start()
             var channels=if(format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
             var rate=if(format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 16000
             var encoding=AudioFormat.ENCODING_PCM_16BIT;var resampler=StreamingResampler(rate)
-            val info=MediaCodec.BufferInfo();var inputDone=false;var outputDone=false;var more=false;var idle=0;var emitted=0L
+            val info=MediaCodec.BufferInfo();var inputDone=false;var outputDone=false;var more=false;var idle=0;var emitted=0L;var queuedAudio=false
             while(!outputDone) {
                 if(cancelled()) throw InterruptedException("작업이 중단되었습니다.")
                 var progressed=false
@@ -129,7 +130,7 @@ internal object OfflineAudio {
                         val atBoundary=time>=upper && time>=0
                         val size=if(atBoundary) -1 else extractor.readSampleData(input,0)
                         if(size<0) { more=atBoundary;decoder.queueInputBuffer(index,0,0,0,MediaCodec.BUFFER_FLAG_END_OF_STREAM);inputDone=true }
-                        else { decoder.queueInputBuffer(index,0,size,time,0);extractor.advance() }
+                        else { if(size>0) queuedAudio=true;decoder.queueInputBuffer(index,0,size,time,0);extractor.advance() }
                         progressed=true
                     }
                 }
@@ -168,6 +169,9 @@ internal object OfflineAudio {
                 if(progressed) idle=0 else if(++idle>1000) error("오디오 분석 시간이 초과됐습니다.")
             }
             if(cancelled()) throw InterruptedException("작업이 중단되었습니다.")
+            check(!queuedAudio || emitted>0) { "녹음의 해당 구간을 읽지 못했습니다." }
+            val expectedUs=if(more) upper-lower else if(duration>lower) minOf(duration,upper)-lower else 0L
+            if(expectedUs>3_000_000L) check(emitted >= (expectedUs-3_000_000L)*16000L/1_000_000L) { "녹음의 일부를 읽지 못했습니다. 파일을 다시 확인해 주세요." }
             return more
         } finally { try { codec?.stop() } catch(_:Exception) {} ;codec?.release();extractor.release() }
     }
