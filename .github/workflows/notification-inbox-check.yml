@@ -90,3 +90,5 @@ jobs:
             android-ai-assistant/app/build/test-results/
             /tmp/security-device-tests.txt
           retention-days: 7
+
+# Validation workflow; removed after checks.
