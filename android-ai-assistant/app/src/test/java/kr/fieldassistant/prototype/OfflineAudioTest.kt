@@ -14,6 +14,10 @@ class OfflineAudioTest {
         assertTrue(InquiryMatcher.likely("도배 가격 알려주세요"))
         assertFalse(InquiryMatcher.likely("점심 메뉴가 얼마인지 알려주세요"))
         assertFalse(InquiryMatcher.likely("내일 만나요"))
+        assertTrue(InquiryMatcher.likely("인테리어 필름 작업 가능한가요"))
+        assertTrue(InquiryMatcher.likely("시트지 작업 가능한가요"))
+        assertTrue(InquiryMatcher.likely("문의 드리려고 전화했습니다"))
+        assertTrue(InquiryMatcher.likely("필름 작업 해주세요"))
     }
     @Test fun chunkedResamplingMatchesContinuousInput() {
         val samples=ShortArray(1200) { ((it*91)%20000-10000).toShort() }

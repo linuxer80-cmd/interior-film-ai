@@ -12,6 +12,7 @@
         <service android:name=".ChatPushService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
         </service>
+        <receiver android:name=".CallNotificationDeclineReceiver" android:exported="false" />
         <activity android:name=".KakaoCallbackActivity" android:exported="true" android:excludeFromRecents="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -1,0 +1,92 @@
+name: Call notification Android validation
+on:
+  push:
+    branches: [codex/call-inquiry-actions-20261106]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '8.13'
+      - name: Prepare Whisper and Android tools
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36'
+          mkdir -p android-ai-assistant/vendor android-ai-assistant/app/src/main/assets
+          git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git android-ai-assistant/vendor/whisper
+          test "$(git -C android-ai-assistant/vendor/whisper rev-parse HEAD)" = a8d002cfd879315632a579e73f0148d06959de36
+          curl -fsSL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin -o android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
+          cd android-ai-assistant/app/src/main/assets
+          sha256sum ggml-small-q5_1.bin > whisper-model.sha256
+      - name: Prepare untrusted local TLS test certificate
+        run: |
+          set -euo pipefail
+          mkdir -p android-ai-assistant/app/src/androidTest/assets
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/test-tls.key" -out "$RUNNER_TEMP/test-tls.crt" -days 2 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null 2>&1
+          openssl pkcs12 -export -inkey "$RUNNER_TEMP/test-tls.key" -in "$RUNNER_TEMP/test-tls.crt" -out android-ai-assistant/app/src/androidTest/assets/untrusted-localhost.p12 -passout pass:test-only
+      - name: Prepare non-production Firebase build config
+        run: |
+          # This placeholder only lets CI compile; Firebase auto-init is disabled.
+          # Never use this config for a distributable build.
+          mkdir -p android-ai-assistant/app/src/debug
+          cat > android-ai-assistant/app/src/debug/google-services.json <<'EOF'
+          {"project_info":{"project_number":"123456789012","project_id":"field-assistant-test-only"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789012:android:0123456789abcdef","android_client_info":{"package_name":"kr.fieldassistant.prototype.stable"}},"api_key":[{"current_key":"test-build-only-not-a-real-api-key"}]}],"configuration_version":"1"}
+          EOF
+      - name: Test and build
+        working-directory: android-ai-assistant
+        run: ASSISTANT_VERSION_CODE=20047 gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: construction-assistant-test-only
+          path: |
+            android-ai-assistant/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Launch on Android 16 emulator
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y libpulse0 libnss3 libxkbcommon-x11-0 libxcb-cursor0
+          export QT_QPA_PLATFORM=offscreen
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/assistant-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" 'platform-tools' 'emulator' 'system-images;android-36;google_apis;x86_64'
+          sudo chmod 666 /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name assistant-36 --package 'system-images;android-36;google_apis;x86_64' --force --path "$ANDROID_AVD_HOME/assistant-36.avd"
+          "$ANDROID_HOME/emulator/emulator" -avd assistant-36 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect >/tmp/assistant-emulator.log 2>&1 &
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" start-server
+          timeout 150 "$ADB" wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
+            sleep 2
+          done
+          test "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = '1'
+          "$ADB" shell input keyevent 82
+          "$ADB" install -r android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk
+          "$ADB" shell am start -W -n kr.fieldassistant.prototype.stable/kr.fieldassistant.prototype.MainActivity
+          sleep 10
+          "$ADB" shell pidof kr.fieldassistant.prototype.stable
+          "$ADB" install -r android-ai-assistant/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          "$ADB" shell am instrument -w -r kr.fieldassistant.prototype.stable.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/security-device-tests.txt
+          grep -q 'OK (10 tests)' /tmp/security-device-tests.txt
+      - name: Upload security test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-https-security-test-results
+          path: |
+            android-ai-assistant/app/build/test-results/
+            /tmp/security-device-tests.txt
+          retention-days: 7
