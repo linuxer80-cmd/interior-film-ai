@@ -119,9 +119,11 @@ class MainActivity : Activity() {
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
     private var visibleConversationKey: String? = null
     private var homeBottomNavigation: View? = null
+    private var homeQuickActions: View? = null
     private fun setAssistantContent(content: View) {
         visibleConversationKey=null
         homeBottomNavigation=null
+        homeQuickActions=null
         val safeArea=FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
             addView(content,FrameLayout.LayoutParams(-1,-1))
@@ -133,6 +135,7 @@ class MainActivity : Activity() {
                 )
                 view.setPadding(safe.left,safe.top,safe.right,safe.bottom)
                 homeBottomNavigation?.visibility=if(insets.isVisible(android.view.WindowInsets.Type.ime())) View.GONE else View.VISIBLE
+                homeQuickActions?.visibility=if(insets.isVisible(android.view.WindowInsets.Type.ime())) View.GONE else View.VISIBLE
                 android.view.WindowInsets.CONSUMED
             }
         }
@@ -3720,6 +3723,7 @@ class MainActivity : Activity() {
             if(isOwner) openCustomerChats() else openTodayTeamChats()
         }
         quick("샘플 검색",android.R.drawable.ic_menu_search) { openNativeFeature("samples") }
+        homeQuickActions=quickRow
         page.addView(quickRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
