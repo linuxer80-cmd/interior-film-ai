@@ -2532,7 +2532,7 @@ class MainActivity : Activity() {
                 }.setNegativeButton("취소",null).show()
             } }
             actions.addView(photo)
-            actions.addView(Button(this).apply { text="자재 확인 · 반납량 수정";setOnClickListener {
+            if(report==null) actions.addView(Button(this).apply { text="자재 확인 · 반납량 수정";setOnClickListener {
                 if(sitePhotoSessionValid(uid,company)) NativeReportMaterials(this@MainActivity,auth,scope,uid,company,siteId,siteName) { sitePhotoSessionValid(uid,company) }.open()
                 else message("계정과 업체를 다시 확인해 주세요.")
             } })
