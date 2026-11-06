@@ -118,8 +118,10 @@ class MainActivity : Activity() {
     /** A single inset owner reserves system bars, cutouts and the keyboard.
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
     private var visibleConversationKey: String? = null
+    private var homeBottomNavigation: View? = null
     private fun setAssistantContent(content: View) {
         visibleConversationKey=null
+        homeBottomNavigation=null
         val safeArea=FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
             addView(content,FrameLayout.LayoutParams(-1,-1))
@@ -130,6 +132,7 @@ class MainActivity : Activity() {
                     android.view.WindowInsets.Type.ime()
                 )
                 view.setPadding(safe.left,safe.top,safe.right,safe.bottom)
+                homeBottomNavigation?.visibility=if(insets.isVisible(android.view.WindowInsets.Type.ime())) View.GONE else View.VISIBLE
                 android.view.WindowInsets.CONSUMED
             }
         }
@@ -829,6 +832,17 @@ class MainActivity : Activity() {
     private var settingsOpen=false
     private var homeInput=""
     private var displayedHomeConsultationId: String? = null
+    private var dailyExpanded=false
+    private fun showConversationList() {
+        val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
+        if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return }
+        AlertDialog.Builder(this).setTitle("상담 대화").setItems(entries.map { it.optString("name")+" · "+it.optString("status") }.toTypedArray()) { _,index ->
+            val item=entries[index]
+            if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
+                settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
+            } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
+        }.setNegativeButton("닫기",null).show()
+    }
     private fun chatHeader(page: LinearLayout) {
         val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.rgb(29,67,50),16) }
         val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
@@ -844,16 +858,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
             .setItems((listOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능") + (if(selectedCompany()?.role=="관리자") listOf("매출 · 수익","고객 채팅") else emptyList()) + listOf("오늘 현장 팀 채팅")).toTypedArray()) { _,which ->
                 when(which) {
-                    0 -> {
-                        val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
-                        if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return@setItems }
-                        AlertDialog.Builder(this).setTitle("상담 대화").setItems(entries.map { it.optString("name")+" · "+it.optString("status") }.toTypedArray()) { _,index ->
-                            val item=entries[index]
-                            if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
-                                settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
-                            } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
-                        }.setNegativeButton("닫기",null).show()
-                    }
+                    0 -> showConversationList()
                     1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
                     2 -> { settingsOpen=true;showSetupDetails=true;render() }
                     4 -> showFeatures()
@@ -3207,7 +3212,7 @@ class MainActivity : Activity() {
     private var dailyState:DailyState?=null
     private var openDailyOnReady=false
     private fun lookupBriefing(request:AssistantRequests.Request) {
-        openDailyOnReady=true;loadDailyAssistant(force=true);render()
+        dailyExpanded=true;openDailyOnReady=true;loadDailyAssistant(force=true);render()
     }
     private fun loadDailyAssistant(force:Boolean=false) {
         val company=selectedCompany() ?: return
@@ -3656,7 +3661,7 @@ class MainActivity : Activity() {
         val candidate=latestConsultation()
         val key=listOf("home",account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
-            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState).toString()
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
             val stale=dailyState
             if(stale!=null && !stale.loading && !stale.error && System.currentTimeMillis()-stale.loadedAt>=300_000L)
@@ -3670,58 +3675,72 @@ class MainActivity : Activity() {
         val scroll=ScrollView(this)
         val pinnedCompany=selectedCompany();val pinnedUser=account?.userId
         val pinned=dailyState?.takeIf { it.uid==pinnedUser && it.company==pinnedCompany?.id && it.role==pinnedCompany?.role && it.date==ScheduleDates.today() }
-        val pinnedLabel=when { pinned?.loading==true -> "확인 중";pinned?.error==true -> "다시 확인";pinned?.data!=null -> "오늘 ${pinned.data.sites.size}건";else -> "오늘 할 일" }
-        val contextRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        val selectedId=if(pinnedCompany!=null && prefs.getString("selected_site_company",null)==pinnedCompany.id) prefs.getString("selected_site_id","").orEmpty() else ""
-        val selectedName=prefs.getString("selected_site_name","").orEmpty().ifBlank { "이름 없는 현장" }
-        fun contextAction(label:String,description:String,action:()->Unit)=text(label,13f,true).apply {
-            gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
-            setPadding(dp(8),0,dp(8),0);minimumHeight=dp(48)
-            background=bg(Color.rgb(246,248,246),12);contentDescription=description
-            isClickable=true;isFocusable=true;setOnClickListener { action() }
+        val pinnedLabel=when {
+            pinned?.loading==true -> "오늘 현장 확인 중…"
+            pinned?.error==true -> "오늘 현장을 확인하지 못했습니다 · 다시 확인"
+            pinned?.data!=null && pinned.data.sites.isEmpty() -> "오늘 예정된 현장이 없습니다"
+            pinned?.data!=null -> {
+                val sites=pinned.data.sites
+                "오늘 현장 ${sites.size}건 · ${sites.first().name}"+(if(sites.size>1) " 외 ${sites.size-1}곳" else "")
+            }
+            else -> "오늘 현장 확인하기"
         }
-        if(pinnedCompany!=null) {
-            val siteLabel=if(selectedId.isBlank()) "현장 선택" else "현장 · $selectedName ›"
-            contextRow.addView(contextAction(siteLabel,if(selectedId.isBlank()) "현장 선택" else "$selectedName 현장 상세 보기") {
-                if(selectedId.isBlank()) lookupSites(AssistantRequests.Request("sites"))
-                else lookupSites(AssistantRequests.Request("detail"),selectedId)
-            },LinearLayout.LayoutParams(0,dp(48),1f))
-            if(selectedId.isNotBlank()) contextRow.addView(contextAction("변경","선택한 현장 변경") {
-                lookupSites(AssistantRequests.Request("sites"))
-            },LinearLayout.LayoutParams(dp(58),dp(48)).apply { setMargins(dp(4),0,0,0) })
+        val todayBar=text(pinnedLabel+if(dailyExpanded) "  ▴" else "  ›",14f,true).apply {
+            gravity=Gravity.CENTER_VERTICAL;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
+            setPadding(dp(14),0,dp(14),0);background=bg(Color.WHITE,14,Color.rgb(225,229,220))
+            contentDescription=pinnedLabel+if(dailyExpanded) ", 접기" else ", 자세히 보기"
+            isClickable=true;isFocusable=true
+            setOnClickListener {
+                dailyExpanded=!dailyExpanded
+                if(dailyExpanded && (pinned==null || pinned.error)) loadDailyAssistant(true)
+                openDailyOnReady=dailyExpanded
+                render()
+            }
         }
-        val dailyDescription=when { pinned?.loading==true -> "오늘 할 일 확인 중";pinned?.error==true -> "오늘 할 일 다시 확인";pinned?.data!=null -> "오늘 할 일, 현장 ${pinned.data.sites.size}건 보기";else -> "오늘 할 일 보기" }
-        val dailyButton=contextAction(pinnedLabel,dailyDescription) {
+        page.addView(todayBar,LinearLayout.LayoutParams(-1,dp(48)).apply { setMargins(0,dp(6),0,0) })
+        val isOwner=pinnedCompany?.role=="관리자"
+        val quickRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        fun quick(label:String,icon:Int,action:()->Unit) {
+            val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true;contentDescription=label }
+            val image=ImageView(this).apply { setImageResource(icon);setColorFilter(Color.rgb(35,84,59));contentDescription=null;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+            item.addView(image,LinearLayout.LayoutParams(dp(22),dp(22)))
+            item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END })
+            item.setOnClickListener { action() }
+            quickRow.addView(item,LinearLayout.LayoutParams(0,dp(62),1f))
+        }
+        quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
+            if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))
+        }
+        quick("오늘 일정",android.R.drawable.ic_menu_today) {
+            dailyExpanded=true;openDailyOnReady=true
             if(pinned==null || pinned.error) loadDailyAssistant(true)
-            openDailyOnReady=true;scroll.post { scroll.fullScroll(View.FOCUS_UP) }
+            render()
         }
-        contextRow.addView(dailyButton,if(pinnedCompany==null) LinearLayout.LayoutParams(-1,dp(48)) else LinearLayout.LayoutParams(dp(88),dp(48)).apply { setMargins(dp(4),0,0,0) })
-        page.addView(contextRow)
+        quick(if(isOwner) "고객 채팅" else "팀 채팅",android.R.drawable.ic_dialog_email) {
+            if(isOwner) openCustomerChats() else openTodayTeamChats()
+        }
+        quick("샘플 검색",android.R.drawable.ic_menu_search) { openNativeFeature("samples") }
+        page.addView(quickRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
-        if(company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(16)) })
-        body.addView(text("무엇을 도와드릴까요?",24f,true))
-        body.addView(text("현장 업무를 편하게 물어보세요.",15f,false,Color.rgb(100,110,103)).apply { setPadding(0,dp(5),0,dp(10)) })
-        fun shortcuts(first:String, firstAction:()->Unit, second:String, secondAction:()->Unit) {
-            val row=LinearLayout(this)
-            row.addView(button(first,false,firstAction),LinearLayout.LayoutParams(0,dp(52),1f).apply { setMargins(0,0,dp(4),dp(6)) })
-            row.addView(button(second,false,secondAction),LinearLayout.LayoutParams(0,dp(52),1f).apply { setMargins(dp(4),0,0,dp(6)) })
-            body.addView(row)
-        }
-        shortcuts("오늘 일정",{ answerHome("오늘 일정") },"현장 찾기",{ answerHome("현장 목록") })
-        if(selectedCompany()?.role=="관리자") shortcuts("새 상담",{ openNativeFeature("new-site") },"필름 검색",{ openNativeFeature("samples") })
-        else shortcuts("오늘 팀 채팅",{ openTodayTeamChats() },"필름 검색",{ openNativeFeature("samples") })
+        if(dailyExpanded && company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
+        val conversationHeading=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        conversationHeading.addView(text("비서와 대화",18f,true),LinearLayout.LayoutParams(0,-2,1f))
+        conversationHeading.addView(text("대화 목록 ›",13f,true,Color.rgb(35,84,59)).apply {
+            gravity=Gravity.CENTER;minimumHeight=dp(48);isClickable=true;isFocusable=true;setOnClickListener { showConversationList() }
+        },LinearLayout.LayoutParams(dp(94),dp(48)))
+        body.addView(conversationHeading)
         if(company!=null && uid!=null && (state==null || (!state.loading && !state.error && System.currentTimeMillis()-state.loadedAt>=300_000L)))
             handler.post { if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role && chatId==null && !settingsOpen) loadDailyAssistant() }
-        if(selectedCompany()?.role=="관리자") {
-            addButton(body,"매출 · 수익 보기",false) { openNativeFeature("profit") }
-        }
         if(folder()==null || !notificationsEnabled()) {
             body.addView(text("자동 상담 알림을 받으려면 메뉴의 설정에서 녹음 폴더와 알림을 연결해 주세요.",14f))
         }
         val messages=try { JSONArray(prefs.getString("home_chat","[]")) } catch(_:Exception) { JSONArray() }
+        if(messages.length()==0) body.addView(text("안녕하세요. 무엇을 도와드릴까요?",16f,false,Color.rgb(43,62,51)).apply {
+            setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,18,Color.rgb(230,232,222))
+        },LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(4),dp(24),dp(8)) })
         for(i in 0 until messages.length()) {
             val m=messages.optJSONObject(i) ?: continue
             val mine=m.optBoolean("user")
@@ -3818,6 +3837,32 @@ class MainActivity : Activity() {
         row.addView(photo,LinearLayout.LayoutParams(dp(44),dp(44)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(35,84,59),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
+        val navigation=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(4),0,0) }
+        fun nav(label:String,icon:Int,selected:Boolean=false,action:()->Unit) {
+            val item=LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true
+                contentDescription=label+if(selected) ", 선택됨" else ""
+            }
+            item.addView(ImageView(this).apply {
+                setImageResource(icon);setColorFilter(if(selected) Color.rgb(35,84,59) else Color.rgb(100,110,103))
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },LinearLayout.LayoutParams(dp(20),dp(20)))
+            item.addView(text(label,12f,selected,if(selected) Color.rgb(35,84,59) else Color.rgb(100,110,103)).apply { gravity=Gravity.CENTER })
+            item.setOnClickListener { action() }
+            navigation.addView(item,LinearLayout.LayoutParams(0,dp(48),1f))
+        }
+        nav("비서",android.R.drawable.ic_dialog_info,true) { scroll.smoothScrollTo(0,body.bottom) }
+        nav("현장",android.R.drawable.ic_menu_mylocation) { lookupSites(AssistantRequests.Request("sites")) }
+        nav("채팅",android.R.drawable.ic_dialog_email) {
+            if(isOwner) AlertDialog.Builder(this).setTitle("채팅").setItems(arrayOf("고객 채팅","오늘 현장 팀 채팅")) { _,which ->
+                if(which==0) openCustomerChats() else openTodayTeamChats()
+            }.setNegativeButton("닫기",null).show()
+            else openTodayTeamChats()
+        }
+        nav("더보기",android.R.drawable.ic_menu_more) { showAssistantMenu() }
+        homeBottomNavigation=navigation
+        page.addView(navigation)
+        page.requestApplyInsets()
         scroll.post {
             if(openDailyOnReady && state!=null && !state.loading) { scroll.fullScroll(View.FOCUS_UP);openDailyOnReady=false }
             else if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN)
@@ -3926,7 +3971,7 @@ class MainActivity : Activity() {
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
     @Deprecated("Android back callback")
-    override fun onBackPressed() { if(settingsOpen) { settingsOpen=false;render() } else if(chatId!=null) { chatId=null;chatInput="";render() } else super.onBackPressed() }
+    override fun onBackPressed() { if(settingsOpen) { settingsOpen=false;render() } else if(chatId!=null) { chatId=null;chatInput="";render() } else if(dailyExpanded) { dailyExpanded=false;openDailyOnReady=false;render() } else super.onBackPressed() }
 
     private fun submitRegistration(id: String) {
         if(account==null || id in savingRegistrations) return
@@ -3974,7 +4019,7 @@ class MainActivity : Activity() {
         activeNativeChats?.close();activeNativeChats=null
         val pushUser=account?.userId
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
-        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
@@ -4249,5 +4294,6 @@ class MainActivity : Activity() {
     }
     private fun confirmWebAccount(action: () -> Unit) { action() }
 }
+
 
 
