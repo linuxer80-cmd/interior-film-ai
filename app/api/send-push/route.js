@@ -1236,7 +1236,8 @@ export async function POST(
             return users.includes(userId);
           };
           nativeDelivery=await dispatchAndroidNotice(supabase,{noticeId:notification.id,
-            title:payload.title.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds},{allowed});
+            title:payload.title.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds,
+            ttlSeconds:isCompletionReminder(saved.data)?0:3600},{allowed});
         }
       }
     } catch { console.error('Native notification dispatch failed'); }

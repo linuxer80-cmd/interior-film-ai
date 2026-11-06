@@ -42,6 +42,8 @@ test('general notice payload limits fields and is targeted to the Android packag
  const p=noticePushPayload({...meta,noticeId:meta.messageId,title:'일정',body:'내일 현장을 확인하세요'});
  assert.equal(p.message.data.kind,'notice');assert.equal(p.message.data.recipient_id,meta.recipientId);
  assert.equal(p.message.android.restricted_package_name,'kr.fieldassistant.prototype.stable');
+ assert.equal(noticePushPayload({...meta,noticeId:meta.messageId,title:'일정',body:'알림',ttlSeconds:0}).message.android.ttl,'0s');
+ assert.throws(()=>noticePushPayload({...meta,noticeId:meta.messageId,title:'일정',body:'알림',ttlSeconds:999}));
  assert.throws(()=>noticePushPayload({...meta,noticeId:'bad',title:'일정',body:'text'}));
  assert.throws(()=>noticePushPayload({...meta,noticeId:meta.messageId,title:'a'.repeat(121),body:'text'}));
 });
