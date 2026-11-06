@@ -1041,6 +1041,7 @@ class MainActivity : Activity() {
                 content.addView(text("금액이 확정되지 않은 현장은 합계에 포함되지 않을 수 있습니다. 조회 시점 기준입니다.",13f,false,Color.rgb(89,111,96)))
                 val dialog=AlertDialog.Builder(this@MainActivity).setTitle("${company.name} · 미수금 확인").setView(content).setNegativeButton("닫기",null).create()
                 addButton(content,"다시 확인",false) { dialog.dismiss();openReceivableSummary() }
+                addButton(content,"현장별 미수금 보기",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company) } }
                 addButton(content,"거래처별 연결 현장 보기",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();tradeManager() } }
                 addButton(content,"입금 등록 · 상세 관리 (웹앱)",false) {
                     if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/admin/receivables") } }
@@ -1049,6 +1050,72 @@ class MainActivity : Activity() {
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("미수금을 불러오지 못했습니다. 인터넷과 관리자 권한을 확인해 주세요.") }
             finally { receivableSummaryBusy=false }
+        }
+    }
+    private var receivableSitesBusy=false
+    private fun openReceivableSites(uid:String,company:CompanyAccess,filter:String="unpaid",page:Int=0,query:String="") {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        if(receivableSitesBusy) { message("현장별 미수금을 확인하고 있습니다.");return }
+        receivableSitesBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val data=auth.assistantReceivableSites(uid,company.id,filter,page,query)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                val items=data.getJSONArray("items");val count=data.getInt("count")
+                val content=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12)) }
+                val filterLabel=when(filter) { "unpaid" -> "미수금 · 확인 필요";"settled" -> "입금완료";else -> "전체 완료 현장" }
+                content.addView(text("$filterLabel · ${count}건",16f,true))
+                if(query.isNotBlank()) content.addView(text("검색: $query",13f))
+                val options=LinearLayout(this@MainActivity)
+                lateinit var dialog:AlertDialog
+                options.addView(button("분류 변경",false) {
+                    if(!sitePhotoSessionValid(uid,company)) return@button
+                    val labels=arrayOf("미수금 · 확인 필요","입금완료","전체 완료 현장")
+                    val values=arrayOf("unpaid","settled","all")
+                    AlertDialog.Builder(this@MainActivity).setTitle("현장 분류").setItems(labels) { _,i ->
+                        if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company,values[i],0,query) }
+                    }.setNegativeButton("취소",null).show()
+                },LinearLayout.LayoutParams(0,dp(48),1f))
+                options.addView(button("현장 검색",false) {
+                    if(!sitePhotoSessionValid(uid,company)) return@button
+                    val input=EditText(this@MainActivity).apply { hint="현장명 또는 고객명";setText(query);setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(100)) }
+                    AlertDialog.Builder(this@MainActivity).setTitle("현장 검색").setView(input).setPositiveButton("검색") { _,_ ->
+                        if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company,filter,0,input.text.toString().trim()) }
+                    }.setNegativeButton("취소",null).show()
+                },LinearLayout.LayoutParams(0,dp(48),1f))
+                content.addView(options)
+                if(items.length()==0) content.addView(text(if(page>0) "이 페이지에 현장이 없습니다. 이전 페이지를 확인해 주세요." else "해당 조건의 완료 현장이 없습니다.",14f))
+                for(i in 0 until items.length()) {
+                    val site=items.getJSONObject(i)
+                    val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "이름 없는 현장"
+                    val card=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(8));background=bg(Color.rgb(246,248,246),14) }
+                    card.addView(text(name,16f,true))
+                    val customer=site.optString("customer_name").takeUnless { it.isBlank() || it=="null" }
+                    if(customer!=null) card.addView(text("고객 · $customer",13f))
+                    card.addView(text("기준 금액 ${ReceivableDisplay.amount(site,"contract_amount")} · 입금 ${ReceivableDisplay.paid(site)}\n미수금 ${ReceivableDisplay.outstanding(site)}",14f))
+                    if(site.opt("confirmed")!=true) card.addView(text("기존 입금 확인 필요",13f,false,Color.rgb(134,91,35)))
+                    addButton(card,"현장 확인",false) {
+                        if(!sitePhotoSessionValid(uid,company)) return@addButton
+                        val siteId=site.optString("id")
+                        AlertDialog.Builder(this@MainActivity).setTitle(name)
+                            .setMessage("기준 금액: ${ReceivableDisplay.amount(site,"contract_amount")}\n입금: ${ReceivableDisplay.paid(site)}\n미수금: ${ReceivableDisplay.outstanding(site)}\n\n조회 시점의 금액입니다.")
+                            .setPositiveButton("현장 상세") { _,_ -> if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();lookupSites(AssistantRequests.Request("detail"),siteId) } }
+                            .setNeutralButton("입금 관리 (웹앱)") { _,_ -> if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/admin/receivables?siteId="+Uri.encode(siteId)) } } }
+                            .setNegativeButton("닫기",null).show()
+                    }
+                    content.addView(card,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(8),0,0) })
+                }
+                val pages=LinearLayout(this@MainActivity).apply { gravity=Gravity.CENTER_VERTICAL }
+                if(page>0) pages.addView(button("이전",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company,filter,page-1,query) } },LinearLayout.LayoutParams(0,dp(48),1f))
+                pages.addView(text("${page+1} / ${((count.toLong()+9)/10).coerceAtLeast(1)}",13f).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,dp(48),1f))
+                if((page.toLong()+1)*10<count && page<100000) pages.addView(button("다음",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company,filter,page+1,query) } },LinearLayout.LayoutParams(0,dp(48),1f))
+                content.addView(pages)
+                addButton(content,"목록 새로 확인",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company,filter,page,query) } }
+                dialog=AlertDialog.Builder(this@MainActivity).setTitle("${company.name} · 현장별 미수금").setView(ScrollView(this@MainActivity).apply { addView(content) }).setNegativeButton("닫기",null).create()
+                dialog.show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("현장별 미수금을 불러오지 못했습니다. 연결 상태와 관리자 권한을 확인해 주세요.") }
+            finally { receivableSitesBusy=false }
         }
     }
     private var activeNativeChats:NativeChats?=null

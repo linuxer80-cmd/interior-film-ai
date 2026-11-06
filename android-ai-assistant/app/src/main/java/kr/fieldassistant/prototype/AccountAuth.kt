@@ -712,6 +712,31 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun assistantReceivableSites(expectedUser:String,companyId:String,filter:String,page:Int,query:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId) && filter in listOf("unpaid","settled","all") && page in 0..100000 && query.length<=100)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val url="https://interior-film-ai.vercel.app/api/admin/assistant-receivables?view=items&filter="+filter+"&page="+page+"&q="+Uri.encode(query)
+            val c=SecureTransport.open(url)
+            try {
+                c.requestMethod="GET";c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("X-Assistant-Company",companyId);c.setRequestProperty("Cache-Control","no-store")
+                check(c.responseCode in 200..299) { "현장별 미수금을 확인하지 못했습니다." }
+                val result=JSONObject(c.inputStream.use { SecureTransport.readBounded(it,128*1024) }.toString(Charsets.UTF_8))
+                val items=result.optJSONArray("items") ?: error("현장별 미수금 목록을 확인하지 못했습니다.")
+                val count=result.opt("count") as? Number ?: error("현장 수를 확인하지 못했습니다.")
+                check(result.optString("companyId")==companyId && result.optString("filter")==filter && result.optInt("page",-1)==page && result.optString("query")==query &&
+                    count.toDouble().isFinite() && count.toDouble()>=0 && count.toDouble()==kotlin.math.floor(count.toDouble()) && count.toDouble()<=Int.MAX_VALUE && items.length()<=10 && items.length()<=count.toInt()) { "현장별 미수금을 확인하지 못했습니다." }
+                for(i in 0 until items.length()) {
+                    val row=items.optJSONObject(i) ?: error("현장 정보를 확인하지 못했습니다.")
+                    check(Regex("^[0-9a-fA-F-]{36}$").matches(row.optString("id")) && row.opt("confirmed") is Boolean &&
+                        listOf("contract_amount","paid","outstanding").all { k -> row.has(k) && (row.isNull(k) || (row.opt(k) as? Number)?.toDouble()?.isFinite()==true) }) { "현장 금액을 확인하지 못했습니다." }
+                }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun submitAssistantWorkerReport(expectedUser:String,companyId:String,siteId:String,region:String,summary:String,memo:String,labor:JSONArray):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
