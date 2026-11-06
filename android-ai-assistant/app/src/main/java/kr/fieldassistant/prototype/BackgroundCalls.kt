@@ -173,7 +173,9 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     else -> "연결된 폴더에 새 녹음이 없습니다."
                 }
                 BackgroundCalls.status(ctx,uid,summary)
-                if(needsRetry) BackgroundCalls.retryLater(ctx,uid,token)
+                // A new file can arrive while a long transcription is running and
+                // the content-trigger worker is not yet rearmed. Scan once more.
+                if(needsRetry || count>0) BackgroundCalls.retryLater(ctx,uid,token)
             }
             return Result.success()
         } catch(_: SecurityException) {
