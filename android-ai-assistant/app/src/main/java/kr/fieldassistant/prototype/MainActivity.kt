@@ -356,7 +356,7 @@ class MainActivity : Activity() {
             val uid=receiptPickerUid;val company=selectedCompany()
             val uri=if(requestCode==1009) receiptCameraUri else data?.data
             if(requestCode==1009 && resultCode!=RESULT_OK && uri!=null) try { contentResolver.delete(uri,null,null) } catch(_:Exception) {}
-            if(resultCode==RESULT_OK && uri?.scheme=="content" && uid!=null && account?.userId==uid && company?.id==receiptPickerCompany && company.role=="관리자") analyzeReceipt(uri,uid,company)
+            if(resultCode==RESULT_OK && uri?.scheme=="content" && uid!=null && company!=null && account?.userId==uid && company.id==receiptPickerCompany && company.role=="관리자") analyzeReceipt(uri,uid,company)
             else if(resultCode==RESULT_OK) message("로그인과 업체를 다시 확인한 뒤 사진을 선택해 주세요.")
             receiptPickerUid=null;receiptPickerCompany=null;receiptCameraUri=null
             return

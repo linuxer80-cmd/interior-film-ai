@@ -69,8 +69,10 @@ internal class NativeDealerReceipt(
         if(field(r,"action")!="receive") { msg("입고로 확인되지 않은 품목입니다. 대리점 반납 또는 구분이 불확실한 항목은 기존 재고 화면에서 확인해 주세요.");return }
         val dealers=data.getJSONArray("dealers");val list=(0 until dealers.length()).mapNotNull { dealers.optJSONObject(it) }
         if(list.isEmpty()) { msg("등록된 대리점이 없습니다. 대리점과 공급가를 먼저 등록해 주세요.");return }
+        val code=field(r,"code").uppercase().replace(" ","")
+        val initial=if(Regex("^([GF][A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*|[RE]S[0-9][A-Z0-9-]*)$").matches(code)) code.drop(1) else code
         AlertDialog.Builder(activity).setTitle("대리점 선택 · 인식: ${field(record.getJSONObject("analysis"),"dealer").ifBlank { "확인 필요" }}")
-            .setItems(list.map { field(it,"name") }.toTypedArray()) { _,i -> chooseProduct(record,index,list[i],field(r,"code")) }
+            .setItems(list.map { field(it,"name") }.toTypedArray()) { _,i -> chooseProduct(record,index,list[i],initial) }
             .setNegativeButton("취소") { _,_ -> show() }.show()
     }
     private fun chooseProduct(record:JSONObject,index:Int,dealer:JSONObject,query:String) {
@@ -126,11 +128,9 @@ internal class NativeDealerReceipt(
             val stored=prefs.getString(key,null)
             val editor=prefs.edit()
             if(stored!=null) {
-                val d=try { JSONObject(stored) } catch(_:Exception) { return false }
-                val rows=d.optJSONObject("analysis")?.optJSONArray("rows") ?: return false
                 val id=try { JSONObject(raw).getString("requestId") } catch(_:Exception) { return false }
-                for(i in 0 until rows.length()) { val row=rows.optJSONObject(i) ?: return false;if(row.optString("_requestId")==id) { row.put("_done",true);row.remove("_requestId") } }
-                editor.putString(key,d.toString())
+                val updated=try { DealerReceiptState.confirmed(stored,id) } catch(_:Exception) { return false }
+                editor.putString(key,updated)
             }
             return editor.remove(pendingKey).commit()
         }
