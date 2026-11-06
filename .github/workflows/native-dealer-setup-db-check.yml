@@ -1,0 +1,18 @@
+name: Isolated dealer setup database checks
+on:
+  push:
+    branches: [codex/native-dealer-setup-20261106]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install isolated test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/dealer-db" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.11
+          ln -s "$RUNNER_TEMP/dealer-db/node_modules" node_modules
+      - name: Verify registration and price transactions
+        run: node --test tests/_dealer_setup_probe.test.mjs
