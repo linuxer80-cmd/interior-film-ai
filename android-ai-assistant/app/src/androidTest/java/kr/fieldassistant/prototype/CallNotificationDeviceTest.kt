@@ -63,4 +63,9 @@ class CallNotificationDeviceTest {
         check(p.edit().putString("records",JSONArray().put(row).toString()).commit())
         assertFalse(CallNotifications.decline(c,uid,id));assertFalse(p.getBoolean(CallNotifications.declinedKey(id),false))
     }
+    @Test fun restoredFolderClearsTheOldAccessWarning() = runCase { c,uid,_ ->
+        val p=BackgroundCalls.resultPrefs(c,uid);check(p.edit().putBoolean("folder_access_alerted",true).commit())
+        CallNotifications.folderAccessRestored(c,uid)
+        assertFalse(p.getBoolean("folder_access_alerted",false))
+    }
 }

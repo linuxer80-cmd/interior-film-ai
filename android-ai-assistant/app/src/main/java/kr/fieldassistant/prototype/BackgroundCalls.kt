@@ -117,7 +117,8 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     files.add(Recording(DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0)),name,cursor.getLong(2),cursor.getLong(3)))
                 }
             } ?: throw SecurityException("폴더를 열 수 없습니다")
-            BackgroundCalls.resultPrefs(ctx,uid).edit().putLong("last_successful_scan_at",System.currentTimeMillis()).remove("folder_access_alerted").apply()
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putLong("last_successful_scan_at",System.currentTimeMillis()).apply()
+            CallNotifications.folderAccessRestored(ctx,uid)
             files.sortBy { it.modified }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)

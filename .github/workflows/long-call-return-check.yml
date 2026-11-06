@@ -80,7 +80,7 @@ jobs:
           "$ADB" shell pidof kr.fieldassistant.prototype.stable
           "$ADB" install -r android-ai-assistant/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           "$ADB" shell am instrument -w -r kr.fieldassistant.prototype.stable.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/security-device-tests.txt
-          grep -q 'OK (11 tests)' /tmp/security-device-tests.txt
+          grep -q 'OK (12 tests)' /tmp/security-device-tests.txt
       - name: Upload security test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

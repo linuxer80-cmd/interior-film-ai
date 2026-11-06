@@ -63,6 +63,12 @@ internal object CallNotifications {
             prefs.edit().putBoolean("folder_access_alerted",true).apply()
         } catch(_:SecurityException) { }
     }
+    fun folderAccessRestored(ctx:Context,uid:String) {
+        val prefs=BackgroundCalls.resultPrefs(ctx,uid)
+        if(!prefs.getBoolean("folder_access_alerted",false)) return
+        (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel("call-folder-"+BackgroundCalls.key(uid),0)
+        prefs.edit().remove("folder_access_alerted").apply()
+    }
     fun decline(ctx:Context,uid:String,id:String):Boolean = synchronized(BackgroundCalls.lock) {
         if(uid.isBlank() || id.isBlank() || !BackgroundCalls.active(ctx,uid)) return@synchronized false
         val prefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
