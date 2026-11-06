@@ -29,6 +29,9 @@ class CallNotificationDeviceTest {
         val n=CallNotifications.build(c,uid,id)
         assertEquals(2,n.actions.size);assertEquals("예",n.actions[0].title.toString());assertEquals("아니요",n.actions[1].title.toString())
         assertNotEquals(n.actions[0].actionIntent,n.actions[1].actionIntent)
+        val otherCall=CallNotifications.build(c,uid,id+"-other")
+        assertNotEquals(n.actions[0].actionIntent,otherCall.actions[0].actionIntent)
+        assertNotEquals(n.actions[1].actionIntent,otherCall.actions[1].actionIntent)
         @Suppress("DEPRECATION") val info=c.packageManager.getReceiverInfo(ComponentName(c,CallNotificationDeclineReceiver::class.java),0)
         assertFalse(info.exported)
     }
