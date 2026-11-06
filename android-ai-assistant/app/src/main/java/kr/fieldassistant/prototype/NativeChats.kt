@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Handler
@@ -91,7 +90,18 @@ internal class NativeChats(
         val send=Button(activity).apply { text="보내기";isAllCaps=false;setTextColor(Color.WHITE);background=background(Color.rgb(35,84,59),20);minWidth=dp(66);minimumWidth=dp(66);contentDescription="메시지 보내기" }
         val compose=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(4),dp(4),dp(4));background=background(Color.WHITE,24,Color.rgb(225,229,220));addView(input,LinearLayout.LayoutParams(0,-2,1f));addView(send,LinearLayout.LayoutParams(dp(72),dp(48))) }
         root.addView(compose)
-        val dialog=AlertDialog.Builder(activity).setTitle(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅").setView(root).setNegativeButton("닫기",null).setNeutralButton("새로 확인",null).create()
+        lateinit var dialog:AlertDialog
+        lateinit var refresh:()->Unit
+        val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(6),dp(4),dp(6));setBackgroundColor(Color.rgb(29,67,50)) }
+        val back=label("‹",30f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="채팅 닫기";setOnClickListener { dialog.dismiss() } }
+        header.addView(back,LinearLayout.LayoutParams(dp(48),dp(52)))
+        val heading=label(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅",18f).apply {
+            setTextColor(Color.WHITE);setTypeface(null,android.graphics.Typeface.BOLD);maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
+        }
+        header.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
+        val reload=label("↻",24f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="대화 새로 확인";setOnClickListener { if(valid()) refresh() } }
+        header.addView(reload,LinearLayout.LayoutParams(dp(48),dp(52)))
+        dialog=AlertDialog.Builder(activity).setCustomTitle(header).setView(root).create()
         currentDialog=dialog
         val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
         var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
@@ -109,7 +119,6 @@ internal class NativeChats(
             }
         } }
         scroll.setOnScrollChangeListener { _,_,_,_,_ -> handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,350) }
-        lateinit var refresh:()->Unit
         fun showPhoto(url:String) {
             if(!valid() || !ChatPhotoUrl.allowed(url,target)) { toast("사진을 확인할 수 없습니다.");return }
             val image=ImageView(activity).apply { adjustViewBounds=true;minimumHeight=dp(220);contentDescription="고객이 보낸 사진" }
@@ -232,7 +241,6 @@ internal class NativeChats(
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt())
             dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { if(valid()) refresh() }
             refresh();resume()
         }
         dialog.show()
