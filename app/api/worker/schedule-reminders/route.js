@@ -110,7 +110,7 @@ export async function GET(request){
      const legacy=await db.from("site_workers").select("worker_id").eq("company_id",site.company_id).eq("site_id",site.id).eq("worker_id",workerId).limit(1);
      return !legacy.error && Boolean(legacy.data?.length);
     };
-    native=await dispatchAndroidNotice(db,{noticeId:record.id,title:title.slice(0,120),body:body.slice(0,500),recipients:[worker.user_id]},{allowed});
+    native=await dispatchAndroidNotice(db,{noticeId:record.id,title:title.slice(0,120),body:body.slice(0,500),recipients:[worker.user_id],siteTarget:{companyId:site.company_id,siteId:site.id}},{allowed});
    } catch { /* Browser fallback. */ }
    if(native.acceptedUserIds.includes(worker.user_id)){
     await db.from("worker_schedule_reminders").update({status:"sent",attempts:record.attempts+1,

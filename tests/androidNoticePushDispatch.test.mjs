@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {dispatchAndroidNotice,noticeRowAllowed} from '../lib/androidNoticePushDispatch.mjs';
+import {dispatchAndroidNotice,noticeRowAllowed,siteTargetForNotice} from '../lib/androidNoticePushDispatch.mjs';
 
 const U1='11111111-1111-1111-1111-111111111111',U2='22222222-2222-2222-2222-222222222222',N='33333333-3333-3333-3333-333333333333';
 function fixture() {
@@ -31,4 +31,17 @@ test('recipient authorization is based on the stored notice, not the caller',asy
  const {db}=fixture(),allowed=noticeRowAllowed(db,'labor_notifications',N);
  assert.equal(await allowed(U1),true);assert.equal(await allowed(U2),false);
  assert.throws(()=>noticeRowAllowed(db,'arbitrary_table',N));
+});
+
+test('only known site references with valid identifiers produce an app site destination',()=>{
+ const row={company_id:U1,reference_id:U2,reference_type:'site_schedule'};
+ assert.deepEqual(siteTargetForNotice(row),{companyId:U1,siteId:U2});
+ assert.equal(siteTargetForNotice({...row,reference_type:'url'}),null);
+ assert.equal(siteTargetForNotice({...row,reference_id:'invalid'}),null);
+ assert.equal(siteTargetForNotice({...row,company_id:null}),null);
+});
+test('approved site metadata reaches the app sender',async()=>{
+ const {db}=fixture();let sent;const target={companyId:U1,siteId:U2};
+ const r=await dispatchAndroidNotice(db,{...meta,siteTarget:target},{allowed:async()=>true,send:async value=>{sent=value;return {state:'accepted'}}});
+ assert.deepEqual(sent.siteTarget,target);assert.deepEqual(r.acceptedUserIds,[U1]);
 });

@@ -1,4 +1,4 @@
-import { dispatchAndroidNotice } from "../../../lib/androidNoticePushDispatch.mjs";
+import { dispatchAndroidNotice, siteTargetForNotice } from "../../../lib/androidNoticePushDispatch.mjs";
 import { notificationDestination } from "../../../lib/superNotificationDestination.mjs";
 import { dispatchAndroidChat } from "../../../lib/androidChatPushDispatch.mjs";
 import { REPORT_REMINDER_TYPE, koreaDay, reminderWindow, currentReportReminder, reportReminderNotice } from "../../../lib/workReportReminders.mjs";
@@ -1237,7 +1237,7 @@ export async function POST(
           };
           nativeDelivery=await dispatchAndroidNotice(supabase,{noticeId:notification.id,
             title:payload.title.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds,
-            ttlSeconds:isCompletionReminder(saved.data)?0:3600},{allowed});
+            ttlSeconds:isCompletionReminder(saved.data)?0:3600,siteTarget:siteTargetForNotice(saved.data)},{allowed});
         }
       }
     } catch { console.error('Native notification dispatch failed'); }

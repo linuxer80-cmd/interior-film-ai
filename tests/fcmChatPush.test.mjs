@@ -47,3 +47,12 @@ test('general notice payload limits fields and is targeted to the Android packag
  assert.throws(()=>noticePushPayload({...meta,noticeId:'bad',title:'일정',body:'text'}));
  assert.throws(()=>noticePushPayload({...meta,noticeId:meta.messageId,title:'a'.repeat(121),body:'text'}));
 });
+
+test('general site notifications carry only validated opaque routing identifiers',()=>{
+ const data={...meta,noticeId:meta.messageId,title:'시공 일정',body:'현장을 확인해 주세요',siteTarget:{companyId:meta.companyId,siteId:meta.targetId}};
+ const payload=noticePushPayload(data).message.data;
+ assert.equal(payload.company_id,meta.companyId);assert.equal(payload.site_id,meta.targetId);
+ assert.equal('url' in payload,false);
+ assert.throws(()=>noticePushPayload({...data,siteTarget:{companyId:'invalid',siteId:meta.targetId}}));
+ assert.throws(()=>noticePushPayload({...data,siteTarget:{companyId:meta.companyId}}));
+});

@@ -111,7 +111,7 @@ class MainActivity : Activity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
-        captureReview(intent);captureSchedule(intent);captureChatPush(intent)
+        captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent)
         render()
         restoreLogin()
     }
@@ -152,7 +152,7 @@ class MainActivity : Activity() {
                 else if(verified!=null) { ChatPushRegistration.deactivate(applicationContext);auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
                 else ChatPushRegistration.deactivate(applicationContext)
             } catch (_: Exception) { authError="로그인 상태를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요." }
-            finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush() }
+            finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice() }
         }
     }
     private fun activateAccount(verified: VerifiedAccount) {
@@ -187,7 +187,7 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart(); active = true
         activeNativeChats?.resume()
-        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview();maybeOpenChatPush(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
+        if(account!=null) { startObserver(); scanFolder();scheduleForegroundScan(); maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice(); if(simpleSetup && !setupBusy) handler.post { continueSimpleSetup() } }
     }
     override fun onResume() {
         super.onResume()
@@ -200,7 +200,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush()
+        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
         if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
@@ -1232,6 +1232,84 @@ class MainActivity : Activity() {
     private fun nativeChats(uid:String,company:CompanyAccess):NativeChats {
         activeNativeChats?.close()
         return NativeChats(this,auth,scope,uid,company) { sitePhotoSessionValid(uid,company) }.also { activeNativeChats=it }
+    }
+    private var pendingSiteNotice:SiteNoticeTarget?=null
+    private var siteNoticeBusy=false
+    private fun captureSiteNotice(intent:Intent?) {
+        val fields=mapOf("kind" to "notice", "recipient_id" to (intent?.getStringExtra("site_notice_user") ?: ""),
+            "company_id" to (intent?.getStringExtra("site_notice_company") ?: ""),
+            "site_id" to (intent?.getStringExtra("site_notice_site") ?: ""),
+            "notice_id" to (intent?.getStringExtra("site_notice_id") ?: ""))
+        val target=SiteNoticeTarget.parse(fields) ?: return
+        pendingSiteNotice=target
+        listOf("user","company","site","id").forEach { intent?.removeExtra("site_notice_$it") }
+    }
+    private fun maybeOpenSiteNotice() {
+        val target=pendingSiteNotice ?: return
+        val current=account ?: return
+        if(!active || authBusy || siteNoticeBusy) return
+        if(current.userId!=target.user) { pendingSiteNotice=null;message("이 알림을 받은 계정으로 로그인해 주세요.");return }
+        val verified=SiteNoticeTarget.forAccount(target,current.userId,current.companies.map { it.id })
+        pendingSiteNotice=null
+        if(verified==null) { message("이 현장을 볼 수 있는 업체 권한이 없습니다.");return }
+        val company=current.companies.first { it.id==verified.company }
+        val epoch=sessionEpoch
+        siteNoticeBusy=true
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(current.userId,company.id)
+                if(epoch!=sessionEpoch || account?.userId!=current.userId) return@launch
+                if(!active) { pendingSiteNotice=verified;return@launch }
+                val site=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
+                    .find { it.optString("id").ifBlank { it.optString("site_id") }==verified.site }
+                if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
+                fun value(key:String)=site.optString(key).takeUnless { it.isBlank() || it=="null" }.orEmpty()
+                val address=listOf(value("address"),value("address_detail")).filter { it.isNotBlank() }.joinToString(" ")
+                val dates=site.optJSONArray("work_dates") ?: JSONArray()
+                val workDates=(0 until dates.length()).map { dates.optString(it) }.filter { it.isNotBlank() }.joinToString(", ")
+                val period=listOf(value("schedule_start"),value("schedule_end")).filter { it.isNotBlank() }.distinct().joinToString(" ~ ")
+                val details=listOf("업체: ${company.name}","상태: ${siteStatus(value("status")).ifBlank { "미등록" }}",
+                    "주소: ${address.ifBlank { "미등록" }}","시공일: ${workDates.ifBlank { period.ifBlank { "미등록" } }}",
+                    "시공 내용: ${value("work_description").ifBlank { "미등록" }}").joinToString("\n")
+                val dialog=AlertDialog.Builder(this@MainActivity).setTitle(value("site_name").ifBlank { "현장 정보" })
+                    .setMessage(details).setNegativeButton("닫기",null)
+                if(address.isNotBlank()) dialog.setPositiveButton("길 안내") { _,_ -> openSiteNoticeAction(verified,"navigate") }
+                if(value("customer_phone").isNotBlank()) dialog.setNeutralButton("전화 걸기") { _,_ -> openSiteNoticeAction(verified,"phone") }
+                dialog.show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && active) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
+            finally { siteNoticeBusy=false;if(active && pendingSiteNotice!=null) maybeOpenSiteNotice() }
+        }
+    }
+    private fun openSiteNoticeAction(target:SiteNoticeTarget,action:String) {
+        if(action !in listOf("navigate","phone")) return
+        val uid=account?.userId ?: return
+        if(SiteNoticeTarget.forAccount(target,uid,account?.companies?.map { it.id } ?: emptyList())==null) {
+            message("이 현장을 볼 수 있는 업체 권한이 없습니다.");return
+        }
+        val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val sites=auth.assistantSites(uid,target.company)
+                if(epoch!=sessionEpoch || account?.userId!=uid || !active) return@launch
+                val site=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
+                    .find { it.optString("id").ifBlank { it.optString("site_id") }==target.site }
+                if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
+                if(action=="phone") {
+                    val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
+                    if(phone.isBlank()) { message("등록된 전화번호가 없습니다.");return@launch }
+                    startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",phone,null)))
+                } else {
+                    val address=listOf(site.optString("address"),site.optString("address_detail"))
+                        .filter { it.isNotBlank() && it!="null" }.joinToString(" ")
+                    if(address.isBlank()) { message("등록된 주소가 없습니다.");return@launch }
+                    val uri=Uri.parse("geo:0,0?q="+Uri.encode(address))
+                    try { startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW,uri),"길 안내 앱 선택")) }
+                    catch(_:ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://map.naver.com/p/search/"+Uri.encode(address)))) }
+                }
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && active) message("현장 정보를 다시 확인하지 못했습니다.") }
+        }
     }
     private var pendingChatPush:ChatPushTarget?=null
     private fun captureChatPush(intent:Intent?) {
@@ -3798,7 +3876,7 @@ class MainActivity : Activity() {
                     if(verified.companies.isEmpty()) { auth.clearSession();authError="연결된 활성 업체를 찾지 못했습니다. 필름장이에서 업체 또는 시공자 연결 상태를 확인해 주세요." }
                     else activateAccount(verified)
                 } catch (_: Exception) { authError="로그인 또는 업체 정보를 확인하지 못했습니다. 이메일·비밀번호와 인터넷 연결을 확인해 주세요." }
-                finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush() }
+                finally { authBusy=false;render();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice() }
             }
         }
         login.isEnabled=!authBusy;val lp=LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,dp(14),0,0);col.addView(login,lp)

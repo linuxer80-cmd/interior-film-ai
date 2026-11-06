@@ -87,9 +87,14 @@ class ChatPushService:FirebaseMessagingService() {
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="app_notifications"
         AssistantNotificationChannels.ensure(manager,channel,"앱 알림",NotificationManager.IMPORTANCE_HIGH)
+        val siteTarget=SiteNoticeTarget.parse(data)
         val intent=Intent(this,MainActivity::class.java).apply {
             flags=Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             this.data=Uri.parse("fieldassistant://app-notification/$id")
+            siteTarget?.let { target ->
+                putExtra("site_notice_user",target.user);putExtra("site_notice_company",target.company)
+                putExtra("site_notice_site",target.site);putExtra("site_notice_id",target.notice)
+            }
         }
         val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notice=Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info)
