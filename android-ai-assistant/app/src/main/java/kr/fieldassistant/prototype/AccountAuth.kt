@@ -355,6 +355,42 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun listAssistantPlannedMaterials(expectedUser:String,companyId:String,siteId:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 계정과 업체를 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/site-planned-materials?siteId="+siteId)
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                val status=c.responseCode;val stream=if(status in 200..299) c.inputStream else c.errorStream
+                val result=try { JSONObject(stream?.use { SecureTransport.readBounded(it,512*1024) }?.toString(Charsets.UTF_8).orEmpty()) } catch(_:Exception) { JSONObject() }
+                check(status in 200..299 && result.optJSONArray("materials")!=null) { "등록된 자재를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
+    suspend fun addAssistantPlannedMaterial(expectedUser:String,companyId:String,siteId:String,body:JSONObject):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 계정과 업체를 확인해 주세요." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && body.optString("siteId")==siteId && Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("id")))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/site-planned-materials")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val status=c.responseCode;val stream=if(status in 200..299) c.inputStream else c.errorStream
+                val result=try { JSONObject(stream?.use { SecureTransport.readBounded(it,128*1024) }?.toString(Charsets.UTF_8).orEmpty()) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299) throw TradeApiFailure(status,result.optString("error").ifBlank { "자재 등록 결과를 확인하지 못했습니다." })
+                check(result.optBoolean("success") && Regex("^[0-9a-fA-F-]{36}$").matches(result.optString("id"))) { "자재 등록 결과를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun settleReportMaterial(expectedUser:String,companyId:String,siteId:String,body:JSONObject):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체가 변경되었습니다." }
