@@ -2806,42 +2806,67 @@ class MainActivity : Activity() {
         }
     }
     private fun dailyCard(company:CompanyAccess,uid:String,state:DailyState):View {
-        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.rgb(241,247,242),16) }
-        box.addView(text("오늘 할 일 · ${company.role}",18f,true))
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(14));background=bg(Color.rgb(241,247,242),16) }
+        box.addView(text("오늘 할 일",19f,true))
         when {
             state.loading -> box.addView(text("현장 일정을 확인하고 있습니다.",14f))
             state.error -> box.addView(text("오늘 할 일을 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.",14f))
             state.data!=null -> {
                 val data=state.data
                 val scope=if(company.role=="관리자") "업체 일정" else "내 배정 일정"
-                box.addView(text("${state.date} · $scope ${data.sites.size}건",14f,true))
+                box.addView(text("${state.date} · $scope ${data.sites.size}건",13f,false,Color.rgb(89,111,96)))
                 if(data.sites.isEmpty()) box.addView(text("조회 시점에 오늘 일정이 없습니다.",14f))
-                data.consultations?.let { box.addView(text("상담중 현장 ${it}건 · 진행 상태를 확인해 주세요.",14f)) }
+                data.consultations?.let { box.addView(text("상담중 현장 ${it}건 · 진행 상태를 확인해 주세요.",13f)) }
                 if(state.receivableNote.isNotBlank()) box.addView(text(state.receivableNote,13f))
-                data.sites.take(4).forEach { site ->
-                    box.addView(text("${site.name}\n시공 내용: ${site.work.ifBlank { "확인 필요" }}\n주소: ${site.address.ifBlank { "확인 필요" }}",14f,true))
-                    val row=LinearLayout(this)
-                    row.addView(button("현장 상세",false) {
-                        if(sitePhotoSessionValid(uid,company)) lookupSites(AssistantRequests.Request("detail"),site.id)
-                    },LinearLayout.LayoutParams(0,dp(48),1f))
-                    row.addView(button("길 안내",false) {
-                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"navigate")
-                    },LinearLayout.LayoutParams(0,dp(48),1f))
-                    box.addView(row)
-                    val work=LinearLayout(this)
-                    work.addView(button("자재 확인",false) {
-                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"materials")
-                    },LinearLayout.LayoutParams(0,dp(48),1f))
-                    work.addView(button(if(company.role=="시공자") "현장 마무리" else "시공자 배정",false) {
-                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,if(company.role=="시공자") "wrap_up" else "schedule")
-                    },LinearLayout.LayoutParams(0,dp(48),1f))
-                    box.addView(work)
-                    addButton(box,"팀원과 채팅",false) {
-                        if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,site.id,"team_chat")
+                val siteList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                box.addView(siteList)
+                fun addSite(site:DailyAssistant.Site) {
+                    val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(10));background=bg(Color.WHITE,14,Color.rgb(222,232,223)) }
+                    val top=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+                    val info=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                    info.addView(text(site.name,16f,true).apply { maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END })
+                    info.addView(text(site.work.ifBlank { "시공 내용 확인 필요" },13f,false,Color.rgb(89,111,96)).apply { maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
+                    top.addView(info,LinearLayout.LayoutParams(0,-2,1f))
+                    val toggle=text("펼치기 ▾",13f,true).apply { gravity=Gravity.CENTER;setPadding(dp(6),0,dp(6),0);minimumHeight=dp(48);isClickable=true;isFocusable=true }
+                    top.addView(toggle,LinearLayout.LayoutParams(dp(74),dp(48)));card.addView(top)
+                    val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;visibility=View.GONE }
+                    details.addView(text("주소 · ${site.address.ifBlank { "확인 필요" }}",13f))
+                    fun actions(first:String,firstAction:()->Unit,second:String,secondAction:()->Unit) {
+                        val row=LinearLayout(this)
+                        row.addView(button(first,false,firstAction),LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(0,0,dp(4),dp(4)) })
+                        row.addView(button(second,false,secondAction),LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(4),0,0,dp(4)) })
+                        details.addView(row)
                     }
+                    fun validToday():Boolean {
+                        if(!sitePhotoSessionValid(uid,company)) return false
+                        if(state.date!=ScheduleDates.today()) { message("날짜가 바뀌어 오늘 현장을 다시 확인합니다.");loadDailyAssistant(true);render();return false }
+                        return true
+                    }
+                    fun action(kind:String) { if(validToday()) openSiteAction(company.id,site.id,kind) }
+                    actions("현장 상세",{ if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },"길 안내",{ action("navigate") })
+                    actions("자재 확인",{ action("materials") },if(company.role=="시공자") "현장 마무리" else "시공자 배정",{ action(if(company.role=="시공자") "wrap_up" else "schedule") })
+                    addButton(details,"팀원과 채팅",false) { action("team_chat") }
+                    card.addView(details)
+                    toggle.contentDescription="${site.name} 현장 할 일 펼치기"
+                    toggle.setOnClickListener {
+                        val expand=details.visibility!=View.VISIBLE
+                        details.visibility=if(expand) View.VISIBLE else View.GONE
+                        toggle.text=if(expand) "접기 ▴" else "펼치기 ▾"
+                        toggle.contentDescription="${site.name} 현장 할 일 "+if(expand) "접기" else "펼치기"
+                    }
+                    siteList.addView(card,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(8),0,0) })
                 }
-                if(data.sites.size>4) addButton(box,"오늘 일정 전체 보기",false) { lookupSites(AssistantRequests.Request("schedule",from=state.date,to=state.date)) }
-                box.addView(text("조회 시점 기준 · 변경사항은 새로 확인해 주세요.",12f))
+                var shown=0
+                lateinit var more:Button
+                fun appendSites() {
+                    val end=(shown+4).coerceAtMost(data.sites.size)
+                    while(shown<end) { addSite(data.sites[shown]);shown++ }
+                    if(shown>=data.sites.size) more.visibility=View.GONE
+                    else more.text="현장 더 보기 ($shown/${data.sites.size})"
+                }
+                more=button("현장 더 보기",false) { appendSites() }
+                appendSites();box.addView(more)
+                box.addView(text("조회 시점 기준 · 변경사항은 새로 확인해 주세요.",12f,false,Color.rgb(89,111,96)))
             }
         }
         if(!state.loading) addButton(box,"오늘 할 일 새로 확인",false) { loadDailyAssistant(true);render() }
@@ -3236,6 +3261,9 @@ class MainActivity : Activity() {
         page.addView(contextRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        val company=selectedCompany();val uid=account?.userId
+        val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(16)) })
         body.addView(text("무엇을 도와드릴까요?",24f,true))
         body.addView(text("현장 업무를 편하게 물어보세요.",15f,false,Color.rgb(100,110,103)).apply { setPadding(0,dp(5),0,dp(10)) })
         fun shortcuts(first:String, firstAction:()->Unit, second:String, secondAction:()->Unit) {
@@ -3247,9 +3275,6 @@ class MainActivity : Activity() {
         shortcuts("오늘 일정",{ answerHome("오늘 일정") },"현장 찾기",{ answerHome("현장 목록") })
         if(selectedCompany()?.role=="관리자") shortcuts("새 상담",{ openNativeFeature("new-site") },"필름 검색",{ openNativeFeature("samples") })
         else shortcuts("오늘 팀 채팅",{ openTodayTeamChats() },"필름 검색",{ openNativeFeature("samples") })
-        val company=selectedCompany();val uid=account?.userId
-        val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
-        if(company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(10),0,dp(8)) })
         if(company!=null && uid!=null && (state==null || (!state.loading && !state.error && System.currentTimeMillis()-state.loadedAt>=300_000L)))
             handler.post { if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role && chatId==null && !settingsOpen) loadDailyAssistant() }
         if(selectedCompany()?.role=="관리자") {
