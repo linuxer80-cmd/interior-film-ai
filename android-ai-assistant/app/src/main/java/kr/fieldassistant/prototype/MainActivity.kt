@@ -2532,6 +2532,10 @@ class MainActivity : Activity() {
                 }.setNegativeButton("취소",null).show()
             } }
             actions.addView(photo)
+            if(report==null) actions.addView(Button(this).apply { text="자재 확인 · 반납량 수정";setOnClickListener {
+                if(sitePhotoSessionValid(uid,company)) NativeReportMaterials(this@MainActivity,auth,scope,uid,company,siteId,siteName) { sitePhotoSessionValid(uid,company) }.open()
+                else message("계정과 업체를 다시 확인해 주세요.")
+            } })
             actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="등록된 내 경비 확인";setOnClickListener { showNativeReportExpenses(uid,company,siteId) } })
             if(value("review_status")=="rejected") {
